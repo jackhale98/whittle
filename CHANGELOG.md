@@ -51,3 +51,4 @@
 - Fix (M2 gate): measure picks follow edits: after each regen face and edge picks are found again by persistent name (vertices by position), and picks that no longer resolve are dropped, so an undo while measuring never silently measures another face.
 - Fix (M2 gate): the bubble's Sketch action and undo/redo deferred behind a busy sketch are tracked, so `idle()` waits for them.
 - Fix (M2 gate): the keypad never covers its field on landscape phones (844 × 390): it also goes beside the field or docks at the top, and when even the compact layout would cover it, the field is scrolled up within its sheet to just above the keypad (ADR-012 item 5).
+- M2.5 (platform): sync Worker in `worker/` (git proxy, OAuth token exchange, WebDAV relay; ported from Mycelium), typed provider configuration from `VITE_*` repository variables, service-worker rules for provider traffic and OAuth redirects, `docs/SYNC_SETUP.md`.
