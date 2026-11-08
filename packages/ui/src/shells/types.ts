@@ -84,4 +84,11 @@ export interface ShellProps {
   section?: SectionPanelProps;
   /** Coach marks for the "make a bracket" tutorial; drive it with `useTutorial`. */
   tutorial?: TutorialProps;
+
+  /* ---- M2.5 connections, sync and versions ---- */
+  /**
+   * Version menu and sync status for the top bar, on every tier (typically a branch button and a
+   * `SyncStatusChip`). Desktop: takes the place of the version-menu placeholder. Omit to keep it.
+   */
+  projectBar?: ReactNode;
 }

@@ -85,6 +85,8 @@ const pairs: Pair[] = [
   ['compareRemoved', 'compareRemovedSoft', 4.5, 'removed text on its soft fill'],
   ['compareAdded', 'viewportBottom', 3, 'added overlay over viewport'],
   ['compareRemoved', 'viewportBottom', 3, 'removed overlay over viewport'],
+  ['compareAddedSwatch', 'surface', 3, 'added legend swatch (non-text)'],
+  ['compareRemovedSwatch', 'surface', 3, 'removed legend swatch (non-text)'],
 ];
 
 describe.each(['light', 'dark'] as ThemeName[])('WCAG 2.2 AA contrast (%s)', (theme) => {

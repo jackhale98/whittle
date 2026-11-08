@@ -119,18 +119,24 @@ export function DesktopShell(props: ShellProps) {
             <Separator orientation="vertical" className="mx-1.5" />
             <UndoRedo onUndo={onUndo} onRedo={onRedo} />
             <div className="flex-1" />
-            <Tooltip content="Version history — coming in M2.5">
-              <Button
-                variant="ghost"
-                aria-disabled="true"
-                onClick={(e) => e.preventDefault()}
-                icon={<GitBranch className="size-4" />}
-              >
-                <span>main</span>
-                <ChevronDown className="-mr-1 size-3.5" />
-                <span className="sr-only">Version menu</span>
-              </Button>
-            </Tooltip>
+            {props.projectBar ? (
+              <div className="flex items-center gap-1.5" data-testid="project-bar">
+                {props.projectBar}
+              </div>
+            ) : (
+              <Tooltip content="Version history — coming in M2.5">
+                <Button
+                  variant="ghost"
+                  aria-disabled="true"
+                  onClick={(e) => e.preventDefault()}
+                  icon={<GitBranch className="size-4" />}
+                >
+                  <span>main</span>
+                  <ChevronDown className="-mr-1 size-3.5" />
+                  <span className="sr-only">Version menu</span>
+                </Button>
+              </Tooltip>
+            )}
             <ExportControl props={props} className="ml-1" />
             <Separator orientation="vertical" className="mx-1.5" />
             <ThemeToggle theme={core.theme} />

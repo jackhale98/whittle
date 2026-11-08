@@ -53,6 +53,12 @@ export interface ColorTokens {
   /** Compare overlay: material the new version removes. Always paired with a - glyph. */
   compareRemoved: string;
   compareRemovedSoft: string;
+  /**
+   * The exact fills the viewport draws for added and removed material (packages/viewport
+   * `COMPARE_COLORS`, unit-tested for parity), for legend swatches. Non-text: >= 3:1 on surface.
+   */
+  compareAddedSwatch: string;
+  compareRemovedSwatch: string;
 }
 
 export const colors: Record<ThemeName, ColorTokens> = {
@@ -85,8 +91,10 @@ export const colors: Record<ThemeName, ColorTokens> = {
     viewportBottom: '#d9e0eb',
     compareAdded: '#0b6e4f',
     compareAddedSoft: '#dcf3ea',
-    compareRemoved: '#b3261e',
-    compareRemovedSoft: '#fde8e4',
+    compareRemoved: '#b23c0a',
+    compareRemovedSoft: '#fdebe1',
+    compareAddedSwatch: '#00a878',
+    compareRemovedSwatch: '#c2410c',
   },
   dark: {
     bg: '#0c0f16',
@@ -117,8 +125,10 @@ export const colors: Record<ThemeName, ColorTokens> = {
     viewportBottom: '#0f131c',
     compareAdded: '#4fe0a8',
     compareAddedSoft: '#0f3328',
-    compareRemoved: '#ff8f80',
-    compareRemovedSoft: '#3d1b1d',
+    compareRemoved: '#ff8a5a',
+    compareRemovedSoft: '#3d2116',
+    compareAddedSwatch: '#3ddc97',
+    compareRemovedSwatch: '#ff6a2e',
   },
 };
 

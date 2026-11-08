@@ -114,11 +114,21 @@ export function PhoneShell(props: ShellProps) {
                     {documentName}
                   </h1>
                 </div>
-                <StatusChip
-                  status={kernelStatus}
-                  compact
-                  className="pointer-events-auto h-10 shrink-0"
-                />
+                <div className="flex shrink-0 items-start gap-2">
+                  {props.projectBar ? (
+                    <div
+                      className="pointer-events-auto flex items-center gap-1"
+                      data-testid="project-bar"
+                    >
+                      {props.projectBar}
+                    </div>
+                  ) : null}
+                  <StatusChip
+                    status={kernelStatus}
+                    compact
+                    className="pointer-events-auto h-10 shrink-0"
+                  />
+                </div>
               </header>
 
               <ViewportOverlays props={props} />

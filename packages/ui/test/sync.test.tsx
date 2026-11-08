@@ -276,12 +276,18 @@ describe('ConnectionsPanel', () => {
     expect(screen.getByText(/Contents = Read and write/)).toBeInTheDocument();
     expect(screen.getByRole('alert')).toHaveTextContent('GitHub refused the token.');
     await userEvent.type(screen.getByLabelText('Fine-grained token'), 'github_pat_x');
+    // The repository is required: nothing is submitted without it.
+    await userEvent.click(screen.getByRole('button', { name: 'Connect' }));
+    expect(onAddToken).not.toHaveBeenCalled();
+    expect(screen.getByText(/Enter owner\/repository/)).toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText('Repository'), 'ann/bracket');
     await userEvent.click(screen.getByRole('button', { name: 'Connect' }));
     expect(onAddToken).toHaveBeenCalledWith({
       kind: 'github',
       host: 'github.com',
       token: 'github_pat_x',
       username: '',
+      repo: 'ann/bracket',
     });
   });
 

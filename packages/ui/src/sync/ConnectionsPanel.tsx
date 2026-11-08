@@ -84,6 +84,8 @@ export interface TokenForm {
   host: string;
   token: string;
   username: string;
+  /** The repository: `owner/name` on `host`, or a full HTTPS clone URL. */
+  repo: string;
 }
 
 /** The folder step of the add flow: the host lists `connection`'s folders at `path`. */
@@ -490,6 +492,7 @@ function FormStep({
   const [relay, setRelay] = useState(false);
   const [host, setHost] = useState(DEFAULT_HOST[kind] ?? '');
   const [token, setToken] = useState('');
+  const [repo, setRepo] = useState('');
   const relayId = useId();
   const [tried, setTried] = useState(false);
 
@@ -501,6 +504,10 @@ function FormStep({
   const passError = tried && !password ? 'Enter an app password' : null;
   const tokenError = tried && !token.trim() ? 'Paste the access token' : null;
   const hostError = tried && !host.trim() ? 'Enter the server address' : null;
+  const repoError =
+    tried && !/^(https?:\/\/\S+|[\w.-]+\/[\w./-]+)$/i.test(repo.trim())
+      ? 'Enter owner/repository, or the repository’s full address'
+      : null;
 
   const back = (
     <Button variant="ghost" size={size} onClick={onBack}>
@@ -636,8 +643,16 @@ function FormStep({
         onSubmit={(e) => {
           e.preventDefault();
           setTried(true);
-          if (token.trim() && host.trim())
-            onAddToken?.({ kind: gitKind, host: host.trim(), token: token.trim(), username });
+          const r = repo.trim();
+          const repoOk = /^(https?:\/\/\S+|[\w.-]+\/[\w./-]+)$/i.test(r);
+          if (token.trim() && host.trim() && repoOk)
+            onAddToken?.({
+              kind: gitKind,
+              host: host.trim(),
+              token: token.trim(),
+              username,
+              repo: r,
+            });
         }}
       >
         <p className="flex gap-2 rounded-control bg-surface-2 p-2.5 text-xs text-fg-muted">
@@ -655,6 +670,15 @@ function FormStep({
             onChange={(e) => setHost(e.target.value)}
           />
         ) : null}
+        <TextField
+          label="Repository"
+          inputMode="url"
+          placeholder={`owner/repository or https://${DEFAULT_HOST[kind] || 'git.example.org'}/owner/repository`}
+          value={repo}
+          density={density}
+          error={repoError}
+          onChange={(e) => setRepo(e.target.value)}
+        />
         <TextField
           label={kind === 'github' ? 'Fine-grained token' : 'Access token'}
           type="password"

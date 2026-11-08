@@ -65,8 +65,10 @@
   --color-viewport-bottom: #d9e0eb;
   --color-compare-added: #0b6e4f;
   --color-compare-added-soft: #dcf3ea;
-  --color-compare-removed: #b3261e;
-  --color-compare-removed-soft: #fde8e4;
+  --color-compare-removed: #b23c0a;
+  --color-compare-removed-soft: #fdebe1;
+  --color-compare-added-swatch: #00a878;
+  --color-compare-removed-swatch: #c2410c;
 }
 
 :root {
@@ -129,8 +131,10 @@
     --color-viewport-bottom: #0f131c;
     --color-compare-added: #4fe0a8;
     --color-compare-added-soft: #0f3328;
-    --color-compare-removed: #ff8f80;
-    --color-compare-removed-soft: #3d1b1d;
+    --color-compare-removed: #ff8a5a;
+    --color-compare-removed-soft: #3d2116;
+    --color-compare-added-swatch: #3ddc97;
+    --color-compare-removed-swatch: #ff6a2e;
     --shadow-float:
       0 1px 2px rgb(0 0 0 / 0.3), 0 10px 28px -4px rgb(0 0 0 / 0.5),
       0 0 0 1px rgb(255 255 255 / 0.07);
@@ -178,8 +182,10 @@
   --color-viewport-bottom: #0f131c;
   --color-compare-added: #4fe0a8;
   --color-compare-added-soft: #0f3328;
-  --color-compare-removed: #ff8f80;
-  --color-compare-removed-soft: #3d1b1d;
+  --color-compare-removed: #ff8a5a;
+  --color-compare-removed-soft: #3d2116;
+  --color-compare-added-swatch: #3ddc97;
+  --color-compare-removed-swatch: #ff6a2e;
   --shadow-float:
     0 1px 2px rgb(0 0 0 / 0.3), 0 10px 28px -4px rgb(0 0 0 / 0.5), 0 0 0 1px rgb(255 255 255 / 0.07);
   --shadow-pop:

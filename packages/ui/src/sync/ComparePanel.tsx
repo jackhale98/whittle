@@ -105,6 +105,23 @@ export interface ComparePanelProps {
 }
 
 const MINUS = '−';
+
+/**
+ * The exact colour the viewport fills added or removed material with (`compare-*-swatch` tokens
+ * mirror packages/viewport `COMPARE_COLORS`), so the legend matches what is drawn.
+ */
+function Swatch({ side }: { side: 'added' | 'removed' }) {
+  return (
+    <span
+      aria-hidden
+      data-swatch={side}
+      className={cn(
+        'inline-block size-2.5 shrink-0 rounded-[3px]',
+        side === 'added' ? 'bg-compare-added-swatch' : 'bg-compare-removed-swatch',
+      )}
+    />
+  );
+}
 const signed = (n: number, fmt: (n: number) => string) =>
   n === 0 ? fmt(0) : `${n > 0 ? '+' : MINUS}${fmt(Math.abs(n))}`;
 
@@ -172,6 +189,7 @@ export function ComparePanel({
               title: 'Show added material',
               label: (
                 <span className="inline-flex items-center gap-1 text-compare-added">
+                  <Swatch side="added" />
                   <Plus className="size-3.5" strokeWidth={3} aria-hidden />
                   Added
                 </span>
@@ -182,6 +200,7 @@ export function ComparePanel({
               title: 'Show removed material',
               label: (
                 <span className="inline-flex items-center gap-1 text-compare-removed">
+                  <Swatch side="removed" />
                   <Minus className="size-3.5" strokeWidth={3} aria-hidden />
                   Removed
                 </span>
@@ -348,6 +367,7 @@ function Geometry({
             'inline-flex items-center gap-1 rounded-full bg-compare-added-soft px-2.5 py-1 text-xs font-medium text-compare-added',
           )}
         >
+          <Swatch side="added" />
           <Plus className="size-3.5" strokeWidth={3} aria-hidden />
           <span className="tnum">{vol(g.addedVolume)}</span> added
         </li>
@@ -356,6 +376,7 @@ function Geometry({
             'inline-flex items-center gap-1 rounded-full bg-compare-removed-soft px-2.5 py-1 text-xs font-medium text-compare-removed',
           )}
         >
+          <Swatch side="removed" />
           <Minus className="size-3.5" strokeWidth={3} aria-hidden />
           <span className="tnum">{vol(g.removedVolume)}</span> removed
         </li>
