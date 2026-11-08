@@ -57,13 +57,13 @@ export {
 } from './components/StatusChip';
 export { ToolRail, type ToolRailProps } from './components/ToolRail';
 export {
-  COMING_SOON,
-  commandBarTools,
+  groupOf,
   type ToolDef,
   type ToolGroupDef,
   type ToolGroupId,
   type ToolId,
   toolGroups,
+  toolHint,
   tools,
 } from './components/tools';
 export { ValueChip, type ValueChipProps } from './components/ValueChip';
@@ -93,6 +93,9 @@ export {
   type FeatureTreeItem,
   type FeatureTreeProps,
   type MoveResult,
+  NEST_SKETCHES_KEY,
+  readNestSketches,
+  writeNestSketches,
 } from './features/FeatureTree';
 export { featureMeta } from './features/featureMeta';
 export {
@@ -145,6 +148,13 @@ export {
   snapHeights,
   stepSnap,
 } from './logic/sheet';
+export {
+  allowedRollbacks,
+  computeNesting,
+  type MoveStep,
+  planUnitMove,
+  type TreeNesting,
+} from './logic/treeNesting';
 export {
   initialTutorial,
   type TutorialAction,

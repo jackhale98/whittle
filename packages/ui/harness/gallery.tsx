@@ -39,6 +39,7 @@ import {
   extrudeSample,
   filletSample,
   makeEvaluator,
+  nestedFeatures,
   sampleConflicts,
   sampleFeatures,
   sampleLibrary,
@@ -493,6 +494,39 @@ export function Gallery({
             </div>
             <div className={card}>
               <FeatureTree features={[]} />
+            </div>
+          </div>
+        );
+      case 'nested':
+        return (
+          <div className="flex flex-col gap-4 p-4 md:flex-row" data-testid="g-nested">
+            <div className={card}>
+              <FeatureTree
+                density={tier === 'desktop' ? 'compact' : 'touch'}
+                features={nestedFeatures}
+                onRollback={() => {}}
+                onMove={() => ({ ok: true })}
+                onDelete={() => {}}
+              />
+            </div>
+            <div className={card}>
+              {/* Selecting a nested sketch opens its feature */}
+              <FeatureTree
+                density={tier === 'desktop' ? 'compact' : 'touch'}
+                features={nestedFeatures}
+                selectedId="N3"
+                onRollback={() => {}}
+                onMove={() => ({ ok: true })}
+              />
+            </div>
+            <div className={card}>
+              <FeatureTree
+                density={tier === 'desktop' ? 'compact' : 'touch'}
+                features={nestedFeatures}
+                nestSketches={false}
+                onRollback={() => {}}
+                onMove={() => ({ ok: true })}
+              />
             </div>
           </div>
         );

@@ -4,11 +4,11 @@ import { m } from 'motion/react';
 import { useEffect, useRef, useState } from 'react';
 import { useSpring } from '../motion';
 import { cn } from './primitives';
-import { COMING_SOON, type ToolGroupId, type ToolId, toolGroups, tools } from './tools';
+import { type ToolGroupId, type ToolId, toolGroups, toolHint, tools } from './tools';
 
 export interface ToolRailProps {
   activeTool?: ToolId | null;
-  /** Tools that are wired up; others stay visible but disabled with a "Coming in M1" hint. */
+  /** Tools that are wired up; others stay visible but disabled with a per-tool hint. */
   enabledTools?: readonly ToolId[];
   onTool?(tool: ToolId): void;
   /** "More" opens the command palette. */
@@ -168,7 +168,7 @@ export function ToolRail({
                   data-tool={id}
                   aria-disabled={on ? undefined : 'true'}
                   aria-pressed={on ? activeTool === id : undefined}
-                  title={on ? undefined : COMING_SOON}
+                  title={on ? undefined : toolHint(id)}
                   onClick={() => pick(id, group)}
                   className={cn(
                     'flex h-12 items-center gap-3 rounded-control px-3 text-left text-sm font-medium text-fg transition-colors duration-fast select-none active:bg-surface-3 aria-disabled:text-fg-muted aria-disabled:opacity-60',

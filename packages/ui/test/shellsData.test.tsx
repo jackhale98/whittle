@@ -53,11 +53,14 @@ describe('shells with data', () => {
     const user = userEvent.setup();
     const onTool = vi.fn();
     const { unmount } = render(<AppShell tier="desktop" {...base} onTool={onTool} />);
-    expect(screen.getByRole('button', { name: 'Extrude' })).toHaveAttribute(
-      'aria-disabled',
-      'true',
+    // Categories open flyouts; the tools inside are disabled with their own hint.
+    await user.click(screen.getByRole('button', { name: 'Extrude, Solid tools' }));
+    const extrude0 = within(screen.getByRole('group', { name: 'Solid tools' })).getByRole(
+      'button',
+      { name: /Extrude/ },
     );
-    await user.click(screen.getByRole('button', { name: 'Extrude' }));
+    expect(extrude0).toHaveAttribute('aria-disabled', 'true');
+    await user.click(extrude0);
     expect(onTool).not.toHaveBeenCalled();
     unmount();
 
@@ -71,12 +74,19 @@ describe('shells with data', () => {
         onTool={onTool}
       />,
     );
-    const extrude = screen.getByRole('button', { name: 'Extrude' });
+    await user.click(screen.getByRole('button', { name: 'Extrude, Solid tools' }));
+    const solid = within(screen.getByRole('group', { name: 'Solid tools' }));
+    const extrude = solid.getByRole('button', { name: /Extrude/ });
     expect(extrude).not.toHaveAttribute('aria-disabled');
     expect(extrude).toHaveAttribute('aria-pressed', 'true');
     await user.click(extrude);
     expect(onTool).toHaveBeenCalledWith('extrude');
-    expect(screen.getByRole('button', { name: 'Fillet' })).toHaveAttribute('aria-disabled', 'true');
+    await user.click(screen.getByRole('button', { name: 'Fillet, Modify tools' }));
+    expect(
+      within(screen.getByRole('group', { name: 'Modify tools' })).getByRole('button', {
+        name: /Fillet/,
+      }),
+    ).toHaveAttribute('aria-disabled', 'true');
   });
 
   it('Export becomes the options popover and emits onExportRequest', async () => {

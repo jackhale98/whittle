@@ -16,7 +16,7 @@ import { BirdMark } from '../brand/Bird';
 import type { PaletteCommand } from '../components/CommandPalette';
 import { ParamNamesContext } from '../components/paramNames';
 import { Button, cn, IconButton, TooltipProvider } from '../components/primitives';
-import { COMING_SOON, tools } from '../components/tools';
+import { toolHint, tools } from '../components/tools';
 import { ExportMenu } from '../export/ExportMenu';
 import type { SheetSnap } from '../logic/sheet';
 import type { ParamsTableProps } from '../params/ParamsTable';
@@ -97,7 +97,7 @@ export function ShellRoot({
           label,
           shortcut,
           disabled: !enabled,
-          hint: enabled ? undefined : COMING_SOON,
+          hint: enabled ? undefined : toolHint(id),
           run: enabled ? () => props.onTool?.(id) : undefined,
           icon: <Icon className="size-4" strokeWidth={1.75} />,
         };

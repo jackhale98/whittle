@@ -40,10 +40,10 @@ The entry is `src/index.ts`. The main groups are:
 | Group | Exports |
 | --- | --- |
 | Shells | `AppShell`, `DesktopShell`, `TabletShell`, `PhoneShell`, `ShellProps` |
-| Feature tree and params | `FeatureTree`, `featureMeta`, `ParamsTable` |
+| Feature tree and params | `FeatureTree` (nested sketches, ADR-015), `computeNesting`, `planUnitMove`, `allowedRollbacks`, `readNestSketches`, `featureMeta`, `ParamsTable` |
 | Inspectors | `FeatureInspector`, `PartInspector`, `MassReadout`, `SelectionInspector`, `PickField`, `MaterialLibraryItem`, `SWATCHES` |
 | Sketch | `SketchToolbar`, `sketchTools`, `SketchStatusChip`, `describeSketchStatus`, `DimensionLabel`, `ConstraintGlyph`, `ConflictPanel` (lazy), `constraintLabels` |
-| Commands and chooser | `CommandBar`, `PaletteCommand`, `WhichOneChooser`, `PromptChip`, `tools`, `COMING_SOON`, `ToolId` |
+| Commands and chooser | `CommandBar`, `ToolRail`, `PaletteCommand`, `WhichOneChooser`, `PromptChip`, `tools`, `toolGroups`, `toolHint`, `groupOf`, `ToolId` |
 | Inputs | `ExpressionInput` (with an on-screen keypad on touch), `Field`, `Section`, `Segmented`, `Switch`, `useCoarsePointer` |
 | Export | `ExportMenu`, `ExportPanel`, `EXPORT_TARGETS`, `QUALITY_PRESETS`, `buildExportRequest` |
 | Status | `StatusChip`, `describeKernelStatus` |
@@ -71,8 +71,12 @@ The entry is `src/index.ts`. The main groups are:
 - **Honest status.** `StatusChip` and `describeKernelStatus` say what the kernel is doing (downloading,
   compiling, ready, or an error). The sketch chip says "N degrees of freedom", "Fully constrained",
   "Over-constrained" or "Solver failed".
-- **Disabled tools say so.** Tools that are not wired up stay in the command bar, disabled, with a
-  tooltip built from `COMING_SOON`. The app passes the enabled list in as `enabledTools`.
+- **Disabled tools say so.** Tools that are not wired up stay in their flyout, disabled, with the hint
+  from `toolHint` ("Coming in M3", from `ToolDef.comingIn`). The app passes the enabled list in as
+  `enabledTools`.
+- **One tool layout.** `toolGroups` says which tool lives in which category. The desktop `CommandBar`
+  (category buttons with flyouts and a last-used face) and the tablet `ToolRail` both render it, so the bar
+  never grows wider as tools are added.
 - **Hints in place.** The welcome card, the empty states and the prompt chips explain the next step.
   They do not block the view.
 
