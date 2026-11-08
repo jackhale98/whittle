@@ -162,6 +162,8 @@ export class Workbench {
   private inLibrary = false;
   /** Rebound reference names waiting to be folded into the next user edit (ADR-008). */
   private heals = new Map<Id, Heal[]>();
+  /** The document the pending heals were computed for: only that exact version may take them. */
+  private healsFor: WhittleDoc | null = null;
   /** Auto-fit once per opened document, then leave the camera to the user. */
   private fitPending = true;
   private initialBundle: Promise<ProjectBundle | null> | null = null;
@@ -313,7 +315,9 @@ export class Workbench {
     void import('../doc/library').then(({ onLaunchFiles }) =>
       onLaunchFiles((files) => {
         const f = files[0];
-        if (f) void this.openBytes(f.name, f.bytes);
+        // Opened from the OS (double-click, "Open with"): a CAD file starts its own document
+        // rather than landing in whatever was open last.
+        if (f) void this.openBytes(f.name, f.bytes, 'new');
       }),
     );
   }
@@ -398,10 +402,14 @@ export class Workbench {
 
   apply(command: Command, label?: string, coalesceKey?: string): boolean {
     // Stale reference names the engine rebound ride along with this edit (ADR-008).
-    const folded = foldHeals(command, this.part ?? undefined, this.heals, (c) =>
+    // Heals from a regen of another version (before an undo/redo/load) would rename references
+    // that version had: drop them; the next regen of this version computes its own.
+    const heals = this.healsFor === this.store.getDoc() ? this.heals : new Map<Id, Heal[]>();
+    const folded = foldHeals(command, this.part ?? undefined, heals, (c) =>
       compileCommand(this.store.getDoc(), c),
     );
     this.heals = new Map();
+    this.healsFor = null;
     const lbl = label ?? folded.label;
     const r = this.store.apply(folded.command, {
       ...(lbl ? { label: lbl } : {}),
@@ -440,7 +448,10 @@ export class Workbench {
   private onRegen(outcome: RegenView): void {
     const current = outcome.doc === this.store.getDoc();
     if (current || !this.ui.get().picking) this.treeStatuses.set(outcome.result.features);
-    if (current) this.heals = healsFrom(outcome.result.features);
+    if (current) {
+      this.heals = healsFrom(outcome.result.features);
+      this.healsFor = outcome.doc;
+    }
     this.regen.set(outcome);
     this.remapSelection(outcome.result);
     this.syncViewport();
@@ -1246,18 +1257,32 @@ export class Workbench {
   private async saveToLibrary(doc: WhittleDoc): Promise<void> {
     const lib = await this.library();
     if (!lib) return;
-    const thumbnail = await this.thumbnail();
-    const key = this.cacheKey;
+    // A save can run after another document was loaded (it was scheduled or queued before the
+    // switch): it must write *its* document's files, never the newly open one's.
+    const current = doc.meta.id === this.doc.meta.id;
+    const files = current
+      ? { extra: this.extra, cache: this.cache, key: this.cacheKey }
+      : this.retired.get(doc.meta.id ?? '');
+    if (!files) return; // nothing known about that document's files: never guess them
+    const thumbnail = current ? await this.thumbnail() : undefined;
     await lib.save(doc, {
       ...(thumbnail ? { thumbnail } : {}),
-      extra: this.extra,
-      cache: this.cache,
+      extra: files.extra,
+      cache: files.cache,
     });
-    this.inLibrary = true;
-    this.savedCacheKey = key;
-    writeLastDoc(doc.meta.id);
+    if (current && doc.meta.id === this.doc.meta.id) {
+      this.inLibrary = true;
+      this.savedCacheKey = files.key;
+      writeLastDoc(doc.meta.id);
+    }
     if (this.ui.get().library) void this.refreshLibrary();
   }
+
+  /** Files of documents that were replaced while a save of them may still be pending. */
+  private retired = new Map<
+    string,
+    { extra: ProjectFiles; cache: ProjectFiles; key: string | null }
+  >();
 
   /** Saves pending changes now (page hidden, switching documents, tests), with a thumbnail. */
   flushSave(): Promise<void> {
@@ -1316,6 +1341,16 @@ export class Workbench {
       candidates: null,
     });
     const old = this.part?.id;
+    // Edits made while a switch was in flight are still pending for the outgoing document: save
+    // them with that document's own files (snapshotted here), then let the new one load.
+    const outgoing = this.doc.meta.id;
+    if (outgoing && this.autosaver.pending) {
+      this.retired.set(outgoing, { extra: this.extra, cache: this.cache, key: this.cacheKey });
+      const flushed = this.autosaver.flush();
+      void flushed.finally(() => {
+        if (outgoing !== this.doc.meta.id) this.retired.delete(outgoing);
+      });
+    }
     const r = this.store.load(bundle.doc);
     if (!r.ok) {
       this.toast(r.error, 'error');
@@ -1425,8 +1460,10 @@ export class Workbench {
     let inLibrary = false;
     if (lib && doc.meta.id) {
       const { sameProject, copyName } = await import('../doc/library');
-      const existing = await lib.find(doc.meta.id).catch(() => null);
-      if (existing && sameProject(existing, bundle)) inLibrary = true;
+      // A lookup that fails is not "absent": treat it like a different version (open as a copy)
+      // rather than letting autosave overwrite whatever is stored under that id.
+      const existing = await lib.find(doc.meta.id).catch(() => 'unknown' as const);
+      if (existing && existing !== 'unknown' && sameProject(existing, bundle)) inLibrary = true;
       else if (existing) {
         const names = new Set((await lib.list()).map((e) => e.name));
         const name = copyName(doc.meta.name, names);
@@ -1446,7 +1483,7 @@ export class Workbench {
     if (usable.length === 0) {
       const names = files.map((f) => f.name).join(', ');
       this.toast(
-        `Whittle can open .whittle projects and import STEP, IGES, BREP, STL, OBJ, 3MF and GLB files${names ? ` (not ${names})` : ''}.`,
+        `Whittle can open .whittle projects and import STEP, BREP, STL, OBJ, 3MF and GLB files${names ? ` (not ${names})` : ''}.`,
         'info',
       );
       return;

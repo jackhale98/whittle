@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { attentionItems, markerMesh, partDiagonal } from './attention';
-import { importFeature, importFormat, importName, sha256Hex } from './import';
+import { IMPORT_EXTENSIONS, importFeature, importFormat, importName, sha256Hex } from './import';
 
 describe('import', () => {
   it('maps file extensions to import formats', () => {
@@ -14,6 +14,13 @@ describe('import', () => {
     expect(importFormat('a.glb')).toBe('glb');
     expect(importFormat('a.whittle')).toBeNull();
     expect(importFormat('noext')).toBeNull();
+  });
+
+  it('pickers offer only formats the engine reads (IGES is recognised, not offered)', () => {
+    expect(IMPORT_EXTENSIONS).toContain('.step');
+    expect(IMPORT_EXTENSIONS).toContain('.stl');
+    expect(IMPORT_EXTENSIONS).not.toContain('.igs');
+    expect(IMPORT_EXTENSIONS).not.toContain('.iges');
   });
 
   it('hashes with WebCrypto and builds an import feature with its attachment path', async () => {

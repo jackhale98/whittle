@@ -21,8 +21,14 @@ const BY_EXT: Record<string, ImportFormat> = {
   glb: 'glb',
 };
 
-/** File extensions the Open/Import pickers accept (besides `.whittle`). */
-export const IMPORT_EXTENSIONS = Object.keys(BY_EXT).map((e) => `.${e}`);
+/**
+ * File extensions the Open/Import pickers offer (besides `.whittle`). IGES is recognised (a
+ * dropped .igs gets the engine's "export it as STEP" explanation) but not offered until the
+ * kernel reads it (PLAN M3 backlog).
+ */
+export const IMPORT_EXTENSIONS = Object.keys(BY_EXT)
+  .filter((e) => BY_EXT[e] !== 'iges')
+  .map((e) => `.${e}`);
 
 /** The import format of a file name, or null for anything else. */
 export function importFormat(fileName: string): ImportFormat | null {

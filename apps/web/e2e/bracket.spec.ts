@@ -118,6 +118,27 @@ async function view(page: Page, key: string): Promise<void> {
   await cameraStill(page);
 }
 
+/** The face hit straight through a world point in the current view (null: looking through). */
+async function faceAt(page: Page, p: V3): Promise<V3 | null> {
+  await page.evaluate(() =>
+    (
+      window as unknown as { __whittleViewport: { whenPickReady(): Promise<void> } }
+    ).__whittleViewport.whenPickReady(),
+  );
+  const s = await toPage(page, p);
+  return page.evaluate(({ x, y }) => {
+    const v = (
+      window as unknown as {
+        __whittleViewport: {
+          pick(x: number, y: number, o: { kinds: string[] }): { point: V3 }[];
+        };
+      }
+    ).__whittleViewport;
+    const r = document.querySelector('[data-testid="viewport-canvas"]')?.getBoundingClientRect();
+    return v.pick(x - (r?.left ?? 0), y - (r?.top ?? 0), { kinds: ['face'] })[0]?.point ?? null;
+  }, s);
+}
+
 async function featureStates(page: Page): Promise<string[]> {
   return ((await app(page).regen())?.features ?? []).map((f) => f.state);
 }
@@ -350,6 +371,16 @@ test('M1 acceptance: bracket from scratch, three upstream edits, STEP round trip
   const v2 = await totalVolume(page);
   const e2 = volume({ ...DIMS, width: 100, thickness: 10 });
   expect(rel(v2, e2)).toBeLessThan(1e-6);
+  // hole_spacing doesn't change the volume: check the holes moved. Looking straight down, the
+  // left column (fixed at x = 20) and the right column (now x = 20 + 50) are see-through; where
+  // the right column used to be (x = 60) is solid plate top (z = thickness = 10).
+  await view(page, '5');
+  for (const y of [11, 31]) {
+    expect(await faceAt(page, [20, y, 10]), `left hole at y=${y}`).toBeNull();
+    expect(await faceAt(page, [70, y, 10]), `moved hole at y=${y}`).toBeNull();
+    const solid = await faceAt(page, [60, y, 10]);
+    expect(solid?.[2] ?? Number.NaN, `old hole position at y=${y}`).toBeCloseTo(10, 3);
+  }
   await page.getByRole('tab', { name: 'Features' }).click();
   await page.screenshot({ path: 'test-results/m1-bracket-edited.png' });
 

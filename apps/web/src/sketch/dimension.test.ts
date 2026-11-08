@@ -109,5 +109,10 @@ describe('dimension tool', () => {
     expect(convertRadiusDiameter('a + b', false)).toBe('(a + b)/2');
     expect(convertRadiusDiameter('r1', true)).toBe('2 * r1');
     expect(convertRadiusDiameter('2 * r1', false)).toBe('r1');
+    // Several groups: never strip a parenthesis that doesn't wrap the whole operand.
+    expect(convertRadiusDiameter('(a) * (b)/2', true)).toBe('2 * ((a) * (b)/2)');
+    expect(convertRadiusDiameter('2 * (r) + (gap)', false)).toBe('(2 * (r) + (gap))/2');
+    expect(convertRadiusDiameter('((a + b))/2', true)).toBe('(a + b)');
+    expect(convertRadiusDiameter('2 * (a * (b + c))', false)).toBe('a * (b + c)');
   });
 });

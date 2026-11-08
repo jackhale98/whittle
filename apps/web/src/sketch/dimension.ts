@@ -237,11 +237,20 @@ export function convertRadiusDiameter(expr: string, toDiameter: boolean): string
     return lit[2] ? `${n} ${lit[2]}` : String(n);
   }
   const ident = /^[A-Za-z_]\w*$/;
-  const unwrap = (x: string) => (/^\(.*\)$/.test(x) ? x.slice(1, -1).trim() : x);
-  const inner = toDiameter
-    ? /^(\(.*\)|[A-Za-z_]\w*)\s*\/\s*2$/.exec(t)?.[1]
-    : /^2\s*\*\s*(\(.*\)|[A-Za-z_]\w*)$/.exec(t)?.[1];
-  if (inner) return unwrap(inner);
+  // One parenthesised group spanning the whole text: "(a + b)" yes, "(a) * (b)" no.
+  const wrapped = (x: string) => {
+    if (!x.startsWith('(')) return false;
+    let depth = 0;
+    for (let i = 0; i < x.length; i++) {
+      if (x[i] === '(') depth++;
+      else if (x[i] === ')' && --depth === 0) return i === x.length - 1;
+    }
+    return false;
+  };
+  const atom = (x: string) => ident.test(x) || wrapped(x);
+  const m = toDiameter ? /^(.*\S)\s*\/\s*2$/.exec(t) : /^2\s*\*\s*(.+)$/.exec(t);
+  const inner = m?.[1]?.trim();
+  if (inner && atom(inner)) return wrapped(inner) ? inner.slice(1, -1).trim() : inner;
   if (toDiameter) return ident.test(t) ? `2 * ${t}` : `2 * (${t})`;
   return ident.test(t) ? `${t}/2` : `(${t})/2`;
 }

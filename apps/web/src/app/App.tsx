@@ -47,7 +47,7 @@ export function App({ wb }: { wb: Workbench }) {
       {
         id: 'open-file',
         label: 'Open or import file…',
-        hint: '.whittle, STEP, IGES, BREP, STL, OBJ, 3MF, GLB',
+        hint: '.whittle, STEP, BREP, STL, OBJ, 3MF, GLB',
         shortcut: '⌘O',
         run: () => void wb.openFromDisk(),
       },

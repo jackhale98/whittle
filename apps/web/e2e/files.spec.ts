@@ -3,7 +3,7 @@ import { expect, type Page, test } from '@playwright/test';
 import type { WhittleDoc } from '@whittle/contracts';
 import { projectCodec } from '@whittle/document';
 import { docWith, fid } from './fixtures';
-import { app, boot } from './helpers';
+import { app, boot, palette } from './helpers';
 
 /**
  * Files and the library (M1 gate defects 2, 3, 5, 6): opening a .whittle never overwrites a
@@ -247,4 +247,55 @@ test('a cached document renders before the kernel is ready (≤ 500 ms), then go
   expect(after?.source).toBe('live');
   expect(after?.bodies.map((b) => b.id)).toEqual(live?.bodies.map((b) => b.id));
   expect(after?.features.every((f) => f.state === 'ok')).toBe(true);
+});
+
+test('an edit still waiting to autosave when another document loads is saved with its own files', async ({
+  page,
+}, info) => {
+  test.slow();
+  const box = (name: string, id: string) =>
+    docWith(name, {}, [
+      {
+        id: fid(id),
+        type: 'primitive',
+        name: 'Box 1',
+        suppressed: false,
+        shape: 'box',
+        dx: '20 mm',
+        dy: '20 mm',
+        dz: '20 mm',
+        op: 'new',
+      },
+    ]);
+  const extra = new Map<string, Uint8Array>([
+    ['releases/rev-A/notes.txt', new TextEncoder().encode('keep me\n')],
+  ]);
+  const projectPath = info.outputPath('race.whittle');
+  writeFileSync(projectPath, projectCodec.toWhittle(box('Racer', 'BXA'), undefined, extra));
+
+  await boot(page);
+  const a = app(page);
+  await openFile(page, projectPath);
+  await expect(page.getByTestId('feature-tree')).toContainText('Box 1');
+  await a.idle();
+  await a.flushSave();
+
+  // Edit A, then load B before the 500 ms autosave fires.
+  await palette(page, 'Box');
+  await expect(page.getByTestId('feature-tree')).toContainText('Box 2');
+  await a.load(box('Other', 'BXB'));
+  await a.idle();
+  await a.flushSave();
+  expect((await a.projectFiles()).extra).toEqual([]);
+
+  // A kept both its edit and its files.
+  await page.getByTestId('library-button').click();
+  const panel = page.getByTestId('library-panel');
+  await panel
+    .getByTestId('library-item')
+    .filter({ hasText: 'Racer' })
+    .getByRole('button', { name: /^Open/ })
+    .click();
+  await expect(page.getByTestId('feature-tree')).toContainText('Box 2');
+  expect((await a.projectFiles()).extra).toEqual(['releases/rev-A/notes.txt']);
 });

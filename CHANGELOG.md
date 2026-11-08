@@ -13,10 +13,17 @@
 - App: shell + lazy viewport + kernel worker integrated; OCCT box on screen in ≈ 1 s warm, offline, and in single-threaded fallback.
 - Materials and density on parts (ADR-004); GPL-3.0-or-later (ADR-003).
 
-### M1 — Parametric part modeling (in progress; gate fixes underway)
+### M1 — Parametric part modeling
 - Kernel: sketch regions, extrude/revolve/fillet/chamfer/boolean/plane with history-based persistent naming; STEP (AP214/AP203/AP242), STL, BREP export; STEP/BREP import; mass + inertia from density.
 - Regen engine: incremental, hash-cached regeneration in the kernel worker; reference resolution name → fingerprint → needs attention (never guesses); ghosts; multi-body.
 - Sketcher: PlaneGCS solver worker with verified residuals, per-entity DOF, minimal conflict sets with plain-language fixes, inference.
 - Document: expressions with units (incl. compound), undo/redo with coalescing, deterministic project folder + `.whittle`, materials library, JSON Schema, FILE_FORMAT.md.
 - App: welcome card + demo bracket, library with autosave, feature tree/params/inspector, picking, sketch mode, features, export (STEP/STL/3MF/GLB/BREP/.whittle), ⌘K check for updates.
 - Licence notices shipped with the site (THIRD_PARTY_NOTICES.txt).
+- Import: STEP/BREP as solids, STL/OBJ/3MF/GLB as reference meshes, from Open…, ⌘O, drag and drop or the OS; bytes stored in the project (`imports/`) by sha256.
+- Healing: rebound references persist with the next edit (ADR-008); needs-attention references show a ghost at their last position, one-click re-pick and a "Which one?" chooser.
+- Sketch dimensions: horizontal/vertical by label placement, aligned with Shift, Ø ↔ R, driving ↔ reference.
+- Files: cached meshes in `.whittle/meshes/` (cached open ≈ 0.4 s); extra project files survive library and `.whittle` round trips; opening an older copy never overwrites a different library entry; a pending autosave is written with its own document's files when another document loads.
+- Published JSON Schemas at `/whittle/schema/`; the fake engine is dev/test only.
+- Acceptance: the PLAN §12 bracket built through the UI on the real engine, three parameter edits, STEP export and re-import (volume within 1e-6; holes checked to move).
+- Fixes: fast clicks close a sketch loop on its start point; several-group expressions convert Ø ↔ R correctly; CI E2E runs on one worker with real waits.
