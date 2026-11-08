@@ -14,6 +14,7 @@ import {
   DoubleSide,
   LessEqualDepth,
   Line2NodeMaterial,
+  type Material,
   Mesh,
   MeshBasicNodeMaterial,
   type Object3D,
@@ -33,25 +34,65 @@ export interface LineStyle {
   renderOrder: number;
 }
 
+/**
+ * Overlay materials are shared by style. Overlays (sketches, previews, markers) are rebuilt on
+ * every update, as often as every Pencil move; a new node material per object rebuilt its node
+ * graph and could compile a shader each time (≈ 0.8 s per pen move on software GL). Shared
+ * materials are flagged and never disposed with an overlay. The set of styles is small and bounded.
+ */
+const SHARED = 'whittleSharedOverlayMaterial';
+const shared = new Map<string, Material>();
+const MAX_SHARED = 256;
+
+function sharedMaterial<M extends Material>(key: string, create: () => M): M {
+  const hit = shared.get(key);
+  if (hit) return hit as M;
+  const m = create();
+  m.userData[SHARED] = true;
+  if (shared.size >= MAX_SHARED) {
+    // Forget the oldest style; objects still using it keep it, and it is collected with them.
+    const first = shared.keys().next().value;
+    if (first !== undefined) shared.delete(first);
+  }
+  shared.set(key, m);
+  return m;
+}
+
+/** Number of distinct shared overlay materials (tests: overlay rebuilds must not grow this). */
+export function sharedOverlayMaterialCount(): number {
+  return shared.size;
+}
+
+/** Dash lengths in quarter-octave steps, so a slowly changing extent reuses the same material. */
+function quantiseDash(dash: number): number {
+  return 2 ** (Math.round(Math.log2(Math.max(dash, 1e-6)) * 4) / 4);
+}
+
 /** Fat lines from independent segment pairs (x0 y0 z0 x1 y1 z1 ...). */
 export function makeLines(segments: Float32Array, style: LineStyle): LineSegments2 {
   const geometry = new LineSegmentsGeometry();
   geometry.setPositions(segments);
-  const material = new Line2NodeMaterial({
-    color: style.color,
-    linewidth: style.width,
-    dashed: style.dashed === true,
-    dashSize: style.dash ?? 1,
-    gapSize: (style.dash ?? 1) * 0.6,
+  const dashed = style.dashed === true;
+  const dash = dashed ? quantiseDash(style.dash ?? 1) : 1;
+  const key = `line|${style.color}|${style.width}|${dashed}|${dash}|${style.onTop}`;
+  const material = sharedMaterial(key, () => {
+    const m = new Line2NodeMaterial({
+      color: style.color,
+      linewidth: style.width,
+      dashed,
+      dashSize: dash,
+      gapSize: dash * 0.6,
+    });
+    m.depthTest = !style.onTop;
+    m.depthFunc = LessEqualDepth;
+    m.depthWrite = false;
+    if (!style.onTop) {
+      m.polygonOffset = true;
+      m.polygonOffsetFactor = -2;
+      m.polygonOffsetUnits = -2;
+    }
+    return m;
   });
-  material.depthTest = !style.onTop;
-  material.depthFunc = LessEqualDepth;
-  material.depthWrite = false;
-  if (!style.onTop) {
-    material.polygonOffset = true;
-    material.polygonOffsetFactor = -2;
-    material.polygonOffsetUnits = -2;
-  }
   const lines = new LineSegments2(geometry, material);
   if (style.dashed) lines.computeLineDistances();
   lines.frustumCulled = false;
@@ -67,20 +108,23 @@ export function makeFill(
   onTop: boolean,
   renderOrder: number,
 ): Mesh {
-  const material = new MeshBasicNodeMaterial({
-    color: new Color(colorHex),
-    transparent: true,
-    opacity,
-    depthWrite: false,
-    side: DoubleSide,
+  const material = sharedMaterial(`fill|${colorHex}|${opacity}|${onTop}`, () => {
+    const m = new MeshBasicNodeMaterial({
+      color: new Color(colorHex),
+      transparent: true,
+      opacity,
+      depthWrite: false,
+      side: DoubleSide,
+    });
+    m.depthTest = !onTop;
+    m.depthFunc = LessEqualDepth;
+    if (!onTop) {
+      m.polygonOffset = true;
+      m.polygonOffsetFactor = -2;
+      m.polygonOffsetUnits = -2;
+    }
+    return m;
   });
-  material.depthTest = !onTop;
-  material.depthFunc = LessEqualDepth;
-  if (!onTop) {
-    material.polygonOffset = true;
-    material.polygonOffsetFactor = -2;
-    material.polygonOffsetUnits = -2;
-  }
   const mesh = new Mesh(geometry, material);
   mesh.frustumCulled = false;
   mesh.renderOrder = renderOrder;
@@ -101,16 +145,19 @@ export function makeDot(
   renderOrder: number,
   at: readonly [number, number, number],
 ): Dot {
-  const material = new SpriteNodeMaterial({ sizeAttenuation: false, transparent: true });
-  const d = length(uv().sub(0.5)).mul(2);
-  material.colorNode = mix(
-    tslColor(new Color(outline)),
-    tslColor(new Color(fill)),
-    float(1).sub(smoothstep(0.62, 0.72, d)),
-  );
-  material.opacityNode = float(1).sub(smoothstep(0.9, 1.0, d));
-  material.depthTest = false;
-  material.depthWrite = false;
+  const material = sharedMaterial(`dot|${fill}|${outline}`, () => {
+    const m = new SpriteNodeMaterial({ sizeAttenuation: false, transparent: true });
+    const d = length(uv().sub(0.5)).mul(2);
+    m.colorNode = mix(
+      tslColor(new Color(outline)),
+      tslColor(new Color(fill)),
+      float(1).sub(smoothstep(0.62, 0.72, d)),
+    );
+    m.opacityNode = float(1).sub(smoothstep(0.9, 1.0, d));
+    m.depthTest = false;
+    m.depthWrite = false;
+    return m;
+  });
   const sprite = new Sprite(material);
   sprite.position.set(at[0], at[1], at[2]);
   sprite.renderOrder = renderOrder;
@@ -143,8 +190,11 @@ export function disposeOverlay(obj: Object3D, sharedAttributes = false): void {
       g.dispose();
     }
     const mat = (o as Mesh).material;
-    if (Array.isArray(mat)) for (const x of mat) x.dispose();
-    else mat?.dispose();
+    const free = (x: Material) => {
+      if (!x.userData[SHARED]) x.dispose(); // shared overlay materials outlive overlays
+    };
+    if (Array.isArray(mat)) for (const x of mat) free(x);
+    else if (mat) free(mat);
   });
 }
 

@@ -25,7 +25,9 @@ const SHOTS = process.env.WHITTLE_SHOTS;
 test.use({
   viewport: { width: 1180, height: 820 },
   userAgent: devices['iPad Pro 11'].userAgent,
-  deviceScaleFactor: 2,
+  // 1×: these tests check behaviour, not pixels. On CI's software GL every frame at 2× (≈ 3.9 M
+  // pixels) costs ≈ 0.6 s, and the Pencil test renders one per pen move.
+  deviceScaleFactor: 1,
   isMobile: true,
   hasTouch: true,
 });
