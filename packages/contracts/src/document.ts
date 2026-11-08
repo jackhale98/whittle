@@ -39,6 +39,8 @@ export interface WhittleDoc {
 }
 
 export interface DocMeta {
+  /** Stable document id (ULID), assigned at creation; survives renames (library identity). */
+  id?: Id;
   name: string;
   /** ISO-8601 timestamps. */
   created: string;

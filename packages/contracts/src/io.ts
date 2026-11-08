@@ -40,7 +40,12 @@ export interface LibraryEntry {
 export interface LocalLibrary {
   list(): Promise<LibraryEntry[]>;
   open(id: Id): Promise<{ doc: WhittleDoc; cache: ProjectFiles }>;
-  save(doc: WhittleDoc, cache?: ProjectFiles, thumbnail?: Uint8Array): Promise<LibraryEntry>;
+  save(
+    doc: WhittleDoc,
+    cache?: ProjectFiles,
+    thumbnail?: Uint8Array,
+    options?: { id?: Id },
+  ): Promise<LibraryEntry>;
   remove(id: Id): Promise<void>;
   search(query: string): Promise<LibraryEntry[]>;
 }
