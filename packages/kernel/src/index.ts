@@ -18,8 +18,12 @@ import type { KernelVariant } from '@whittle/contracts';
 import type { KernelModuleOptions, WhittleKernelModule } from './facade';
 
 export type {
+  ExportShape,
+  KernelFileSystem,
   KernelModuleOptions,
   MeshDataHandle,
+  RawExportResult,
+  RawImportResult,
   RawKernelInfo,
   WhittleKernelModule,
 } from './facade';
@@ -47,7 +51,7 @@ export interface KernelInitModule {
  */
 export async function instantiateKernel(
   init: KernelInitModule,
-  options: KernelModuleOptions = {},
+  options: KernelModuleOptions & { threadCount?: number } = {},
 ): Promise<WhittleKernelModule> {
   const instance = (await init.createInstance(options)) as Partial<WhittleKernelModule>;
   const required = [
@@ -55,6 +59,10 @@ export async function instantiateKernel(
     'execFeature',
     'mesh',
     'massProperties',
+    'fingerprints',
+    'exportShapes',
+    'importFile',
+    'configureThreads',
     'release',
     'liveHandleCount',
     'MeshData',

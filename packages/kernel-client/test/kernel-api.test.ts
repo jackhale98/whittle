@@ -215,6 +215,63 @@ describe.skipIf(!built)(`kernel worker API (Node, direct)${skipNote}`, () => {
   }, 60_000);
 });
 
+describe.skipIf(!built)(`kernel worker low-level M1 API (Node, direct)${skipNote}`, () => {
+  for (const variant of ['single', 'threaded'] as const) {
+    it(`${variant}: fingerprints, density, STEP/STL export and import through MEMFS`, async () => {
+      const api = createKernelApi({ variants });
+      unwrap(await api.init(variant === 'threaded' ? { variant, threads: 2 } : { variant }));
+      const box = unwrap(await api.execFeature(feature, inputs));
+
+      const fp = unwrap(await api.fingerprints(box.shape));
+      expect(fp.faces).toHaveLength(6);
+      expect(fp.edges).toHaveLength(12);
+
+      const mp = unwrap(await api.massProperties(box.shape, 2.7e-6));
+      expect(mp.mass).toBeCloseTo(0.0162, 12);
+      expect(mp.inertia?.[0]).toBeCloseTo((0.0162 * 1300) / 12, 9);
+      expect(unwrap(await api.massProperties(box.shape)).mass).toBeUndefined();
+      const badDensity = await api.massProperties(box.shape, -1);
+      expect(badDensity.ok ? null : badDensity.error.code).toBe('INVALID_INPUT');
+
+      const step = unwrap(await api.exportShapes([{ shape: box.shape, name: 'Box' }], 'step'));
+      expect(step).toHaveLength(1);
+      const bytes = step[0]?.bytes ?? new Uint8Array();
+      expect(bytes.buffer).toBeInstanceOf(ArrayBuffer);
+      expect(bytes.byteLength).toBe(bytes.buffer.byteLength);
+      expect(new TextDecoder().decode(bytes.subarray(0, 13))).toBe('ISO-10303-21;');
+
+      const bodies = unwrap(await api.importShapes(bytes, 'step'));
+      expect(bodies).toHaveLength(1);
+      expect(bodies[0]?.name).toBe('Box');
+      const back = unwrap(await api.massProperties(bodies[0]?.shape ?? 0));
+      expect(Math.abs(back.volume - 6000) / 6000).toBeLessThan(1e-6);
+
+      const stl = unwrap(
+        await api.exportShapes([{ shape: box.shape, name: 'Box' }], 'stl', { stlBinary: true }),
+      );
+      expect(stl[0]?.bytes.byteLength).toBe(84 + 12 * 50);
+
+      const garbage = await api.importShapes(new TextEncoder().encode('nope'), 'step');
+      expect(garbage.ok ? null : garbage.error.code).toBe('INVALID_INPUT');
+      const missing = await api.exportShapes([{ shape: 424242, name: 'x' }], 'brep');
+      expect(missing.ok ? null : missing.error.code).toBe('INVALID_HANDLE');
+
+      const threads = unwrap(await api.configureThreads(1));
+      expect(threads.threads).toBe(1);
+
+      for (const b of bodies) await api.release(b.shape);
+      await api.release(box.shape);
+      expect(api.liveHandleCount()).toBe(0);
+    }, 60_000);
+  }
+
+  it('rejects a bad thread count for the threaded kernel', async () => {
+    const api = createKernelApi({ variants });
+    const r = await api.init({ variant: 'threaded', threads: 0 });
+    expect(r.ok ? null : r.error.code).toBe('INVALID_INPUT');
+  });
+});
+
 describe.skipIf(!built)(`kernel worker API over Comlink (MessageChannel)${skipNote}`, () => {
   it('transfers mesh buffers instead of structured-cloning them', async () => {
     const api = createKernelApi({ variants });
