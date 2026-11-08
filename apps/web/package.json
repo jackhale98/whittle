@@ -1,0 +1,44 @@
+{
+  "name": "@whittle/web",
+  "version": "0.0.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "description": "Whittle web app: shells, PWA, service worker.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.sw.json && tsc -p tsconfig.node.json",
+    "test": "vitest run",
+    "size": "size-limit",
+    "e2e": "vite build && playwright test --project=chromium",
+    "e2e:all": "vite build && playwright test",
+    "perf": "vite build && playwright test --project=perf"
+  },
+  "dependencies": {
+    "@whittle/contracts": "workspace:*",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "workbox-window": "7.4.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@size-limit/file": "14.3.0",
+    "@tailwindcss/vite": "4.3.5",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.2.1",
+    "size-limit": "14.3.0",
+    "tailwindcss": "4.3.5",
+    "vite": "8.3.6",
+    "vite-plugin-pwa": "2.0.0",
+    "workbox-build": "7.4.1",
+    "workbox-cacheable-response": "7.4.1",
+    "workbox-core": "7.4.1",
+    "workbox-expiration": "7.4.1",
+    "workbox-precaching": "7.4.1",
+    "workbox-routing": "7.4.1",
+    "workbox-strategies": "7.4.1"
+  }
+}

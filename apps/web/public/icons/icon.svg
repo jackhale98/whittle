@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><title>Whittle</title><rect width="512" height="512" rx="112" fill="#1c2530"/>
+  <polygon points="256,106 386,181 256,256 126,181" fill="#6cb6ff"/>
+  <polygon points="126,181 256,256 256,406 126,331" fill="#2f8cf0"/>
+  <polygon points="386,181 256,256 256,406 386,331" fill="#0a5fc4"/>
+  <path d="M176 196 L216 316 L256 236 L296 316 L336 196" fill="none" stroke="#fff"
+        stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/></svg>
