@@ -318,4 +318,15 @@ test('perf probe: 1M triangles orbiting', async ({ page }) => {
       '(budget <= 8 ms desktop; advisory on CPU-only SwiftShader)',
   );
   expect(after?.frameMs).toBeGreaterThan(0);
+
+  // PLAN §10: <= 8 ms CPU frame time for 1M triangles on desktop. Advisory by default (software GL
+  // in CI containers); the platform workstream turns it into a gate with WHITTLE_PERF_ASSERT=1
+  // (budget override: WHITTLE_FRAME_BUDGET_MS, e.g. 16 for the iPad tier).
+  if (process.env.WHITTLE_PERF_ASSERT) {
+    const budget = Number(process.env.WHITTLE_FRAME_BUDGET_MS ?? '8');
+    expect(
+      after?.frameMs,
+      `1M-triangle CPU frame time ${after?.frameMs.toFixed(2)} ms exceeds the ${budget} ms budget`,
+    ).toBeLessThanOrEqual(budget);
+  }
 });

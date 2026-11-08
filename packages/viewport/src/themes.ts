@@ -89,3 +89,21 @@ export const OVERLAY_COLORS: Readonly<Record<'light' | 'dark', OverlayColors>> =
     fgMuted: '#a5b0c5',
   },
 };
+
+/** Marker tones (`Marker.tone`); accent/muted/error mirror the overlay tokens, warning is amber. */
+export type MarkerTones = Readonly<Record<'accent' | 'muted' | 'warning' | 'error', string>>;
+
+export const MARKER_TONES: Readonly<Record<'light' | 'dark', MarkerTones>> = {
+  light: {
+    accent: OVERLAY_COLORS.light.accent,
+    muted: OVERLAY_COLORS.light.borderStrong,
+    warning: '#c27c00',
+    error: OVERLAY_COLORS.light.danger,
+  },
+  dark: {
+    accent: OVERLAY_COLORS.dark.accent,
+    muted: OVERLAY_COLORS.dark.borderStrong,
+    warning: '#ffb938',
+    error: OVERLAY_COLORS.dark.danger,
+  },
+};
