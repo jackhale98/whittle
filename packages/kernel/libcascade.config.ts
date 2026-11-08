@@ -15,6 +15,7 @@ const facadeSymbols = [
   'fingerprints',
   'exportShapes',
   'importFile',
+  'measure',
   'configureThreads',
   'release',
   'liveHandleCount',

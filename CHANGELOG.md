@@ -27,3 +27,8 @@
 - Published JSON Schemas at `/whittle/schema/`; the fake engine is dev/test only.
 - Acceptance: the PLAN §12 bracket built through the UI on the real engine, three parameter edits, STEP export and re-import (volume within 1e-6; holes checked to move).
 - Fixes: fast clicks close a sketch loop on its start point; several-group expressions convert Ø ↔ R correctly; CI E2E runs on one worker with real waits.
+
+### M2 — Touch & tablet excellence
+- Kernel: push/pull of planar faces (`PushPullFeature`): prism + fuse/cut. Seams the move creates are merged, so a pulled box stays a six-face box and a pocket pulled flush closes. Names per naming.ts M2: moved faces keep their names, walls are `F…:side(<edge>)`, swallowed faces disappear. The result is always BRepCheck-valid (ShapeFix only when needed). Clear errors for curved faces and for pushes that remove the whole body (ADR-010).
+- Kernel: exact `measure`: distance with closest points, angle between planar faces or straight edges, edge length, face area, radius of circles/cylinders/spheres, vertex position.
+- Regen engine: push/pull end to end (faces resolved like any ref, on one body; downstream refs to moved faces and walls survive upstream edits). `ModelingApi.measure(partId, a, b?)` on the latest regen, with targets resolved exactly as `refFor` resolves them.

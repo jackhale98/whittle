@@ -1452,6 +1452,9 @@ std::string execPlane(const Json& feature, const Json& inputs, const std::string
   return storeResult(ns, {}, ",\"frame\":" + jsonFrame(frame));
 }
 
+// Defined in whittle_pushpull.cpp (later in the amalgamated translation unit).
+std::string execPushPull(const Json& feature, const Json& inputs, const std::string& tag);
+
 std::string dispatchFeature(const Json& feature, const Json& inputs) {
   const std::string type = requireString(feature, "type", "feature");
   const std::string id = requireString(feature, "id", "feature");
@@ -1464,6 +1467,7 @@ std::string dispatchFeature(const Json& feature, const Json& inputs) {
   if (type == "chamfer") return execChamfer(feature, inputs, id);
   if (type == "boolean") return execBoolean(feature, inputs, id);
   if (type == "plane") return execPlane(feature, inputs, id);
+  if (type == "pushPull") return execPushPull(feature, inputs, id);
   raiseError("UNSUPPORTED_FEATURE",
              "Feature type '" + type + "' is not supported by this kernel build",
              "Update Whittle, or remove the feature.");

@@ -82,6 +82,7 @@ export function createModelingApi(deps: ModelingApiDeps): ModelingApiImpl {
     exportShapes: (shapes, format, options) => kernel.exportShapes(shapes, format, options),
     importShapes: (bytes, format) => kernel.importShapes(bytes, format),
     configureThreads: (count) => kernel.configureThreads(count),
+    measureShapes: (a, b) => kernel.measureShapes(a, b),
     liveHandleCount: () => kernel.liveHandleCount(),
     engine,
 
@@ -100,10 +101,6 @@ export function createModelingApi(deps: ModelingApiDeps): ModelingApiImpl {
     },
     closePart: (partId) => engine.closePart(partId),
     configureRegen: (options) => engine.configure(options),
-    // M2 contract; the B-rep implementation lands with the kernel workstream.
-    measure: async () => ({
-      ok: false,
-      error: { code: 'UNSUPPORTED_FEATURE', message: 'Measuring is not available yet.' },
-    }),
+    measure: (partId, a, b) => engine.measure(partId, a, b),
   };
 }

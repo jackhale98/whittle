@@ -21,7 +21,9 @@ pnpm --filter @whittle/kernel test    # golden tests in Node, both variants
 `pnpm build` runs [`scripts/build.mjs`](scripts/build.mjs):
 
 1. `scripts/amalgamate.mjs` inlines `whittle_kernel.h`, `whittle_core.cpp`, `whittle_modeling.cpp`,
-   `whittle_io.cpp`, `whittle_kernel.cpp` and `whittle_bindings.cpp` (in that order) into `.libcascade/whittle_facade.cpp`, and stamps `WHITTLE_BUILD_ID`.
+   `whittle_pushpull.cpp`, `whittle_measure.cpp`, `whittle_io.cpp`, `whittle_kernel.cpp` and
+   `whittle_bindings.cpp` (in that order) into `.libcascade/whittle_facade.cpp`, and stamps
+   `WHITTLE_BUILD_ID`.
    `WHITTLE_BUILD_ID` is a SHA-256 over the façade sources, `libcascade.config.ts`, the
    amalgamation script and the toolchain version, and `kernelInfo()` reports it. The amalgamation
    is needed because `customBindings` with `scope: 'main'` concatenates file _contents_ into the
@@ -57,21 +59,28 @@ amalgamated file.
 | `*.build-manifest.json`, `*.provenance.json`        | build records: flags, image digest, source SHA-256s           |
 | `size-report.json`                                  | raw, gzip and brotli sizes                                    |
 
-Sizes at M1 (toolchain 3.1.0, `-O3`, wasm-opt `-O4`, SIMD, native Wasm exceptions). STEP
-(TKDESTEP + XCAF), booleans, fillets and sketch arrangement account for the growth; M0 was 3.79 MiB
-raw / 1.30 MiB brotli:
+Sizes at M2 (toolchain 3.1.0, `-O3`, wasm-opt `-O4`, SIMD, native Wasm exceptions). Push/pull
+(UnifySameDomain, ShapeFix) and measure (BRepExtrema) added +49 KiB / +24 KiB brotli over M1
+(3.71 MiB each); M0 was 3.79 MiB raw / 1.30 MiB brotli:
 
 | Artefact                 |       raw |     gzip |   brotli |
 | ------------------------ | --------: | -------: | -------: |
-| `whittle-kernel-st.wasm` | 15.92 MiB | 5.31 MiB | 3.71 MiB |
-| `whittle-kernel.wasm`    | 15.47 MiB | 5.29 MiB | 3.71 MiB |
+| `whittle-kernel-st.wasm` | 16.12 MiB | 5.36 MiB | 3.76 MiB |
+| `whittle-kernel.wasm`    | 15.66 MiB | 5.35 MiB | 3.73 MiB |
 | `whittle-kernel-st.js`   |    56 KiB |   21 KiB |   19 KiB |
 | `whittle-kernel.js`      |    63 KiB |   24 KiB |   21 KiB |
 
-Budget: ≤ 15 MB brotli per kernel (PLAN §7.2). A full two-variant build takes about 20 to 23 min
-at M1; most of that is wasm-opt `-O4 --converge` on the 16 MB binaries. For C++ iteration, a
-syntax-only `em++ -fsyntax-only` of `.libcascade/whittle_facade.cpp` against
-`/opencascade.js/build/occt-includes` in the image takes seconds.
+Budget: ≤ 15 MB brotli per kernel (PLAN §7.2). A full two-variant build takes about 20 to 30 min
+(M2: 29.7 min on 4 busy cores); most of that is wasm-opt `-O4 --converge` on the 16 MB binaries.
+For C++ iteration:
+
+- A syntax-only `em++ -fsyntax-only` of `.libcascade/whittle_facade.cpp` against
+  `/opencascade.js/build/occt-includes` in the image takes seconds: `docker run --entrypoint em++`.
+- A dev link without wasm-opt takes under a minute per variant. Use a scratch config at `-O1`,
+  and point `LIBCASCADE_CONTAINER_CMD` at a wrapper that adds `-e OCJS_SKIP_WASM_OPT=1` to
+  `docker run`. The toolchain's validator then rejects the `-O1` glue (it reports missing
+  exception helpers), but the artefacts left in `.libcascade/out/<variant>/` load and run the
+  golden tests once copied into `dist/`. Never ship them.
 
 ## Package exports
 
@@ -105,6 +114,7 @@ last resort is an empty string (the worker reports it as a malformed result).
 | `fingerprints(shape)`                      | `ShapeFingerprints` (TopExp order)                              |
 | `exportShapes(shapes, format, options)`    | `{path, files:[{path,name}]}` in MEMFS (`step`, `stl`, `brep`)  |
 | `importFile(path, format)`                 | `{bodies:[{shape,name?}]}`                                      |
+| `measure(query)`                           | `Measurement` (M2; `{a, b?}`, see below)                        |
 | `configureThreads(count)`                  | `{threads, max}` (threaded build; no-op single)                 |
 | `release(shape)`, `liveHandleCount()`      |                                                                 |
 
@@ -126,6 +136,7 @@ The kernel never resolves persistent names: the regen engine passes sub-shapes a
 | `chamfer`   | refs `/edges/<n>`; `/mode/distance` (+ `/mode/angle`)                                                                        |
 | `boolean`   | `inputs.target` or refs `/target`; refs `/tools/<n>` (or `shapes["tools…"]`)                                                 |
 | `plane`     | `definition.frame`, or offset `/definition/distance` from refs `/definition/from` or `frames.from`                           |
+| `pushPull`  | M2: `inputs.target` (else the first face's shape); refs `/faces/<n>` (planar faces of it); `/distance` mm along each outward normal |
 
 Body ops `add | cut | intersect` act on `inputs.target` plus `inputs.shapes["scope…"]` (key
 order). `add` fuses all of them into one result; `cut`/`intersect` return the target's result as
@@ -139,6 +150,38 @@ end points of different entities), then every piece goes in both orientations to
 inside another becomes that face's hole and is also a region itself; open and dangling curves
 bound nothing and are dropped. A rectangle with a circle in it therefore gives
 `S…:region(L1,L2,L3,L4|C1)` (the plate) and `S…:region(C1)` (the disc).
+
+**Push/pull** (M2, ADR-010): each face is copied and swept by `d · n` (`BRepPrimAPI_MakePrism`),
+then one boolean with all prisms: fuse for d > 0, cut for d < 0. Seams the operation creates
+between faces on one surface are merged with `ShapeUpgrade_UnifySameDomain`:
+- old face + wall: pulling a box top gives a taller 6-face box, not a seam line;
+- old face + moved face: a pocket floor pulled flush closes the pocket;
+- wall + wall, and pieces of one split face.
+
+All other edges and vertices are kept. Then `BRepCheck_Analyzer` runs, with `ShapeFix_Shape` only
+when the result is invalid; an invalid result is an error, never returned. Errors:
+- a curved face → `UNSUPPORTED_FEATURE` ("Selected face 2 is curved (cylinder) …", the face as
+  `entityRefs`, `detail` = pointer and body face index);
+- a push that removes everything → `OPERATION_FAILED` "… removes the whole body";
+- an edge or a face of another body → `INVALID_INPUT`;
+- zero distance → `INVALID_INPUT`.
+
+A push that splits the body warns.
+
+**Measure** (M2): `measure('{"a": T, "b"?: T}')`, where `T` is a `ResolvedRef`
+(`{shape, kind: face|edge|vertex|body, index}`) or `{point: [x, y, z]}`.
+- One target gives:
+  - vertex or point: `position`;
+  - edge: `length`, plus `radius` for circles;
+  - face: `area`, plus `radius` for cylinders and spheres;
+  - body: `area`.
+- Two targets give `distance` (`value` plus the closest points `a` and `b`, from
+  `BRepExtrema_DistShapeShape`; with several solutions, the one nearest the centre of `a`), and an
+  `angle` in rad:
+  - face–face: between the outward normals, [0, π];
+  - edge–edge: the corner angle when the edges share a vertex, otherwise the angle between the
+    lines, [0, π/2];
+  - face–edge: between the line and the plane.
 
 ### Naming (packages/contracts/src/naming.ts)
 
@@ -158,6 +201,9 @@ bound nothing and are dropped. A rectangle with a circle in it therefore gives
   level, and names that survive one-to-one stay as they are.
 - Cylinder: `face.side`, `face.zmin`, `face.zmax`. Sphere: `face.sphere`; its pole edges are
   `edge(face.sphere)#0/#1`.
+- Push/pull: moved faces keep their names; walls are `F<id>:side(<boundary edge name>)`; when
+  faces merge, old > moved > wall (a wall merged into a side face takes its name; a moved face
+  flush with an old face disappears).
 - Faces no rule names (not expected) get `F<id>:unnamed#k`.
 
 ### Mesh caching

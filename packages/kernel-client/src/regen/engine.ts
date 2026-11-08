@@ -42,6 +42,8 @@ import type {
   ImportFeature,
   KernelError,
   MassProperties,
+  Measurement,
+  MeasureTarget,
   MeshBuffers,
   MeshQuality,
   NamingMap,
@@ -76,7 +78,7 @@ import {
 } from '@whittle/document';
 import { IoError, importMesh, meshToStl } from '@whittle/io';
 import { zipSync } from 'fflate';
-import type { KernelApiInternals, KernelWorkerApi } from '../kernel-api';
+import type { KernelApiInternals, KernelWorkerApi, MeasureSubject } from '../kernel-api';
 import { copyMesh, faceIndex, faceSubMesh } from './buffers';
 import {
   type Box3,
@@ -431,6 +433,65 @@ export class RegenEngine {
       if (fingerprint) ref.fingerprint = fingerprint;
       return ref;
     });
+  }
+
+  /**
+   * Exact measurement on the latest regen of a part (M2). Body targets resolve exactly as
+   * `refFor` does: the body by its `BodyResult` id, `index` = the mesh face/edge (TopExp) ordinal
+   * of that body's shape; vertices by TopExp vertex index.
+   */
+  measure(partId: Id, a: MeasureTarget, b?: MeasureTarget): Promise<Result<Measurement>> {
+    return this.serial(async () => {
+      const latest = this.parts.get(partId)?.latest;
+      if (!latest) {
+        return {
+          ok: false,
+          error: kerr('INVALID_INPUT', 'This part has not been regenerated yet', {
+            hint: 'Regenerate the part before measuring.',
+          }),
+        };
+      }
+      const sa = await this.measureSubject(latest.bodies, a);
+      if ('code' in sa) return { ok: false, error: sa };
+      if (b === undefined) return this.kernel.measureShapes(sa);
+      const sb = await this.measureSubject(latest.bodies, b);
+      if ('code' in sb) return { ok: false, error: sb };
+      return this.kernel.measureShapes(sa, sb);
+    });
+  }
+
+  private async measureSubject(
+    bodies: BodyState[],
+    t: MeasureTarget,
+  ): Promise<MeasureSubject | KernelError> {
+    if ('point' in t) {
+      if (!t.point.every((v) => Number.isFinite(v))) {
+        return kerr('INVALID_INPUT', 'A measure point needs finite coordinates');
+      }
+      return { point: t.point };
+    }
+    const body = bodies.find((x) => x.id === t.bodyId);
+    if (!body) {
+      return kerr('UNRESOLVED_REFERENCE', 'The picked body is no longer in the model', {
+        hint: 'Pick it again.',
+        entityRefs: [t.bodyId],
+      });
+    }
+    if (body.meshOnly) return meshOnlyError('measured exactly', body.id);
+    const fp = await this.fingerprints(body.shape);
+    const count =
+      t.kind === 'face'
+        ? fp?.faces.length
+        : t.kind === 'edge'
+          ? fp?.edges.length
+          : fp?.vertices.length;
+    if (!Number.isInteger(t.index) || t.index < 0 || (count !== undefined && t.index >= count)) {
+      return kerr('UNRESOLVED_REFERENCE', `The picked ${t.kind} is no longer on the body`, {
+        hint: 'Pick it again.',
+        entityRefs: [t.bodyId],
+      });
+    }
+    return { shape: body.shape, kind: t.kind, index: t.index };
   }
 
   exportPart(partId: Id, format: ExportFormat, options: ExportOptions = {}): Promise<ExportResult> {
@@ -1723,6 +1784,11 @@ export class RegenEngine {
     };
   }
 
+  /**
+   * Push/pull (M2): faces of one body moved along their outward normals by `distance`. The
+   * kernel names the result per naming.ts "M2 additions" (moved faces keep their names, new walls
+   * are `F…:side(<edge>)`), so the body keeps its id and downstream refs keep resolving.
+   */
   private async planPushPull(
     ctx: WalkContext,
     f: PushPullFeature,
@@ -1732,41 +1798,74 @@ export class RegenEngine {
     const refs: Record<string, ResolvedRef> = {};
     const refKeys: Record<string, unknown> = {};
     const owners = new Set<string>();
+    const picked: string[] = [];
     for (let i = 0; i < f.faces.length; i++) {
-      const t = await this.resolveSub(ctx, f.faces[i] as EntityRef, `/faces/${i}`, unresolved);
+      const ref = f.faces[i] as EntityRef;
+      if (ref.kind !== 'face') {
+        return {
+          unresolved,
+          taint: [],
+          error: kerr('INVALID_INPUT', 'Only faces can be pushed or pulled', {
+            hint: 'Pick flat faces of a body.',
+            entityRefs: [ref.name],
+          }),
+        };
+      }
+      const t = await this.resolveSub(ctx, ref, `/faces/${i}`, unresolved);
       if (t) {
         refs[`/faces/${i}`] = { shape: t.shape, kind: t.kind, index: t.index };
         refKeys[`/faces/${i}`] = this.refKeyOf(ctx, t);
         owners.add(t.owner);
+        picked.push(t.name);
       }
     }
     const bodyIds = [...owners].filter((o) => ctx.state.bodies.has(o));
+    const taint = bodyIds.length > 0 ? bodyIds : [...ctx.state.bodies.keys()];
+    if (f.faces.length === 0) {
+      return {
+        unresolved,
+        taint,
+        error: kerr('UNRESOLVED_REFERENCE', 'Select at least one face to push or pull', {
+          hint: 'Pick a flat face of a body.',
+        }),
+      };
+    }
     const mesh = bodyIds.find((id) => ctx.state.bodies.get(id)?.meshOnly);
-    if (mesh) return { unresolved, taint: [], error: meshOnlyError('pushed or pulled', mesh) };
+    if (mesh) return { unresolved, taint, error: meshOnlyError('pushed or pulled', mesh) };
+    if (owners.size > 1 || (owners.size === 1 && bodyIds.length === 0)) {
+      return {
+        unresolved,
+        taint,
+        error: kerr(
+          'INVALID_INPUT',
+          bodyIds.length === 0
+            ? 'Push/pull moves faces of a body'
+            : 'Push/pull faces must all be on one body',
+          { hint: 'Pick faces of one solid body.', entityRefs: picked },
+        ),
+      };
+    }
+    const bodyId = bodyIds[0];
     const key = hashKey({ t: 'pushPull', def: definition(f), values, refs: refKeys });
     return {
       unresolved,
-      taint: bodyIds.length > 0 ? bodyIds : [...ctx.state.bodies.keys()],
+      taint,
       plan: {
         key,
         involved: bodyIds,
         run: async () => {
-          const body =
-            bodyIds.length === 1 ? ctx.state.bodies.get(bodyIds[0] as string) : undefined;
-          const inputs: FeatureInputs = { values, refs };
-          if (body) inputs.target = body.shape;
-          const r = await this.exec(f, inputs);
-          if (!r.ok) return { result: { ok: false, error: r.error }, owned: [] };
+          const body = bodyId === undefined ? undefined : ctx.state.bodies.get(bodyId);
           if (!body) {
-            await this.releaseHandle(r.value.shape);
             return {
               result: {
                 ok: false,
-                error: kerr('INVALID_INPUT', 'Push/pull faces must be on one body'),
+                error: kerr('UNRESOLVED_REFERENCE', 'Select the faces to push or pull'),
               },
               owned: [],
             };
           }
+          const r = await this.exec(f, { target: body.shape, values, refs });
+          if (!r.ok) return { result: { ok: false, error: r.error }, owned: [] };
           return {
             result: {
               ok: true,
@@ -1788,6 +1887,7 @@ export class RegenEngine {
       },
     };
   }
+
   // -------------------------------------------------------------------------------------------
   // Import (STEP/BREP solids, mesh reference bodies)
   // -------------------------------------------------------------------------------------------

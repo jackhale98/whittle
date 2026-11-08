@@ -886,8 +886,12 @@ for (const { variant } of VARIANTS) {
       it('unknown feature types and malformed inputs are structured errors', () => {
         const ss = session();
         expect(
-          ss.fail({ id: 'X', type: 'pushPull', name: 'P', suppressed: false }, { values: {} }).code,
+          ss.fail({ id: 'X', type: 'loft', name: 'P', suppressed: false }, { values: {} }).code,
         ).toBe('UNSUPPORTED_FEATURE');
+        // pushPull is supported from M2: a missing distance is an input error.
+        expect(
+          ss.fail({ id: 'X', type: 'pushPull', name: 'P', suppressed: false }, { values: {} }).code,
+        ).toBe('INVALID_INPUT');
         expect(err2(k.execFeature('{"id":"x","type":"sketch"}', '{"values":{}}'))).toBe(
           'INVALID_INPUT',
         );

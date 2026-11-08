@@ -24,6 +24,8 @@ const sources = [
   'src/whittle_kernel.h',
   'src/whittle_core.cpp',
   'src/whittle_modeling.cpp',
+  'src/whittle_pushpull.cpp',
+  'src/whittle_measure.cpp',
   'src/whittle_io.cpp',
   'src/whittle_kernel.cpp',
   'src/whittle_bindings.cpp',

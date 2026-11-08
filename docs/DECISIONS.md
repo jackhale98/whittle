@@ -252,3 +252,53 @@ section and export.
    constraints in the same way as the drawing tools' fragments.
 6. **Phone tier loads the kernel lazily** (PLAN §8.4): the phone shell is a viewer of cached
    meshes until the user starts an edit or a measurement.
+
+## ADR-010 — Push/pull in the kernel: prism + boolean + seam merge (2026-11-08)
+
+**Context.** M2 push/pull (`PushPullFeature`, naming.ts "M2 additions") moves planar faces of one
+body along their outward normals by a signed distance. OCCT offers three routes: sweep each face
+with `BRepPrimAPI_MakePrism` and fuse/cut the prisms; the form feature `BRepFeat_MakePrism`; or the
+local-operation tools in `LocOpe`.
+
+**Decision.**
+
+1. **Prism + one boolean.** Each selected face is copied and swept by `d · n` (outward for d > 0,
+   into the body for d < 0). Then all prisms go into one `BRepAlgoAPI_BooleanOperation`: fuse
+   when d > 0, cut when d < 0. `BRepFeat_MakePrism` takes one sketch face and one direction per
+   operation, so faces with different normals would need chained operations. Its history goes
+   through `LocOpe` gluing maps; `Generated` is reliable only for the lateral faces of the basis,
+   and its "from/until" face logic expects a sketch face lying on a support face. Prism + boolean
+   gives exact `Generated` (walls from boundary edges, `LastShape` = the moved face) and the
+   general boolean's `Modified`/`IsDeleted`. The faces are copied first, so the tool and the body
+   share no topology, and the boolean sees the coincident faces geometrically.
+2. **Seams are merged, but only the ones the operation created.** Without a merge, pulling a box
+   top up leaves a seam line around the box, at the old height: the walls are coplanar with the
+   sides but are separate faces. Pulling a pocket floor up flush leaves the floor as a separate
+   face inside the top. So `ShapeUpgrade_UnifySameDomain` runs with every edge kept (`KeepShapes`)
+   except the seams between faces on the same surface that are:
+   - old face + wall,
+   - old face + moved face,
+   - wall + wall,
+   - or two pieces of the same face.
+
+   Vertices away from moved faces and walls are kept too. Two old faces never merge, so earlier
+   coplanar splits are untouched. Two different moved faces never merge either: both keep their
+   names.
+3. **Name priority when faces merge: old > moved > wall.** A wall merged into an old side face
+   takes that face's name, and the box keeps its six names. A moved face that ends up flush with
+   an old face is swallowed: the old face keeps its name and the moved face's name disappears (the
+   naming.ts "faces swallowed by the move disappear" rule). Walls that survive are
+   `F<id>:side(<edge name>)`. Splits re-index `#k` as usual (`finalizeNamed`). Names flow through
+   the boolean's history, then through the `BRepTools_History` of the unify and fix steps.
+4. **Validity.** The result is checked with `BRepCheck_Analyzer`. `ShapeFix_Shape` runs only when
+   the result is invalid, with names mapped through its re-shape history. If the result is still
+   invalid, the call fails with `OPERATION_FAILED`; an invalid solid is never returned. If the
+   push removes everything, it fails with `OPERATION_FAILED` ("removes the whole body", with a
+   hint and the faces as `entityRefs`). A push that splits the body warns and returns the solids
+   as one body.
+
+**Consequences.** A pushed box stays a 6-face box, and downstream references to its faces and
+edges keep resolving by exact name. A pocket pulled flush leaves no trace. The cost is one
+UnifySameDomain pass, restricted to the operation's seams. Curved faces stay `UNSUPPORTED_FEATURE`
+in M2. Offsetting curved faces (`BRepOffset_MakeOffset` with per-face offsets) is the natural M3
+extension, and it would also extend non-perpendicular neighbours instead of adding walls.
