@@ -1,0 +1,402 @@
+/**
+ * Sketch drawing state machine (PLAN §2.1, §9.2): click-click drawing with a rubber-band preview,
+ * live constraint inference and snapping. Pure functions over plain data so the whole flow is
+ * unit-testable without a viewport or solver. The host feeds cursor positions in sketch space
+ * (`screenToPlane`) and applies the returned edits to the document, then solves.
+ */
+
+import type {
+  GeometricConstraintDraft,
+  Id,
+  InferenceCandidate,
+  SketchConstraint,
+  SketchEntity,
+  SketchEntityKind,
+  SketchSolveInput,
+  Vec2,
+} from '@whittle/contracts';
+import { INFERENCE_CURSOR, INFERENCE_DRAWING } from '@whittle/contracts';
+import {
+  arc3PointTool,
+  arcCenterTool,
+  arcTangentTool,
+  bindCandidate,
+  circle3PointTool,
+  circleCenterTool,
+  infer,
+  newId,
+  polygonTool,
+  rectangle3PointTool,
+  rectangleCenterTool,
+  rectangleCornerTool,
+  type SketchFragment,
+  slotTool,
+} from '@whittle/sketch';
+
+export type DrawToolId = 'line' | 'rectangle' | 'circle' | 'arc' | 'slot' | 'polygon';
+
+export interface SketchData {
+  entities: readonly SketchEntity[];
+  constraints: readonly SketchConstraint[];
+}
+
+/** A placed click: where it landed and, when it snapped onto an existing point, that point. */
+export interface Anchor {
+  at: Vec2;
+  /** Existing sketch point this click merged into (coincident snap). */
+  pointId?: Id;
+  /** Point-type inference at this click (pointOn / midpoint), applied on commit. */
+  snap?: GeometricConstraintDraft;
+  /** Directional inference for the segment ending here (horizontal, parallel, …). */
+  dir?: GeometricConstraintDraft;
+}
+
+export interface DrawState {
+  tool: DrawToolId;
+  variant: string;
+  construction: boolean;
+  anchors: Anchor[];
+  /** Polyline chain: the previous segment's end point (shared with the next segment). */
+  chainFrom: Anchor | null;
+  /** Snapped cursor and the inference behind it (glyphs). */
+  cursor: Vec2 | null;
+  hover: Anchor | null;
+  candidates: InferenceCandidate[];
+  /** Glyphs to show next to the cursor (best one or two). */
+  glyphs: InferenceCandidate['constraint']['kind'][];
+}
+
+/** Clicks each tool variant needs (the line tool chains instead). */
+export function clicksFor(tool: DrawToolId, variant: string): number {
+  switch (tool) {
+    case 'line':
+      return 2;
+    case 'rectangle':
+      return variant === 'threePoint' ? 3 : 2;
+    case 'circle':
+      return variant === 'threePoint' ? 3 : 2;
+    case 'arc':
+      return variant === 'tangent' ? 2 : 3;
+    case 'slot':
+      return 3;
+    case 'polygon':
+      return 2;
+  }
+}
+
+export const defaultVariant: Record<DrawToolId, string> = {
+  line: 'line',
+  rectangle: 'corner',
+  circle: 'center',
+  arc: 'threePoint',
+  slot: 'slot',
+  polygon: 'polygon',
+};
+
+export function startDraw(tool: DrawToolId, variant?: string, construction = false): DrawState {
+  return {
+    tool,
+    variant: variant ?? defaultVariant[tool],
+    construction,
+    anchors: [],
+    chainFrom: null,
+    cursor: null,
+    hover: null,
+    candidates: [],
+    glyphs: [],
+  };
+}
+
+const dist = (a: Vec2, b: Vec2) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+
+const POINT_KINDS = new Set(['coincident', 'pointOn', 'midpoint']);
+const DIRECTION_KINDS = new Set(['horizontal', 'vertical', 'parallel', 'perpendicular', 'tangent']);
+const GUIDE_KINDS = new Set(['horizontalPoints', 'verticalPoints']);
+
+/** The entity kind being drawn and its anchor, for directional inference. */
+function drawing(state: DrawState): { kind: SketchEntityKind; from?: Vec2 } | null {
+  const last = state.chainFrom ?? state.anchors[state.anchors.length - 1];
+  if (!last) return null;
+  if (state.tool === 'line') return { kind: 'line', from: last.at };
+  if (state.tool === 'circle' && state.variant === 'center' && state.anchors.length === 1)
+    return { kind: 'circle', from: last.at };
+  return null;
+}
+
+function solveInput(sketch: SketchData): SketchSolveInput {
+  return { entities: [...sketch.entities], constraints: [...sketch.constraints], values: {} };
+}
+
+/**
+ * Cursor moved to `raw` (sketch mm). Infers constraints within `tolerance` (mm) and snaps: a
+ * point snap (coincident/midpoint/on-curve) wins outright; otherwise the best directional snap
+ * (horizontal, vertical, parallel, …) and then an alignment guide on the free axis.
+ */
+export function move(
+  state: DrawState,
+  sketch: SketchData,
+  raw: Vec2,
+  tolerance: number,
+): DrawState {
+  const d = drawing(state);
+  const candidates = infer(solveInput(sketch), raw, d, tolerance);
+  let at: Vec2 = raw;
+  let hover: Anchor = { at: raw };
+  const glyphs: DrawState['glyphs'] = [];
+  const point = candidates.find((c) => POINT_KINDS.has(c.constraint.kind));
+  if (point) {
+    at = point.snapped;
+    const c = point.constraint;
+    hover = c.kind === 'coincident' ? { at, pointId: c.b } : { at, snap: c };
+    glyphs.push(c.kind);
+    // A line ending on a point/curve can still be horizontal/vertical (closing a rectangle).
+    const dir = candidates.find(
+      (k) => DIRECTION_KINDS.has(k.constraint.kind) && dist(k.snapped, point.snapped) < tolerance,
+    );
+    if (dir) {
+      glyphs.push(dir.constraint.kind);
+      hover.dir = dir.constraint;
+    }
+  } else {
+    const dir = candidates.find((c) => DIRECTION_KINDS.has(c.constraint.kind));
+    if (dir) {
+      at = dir.snapped;
+      glyphs.push(dir.constraint.kind);
+    }
+    // Guides snap only the coordinate the direction left free.
+    for (const g of candidates) {
+      if (!GUIDE_KINDS.has(g.constraint.kind)) continue;
+      const horizontalGuide = g.constraint.kind === 'horizontalPoints';
+      if (dir?.constraint.kind === 'horizontal' && horizontalGuide) continue;
+      if (dir?.constraint.kind === 'vertical' && !horizontalGuide) continue;
+      if (dir && dir.constraint.kind !== 'horizontal' && dir.constraint.kind !== 'vertical') break;
+      at = horizontalGuide ? [at[0], g.snapped[1]] : [g.snapped[0], at[1]];
+      glyphs.push(g.constraint.kind);
+      if (glyphs.length >= 3) break;
+    }
+    hover = dir ? { at, dir: dir.constraint } : { at };
+  }
+  return { ...state, cursor: at, hover, candidates, glyphs: glyphs.slice(0, 2) };
+}
+
+export interface SketchEdit {
+  entities: SketchEntity[];
+  constraints: SketchConstraint[];
+  /** Entity ids created (for selection / dimensioning). */
+  created: Id[];
+}
+
+function bind(c: GeometricConstraintDraft, ids: { cursorPoint?: Id; drawingEntity?: Id }) {
+  return { ...bindCandidate(c, ids), id: newId() } as SketchConstraint;
+}
+
+/** Point constraints for the fragment points that were placed at snapped anchors. */
+function anchorConstraints(frag: SketchFragment, anchors: readonly Anchor[]): SketchConstraint[] {
+  const out: SketchConstraint[] = [];
+  for (const a of anchors) {
+    const p = frag.entities.find(
+      (e) => e.kind === 'point' && dist([e.x, e.y], a.at) < 1e-6 && !e.construction,
+    );
+    if (!p) continue;
+    if (a.pointId) out.push({ id: newId(), kind: 'coincident', a: p.id, b: a.pointId });
+    else if (a.snap) out.push(bind(a.snap, { cursorPoint: p.id }));
+  }
+  return out;
+}
+
+function shapeFragment(
+  state: DrawState,
+  sketch: SketchData,
+  pts: readonly Vec2[],
+  anchors: readonly Anchor[],
+): SketchFragment | null {
+  const o = { construction: state.construction };
+  const [a, b, c] = pts;
+  if (!a || !b) return null;
+  switch (state.tool) {
+    case 'rectangle':
+      if (state.variant === 'center') return rectangleCenterTool(a, b, o);
+      if (state.variant === 'threePoint') return c ? rectangle3PointTool(a, b, c, o) : null;
+      if (dist(a, b) < 1e-9 || a[0] === b[0] || a[1] === b[1]) return null;
+      return rectangleCornerTool(a, b, o);
+    case 'circle':
+      if (state.variant === 'threePoint') return c ? circle3PointTool(a, b, c, o) : null;
+      return dist(a, b) > 1e-9 ? circleCenterTool(a, b, o) : null;
+    case 'arc':
+      if (state.variant === 'center') return c ? arcCenterTool(a, b, c, o) : null;
+      if (state.variant === 'tangent') {
+        const start = anchors[0]?.pointId;
+        return start ? arcTangentTool(sketch.entities, start, b, o) : null;
+      }
+      return c ? arc3PointTool(a, b, c, o) : null;
+    case 'slot': {
+      if (!c) return null;
+      const ux = b[0] - a[0];
+      const uy = b[1] - a[1];
+      const l = Math.hypot(ux, uy);
+      if (l < 1e-9) return null;
+      const r = Math.abs(((c[0] - a[0]) * uy - (c[1] - a[1]) * ux) / l);
+      return slotTool(a, b, r, o);
+    }
+    case 'polygon':
+      return polygonTool(a, b, 6, o);
+    case 'line':
+      return null;
+  }
+}
+
+/** A line segment from `from` to `to`, sharing/merging points; with inferred constraints. */
+function lineSegment(state: DrawState, from: Anchor, to: Anchor): SketchEdit {
+  const entities: SketchEntity[] = [];
+  const constraints: SketchConstraint[] = [];
+  const o = state.construction;
+  const startId = from.pointId ?? newId();
+  if (!from.pointId) {
+    entities.push({ id: startId, kind: 'point', construction: o, x: from.at[0], y: from.at[1] });
+    if (from.snap) constraints.push(bind(from.snap, { cursorPoint: startId }));
+  }
+  const endId = to.pointId ?? newId();
+  if (!to.pointId) {
+    entities.push({ id: endId, kind: 'point', construction: o, x: to.at[0], y: to.at[1] });
+    if (to.snap) constraints.push(bind(to.snap, { cursorPoint: endId }));
+  }
+  const lineId = newId();
+  entities.push({ id: lineId, kind: 'line', construction: o, start: startId, end: endId });
+  // The strongest directional inference at the end (horizontal, vertical, parallel, …).
+  if (to.dir) constraints.push(bind(to.dir, { drawingEntity: lineId, cursorPoint: endId }));
+  return { entities, constraints, created: [lineId] };
+}
+
+export interface ClickResult {
+  state: DrawState;
+  edit: SketchEdit | null;
+}
+
+/** A click at the current (snapped) cursor. */
+export function click(state: DrawState, sketch: SketchData): ClickResult {
+  const hover = state.hover ?? (state.cursor ? { at: state.cursor } : null);
+  if (!hover) return { state, edit: null };
+
+  if (state.tool === 'line') {
+    const from = state.chainFrom ?? state.anchors[0];
+    if (!from) return { state: { ...state, anchors: [hover] }, edit: null };
+    if (dist(from.at, hover.at) < 1e-9) return { state, edit: null };
+    const edit = lineSegment(state, from, hover);
+    const line = edit.entities.find((e) => e.kind === 'line');
+    const endId = line && line.kind === 'line' ? line.end : undefined;
+    // Closing onto an existing point ends the chain (e.g. back at the start of a rectangle).
+    const closed = !!hover.pointId;
+    return {
+      state: {
+        ...state,
+        anchors: [],
+        chainFrom: closed || !endId ? null : { at: hover.at, pointId: endId },
+        candidates: [],
+        glyphs: [],
+      },
+      edit,
+    };
+  }
+
+  const anchors = [...state.anchors, hover];
+  const need = clicksFor(state.tool, state.variant);
+  if (state.tool === 'arc' && state.variant === 'tangent' && anchors.length === 1 && !hover.pointId)
+    return { state, edit: null }; // tangent arcs start on an existing end point
+  if (anchors.length < need) return { state: { ...state, anchors }, edit: null };
+  const frag = shapeFragment(
+    state,
+    sketch,
+    anchors.map((a) => a.at),
+    anchors,
+  );
+  if (!frag) return { state: { ...state, anchors: anchors.slice(0, -1) }, edit: null };
+  const extra = anchorConstraints(frag, anchors);
+  return {
+    state: { ...state, anchors: [], candidates: [], glyphs: [] },
+    edit: {
+      entities: frag.entities,
+      constraints: [...frag.constraints, ...extra],
+      created: frag.entities.filter((e) => e.kind !== 'point').map((e) => e.id),
+    },
+  };
+}
+
+/** Rubber-band geometry for the shape in progress (display only). */
+export function preview(state: DrawState, sketch: SketchData): SketchFragment | null {
+  const cursor = state.cursor;
+  if (!cursor) return null;
+  if (state.tool === 'line') {
+    const from = state.chainFrom ?? state.anchors[0];
+    if (!from) return null;
+    const a = newPreviewId('a');
+    const b = newPreviewId('b');
+    const l = newPreviewId('l');
+    const pts: SketchEntity[] = [
+      { id: a, kind: 'point', construction: state.construction, x: from.at[0], y: from.at[1] },
+      { id: b, kind: 'point', construction: state.construction, x: cursor[0], y: cursor[1] },
+    ];
+    return {
+      entities: [
+        ...pts,
+        { id: l, kind: 'line', construction: state.construction, start: a, end: b },
+      ],
+      constraints: [],
+    };
+  }
+  if (state.anchors.length === 0) return null;
+  const pts = [...state.anchors.map((a) => a.at), cursor];
+  const need = clicksFor(state.tool, state.variant);
+  // With fewer points than needed, preview the two-point form (e.g. a circle through 2 points).
+  let frag: SketchFragment | null = null;
+  if (pts.length >= need) frag = shapeFragment(state, sketch, pts, [...state.anchors]);
+  else if (pts.length === 2) {
+    const a = pts[0] as Vec2;
+    const b = pts[1] as Vec2;
+    if (state.tool === 'slot')
+      frag = slotTool(a, b, Math.max(dist(a, b) * 0.15, 0.5), { construction: state.construction });
+    else if (state.tool === 'rectangle' || state.tool === 'arc' || state.tool === 'circle') {
+      const ids = ['a', 'b', 'l'].map(newPreviewId) as [Id, Id, Id];
+      frag = {
+        entities: [
+          { id: ids[0], kind: 'point', construction: true, x: a[0], y: a[1] },
+          { id: ids[1], kind: 'point', construction: true, x: b[0], y: b[1] },
+          { id: ids[2], kind: 'line', construction: true, start: ids[0], end: ids[1] },
+        ],
+        constraints: [],
+      };
+    }
+  }
+  if (!frag) return null;
+  // Preview ids must never collide with real ones.
+  const map = new Map(frag.entities.map((e) => [e.id, newPreviewId(e.id)]));
+  const re = (id: Id) => map.get(id) ?? id;
+  return {
+    entities: frag.entities.map((e) => {
+      switch (e.kind) {
+        case 'point':
+          return { ...e, id: re(e.id) };
+        case 'line':
+          return { ...e, id: re(e.id), start: re(e.start), end: re(e.end) };
+        case 'circle':
+          return { ...e, id: re(e.id), center: re(e.center) };
+        case 'arc':
+          return { ...e, id: re(e.id), center: re(e.center), start: re(e.start), end: re(e.end) };
+        default:
+          return { ...e, id: re(e.id), center: re(e.center) };
+      }
+    }),
+    constraints: [],
+  };
+}
+
+export const PREVIEW_PREFIX = 'preview:';
+const newPreviewId = (seed: string): Id => `${PREVIEW_PREFIX}${seed}`;
+
+/** Esc: drop the shape in progress; returns null when there was nothing to drop (leave tool). */
+export function cancel(state: DrawState): DrawState | null {
+  if (state.anchors.length === 0 && !state.chainFrom) return null;
+  return { ...state, anchors: [], chainFrom: null, candidates: [], glyphs: [] };
+}
+
+/** The cursor placeholder ids, re-exported for hosts that render candidate glyphs. */
+export const PLACEHOLDERS = { cursor: INFERENCE_CURSOR, drawing: INFERENCE_DRAWING } as const;

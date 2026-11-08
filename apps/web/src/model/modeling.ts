@@ -1,0 +1,240 @@
+/**
+ * The app's single doorway to parametric regeneration (`ModelingApi`, packages/contracts
+ * modeling.ts). Everything that talks to the regen engine goes through `createModeling()`:
+ * the regen loop (coarse now, fine on idle, stale results dropped), selection → `refFor`, and
+ * `exportPart`. The engine is any `Remote<ModelingApi>`-shaped object: the real kernel worker
+ * once the regen engine lands, or the fake (`fake-modeling.ts`) until then. See `engine.ts`.
+ */
+
+import type {
+  EntityQuery,
+  EntityRef,
+  ExportFormat,
+  ExportOptions,
+  Id,
+  KernelError,
+  MeshQuality,
+  ModelingApi,
+  RegenResult,
+  WhittleDoc,
+} from '@whittle/contracts';
+
+/** The calls the app needs. `Remote<ModelingApi>` (Comlink) and the fake both satisfy it. */
+export type ModelingPort = Pick<
+  ModelingApi,
+  'regenerate' | 'refFor' | 'exportPart' | 'importFile' | 'closePart'
+>;
+
+export interface RegenOutcome {
+  result: RegenResult;
+  quality: MeshQuality;
+  /** The document the result was computed for (identity; the store keeps docs immutable). */
+  doc: WhittleDoc;
+}
+
+/** Schedules `run` when the main thread is idle; returns a cancel function. */
+export type IdleScheduler = (run: () => void) => () => void;
+
+export const defaultIdle: IdleScheduler = (run) => {
+  const g = globalThis as {
+    requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number;
+    cancelIdleCallback?: (h: number) => void;
+  };
+  if (g.requestIdleCallback && g.cancelIdleCallback) {
+    const cancelIdle = g.cancelIdleCallback;
+    // A short delay first so a burst of edits (typing, drags) never pays for a fine mesh.
+    let h = 0;
+    const t = setTimeout(() => {
+      h = g.requestIdleCallback?.(run, { timeout: 1000 }) ?? 0;
+    }, 150);
+    return () => {
+      clearTimeout(t);
+      if (h) cancelIdle(h);
+    };
+  }
+  const t = setTimeout(run, 250);
+  return () => clearTimeout(t);
+};
+
+export interface RegenLoopOptions {
+  port: ModelingPort;
+  getDoc(): WhittleDoc;
+  /** Part to regenerate (M1: the document's first part). */
+  partOf?(doc: WhittleDoc): Id | null;
+  onResult(outcome: RegenOutcome): void;
+  /** The engine threw (worker crashed, bad input). Regeneration continues on the next edit. */
+  onError?(error: KernelError): void;
+  idle?: IdleScheduler;
+  /** Skip the fine pass (tests, low-power). */
+  fine?: boolean;
+}
+
+export interface RegenLoop {
+  /** The document changed: regenerate it (coarse now, fine when idle). */
+  request(): void;
+  /** Resolves when nothing is running or queued and the latest result has been delivered. */
+  whenIdle(): Promise<void>;
+  /** Number of regenerate calls made (diagnostics/tests). */
+  readonly calls: number;
+  dispose(): void;
+}
+
+const firstPart = (doc: WhittleDoc): Id | null => doc.parts[0]?.id ?? null;
+
+function asKernelError(err: unknown): KernelError {
+  return {
+    code: 'INTERNAL',
+    message: 'The geometry engine stopped responding. Your document is safe.',
+    detail: err instanceof Error ? err.message : String(err),
+  };
+}
+
+/**
+ * Regeneration loop. At most one `regenerate` call is in flight (the worker is serial anyway);
+ * edits made meanwhile coalesce into one follow-up call with the latest document. Results are
+ * delivered in order and dropped when stale: by `revision` (contract), by request order, and
+ * fine results whose document is no longer current.
+ */
+export function createRegenLoop(options: RegenLoopOptions): RegenLoop {
+  const { port, getDoc, onResult, onError } = options;
+  const partOf = options.partOf ?? firstPart;
+  const idle = options.idle ?? defaultIdle;
+  const wantFine = options.fine ?? true;
+
+  let busy = false;
+  let dirty = false;
+  let disposed = false;
+  let calls = 0;
+  let seq = 0;
+  let lastDelivered = 0;
+  const lastRevision = new Map<Id, number>();
+  let cancelFine: (() => void) | null = null;
+  let finePendingFor: WhittleDoc | null = null;
+  let waiters: Array<() => void> = [];
+
+  const settle = () => {
+    if (busy || dirty || finePendingFor) return;
+    const w = waiters;
+    waiters = [];
+    for (const fn of w) fn();
+  };
+
+  async function run(quality: MeshQuality, doc: WhittleDoc): Promise<void> {
+    const partId = partOf(doc);
+    if (!partId) return;
+    busy = true;
+    calls++;
+    const mySeq = ++seq;
+    try {
+      const result = await port.regenerate({ doc, partId, quality, massProperties: true });
+      if (disposed) return;
+      const stale =
+        mySeq < lastDelivered ||
+        result.revision <= (lastRevision.get(result.partId) ?? Number.NEGATIVE_INFINITY) ||
+        (quality === 'fine' && doc !== getDoc());
+      if (!stale) {
+        lastDelivered = mySeq;
+        lastRevision.set(result.partId, result.revision);
+        onResult({ result, quality, doc });
+      }
+    } catch (err) {
+      if (!disposed) onError?.(asKernelError(err));
+    } finally {
+      busy = false;
+    }
+  }
+
+  function scheduleFine(doc: WhittleDoc) {
+    cancelFine?.();
+    if (!wantFine) return;
+    finePendingFor = doc;
+    cancelFine = idle(() => {
+      cancelFine = null;
+      const target = finePendingFor;
+      finePendingFor = null;
+      if (disposed || !target || target !== getDoc() || dirty) {
+        settle();
+        return;
+      }
+      void run('fine', target).then(pump);
+    });
+  }
+
+  function pump(): void {
+    if (disposed || busy) return;
+    if (dirty) {
+      dirty = false;
+      cancelFine?.();
+      cancelFine = null;
+      finePendingFor = null;
+      const doc = getDoc();
+      void run('coarse', doc).then(() => {
+        if (!dirty) scheduleFine(doc);
+        pump();
+      });
+      return;
+    }
+    settle();
+  }
+
+  return {
+    request() {
+      if (disposed) return;
+      dirty = true;
+      pump();
+    },
+    whenIdle() {
+      if (!busy && !dirty && !finePendingFor) return Promise.resolve();
+      return new Promise((resolve) => waiters.push(resolve));
+    },
+    get calls() {
+      return calls;
+    },
+    dispose() {
+      disposed = true;
+      cancelFine?.();
+      const w = waiters;
+      waiters = [];
+      for (const fn of w) fn();
+    },
+  };
+}
+
+/** Selection → persistent reference, exports and imports, all against the latest regen. */
+export interface Modeling {
+  readonly port: ModelingPort;
+  refFor(partId: Id, query: EntityQuery): Promise<EntityRef | null>;
+  exportPart(
+    partId: Id,
+    format: ExportFormat,
+    options?: ExportOptions,
+  ): Promise<{ ok: true; bytes: Uint8Array } | { ok: false; error: KernelError }>;
+  closePart(partId: Id): Promise<void>;
+}
+
+export function createModeling(port: ModelingPort): Modeling {
+  return {
+    port,
+    async refFor(partId, query) {
+      try {
+        return await port.refFor(partId, query);
+      } catch {
+        return null;
+      }
+    },
+    async exportPart(partId, format, options) {
+      try {
+        return await port.exportPart(partId, format, options);
+      } catch (err) {
+        return { ok: false, error: asKernelError(err) };
+      }
+    },
+    async closePart(partId) {
+      try {
+        await port.closePart(partId);
+      } catch {
+        // Closing is best-effort.
+      }
+    },
+  };
+}
