@@ -9,6 +9,8 @@ import { type Transition, useReducedMotion } from 'motion/react';
 export const springs = {
   fast: { type: 'spring', duration: 0.18, bounce: 0 },
   standard: { type: 'spring', duration: 0.26, bounce: 0.1 },
+  /** A gentle "no": a refused drop wobbles and settles back (never a layout animation). */
+  reject: { type: 'spring', duration: 0.42, bounce: 0.6 },
 } as const satisfies Record<string, Transition>;
 
 export type SpringName = keyof typeof springs;

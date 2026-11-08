@@ -3,6 +3,8 @@ import type { DeviceTier, KernelStatus, RuntimeDiagnostics } from '@whittle/cont
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AppShell, StatusChip, type ThemeSetting } from '../src';
+import { DataShell } from './dataShell';
+import { Gallery } from './gallery';
 
 /**
  * Query params:
@@ -125,6 +127,22 @@ function Harness() {
           </div>
         ))}
       </div>
+    );
+  }
+
+  if (q.get('view') === 'gallery') {
+    return <Gallery section={q.get('section') ?? 'tree'} tier={tier} theme={theme} />;
+  }
+
+  if (q.get('data')) {
+    return (
+      <DataShell
+        tier={tier}
+        theme={theme}
+        status={status}
+        viewport={<FakeViewport />}
+        inspector={q.get('inspector') ?? 'feature'}
+      />
     );
   }
 

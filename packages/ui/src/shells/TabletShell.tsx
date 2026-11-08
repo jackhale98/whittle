@@ -1,13 +1,17 @@
-import { Download, History, Search } from 'lucide-react';
+import { History, Search } from 'lucide-react';
 import { useState } from 'react';
 import { CommandBar } from '../components/CommandBar';
-import { Button, IconButton, Separator } from '../components/primitives';
+import { Segmented } from '../components/controls';
+import { IconButton, Separator } from '../components/primitives';
 import { StatusChip } from '../components/StatusChip';
+import { FeatureTree } from '../features/FeatureTree';
 import {
   BottomSheet,
   EmptyState,
+  ExportControl,
   Mark,
   modKey,
+  ParamsPanel,
   ShellRoot,
   ThemeToggle,
   UndoRedo,
@@ -19,8 +23,20 @@ import type { ShellProps } from './types';
 const PEEK = 64;
 
 export function TabletShell(props: ShellProps) {
-  const { documentName, kernelStatus, viewport, onUndo, onRedo, onExport } = props;
+  const {
+    documentName,
+    kernelStatus,
+    viewport,
+    onUndo,
+    onRedo,
+    featureTree,
+    paramsTable,
+    inspector,
+  } = props;
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [sheetTab, setSheetTab] = useState<'history' | 'params' | 'inspector'>('history');
+  const hasData = !!(featureTree || paramsTable || inspector);
+  const nFeatures = featureTree?.features.length ?? 0;
 
   return (
     <ShellRoot tier="tablet" props={props}>
@@ -56,20 +72,18 @@ export function TabletShell(props: ShellProps) {
                     onClick={core.openPalette}
                   />
                   <ThemeToggle theme={core.theme} size="touch" />
-                  <Button
-                    variant="primary"
-                    size="touch"
-                    icon={<Download className="size-[18px]" />}
-                    onClick={onExport}
-                    className="ml-1"
-                  >
-                    Export
-                  </Button>
+                  <ExportControl props={props} variant="primary" size="touch" className="ml-1" />
                 </header>
 
                 {/* Tool rail */}
                 <div className="absolute top-[calc(max(12px,var(--safe-top))+72px)] left-[max(12px,var(--safe-left))]">
-                  <CommandBar layout="rail" onMore={core.openPalette} />
+                  <CommandBar
+                    layout="rail"
+                    onMore={core.openPalette}
+                    enabledTools={props.enabledTools}
+                    activeTool={props.activeTool}
+                    onTool={props.onTool}
+                  />
                 </div>
 
                 {/* Chips, bottom-right, above the sheet peek */}
@@ -90,13 +104,43 @@ export function TabletShell(props: ShellProps) {
                     <div className="flex h-10 shrink-0 items-center gap-2 px-5 text-ui">
                       <History className="size-4 text-fg-muted" aria-hidden />
                       <span className="font-semibold">History</span>
-                      <span className="text-fg-muted">· No features yet</span>
+                      <span className="text-fg-muted">
+                        ·{' '}
+                        {nFeatures === 0
+                          ? 'No features yet'
+                          : `${nFeatures} ${nFeatures === 1 ? 'feature' : 'features'}`}
+                      </span>
                     </div>
                   }
                 >
-                  <EmptyState icon={History} title="Your timeline will appear here">
-                    Every feature you add is recorded, and you can roll back to any step.
-                  </EmptyState>
+                  {hasData ? (
+                    <div className="flex flex-col">
+                      <div className="px-4 pb-1">
+                        <Segmented
+                          label="Sheet section"
+                          size="touch"
+                          value={sheetTab}
+                          onChange={setSheetTab}
+                          options={[
+                            { value: 'history', label: 'History' },
+                            { value: 'params', label: 'Params', disabled: !paramsTable },
+                            { value: 'inspector', label: 'Inspector', disabled: !inspector },
+                          ]}
+                        />
+                      </div>
+                      {sheetTab === 'history' && featureTree ? (
+                        <FeatureTree {...featureTree} density="touch" />
+                      ) : null}
+                      {sheetTab === 'params' && paramsTable ? (
+                        <ParamsPanel {...paramsTable} density="touch" />
+                      ) : null}
+                      {sheetTab === 'inspector' && inspector ? inspector : null}
+                    </div>
+                  ) : (
+                    <EmptyState icon={History} title="Your timeline will appear here">
+                      Every feature you add is recorded, and you can roll back to any step.
+                    </EmptyState>
+                  )}
                 </BottomSheet>
               </>
             }

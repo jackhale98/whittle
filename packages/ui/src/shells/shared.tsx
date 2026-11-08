@@ -1,5 +1,5 @@
 import type { DeviceTier, RuntimeDiagnostics } from '@whittle/contracts';
-import { Grid3x3, Moon, Redo2, Sun, Undo2 } from 'lucide-react';
+import { Download, Grid3x3, Moon, Redo2, Sun, Undo2 } from 'lucide-react';
 import { LazyMotion, m } from 'motion/react';
 import {
   type ComponentType,
@@ -14,9 +14,11 @@ import {
   useState,
 } from 'react';
 import type { PaletteCommand } from '../components/CommandPalette';
-import { cn, IconButton, TooltipProvider } from '../components/primitives';
+import { Button, cn, IconButton, TooltipProvider } from '../components/primitives';
 import { COMING_SOON, tools } from '../components/tools';
+import { ExportMenu } from '../export/ExportMenu';
 import { useSpring } from '../motion';
+import type { ParamsTableProps } from '../params/ParamsTable';
 import { type ThemeControl, useTheme } from '../theme';
 import type { ShellProps } from './types';
 
@@ -24,6 +26,22 @@ import type { ShellProps } from './types';
 const CommandPalette = lazy(() =>
   import('../components/CommandPalette').then((mod) => ({ default: mod.CommandPalette })),
 );
+
+// The params table (and the expression field it carries) is only fetched when a Params tab opens.
+const ParamsTableLazy = lazy(() =>
+  import('../params/ParamsTable').then((mod) => ({ default: mod.ParamsTable })),
+);
+
+/** Code-split `ParamsTable` for the shells' Params tabs and sheets. */
+export function ParamsPanel(props: ParamsTableProps) {
+  return (
+    <Suspense
+      fallback={<p className="p-6 text-center text-ui text-fg-muted">Loading parameters…</p>}
+    >
+      <ParamsTableLazy {...props} />
+    </Suspense>
+  );
+}
 
 const loadMotionFeatures = () => import('../motionFeatures').then((mod) => mod.default);
 
@@ -70,14 +88,18 @@ export function ShellRoot({
 
   const commands = useMemo<PaletteCommand[]>(
     () => [
-      ...tools.map(({ id, label, shortcut, Icon }) => ({
-        id,
-        label,
-        shortcut,
-        disabled: true,
-        hint: COMING_SOON,
-        icon: <Icon className="size-4" strokeWidth={1.75} />,
-      })),
+      ...tools.map(({ id, label, shortcut, Icon }) => {
+        const enabled = !!props.enabledTools?.includes(id);
+        return {
+          id,
+          label,
+          shortcut,
+          disabled: !enabled,
+          hint: enabled ? undefined : COMING_SOON,
+          run: enabled ? () => props.onTool?.(id) : undefined,
+          icon: <Icon className="size-4" strokeWidth={1.75} />,
+        };
+      }),
       {
         id: 'toggle-theme',
         label: theme.resolved === 'dark' ? 'Switch to light theme' : 'Switch to dark theme',
@@ -86,7 +108,7 @@ export function ShellRoot({
       },
       ...(extraCommands ?? []),
     ],
-    [theme.resolved, theme.toggle, extraCommands],
+    [theme.resolved, theme.toggle, extraCommands, props.enabledTools, props.onTool],
   );
 
   const openPalette = useCallback(() => {
@@ -378,5 +400,48 @@ export function BottomSheet({
         {children}
       </div>
     </m.section>
+  );
+}
+
+/* ------------------------------------------------------------------------- export */
+
+/**
+ * The top-bar Export control: the options popover when the host handles `onExportRequest`,
+ * otherwise the plain button that calls `onExport`.
+ */
+export function ExportControl({
+  props,
+  variant = 'secondary',
+  size = 'md',
+  className,
+}: {
+  props: ShellProps;
+  variant?: 'primary' | 'secondary';
+  size?: 'md' | 'touch';
+  className?: string;
+}) {
+  if (props.onExportRequest) {
+    return (
+      <ExportMenu
+        variant={variant}
+        size={size}
+        className={className}
+        onExport={props.onExportRequest}
+        bodies={props.exportBodies}
+        unavailable={props.exportUnavailable}
+        busy={props.exportBusy}
+      />
+    );
+  }
+  return (
+    <Button
+      variant={variant}
+      size={size}
+      onClick={props.onExport}
+      icon={<Download className={size === 'touch' ? 'size-[18px]' : 'size-4'} />}
+      className={className}
+    >
+      Export
+    </Button>
   );
 }
