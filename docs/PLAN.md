@@ -698,6 +698,7 @@ Each milestone ends with a reviewer gate. "Done" means every criterion is demons
 
 ### M3 — Advanced part features
 
+- Fillet/chamfer option "propagate along tangent edges" (OCCT propagates by default; make it an explicit toggle, default on). A kernel `import` feature (transform + naming in C++, replacing the TS workarounds from M1). IGES import.
 - Shell, draft, sweep, loft, mirror, patterns, hole wizard with standards tables, cosmetic threads, reference geometry, measure, mass properties, section view, sketch on face, project edges, versions/snapshots.
 - **Accept:** reproduce 10 reference parts (in `test-fixtures/reference-parts/`, with specs) within dimensional tolerance, entirely from the UI, in E2E scripts.
 

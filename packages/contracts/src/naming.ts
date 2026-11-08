@@ -59,6 +59,10 @@
  *   - Regions are minimal: a rectangle with a circle inside yields region(L1,L2,L3,L4|C1) (the ring)
  *     and region(C1) (the disc). Selecting both = the full rectangle.
  *   - Split sketch curves: S…:e(<id>)#k. Coincident sketch points each keep their own S…:p(<id>).
+ *   - Imports: faces F<id>:face#k numbered per body by geometric key; a file with several solids
+ *     gives bodies B<id>#k; add/cut/intersect imports name tool faces F<id>:face(F<id>:face#k);
+ *     a mesh reference body has a single face F<id>:face and no edges. Imported names are "weak":
+ *     resolution always requires fingerprint agreement.
  */
 
 export type PersistentName = string;

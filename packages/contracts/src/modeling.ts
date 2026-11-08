@@ -6,7 +6,7 @@
  * resolved values, input result hashes). Editing feature k re-runs k…n only.
  */
 
-import type { EntityRef, Id, Vec3, WhittleDoc } from './document';
+import type { EntityRef, Fingerprint, Id, Vec3, WhittleDoc } from './document';
 import type {
   KernelApi,
   KernelError,
@@ -40,6 +40,8 @@ export interface UnresolvedRef {
   reason: 'missing' | 'ambiguous';
   /** Candidate names when ambiguous (for the "Which one?" chooser). */
   candidates?: string[];
+  /** Previous resolved location when the stored ref had no fingerprint (ghost the old spot). */
+  lastKnown?: Fingerprint;
 }
 
 export interface FeatureStatus {
@@ -52,7 +54,7 @@ export interface FeatureStatus {
   /** Non-fatal warnings (e.g. "The cut does not touch any body"). */
   warnings?: KernelError[];
   /** Refs resolved by fingerprint/disambiguation, with their current name, so the UI can heal stored refs. */
-  rebound?: { path: string; name: string }[];
+  rebound?: { path: string; name: string; fingerprint?: Fingerprint }[];
   ms: number;
 }
 
@@ -137,6 +139,8 @@ export interface ExportOptions {
 
 /** The kernel worker's full Comlink surface from M1 on. */
 export interface ModelingApi extends KernelApi {
+  /** Per-part cache bound (device tiers pass smaller values). */
+  configureRegen(options: { maxSpareResults?: number }): Promise<void>;
   fingerprints(shape: ShapeHandle): Promise<Result<ShapeFingerprints>>;
   regenerate(request: RegenRequest): Promise<RegenResult>;
   /** Persistent reference (with fingerprint) for a picked sub-shape of the latest regen. */
