@@ -1,0 +1,29 @@
+{
+  "name": "@whittle/viewport",
+  "version": "0.0.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "description": "Imperative three.js viewport: WebGPU with WebGL2 fallback, camera-controls, fat-line edges.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p .",
+    "test": "vitest run",
+    "harness": "vite",
+    "harness:build": "vite build",
+    "e2e": "playwright test --trace off"
+  },
+  "dependencies": {
+    "@whittle/contracts": "workspace:*",
+    "camera-controls": "3.1.2",
+    "three": "0.187.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@types/three": "0.187.0",
+    "@whittle/test-fixtures": "workspace:*",
+    "vite": "8.3.6"
+  }
+}
