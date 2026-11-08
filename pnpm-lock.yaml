@@ -214,6 +214,9 @@ importers:
       three:
         specifier: 0.187.0
         version: 0.187.0
+      three-mesh-bvh:
+        specifier: 0.9.18
+        version: 0.9.18(three@0.187.0)
     devDependencies:
       '@playwright/test':
         specifier: 1.63.0
@@ -2793,6 +2796,11 @@ packages:
     resolution: {integrity: sha512-bWnjSNscmuI+GJze6ZupnHP8G/cTcsJF+bXCeQknk2SHQsgbNJnLrqiH9jZ2W4STPVXH2mDKKRX3iwPhc9Cn/Q==}
     engines: {node: '>=10'}
     hasBin: true
+
+  three-mesh-bvh@0.9.18:
+    resolution: {integrity: sha512-S76hOBnsSG4jsuEyCu98K63klONG4NwJANabPY1LUD5l7oUgu2xtKC0IwnX/XyPzo4YZ1D7ZU+gHVA479UdQmA==}
+    peerDependencies:
+      three: '>= 0.159.0'
 
   three@0.187.0:
     resolution: {integrity: sha512-Qiu7R+Cmh8CstZsY1uJOSWnVlfo7ZtNLV7mF8Jltk3LB3AtDu9cRZlcnRKkAk8Y4z6KKw35z7Y7Urd7jWY8etA==}
@@ -5740,6 +5748,10 @@ snapshots:
       acorn: 8.19.0
       commander: 2.20.3
       source-map-support: 0.5.21
+
+  three-mesh-bvh@0.9.18(three@0.187.0):
+    dependencies:
+      three: 0.187.0
 
   three@0.187.0: {}
 
