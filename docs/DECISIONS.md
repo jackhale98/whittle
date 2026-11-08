@@ -519,9 +519,8 @@ Implemented in packages/ui (FeatureTree) and apps/web, after the M2 integration 
    history has dropped it (it fell off the end, the redo branch was replaced, the document was
    closed) it is pruned at the next save.
 10. **Tool groups.** Section joins Measure in the Inspect group, so Inspect is a flyout (ADR-012
-    item 4's single-tool Inspect no longer holds). `toolGroups` is the single source of truth; the
-    desktop command bar keeps PLAN §9.1's flat set (`commandBarTools`): Push/pull and Section are
-    reached from their groups, the palette, shortcuts (P) and context actions.
+    item 4's single-tool Inspect no longer holds). `toolGroups` is the single source of truth. (The
+    desktop bar's temporary flat set, `commandBarTools`, is gone: ADR-017.)
 11. **Cached open, profiled.** On SwiftShader the critical path is the library read (≈ 60–80 ms
     after the main chunk evaluates), the view's creation (≈ 40–60 ms) and its first frame with
     the cached bodies, which compiles their shaders (≈ 120–160 ms). Interleaved A/B runs (8 + 8
@@ -530,3 +529,54 @@ Implemented in packages/ui (FeatureTree) and apps/web, after the M2 integration 
     creating the view without waiting for the read (much worse, as in ADR-008 item 4), fetching
     three.js before React's first commit, deferring the idle shader warm-up past the cached frame,
     and dropping the view cube. None of them was kept.
+
+## ADR-017 — Grouped desktop command bar and nested feature tree (2026-11-08)
+
+**Grouped bar.**
+
+1. **One definition.** The desktop `CommandBar` renders `toolGroups` like the tablet rail; the flat
+   `commandBarTools` list was removed. Categories: Sketch (direct), Solid (extrude, push/pull,
+   revolve), Modify (fillet, chamfer, shell, pattern), Hole (direct), Inspect (measure, section) and
+   More. No Reference category yet: no plane/axis/point tool exists (M3); no sweep/loft/boolean tool
+   ids exist, so none were invented. Hole left Solid for its own category (PLAN §9.1), so the tablet
+   rail gained a Hole button.
+2. **Face = last-used tool.** A category button shows the active tool of its group, else the last one
+   used (`whittle.lastTools` in localStorage, written whenever the active tool changes, so shortcuts
+   and the palette count), else the first. Click opens the flyout (it does not run the face tool:
+   "one-click repeat" is the shortcut). Its accessible name is "<face>, <Category> tools", which
+   contains the visible label (WCAG 2.5.3) and keeps `getByRole('button', { name: 'Extrude' })` for
+   the flyout item. Touch and pen: a 420 ms hold or a 14 px upward drag opens it, and releasing over
+   a tool picks it. Mouse presses never start the hold.
+3. **Keyboard.** The Radix toolbar roves across categories; ArrowUp, Enter or Space opens a flyout
+   with the face tool focused; arrows, Home and End move inside (disabled tools stay focusable so
+   their hint can be read); Escape closes and returns to the category; Tab closes.
+4. **Hints per tool.** `ToolDef.comingIn` (PLAN §12: shell, pattern and hole wizard are M3) feeds
+   `toolHint`; a tool with no milestone says "Not available yet".
+5. **E2E.** Desktop and tablet tests use `tool(page, id, how)` in `apps/web/e2e/helpers.ts`, which
+   opens the category first. `data-tool` ids are unchanged; category buttons carry `data-tool-group`.
+
+**Nested tree (ADR-015 implemented).**
+
+6. **Derived, never stored.** `computeNesting` (packages/ui `logic/treeNesting.ts`) walks each
+   non-sketch feature for entity references (duck-typed: `name` plus an entity `kind`) whose name
+   starts `S<sketchId>:`. A suppressed consumer still consumes; sketch features are never consumers;
+   a consumer listed before its sketch never nests it. One consumer nests; two or more (badge "used
+   by N") or none stay top-level.
+7. **Flat ARIA tree.** Rows stay siblings with `aria-level` 1 or 2, `aria-posinset`, `aria-setsize`
+   and `aria-expanded` on parents, so row handling is unchanged. Expanded state is local and starts
+   collapsed; selecting a nested sketch opens its parent. Keys: Right/Left expand, collapse, step in
+   and out.
+8. **Reordering a feature** moves it with its sketches via ordinary `moveFeature` steps
+   (`planUnitMove`: sketches first going up, feature first going down; the block lands right after
+   the feature of the item above). The tree reports them through `onReorder`; the app applies them as
+   one undo step after a dry run on a scratch store (`reorderFeatures`), so a refusal leaves the
+   document untouched. Without `onReorder` the steps go through `onMove` and are put back on a
+   refusal. Nested sketches have no handle of their own.
+9. **Rollback** positions between a nested sketch and its feature are not offered
+   (`allowedRollbacks`): keyboard steps and drags skip them, "Roll to here" on a nested sketch rolls
+   to after its feature.
+10. **Delete** with nested sketches shows an inline group under the row (not a dialog, not a
+    treeitem child of the tree root): "Delete sketch too", "Keep sketch", Cancel; Escape cancels.
+    Both removals are one undo step (`onDelete(id, alsoIds)`).
+11. **Setting.** "Show sketches in the history" (`whittle.nestSketches` = `flat`) lives in the row
+    menu and the palette; the app owns the state and persists it with try/catch storage helpers.

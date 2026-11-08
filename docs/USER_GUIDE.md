@@ -35,7 +35,7 @@ has Welcome and samples, the demo bracket, New document, Open library, Open or i
 - **Left panel.** Two tabs: **Features** (the feature tree with its rollback bar) and **Params**. Drag
   the edge to resize it.
 - **Viewport (centre).** The 3D view. The units chip and the kernel status are at the top left. The
-  command bar (Sketch, Extrude, Revolve, Fillet, Chamfer, plus disabled tools) is at the bottom. The
+  command bar is at the bottom: Sketch, Solid, Modify, Hole, Inspect and More. Solid, Modify and Inspect open a flyout of their tools (arrow keys work inside it) and show the tool you used last; shortcuts such as **E** still run a tool directly. The
   **Library** button is under the top bar. A view cube in the top-right corner sets the standard
   views: click a face, edge or corner, and the camera animates to it.
 - **Right panel.** The **Inspector** for whatever you have selected. A **Runtime** section at the
