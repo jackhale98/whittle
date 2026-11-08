@@ -335,6 +335,33 @@ describe('GitHistory without a remote (local-only)', () => {
     h.refresh();
   });
 
+  it('switchBranch never forces a checkout over uncommitted project files (local-only too)', async () => {
+    const fs = browserGitFs(`switch-${fsN++}`, { wipe: true });
+    const h = createGitHistory({ fs, http, dir: '/s', url: null, now: tick });
+    value(await h.saveVersion(seedFiles(), 'First', { author: ann }));
+    value(await h.createBranch('idea'));
+    await fs.promises.writeFile('/s/params.json', '{"unsaved": true}\n');
+    const r = await h.switchBranch('idea');
+    expect(!r.ok && r.error.code).toBe('CONFLICT');
+    if (!r.ok) expect(r.error.message).toMatch(/uncommitted changes \(‘params\.json’\)/);
+    expect(await fs.promises.readFile('/s/params.json', { encoding: 'utf8' })).toBe(
+      '{"unsaved": true}\n',
+    );
+    expect(await h.currentBranch()).toBe('main');
+    // Automatic snapshots don't touch the working tree or the index, so they never block it.
+    await fs.promises.writeFile('/s/params.json', seedFiles().get('params.json')!);
+    value(
+      await h.saveVersion(
+        edit(seedFiles(), (d) => withRadius(d, '9mm')),
+        'auto',
+        { author: ann, auto: true },
+      ),
+    );
+    expect(value(await h.workingChanges())).toEqual([]);
+    value(await h.switchBranch('idea'));
+    expect(await h.currentBranch()).toBe('idea');
+  });
+
   it('a commit into an existing checkout leaves files Whittle does not own alone', async () => {
     const fs = browserGitFs(`checkout-${fsN++}`, { wipe: true });
     const h = createGitHistory({ fs, http, dir: '/c', gitdir: '/c/.git', url: null, now: tick });

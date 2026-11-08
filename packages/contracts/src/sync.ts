@@ -41,6 +41,8 @@ export type StorageErrorCode =
   | 'PERMISSION'
   /** This provider or operation isn't available in this build (e.g. a provider without app keys). */
   | 'UNSUPPORTED'
+  /** The project or repo is read-only right now (a release; a git merge or rebase in progress, a detached HEAD). */
+  | 'READ_ONLY'
   /** Anything else, with the HTTP status when there is one. */
   | 'REMOTE';
 
