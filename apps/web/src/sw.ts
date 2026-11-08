@@ -29,6 +29,7 @@ import {
 import { NavigationRoute, registerRoute } from 'workbox-routing';
 import { CacheFirst, NetworkOnly } from 'workbox-strategies';
 import { withIsolationHeaders } from './platform/isolation-headers';
+import { isKernelAsset, mayHandle } from './platform/sw-rules';
 
 declare const self: ServiceWorkerGlobalScope & {
   __WB_MANIFEST: Array<string | { url: string; revision: string | null }>;
@@ -61,9 +62,7 @@ registerRoute(new NavigationRoute(createHandlerBoundToURL('index.html')));
 
 // Kernel: cache on first use, then serve from cache forever (hashed file names change on update).
 registerRoute(
-  ({ sameOrigin, url }) =>
-    sameOrigin &&
-    (url.pathname.endsWith('.wasm') || /\/whittle-kernel[^/]*\.js$/.test(url.pathname)),
+  ({ sameOrigin, url, request }) => mayHandle({ sameOrigin, request }) && isKernelAsset(url),
   new CacheFirst({
     cacheName: KERNEL_CACHE,
     plugins: [
@@ -76,7 +75,10 @@ registerRoute(
 
 // Everything else on our origin (lazy chunks, worker scripts, fixtures): network, but still
 // isolation-stamped so dedicated workers started by an isolated page are themselves isolated.
-registerRoute(({ sameOrigin }) => sameOrigin, new NetworkOnly({ plugins: [isolationPlugin] }));
+registerRoute(
+  ({ sameOrigin, request }) => mayHandle({ sameOrigin, request }),
+  new NetworkOnly({ plugins: [isolationPlugin] }),
+);
 
 self.addEventListener('message', (event) => {
   const data = event.data as { type?: string } | undefined;

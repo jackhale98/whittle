@@ -1,0 +1,21 @@
+// Whittle sync worker. JSONC on purpose: Wrangler prefers a .jsonc config.
+{
+  "name": "whittle-sync",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  // Keep variables set in the Cloudflare dashboard when deploying (secrets are always kept).
+  "keep_vars": true,
+  // No logs and no storage of any kind: no KV, D1, R2 or Durable Objects.
+  "observability": { "enabled": false },
+  "vars": {
+    // Origins that may use this worker: the GitHub Pages site and localhost for development
+    // (vite dev 5173, vite preview and the E2E server 4173). Comma-separated, exact origins.
+    "ALLOWED_ORIGINS": "https://jackhale98.github.io,http://localhost:5173,http://localhost:4173"
+    // "EXTRA_GIT_HOSTS": "forgejo.example.com",
+    // "DAV_HOSTS": "cloud.example.com"
+  }
+  // OAuth client credentials are secrets, never vars:
+  //   npx wrangler secret put GITHUB_CLIENT_ID
+  //   npx wrangler secret put GITHUB_CLIENT_SECRET
+  // (and GITLAB_*, BITBUCKET_* when those apps are registered)
+}

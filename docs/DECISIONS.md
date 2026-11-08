@@ -780,3 +780,29 @@ folder (`ProjectFiles`, docs/FILE_FORMAT.md) already exists. The contracts are i
   merge UI.
 - **platform-engineer:** the Worker port, `connect-src` and COEP for provider hosts, and the
   configuration plumbing.
+
+## ADR-pending — Platform plumbing for sync: Worker, config, service worker rules
+
+1. **Worker is a pnpm workspace package** (`@whittle/sync-worker`). Typecheck and `vitest` run under
+   `pnpm -r` with the root toolchain and no extra dependencies. Wrangler is not installed: the
+   scripts and docs use `npx wrangler@4.151.3`, so the lockfile and licence notices do not grow by
+   the workerd binaries.
+2. **Not `@isomorphic-git/cors-proxy`.** PLAN §8A.2 names that package; Mycelium's worker replaces it
+   because it also does OAuth exchange and the WebDAV relay and is already tested. Its git proxy is
+   stricter: three endpoints only, allow-listed hosts and origins, only git headers forwarded.
+3. **Worker licence.** `worker/LICENSE` is the repository's GPL-3.0 (Mycelium's own `worker/` folder
+   carries Apache-2.0; the port is GPL-3.0-or-later as the owner asked).
+4. **Git proxy default.** `VITE_GIT_CORS_PROXY`, else `VITE_SYNC_WORKER_URL`, else the public
+   `cors.isomorphic-git.org`. Config marks the last as `gitCorsProxyIsPublicDefault` so UI can warn
+   that tokens pass through a third party.
+5. **OAuth redirect URI is the app base URL** (`https://jackhale98.github.io/whittle/`, with trailing
+   slash), via `oauthRedirectUri()`. The service worker already serves the shell for any navigation
+   in scope and preserves the URL, so no callback route or Pages 404 trick is needed.
+6. **Service worker handles same-origin only, and never a request with `Authorization`**
+   (`platform/sw-rules.ts`). Provider calls are cross-origin CORS fetches that no route matches;
+   they bypass the worker, so COEP `require-corp` applies the browser's normal CORS check and they
+   are never cached. E2E (`sync-plumbing.spec.ts`) proves this against a real second origin.
+7. **No isolation reload on an OAuth callback load.** When the page URL carries `state` plus `code`
+   or `error` and is not yet isolated, `initServiceWorker` skips the one-time isolation reload so
+   the app can consume the code in this document; that session runs in fallback mode and the next
+   load is isolated. Only the very first visit ever (no SW yet) is affected.

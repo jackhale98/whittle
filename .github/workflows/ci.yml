@@ -75,6 +75,18 @@ jobs:
         run: pnpm build
         env:
           WHITTLE_BASE: /whittle/
+          # Public OAuth client ids and URLs for cloud/git sync (docs/SYNC_SETUP.md). Repository
+          # *variables* (Settings > Secrets and variables > Actions > Variables), never secrets:
+          # they are baked into the public bundle. Unset variables expand to empty strings, which
+          # the app reads as "provider not configured": the build stays green.
+          VITE_SYNC_WORKER_URL: ${{ vars.VITE_SYNC_WORKER_URL }}
+          VITE_GIT_CORS_PROXY: ${{ vars.VITE_GIT_CORS_PROXY }}
+          VITE_DROPBOX_APP_KEY: ${{ vars.VITE_DROPBOX_APP_KEY }}
+          VITE_ONEDRIVE_CLIENT_ID: ${{ vars.VITE_ONEDRIVE_CLIENT_ID }}
+          VITE_GDRIVE_CLIENT_ID: ${{ vars.VITE_GDRIVE_CLIENT_ID }}
+          VITE_GITHUB_CLIENT_ID: ${{ vars.VITE_GITHUB_CLIENT_ID }}
+          VITE_GITLAB_CLIENT_ID: ${{ vars.VITE_GITLAB_CLIENT_ID }}
+          VITE_BITBUCKET_CLIENT_ID: ${{ vars.VITE_BITBUCKET_CLIENT_ID }}
       - name: Initial-route JS budget (<= 250 kB gzip)
         run: pnpm --filter @whittle/web size
         env:

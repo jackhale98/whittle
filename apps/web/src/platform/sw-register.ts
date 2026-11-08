@@ -25,11 +25,23 @@ export interface IsolationReloadInput {
   controlled: boolean;
   /** We already reloaded once this session (or cannot record that we did). */
   alreadyReloaded: boolean;
+  /**
+   * The page was opened by an OAuth redirect back (`?code=`/`?error=` with `?state=`). Its one-time
+   * code may already be spent by the app, so we do not reload this document; isolation is settled
+   * by the next load (the worker then controls it from the first byte).
+   */
+  oauthCallback?: boolean;
+}
+
+/** True when `search` is an OAuth/OIDC authorization response (code or error, plus state). */
+export function isOAuthCallbackSearch(search: string): boolean {
+  const q = new URLSearchParams(search);
+  return q.has('state') && (q.has('code') || q.has('error'));
 }
 
 /** Pure decision: reload iff we could be isolated after a reload and have not tried yet. */
 export function shouldReloadForIsolation(input: IsolationReloadInput): boolean {
-  return !input.isolated && input.controlled && !input.alreadyReloaded;
+  return !input.isolated && input.controlled && !input.alreadyReloaded && !input.oauthCallback;
 }
 
 type FlagStore = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
@@ -190,7 +202,14 @@ export async function initServiceWorker(): Promise<void> {
 
     const controlled = await waitForController(CONTROLLER_WAIT_MS);
     const alreadyReloaded = readReloadFlag(() => sessionStorage);
-    if (shouldReloadForIsolation({ isolated: false, controlled, alreadyReloaded })) {
+    if (
+      shouldReloadForIsolation({
+        isolated: false,
+        controlled,
+        alreadyReloaded,
+        oauthCallback: isOAuthCallbackSearch(window.location.search),
+      })
+    ) {
       if (writeReloadFlag(() => sessionStorage)) {
         window.location.reload();
         return; // isolation stays 'pending' for this (doomed) document

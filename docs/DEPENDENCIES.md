@@ -57,3 +57,11 @@ bundled package's licence text plus OCCT's LGPL-2.1 + exception (texts in `licen
 | `@types/three`, `@types/react`, `@types/react-dom` | 0.187.0, 19.3.0, 19.3.0 | MIT |
 | `@lhci/cli` (CI only; `npx`, not installed in the workspace) | 0.16.0 | Apache-2.0 |
 | `lighthouse` (via `@lhci/cli`) | 13.6.0 | Apache-2.0 |
+
+## Sync worker (`worker/`, Cloudflare Workers)
+
+No runtime dependencies: the worker uses only Workers' built-in `fetch`, `Request`, `Response` and `ReadableStream`, and ships no bundled third-party code. Ported from Mycelium's sync worker (GPL-3.0-or-later, same author), reminders and push removed. It is tested and typechecked with the root `typescript` and `vitest` above.
+
+| Tool | Version | License | Notes |
+|---|---|---|---|
+| `wrangler` (deploy only; `npx wrangler@4.151.3`, not installed in the workspace) | 4.151.3 | MIT OR Apache-2.0 | Pinned in the `worker/package.json` scripts and in docs/SYNC_SETUP.md. Never part of the web bundle. |
