@@ -173,3 +173,20 @@ inspector shows material and mass. BOMs (M6) list the material.
 
 **Why.** It matches how engineers type values ("5" in an mm document means 5 mm) and keeps unit
 errors explicit. `5'6"` is not parsed as feet plus inches; write `5ft + 6in`.
+
+---
+
+## ADR-007 — M1 app integration decisions (2026-11-08)
+
+1. **Picking rolls the model back to the feature's input.** While a feature's pick field (edges,
+   faces) is active, the viewport shows the part as it was *before* that feature. Picks therefore
+   always name input geometry, never geometry the feature itself created (Onshape behaves the same).
+2. **Real regen engine by default.** `?engine=fake` (a main-thread stand-in over the low-level kernel)
+   stays for fast UI work only. All E2E runs on the real engine.
+3. **In-app welcome instead of a landing page** (owner decision). The app stays at `/whittle/`, so
+   installed PWAs keep working. The welcome card offers the demo bracket, a new part, install, and
+   the repo and licence links.
+4. **Kernel boot starts before React's first render**, and download-progress updates are throttled
+   (8/s). Warm first body went from 1.38 s to 0.81 s on software GL.
+5. **Autosave** to the local library 500 ms after edits settle and on `visibilitychange: hidden`. The
+   last document reopens on launch.
