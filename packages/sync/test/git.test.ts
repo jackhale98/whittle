@@ -318,6 +318,23 @@ describe('GitHistory without a remote (local-only)', () => {
     }
   });
 
+  it('reports uncommitted working-tree changes and configured remotes (local git repo mode)', async () => {
+    const fs = browserGitFs(`wc-${fsN++}`, { wipe: true });
+    const h = createGitHistory({ fs, http, dir: '/w', url: null, now: tick });
+    expect(value(await h.workingChanges())).toEqual([]);
+    expect(await h.remotes()).toEqual([]);
+    value(await h.saveVersion(seedFiles(), 'First', { author: ann }));
+    expect(value(await h.workingChanges())).toEqual([]);
+    // Saved by Whittle (or edited elsewhere) without a commit.
+    await fs.promises.writeFile('/w/params.json', '{}\n');
+    await fs.promises.writeFile('/w/notes.txt', 'new\n');
+    await fs.promises.unlink('/w/imports/bolt.step');
+    const changes = value(await h.workingChanges()).sort((x, y) => x.path.localeCompare(y.path));
+    expect(changes).toContainEqual({ path: 'params.json', status: 'modified' });
+    expect(changes).toContainEqual({ path: 'imports/bolt.step', status: 'deleted' });
+    h.refresh();
+  });
+
   it('a commit into an existing checkout leaves files Whittle does not own alone', async () => {
     const fs = browserGitFs(`checkout-${fsN++}`, { wipe: true });
     const h = createGitHistory({ fs, http, dir: '/c', gitdir: '/c/.git', url: null, now: tick });

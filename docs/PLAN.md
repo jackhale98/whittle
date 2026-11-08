@@ -698,6 +698,7 @@ Each milestone ends with a reviewer gate. "Done" means every criterion is demons
 - Background sync with deltas, an offline queue and conflict detection.
 - HistoryStore (git + snapshots), the versions panel, branches, compare (feature, geometric and drawing diffs), the merge UI, and releases.
 - Project folder format per §8A.1, with `.whittle` zip import/export.
+- **Local git repo mode** (ADR-029, desktop Chromium): open a folder that is a git working tree; the project's files on disk are the working copy, and versions, branches and releases are the repo's own commits, branches and tags, interoperable with the user's git tools.
 - **Accept:**
   - A project edited on desktop (stored in Dropbox) shows the change on an iPad within 10 s of focusing the app.
   - Concurrent offline edits to _different_ features merge automatically. Edits to the _same_ parameter produce a conflict that the user resolves in the UI, with no data loss.
@@ -705,6 +706,7 @@ Each milestone ends with a reviewer gate. "Done" means every criterion is demons
   - A GitHub project round-trips commit → push → clone on another device → regenerate, with identical results (volume equal within 1e-9 relative).
   - A fuzz test of 1,000 random concurrent edit pairs never loses an edit.
   - Tokens are not readable in plain text from storage.
+  - Local git repo mode: a version saved in Whittle is a commit that `git log` shows with a clean `git status`; a commit made with the git CLI appears in Whittle after refocusing; switching branches with uncommitted project changes is refused, never overwritten.
 
 ### M3 — Advanced part features
 

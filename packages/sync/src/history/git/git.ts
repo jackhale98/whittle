@@ -230,6 +230,41 @@ class GitHistoryImpl implements GitHistory {
     this.cache = {};
   }
 
+  async workingChanges(): Promise<
+    StorageResult<{ path: string; status: 'added' | 'modified' | 'deleted' }[]>
+  > {
+    if (!(await this.isRepo())) return ok([]);
+    try {
+      const rows = await git.statusMatrix({ ...this.local(), filter: (p) => isVersionedPath(p) });
+      const out: { path: string; status: 'added' | 'modified' | 'deleted' }[] = [];
+      for (const [path, head, work] of rows) {
+        if (head === 0 && work === 2) out.push({ path, status: 'added' });
+        else if (head === 1 && work === 2) out.push({ path, status: 'modified' });
+        else if (head === 1 && work === 0) out.push({ path, status: 'deleted' });
+      }
+      return ok(out);
+    } catch (e) {
+      return fail(
+        'REMOTE',
+        `Couldn't read the working tree: ${(e as Error)?.message ?? String(e)}`,
+      );
+    }
+  }
+
+  async remotes(): Promise<{ name: string; url: string }[]> {
+    if (!(await this.isRepo())) return [];
+    try {
+      const list = await git.listRemotes({
+        fs: this.fs,
+        dir: this.dir,
+        ...(this.o.gitdir === undefined ? {} : { gitdir: this.o.gitdir }),
+      });
+      return list.map((r) => ({ name: r.remote, url: r.url }));
+    } catch {
+      return [];
+    }
+  }
+
   private async isRepo(): Promise<boolean> {
     try {
       await this.fs.promises.stat(this.o.gitdir ?? `${this.dir}/.git`);
@@ -879,7 +914,7 @@ class GitHistoryImpl implements GitHistory {
 /** A git history over an injected isomorphic-git `fs` (see `GitHistoryOptions`). */
 export function createGitHistory(
   options: GitHistoryOptions,
-): GitHistory & { currentBranch(): Promise<string>; refresh(): void } {
+): GitHistory & { currentBranch(): Promise<string> } {
   return new GitHistoryImpl(options);
 }
 
