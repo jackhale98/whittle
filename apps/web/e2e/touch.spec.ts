@@ -28,6 +28,8 @@ async function ready(page: Page): Promise<void> {
   await page.evaluate(() =>
     (window as unknown as { __whittle: WhittleTestHooks }).__whittle.firstBodyRendered(),
   );
+  // First launch shows the (non-modal) welcome card over the view: close it.
+  await page.getByRole('button', { name: 'Close welcome' }).click();
 }
 
 function camera(page: Page): Promise<CameraState> {

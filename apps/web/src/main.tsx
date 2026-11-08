@@ -7,11 +7,13 @@ import { App } from './app/App';
 import { firstBodyRendered } from './app/timing';
 import { Workbench } from './app/workbench';
 import { installTestHooks } from './platform/diagnostics';
+import { watchInstallPrompt } from './platform/install';
 import { initServiceWorker, keepServiceWorkerFresh } from './platform/sw-register';
 
 // Theme before first paint (no flash), then platform: test hooks and the service worker (settles
 // cross-origin isolation, may reload once on the very first visit).
 initTheme();
+watchInstallPrompt();
 const workbench = new Workbench();
 installTestHooks({ firstBodyRendered });
 // The kernel streams and compiles in its worker while the shell paints.

@@ -10,6 +10,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useObservable } from '../app/observable';
 import type { Workbench } from '../app/workbench';
 import { useDoc } from './Inspector';
+import { WelcomeContent } from './Welcome';
 
 function useThumbUrl(bytes: Uint8Array | undefined): string | null {
   const url = useMemo(
@@ -168,12 +169,15 @@ export default function LibraryPanel({ wb }: { wb: Workbench }) {
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
         {entries === null ? (
           <p className="p-6 text-center text-ui text-fg-muted">Loading…</p>
+        ) : entries.length === 0 && query ? (
+          <p className="p-6 text-center text-ui text-fg-muted">Nothing matches “{query}”.</p>
         ) : entries.length === 0 ? (
-          <p className="p-6 text-center text-ui text-fg-muted">
-            {query
-              ? `Nothing matches “${query}”.`
-              : 'Documents you edit are saved here automatically.'}
-          </p>
+          <div className="flex flex-col items-center gap-3 py-10" data-testid="library-empty">
+            <WelcomeContent wb={wb} compact />
+            <p className="text-2xs text-fg-muted">
+              Documents you edit are saved here automatically.
+            </p>
+          </div>
         ) : (
           <ul className="m-0 grid list-none grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-3 p-0">
             {entries.map((e) => (

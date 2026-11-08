@@ -40,6 +40,8 @@ export function App({ wb }: { wb: Workbench }) {
 
   const commands = useMemo<PaletteCommand[]>(
     () => [
+      { id: 'welcome', label: 'Welcome / samples', run: () => wb.patchUi({ welcome: true }) },
+      { id: 'demo', label: 'Open the demo bracket', hint: 'Sample', run: () => void wb.openDemo() },
       { id: 'new-doc', label: 'New document', run: () => void wb.newDocument() },
       { id: 'library', label: 'Open library', run: () => wb.toggleLibrary(true) },
       { id: 'open-file', label: 'Open file…', shortcut: '⌘O', run: () => void wb.openFromDisk() },

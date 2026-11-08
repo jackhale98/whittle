@@ -74,6 +74,8 @@ export interface UiState {
   chooser: Chooser | null;
   sketch: SketchUi | null;
   library: boolean;
+  /** The welcome card (first launch, ⌘K "Welcome / samples"). */
+  welcome: boolean;
   exporting: boolean;
   toast: Toast | null;
   /** The last tool, for Space = repeat last. */
@@ -90,6 +92,7 @@ export const initialUi: UiState = {
   chooser: null,
   sketch: null,
   library: false,
+  welcome: false,
   exporting: false,
   toast: null,
   lastTool: null,

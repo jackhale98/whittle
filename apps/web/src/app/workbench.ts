@@ -228,6 +228,7 @@ export class Workbench {
 
   private async resolveInitialDocument(): Promise<void> {
     const lastId = readLastDoc();
+    if (!lastId) this.patchUi({ welcome: true }); // first launch
     if (lastId) {
       const lib = await this.library();
       if (lib) {
@@ -316,6 +317,7 @@ export class Workbench {
     if (!this.ui.get().ready) return;
     this.loop?.request();
     if (!loaded) this.autosaver.schedule(doc);
+    if (!loaded && this.ui.get().welcome) this.patchUi({ welcome: false });
     const part = this.part;
     const ids = new Set(part?.features.map((f) => f.id));
     const u = this.ui.get();
@@ -689,6 +691,7 @@ export class Workbench {
     )
       return;
     const u = this.ui.get();
+    if (u.welcome) this.patchUi({ welcome: false });
     const need = TOOL_NEEDS[tool];
     const picked = u.selection.filter((s) => need.kinds.includes(s.hit.kind));
     if (picked.length === 0 || picked.length !== u.selection.length) {
@@ -789,6 +792,7 @@ export class Workbench {
     else if (u.selection.length) this.clearSelection();
     else if (u.featureId) this.patchUi({ featureId: null });
     else if (u.library) this.patchUi({ library: false });
+    else if (u.welcome) this.patchUi({ welcome: false });
     else return false;
     this.refreshSketchVisibility();
     this.pushHighlights();
@@ -1049,7 +1053,18 @@ export class Workbench {
   async newDocument(): Promise<void> {
     await this.flushSave();
     this.loadDocument(freshDocument());
-    this.patchUi({ library: false });
+    this.patchUi({ library: false, welcome: false });
+  }
+
+  /** Opens an editable copy of the demo bracket (saved to the library right away). */
+  async openDemo(): Promise<void> {
+    await this.flushSave();
+    const { demoBracket } = await import('../samples/bracket');
+    const doc = demoBracket();
+    this.loadDocument(doc);
+    this.autosaver.schedule(doc);
+    this.patchUi({ library: false, welcome: false });
+    void this.loop?.whenIdle().then(() => this.viewport?.fitAll(true));
   }
 
   async openFromLibrary(id: string): Promise<void> {

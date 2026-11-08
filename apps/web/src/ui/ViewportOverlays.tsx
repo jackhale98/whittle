@@ -42,6 +42,7 @@ import { entityAnchor } from '../sketch/overlay';
 import { useDoc } from './Inspector';
 
 const LibraryPanel = lazy(() => import('./LibraryPanel'));
+const Welcome = lazy(() => import('./Welcome'));
 
 function useCameraTick(session: SketchSession | null): number {
   const [, force] = useState(0);
@@ -455,6 +456,10 @@ export function ViewportOverlays({ wb, touch }: { wb: Workbench; touch: boolean 
       {ui.library ? (
         <Suspense fallback={null}>
           <LibraryPanel wb={wb} />
+        </Suspense>
+      ) : ui.welcome && !sk ? (
+        <Suspense fallback={null}>
+          <Welcome wb={wb} />
         </Suspense>
       ) : null}
 
