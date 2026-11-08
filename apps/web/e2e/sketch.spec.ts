@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import type { DimensionConstraint, SketchFeature } from '@whittle/contracts';
-import { app, boot, cameraStill, clickAt, toPage } from './helpers';
+import { app, boot, clickAt, sketchOn, toPage } from './helpers';
 
 /**
  * Sketch editing details (PLAN §2.1, §9.2): a drag is one undo step, over-constraining explains
@@ -32,8 +32,7 @@ test('drag is one undo step; conflicts offer a fix; a failing extrude leaves a g
   await boot(page);
   const a = app(page);
   await page.keyboard.press('s');
-  await page.getByTestId('plane-chooser').getByRole('button', { name: /Top/ }).click();
-  await cameraStill(page);
+  await sketchOn(page, 'Top');
   for (const [x, y] of [
     [0, 0],
     [40, 0],
@@ -126,8 +125,7 @@ test('dimension tool: horizontal/vertical by placement, Ø ↔ R, driving ↔ re
   await boot(page);
   const a = app(page);
   await page.keyboard.press('s');
-  await page.getByTestId('plane-chooser').getByRole('button', { name: /Top/ }).click();
-  await cameraStill(page);
+  await sketchOn(page, 'Top');
   // Slanted lines (0,0)→(30,20) and (40,0)→(60,15), then a circle at (−20, 10) R 6.
   await clickAt(page, 0, 0);
   await clickAt(page, 30, 20);

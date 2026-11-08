@@ -223,6 +223,23 @@ test.describe('camera', () => {
     }
   });
 
+  test('isCameraMoving is true during an animated view change and false once it settles', async ({
+    page,
+  }) => {
+    await open(page, '?backend=webgl2');
+    await page.waitForFunction(() => window.__viewport?.viewport.isCameraMoving() === false);
+    const moving = await page.evaluate(() => {
+      window.__viewport?.viewport.setViewDirection([1, 0, 0], true);
+      return window.__viewport?.viewport.isCameraMoving();
+    });
+    expect(moving).toBe(true);
+    await page.waitForFunction(() => window.__viewport?.viewport.isCameraMoving() === false, null, {
+      timeout: 10_000,
+    });
+    const c = (await page.evaluate(() => window.__viewport?.viewport.getCameraState()))!;
+    expect((c.position[0] - c.target[0]) / c.distance).toBeGreaterThan(0.99);
+  });
+
   test('idle viewport does not burn frames (render on demand)', async ({ page }) => {
     await open(page, '?backend=webgl2&reducedMotion=1');
     await page.waitForTimeout(400); // let any pending frames settle

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { app, boot, cameraStill, clickAt, palette } from './helpers';
+import { app, boot, clickAt, palette, sketchOn } from './helpers';
 
 /**
  * M1 modeling flow against the production build with the real regen engine (kernel worker,
@@ -40,9 +40,7 @@ test('sketch a rectangle, dimension it, extrude by width/2, edit history, reload
   // 1. Sketch on the Top (XY) plane: S → plane chooser.
   await page.keyboard.press('s');
   await expect(page.getByTestId('prompt-chip')).toContainText('Select a plane');
-  await page.getByTestId('plane-chooser').getByRole('button', { name: /Top/ }).click();
-  await expect(page.getByRole('toolbar', { name: 'Sketch tools' })).toBeVisible();
-  await cameraStill(page);
+  await sketchOn(page, 'Top');
 
   // 2. Line tool (active by default for a new sketch): a closed rectangle, click-click.
   for (const [x, y] of [

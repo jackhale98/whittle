@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { app, boot, cameraStill, clickAt, toPage } from './helpers';
+import { app, boot, cameraStill, clickAt, sketchOn, toPage } from './helpers';
 
 /**
  * Desktop tour at 1440 × 900: a plate with a hole (two regions), select-first fillet, the library
@@ -15,8 +15,7 @@ test('plate with a hole, select-first fillet, library grid; screenshots', async 
 
   // A rectangle on Top.
   await page.keyboard.press('s');
-  await page.getByTestId('plane-chooser').getByRole('button', { name: /Top/ }).click();
-  await cameraStill(page);
+  await sketchOn(page, 'Top');
   for (const [x, y] of [
     [-30, -20],
     [30, -20],

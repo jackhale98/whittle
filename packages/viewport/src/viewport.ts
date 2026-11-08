@@ -138,6 +138,8 @@ export interface ViewportEngine extends InteractiveViewport {
   setReducedMotion(reduced: boolean): void;
   /** Number of frames rendered so far (lets tests assert render-on-demand). */
   getRenderCount(): number;
+  /** True while the camera is transitioning, damping or under a pointer (tests wait on it). */
+  isCameraMoving(): boolean;
   /** Animate to look along `dir` (unit vector from the target toward the camera). */
   setViewDirection(dir: Vec3, animate?: boolean): void;
   /**
@@ -509,6 +511,10 @@ class ViewportImpl implements ViewportEngine {
 
   getRenderCount(): number {
     return this.renderCount;
+  }
+
+  isCameraMoving(): boolean {
+    return this.controls.active || this.interacting;
   }
 
   getPickStats(): PickStats {

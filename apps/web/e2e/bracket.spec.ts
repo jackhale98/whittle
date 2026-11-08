@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { expect, type Page, test } from '@playwright/test';
-import { app, boot, cameraStill, toPage } from './helpers';
+import { app, boot, cameraStill, sketchOn, toPage } from './helpers';
 import { schemaErrors } from './schema';
 
 /**
@@ -179,8 +179,7 @@ test('M1 acceptance: bracket from scratch, three upstream edits, STEP round trip
 
   // 2. Plate: rectangle on Top, corner fixed at the origin, width × depth.
   await page.keyboard.press('s');
-  await page.getByTestId('plane-chooser').getByRole('button', { name: /Top/ }).click();
-  await cameraStill(page);
+  await sketchOn(page, 'Top');
   await page.getByRole('button', { name: 'Rectangle' }).click();
   await clickWorld(page, [0, 0, 0]);
   // Drawn oversize on purpose: the solver then moves the geometry onto the dimensions exactly. (A

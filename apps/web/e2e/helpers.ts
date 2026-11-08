@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
 import type { WhittleDoc, WhittleTestHooks } from '@whittle/contracts';
 
 /** App-level E2E hooks (`window.__whittleApp`, see src/app/workbench.ts `testHooks`). */
@@ -125,19 +125,35 @@ export async function toPage(
 
 /** Waits until the camera stops moving (animated transitions). */
 export async function cameraStill(page: Page): Promise<void> {
+  // At rest = camera-controls reports no transition/damping/pointer AND the pose is unchanged
+  // across two samples (a pose comparison alone passes mid-animation when no frame ran between
+  // samples on a busy runner).
   let last = '';
-  for (let i = 0; i < 60; i++) {
-    const s = await page.evaluate(() =>
-      JSON.stringify(
-        (
-          window as unknown as { __whittleViewport: { getCameraState(): unknown } }
-        ).__whittleViewport.getCameraState(),
-      ),
-    );
-    if (s === last) return;
-    last = s;
+  for (let i = 0; i < 100; i++) {
+    const s = await page.evaluate(() => {
+      const v = (
+        window as unknown as {
+          __whittleViewport: { getCameraState(): unknown; isCameraMoving(): boolean };
+        }
+      ).__whittleViewport;
+      return v.isCameraMoving() ? null : JSON.stringify(v.getCameraState());
+    });
+    if (s !== null && s === last) return;
+    last = s ?? '';
     await page.waitForTimeout(100);
   }
+  throw new Error('camera never came to rest');
+}
+
+/** Starts a sketch on a standard plane and waits until the view has turned to it. */
+export async function sketchOn(page: Page, plane: 'Top' | 'Front' | 'Right'): Promise<void> {
+  await page
+    .getByTestId('plane-chooser')
+    .getByRole('button', { name: new RegExp(plane) })
+    .click();
+  // The toolbar appears in the same step that starts the camera's turn to the plane.
+  await expect(page.getByRole('toolbar', { name: 'Sketch tools' })).toBeVisible();
+  await cameraStill(page);
 }
 
 /** Clicks a point on the sketch plane z = 0. */
