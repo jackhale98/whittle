@@ -714,6 +714,8 @@ Each milestone ends with a reviewer gate. "Done" means every criterion is demons
   - Trim/extend, sketch fillet/chamfer, sketch mirror.
 - Shell, draft, sweep, loft, mirror, patterns, hole wizard with standards tables, cosmetic threads, reference geometry (planes, axes, points), measure, mass properties, section view, sketch on face, versions/snapshots.
 - **Accept:** reproduce 10 reference parts (in `test-fixtures/reference-parts/`, with specs) within dimensional tolerance, entirely from the UI, in E2E scripts.
+  - The reference parts start the **certification-style suite** (§12A). Each has an original spec drawing, a material, and an expected mass checked in an independent CAD tool (FreeCAD).
+  - The E2E builds each part from the spec and checks the mass within 0.1 %. CSWP-style stages then change named dimensions and re-check the mass.
 
 ### M4 — Drawings
 
@@ -723,6 +725,7 @@ Each milestone ends with a reviewer gate. "Done" means every criterion is demons
   - A drawing of the bracket with three views, a section and full dimensions exports to a vector PDF that prints at 1:1 scale exactly (measured).
   - The DXF opens correctly in LibreCAD and QCAD.
   - Editing the model updates the drawing, and dangling dimensions are flagged.
+  - Certification-style suite (§12A): for every reference part, the E2E recreates its spec drawing with Whittle's drawing tools. The views requested by the spec must be present and every specified dimension must appear with the same value.
 
 ### M5 — STEP AP242 with model dimensions (MBD/PMI)
 
@@ -743,11 +746,25 @@ Each milestone ends with a reviewer gate. "Done" means every criterion is demons
 ### M6 — Assemblies
 
 - Multi-part documents, instances, mates and DOF, exploded views, BOM, assembly drawings, assembly STEP (with PMI per part).
-- **Accept:** a 25-part assembly reference model can be built, moved through its DOF, exploded, drawn and exported.
+- **Accept:** a 25-part assembly reference model can be built, moved through its DOF, exploded, drawn and exported. The certification-style suite gains assembly stages: build from parts plus mates, then check the assembly mass and centre of mass.
 
 ### M7 — v1.0 hardening & polish
 
 - Accessibility audit, performance pass, crash/fuzz tests (random feature edits, malformed STEP), docs site, sample gallery, and release automation.
+- **Final test: the full certification-style run (§12A).** Every part, modification stage, drawing and assembly in the suite passes in CI. A human run of the real CSWA/CSWP practice exams in Whittle, timed against their limits, is recorded in `docs/CERTIFICATION_RUN.md`: what passed, what was slow, what couldn't be built.
+
+### 12A. Certification-style test suite (CSWA/CSWP pattern)
+
+A capability check modelled on the SolidWorks CSWA/CSWP exams, which test exactly what users need: build a part from a drawing, set the material, confirm the mass, apply parametric changes, recreate the drawing, and assemble. It grows with the milestones (M3 parts and mass, M4 drawings, M6 assemblies) and is the final test at M7.
+
+- **Original content only.** The real exam and practice drawings are Dassault Systèmes' copyrighted material and are never committed or used in CI. The suite's parts and drawings are written for Whittle in the same style and difficulty. They live in `packages/test-fixtures/certification/`, licensed with the repo.
+- **Each case has:** a spec drawing (SVG/PDF, plus the dimensions in JSON); the material and density; the expected mass (and centre of mass), computed independently in FreeCAD with the value and the script recorded; and CSWP-style modification stages (named dimension changes plus the expected new mass).
+- **Pass criteria:**
+  - mass within 0.1 % (the exams' own tolerance) at every stage;
+  - the part built entirely through the UI by a scripted E2E;
+  - from M4, the recreated drawing contains the spec's views and dimensions;
+  - from M6, the assembly cases match mass and centre of mass.
+- **Human run.** The real practice exams are run by a person in Whittle, timed, for M7, and the findings are fed back as issues. Nothing from those exams is stored in the repo.
 
 ---
 
