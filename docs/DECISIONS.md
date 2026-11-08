@@ -780,3 +780,71 @@ folder (`ProjectFiles`, docs/FILE_FORMAT.md) already exists. The contracts are i
   merge UI.
 - **platform-engineer:** the Worker port, `connect-src` and COEP for provider hosts, and the
   configuration plumbing.
+
+## ADR-pending — Sync engine details (M2.5 sync A)
+
+**Context.** ADR-020 §4 fixes the shape of sync (Mycelium's `syncFolder`, `DocMerger`, bases by
+hash). Porting it to a whole-document merge and to bytes raised several choices the ADR leaves
+open. Mycelium (GPL-3.0-or-later) is ported per ADR-003; each ported file carries a provenance line.
+
+**Decisions.**
+
+1. **Edits are found by hashing, not only by `pending`.** Each round hashes the working copy and
+   compares it with the bases' SHA-256, so an edit is never lost even if the queue was (a crash
+   before `notifyLocalChange` persisted). `SyncState.pending` is still persisted (the offline
+   queue and the status count) and is recomputed at the end of each round.
+2. **Document files are the manifest, `params.json` and every file a base, local or remote
+   manifest references.** The structural merge runs only when one of them changed on both sides;
+   a clean merge rewrites them with `toFiles`, so slug renames and removals follow the merged
+   document. Unreferenced `*.json` files are plain files (whole-file rules).
+3. **Unresolved conflicts hold the cursor.** The cursor isn't advanced while conflicts are open,
+   so every round re-reads the conflicting files and offers them again (and offers the newest
+   remote edit). All document files are held back from upload while a document merge is
+   conflicted, not just the conflicting ones, so the remote project stays consistent.
+4. **A push `CONFLICT` marks the base stale** (`STALE_REV`, persisted): the next round re-reads
+   that file directly whatever the listing says, merges, and only then pushes. `syncNow` runs up
+   to four rounds, so a raced push usually converges within one call.
+5. **Local writes are compare-and-swap** (`SyncLocalStore.writeFiles(changes, expected)`): a save
+   during a round makes the round abandon (nothing committed) and run again. A hook
+   (`onBeforeOverwrite`) receives the working copy before sync replaces or deletes local files, for
+   an automatic local snapshot.
+6. **Push order:** referenced files, then `params.json`, then the manifest, deletions last; a
+   conflict on one document file stops the rest of the document's push that round. A device that
+   lists midway (manifest naming a part not yet uploaded) gets `REMOTE` "isn't a complete project
+   yet" and retries without committing.
+7. **Rules for files:** every file syncs except `.whittle/`, `.git/` and OS clutter (`.DS_Store`,
+   `Thumbs.db`, `desktop.ini`, Office `~$` and LibreOffice `.~lock.` files). An edit beats a
+   concurrent deletion (nothing is lost; Mycelium's rule). `remove(path, null)` succeeds only if
+   the file is absent, matching `ifRev: null` = "only if it doesn't exist".
+8. **Whole-file conflicts** use `MergeConflict` with id `file:<path>`, kind `bothModified`, `path`
+   = the project-relative file path (not a JSON pointer), `subject: { kind: 'doc', label: path }`
+   and the bytes as `base/ours/theirs`; `fileConflictPath()` tells them apart. See the contract
+   proposal in the sync A report.
+9. **Focus follow-up.** After a focus sync the engine checks once more 8 s later, so a change
+   still inside the other device's 3 s debounce appears within 10 s of focusing (M2.5
+   acceptance).
+10. **OAuth.** Full-page redirects (COOP severs `window.opener`, ADR-010). Tokens go straight from
+    the token response into the vault; `sessionStorage` holds only the PKCE verifier and state
+    (15-minute expiry) and a non-secret result. The callback query is stripped only after the
+    tokens are stored. Scopes: Dropbox `account_info.read files.metadata.read files.content.read
+    files.content.write`; Microsoft `Files.ReadWrite` (own drive) and `Files.ReadWrite.All
+    Sites.Read.All` only when SharePoint is asked for; Google `drive.file`.
+11. **Vault.** One non-extractable AES-GCM-256 key per profile in IndexedDB, created once inside a
+    transaction (two tabs agree on one key); a fresh 96-bit IV per write; the connection id is the
+    AAD. A record that fails to decrypt reads as signed out.
+12. **Folder provider revisions are `lastModified:size`,** checked just before writing (the File
+    System Access API has no compare-and-swap); the race left is a desktop client replacing the
+    file in that instant.
+
+## ADR-pending — Google Drive (M2.5 sync A)
+
+**Context.** Google's web-application OAuth clients need a client secret to trade a code, and
+Google Identity Services would break self-hosting and COEP (lead, 2026-11-08).
+
+**Decision.** Google sign-in uses the same redirect + PKCE flow, but the code and refresh token
+are traded through the Worker (`/oauth/google/token`, `/oauth/google/refresh`, the same shape as
+the git hosts' routes) via an injected `TokenExchange`. The Drive v3 provider is a typed stub
+(`GDRIVE_AVAILABLE = false`) for now. Before building it: Drive v3 has no `If-Match` on media
+updates, so optimistic concurrency would be check-then-write on `version`/`headRevisionId` (a race
+window the other providers don't have), and `drive.file` means the folder picker must be Google's
+Picker, not `browse()`.
