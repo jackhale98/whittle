@@ -34,6 +34,22 @@ describe('picking', () => {
     expect(resolvePick([face, vertex], { kinds: ['edge'] }).best).toBeNull();
   });
 
+  it('touch: a tap on a face selects the face unless it lands right on an edge or vertex', () => {
+    const face = hit({ kind: 'face', distancePx: 0 });
+    const nearEdge = hit({ kind: 'edge', index: 3, distancePx: 6 });
+    const farEdge = hit({ kind: 'edge', index: 4, distancePx: 15 });
+    const farVertex = hit({ kind: 'vertex', index: 1, distancePx: 18 });
+    const touch = { pointerType: 'touch' };
+    // A small face ringed by edges within the 22 px finger tolerance still wins…
+    expect(resolvePick([face, farEdge, farVertex], touch).best).toBe(face);
+    // …but a tap right on an edge picks the edge.
+    expect(resolvePick([face, nearEdge, farEdge], touch).best).toBe(nearEdge);
+    // Off the part (no face under the finger) the full tolerance still finds thin things.
+    expect(resolvePick([farEdge, farVertex], touch).best).toBe(farVertex);
+    // Edge-only tools (fillet) keep the full tolerance: faces are filtered out first.
+    expect(resolvePick([face, farEdge], { ...touch, kinds: ['edge'] }).best).toBe(farEdge);
+  });
+
   it('selection → EntityRef: sketch picks locally, body picks via refFor', async () => {
     const queries: EntityQuery[] = [];
     const refFor = async (_p: string, q: EntityQuery) => {

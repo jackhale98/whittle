@@ -808,7 +808,9 @@ export class Workbench {
       return;
     }
     if (e.buttons !== 0) return; // orbiting
-    const { best } = resolvePick(this.pick(e, this.pickKinds()));
+    const { best } = resolvePick(this.pick(e, this.pickKinds()), {
+      pointerType: 'pointerType' in e ? e.pointerType : 'mouse',
+    });
     this.setHover(best);
   }
 
@@ -848,7 +850,9 @@ export class Workbench {
 
   private onClick(e: PointerEvent): void {
     const additive = e.shiftKey || e.metaKey || e.ctrlKey;
-    const { best, ties } = resolvePick(this.pick(e, this.pickKinds()));
+    const { best, ties } = resolvePick(this.pick(e, this.pickKinds()), {
+      pointerType: 'pointerType' in e ? e.pointerType : 'mouse',
+    });
     if (ties.length > 1) {
       this.patchUi({ chooser: { x: e.clientX, y: e.clientY, hits: ties, additive } });
       return;

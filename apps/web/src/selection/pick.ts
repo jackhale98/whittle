@@ -37,6 +37,18 @@ export function toHighlight(h: PickHit | HighlightItem): HighlightItem {
     : { bodyId: h.bodyId, kind: h.kind, index: h.index, entity: h.entity };
 }
 
+/**
+ * How close (CSS px) an edge / vertex must be to beat the face directly under the pointer. The
+ * full pick tolerance (touch 22 px) still applies off the part, but on a face a finger-sized
+ * radius would make every small face lose to its own border: on touch a tap selects the face
+ * unless it lands right on an edge or vertex.
+ */
+export function thinSnapPx(pointerType: string): { edge: number; vertex: number } {
+  if (pointerType === 'touch') return { edge: 8, vertex: 11 };
+  if (pointerType === 'pen') return { edge: 6, vertex: 8 };
+  return { edge: 6, vertex: 6 };
+}
+
 export interface ResolvedPick {
   best: PickHit | null;
   /** Distinct candidates too close to call (≥ 2 means: show the chooser). */
@@ -49,10 +61,22 @@ export interface ResolvedPick {
  */
 export function resolvePick(
   hits: readonly PickHit[],
-  options: { kinds?: readonly PickKind[]; tiePx?: number } = {},
+  options: { kinds?: readonly PickKind[]; tiePx?: number; pointerType?: string } = {},
 ): ResolvedPick {
   const tie = options.tiePx ?? 2;
-  const list = hits.filter((h) => !options.kinds || options.kinds.includes(h.kind));
+  let list = hits.filter((h) => !options.kinds || options.kinds.includes(h.kind));
+  // A surface right under the pointer keeps thin things that are merely "within tolerance" out.
+  const onSurface = list.some(
+    (h) => (h.kind === 'face' || h.kind === 'region') && h.distancePx < 1,
+  );
+  if (onSurface) {
+    const snap = thinSnapPx(options.pointerType ?? 'mouse');
+    list = list.filter(
+      (h) =>
+        (h.kind !== 'edge' || h.distancePx <= snap.edge) &&
+        (h.kind !== 'vertex' || h.distancePx <= snap.vertex),
+    );
+  }
   const seen = new Set<string>();
   const unique = list.filter((h) => {
     const k = hitKey(h);
