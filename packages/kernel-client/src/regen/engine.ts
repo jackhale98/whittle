@@ -86,6 +86,7 @@ import {
   boxesOverlap,
   emptyBox,
   extendBox,
+  groupByNormal,
   ORIGIN_AXES,
   ORIGIN_PLANES,
   planeFrame,
@@ -1864,7 +1865,7 @@ export class RegenEngine {
               owned: [],
             };
           }
-          const r = await this.exec(f, { target: body.shape, values, refs });
+          const r = await this.pushPullSteps(f, body, values, refs, picked);
           if (!r.ok) return { result: { ok: false, error: r.error }, owned: [] };
           return {
             result: {
@@ -1886,6 +1887,94 @@ export class RegenEngine {
         },
       },
     };
+  }
+
+  /**
+   * Runs a push/pull as one kernel step per normal group (ADR-013 addendum). Faces facing the same
+   * way move together in one prism + boolean, as before. Faces facing different ways move group
+   * by group, groups sorted by normal; after each step the remaining groups' faces are found on
+   * the new body by their persistent names (moved and untouched faces keep them, naming.ts M2).
+   * Moving the top and then the side means the side is already taller when it moves, so its prism
+   * fills the corner: the result is the uniform offset at convex corners. A face that no longer
+   * exists by name after an earlier step fails the feature; it is never guessed.
+   */
+  private async pushPullSteps(
+    f: PushPullFeature,
+    body: BodyState,
+    values: Record<string, number>,
+    refs: Record<string, ResolvedRef>,
+    picked: readonly string[],
+  ): Promise<Result<FeatureResult>> {
+    const fp = await this.fingerprints(body.shape);
+    const members = Object.keys(refs)
+      .map((path) => Number(path.slice('/faces/'.length)))
+      .sort((a, b) => a - b)
+      .map((i) => {
+        const ref = refs[`/faces/${i}`] as ResolvedRef;
+        const name = body.naming.find((n) => n.kind === 'face' && n.index === ref.index)?.name;
+        return { i, ref, name, normal: fp?.faces[ref.index]?.normal };
+      });
+    const groups = fp ? groupByNormal(members) : null;
+    // One normal (or a curved face, which the kernel reports): a single step, as in M2.
+    if (!groups || groups.length < 2) return this.exec(f, { target: body.shape, values, refs });
+
+    let shape = body.shape;
+    let naming = body.naming;
+    const warnings: KernelError[] = [];
+    const seen = new Set<string>();
+    const release = async (h: ShapeHandle): Promise<void> => {
+      if (h !== body.shape) await this.kernel.release(h);
+    };
+    for (const [g, group] of groups.entries()) {
+      const stepRefs: Record<string, ResolvedRef> = {};
+      const faces: EntityRef[] = [];
+      for (const m of group.items) {
+        const original = f.faces[m.i] as EntityRef;
+        let index = m.ref.index;
+        if (g > 0) {
+          const hit =
+            m.name === undefined
+              ? undefined
+              : naming.find((n) => n.kind === 'face' && n.name === m.name);
+          if (!hit) {
+            await release(shape);
+            return {
+              ok: false,
+              error: kerr(
+                'UNRESOLVED_REFERENCE',
+                `Selected face ${m.i + 1} is gone once the faces facing another way have moved`,
+                {
+                  hint: 'Push/pull these faces in separate steps, or pick fewer faces.',
+                  detail: `push/pull step ${g + 1} of ${groups.length}: no face named ${
+                    m.name ?? '(unnamed)'
+                  }`,
+                  entityRefs: [m.name ?? original.name],
+                },
+              ),
+            };
+          }
+          index = hit.index;
+        }
+        stepRefs[`/faces/${faces.length}`] = { shape, kind: 'face', index };
+        faces.push(original);
+      }
+      const r = await this.exec({ ...f, faces }, { target: shape, values, refs: stepRefs });
+      await release(shape);
+      if (!r.ok) {
+        // The error speaks for the whole selection, not just this step's share of it.
+        const names = [...new Set([...(r.error.entityRefs ?? []), ...picked])];
+        return { ok: false, error: { ...r.error, entityRefs: names } };
+      }
+      for (const w of r.value.warnings) {
+        const k = `${w.code}|${w.message}`;
+        if (seen.has(k)) continue;
+        seen.add(k);
+        warnings.push(w);
+      }
+      shape = r.value.shape;
+      naming = r.value.naming;
+    }
+    return { ok: true, value: { shape, naming, warnings } };
   }
 
   // -------------------------------------------------------------------------------------------

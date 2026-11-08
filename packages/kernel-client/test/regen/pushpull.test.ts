@@ -185,6 +185,100 @@ describe.skipIf(!built)(`regen golden: push/pull${skipNote}`, () => {
     expect(flush.features[5]?.unresolved?.[0]?.ref.name).toBe(floor);
   });
 
+  describe('faces with different normals (ADR-013 addendum: one step per normal group)', () => {
+    const back = side(E1, S1, 'L3');
+    const bottom = `F${E1}:start`;
+    const box = [top, bottom, ...['L1', 'L2', 'L3', 'L4'].map((l) => side(E1, S1, l))].sort();
+
+    it('top + side pulled +5 is the uniform offset: the corner is filled, names kept', async () => {
+      const doc = makeDoc({ w: '80 mm', d: '50 mm' }, [
+        ...plate(),
+        pushPull(PP, [face(top), face(right)], '5 mm'),
+      ]);
+      const r = await regen(api, doc);
+      expect(states(r), describeFailures(r)).toEqual(['ok', 'ok', 'ok']);
+      const b = only(r.bodies);
+      // 85 × 50 × 15; per-face prisms in one boolean left out the 5 × 5 × 50 corner (62500).
+      relClose(totalVolume(r.bodies), 85 * 50 * 15, 1e-9);
+      expect([...b.mesh.faceNames].sort()).toEqual(box);
+      const c = await faceCentroid(api, b, right);
+      for (const [i, v] of [85, 25, 7.5].entries()) expect(c?.[i]).toBeCloseTo(v, 9);
+
+      // The selection order does not change the result or its naming.
+      const swapped = await regen(
+        api,
+        makeDoc({ w: '80 mm', d: '50 mm' }, [
+          ...plate(),
+          pushPull(PP, [face(right), face(top)], '5 mm'),
+        ]),
+      );
+      relClose(totalVolume(swapped.bodies), 85 * 50 * 15, 1e-9);
+      expect(only(swapped.bodies).mesh.faceNames).toEqual(b.mesh.faceNames);
+      expect(only(swapped.bodies).mesh.edgeNames).toEqual(b.mesh.edgeNames);
+
+      // A width edit upstream re-runs both steps with the faces resolved by name.
+      const wide = await regen(api, withParams(doc, { w: '100 mm' }));
+      expect(states(wide), describeFailures(wide)).toEqual(['ok', 'ok', 'ok']);
+      relClose(totalVolume(wide.bodies), 105 * 50 * 15, 1e-9);
+    });
+
+    it('top + side pushed −3 stays the uniform inset (77 × 50 × 7)', async () => {
+      const r = await regen(
+        api,
+        makeDoc({ w: '80 mm', d: '50 mm' }, [
+          ...plate(),
+          pushPull(PP, [face(top), face(right)], '-3 mm'),
+        ]),
+      );
+      expect(states(r), describeFailures(r)).toEqual(['ok', 'ok', 'ok']);
+      relClose(totalVolume(r.bodies), 77 * 50 * 7, 1e-9);
+      expect([...only(r.bodies).mesh.faceNames].sort()).toEqual(box);
+    });
+
+    it('two opposite parallel faces pulled +5 widen the plate as before', async () => {
+      const r = await regen(
+        api,
+        makeDoc({ w: '80 mm', d: '50 mm' }, [
+          ...plate(),
+          pushPull(PP, [face(front), face(back)], '5 mm'),
+        ]),
+      );
+      expect(states(r), describeFailures(r)).toEqual(['ok', 'ok', 'ok']);
+      relClose(totalVolume(r.bodies), 80 * 60 * 10, 1e-9);
+      const b = only(r.bodies);
+      expect([...b.mesh.faceNames].sort()).toEqual(box);
+      expect((await faceCentroid(api, b, front))?.[1]).toBeCloseTo(-5, 9);
+      expect((await faceCentroid(api, b, back))?.[1]).toBeCloseTo(55, 9);
+    });
+
+    it('a face swallowed by an earlier step fails the feature with that face named', async () => {
+      // A 4 mm pocket: its floor (+z) moves first and fills it, so the pocket wall facing +x
+      // (the second group) no longer exists.
+      const s = new Sk();
+      const q = s.rect('q', 'M', 20, 10, 60, 40);
+      s.geo({ kind: 'fix', entity: q.a });
+      s.geo({ kind: 'fix', entity: q.c });
+      const floor = `F${E2}:end`;
+      const wall = side(E2, S2, 'M4');
+      const r = await regen(
+        api,
+        makeDoc({ w: '80 mm', d: '50 mm' }, [
+          ...plate(),
+          s.feature(S2, face(top), 'Pocket'),
+          extrude(E2, [region(S2, 'M1,M2,M3,M4')], '4', 'cut', 'reverse'),
+          pushPull(PP, [face(wall), face(floor)], '4 mm'),
+        ]),
+      );
+      expect(states(r)).toEqual(['ok', 'ok', 'ok', 'ok', 'error']);
+      const e = r.features[4]?.error;
+      expect(e?.code).toBe('UNRESOLVED_REFERENCE');
+      expect(e?.message).toMatch(/face 1 is gone/);
+      expect(e?.entityRefs).toEqual([wall]);
+      // The body keeps the pocketed geometry.
+      relClose(totalVolume(r.bodies), 40000 - 40 * 30 * 4, 1e-9);
+    });
+  });
+
   it('failures surface as feature errors with the face named; the body keeps its geometry', async () => {
     const cyl: Feature = {
       id: CYL,

@@ -2159,6 +2159,11 @@ class ViewportImpl implements ViewportEngine {
         buffers: body.buffers,
         spec,
       });
+    } else if (prev?.kind === 'mesh') {
+      // Updated in place: the material (and its compiled shader) is kept.
+      prev.view.setMesh(spec.mesh);
+      prev.view.setColor(this.ui.accent);
+      prev.view.setOpacity(spec.opacity ?? 0.4);
     } else {
       if (prev) this.removePreview(id, prev);
       const view = new MeshPreview(spec.mesh, this.ui.accent, spec.opacity ?? 0.4);

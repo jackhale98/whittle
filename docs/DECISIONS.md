@@ -412,6 +412,20 @@ UnifySameDomain pass, restricted to the operation's seams. Curved faces stay `UN
 in M2. Offsetting curved faces (`BRepOffset_MakeOffset` with per-face offsets) is the natural M3
 extension, and it would also extend non-perpendicular neighbours instead of adding walls.
 
+**Addendum (M2 gate): one step per normal group.** Sweeping every face in one boolean leaves a
+notch where two moved faces meet: pulling a plate's top and right side +5 gave the right bbox but
+missed the 5 × 5 × length corner block (62500 instead of 63750 for 80 × 50 × 10). The regen engine
+(`pushPullSteps`, kernel-client) now groups the selected faces by outward normal (equal within
+1e-6 per component after normalising), sorts the groups by normal (x, then y, then z), and runs
+one kernel push/pull per group, in that order. Before each later step it finds that group's faces
+on the new body by persistent name; moved and untouched faces keep their names, so this is an
+exact lookup, never a guess. A face that no longer exists by name (swallowed by an earlier step)
+fails the feature (`UNRESOLVED_REFERENCE`, face named). At convex corners the result is the uniform
+offset: the side moves after the top, when it is already taller. Inward pushes are unchanged
+(top + side −3 is 77 × 50 × 7 either way). A single normal, or any curved face, still runs as one
+step. The C++ façade did not change. The viewport preview draws one prism per group plus a fill
+block for each convex edge shared by two groups (push-pull.ts), so it matches the result.
+
 ## ADR-014 — M2 viewport: camera veto, section caps, GPU prism (2026-11-08)
 
 - **Camera veto.** Pen presses (with `penDraws`) and presses on handles are kept from the camera by a
