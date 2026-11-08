@@ -24,11 +24,15 @@ import {
   circle3PointTool,
   circleCenterTool,
   infer,
+  isSketchReference,
   newId,
   polygonTool,
   rectangle3PointTool,
   rectangleCenterTool,
   rectangleCornerTool,
+  SKETCH_ORIGIN,
+  SKETCH_X_AXIS,
+  SKETCH_Y_AXIS,
   type SketchFragment,
   slotTool,
 } from '@whittle/sketch';
@@ -45,7 +49,10 @@ export interface Anchor {
   at: Vec2;
   /** Existing sketch point this click merged into (coincident snap). */
   pointId?: Id;
-  /** Point-type inference at this click (pointOn / midpoint), applied on commit. */
+  /**
+   * Point-type inference at this click (pointOn / midpoint, or coincident with the origin, which
+   * is never merged into: it is not an entity), applied on commit.
+   */
   snap?: GeometricConstraintDraft;
   /** Directional inference for the segment ending here (horizontal, parallel, …). */
   dir?: GeometricConstraintDraft;
@@ -147,7 +154,7 @@ export function move(
   if (point) {
     at = point.snapped;
     const c = point.constraint;
-    hover = c.kind === 'coincident' ? { at, pointId: c.b } : { at, snap: c };
+    hover = anchorFor(at, c);
     glyphs.push(c.kind);
     // A line ending on a point/curve can still be horizontal/vertical (closing a rectangle).
     const dir = candidates.find(
@@ -189,8 +196,31 @@ export function pointAnchor(sketch: SketchData, at: Vec2, tolerance: number): An
     POINT_KINDS.has(c.constraint.kind),
   );
   if (!point) return { at };
-  const c = point.constraint;
-  return c.kind === 'coincident' ? { at, pointId: c.b } : { at, snap: c };
+  return anchorFor(at, point.constraint);
+}
+
+/** A coincident snap merges into the existing point; the origin gets a new point + constraint. */
+function anchorFor(at: Vec2, c: GeometricConstraintDraft): Anchor {
+  if (c.kind === 'coincident' && !isSketchReference(c.b)) return { at, pointId: c.b };
+  return { at, snap: c };
+}
+
+/** The axes an anchor lies on by construction (the origin is on both). */
+function anchorAxes(a: Anchor, sketch: SketchData | null): Set<Id> {
+  const out = new Set<Id>();
+  const add = (c: GeometricConstraintDraft | SketchConstraint, point: Id | undefined) => {
+    if (c.kind === 'coincident' && (c.a === SKETCH_ORIGIN || c.b === SKETCH_ORIGIN)) {
+      if (point === undefined || c.a === point || c.b === point) {
+        out.add(SKETCH_X_AXIS);
+        out.add(SKETCH_Y_AXIS);
+      }
+    } else if (c.kind === 'pointOn' && (c.on === SKETCH_X_AXIS || c.on === SKETCH_Y_AXIS)) {
+      if (point === undefined || c.point === point) out.add(c.on);
+    }
+  };
+  if (a.snap) add(a.snap, undefined);
+  if (a.pointId && sketch) for (const c of sketch.constraints) add(c, a.pointId);
+  return out;
 }
 
 export interface SketchEdit {
@@ -263,7 +293,12 @@ function shapeFragment(
 }
 
 /** A line segment from `from` to `to`, sharing/merging points; with inferred constraints. */
-function lineSegment(state: DrawState, from: Anchor, to: Anchor): SketchEdit {
+function lineSegment(
+  state: DrawState,
+  from: Anchor,
+  to: Anchor,
+  sketch: SketchData | null = null,
+): SketchEdit {
   const entities: SketchEntity[] = [];
   const constraints: SketchConstraint[] = [];
   const o = state.construction;
@@ -279,8 +314,13 @@ function lineSegment(state: DrawState, from: Anchor, to: Anchor): SketchEdit {
   }
   const lineId = newId();
   entities.push({ id: lineId, kind: 'line', construction: o, start: startId, end: endId });
-  // The strongest directional inference at the end (horizontal, vertical, parallel, …).
-  if (to.dir) constraints.push(bind(to.dir, { drawingEntity: lineId, cursorPoint: endId }));
+  // The strongest directional inference at the end (horizontal, vertical, parallel, …), unless
+  // both ends are on the same axis: the line's direction is then already set (it would be
+  // redundant, or contradict).
+  const fromAxes = anchorAxes(from, sketch);
+  const onSameAxis = [...anchorAxes(to, sketch)].some((x) => fromAxes.has(x));
+  if (to.dir && !onSameAxis)
+    constraints.push(bind(to.dir, { drawingEntity: lineId, cursorPoint: endId }));
   return { entities, constraints, created: [lineId] };
 }
 
@@ -298,7 +338,7 @@ export function click(state: DrawState, sketch: SketchData): ClickResult {
     const from = state.chainFrom ?? state.anchors[0];
     if (!from) return { state: { ...state, anchors: [hover] }, edit: null };
     if (dist(from.at, hover.at) < 1e-9) return { state, edit: null };
-    const edit = lineSegment(state, from, hover);
+    const edit = lineSegment(state, from, hover, sketch);
     const line = edit.entities.find((e) => e.kind === 'line');
     const endId = line && line.kind === 'line' ? line.end : undefined;
     // Closing onto an existing point ends the chain (e.g. back at the start of a rectangle).
@@ -307,7 +347,11 @@ export function click(state: DrawState, sketch: SketchData): ClickResult {
       state: {
         ...state,
         anchors: [],
-        chainFrom: closed || !endId ? null : { at: hover.at, pointId: endId },
+        // The snap rides along (it is already applied) so the next segment knows the axis.
+        chainFrom:
+          closed || !endId
+            ? null
+            : { at: hover.at, pointId: endId, ...(hover.snap ? { snap: hover.snap } : {}) },
         candidates: [],
         glyphs: [],
       },

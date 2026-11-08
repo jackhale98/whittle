@@ -12,6 +12,11 @@ export interface GestureMode {
   sketch: boolean;
   /** A drawing tool has a shape in progress (a double-tap ends the chain, it doesn't zoom). */
   drawing: boolean;
+  /**
+   * A drawing or dimension tool is active (shape in progress or not): its quick taps are clicks
+   * for the tool, so a double-tap never fits the view.
+   */
+  tool?: boolean;
   /** Something is under the gesture's point. */
   onGeometry: boolean;
 }
@@ -26,7 +31,7 @@ export function gestureAction(g: ViewportGesture, mode: GestureMode): GestureAct
     case 'tap':
       return g.pointerType === 'touch' && !mode.sketch ? 'select' : null;
     case 'doubleTap':
-      if (mode.drawing) return null;
+      if (mode.drawing || (mode.sketch && mode.tool)) return null;
       return mode.onGeometry && !mode.sketch ? 'zoomTo' : 'fit';
     case 'longPress':
       return g.pointerType === 'mouse' || mode.sketch ? null : 'menu';

@@ -92,6 +92,7 @@ import {
 import { type BubbleActionId, gestureAction } from './gestures';
 import { MeasureTool } from './measure-tool';
 import { type Observable, observable } from './observable';
+import { PointerDowns, replayedPointerDowns } from './pointers';
 import { PushPullTool } from './push-pull';
 import type { SketchSession } from './sketch-session';
 import {
@@ -209,7 +210,8 @@ export class Workbench {
   private toastSeq = 0;
   private toastTimer: ReturnType<typeof setTimeout> | undefined;
   private cleanup: Array<() => void> = [];
-  private down: { x: number; y: number; id: number; type: string } | null = null;
+  /** Presses by pointer id (a pen and a finger, or two fingers, can be down at once). */
+  private readonly downs = new PointerDowns();
   sketch: SketchSession | null = null;
   private sketchModule: Promise<typeof import('./sketch-session')> | null = null;
 
@@ -986,23 +988,23 @@ export class Workbench {
   }
 
   private onPointerDown(e: PointerEvent): void {
+    if (replayedPointerDowns.has(e)) return; // the sketch session handing a finger to the camera
     if (!this.onCanvas(e)) {
-      this.down = null;
+      this.downs.drop(e.pointerId);
       return;
     }
     if (e.pointerType === 'pen') this.lastPenAt = performance.now();
-    this.down = { x: e.clientX, y: e.clientY, id: e.pointerId, type: e.pointerType };
+    this.downs.press(e);
     if (this.ui.get().sketch) {
       this.sketch?.onPointerDown(e);
       return;
     }
     // A press on the push/pull arrow drags it (the viewport keeps the camera still).
-    if (this.pushPull.onPointerDown(e)) this.down = null;
+    if (this.pushPull.onPointerDown(e)) this.downs.drop(e.pointerId);
   }
 
   private onPointerUp(e: PointerEvent): void {
-    const d = this.down;
-    this.down = null;
+    const d = this.downs.release(e.pointerId);
     if (e.pointerType === 'pen') this.lastPenAt = performance.now();
     if (this.pushPull.onPointerUp(e)) return;
     if (this.ui.get().sketch) {
@@ -1018,7 +1020,7 @@ export class Workbench {
   }
 
   private onPointerCancel(e: PointerEvent): void {
-    this.down = null;
+    this.downs.drop(e.pointerId);
     this.pushPull.onPointerCancel(e);
     this.sketch?.onPointerCancel(e);
   }
@@ -1056,6 +1058,7 @@ export class Workbench {
     const action = gestureAction(g, {
       sketch: u.sketch !== null,
       drawing: !!draw && (draw.anchors.length > 0 || draw.chainFrom !== null),
+      tool: !!draw || u.sketch?.tool === 'dimension',
       onGeometry: best !== null,
     });
     switch (action) {

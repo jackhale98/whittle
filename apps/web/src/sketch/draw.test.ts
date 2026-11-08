@@ -36,12 +36,13 @@ describe('sketch drawing', () => {
     const doc: SketchData = { entities: [], constraints: [] };
     const pending: SketchData[] = [];
     let s = startDraw('line');
+    // Away from the origin and axes (they would add their own snaps, see below).
     for (const p of [
-      [0, 0],
-      [40, 0.4],
-      [40.3, 30],
-      [0.2, 30.2],
-      [0.3, 0.2],
+      [100, 100],
+      [140, 100.4],
+      [140.3, 130],
+      [100.2, 130.2],
+      [100.3, 100.2],
     ] as Vec2[]) {
       const base = withPending(doc, pending);
       s = move(s, base, p, 1);
@@ -53,7 +54,7 @@ describe('sketch drawing', () => {
     expect(all.entities.filter((e) => e.kind === 'point')).toHaveLength(4);
     expect(kinds(all.constraints)).toEqual(['horizontal', 'horizontal', 'vertical', 'vertical']);
     // Without the pending edits the closing click would not have found the start point.
-    const stale = move(startDraw('line'), doc, [0.3, 0.2], 1);
+    const stale = move(startDraw('line'), doc, [100.3, 100.2], 1);
     expect(stale.hover?.pointId).toBeUndefined();
   });
 
@@ -68,11 +69,11 @@ describe('sketch drawing', () => {
 
   it('line tool: a closed rectangle chains shared points with H/V inferred and closes on the start', () => {
     const { state, data } = run(startDraw('line'), { entities: [], constraints: [] }, [
-      [0, 0],
-      [40, 0.4], // within 3° of horizontal → snapped
-      [40.3, 30], // vertical
-      [0.2, 30.2], // horizontal
-      [0.3, 0.2], // back onto the start point → closes, vertical
+      [100, 100],
+      [140, 100.4], // within 3° of horizontal → snapped
+      [140.3, 130], // vertical
+      [100.2, 130.2], // horizontal
+      [100.3, 100.2], // back onto the start point → closes, vertical
     ]);
     expect(lines(data.entities)).toHaveLength(4);
     expect(data.entities.filter((e) => e.kind === 'point')).toHaveLength(4);
@@ -81,8 +82,8 @@ describe('sketch drawing', () => {
     // Every corner is shared by two lines; the last line ends at the first line's start.
     expect(l[3]?.kind === 'line' && l[0]?.kind === 'line' && l[3].end === l[0].start).toBe(true);
     // Snapped positions.
-    const p2 = data.entities.find((e) => e.kind === 'point' && e.x === 40);
-    expect(p2 && p2.kind === 'point' ? p2.y : null).toBe(0);
+    const p2 = data.entities.find((e) => e.kind === 'point' && e.x === 140);
+    expect(p2 && p2.kind === 'point' ? p2.y : null).toBe(100);
     expect(state.chainFrom).toBeNull(); // closing ended the chain
   });
 

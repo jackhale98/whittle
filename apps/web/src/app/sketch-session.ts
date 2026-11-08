@@ -47,8 +47,20 @@ import {
   withPending,
 } from '../sketch/draw';
 import { sketchCurves } from '../sketch/overlay';
+import {
+  axisSpan,
+  type Box2,
+  boxOf,
+  entitiesWithReferences,
+  isSketchReference,
+  rankSketchHits,
+  referenceOverlay,
+  SKETCH_ORIGIN,
+  spanCovers,
+} from '../sketch/references';
 import { MIN_CONFIDENCE, strokeEdit } from '../sketch/stroke';
 import { observable } from './observable';
+import { replayedPointerDowns } from './pointers';
 import type { SketchUi } from './state';
 import type { Workbench } from './workbench';
 
@@ -84,8 +96,35 @@ interface DragState {
   start: { x: number; y: number };
 }
 
-/** Which constraints the current entity selection can take. */
+/**
+ * Which constraints the current entity selection can take. The selection may include the origin
+ * and axes (ADR-017): they take relations to the user's geometry, but are never fixed, made
+ * horizontal/vertical, equal, or used as a line with a midpoint, and two references alone take
+ * nothing.
+ */
 export function applicableConstraints(
+  entities: readonly SketchEntity[],
+  selected: readonly Id[],
+): GeometricConstraintKind[] {
+  const refs = selected.filter(isSketchReference);
+  if (refs.length === 0) return applicableTo(entities, selected);
+  if (refs.length === selected.length) return [];
+  const all = entitiesWithReferences(entities);
+  const userLines = selected.filter(
+    (id) => !isSketchReference(id) && entities.find((e) => e.id === id)?.kind === 'line',
+  ).length;
+  const refLine = refs.some((id) => id !== SKETCH_ORIGIN);
+  return applicableTo(all, selected).filter((k) => {
+    if (k === 'fix' || k === 'equal') return false;
+    if ((k === 'horizontal' || k === 'vertical') && userLines === 0) return false;
+    // Midpoint of an axis: no such thing (the origin at a line's midpoint is fine). Concentric
+    // needs centres.
+    if ((k === 'midpoint' || k === 'concentric') && refLine) return false;
+    return true;
+  });
+}
+
+function applicableTo(
   entities: readonly SketchEntity[],
   selected: readonly Id[],
 ): GeometricConstraintKind[] {
@@ -115,7 +154,8 @@ export function constraintFrom(
   entities: readonly SketchEntity[],
   selected: readonly Id[],
 ): GeometricConstraint | null {
-  const sel = selected.map((id) => entities.find((e) => e.id === id)).filter((e) => !!e);
+  const all = selected.some(isSketchReference) ? entitiesWithReferences(entities) : entities;
+  const sel = selected.map((id) => all.find((e) => e.id === id)).filter((e) => !!e);
   const pts = sel.filter((e) => e.kind === 'point').map((e) => e.id);
   const lines = sel.filter((e) => e.kind === 'line').map((e) => e.id);
   const curves = sel.filter((e) => e.kind !== 'point').map((e) => e.id);
@@ -255,6 +295,7 @@ export class SketchSession {
       if (key === this.lastCam) return false;
       this.lastCam = key;
       this.camera.set((n) => n + 1);
+      this.trackReferences();
       return true;
     };
     const frame = () => {
@@ -296,6 +337,43 @@ export class SketchSession {
 
   /** Full-rate overlay tracking for a moment (camera animations: enter sketch, frame changes). */
   private wakeCamera: () => void = () => {};
+
+  /** Sketch-space box the axes were last drawn across. */
+  private refSpan: Box2 | null = null;
+
+  /** The visible part of the sketch plane (sketch mm), or null when the plane is edge-on. */
+  private viewBox(): Box2 | null {
+    const v = this.wb.viewport;
+    const frame = this.ui()?.frame;
+    const c = this.wb.canvas;
+    if (!v || !frame || !c) return null;
+    const w = c.clientWidth;
+    const h = c.clientHeight;
+    if (!(w > 0 && h > 0)) return null;
+    return boxOf(
+      [
+        [0, 0],
+        [w, 0],
+        [0, h],
+        [w, h],
+      ].map(([x, y]) => v.screenToPlane(x as number, y as number, frame)),
+    );
+  }
+
+  private sketchExtent(entities: readonly SketchEntity[]): number {
+    let r = 0;
+    for (const e of entities) {
+      if (e.kind === 'point') r = Math.max(r, Math.abs(e.x), Math.abs(e.y));
+      else if (e.kind === 'circle') r = Math.max(r, e.radius);
+    }
+    return r;
+  }
+
+  /** The camera moved: redraw the axes once the view leaves (or shrinks well inside) their span. */
+  private trackReferences(): void {
+    if (!this.refSpan || spanCovers(this.refSpan, this.viewBox())) return;
+    this.scheduleOverlay();
+  }
 
   onDocChange(): void {
     const f = this.feature();
@@ -488,8 +566,9 @@ export class SketchSession {
       );
       return;
     }
-    if (u.selected.length === 0) return;
-    const ids = u.selected;
+    // The origin and axes can be selected but never deleted.
+    const ids = u.selected.filter((id) => !isSketchReference(id));
+    if (ids.length === 0) return;
     this.patch({ selected: [] });
     void this.commitEdit((cur) => removeEntities(cur, ids), 'Delete sketch geometry');
   }
@@ -643,10 +722,8 @@ export class SketchSession {
     const hits = v
       .pick(x, y, { kinds: ['sketchPoint', 'sketchCurve'], tolerancePx: tol, all: true })
       .filter((h) => h.bodyId === this.featureId && h.entity && !h.entity.startsWith('preview:'));
-    hits.sort((a, b) =>
-      a.kind === b.kind ? a.distancePx - b.distancePx : a.kind === 'sketchPoint' ? -1 : 1,
-    );
-    return hits[0] ?? null;
+    // The user's geometry always wins over the origin and axes at the same spot.
+    return rankSketchHits(hits);
   }
 
   setHover(entity: Id | null): void {
@@ -660,8 +737,71 @@ export class SketchSession {
   private stroke: Stroke | null = null;
   /** The Pencil has been used in this session: from then on fingers only navigate (PLAN §9.3). */
   private penUsed = false;
-  /** Touch drag-to-draw: where the finger went down with a drawing tool and nothing placed. */
-  private touchStart: { id: number; x: number; y: number; placed: boolean } | null = null;
+  /**
+   * Touch drag-to-draw: where the finger went down with a drawing tool and nothing placed.
+   * `before`: the drawing state from before the drag placed its first click (restored when a
+   * second finger turns the gesture into navigation).
+   */
+  private touchStart: {
+    id: number;
+    x: number;
+    y: number;
+    placed: boolean;
+    before?: SketchUi['draw'];
+  } | null = null;
+  /**
+   * Fingers down (before the Pencil is used), with their latest position. `withheld`: its press
+   * was kept from camera navigation (a drawing/dimension tool owned it).
+   */
+  private readonly fingers = new Map<number, { x: number; y: number; withheld: boolean }>();
+  /** Two or more fingers went down together: until all are up they only navigate (D1). */
+  private navigating = false;
+
+  /**
+   * A second finger landed: the one-finger action in progress is cancelled (no point, anchor,
+   * line or drag), and the fingers the session withheld are handed to camera navigation, so the
+   * pair pinches, pans and twists, and two/three-finger taps reach the gesture path.
+   */
+  private startNavigating(): void {
+    this.navigating = true;
+    const ts = this.touchStart;
+    if (ts?.placed) {
+      // A finger drag already placed its first click: take it back.
+      this.patch({ draw: ts.before ?? null, cursor: null });
+      this.scheduleOverlay();
+    }
+    this.touchStart = null;
+    const d = this.drag;
+    if (d && !d.moved && this.fingers.size > 0) {
+      this.drag = null;
+      void d.session.then((s) => solver().api.endDrag(s)).catch(() => undefined);
+    }
+    const canvas = this.wb.canvas;
+    for (const [id, f] of this.fingers) {
+      if (!f.withheld || !canvas) continue;
+      f.withheld = false;
+      const replay = new PointerEvent('pointerdown', {
+        pointerId: id,
+        pointerType: 'touch',
+        isPrimary: false,
+        clientX: f.x,
+        clientY: f.y,
+        button: 0,
+        buttons: 1,
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+      });
+      replayedPointerDowns.add(replay);
+      canvas.dispatchEvent(replay);
+    }
+  }
+
+  /** A finger went up or was cancelled. */
+  private fingerGone(id: number): void {
+    this.fingers.delete(id);
+    if (this.fingers.size === 0) this.navigating = false;
+  }
 
   private beginStroke(e: PointerEvent): void {
     const at = this.toSketch(e);
@@ -739,6 +879,7 @@ export class SketchSession {
       this.scheduleOverlay();
     }
     if (this.touchStart?.id === e.pointerId) this.touchStart = null;
+    if (e.pointerType === 'touch') this.fingerGone(e.pointerId);
   }
 
   /** `px` CSS pixels at the pointer, in sketch millimetres. */
@@ -759,11 +900,20 @@ export class SketchSession {
       return;
     }
     if (e.pointerType === 'touch' && this.penUsed) return; // fingers navigate
+    if (e.pointerType === 'touch') {
+      const f = this.fingers.get(e.pointerId);
+      if (f) {
+        f.x = e.clientX;
+        f.y = e.clientY;
+      }
+      if (this.navigating) return; // a pinch / pan: the camera's
+    }
     const ts = this.touchStart;
     if (ts && ts.id === e.pointerId && !ts.placed && u.draw) {
       if (Math.hypot(e.clientX - ts.x, e.clientY - ts.y) > TOUCH_DRAG_PX) {
         // A finger drag draws: the shape starts where the finger went down.
         ts.placed = true;
+        ts.before = u.draw;
         this.drawClickAt({ clientX: ts.x, clientY: ts.y, pointerType: 'touch' }, u);
         return; // the next move rubber-bands from the placed corner
       }
@@ -791,7 +941,9 @@ export class SketchSession {
     if (e.pointerType === 'pen') {
       this.penUsed = true;
       // The Pencil draws: a stroke, or (no tool) a press on geometry drags it.
-      const onGeometry = !u.draw && u.tool !== 'dimension' && this.pickSketch(e)?.entity;
+      const picked = !u.draw && u.tool !== 'dimension' ? this.pickSketch(e)?.entity : undefined;
+      // The axes run across the whole view: a press on them still draws.
+      const onGeometry = picked && !isSketchReference(picked);
       if (!onGeometry) {
         e.stopPropagation();
         e.preventDefault();
@@ -800,11 +952,23 @@ export class SketchSession {
       }
     } else if (e.pointerType === 'touch' && this.penUsed) {
       return; // fingers never draw while the Pencil is in use: they only navigate
+    } else if (e.pointerType === 'touch') {
+      // Only a lone finger draws (or drags, or picks). A second one makes it navigation.
+      this.fingers.set(e.pointerId, { x: e.clientX, y: e.clientY, withheld: false });
+      if (this.navigating || this.fingers.size > 1) {
+        if (!this.navigating) this.startNavigating();
+        return; // this finger goes to the camera as it is
+      }
     }
-    if (u.draw || u.tool === 'dimension') {
-      // Drawing owns the left button: no orbit.
+    const withhold = () => {
       e.stopPropagation();
       e.preventDefault();
+      const f = this.fingers.get(e.pointerId);
+      if (f && e.pointerType === 'touch') f.withheld = true;
+    };
+    if (u.draw || u.tool === 'dimension') {
+      // Drawing owns the left button: no orbit.
+      withhold();
       if (e.pointerType === 'touch' && u.draw && u.draw.anchors.length === 0 && !u.draw.chainFrom)
         this.touchStart = { id: e.pointerId, x: e.clientX, y: e.clientY, placed: false };
       return;
@@ -812,8 +976,9 @@ export class SketchSession {
     const hit = this.pickSketch(e);
     const at = this.toSketch(e);
     if (!hit?.entity || !at) return; // empty space: orbit
-    e.stopPropagation();
-    e.preventDefault();
+    // The origin and axes are selectable (on release) but never dragged.
+    if (isSketchReference(hit.entity)) return;
+    withhold();
     const f = this.feature();
     if (!f) return;
     const entity = hit.entity;
@@ -899,6 +1064,13 @@ export class SketchSession {
       this.patch({ stroke: null });
     } else if (e.pointerType === 'touch' && this.penUsed) return;
     if (this.touchStart?.id === e.pointerId) this.touchStart = null;
+    if (e.pointerType === 'touch') {
+      const navigated = this.navigating;
+      this.fingerGone(e.pointerId);
+      // Part of a pinch / pan / multi-finger tap: no click for the tool, and camera navigation
+      // must see the release (no stopPropagation).
+      if (navigated) return;
+    }
     const d = this.drag;
     if (d) {
       this.drag = null;
@@ -917,7 +1089,8 @@ export class SketchSession {
       });
       return;
     }
-    if (e.button !== 0 || !down) return;
+    // Only this pointer's own press counts (never another finger's or the pen's).
+    if (e.button !== 0 || !down || down.id !== e.pointerId) return;
     const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y) > 5;
     if (u.draw) {
       e.stopPropagation();
@@ -1052,10 +1225,21 @@ export class SketchSession {
               conflicting.add(val);
       }
     this.pushedFor = f.entities;
+    // Reference geometry (ADR-017): the axes across the visible view, the origin glyph and dot.
+    const own = sketchCurves(entities, u.frame);
+    const view = this.viewBox();
+    const span = axisSpan(view, this.sketchExtent(f.entities));
+    this.refSpan = span;
+    const size = Math.max(span.max[0] - span.min[0], span.max[1] - span.min[1]);
+    const refs = referenceOverlay(u.frame, span, size / 80);
+    for (const c of refs.curves) dof[c.entity] = 'fixed';
+    for (const p of refs.points ?? []) dof[p.entity] = 'fixed';
     v.setSketch(f.id, {
       sketch: {
         featureId: f.id,
-        ...sketchCurves(entities, u.frame),
+        // References first: the user's geometry draws over them.
+        curves: [...refs.curves, ...own.curves],
+        points: [...(refs.points ?? []), ...(own.points ?? [])],
         regions: regen?.regions.length ? regen.regions : [],
         frame: u.frame,
       },
@@ -1098,6 +1282,13 @@ export class SketchSession {
     const f = this.feature();
     if (!v || !u || !f) return;
     const item = (id: Id): HighlightItem | null => {
+      if (isSketchReference(id))
+        return {
+          bodyId: f.id,
+          kind: id === SKETCH_ORIGIN ? 'sketchPoint' : 'sketchCurve',
+          index: 0,
+          entity: id,
+        };
       const e = f.entities.find((x) => x.id === id);
       if (!e) return null;
       return {
@@ -1113,7 +1304,11 @@ export class SketchSession {
       : null;
     if (c)
       for (const [k, val] of Object.entries(c))
-        if (k !== 'id' && typeof val === 'string' && f.entities.some((e) => e.id === val))
+        if (
+          k !== 'id' &&
+          typeof val === 'string' &&
+          (isSketchReference(val) || f.entities.some((e) => e.id === val))
+        )
           selectedIds.push(val);
     for (const id of u.highlightConstraints ?? []) {
       const k = f.constraints.find((x) => x.id === id);

@@ -530,6 +530,16 @@ Implemented in packages/ui (FeatureTree) and apps/web, after the M2 integration 
     creating the view without waiting for the read (much worse, as in ADR-008 item 4), fetching
     three.js before React's first commit, deferring the idle shader warm-up past the cached frame,
     and dropping the view cube. None of them was kept.
+12. **Fingers in sketch mode (M2 gate D1, D9).** Presses are tracked per pointer id (a pen and a
+    finger, or two fingers, are down together). Before the Pencil is used, only a lone finger
+    draws, drags or picks: the session withholds its press from camera-controls. When a second
+    finger lands, the one-finger action is cancelled (a finger drag's first click is taken back)
+    and the withheld finger is handed to camera-controls by re-dispatching its `pointerdown` on the
+    canvas at its current position (a synthetic event the workbench ignores, `pointers.ts`).
+    camera-controls then sees both fingers (pinch, pan, twist); the viewport's gesture recogniser
+    already saw both (window capture), so two/three-finger taps undo/redo as in model mode, and
+    their releases place nothing. With a drawing or dimension tool active, a double-tap is never
+    "fit" (its taps are tool clicks).
 
 ## ADR-017 — Dimensions to the origin, axes, planes and model geometry (2026-11-08)
 
@@ -556,3 +566,29 @@ when the origin is meant.
    - Origin planes and planes perpendicular to the sketch project to lines.
    - A lost source makes the sketch "needs attention" (ghost + Re-pick), never a silent re-pick.
    - Planes parallel to the sketch are dimensioned as the sketch plane's offset, not in-sketch.
+
+**Implementation of item 1 (M2).**
+
+- *Solver.* The references are added to the model (grounded parameters) only when a constraint
+  uses them, so other sketches solve bit for bit as before. Each axis is a line from the origin to
+  an internal unit point (`@x:end` / `@y:end`, reserved ids). A constraint that involves only
+  references is ignored when it already holds and reported otherwise. Axes refuse length, midpoint
+  and equal. The polish and the conflict search see them as ground, like `fix`ed geometry; they are
+  never listed in `SketchConflict.fixed` and never offered for removal.
+- *Inference.* Origin coincident 0.98 and axis point-on 0.68 (the user's geometry: 1 and 0.7), so
+  a real point or curve at the same spot wins. Coincident with the origin always makes a new point
+  plus a constraint (the origin is not an entity to merge into). A line whose two ends are on the
+  same axis gets no extra horizontal/vertical, which would be redundant.
+- *Picking.* The user's points, then the user's curves, then the origin, then the axes, nearest
+  first within a tier. "Never block the user's geometry" includes curves: a line through the origin
+  wins there, and its end point (if any) is the same place for dimensioning.
+- *Dimensions.* Origin ↔ point is a two-point dimension (h/v/aligned by label placement); axis ↔
+  point the perpendicular distance; axis ↔ line an angle from the axis, or a distance when parallel;
+  the origin or an axis ↔ circle/arc measures to its centre (dimensioning holes is the common case).
+- *Display.* Through the existing sketch overlay: the axes as construction (dashed) curves `@x` /
+  `@y`, drawn first, across the visible view × 1.25 (redrawn when the view leaves that span or
+  shrinks 2.5× inside it), the origin as a faded construction point `@origin` and a small solid
+  cross (`@origin:glyph:*`, picked as the origin), all DOF `fixed`. Without a viewport style flag
+  the axes share the dashed style of a fully constrained construction line and set the overlay's
+  dash length (view-relative); a `reference` style flag on `SketchResult` curves/points is proposed
+  for the lead (thin, muted, excluded from dash sizing).

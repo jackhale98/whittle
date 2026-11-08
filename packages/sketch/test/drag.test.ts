@@ -4,7 +4,13 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import type { Id, SketchSolveInput, SketchSolveResult, Vec2 } from '@whittle/contracts';
+import {
+  type Id,
+  SKETCH_ORIGIN,
+  type SketchSolveInput,
+  type SketchSolveResult,
+  type Vec2,
+} from '@whittle/contracts';
 import { describe, expect, it } from 'vitest';
 import { core, pos, rectangle, SketchBuilder } from './helpers';
 
@@ -89,12 +95,16 @@ describe('drag', () => {
  * A connected 200-entity sketch: a chain of 25 rectangles (4 points + 4 lines each), each
  * joined to the next by a coincident corner, H/V edges and a width dimension; heights free.
  */
-function chain(count = 25): { input: SketchSolveInput; drag: Id; at: Vec2 } {
+function chain(
+  count = 25,
+  anchor: 'fix' | 'origin' = 'fix',
+): { input: SketchSolveInput; drag: Id; at: Vec2 } {
   const b = new SketchBuilder();
   let prev: ReturnType<typeof rectangle> | null = null;
   for (let i = 0; i < count; i++) {
     const r = rectangle(b, 10, 6 + (i % 3), [i * 10, 0], 0);
     if (prev) b.geo({ kind: 'coincident', a: prev.p1, b: r.p0 });
+    else if (anchor === 'origin') b.geo({ kind: 'coincident', a: r.p0, b: SKETCH_ORIGIN });
     else b.geo({ kind: 'fix', entity: r.p0 });
     b.dim({ kind: 'length', line: r.bottom }, 10);
     prev = r;
@@ -104,35 +114,36 @@ function chain(count = 25): { input: SketchSolveInput; drag: Id; at: Vec2 } {
 }
 
 describe('drag performance', () => {
-  it('median drag solve ≤ 4 ms for a connected 200-entity sketch', async () => {
-    const solver = await core();
-    const { input, drag, at } = chain();
-    expect(input.entities).toHaveLength(200);
-    const t0 = performance.now();
-    const first = solver.solve(input);
-    const solveMs = performance.now() - t0;
-    expect(first.status).toBe('solved');
-    expect(first.dof).toBe(25);
-    const { session } = solver.beginDrag(input, drag, at);
-    const times: number[] = [];
-    let wall = 0;
-    for (let i = 0; i < 100; i++) {
-      const to: Vec2 = [at[0] + Math.sin(i / 10) * 3, at[1] + i * 0.05];
-      const w0 = performance.now();
-      const res = solver.drag(session, to);
-      wall += performance.now() - w0;
-      times.push(res.ms);
-      expect(res.status).toBe('solved');
-    }
-    const end = solver.endDrag(session);
-    expect(end.status).toBe('solved');
-    times.sort((a, b) => a - b);
-    const median = times[50] as number;
-    const p95 = times[95] as number;
-    console.log(
-      `[sketch perf] 200 entities: full solve ${solveMs.toFixed(1)} ms; drag median ${median.toFixed(2)} ms, p95 ${p95.toFixed(2)} ms, mean wall ${(wall / 100).toFixed(2)} ms`,
-    );
-    // Budget is 4 ms (PLAN §10). CI containers can be slow; fail only far beyond it.
-    expect(median).toBeLessThan(process.env.CI ? 12 : 4);
-  });
+  for (const anchor of ['fix', 'origin'] as const)
+    it(`median drag solve ≤ 4 ms for a connected 200-entity sketch (anchored by ${anchor})`, async () => {
+      const solver = await core();
+      const { input, drag, at } = chain(25, anchor);
+      expect(input.entities).toHaveLength(200);
+      const t0 = performance.now();
+      const first = solver.solve(input);
+      const solveMs = performance.now() - t0;
+      expect(first.status).toBe('solved');
+      expect(first.dof).toBe(25);
+      const { session } = solver.beginDrag(input, drag, at);
+      const times: number[] = [];
+      let wall = 0;
+      for (let i = 0; i < 100; i++) {
+        const to: Vec2 = [at[0] + Math.sin(i / 10) * 3, at[1] + i * 0.05];
+        const w0 = performance.now();
+        const res = solver.drag(session, to);
+        wall += performance.now() - w0;
+        times.push(res.ms);
+        expect(res.status).toBe('solved');
+      }
+      const end = solver.endDrag(session);
+      expect(end.status).toBe('solved');
+      times.sort((a, b) => a - b);
+      const median = times[50] as number;
+      const p95 = times[95] as number;
+      console.log(
+        `[sketch perf] 200 entities (${anchor}): full solve ${solveMs.toFixed(1)} ms; drag median ${median.toFixed(2)} ms, p95 ${p95.toFixed(2)} ms, mean wall ${(wall / 100).toFixed(2)} ms`,
+      );
+      // Budget is 4 ms (PLAN §10). CI containers can be slow; fail only far beyond it.
+      expect(median).toBeLessThan(process.env.CI ? 12 : 4);
+    });
 });

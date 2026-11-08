@@ -113,6 +113,65 @@ describe('bracket tutorial conditions', () => {
     expect(stepDone('params', snap(edited, { paramsInUse: first.seen }))).toBe(true);
   });
 
+  it('a closed loop anywhere in the sketch counts, whatever else is drawn', () => {
+    const pt = (id: string, x: number, y: number) =>
+      ({ id, kind: 'point', construction: false, x, y }) as const;
+    const ln = (id: string, start: string, end: string, construction = false) =>
+      ({ id, kind: 'line', construction, start, end }) as const;
+    // One stray open line next to a finished rectangle (D2: it used to freeze the step).
+    const stray = sketch({
+      entities: [...rect.entities, pt('s1', 80, 0), pt('s2', 90, 10), ln('sl', 's1', 's2')],
+      constraints: rect.constraints,
+    });
+    expect(hasClosedLoop(stray)).toBe(true);
+    expect(stepDone('rectangle', snap(doc([stray])))).toBe(true);
+    // A loop closed through a coincident constraint, plus a dangling tail on one corner.
+    const joined = sketch({
+      entities: [
+        pt('a', 0, 0),
+        pt('b', 10, 0),
+        pt('c', 5, 8),
+        pt('a2', 0, 0),
+        pt('t', -10, -10),
+        ln('ab', 'a', 'b'),
+        ln('bc', 'b', 'c'),
+        ln('ca', 'c', 'a2'),
+        ln('tail', 'a', 't'),
+      ],
+      constraints: [{ id: 'k', kind: 'coincident', a: 'a2', b: 'a' }],
+    });
+    expect(hasClosedLoop(joined)).toBe(true);
+    expect(hasClosedLoop({ ...joined, constraints: [] })).toBe(false);
+    // Open polylines, a two-line "loop" over the same points and construction loops don't count.
+    const twice = sketch({
+      entities: [pt('a', 0, 0), pt('b', 10, 0), ln('l1', 'a', 'b'), ln('l2', 'b', 'a')],
+    });
+    expect(hasClosedLoop(twice)).toBe(false);
+    const construction = sketch({
+      entities: [
+        pt('a', 0, 0),
+        pt('b', 10, 0),
+        pt('c', 5, 8),
+        ln('ab', 'a', 'b', true),
+        ln('bc', 'b', 'c', true),
+        ln('ca', 'c', 'a', true),
+      ],
+    });
+    expect(hasClosedLoop(construction)).toBe(false);
+    const zigzag = sketch({
+      entities: [
+        pt('a', 0, 0),
+        pt('b', 10, 0),
+        pt('c', 5, 8),
+        pt('d', 15, 8),
+        ln('ab', 'a', 'b'),
+        ln('bc', 'b', 'c'),
+        ln('cd', 'c', 'd'),
+      ],
+    });
+    expect(hasClosedLoop(zigzag)).toBe(false);
+  });
+
   it('export counts exports since the tutorial started', () => {
     expect(stepDone('export', snap(doc([]), { exports: 0 }))).toBe(false);
     expect(stepDone('export', snap(doc([]), { exports: 1 }))).toBe(true);

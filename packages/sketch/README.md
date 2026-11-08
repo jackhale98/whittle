@@ -26,6 +26,8 @@ Never import `core` on the main thread. Use the client from the package root.
 - **Drawing tools:** `lineTool`, `polylineTool`, `rectangleCornerTool`, `rectangleCenterTool`,
   `rectangle3PointTool`, `circleCenterTool`, `circle3PointTool`, `arcCenterTool`, `arc3PointTool`,
   `arcTangentTool`, `slotTool`, `polygonTool`, `setConstruction`, `mergeFragment`, `newId`.
+- **Reference geometry (ADR-017):** `SKETCH_ORIGIN`, `SKETCH_X_AXIS`, `SKETCH_Y_AXIS`, `SKETCH_REFERENCES`,
+  `isSketchReference`, `referenceName`, `referenceEntities`, `usesReferences`, `constraintRefs`.
 - **Geometry:** `sampleSketch`, `sampleEntity`, `sketchBounds`, `closestOnEntity`, `closestOnSegment`,
   `projectOnLine`, `circumcircle`, `indexEntities`, plus the line, arc and circle helpers.
 
@@ -50,6 +52,27 @@ are in [`packages/contracts/src/sketch.ts`](../contracts/src/sketch.ts).
    explanation (`src/explain.ts`) and suggested fixes. A `fix` constraint is treated as ground, and the
    explanation says so when the geometry itself is the problem.
 
+### Origin and axes
+
+Every sketch has a fixed origin (`@origin`, sketch-local (0, 0)) and axes (`@x` along +u, `@y`
+along +v). Constraints and dimensions reference these ids like entities. When a sketch uses them,
+`src/model.ts` adds them as grounded parameters: the origin point, plus each axis as a line from the
+origin to an internal unit point (`@x:end`, `@y:end`; only the direction matters, every relation
+treats a line as infinite). They are never in `entities` or `entityDof` and carry no DOF. A sketch
+that doesn't use them builds exactly the same model as before.
+
+- Supported: coincident, point on, horizontal/vertical points, midpoint (the origin at a line's
+  midpoint), symmetric about an axis or the origin, parallel, perpendicular, tangent; distance,
+  h/v distance, angle; reference dimensions are measured.
+- Refused, with a plain reason: an axis's length, midpoint or equal length, and a reference used as
+  the wrong kind ("The horizontal axis is not a point"). A constraint only between references is
+  ignored when it already holds (`perpendicular(@x, @y)`) and reported when it can't.
+- Explanations name them "the origin", "the horizontal axis", "the vertical axis", and never make
+  them the subject while the user's geometry is involved. Fixes only touch the user's constraints.
+- Inference snaps coincident to the origin and onto the axes (point on), and offers horizontal and
+  vertical alignment guides from the origin. They score just below the same snap on the user's own
+  geometry, so a real point or curve at the same spot wins.
+
 ### Dragging
 
 `beginDrag`, `drag` and `endDrag` add temporary constraints that pull the grabbed geometry toward
@@ -73,10 +96,9 @@ The solver tests use the real planegcs in Node. `test/helpers.ts` builds one sha
 
 ## Design notes
 
-- **Tolerance and coplanarity.** A dimension within 1e-7 times the sketch size counts as satisfied,
-  and the solver does not move the geometry for it. Two sketches that are each about 1e-5 mm off can
-  therefore leave sliver faces where faces should be coplanar. A "polish" step is proposed for M2
-  (ADR-008 §9). It is not built yet.
+- **Tolerance and coplanarity.** A dimension within 1e-7 times the sketch size counts as satisfied
+  for planegcs' answer; the polish step (`src/polish.ts`, ADR-011) then drives driving dimensions
+  and coincidences to ≤ 1e-11 mm, so sketches dimensioned to meet are exactly coplanar.
 - **Why Whittle re-verifies.** planegcs is a general-purpose solver. Whittle's checks keep the
   document from getting a "solved" sketch that is in fact a collapsed one, and they feed DOF and the
   explanations.
