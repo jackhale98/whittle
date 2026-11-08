@@ -432,3 +432,31 @@ extension, and it would also extend non-perpendicular neighbours instead of addi
   (same frame).
 - **Gesture timing** uses event timestamps, not handler time, so it survives main-thread stalls.
   The long-press timer gives queued moves 60 ms to cancel it when it fires late.
+
+## ADR-015 — Feature tree: sketches nest under the feature that uses them (view only) (2026-11-08)
+
+**Context.** The feature tree lists sketches and features in strict serial order. Most sketches feed
+exactly one feature, so the tree carries a lot of near-duplicate rows. That hurts most in the phone
+and tablet bottom sheet. SolidWorks and FreeCAD nest the sketch under its feature; Onshape, Fusion
+360 and Shapr3D keep a flat history.
+
+**Decision.** Nest by default, as a *presentation* of the flat feature list. The document, the
+JSON Schema, regeneration and naming do not change. A flat ordered list is also what feature-level
+diff and three-way merge (M2.5) work best on.
+
+1. A sketch consumed by exactly one feature is shown as a collapsible child of that feature, wherever
+   the feature sits in the list.
+2. A sketch consumed by several features, or by none, stays top-level. A shared sketch carries a
+   "used by N" badge.
+3. Reordering a feature moves its nested sketch with it. The document order stays valid: the sketch
+   comes immediately before its consumer.
+4. The rollback bar cannot stop between a feature and its nested sketch. Rolling back above the
+   feature rolls back both.
+5. A new sketch shows top-level until a feature consumes it, then it tucks under that feature.
+6. Deleting a feature asks inline (non-modal) whether to keep its nested sketch. A kept sketch pops
+   out to the top level.
+7. A view setting "Show sketches in the history" restores the flat serial list.
+
+**Consequences.** Consumption is derived from the features' references (profile regions, axes,
+up-to targets), so the tree needs a small pure helper that computes the nesting and is unit-tested.
+Implemented in packages/ui (FeatureTree) and apps/web, after the M2 integration lands.

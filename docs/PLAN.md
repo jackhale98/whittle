@@ -60,7 +60,7 @@ Priority: **P0** = MVP (M1–M2), **P1** = v1.0 (M3–M6), **P2** = after v1.0.
 | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------- |
 | Extrude (blind, symmetric, up-to-face, through-all; add/cut/intersect/new body), revolve                                                                 | P0                        |
 | Fillet (constant), chamfer (distance, distance-angle), booleans, multi-body                                                                              | P0                        |
-| Feature tree: rollback bar, reorder, suppress, edit, rename, failure badges                                                                              | P0                        |
+| Feature tree: rollback bar, reorder, suppress, edit, rename, failure badges; a sketch used by exactly one feature nests under it (view only, ADR-015)        | P0                        |
 | Variables/parameters table with expressions and units                                                                                                    | P0                        |
 | Direct push/pull of faces, recorded as parametric features                                                                                               | P0 (tablet), P1 (desktop) |
 | Shell, draft, sweep, loft, mirror, linear and circular pattern, hole wizard (simple/counterbore/countersink/tapped, ISO + ANSI tables), cosmetic threads | P1                        |
