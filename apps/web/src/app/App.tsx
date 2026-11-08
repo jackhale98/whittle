@@ -1,7 +1,17 @@
 import type { Id, TouchViewport } from '@whittle/contracts';
 import { ulid } from '@whittle/document';
-import { AppShell, type MoveResult, type PaletteCommand, type ToolId, useTheme } from '@whittle/ui';
+import {
+  AppShell,
+  type MoveResult,
+  type MoveStep,
+  type PaletteCommand,
+  readNestSketches,
+  type ToolId,
+  useTheme,
+  writeNestSketches,
+} from '@whittle/ui';
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { reorderFeatures } from '../model/tree-edits';
 import { getDiagnostics } from '../platform/diagnostics';
 import { getRuntimeState, subscribeRuntimeState } from '../platform/runtime-state';
 import { applySwUpdate, checkForSwUpdateNow, onSwUpdateAvailable } from '../platform/sw-register';
@@ -55,6 +65,13 @@ export function App({ wb }: { wb: Workbench }) {
     return () => wb.dispose();
   }, [wb]);
 
+  // "Show sketches in the history": the flat serial list instead of nested sketches (ADR-015).
+  const [nestSketches, setNestSketchesState] = useState(readNestSketches);
+  const setNestSketches = useCallback((nest: boolean) => {
+    setNestSketchesState(nest);
+    writeNestSketches(nest);
+  }, []);
+
   const commands = useMemo<PaletteCommand[]>(
     () => [
       { id: 'welcome', label: 'Welcome / samples', run: () => wb.patchUi({ welcome: true }) },
@@ -95,6 +112,12 @@ export function App({ wb }: { wb: Workbench }) {
       },
       { id: 'plane', label: 'Plane', hint: 'Offset reference plane', run: () => wb.addPlane() },
       { id: 'boolean', label: 'Boolean', hint: 'Combine bodies', run: () => wb.addBoolean() },
+      {
+        id: 'flat-history',
+        label: nestSketches ? 'Show sketches in the history' : 'Nest sketches under their features',
+        hint: nestSketches ? 'Flat list' : 'Tidy list',
+        run: () => setNestSketches(!nestSketches),
+      },
       { id: 'undo', label: 'Undo', run: () => wb.undo() },
       { id: 'redo', label: 'Redo', run: () => wb.redo() },
       {
@@ -119,7 +142,7 @@ export function App({ wb }: { wb: Workbench }) {
       },
       { id: 'about', label: `About Whittle · ${diagnostics.appVersion}`, hint: 'Version' },
     ],
-    [diagnostics.appVersion, wb],
+    [diagnostics.appVersion, wb, nestSketches, setNestSketches],
   );
 
   const beforeViewport = useMemo(() => wb.initialDocumentRead(), [wb]);
@@ -157,6 +180,14 @@ export function App({ wb }: { wb: Workbench }) {
   const parts = usePartsProps(wb);
   const tutorial = useBracketTutorial(wb);
   const engineMissing = engine.ready ? undefined : 'The geometry kernel is still loading';
+
+  /** A feature and its nested sketches move as one undo step; all or nothing. */
+  const reorder = (steps: readonly MoveStep[]): MoveResult => {
+    if (!part) return { ok: false, reason: 'No part' };
+    const last = steps[steps.length - 1];
+    const name = part.features.find((f) => f.id === last?.id)?.name ?? 'feature';
+    return reorderFeatures(wb.store, part.id, steps, `Move ${name}`);
+  };
 
   const move = (id: Id, toIndex: number): MoveResult => {
     if (!part) return { ok: false, reason: 'No part' };
@@ -204,13 +235,30 @@ export function App({ wb }: { wb: Workbench }) {
                   wb.commit();
                 },
                 onMove: move,
+                onReorder: reorder,
+                nestSketches,
+                onNestSketchesChange: setNestSketches,
                 onEdit: (id) => wb.editFeature(id),
                 onSuppress: (id, suppressed) => {
                   wb.apply({ kind: 'setSuppressed', partId: part.id, featureId: id, suppressed });
                   wb.commit();
                 },
-                onDelete: (id) => {
-                  wb.apply({ kind: 'removeFeature', partId: part.id, featureId: id });
+                onDelete: (id, alsoIds) => {
+                  // One undo step for the feature and the sketches deleted with it.
+                  const key = alsoIds?.length ? `delete:${id}` : undefined;
+                  const name = part.features.find((f) => f.id === id)?.name;
+                  wb.apply(
+                    { kind: 'removeFeature', partId: part.id, featureId: id },
+                    key && name ? `Delete ${name}` : undefined,
+                    key,
+                  );
+                  for (const sketch of alsoIds ?? []) {
+                    wb.apply(
+                      { kind: 'removeFeature', partId: part.id, featureId: sketch },
+                      undefined,
+                      key,
+                    );
+                  }
                   wb.commit();
                 },
                 density,
