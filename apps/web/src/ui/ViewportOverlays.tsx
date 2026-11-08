@@ -467,7 +467,8 @@ export function ViewportOverlays({ wb, touch }: { wb: Workbench; touch: boolean 
         />
       ) : null}
 
-      {!sk ? (
+      {/* Hidden while the library is open: the panel has its own close button and would cover it. */}
+      {!sk && !ui.library ? (
         <div className="absolute top-14 left-3">
           <button
             type="button"
