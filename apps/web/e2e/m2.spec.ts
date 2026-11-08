@@ -290,3 +290,77 @@ test('a deleted import’s attachment is never saved, but undo still finds its b
   await a.flushSave();
   expect(await a.libraryFiles(id)).toContain(path);
 });
+
+test('a selected vertex stays selected through a regen that does not move it (D6)', async ({
+  page,
+}) => {
+  test.slow();
+  await boot(page);
+  await page.getByRole('button', { name: 'Close welcome' }).click();
+  await addBox(page);
+  const a = app(page);
+  await a.idle();
+  const inspector = page.getByTestId('feature-inspector');
+  const height = inspector.getByRole('textbox', { name: 'Height (Z)' });
+  await expect(height).toBeVisible();
+  await height.fill('35 mm');
+  await height.press('Enter');
+  await a.idle();
+  await page.keyboard.press('Escape');
+  await cameraStill(page);
+  const b = (await a.regen())?.bodies[0]?.bbox;
+  if (!b) throw new Error('no body');
+
+  // A bottom corner the viewport can pick as a vertex (not hidden behind the box).
+  const corners: [number, number, number][] = [];
+  for (const x of [b.min[0] ?? 0, b.max[0] ?? 0])
+    for (const y of [b.min[1] ?? 0, b.max[1] ?? 0]) corners.push([x, y, b.min[2] ?? 0]);
+  // A corner is a near-tie of the vertex and its edges: choose the vertex in "Which one?".
+  let picked: [number, number, number] | null = null;
+  for (const c of corners) {
+    const s = await toPage(page, c);
+    await page.mouse.click(s.x, s.y);
+    await a.idle();
+    const u = await a.ui();
+    if (u.chooser?.includes('vertex')) {
+      const options = page.getByRole('listbox').getByRole('option');
+      await options.nth(u.chooser.indexOf('vertex')).click();
+      await a.idle();
+    }
+    if ((await a.ui()).selection.includes('vertex')) {
+      picked = c;
+      break;
+    }
+    await page.keyboard.press('Escape');
+  }
+  if (!picked) throw new Error('no pickable bottom corner');
+  const before = (await a.ui()).selectionKeys;
+  expect(before).toHaveLength(1);
+  expect(before[0]).toContain('|vertex|');
+
+  // Undo back to the 20 mm box: a regen in which the bottom corners stay put, so the vertex is
+  // re-found (in the viewport's own vertex numbering), not dropped.
+  await page.keyboard.press('ControlOrMeta+z');
+  await a.idle();
+  const after = await a.regen();
+  expect(after?.bodies[0]?.bbox.max[2]).toBeCloseTo((b.min[2] ?? 0) + 20, 6);
+  const sel = (await a.ui()).selectionKeys;
+  expect(sel).toHaveLength(1);
+  expect(sel[0]).toContain('|vertex|');
+  // The remapped index is the vertex at the same place: picking there again gives the same key.
+  const s = await toPage(page, picked);
+  const hit = await page.evaluate(({ x, y }) => {
+    const canvas = document.querySelector('[data-testid="viewport-canvas"]') as HTMLElement;
+    const r = canvas.getBoundingClientRect();
+    const v = (
+      window as unknown as {
+        __whittleViewport: {
+          pick(x: number, y: number, o: object): { kind: string; index: number }[];
+        };
+      }
+    ).__whittleViewport;
+    return v.pick(x - r.left, y - r.top, { kinds: ['vertex'], tolerancePx: 6 })[0] ?? null;
+  }, s);
+  expect(hit?.kind).toBe('vertex');
+  expect(sel[0]).toContain(`|vertex|${hit?.index}|`);
+});

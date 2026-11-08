@@ -38,6 +38,8 @@ export interface AppHooks {
       lastStroke: { shape: string; confidence: number } | null;
     } | null;
     selection: string[];
+    /** `bodyId|kind|index|entity` per selected item. */
+    selectionKeys: string[];
     hover: string | null;
     choices: number;
     prompt: string | null;

@@ -1,7 +1,16 @@
 import type { EntityQuery, Feature, FilletFeature, PickHit } from '@whittle/contracts';
+import { boxMesh } from '@whittle/test-fixtures';
 import { describe, expect, it } from 'vitest';
 import { contextTools, newExtrude, newFillet, nextName } from '../features/factories';
-import { acceptsFor, applyPick, refForHit, resolvePick, toleranceFor, vertexAt } from './pick';
+import {
+  acceptsFor,
+  applyPick,
+  pickVertices,
+  refForHit,
+  resolvePick,
+  toleranceFor,
+  vertexAt,
+} from './pick';
 
 const hit = (p: Partial<PickHit>): PickHit => ({
   bodyId: 'B1',
@@ -115,5 +124,18 @@ describe('picking', () => {
     expect(vertexAt(pos, [10.0004, 20, 0])).toBe(2); // float noise
     expect(vertexAt(pos, [10, 25, 0])).toBe(-1); // moved: never guessed
     expect(vertexAt(undefined, [0, 0, 0])).toBe(-1);
+  });
+
+  it('vertices are numbered like the viewport picks them (edge endpoints), not by the kernel', () => {
+    // The kernel's own vertex order (TopExp) differs and is often absent: never used for remaps.
+    const mesh = { ...boxMesh(40, 30, 20), vertexPositions: new Float32Array([40, 30, 20]) };
+    const v = pickVertices(mesh);
+    expect(v?.length).toBe(8 * 3);
+    const i = vertexAt(v, [40, 0, 0]);
+    expect(i).toBeGreaterThanOrEqual(0);
+    expect([v?.[3 * i], v?.[3 * i + 1], v?.[3 * i + 2]]).toEqual([40, 0, 0]);
+    // A taller box keeps the bottom corner at the same ordinal.
+    expect(vertexAt(pickVertices(boxMesh(40, 30, 35)), [40, 0, 0])).toBe(i);
+    expect(pickVertices(undefined)).toBeUndefined();
   });
 });

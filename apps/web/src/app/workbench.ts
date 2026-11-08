@@ -84,6 +84,7 @@ import {
   acceptsFor,
   applyPick,
   hitKey,
+  pickVertices,
   refForHit,
   resolvePick,
   toHighlight,
@@ -678,7 +679,7 @@ export class Workbench {
       // Vertices have no names in the mesh: re-find them by position (dropped if they moved).
       const i =
         k === 'vertex'
-          ? vertexAt(body?.mesh.vertexPositions, s.hit.point)
+          ? vertexAt(pickVertices(body?.mesh), s.hit.point)
           : s.ref && names
             ? names.indexOf(s.ref.name)
             : -1;
@@ -2309,6 +2310,7 @@ export class Workbench {
               }
             : null,
           selection: u.selection.map((x) => x.hit.kind),
+          selectionKeys: u.selection.map((x) => x.key),
           hover: u.hover?.kind ?? null,
           choices: this.choices,
           prompt: u.prompt?.tool ?? null,

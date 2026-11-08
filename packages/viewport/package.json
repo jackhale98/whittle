@@ -6,7 +6,8 @@
   "type": "module",
   "description": "Imperative three.js viewport: WebGPU with WebGL2 fallback, camera-controls, fat-line edges.",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./ids": "./src/ids.ts"
   },
   "scripts": {
     "typecheck": "tsc -p .",

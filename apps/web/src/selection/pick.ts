@@ -10,9 +10,11 @@ import type {
   Feature,
   HighlightItem,
   Id,
+  MeshBuffers,
   PickHit,
   PickKind,
 } from '@whittle/contracts';
+import { deriveVertices } from '@whittle/viewport/ids';
 
 /** Pick radius in CSS px: mouse 6, pen 10, touch 22 (contract `PickOptions`). */
 export function toleranceFor(pointerType: string): number {
@@ -219,6 +221,15 @@ export function applyPick<F extends Feature>(feature: F, path: string, ref: Enti
  * carry no persistent names in the mesh, so a selected vertex is re-found by position after a
  * regen (a vertex that moved is dropped, never guessed).
  */
+/**
+ * The body's vertices numbered exactly as the viewport picks them (distinct edge-polyline
+ * endpoints, `deriveVertices`), so a remapped index highlights the same vertex. The kernel's
+ * optional `vertexPositions` is not used: its order is TopExp's, not the viewport's.
+ */
+export function pickVertices(mesh: MeshBuffers | undefined): Float32Array | undefined {
+  return mesh ? deriveVertices(mesh.edgePositions, mesh.edgeRanges, mesh.bbox) : undefined;
+}
+
 export function vertexAt(
   positions: Float32Array | undefined,
   point: readonly [number, number, number],
