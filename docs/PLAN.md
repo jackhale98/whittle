@@ -531,7 +531,16 @@ Whittle can do better because its source format is text-based parametric data (Â
 - **Left panel:** feature tree with a draggable rollback bar, plus a params tab. It's resizable and collapsible.
 - **Centre:** the viewport. The view cube sits top-right, with a units/grid chip and the kernel status chip.
 - **Right panel:** a **context inspector**, a non-modal panel for the active feature or selection.
-- **Floating command bar** (bottom centre): Sketch, Extrude, Revolve, Fillet, Chamfer, Shell, Pattern, Hole, Measure, plus a "More" button that opens the command palette.
+- **Floating command bar** (bottom centre), **grouped by category** so it stays the same width as features are added. Each category button opens a flyout with its tools, and shows the last-used tool for one-click repeat. Single-tool groups are direct buttons. Categories (shared with the tablet rail through one definition, `toolGroups`):
+  - **Sketch**
+  - **Solid:** extrude, revolve, sweep, loft, push/pull, boolean
+  - **Modify:** fillet, chamfer, shell, draft, mirror, patterns
+  - **Hole**
+  - **Reference:** plane, axis, point
+  - **Inspect:** measure, section, mass properties
+  - **Moreâ€¦** opens the command palette.
+
+  Keyboard shortcuts still launch tools directly.
 
 **Tablet (Shapr3D-class):**
 
