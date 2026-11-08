@@ -294,12 +294,17 @@ export class SketchSession {
     return next;
   }
 
-  /** Solves `next` and writes it to the document (one undo entry unless `key` coalesces). */
-  commitEdit(next: SketchData, label: string, key?: string): Promise<void> {
+  /**
+   * Solves an edit and writes it to the document (one undo entry unless `key` coalesces). The
+   * edit is a function of the sketch as it is when the edit runs, so quick successive edits (fast
+   * clicks while a solve is in flight) build on each other instead of overwriting.
+   */
+  commitEdit(edit: (cur: SketchFeature) => SketchData, label: string, key?: string): Promise<void> {
     return this.serial(async () => {
       const f = this.feature();
       const part = this.wb.part;
       if (!f || !part || this.disposed) return;
+      const next = edit(f);
       const res = await this.solveData(next);
       const entities = res.status === 'solved' ? res.entities : [...next.entities];
       const feature: SketchFeature = { ...f, entities, constraints: [...next.constraints] };
@@ -337,12 +342,12 @@ export class SketchSession {
       const set = new Set(u.selected);
       const on = !f.entities.some((e) => set.has(e.id) && e.construction);
       void this.commitEdit(
-        {
-          entities: f.entities.map((e) =>
+        (cur) => ({
+          entities: cur.entities.map((e) =>
             set.has(e.id) && e.kind !== 'point' ? { ...e, construction: on } : e,
           ),
-          constraints: f.constraints,
-        },
+          constraints: cur.constraints,
+        }),
         on ? 'Make construction' : 'Make regular',
       );
       return;
@@ -358,7 +363,7 @@ export class SketchSession {
     const c = constraintFrom(kind, f.entities, u.selected);
     if (!c) return;
     void this.commitEdit(
-      { entities: f.entities, constraints: [...f.constraints, c] },
+      (cur) => ({ entities: cur.entities, constraints: [...cur.constraints, c] }),
       `Add ${kind}`,
     );
   }
@@ -382,15 +387,18 @@ export class SketchSession {
       const id = u.selectedConstraint;
       this.patch({ selectedConstraint: null });
       void this.commitEdit(
-        { entities: f.entities, constraints: f.constraints.filter((c) => c.id !== id) },
+        (cur) => ({
+          entities: cur.entities,
+          constraints: cur.constraints.filter((c) => c.id !== id),
+        }),
         'Delete constraint',
       );
       return;
     }
     if (u.selected.length === 0) return;
-    const next = removeEntities(f, u.selected);
+    const ids = u.selected;
     this.patch({ selected: [] });
-    void this.commitEdit(next, 'Delete sketch geometry');
+    void this.commitEdit((cur) => removeEntities(cur, ids), 'Delete sketch geometry');
   }
 
   selectConstraint(id: Id | null): void {
@@ -401,14 +409,14 @@ export class SketchSession {
   // ------------------------------------------------------------------ dimensions
 
   updateDimension(id: Id, expr: string, mode: 'commit' | 'preview'): void {
-    const f = this.feature();
-    if (!f) return;
-    const constraints = f.constraints.map((c) =>
-      c.id === id && 'value' in c ? { ...c, value: expr } : c,
-    );
     if (mode === 'commit') this.patch({ editDimension: null });
     void this.commitEdit(
-      { entities: f.entities, constraints },
+      (cur) => ({
+        entities: cur.entities,
+        constraints: cur.constraints.map((c) =>
+          c.id === id && 'value' in c ? { ...c, value: expr } : c,
+        ),
+      }),
       'Edit dimension',
       mode === 'preview' ? `dim:${id}` : undefined,
     );
@@ -420,22 +428,21 @@ export class SketchSession {
   }
 
   applyFix(fix: SuggestedFix): void {
-    const f = this.feature();
-    if (!f) return;
     const a = fix.action;
-    let constraints: SketchConstraint[];
-    if (a.kind === 'removeConstraint')
-      constraints = f.constraints.filter((c) => c.id !== a.constraint);
-    else if (a.kind === 'makeReference')
-      constraints = f.constraints.map((c) =>
-        c.id === a.constraint && 'value' in c ? { ...c, driving: false } : c,
+    const fixConstraints = (cs: readonly SketchConstraint[]): SketchConstraint[] => {
+      if (a.kind === 'removeConstraint') return cs.filter((c) => c.id !== a.constraint);
+      if (a.kind === 'makeReference')
+        return cs.map((c) =>
+          c.id === a.constraint && 'value' in c ? { ...c, driving: false } : c,
+        );
+      return cs.map((c) =>
+        c.id === a.constraint && 'value' in c ? { ...c, value: initialExpr(c.kind, a.value) } : c,
       );
-    else
-      constraints = f.constraints.map((c) => {
-        if (c.id !== a.constraint || !('value' in c)) return c;
-        return { ...c, value: initialExpr(c.kind, a.value) };
-      });
-    void this.commitEdit({ entities: f.entities, constraints }, fix.label);
+    };
+    void this.commitEdit(
+      (cur) => ({ entities: cur.entities, constraints: fixConstraints(cur.constraints) }),
+      fix.label,
+    );
   }
 
   private placeDimension(picks: Id[], at: Vec2): void {
@@ -452,7 +459,7 @@ export class SketchSession {
     const c = makeDimension(draft, initialExpr(draft.kind, value), at);
     this.patch({ dimPicks: [], editDimension: c.id });
     void this.commitEdit(
-      { entities: f.entities, constraints: [...f.constraints, c] },
+      (cur) => ({ entities: cur.entities, constraints: [...cur.constraints, c] }),
       'Add dimension',
       `dim:${c.id}`,
     );
@@ -633,13 +640,13 @@ export class SketchSession {
       const state = drawMove(u.draw, this.data(), at, this.toleranceMm(e, at));
       const r = drawClick(state, this.data());
       this.patch({ draw: r.state, cursor: r.state.cursor });
-      if (r.edit) {
-        const cur = this.data();
+      const edit = r.edit;
+      if (edit) {
         void this.commitEdit(
-          {
-            entities: [...cur.entities, ...r.edit.entities],
-            constraints: [...cur.constraints, ...r.edit.constraints],
-          },
+          (cur) => ({
+            entities: [...cur.entities, ...edit.entities],
+            constraints: [...cur.constraints, ...edit.constraints],
+          }),
           `Draw ${u.tool ?? 'geometry'}`,
         );
       }

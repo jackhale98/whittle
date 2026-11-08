@@ -128,7 +128,7 @@ export default function LibraryPanel({ wb }: { wb: Workbench }) {
     <section
       aria-label="Library"
       data-testid="library-panel"
-      className="w-panel pointer-events-auto absolute inset-3 flex flex-col overflow-hidden rounded-[18px]"
+      className="w-card pointer-events-auto absolute top-14 right-3 bottom-[92px] left-3 flex flex-col overflow-hidden rounded-[18px] shadow-float"
     >
       <header className="flex items-center gap-2 border-b border-border px-4 py-3">
         <h2 className="text-sm font-semibold">Library</h2>

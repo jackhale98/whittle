@@ -101,7 +101,7 @@ export function App({ wb }: { wb: Workbench }) {
 
   const touch = diagnostics.tier !== 'desktop';
   const density = touch ? 'touch' : 'compact';
-  const statuses = regen?.result.features;
+  const statuses = useObservable(wb.treeStatuses);
   const canUndo = wb.store.canUndo();
   const canRedo = wb.store.canRedo();
   const activeTool: ToolId | null = ui.sketch ? 'sketch' : (ui.prompt?.tool ?? null);

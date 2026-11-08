@@ -184,4 +184,99 @@ describe.skipIf(!built)('fake ModelingApi over the real kernel', () => {
     const r = await regen(docWith([sketch, ex, fil]));
     expect(r.features.map((s) => s.state)).toEqual(['ok', 'error', 'blocked']);
   }, 60_000);
+
+  it('revolve about an origin axis, chamfer, datum plane sketches and booleans', async () => {
+    // Revolve: a 10 × 10 square on Front (XZ), 10 mm off the Z axis → a tube.
+    const front: SketchFeature = { ...rectSketch(), on: { name: 'origin:XZ', kind: 'face' } };
+    front.entities = rectangleCornerTool([10, 0], [20, 10]).entities;
+    front.constraints = [];
+    const r0 = await regen(docWith([front]));
+    const ring = r0.sketches[0]?.regions[0]?.name ?? '';
+    const rev: Feature = {
+      id: ulid(),
+      type: 'revolve',
+      name: 'Revolve 1',
+      suppressed: false,
+      profile: [{ name: ring, kind: 'region' }],
+      axis: { name: 'origin:Z', kind: 'edge' },
+      angle: '360 deg',
+      direction: 'normal',
+      op: 'new',
+    };
+    const r1 = await regen(docWith([front, rev]));
+    expect(r1.features.map((f) => f.state)).toEqual(['ok', 'ok']);
+    expect(r1.bodies[0]?.massProperties?.volume).toBeCloseTo(Math.PI * (400 - 100) * 10, 1);
+
+    // Datum plane 15 mm above Top, a sketch on it, extruded: the body starts at z = 15.
+    const plane: Feature = {
+      id: ulid(),
+      type: 'plane',
+      name: 'Plane 1',
+      suppressed: false,
+      definition: { kind: 'offset', from: { name: 'origin:XY', kind: 'face' }, distance: '15 mm' },
+    };
+    const onPlane: SketchFeature = {
+      ...rectSketch(),
+      on: { name: `F${plane.id}:plane`, kind: 'face' },
+    };
+    const r2 = await regen(docWith([plane, onPlane]));
+    expect(r2.sketches[0]?.frame.origin[2]).toBeCloseTo(15);
+    const ex: Feature = {
+      id: ulid(),
+      type: 'extrude',
+      name: 'Extrude 1',
+      suppressed: false,
+      profile: [{ name: r2.sketches[0]?.regions[0]?.name ?? '', kind: 'region' }],
+      direction: 'normal',
+      end: { kind: 'blind', depth: '5 mm' },
+      op: 'new',
+    };
+    const r3 = await regen(docWith([plane, onPlane, ex]));
+    expect(r3.bodies[0]?.mesh.bbox.min[2]).toBeCloseTo(15, 3);
+
+    // Two boxes, cut one with the other; then chamfer an edge of the result.
+    const a: Feature = {
+      id: ulid(),
+      type: 'primitive',
+      name: 'Box 1',
+      suppressed: false,
+      op: 'new',
+      shape: 'box',
+      dx: '20',
+      dy: '20',
+      dz: '20',
+    };
+    const b: Feature = {
+      ...a,
+      id: ulid(),
+      name: 'Box 2',
+      frame: { origin: [10, 10, 10], z: [0, 0, 1], x: [1, 0, 0] },
+    };
+    const cut: Feature = {
+      id: ulid(),
+      type: 'boolean',
+      name: 'Boolean 1',
+      suppressed: false,
+      op: 'cut',
+      target: { name: `B${a.id}`, kind: 'body' },
+      tools: [{ name: `B${b.id}`, kind: 'body' }],
+      keepTools: false,
+    };
+    const r4 = await regen(docWith([a, b, cut]));
+    expect(r4.features.map((f) => f.state)).toEqual(['ok', 'ok', 'ok']);
+    expect(r4.bodies).toHaveLength(1);
+    expect(r4.bodies[0]?.massProperties?.volume).toBeCloseTo(8000 - 1000, 3);
+    const edge = r4.bodies[0]?.mesh.edgeNames.find((n) => n.length > 0) ?? '';
+    const ch: Feature = {
+      id: ulid(),
+      type: 'chamfer',
+      name: 'Chamfer 1',
+      suppressed: false,
+      edges: [{ name: edge, kind: 'edge' }],
+      mode: { kind: 'distance', distance: '1 mm' },
+    };
+    const r5 = await regen(docWith([a, b, cut, ch]));
+    expect(r5.features[3]?.state).toBe('ok');
+    expect(r5.bodies[0]?.massProperties?.volume).toBeLessThan(7000);
+  }, 60_000);
 });

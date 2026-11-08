@@ -53,7 +53,8 @@ export function describeRef(doc: WhittleDoc, ref: EntityRef): string {
   };
   if (origin[ref.name]) return origin[ref.name] as string;
   const part = doc.parts[0];
-  const owner = part?.features.find((f) => ref.name.includes(f.id));
+  // The most recent feature the name mentions (an extrude's edge also names its sketch).
+  const owner = part?.features.findLast((f) => ref.name.includes(f.id));
   const kind = ref.kind === 'region' ? 'Region' : ref.kind[0]?.toUpperCase() + ref.kind.slice(1);
   if (ref.kind === 'body') return owner ? `Body of ${owner.name}` : 'Body';
   if (ref.kind === 'region') {

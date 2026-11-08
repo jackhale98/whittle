@@ -119,7 +119,7 @@ function candidateFor(doc: WhittleDoc, h: PickHit, i: number): PickCandidate {
         : h.kind === 'region'
           ? 'face'
           : h.kind;
-  const owner = doc.parts[0]?.features.find((f) => h.bodyId.includes(f.id));
+  const owner = doc.parts[0]?.features.findLast((f) => h.bodyId.includes(f.id));
   const noun = { face: 'Face', edge: 'Edge', vertex: 'Vertex', body: 'Body' }[kind];
   return {
     id: String(i),
@@ -273,7 +273,7 @@ function SketchLayer({
         const measured = driven[c.id];
         return (
           <DimensionLabel
-            key={c.id}
+            key={`${c.id}:${ui.editDimension === c.id}`}
             x={p.x}
             y={p.y}
             kind={c.kind}
@@ -360,20 +360,15 @@ export function ViewportOverlays({ wb, touch }: { wb: Workbench; touch: boolean 
           />
         </div>
       ) : null}
-      {/* Top centre: act-first prompt chip and the plane chooser. */}
-      <div className="absolute top-3 left-1/2 flex -translate-x-1/2 flex-col items-center">
-        {!sk && promptText ? (
-          <>
-            <PromptChip
-              {...(pickedCount ? { count: pickedCount } : {})}
-              onCancel={() => wb.cancel()}
-            >
-              {promptText}
-            </PromptChip>
-            {ui.prompt?.tool === 'sketch' ? <PlaneChooser wb={wb} doc={doc} /> : null}
-          </>
-        ) : null}
-      </div>
+      {/* Above the command bar, where the tool was chosen: act-first prompt + plane chooser. */}
+      {!sk && promptText ? (
+        <div className="absolute bottom-[92px] left-1/2 flex -translate-x-1/2 flex-col items-center gap-2">
+          {ui.prompt?.tool === 'sketch' ? <PlaneChooser wb={wb} doc={doc} /> : null}
+          <PromptChip {...(pickedCount ? { count: pickedCount } : {})} onCancel={() => wb.cancel()}>
+            {promptText}
+          </PromptChip>
+        </div>
+      ) : null}
 
       {sk && session ? (
         <>

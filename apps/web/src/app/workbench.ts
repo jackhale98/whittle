@@ -156,6 +156,7 @@ export class Workbench {
     mark('shellInteractiveMs');
     this.cleanup.push(
       this.store.subscribe((doc, change) => this.onDocChange(doc, change.patches[0]?.path === '')),
+      this.ui.subscribe(() => this.onUiChange()),
       this.listen(window, 'keydown', (e) => this.onKey(e as KeyboardEvent)),
       this.listen(document, 'visibilitychange', () => {
         if (document.visibilityState === 'hidden') void this.flushSave();
@@ -253,11 +254,46 @@ export class Workbench {
     this.engine.set((s) => ({ ...s, ready: true }));
     this.loop = createRegenLoop({
       port: modeling.port,
-      getDoc: () => this.store.getDoc(),
+      getDoc: () => this.viewDoc(),
       onResult: (o) => this.onRegen(o),
       onError: (e) => this.toast(e.message, 'error'),
     });
     if (this.ui.get().ready) this.loop.request();
+  }
+
+  /**
+   * The document as regenerated for display. While an inspector pick field takes edges or faces,
+   * the model is rolled back to just before that feature (as Onshape does), so picks name the
+   * feature's *input* geometry, never its own output.
+   */
+  viewDoc(): WhittleDoc {
+    const doc = this.store.getDoc();
+    const p = this.ui.get().picking;
+    const part = doc.parts[0];
+    if (!p || !part) return doc;
+    const kinds = acceptsFor(p.path).kinds;
+    if (!kinds.some((k) => k === 'edge' || k === 'face' || k === 'vertex')) return doc;
+    const idx = part.features.findIndex((f) => f.id === p.featureId);
+    if (idx < 0 || idx >= part.rollbackIndex) return doc;
+    const memo = this.viewMemo;
+    if (memo && memo.doc === doc && memo.index === idx) return memo.out;
+    const out = { ...doc, parts: [{ ...part, rollbackIndex: idx }, ...doc.parts.slice(1)] };
+    this.viewMemo = { doc, index: idx, out };
+    return out;
+  }
+
+  private viewMemo: { doc: WhittleDoc; index: number; out: WhittleDoc } | null = null;
+  private lastPickKey = '';
+  /** Feature statuses of the last regen of the real (not rolled-back-for-picking) document. */
+  readonly treeStatuses = observable<RegenResult['features'] | undefined>(undefined);
+
+  private onUiChange(): void {
+    const p = this.ui.get().picking;
+    const key = p ? `${p.featureId}|${p.path}` : '';
+    if (key !== this.lastPickKey) {
+      this.lastPickKey = key;
+      this.loop?.request();
+    }
   }
 
   /** Stable subscribe/snapshot pair for `useSyncExternalStore`. */
@@ -316,7 +352,10 @@ export class Workbench {
   // ------------------------------------------------------------------ regeneration → viewport
 
   private onRegen(outcome: RegenView): void {
+    if (outcome.doc === this.store.getDoc() || !this.ui.get().picking)
+      this.treeStatuses.set(outcome.result.features);
     this.regen.set(outcome);
+    this.remapSelection(outcome.result);
     this.syncViewport();
     this.sketch?.onRegen(outcome.result);
     if (!this.firstRendered && this.viewport) {
@@ -324,6 +363,23 @@ export class Workbench {
       void this.viewport.nextFrame().then(() => mark('firstBodyMs'));
     }
     if (outcome.quality === 'fine') this.maybeThumbnail();
+  }
+
+  /** Body pick indices change between regens: re-find selected faces/edges by name. */
+  private remapSelection(result: RegenResult): void {
+    const u = this.ui.get();
+    const selection = u.selection.flatMap((s): SelectionItem[] => {
+      const k = s.hit.kind;
+      if ((k !== 'face' && k !== 'edge' && k !== 'vertex') || !s.ref) return [s];
+      const body = result.bodies.find((b) => b.id === s.hit.bodyId);
+      const names =
+        k === 'face' ? body?.mesh.faceNames : k === 'edge' ? body?.mesh.edgeNames : undefined;
+      const i = s.ref && names ? names.indexOf(s.ref.name) : -1;
+      if (i < 0) return [];
+      const hit = { ...s.hit, index: i };
+      return [{ ...s, hit, key: hitKey(hit) }];
+    });
+    this.patchUi({ selection, hover: null });
   }
 
   attachViewport(viewport: InteractiveViewport, canvas: HTMLCanvasElement): void {
