@@ -274,8 +274,6 @@ These are in the plan but not wired in this build. The contract types may exist.
   STEP".
 - **BREP export from the UI.** The kernel and the `ExportFormat` type support BREP. The export menu
   does not offer it.
-- **Sphere creation.** The kernel builds spheres and the inspector can edit one, but no tool creates
-  one.
 - **Shell, pattern, hole and measure tools.** Listed in the command bar as disabled.
 - **Draft on extrude.** The field exists, but a non-zero draft is rejected by the kernel.
 - **Measure and section in the app.** The kernel measures exactly (`ModelingApi.measure`) and the

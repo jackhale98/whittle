@@ -151,8 +151,12 @@ not available yet"). Leave it empty.
 
 ### Revolve
 
-Select a sketch region, then press **R**. The revolve uses an axis of the sketch's plane by default.
-Set the angle (default 360 degrees), the direction and the operation in the inspector.
+Select a sketch region, then press **R**. The revolve uses an axis of the sketch's plane by default;
+you can pick a sketch line or a straight edge as the axis instead. Set the angle (default 360
+degrees), the direction and the operation in the inspector.
+
+To make a **sphere**, sketch a semicircle (an arc closed by a line along its diameter) and revolve it
+360 degrees about that line. The same approach gives domes, balls on a shaft, and other turned shapes.
 
 ### Fillet and chamfer
 

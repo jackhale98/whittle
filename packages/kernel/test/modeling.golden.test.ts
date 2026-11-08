@@ -562,6 +562,33 @@ for (const { variant } of VARIANTS) {
         });
         relClose(ss.mass(r.shape).volume, PI * 300 * 5, 1e-9);
       });
+
+      it('a semicircle revolved 360° about its diameter is a sphere (no sphere tool needed)', () => {
+        const ss = session();
+        // Half disc of radius 10 on the +u side, its diameter lying on the revolve axis (world Z).
+        const sk = ss.exec(
+          sketch(SK, [
+            pt('c', 0, 0),
+            pt('s', 0, -10),
+            pt('e', 0, 10),
+            { id: 'hc', kind: 'arc', center: 'c', start: 's', end: 'e', construction: false },
+            line('dm', 'e', 's'),
+          ]),
+          sketchInputs(xz),
+        );
+        expect(regionNames(sk)).toEqual([`${S}:region(dm,hc)`]);
+        const r = ss.exec(revolve(2 * PI), {
+          values: { '/angle': 2 * PI },
+          refs: profileRefs(sk.shape, [indexOf(sk, `${S}:region(dm,hc)`, 'face')]),
+          frames: { axis: frameAt([0, 0, 0], [0, 0, 1], [1, 0, 0]) },
+        });
+        const mp = ss.mass(r.shape);
+        relClose(mp.volume, (4 / 3) * PI * 1000, 1e-9);
+        relClose(mp.area, 4 * PI * 100, 1e-9);
+        vecClose(mp.centroid, [0, 0, 0], 1e-9);
+        // The spherical face comes from the arc; the diameter on the axis leaves no face of its own.
+        expect(names(r, 'face')).toEqual([`${E}:side(${S}:e(hc))`]);
+      });
     });
 
     // ---------------------------------------------------------------------------------------
