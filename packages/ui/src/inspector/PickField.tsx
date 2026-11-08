@@ -2,6 +2,11 @@ import type { EntityRef, UnresolvedRef } from '@whittle/contracts';
 import { Crosshair, Plus, RefreshCw, X } from 'lucide-react';
 import { cn } from '../components/primitives';
 
+/** "a face", "an edge", "an axis or edge". */
+export function withArticle(noun: string): string {
+  return `${/^[aeiou]/i.test(noun) ? 'an' : 'a'} ${noun}`;
+}
+
 export const defaultDescribeRef = (r: EntityRef): string =>
   `${r.kind[0]?.toUpperCase()}${r.kind.slice(1)} ${r.name}`;
 
@@ -87,7 +92,7 @@ export function PickField({
                     picking && 'bg-accent text-accent-fg hover:bg-accent',
                   )}
                 >
-                  {picking ? `Select a ${accepts}` : 'Change'}
+                  {picking ? `Select ${withArticle(accepts)}` : 'Change'}
                 </button>
               ) : null}
               {onRemove ? (
@@ -122,7 +127,11 @@ export function PickField({
             ) : (
               <Plus className="size-3.5" aria-hidden />
             )}
-            {picking ? `Select a ${accepts}` : refs.length ? 'Add' : `Pick ${accepts}`}
+            {picking
+              ? `Select ${withArticle(accepts)}`
+              : refs.length
+                ? 'Add'
+                : `Pick ${withArticle(accepts)}`}
           </button>
         </li>
       ) : null}

@@ -3,7 +3,7 @@ import { ChevronDown, Scale } from 'lucide-react';
 import { lazy, Suspense, useState } from 'react';
 import { Section } from '../components/controls';
 import { Button, cn } from '../components/primitives';
-import { type FormatValue, fmtNumber } from '../format';
+import { type FormatValue, fmtNumber, prettyUnits } from '../format';
 import type { MaterialLibraryItem } from './materials';
 
 const MaterialPicker = lazy(() => import('./MaterialPicker'));
@@ -137,7 +137,9 @@ export function PartInspector({
             <Swatch color={part.color ?? mat.appearance} className="size-7" />
             <div className="min-w-0 flex-1">
               <p className="truncate text-ui font-medium">{mat.name}</p>
-              <p className="tnum text-2xs text-fg-muted">{mat.density}</p>
+              <p className="tnum text-2xs text-fg-muted" data-testid="material-density">
+                {prettyUnits(mat.density)}
+              </p>
             </div>
           </div>
         ) : (

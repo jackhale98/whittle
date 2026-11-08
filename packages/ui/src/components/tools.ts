@@ -5,11 +5,11 @@ import {
   PenLine,
   Rotate3d,
   Ruler,
-  Slice,
   SquareDashed,
   SquareRoundCorner,
 } from 'lucide-react';
 import type { ComponentType } from 'react';
+import { ChamferIcon } from './icons';
 
 export type ToolId =
   | 'sketch'
@@ -36,7 +36,7 @@ export const tools: readonly ToolDef[] = [
   { id: 'extrude', label: 'Extrude', shortcut: 'E', Icon: ArrowUpFromLine },
   { id: 'revolve', label: 'Revolve', shortcut: 'R', Icon: Rotate3d },
   { id: 'fillet', label: 'Fillet', shortcut: 'F', Icon: SquareRoundCorner },
-  { id: 'chamfer', label: 'Chamfer', shortcut: 'C', Icon: Slice },
+  { id: 'chamfer', label: 'Chamfer', shortcut: 'C', Icon: ChamferIcon },
   { id: 'shell', label: 'Shell', Icon: SquareDashed },
   { id: 'pattern', label: 'Pattern', Icon: Grid3x3 },
   { id: 'hole', label: 'Hole', Icon: CircleDot },

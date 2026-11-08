@@ -32,6 +32,65 @@ export interface DimensionLabelProps {
   onCancel?(): void;
   /** Click on a driven dimension: offer to make it driving. */
   onSelect?(): void;
+  /** Driving ↔ reference (shown while editing, or when the label is selected). */
+  onToggleDriving?(): void;
+  /** Radius ↔ diameter, for circles and arcs. */
+  onToggleKind?(): void;
+}
+
+/** Small actions under a label: radius/diameter and driving/reference toggles. */
+function LabelActions({
+  kind,
+  driving,
+  onToggleDriving,
+  onToggleKind,
+  onDone,
+}: {
+  kind: DimKind;
+  driving: boolean;
+  onToggleDriving?: () => void;
+  onToggleKind?: () => void;
+  onDone?: () => void;
+}) {
+  if (!onToggleDriving && !onToggleKind) return null;
+  const chip =
+    'pointer-events-auto inline-flex h-6 items-center rounded-full bg-surface px-2 text-2xs font-semibold text-fg-muted shadow-[inset_0_0_0_1px_var(--color-border-strong)] hover:text-fg';
+  return (
+    <div
+      role="toolbar"
+      aria-label="Dimension options"
+      className="mt-1 flex justify-center gap-1"
+      data-testid="dimension-actions"
+      // Keep focus in the editor: these act on the dimension, they don't end the edit.
+      onMouseDown={(e) => e.preventDefault()}
+    >
+      {onToggleKind && (kind === 'radius' || kind === 'diameter') ? (
+        <button
+          type="button"
+          className={chip}
+          data-testid="dimension-toggle-kind"
+          aria-label={kind === 'radius' ? 'Show as diameter' : 'Show as radius'}
+          onClick={() => onToggleKind()}
+        >
+          {kind === 'radius' ? 'R → Ø' : 'Ø → R'}
+        </button>
+      ) : null}
+      {onToggleDriving ? (
+        <button
+          type="button"
+          className={chip}
+          data-testid="dimension-toggle-driving"
+          aria-label={driving ? 'Make reference dimension' : 'Make driving dimension'}
+          onClick={() => {
+            onToggleDriving();
+            onDone?.();
+          }}
+        >
+          {driving ? '(Reference)' : 'Driving'}
+        </button>
+      ) : null}
+    </div>
+  );
 }
 
 const prefix: Partial<Record<DimKind, string>> = { radius: 'R', diameter: 'Ø' };
@@ -57,6 +116,8 @@ export function DimensionLabel({
   onPreview,
   onCancel,
   onSelect,
+  onToggleDriving,
+  onToggleKind,
 }: DimensionLabelProps) {
   const [editing, setEditing] = useState(!!autoEdit && driving);
   const btn = useRef<HTMLButtonElement>(null);
@@ -76,7 +137,21 @@ export function DimensionLabel({
 
   if (editing) {
     return (
-      <div className="absolute z-[2] w-44" style={pos} data-testid="dimension-editor">
+      // biome-ignore lint/a11y/noStaticElementInteractions: Enter bubbling from the input
+      <div
+        className="absolute z-[2] w-44"
+        style={pos}
+        data-testid="dimension-editor"
+        onKeyDown={(e) => {
+          // Enter on an unchanged value (keep the measured one) also closes the editor.
+          const t = e.target as HTMLInputElement;
+          if (e.key === 'Enter' && t.tagName === 'INPUT' && t.value.trim() === expr.trim()) {
+            setEditing(false);
+            onCancel?.();
+            requestAnimationFrame(() => btn.current?.focus());
+          }
+        }}
+      >
         <ExpressionInput
           label={`${kind} dimension`}
           value={expr}
@@ -95,6 +170,13 @@ export function DimensionLabel({
           onCancel={onCancel}
           className="[&_input]:text-center"
         />
+        <LabelActions
+          kind={kind}
+          driving={driving}
+          {...(onToggleDriving ? { onToggleDriving } : {})}
+          {...(onToggleKind ? { onToggleKind } : {})}
+          onDone={() => setEditing(false)}
+        />
         {/* Esc with nothing to revert, or a click away: close without committing. */}
         <EscapeCatcher
           onEscape={() => {
@@ -107,7 +189,7 @@ export function DimensionLabel({
     );
   }
 
-  return (
+  const label = (
     <button
       ref={btn}
       type="button"
@@ -136,6 +218,23 @@ export function DimensionLabel({
       {text}
       {driving ? null : ')'}
     </button>
+  );
+  if (!selected || (!onToggleDriving && !onToggleKind)) return label;
+  return (
+    <>
+      {label}
+      <div
+        className="absolute z-[2]"
+        style={{ left: x, top: y + 14, transform: 'translateX(-50%)' }}
+      >
+        <LabelActions
+          kind={kind}
+          driving={driving}
+          {...(onToggleDriving ? { onToggleDriving } : {})}
+          {...(onToggleKind ? { onToggleKind } : {})}
+        />
+      </div>
+    </>
   );
 }
 

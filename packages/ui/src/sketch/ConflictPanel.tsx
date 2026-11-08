@@ -80,9 +80,10 @@ export default function ConflictPanel({
                     variant={j === 0 ? 'primary' : 'secondary'}
                     icon={j === 0 ? <Wand2 className="size-3.5" /> : undefined}
                     onClick={() => onFix(f, i)}
-                    className="h-8"
+                    // Long fix labels ("Make D3 a reference dimension") wrap instead of clipping.
+                    className="h-auto! min-h-8 max-w-full shrink! justify-start! py-1.5 text-left leading-4 whitespace-normal!"
                   >
-                    {f.label}
+                    <span className="min-w-0 break-words">{f.label}</span>
                   </Button>
                 ))}
               </div>

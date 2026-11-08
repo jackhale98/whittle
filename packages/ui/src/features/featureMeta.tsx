@@ -8,10 +8,10 @@ import {
   MoveVertical,
   PenLine,
   Rotate3d,
-  Slice,
   SquareRoundCorner,
 } from 'lucide-react';
 import type { ComponentType } from 'react';
+import { ChamferIcon } from '../components/icons';
 
 export interface FeatureMeta {
   label: string;
@@ -25,7 +25,7 @@ export const featureMeta: Record<FeatureType, FeatureMeta> = {
   extrude: { label: 'Extrude', Icon: ArrowUpFromLine },
   revolve: { label: 'Revolve', Icon: Rotate3d },
   fillet: { label: 'Fillet', Icon: SquareRoundCorner },
-  chamfer: { label: 'Chamfer', Icon: Slice },
+  chamfer: { label: 'Chamfer', Icon: ChamferIcon },
   boolean: { label: 'Boolean', Icon: Combine },
   pushPull: { label: 'Push/Pull', Icon: MoveVertical },
   plane: { label: 'Plane', Icon: Layers },

@@ -1,6 +1,7 @@
 import * as RTabs from '@radix-ui/react-tabs';
 import {
   ChevronDown,
+  ChevronRight,
   GitBranch,
   ListTree,
   MousePointer2,
@@ -266,12 +267,25 @@ export function DesktopShell(props: ShellProps) {
                     </EmptyState>
                   )}
                   {diagnostics ? (
-                    <div className="border-t border-border px-4 py-3">
-                      <h3 className="pb-2 text-2xs font-semibold tracking-wider text-fg-muted uppercase">
+                    // Collapsed by default so the inspector keeps its height at 1280×720.
+                    <details
+                      className="group shrink-0 border-t border-border"
+                      data-testid="runtime-details"
+                    >
+                      <summary className="flex cursor-pointer list-none items-center gap-1.5 px-4 py-2.5 text-2xs font-semibold tracking-wider text-fg-muted uppercase select-none hover:text-fg focus-visible:outline-2 focus-visible:outline-accent [&::-webkit-details-marker]:hidden">
+                        <ChevronRight
+                          className="size-3.5 transition-transform duration-150 group-open:rotate-90"
+                          aria-hidden
+                        />
                         Runtime
-                      </h3>
-                      <DiagnosticsList d={diagnostics} />
-                    </div>
+                        <span className="ml-auto font-medium tracking-normal normal-case">
+                          {diagnostics.kernelVariant ?? '—'} · {diagnostics.renderBackend ?? '—'}
+                        </span>
+                      </summary>
+                      <div className="px-4 pb-3">
+                        <DiagnosticsList d={diagnostics} />
+                      </div>
+                    </details>
                   ) : null}
                 </div>
               </div>

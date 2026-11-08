@@ -4,7 +4,7 @@ import { useId, useMemo, useState } from 'react';
 import { Segmented } from '../components/controls';
 import { ExpressionInput } from '../components/ExpressionInput';
 import { Button, cn } from '../components/primitives';
-import type { FormatValue } from '../format';
+import { type FormatValue, prettyUnits } from '../format';
 import { type MaterialLibraryItem, SWATCHES, toMaterial } from './materials';
 
 export interface MaterialPickerProps {
@@ -141,7 +141,9 @@ export default function MaterialPicker({
                             style={{ background: m.appearance ?? '#9aa4b2' }}
                           />
                           <span className="min-w-0 flex-1 truncate text-ui">{m.name}</span>
-                          <span className="tnum shrink-0 text-2xs text-fg-muted">{m.density}</span>
+                          <span className="tnum shrink-0 text-2xs text-fg-muted">
+                            {prettyUnits(m.density)}
+                          </span>
                           {on ? (
                             <Check className="size-4 shrink-0 text-accent-text" aria-hidden />
                           ) : null}

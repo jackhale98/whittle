@@ -10,6 +10,7 @@ import type {
   Feature,
   FeatureStatus,
   FilletFeature,
+  ImportFeature,
   NamedDimension,
   PlaneFeature,
   PrimitiveFeature,
@@ -18,7 +19,7 @@ import type {
   SketchFeature,
   UnresolvedRef,
 } from '@whittle/contracts';
-import { CircleAlert, PenLine, TriangleAlert } from 'lucide-react';
+import { CircleAlert, PenLine, RefreshCw, TriangleAlert } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Field, Section, Segmented, Switch } from '../components/controls';
 import { ExpressionInput } from '../components/ExpressionInput';
@@ -41,6 +42,8 @@ export interface FeatureInspectorProps {
   onPick?(path: string): void;
   /** The ref path currently being picked in the viewport, if any. */
   pickingPath?: string | null;
+  /** One-click re-pick of the first unresolved reference (needs-attention banner). */
+  onRepick?(): void;
   describeRef?(ref: EntityRef): string;
   onEditSketch?(): void;
   /** Closes the inspector back to selection state. */
@@ -609,9 +612,46 @@ function PushPullFields({
   );
 }
 
+const FORMAT_LABEL: Record<ImportFeature['source']['format'], string> = {
+  step: 'STEP',
+  iges: 'IGES',
+  brep: 'BREP',
+  stl: 'STL mesh',
+  obj: 'OBJ mesh',
+  '3mf': '3MF mesh',
+  glb: 'glTF binary mesh',
+};
+
+function ImportFields({ f, c, edit }: { f: ImportFeature; c: Ctx; edit: Edit<ImportFeature> }) {
+  return (
+    <>
+      <Section title="Source">
+        <dl className="tnum grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-ui">
+          <dt className="text-fg-muted">File</dt>
+          <dd className="truncate text-right font-medium" title={f.source.fileName}>
+            {f.source.fileName}
+          </dd>
+          <dt className="text-fg-muted">Format</dt>
+          <dd className="text-right font-medium">{FORMAT_LABEL[f.source.format]}</dd>
+          <dt className="text-fg-muted">SHA-256</dt>
+          <dd
+            className="truncate text-right font-mono text-2xs text-fg-muted"
+            title={f.source.sha256}
+          >
+            {f.source.sha256.slice(0, 12)}…
+          </dd>
+        </dl>
+      </Section>
+      <Section title="Result">
+        <ScopeFields f={f} c={c} edit={edit} />
+      </Section>
+    </>
+  );
+}
+
 /* ------------------------------------------------------------------------- component */
 
-function StatusBanner({ status }: { status: FeatureStatus }) {
+function StatusBanner({ status, onRepick }: { status: FeatureStatus; onRepick?: () => void }) {
   if (status.state === 'error') {
     return (
       <div
@@ -629,17 +669,34 @@ function StatusBanner({ status }: { status: FeatureStatus }) {
     );
   }
   if (status.state === 'needsAttention') {
+    const n = Math.max(status.unresolved?.length ?? 1, 1);
+    const ambiguous = status.unresolved?.[0]?.reason === 'ambiguous';
     return (
       <div
         role="alert"
         className="mx-4 mt-3 flex gap-2 rounded-control bg-warning-soft p-2.5 text-ui text-warning-text"
       >
         <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
-        <div>
-          <p className="font-medium">Some references need your attention.</p>
-          <p className="mt-0.5 text-xs">
-            Whittle will not guess. Re-pick the highlighted references to rebuild this feature.
+        <div className="min-w-0 flex-1">
+          <p className="font-medium">
+            {n === 1 ? 'A reference needs your attention.' : `${n} references need your attention.`}
           </p>
+          <p className="mt-0.5 text-xs">
+            {ambiguous
+              ? 'It now matches more than one entity. Whittle will not guess: choose which one.'
+              : 'Its geometry is gone. Whittle will not guess: its old place is ghosted in the view.'}
+          </p>
+          {onRepick ? (
+            <Button
+              variant="secondary"
+              icon={<RefreshCw className="size-3.5" />}
+              onClick={onRepick}
+              className="mt-2 h-7"
+              data-testid="repick"
+            >
+              {ambiguous ? 'Choose' : 'Re-pick'}
+            </Button>
+          ) : null}
         </div>
       </div>
     );
@@ -660,6 +717,7 @@ export function FeatureInspector({
   onPreview,
   onPick,
   pickingPath = null,
+  onRepick,
   describeRef,
   onEditSketch,
   onDone,
@@ -714,6 +772,9 @@ export function FeatureInspector({
     case 'pushPull':
       body = <PushPullFields f={feature} c={c} edit={e as Edit<PushPullFeature>} />;
       break;
+    case 'import':
+      body = <ImportFields f={feature} c={c} edit={e as Edit<ImportFeature>} />;
+      break;
   }
 
   return (
@@ -735,7 +796,7 @@ export function FeatureInspector({
           </Button>
         ) : null}
       </header>
-      {status ? <StatusBanner status={status} /> : null}
+      {status ? <StatusBanner status={status} {...(onRepick ? { onRepick } : {})} /> : null}
       {body}
     </div>
   );

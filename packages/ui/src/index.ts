@@ -23,6 +23,7 @@ export {
   type MenuItem,
   type MenuProps,
 } from './components/floating';
+export { ChamferIcon } from './components/icons';
 export type { KeypadKey } from './components/Keypad';
 export { PromptChip, type PromptChipProps } from './components/PromptChip';
 export {
@@ -81,8 +82,10 @@ export {
   defaultFormatValue,
   type FormatValue,
   fmtNumber,
+  formatDensity,
   isPlainLiteral,
   nudgeExpression,
+  prettyUnits,
 } from './format';
 export { FeatureInspector, type FeatureInspectorProps } from './inspector/FeatureInspector';
 export { type MaterialLibraryItem, SWATCHES, toMaterial } from './inspector/materials';
@@ -94,7 +97,12 @@ export {
   PartInspector,
   type PartInspectorProps,
 } from './inspector/PartInspector';
-export { defaultDescribeRef, PickField, type PickFieldProps } from './inspector/PickField';
+export {
+  defaultDescribeRef,
+  PickField,
+  type PickFieldProps,
+  withArticle,
+} from './inspector/PickField';
 export {
   type SelectionAction,
   SelectionInspector,

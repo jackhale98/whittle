@@ -342,8 +342,13 @@ describe('FeatureInspector', () => {
         },
       ],
     };
-    const p = setup(filletSample, { status });
-    expect(screen.getByRole('alert')).toHaveTextContent('Some references need your attention.');
+    const onRepick = vi.fn();
+    const p = setup(filletSample, { status, onRepick });
+    expect(screen.getByRole('alert')).toHaveTextContent('A reference needs your attention.');
+    await userEvent.click(
+      within(screen.getByRole('alert')).getByRole('button', { name: 'Re-pick' }),
+    );
+    expect(onRepick).toHaveBeenCalledOnce();
     const chips = screen.getByRole('list', { name: 'Edges' });
     const bad = chips.querySelector('[data-state="needs-attention"]');
     expect(bad).toHaveTextContent('Edge F2:side(e7)');
@@ -351,6 +356,11 @@ describe('FeatureInspector', () => {
       within(chips).getByRole('button', { name: /Re-pick Edge F2:side\(e7\) \(missing\)/ }),
     );
     expect(p.onPick).toHaveBeenCalledWith('/edges/1');
+  });
+
+  it('pick fields use the right article ("Select an edge")', async () => {
+    setup(filletSample, { pickingPath: '/edges' });
+    expect(screen.getByRole('button', { name: 'Select an edge' })).toBeInTheDocument();
   });
 
   it('fillet: error status shows message and hint', () => {

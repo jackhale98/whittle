@@ -26,8 +26,19 @@ export function defaultFormatValue(value: number, dimension: DimensionVector): s
   if (eq(dimension, [2, 0, 0])) return `${fmtNumber(value)} mm²`;
   if (eq(dimension, [3, 0, 0])) return `${fmtNumber(value)} mm³`;
   if (eq(dimension, [0, 1, 0])) return `${fmtNumber(value)} kg`;
-  if (eq(dimension, [-3, 1, 0])) return `${fmtNumber(value * 1e6)} g/cm³`;
+  if (eq(dimension, [-3, 1, 0])) return formatDensity(value);
   return fmtNumber(value);
+}
+
+/** Density (kg/mm³) as `2.70 g/cm³`: two decimals, superscript exponent. */
+export function formatDensity(kgPerMm3: number): string {
+  if (!Number.isFinite(kgPerMm3)) return '—';
+  return `${(kgPerMm3 * 1e6).toFixed(2).replace('-', '−')} g/cm³`;
+}
+
+/** Display form of an expression's units: `2.70 g/cm^3` → `2.70 g/cm³` (text stays editable as typed). */
+export function prettyUnits(expr: string): string {
+  return expr.replace(/\^([0-9])/g, (_, d: string) => '⁰¹²³⁴⁵⁶⁷⁸⁹'[Number(d)] ?? `^${d}`);
 }
 
 export type FormatValue = (value: number, dimension: DimensionVector) => string;
