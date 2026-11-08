@@ -18,11 +18,13 @@ import type {
   SketchEntity,
   SketchFeature,
   SketchSolveResult,
+  StrokeSample,
   SuggestedFix,
   Vec2,
 } from '@whittle/contracts';
 import { evaluateFeatureValues, sketchSolveValues } from '@whittle/document';
 import { createSketchSolverClient, newId, type SketchSolverClient } from '@whittle/sketch';
+import { recognizeStroke, strokeFragment } from '@whittle/sketch/recognize';
 import type { GeometricConstraintKind, SketchToolId } from '@whittle/ui';
 import { toWorld } from '../model/frames';
 import { toleranceFor } from '../selection/pick';
@@ -45,6 +47,7 @@ import {
   withPending,
 } from '../sketch/draw';
 import { sketchCurves } from '../sketch/overlay';
+import { MIN_CONFIDENCE, strokeEdit } from '../sketch/stroke';
 import { observable } from './observable';
 import type { SketchUi } from './state';
 import type { Workbench } from './workbench';
@@ -56,6 +59,20 @@ function solver(): SketchSolverClient {
 }
 
 const DRAW_TOOLS = new Set<string>(['line', 'rectangle', 'circle', 'arc', 'slot', 'polygon']);
+
+/** A pen press that moves less than this (CSS px) is a tap (a click for the tool), not a stroke. */
+const STROKE_SLOP_PX = 6;
+/** A finger drag longer than this starts a shape at the press (touch drag-to-draw). */
+const TOUCH_DRAG_PX = 10;
+
+interface Stroke {
+  pointerId: number;
+  start: { x: number; y: number };
+  samples: StrokeSample[];
+  /** Recognition tolerance (mm): about twice the pen pick radius at the current zoom. */
+  tolerance: number;
+  moved: boolean;
+}
 
 interface DragState {
   session: Promise<number>;
@@ -188,6 +205,8 @@ export class SketchSession {
       highlightConstraints: null,
       conflictsDismissed: false,
       isNew: this.isNew,
+      stroke: null,
+      lastStroke: null,
     };
     this.wb.patchUi({ sketch });
     this.tickCamera();
@@ -599,10 +618,13 @@ export class SketchSession {
   }
 
   /** Pick tolerance converted to sketch millimetres at the cursor. */
-  private toleranceMm(e: PointerEvent | MouseEvent, at: Vec2): number {
+  private toleranceMm(
+    e: { clientX: number; clientY: number; pointerType?: string },
+    at: Vec2,
+  ): number {
     const v = this.wb.viewport;
     const frame = this.ui()?.frame;
-    const px = toleranceFor('pointerType' in e ? e.pointerType : 'mouse') + 2;
+    const px = toleranceFor(e.pointerType ?? 'mouse') + 2;
     if (!v || !frame) return 1;
     const { x, y } = this.wb.local(e);
     const q = v.screenToPlane(x + px, y, frame);
@@ -633,9 +655,119 @@ export class SketchSession {
     this.pushHighlights();
   }
 
+  // ------------------------------------------------------------------ Pencil and touch
+
+  private stroke: Stroke | null = null;
+  /** The Pencil has been used in this session: from then on fingers only navigate (PLAN §9.3). */
+  private penUsed = false;
+  /** Touch drag-to-draw: where the finger went down with a drawing tool and nothing placed. */
+  private touchStart: { id: number; x: number; y: number; placed: boolean } | null = null;
+
+  private beginStroke(e: PointerEvent): void {
+    const at = this.toSketch(e);
+    if (!at) return;
+    (e.target as Element | null)?.setPointerCapture?.(e.pointerId);
+    this.stroke = {
+      pointerId: e.pointerId,
+      start: { x: e.clientX, y: e.clientY },
+      samples: [{ x: at[0], y: at[1], t: e.timeStamp, pressure: e.pressure }],
+      tolerance: 2 * this.pxToMm(e, at, toleranceFor('pen')),
+      moved: false,
+    };
+  }
+
+  private strokeMove(e: PointerEvent): void {
+    const st = this.stroke;
+    if (!st) return;
+    const events = e.getCoalescedEvents?.() ?? [];
+    for (const ev of events.length ? events : [e]) {
+      const at = this.toSketch(ev);
+      if (at) st.samples.push({ x: at[0], y: at[1], t: ev.timeStamp, pressure: ev.pressure });
+    }
+    if (!st.moved && Math.hypot(e.clientX - st.start.x, e.clientY - st.start.y) < STROKE_SLOP_PX)
+      return;
+    st.moved = true;
+    // Live feedback: the ink plus what it is recognised as so far (pure, ≈ 0.2 ms).
+    const rec = recognizeStroke(st.samples, { tolerance: st.tolerance });
+    this.patch({
+      stroke: {
+        points: st.samples.map((p) => [p.x, p.y] as Vec2),
+        shape: rec && rec.confidence >= MIN_CONFIDENCE ? rec.shape.kind : null,
+        confidence: rec?.confidence ?? 0,
+      },
+    });
+    this.scheduleOverlay();
+  }
+
+  /** Pen up after a stroke: recognise it and commit it through the edit queue. */
+  private finishStroke(st: Stroke): void {
+    const u = this.ui();
+    const rec = recognizeStroke(st.samples, { tolerance: st.tolerance });
+    const points = st.samples.map((p) => [p.x, p.y] as Vec2);
+    const base = this.drawData();
+    const result = strokeEdit(rec, points, base, st.tolerance, u?.construction ?? false);
+    this.patch({
+      stroke: null,
+      lastStroke: rec ? { shape: rec.shape.kind, confidence: rec.confidence } : null,
+    });
+    this.scheduleOverlay();
+    if (!result) return;
+    if (result.kind === 'erase') {
+      const ids = result.ids;
+      this.patch({ selected: [] });
+      void this.commitEdit((cur) => removeEntities(cur, ids), 'Erase sketch geometry');
+      return;
+    }
+    const edit = result.edit;
+    const pending: SketchData = { entities: edit.entities, constraints: edit.constraints };
+    this.unsettled.push(pending);
+    void this.commitEdit(
+      (cur) => ({
+        entities: [...cur.entities, ...edit.entities],
+        constraints: [...cur.constraints, ...edit.constraints],
+      }),
+      `Draw ${result.shape}`,
+    ).finally(() => {
+      this.unsettled = this.unsettled.filter((x) => x !== pending);
+    });
+  }
+
+  onPointerCancel(e: PointerEvent): void {
+    if (this.stroke?.pointerId === e.pointerId) {
+      this.stroke = null;
+      this.patch({ stroke: null });
+      this.scheduleOverlay();
+    }
+    if (this.touchStart?.id === e.pointerId) this.touchStart = null;
+  }
+
+  /** `px` CSS pixels at the pointer, in sketch millimetres. */
+  private pxToMm(e: PointerEvent | MouseEvent, at: Vec2, px: number): number {
+    const v = this.wb.viewport;
+    const frame = this.ui()?.frame;
+    if (!v || !frame) return 1;
+    const { x, y } = this.wb.local(e);
+    const q = v.screenToPlane(x + px, y, frame);
+    return q ? Math.max(Math.hypot(q[0] - at[0], q[1] - at[1]), 1e-6) : 1;
+  }
+
   onPointerMove(e: PointerEvent): void {
     const u = this.ui();
     if (!u) return;
+    if (this.stroke?.pointerId === e.pointerId) {
+      this.strokeMove(e);
+      return;
+    }
+    if (e.pointerType === 'touch' && this.penUsed) return; // fingers navigate
+    const ts = this.touchStart;
+    if (ts && ts.id === e.pointerId && !ts.placed && u.draw) {
+      if (Math.hypot(e.clientX - ts.x, e.clientY - ts.y) > TOUCH_DRAG_PX) {
+        // A finger drag draws: the shape starts where the finger went down.
+        ts.placed = true;
+        this.drawClickAt({ clientX: ts.x, clientY: ts.y, pointerType: 'touch' }, u);
+        return; // the next move rubber-bands from the placed corner
+      }
+    }
     const at = this.toSketch(e);
     if (this.drag && at) {
       this.dragTo(at, e);
@@ -656,10 +788,25 @@ export class SketchSession {
   onPointerDown(e: PointerEvent): void {
     const u = this.ui();
     if (!u || e.button !== 0) return;
+    if (e.pointerType === 'pen') {
+      this.penUsed = true;
+      // The Pencil draws: a stroke, or (no tool) a press on geometry drags it.
+      const onGeometry = !u.draw && u.tool !== 'dimension' && this.pickSketch(e)?.entity;
+      if (!onGeometry) {
+        e.stopPropagation();
+        e.preventDefault();
+        this.beginStroke(e);
+        return;
+      }
+    } else if (e.pointerType === 'touch' && this.penUsed) {
+      return; // fingers never draw while the Pencil is in use: they only navigate
+    }
     if (u.draw || u.tool === 'dimension') {
       // Drawing owns the left button: no orbit.
       e.stopPropagation();
       e.preventDefault();
+      if (e.pointerType === 'touch' && u.draw && u.draw.anchors.length === 0 && !u.draw.chainFrom)
+        this.touchStart = { id: e.pointerId, x: e.clientX, y: e.clientY, placed: false };
       return;
     }
     const hit = this.pickSketch(e);
@@ -740,6 +887,18 @@ export class SketchSession {
   ): void {
     const u = this.ui();
     if (!u) return;
+    const st = this.stroke;
+    if (st && st.pointerId === e.pointerId) {
+      this.stroke = null;
+      e.stopPropagation();
+      if (st.moved) {
+        this.finishStroke(st);
+        return;
+      }
+      // A Pencil tap: a click for the tool (or a selection), as with the mouse.
+      this.patch({ stroke: null });
+    } else if (e.pointerType === 'touch' && this.penUsed) return;
+    if (this.touchStart?.id === e.pointerId) this.touchStart = null;
     const d = this.drag;
     if (d) {
       this.drag = null;
@@ -763,27 +922,7 @@ export class SketchSession {
     if (u.draw) {
       e.stopPropagation();
       if (moved && down.type === 'mouse') return;
-      const at = this.toSketch(e);
-      if (!at) return;
-      const base = this.drawData();
-      const state = drawMove(u.draw, base, at, this.toleranceMm(e, at));
-      const r = drawClick(state, base);
-      this.patch({ draw: r.state, cursor: r.state.cursor });
-      const edit = r.edit;
-      if (edit) {
-        const pending: SketchData = { entities: edit.entities, constraints: edit.constraints };
-        this.unsettled.push(pending);
-        void this.commitEdit(
-          (cur) => ({
-            entities: [...cur.entities, ...edit.entities],
-            constraints: [...cur.constraints, ...edit.constraints],
-          }),
-          `Draw ${u.tool ?? 'geometry'}`,
-        ).finally(() => {
-          this.unsettled = this.unsettled.filter((x) => x !== pending);
-        });
-      }
-      this.scheduleOverlay();
+      this.drawClickAt(e, this.ui() ?? u);
       return;
     }
     if (u.tool === 'dimension') {
@@ -808,6 +947,35 @@ export class SketchSession {
     if (hit?.entity) this.selectEntity(hit.entity, e.shiftKey || e.metaKey || e.ctrlKey);
     else this.patch({ selected: [], selectedConstraint: null });
     this.pushHighlights();
+  }
+
+  /** A drawing click at a client point (tap, click, Pencil tap, or a finger drag's ends). */
+  private drawClickAt(
+    e: { clientX: number; clientY: number; pointerType: string },
+    u: SketchUi,
+  ): void {
+    if (!u.draw) return;
+    const at = this.toSketch(e);
+    if (!at) return;
+    const base = this.drawData();
+    const state = drawMove(u.draw, base, at, this.toleranceMm(e, at));
+    const r = drawClick(state, base);
+    this.patch({ draw: r.state, cursor: r.state.cursor });
+    const edit = r.edit;
+    if (edit) {
+      const pending: SketchData = { entities: edit.entities, constraints: edit.constraints };
+      this.unsettled.push(pending);
+      void this.commitEdit(
+        (cur) => ({
+          entities: [...cur.entities, ...edit.entities],
+          constraints: [...cur.constraints, ...edit.constraints],
+        }),
+        `Draw ${u.tool ?? 'geometry'}`,
+      ).finally(() => {
+        this.unsettled = this.unsettled.filter((x) => x !== pending);
+      });
+    }
+    this.scheduleOverlay();
   }
 
   onDoubleClick(e: MouseEvent): void {
@@ -868,10 +1036,12 @@ export class SketchSession {
     const f = this.feature();
     if (!v || !u || !f || !u.frame) return;
     const prev = u.draw ? preview(u.draw, f) : null;
-    const entities = prev ? [...f.entities, ...prev.entities] : f.entities;
+    const ink = u.stroke ? this.strokePreview(u.stroke) : [];
+    const entities = [...f.entities, ...(prev?.entities ?? []), ...ink];
     const regen = this.wb.regen.get()?.result.sketches.find((s) => s.featureId === f.id);
     const dof: Record<string, 'free' | 'partial' | 'fixed'> = { ...(u.solve?.entityDof ?? {}) };
     for (const e of prev?.entities ?? []) dof[e.id] = 'free';
+    for (const e of ink) dof[e.id] = 'free';
     const conflicting = new Set<string>();
     for (const c of u.solve?.conflicts ?? [])
       for (const id of c.constraints) {
@@ -894,6 +1064,32 @@ export class SketchSession {
       active: true,
     });
     this.pushHighlights();
+  }
+
+  /**
+   * Live Pencil feedback: the ink as a construction polyline and, once recognised, the cleaned-up
+   * shape on top of it (preview ids, never picked or saved).
+   */
+  private strokePreview(stroke: NonNullable<SketchUi['stroke']>): SketchEntity[] {
+    const pts = stroke.points;
+    const out: SketchEntity[] = [];
+    const step = Math.max(1, Math.ceil(pts.length / 200));
+    let prevId: Id | null = null;
+    for (let i = 0; i < pts.length; i += step) {
+      const p = pts[i] as Vec2;
+      const id = `preview:ink:${i}`;
+      out.push({ id, kind: 'point', construction: true, x: p[0], y: p[1] });
+      if (prevId)
+        out.push({ id: `${id}:l`, kind: 'line', construction: true, start: prevId, end: id });
+      prevId = id;
+    }
+    if (stroke.shape && this.stroke) {
+      const rec = recognizeStroke(this.stroke.samples, { tolerance: this.stroke.tolerance });
+      let n = 0;
+      const frag = rec ? strokeFragment(rec, { id: () => `preview:shape:${n++}` }) : null;
+      if (frag) out.push(...frag.entities);
+    }
+    return out;
   }
 
   pushHighlights(): void {

@@ -50,6 +50,14 @@ describe('picking', () => {
     expect(resolvePick([face, farEdge], { ...touch, kinds: ['edge'] }).best).toBe(farEdge);
   });
 
+  it('a visible sketch region over a face wins the tap; the face elsewhere stays pickable', () => {
+    const face = hit({ kind: 'face', distancePx: 0 });
+    const region = hit({ kind: 'region', bodyId: 'S1', entity: 'SS1:region(a)', distancePx: 0 });
+    expect(resolvePick([face, region]).best).toBe(region);
+    expect(resolvePick([region, face]).ties).toEqual([]);
+    expect(resolvePick([face]).best).toBe(face);
+  });
+
   it('selection → EntityRef: sketch picks locally, body picks via refFor', async () => {
     const queries: EntityQuery[] = [];
     const refFor = async (_p: string, q: EntityQuery) => {
@@ -96,7 +104,8 @@ describe('picking', () => {
     expect(nextName(part, 'fillet')).toBe('Fillet 1');
     expect(contextTools(['region', 'region'])).toEqual(['extrude', 'revolve']);
     expect(contextTools(['edge'])).toEqual(['fillet', 'chamfer']);
-    expect(contextTools(['face'])).toEqual(['sketch']);
+    expect(contextTools(['face'])).toEqual(['sketch', 'pushPull']);
+    expect(contextTools(['face', 'face'])).toEqual(['pushPull']);
     expect(contextTools(['face', 'edge'])).toEqual([]);
   });
 });

@@ -11,7 +11,8 @@ import type { KernelClient } from '@whittle/kernel-client';
 import { mark } from '../app/timing';
 import { getDiagnostics } from '../platform/diagnostics';
 import { reportKernelVariant, whenIsolationSettled } from '../platform/runtime-state';
-import { createModeling, type Modeling, type ModelingPort, spareResultsFor } from './modeling';
+import { regenBudgetFor } from '../platform/tier-policy';
+import { createModeling, type Modeling, type ModelingPort } from './modeling';
 
 /** The kernel worker exposes `ModelingApi` (regenerate, refFor, …). */
 export const REAL_ENGINE_AVAILABLE = true;
@@ -46,8 +47,9 @@ export function bootEngine(onStatus: (status: KernelStatus) => void): EngineBoot
     const mode = await whenIsolationSettled();
     const { createKernelClient } = await import('@whittle/kernel-client');
     if (disposed) throw new Error('disposed');
-    // Smaller per-part result caches on tablets and phones (memory budget, PLAN §8.4, §10).
-    const spare = spareResultsFor(getDiagnostics().tier);
+    // Smaller per-part result caches on tablets and phones (memory budget, PLAN §8.4, §10): the
+    // tier policy's budget goes to the worker before init (`configureRegen` under the hood).
+    const spare = regenBudgetFor(getDiagnostics().tier);
     client = createKernelClient({
       variant: mode === 'isolated' ? 'threaded' : 'single',
       ...(spare !== undefined ? { regen: { maxSpareResults: spare } } : {}),

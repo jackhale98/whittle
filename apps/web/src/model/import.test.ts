@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { attentionItems, markerMesh, partDiagonal } from './attention';
+import { attentionItems, attentionMarkers, partDiagonal } from './attention';
 import { IMPORT_EXTENSIONS, importFeature, importFormat, importName, sha256Hex } from './import';
 
 describe('import', () => {
@@ -43,16 +43,18 @@ describe('import', () => {
 });
 
 describe('needs attention', () => {
-  it('ghosts an edge or a face at its fingerprint', () => {
-    const edge = markerMesh(
+  it('marks an edge or a face at its fingerprint', () => {
+    const edge = attentionMarkers(
       { name: 'e', kind: 'edge', fingerprint: { centroid: [10, 0, 5], length: 8 } },
       2,
     );
-    expect(edge?.indices.length).toBe(24); // a small diamond
-    expect(edge?.edgeRanges.length).toBeGreaterThan(0); // dashed rings
-    expect(edge?.bbox.min[0]).toBeCloseTo(8);
-    expect(edge?.bbox.max[0]).toBeCloseTo(12);
-    const face = markerMesh(
+    expect(edge?.map((m) => m.kind)).toEqual(['polyline', 'polyline', 'point']);
+    expect(edge?.every((m) => m.tone === 'warning')).toBe(true);
+    const xs = edge?.[0]?.points.map((p) => p[0]) ?? [];
+    expect(Math.min(...xs)).toBeCloseTo(8);
+    expect(Math.max(...xs)).toBeCloseTo(12);
+    expect(edge?.[0]?.dashed).toBe(true);
+    const face = attentionMarkers(
       {
         name: 'f',
         kind: 'face',
@@ -60,10 +62,11 @@ describe('needs attention', () => {
       },
       2,
     );
-    expect(face?.indices.length).toBe(6); // a 10 × 10 square in the old plane
-    expect((face?.bbox.max[0] ?? 0) - (face?.bbox.min[0] ?? 0)).toBeCloseTo(10);
-    expect(face?.bbox.min[2]).toBeGreaterThan(10);
-    expect(markerMesh({ name: 'x', kind: 'edge' }, 2)).toBeNull();
+    const sq = face?.[0]?.points ?? [];
+    expect(sq).toHaveLength(5); // a closed 10 × 10 square in the old plane
+    expect(Math.max(...sq.map((p) => p[0])) - Math.min(...sq.map((p) => p[0]))).toBeCloseTo(10);
+    expect(Math.min(...sq.map((p) => p[2]))).toBeGreaterThan(10);
+    expect(attentionMarkers({ name: 'x', kind: 'edge' }, 2)).toBeNull();
   });
 
   it('lists unresolved references of features that need attention', () => {

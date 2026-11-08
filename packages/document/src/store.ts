@@ -222,6 +222,22 @@ export class DocumentStoreImpl implements DocumentStore {
     return { past: this.past.map(pub), future: this.future.slice().reverse().map(pub) };
   }
 
+  /**
+   * Which of `needles` appear anywhere in the undo/redo history (patch values and their inverses),
+   * i.e. could come back into the document through undo or redo. Used to keep data a document
+   * refers to by string (attachment paths) alive exactly as long as the history can restore it.
+   */
+  historyMentions(needles: readonly string[]): Set<string> {
+    const found = new Set<string>();
+    if (needles.length === 0) return found;
+    for (const e of [...this.past, ...this.future]) {
+      const text = JSON.stringify([e.patches, e.inverse]);
+      for (const n of needles) if (!found.has(n) && text.includes(n)) found.add(n);
+      if (found.size === needles.length) break;
+    }
+    return found;
+  }
+
   load(raw: unknown): ApplyResult {
     const r = migrateDoc(raw, this.migrations ? { migrations: this.migrations } : {});
     if (!r.ok) return { ok: false, error: r.error };

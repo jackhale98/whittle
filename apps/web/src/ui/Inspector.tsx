@@ -10,18 +10,23 @@ import {
   FeatureInspector,
   Kbd,
   type MaterialLibraryItem,
+  type MeasurePanelProps,
   PartInspector,
+  type SectionPanelProps,
   type SelectionAction,
   SelectionInspector,
   SketchStatusChip,
   tools as shellTools,
 } from '@whittle/ui';
 import { FolderOpen, Library, Plus, Save } from 'lucide-react';
-import { useState, useSyncExternalStore } from 'react';
+import { lazy, Suspense, useState, useSyncExternalStore } from 'react';
 import { useObservable } from '../app/observable';
 import type { Workbench } from '../app/workbench';
 import type { ModelTool } from '../features/factories';
 import { selectionKind } from '../selection/pick';
+
+const MeasureView = lazy(() => import('./InspectPanels').then((m) => ({ default: m.MeasureView })));
+const SectionView = lazy(() => import('./InspectPanels').then((m) => ({ default: m.SectionView })));
 
 function category(m: Material): string {
   const id = m.libraryId ?? '';
@@ -136,12 +141,38 @@ const actionMeta = (id: ModelTool): SelectionAction => {
   };
 };
 
-export function Inspector({ wb, density }: { wb: Workbench; density: 'compact' | 'touch' }) {
+export function Inspector({
+  wb,
+  density,
+  measure,
+  section,
+}: {
+  wb: Workbench;
+  density: 'compact' | 'touch';
+  measure?: MeasurePanelProps;
+  section?: SectionPanelProps;
+}) {
   const ui = useObservable(wb.ui);
   const doc = useDoc(wb);
   const regen = useObservable(wb.regen);
   const part = doc.parts[0];
   if (!part) return null;
+  const touch = density === 'touch';
+
+  if (ui.measure?.active && measure) {
+    return (
+      <Suspense fallback={null}>
+        <MeasureView measure={measure} onDone={() => wb.measure.stop()} touch={touch} />
+      </Suspense>
+    );
+  }
+  if (ui.section.open && section && !ui.sketch && !ui.featureId) {
+    return (
+      <Suspense fallback={null}>
+        <SectionView section={section} onDone={() => wb.closeSection()} touch={touch} />
+      </Suspense>
+    );
+  }
 
   if (ui.sketch) {
     const f = part.features.find((x) => x.id === ui.sketch?.featureId);

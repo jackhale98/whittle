@@ -118,7 +118,7 @@ export function ContextBubble({
           <span
             aria-hidden
             data-testid="context-bubble-tip"
-            className="absolute size-3 rotate-45 rounded-[3px] bg-[var(--color-surface)] shadow-[0_0_0_1px_rgb(15_23_42/0.06)]"
+            className="pointer-events-none absolute size-3 rotate-45 rounded-[3px] bg-[var(--color-surface)] shadow-[0_0_0_1px_rgb(15_23_42/0.06)]"
             style={{ left: tip.x - 6, top: tip.y - 6, zIndex: -1 }}
           />
         ) : null}

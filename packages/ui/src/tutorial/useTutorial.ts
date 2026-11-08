@@ -18,11 +18,18 @@ export interface TutorialController {
   goto(id: string): void;
 }
 
-/** State machine for a step list: `advance()` is driven by the app, never by a "Next" button. */
-export function useTutorial(steps: readonly TutorialStep[]): TutorialController {
+/**
+ * State machine for a step list: `advance()` is driven by the app, never by a "Next" button.
+ * `initial` defaults to running from the first step; pass `{ index: 0, status: 'skipped' }` to
+ * offer the tutorial and start it later with `restart()`.
+ */
+export function useTutorial(
+  steps: readonly TutorialStep[],
+  initial: TutorialState = initialTutorial,
+): TutorialController {
   const [state, dispatch] = useReducer(
     (s: TutorialState, a: TutorialAction) => tutorialReducer(steps, s, a),
-    initialTutorial,
+    initial,
   );
   return {
     state,

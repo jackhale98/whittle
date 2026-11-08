@@ -1,4 +1,4 @@
-import type { Id, InteractiveViewport } from '@whittle/contracts';
+import type { Id, TouchViewport } from '@whittle/contracts';
 import { ulid } from '@whittle/document';
 import { AppShell, type MoveResult, type PaletteCommand, type ToolId, useTheme } from '@whittle/ui';
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
@@ -6,6 +6,14 @@ import { getDiagnostics } from '../platform/diagnostics';
 import { getRuntimeState, subscribeRuntimeState } from '../platform/runtime-state';
 import { applySwUpdate, checkForSwUpdateNow, onSwUpdateAvailable } from '../platform/sw-register';
 import { Inspector, useDoc } from '../ui/Inspector';
+import {
+  useBracketTutorial,
+  useContextBubble,
+  useMeasureProps,
+  usePartsProps,
+  useSectionProps,
+  useValueChip,
+} from '../ui/touch-props';
 import { ViewportOverlays } from '../ui/ViewportOverlays';
 import { useObservable } from './observable';
 import { ViewportHost } from './ViewportHost';
@@ -18,7 +26,16 @@ function isolationLabel(isolation: ReturnType<typeof getRuntimeState>['isolation
     : 'fallback (single-threaded kernel)';
 }
 
-const ENABLED_TOOLS: readonly ToolId[] = ['sketch', 'extrude', 'revolve', 'fillet', 'chamfer'];
+const ENABLED_TOOLS: readonly ToolId[] = [
+  'sketch',
+  'extrude',
+  'pushPull',
+  'revolve',
+  'fillet',
+  'chamfer',
+  'measure',
+  'section',
+];
 
 export function App({ wb }: { wb: Workbench }) {
   const runtime = useSyncExternalStore(subscribeRuntimeState, getRuntimeState);
@@ -41,6 +58,18 @@ export function App({ wb }: { wb: Workbench }) {
   const commands = useMemo<PaletteCommand[]>(
     () => [
       { id: 'welcome', label: 'Welcome / samples', run: () => wb.patchUi({ welcome: true }) },
+      {
+        id: 'tour',
+        label: 'Take the 60-second tour',
+        hint: 'Make a bracket',
+        run: () => wb.requestTour(),
+      },
+      {
+        id: 'section',
+        label: 'Section view',
+        hint: 'Slice the model',
+        run: () => wb.openSection(),
+      },
       { id: 'demo', label: 'Open the demo bracket', hint: 'Sample', run: () => void wb.openDemo() },
       { id: 'new-doc', label: 'New document', run: () => void wb.newDocument() },
       { id: 'library', label: 'Open library', run: () => wb.toggleLibrary(true) },
@@ -95,8 +124,7 @@ export function App({ wb }: { wb: Workbench }) {
 
   const beforeViewport = useMemo(() => wb.initialDocumentRead(), [wb]);
   const onViewportReady = useCallback(
-    (viewport: InteractiveViewport, canvas: HTMLCanvasElement) =>
-      wb.attachViewport(viewport, canvas),
+    (viewport: TouchViewport, canvas: HTMLCanvasElement) => wb.attachViewport(viewport, canvas),
     [wb],
   );
   const [viewportError, setViewportError] = useState<string | null>(null);
@@ -113,7 +141,21 @@ export function App({ wb }: { wb: Workbench }) {
   const statuses = useObservable(wb.treeStatuses);
   const canUndo = wb.store.canUndo();
   const canRedo = wb.store.canRedo();
-  const activeTool: ToolId | null = ui.sketch ? 'sketch' : (ui.prompt?.tool ?? null);
+  const activeTool: ToolId | null = ui.sketch
+    ? 'sketch'
+    : ui.pushPull
+      ? 'pushPull'
+      : ui.measure?.active
+        ? 'measure'
+        : ui.section.open
+          ? 'section'
+          : (ui.prompt?.tool ?? null);
+  const contextBubble = useContextBubble(wb);
+  const valueChip = useValueChip(wb);
+  const measure = useMeasureProps(wb);
+  const section = useSectionProps(wb);
+  const parts = usePartsProps(wb);
+  const tutorial = useBracketTutorial(wb);
   const engineMissing = engine.ready ? undefined : 'The geometry kernel is still loading';
 
   const move = (id: Id, toIndex: number): MoveResult => {
@@ -195,12 +237,22 @@ export function App({ wb }: { wb: Workbench }) {
           },
           density,
         }}
-        inspector={<Inspector wb={wb} density={density} />}
+        inspector={<Inspector wb={wb} density={density} measure={measure} section={section} />}
+        {...(contextBubble ? { contextBubble } : {})}
+        {...(valueChip ? { valueChip } : {})}
+        sheetSnap={ui.sheetSnap}
+        onSheetSnapChange={(snap) => wb.setSheet({ snap })}
+        {...(ui.sheetTab ? { sheetTab: ui.sheetTab } : {})}
+        onSheetTabChange={(tab) => wb.setSheet({ tab })}
+        parts={parts}
+        measure={measure}
+        section={section}
+        tutorial={tutorial}
         enabledTools={ENABLED_TOOLS}
         activeTool={activeTool}
         onTool={(tool) => {
           if (ui.sketch) return;
-          if (activeTool === tool) wb.cancel();
+          if (activeTool === tool && tool !== 'section') wb.cancel();
           else if (tool === 'sketch') wb.sketchTool();
           else void wb.runTool(tool);
         }}

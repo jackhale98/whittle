@@ -85,15 +85,15 @@ export function resolvePick(
     seen.add(k);
     return true;
   });
+  // A visible sketch region drawn over a face is what the user sees there: it wins the tie
+  // (holes sketched on a face are tapped to cut them; the face around them stays pickable).
+  const wins = (h: PickHit, b: PickHit) =>
+    PRIORITY[h.kind] < PRIORITY[b.kind] ||
+    (PRIORITY[h.kind] === PRIORITY[b.kind] &&
+      (h.distancePx < b.distancePx ||
+        (h.distancePx === b.distancePx && h.kind === 'region' && b.kind === 'face')));
   let best: PickHit | null = null;
-  for (const h of unique) {
-    if (
-      !best ||
-      PRIORITY[h.kind] < PRIORITY[best.kind] ||
-      (PRIORITY[h.kind] === PRIORITY[best.kind] && h.distancePx < best.distancePx)
-    )
-      best = h;
-  }
+  for (const h of unique) if (!best || wins(h, best)) best = h;
   if (!best) return { best: null, ties: [] };
   const b = best;
   const ties = unique.filter(
@@ -166,6 +166,8 @@ export function acceptsFor(path: string): { kinds: PickKind[]; as?: EntityKind; 
     case '/definition/from':
     case '/mode/face':
       return { kinds: ['face'], noun: 'a face' };
+    case '/faces':
+      return { kinds: ['face'], noun: 'faces' };
     case '/target':
     case '/tools':
     case '/scope/bodies':

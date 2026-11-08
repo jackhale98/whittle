@@ -1,7 +1,7 @@
 import * as RToolbar from '@radix-ui/react-toolbar';
 import { Ellipsis } from 'lucide-react';
 import { cn, Tooltip } from './primitives';
-import { COMING_SOON, type ToolId, tools } from './tools';
+import { COMING_SOON, commandBarTools, type ToolId } from './tools';
 
 export interface CommandBarProps {
   /** Highlights a tool. */
@@ -42,7 +42,7 @@ export function CommandBar({
         className,
       )}
     >
-      {tools.map(({ id, label, shortcut, Icon }) => {
+      {commandBarTools.map(({ id, label, shortcut, Icon }) => {
         const active = activeTool === id;
         const enabled = !!enabledTools?.includes(id);
         return (

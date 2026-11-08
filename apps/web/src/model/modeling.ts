@@ -13,9 +13,12 @@ import type {
   ExportOptions,
   Id,
   KernelError,
+  Measurement,
+  MeasureTarget,
   MeshQuality,
   ModelingApi,
   RegenResult,
+  Result,
   WhittleDoc,
 } from '@whittle/contracts';
 
@@ -24,12 +27,7 @@ export type ModelingPort = Pick<
   ModelingApi,
   'regenerate' | 'refFor' | 'exportPart' | 'importFile' | 'closePart'
 > &
-  Partial<Pick<ModelingApi, 'configureRegen'>>;
-
-/** Per-part result cache bound by device tier (PLAN §8.4, §10 memory budget); desktop = engine default. */
-export function spareResultsFor(tier: 'desktop' | 'tablet' | 'phone'): number | undefined {
-  return tier === 'phone' ? 2 : tier === 'tablet' ? 4 : undefined;
-}
+  Partial<Pick<ModelingApi, 'configureRegen' | 'measure'>>;
 
 export interface RegenOutcome {
   result: RegenResult;
@@ -253,11 +251,25 @@ export interface Modeling {
     options?: ExportOptions,
   ): Promise<{ ok: true; bytes: Uint8Array } | { ok: false; error: KernelError }>;
   closePart(partId: Id): Promise<void>;
+  /** Exact measurement on the latest regen (M2). */
+  measure(partId: Id, a: MeasureTarget, b?: MeasureTarget): Promise<Result<Measurement>>;
 }
 
 export function createModeling(port: ModelingPort): Modeling {
   return {
     port,
+    async measure(partId, a, b) {
+      if (!port.measure)
+        return {
+          ok: false,
+          error: { code: 'INTERNAL', message: 'This geometry engine cannot measure.' },
+        };
+      try {
+        return await port.measure(partId, a, b);
+      } catch (err) {
+        return { ok: false, error: asKernelError(err) };
+      }
+    },
     async refFor(partId, query) {
       try {
         return await port.refFor(partId, query);

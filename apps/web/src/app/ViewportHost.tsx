@@ -1,11 +1,11 @@
-import type { InteractiveViewport } from '@whittle/contracts';
+import type { TouchViewport } from '@whittle/contracts';
 import { useEffect, useRef } from 'react';
 import { reportRenderBackend } from '../platform/runtime-state';
 
 export interface ViewportHostProps {
   theme: 'light' | 'dark';
   /** Called once the engine exists (lazy-loaded after the shell paints). */
-  onReady(viewport: InteractiveViewport, canvas: HTMLCanvasElement): void;
+  onReady(viewport: TouchViewport, canvas: HTMLCanvasElement): void;
   /** The 3D view could not be created (no WebGPU and no WebGL2, context lost at start...). */
   onError(message: string): void;
   /** Settles when the view may be created (the initial document has been read). */
@@ -26,7 +26,7 @@ function forcedBackend(): 'webgl2' | 'webgpu' | 'auto' {
 export function ViewportHost({ theme, onReady, onError, beforeCreate }: ViewportHostProps) {
   const beforeCreateRef = useRef(beforeCreate);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const viewportRef = useRef<InteractiveViewport | null>(null);
+  const viewportRef = useRef<TouchViewport | null>(null);
   const themeRef = useRef(theme);
   themeRef.current = theme;
   const onReadyRef = useRef(onReady);
@@ -57,8 +57,7 @@ export function ViewportHost({ theme, onReady, onError, beforeCreate }: Viewport
         }
         viewportRef.current = viewport;
         // Test/perf probe handle (not an extension API).
-        (window as unknown as { __whittleViewport?: InteractiveViewport }).__whittleViewport =
-          viewport;
+        (window as unknown as { __whittleViewport?: TouchViewport }).__whittleViewport = viewport;
         reportRenderBackend(viewport.backend);
         onReadyRef.current(viewport, canvas);
       })

@@ -54,12 +54,16 @@ function resolveTarget(step: TutorialStep | undefined): Resolved | null {
   return null;
 }
 
-/** Chrome the card must not cover: title bar, tool rail and sheets (unless the target is inside). */
+/**
+ * What the card must not cover: title bar, tool rail and sheets (unless the target is inside), and
+ * the floating controls the step is about (context bubble, value chip, keypad).
+ */
+const CHROME =
+  '[data-testid="top-bar"], [aria-label="Modeling tools"], [data-testid$="-sheet"], [data-testid="context-bubble"], [data-testid="value-chip"], [data-testid="keypad"]';
+
 function chromeRects(target: Element | null): Box[] {
   const out: Box[] = [];
-  for (const el of document.querySelectorAll(
-    '[data-testid="top-bar"], [aria-label="Modeling tools"], [data-testid$="-sheet"]',
-  )) {
+  for (const el of document.querySelectorAll(CHROME)) {
     if (target && el.contains(target)) continue;
     const r = el.getBoundingClientRect();
     if (r.width > 0 && r.height > 0)
@@ -111,7 +115,8 @@ export default function Tutorial({
         const t = found?.box ?? null;
         const vw = document.documentElement.clientWidth;
         const vh = document.documentElement.clientHeight;
-        const key = `${t?.left}|${t?.top}|${t?.width}|${t?.height}|${el.offsetWidth}|${el.offsetHeight}|${vw}|${vh}`;
+        const obstacles = done ? [] : chromeRects(found?.el ?? null);
+        const key = `${t?.left}|${t?.top}|${t?.width}|${t?.height}|${el.offsetWidth}|${el.offsetHeight}|${vw}|${vh}|${obstacles.map((o) => `${o.left},${o.top},${o.width},${o.height}`).join(';')}`;
         if (key !== last) {
           last = key;
           const insets = readSafeInsets();
@@ -123,7 +128,11 @@ export default function Tutorial({
             bottom: insets.bottom + pad,
             left: insets.left + pad,
           };
-          if (t) {
+          // A target low on the screen (the sketch toolbar, a bubble above the sheet) would put
+          // the card over the middle of the view, where the user is drawing or tapping: dock it
+          // at the top instead, the ring still marks the target.
+          const low = t !== null && t.top > vh * 0.62 && t.left > vw * 0.2;
+          if (t && !low) {
             const p = placeBubble({
               anchor: { x: t.left + t.width / 2, y: t.top + t.height / 2 },
               anchorRadius: Math.max(t.width, t.height) / 2 + 8,
@@ -132,11 +141,11 @@ export default function Tutorial({
               viewport: { w: vw, h: vh },
               insets: safe,
               preferred: t.left < vw * 0.2 ? 'right' : t.top > vh * 0.55 ? 'above' : 'below',
-              obstacles: chromeRects(found?.el ?? null),
+              obstacles,
             });
             setPlace({ left: p.left, top: p.top, side: p.side });
           } else {
-            // No target: float at the top, under the title bar, centred.
+            // No target (or a low one): float at the top, under the title bar, centred.
             setPlace({
               left: Math.round((vw - size.w) / 2),
               top: safe.top + 64,
