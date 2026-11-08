@@ -68,6 +68,91 @@ describe('detectTier', () => {
   });
 });
 
+describe('detectTier: UA / platform / touch points', () => {
+  const IPAD_UA =
+    'Mozilla/5.0 (iPad; CPU OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1';
+  const MAC_UA =
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15';
+  const IPHONE_UA =
+    'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1';
+  const ANDROID_PHONE_UA =
+    'Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36';
+  const ANDROID_TABLET_UA =
+    'Mozilla/5.0 (Linux; Android 15; SM-X910) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
+
+  it('iPad UA is a tablet', () => {
+    expect(detectTier({ ...desktop, userAgent: IPAD_UA, primaryPointer: 'coarse' })).toBe('tablet');
+  });
+
+  it('iPadOS reporting itself as a Mac with touch is a tablet, even with a trackpad', () => {
+    const env = {
+      ...desktop,
+      userAgent: MAC_UA,
+      platform: 'MacIntel',
+      maxTouchPoints: 5,
+      screenWidth: 834,
+      screenHeight: 1194,
+    };
+    expect(detectTier({ ...env, primaryPointer: 'coarse' })).toBe('tablet');
+    expect(detectTier({ ...env, primaryPointer: 'fine' })).toBe('tablet');
+    expect(detectTier({ ...env, primaryPointer: 'none' })).toBe('tablet');
+  });
+
+  it('a real Mac (no touch points) stays desktop', () => {
+    expect(
+      detectTier({ ...desktop, userAgent: MAC_UA, platform: 'MacIntel', maxTouchPoints: 0 }),
+    ).toBe('desktop');
+    expect(detectTier({ ...desktop, userAgent: MAC_UA, platform: 'MacIntel' })).toBe('desktop');
+  });
+
+  it('a touch-screen Windows laptop stays desktop', () => {
+    expect(
+      detectTier({
+        ...desktop,
+        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/140.0.0.0 Safari/537.36',
+        platform: 'Win32',
+        maxTouchPoints: 10,
+      }),
+    ).toBe('desktop');
+  });
+
+  it('iPhone is a phone, in either orientation', () => {
+    expect(detectTier({ ...desktop, userAgent: IPHONE_UA, primaryPointer: 'coarse' })).toBe(
+      'phone',
+    );
+    expect(
+      detectTier({
+        ...desktop,
+        userAgent: IPHONE_UA,
+        primaryPointer: 'coarse',
+        screenWidth: 932,
+        screenHeight: 430,
+      }),
+    ).toBe('phone');
+  });
+
+  it('Android: Mobile token is a phone, none is a tablet', () => {
+    expect(detectTier({ ...desktop, userAgent: ANDROID_PHONE_UA, primaryPointer: 'coarse' })).toBe(
+      'phone',
+    );
+    expect(detectTier({ ...desktop, userAgent: ANDROID_TABLET_UA, primaryPointer: 'coarse' })).toBe(
+      'tablet',
+    );
+  });
+
+  it('falls back to pointer and screen size when the UA is unrecognised', () => {
+    expect(
+      detectTier({
+        ...desktop,
+        userAgent: 'Mozilla/5.0 (X11; Linux x86_64) Chrome/140',
+        primaryPointer: 'coarse',
+        screenWidth: 390,
+        screenHeight: 844,
+      }),
+    ).toBe('phone');
+  });
+});
+
 describe('buildDiagnostics', () => {
   it('assembles RuntimeDiagnostics', () => {
     const result = buildDiagnostics(

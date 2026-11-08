@@ -223,3 +223,49 @@ errors explicit. `5'6"` is not parsed as feet plus inches; write `5ft + 6in`.
    sliver faces where faces should be coplanar. The acceptance E2E draws oversize so dimensions
    really solve; a polish step in `packages/sketch` is proposed for M2.
 
+
+---
+
+## ADR-009 — M2 platform: installed iPad PWA, tiers, CI performance budgets (2026-11-08)
+
+1. **No page zoom, no page scroll, no browser chrome behaviour.** iOS Safari ignores
+   `user-scalable=no`, so the viewport meta carries it (Chromium and Android honour it) and
+   `platform/page-guards.ts` also cancels `gesturestart/change/end` and multi-touch `touchmove`.
+   Double-tap zoom is prevented with `touch-action: manipulation` on `html`; the canvas stays
+   `touch-action: none` and is unaffected (camera-controls reads pointer events, which cancelling
+   touch/gesture events does not suppress; `touch.spec.ts` pinch still passes). `body` is
+   `overflow: hidden` + `overscroll-behavior: none`, with `user-select: none` and
+   `-webkit-touch-callout: none` except in inputs/textareas/`[data-selectable]`. Safe-area insets
+   are exposed as `--safe-top/right/bottom/left` (`env(safe-area-inset-*, 0px)`). Cost: disabling
+   page zoom is an accessibility trade-off (Lighthouse's `meta-viewport` audit flags it). The app
+   must provide its own zoom (viewport camera, UI scale) instead; it is a CAD canvas, not a document.
+2. **Status bar `default`**, not `black-translucent`: the shells follow light/dark themes and a
+   translucent bar would put white text over the light theme. iOS 26 generates the splash screen
+   from the manifest `background_color` and icon, so no per-device `apple-touch-startup-image` set.
+   The manifest has one `theme_color`; light/dark theme colours come from the two
+   `<meta name="theme-color" media=...>` tags.
+3. **Tier detection.** A recognised UA decides first: iPhone/iPod = phone; iPad UA, or iPadOS in
+   desktop-class mode (`platform MacIntel`/Macintosh UA with `maxTouchPoints > 1`; real Macs have 0) =
+   tablet, even when a trackpad flips `(pointer: fine)`; Android with `Mobile` = phone, without =
+   tablet. Everything else keeps the pointer + short-side rule. Touch-screen Windows laptops stay
+   desktop. `platform/tier-policy.ts` is the one place for the tier's regen cache budget (desktop
+   default 128, tablet 4, phone 2), mesh quality (phone `coarse`, others `fine`; PLAN's "medium"
+   for tablets needs a third `MeshQuality` value, proposed to the contract owner) and kernel boot
+   policy (`eager`, phone `onEdit`).
+4. **CI performance gate.** `perf` job in `ci.yml` gates the Pages deploy: shell TTI (cold context,
+   fast-4G throttle via CDP, first-document shell visible), peak memory, and the viewport package's
+   `WHITTLE_PERF=1` probes. Time budgets are multiplied by `PERF_FACTOR` (`e2e/perf/budgets.ts`):
+   **3 on CI, 1.5 locally**, override with `WHITTLE_PERF_FACTOR`. Rationale: the 2-vCPU runners have
+   no GPU (SwiftShader) and measured 2-4x slower main-thread work than a mid-range laptop; 3 leaves
+   headroom for noisy neighbours without hiding a 2x regression. Memory is not scaled.
+5. **Memory measurement.** `performance.measureUserAgentSpecificMemory()` is preferred but headless
+   Chromium reports it unavailable even when cross-origin isolated, so the test also reads the
+   browser process tree's PSS from `/proc` (includes the kernel worker's Wasm and SwiftShader's
+   software GPU buffers, so it over-states a real iPad tab) and the JS heap, and asserts the largest
+   against 1 GB. Real-iPad numbers still need a Safari Web Inspector pass at the M2 gate.
+6. **Lighthouse** runs via `@lhci/cli@0.16.0` (pinned, invoked with `npx`, not in the lockfile),
+   non-gating, 3 runs, with warn-level assertions. Lighthouse 12+ has no PWA category, so
+   installability is asserted in `pwa-shell.spec.ts` instead.
+7. **E2E on slow runners.** CI runs Playwright with `--trace retain-on-failure` (still one worker);
+   traces land in the existing failure-only `playwright-report-*` artefact. The installed-PWA
+   checks run as `chromium-touch` (gating) and `webkit-ipad` (non-gating) projects.

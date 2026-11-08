@@ -19,6 +19,7 @@
     "format": "biome format --write .",
     "e2e": "pnpm --filter @whittle/web e2e",
     "perf": "pnpm --filter @whittle/web perf",
+    "perf:viewport": "pnpm --filter @whittle/viewport perf",
     "kernel:build": "pnpm --filter @whittle/kernel build",
     "kernel:test": "pnpm --filter @whittle/kernel test"
   },

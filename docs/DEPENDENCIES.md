@@ -55,3 +55,5 @@ bundled package's licence text plus OCCT's LGPL-2.1 + exception (texts in `licen
 | `ts-json-schema-generator` | 2.9.0 | MIT |
 | `@testing-library/react`, `jest-dom`, `user-event` | 16.3.3, 7.0.1, 14.6.8 | MIT |
 | `@types/three`, `@types/react`, `@types/react-dom` | 0.187.0, 19.3.0, 19.3.0 | MIT |
+| `@lhci/cli` (CI only; `npx`, not installed in the workspace) | 0.16.0 | Apache-2.0 |
+| `lighthouse` (via `@lhci/cli`) | 13.6.0 | Apache-2.0 |
