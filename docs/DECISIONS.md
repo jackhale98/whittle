@@ -357,6 +357,10 @@ function; ADR-008 item 9 left driving dimensions up to 1e-7 × sketch size off a
    bottom with a compact layout; it is portalled and follows the field every frame (sheets animate).
    Keys never take focus, and the keyboard toggle exists in both layouts. Parameter names come from
    `ParamNamesContext`, which the shells fill from `paramsTable`.
+   *M2 gate:* landscape phones (844 × 390) are wide but short, so `placeKeypad` also tries beside
+   the field (right, then left) and the top edge. When even the compact layout docked at the
+   bottom would cover the field, it returns `scrollBy` and the keypad scrolls the field's
+   container so the field sits just above it. The field is never left under the keypad.
 6. **Touch targets are 44 px everywhere**, including `Segmented size="touch"` (was 40). The drag
    handle of a sheet is the one exception (28 px strip): the whole peek area drags and the handle is
    keyboard-operable.

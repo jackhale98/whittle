@@ -233,6 +233,57 @@ describe('keypad placement', () => {
     });
     expect(r.left + pad.w).toBeLessThanOrEqual(820 - 20);
   });
+
+  describe('landscape phone (844 × 390)', () => {
+    const land = { w: 844, h: 390 };
+    const compact = { w: 344, h: 236 };
+    const covers = (f: Rect, r: { left: number; top: number }, s: { w: number; h: number }) =>
+      rectsIntersect(f, { left: r.left, top: r.top, width: s.w, height: s.h });
+
+    it('a narrow field mid-screen gets the keypad beside it, full size', () => {
+      const f = { left: 120, top: 170, width: 200, height: 44 };
+      const r = placeKeypad(f, pad, land);
+      expect(r.placement).toBe('beside');
+      expect(r.left).toBeGreaterThanOrEqual(f.left + f.width);
+      expect(r.top).toBeGreaterThanOrEqual(8);
+      expect(r.top + pad.h).toBeLessThanOrEqual(390 - 8);
+      expect(r.coversField).toBe(false);
+      expect(covers(f, r, pad)).toBe(false);
+      // A field on the right: the keypad goes to its left.
+      const g = { left: 560, top: 170, width: 240, height: 44 };
+      const s = placeKeypad(g, pad, land);
+      expect(s.placement).toBe('beside');
+      expect(s.left + pad.w).toBeLessThanOrEqual(g.left);
+    });
+
+    it('a full-width sheet field: compact, docked clear of the field when it can be', () => {
+      // Full size neither fits above, below nor beside: dock (the keypad then goes compact).
+      const low = { left: 16, top: 60, width: 812, height: 44 };
+      expect(placeKeypad(low, pad, land).placement).toBe('dock');
+      const r = placeKeypad(low, compact, land);
+      expect(r.placement).toBe('below');
+      expect(covers(low, r, compact)).toBe(false);
+      // Field low on the screen: the compact keypad goes above it.
+      const bottom = { left: 16, top: 300, width: 812, height: 44 };
+      const b = placeKeypad(bottom, compact, land);
+      expect(covers(bottom, b, compact)).toBe(false);
+    });
+
+    it('never leaves the field covered: mid-screen, it says how far to scroll the field up', () => {
+      const mid = { left: 16, top: 170, width: 812, height: 44 };
+      const r = placeKeypad(mid, compact, land);
+      expect(r.placement).toBe('dock');
+      expect(r.coversField).toBe(true);
+      expect(r.scrollBy).toBeGreaterThan(0);
+      // Scrolled by that much, the field sits just above the keypad, which then stays put.
+      const moved = { ...mid, top: mid.top - r.scrollBy };
+      expect(moved.top).toBeGreaterThanOrEqual(0);
+      const again = placeKeypad(moved, compact, land);
+      expect(again.coversField).toBe(false);
+      expect(again.scrollBy).toBe(0);
+      expect(covers(moved, again, compact)).toBe(false);
+    });
+  });
 });
 
 /* ------------------------------------------------------------------ keypad editing */

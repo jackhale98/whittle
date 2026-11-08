@@ -3,7 +3,7 @@ import { m } from 'motion/react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { type KeypadPlacement, placeKeypad } from '../logic/bubble';
-import { readSafeInsets } from '../logic/dom';
+import { readSafeInsets, scrollParent } from '../logic/dom';
 import { KEYPAD_UNITS, type KeypadKey } from '../logic/keypad';
 import { useSpring } from '../motion';
 import { cn } from './primitives';
@@ -178,6 +178,9 @@ export default function Keypad({ anchor, onKey, params = [] }: KeypadProps) {
         setCompact(true);
         return;
       }
+      // Even compact and docked it would hide the field (landscape phone): scroll the field up
+      // within its sheet/panel to just above the keypad; the next frame re-places against it.
+      if (r.coversField && r.scrollBy > 0) scrollParent(anchor)?.scrollBy({ top: r.scrollBy });
       setPos({ left: r.left, top: r.top, placement: r.placement, covers: r.coversField });
     };
     const loop = () => {

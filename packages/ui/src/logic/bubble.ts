@@ -195,11 +195,28 @@ export function placeBubble(input: BubbleInput): BubblePlacement {
   return finish(left, top, side, true);
 }
 
-export type KeypadPlacement = 'below' | 'above' | 'dock';
+export type KeypadPlacement = 'below' | 'above' | 'beside' | 'dock';
+
+export interface KeypadPosition {
+  placement: KeypadPlacement;
+  left: number;
+  top: number;
+  /** The keypad would hide the field where it is now (only until the caller scrolls it). */
+  coversField: boolean;
+  /**
+   * px to scroll the field's container (positive: the field moves up) so the field sits just
+   * above the docked keypad. Non-zero only with `coversField`.
+   */
+  scrollBy: number;
+}
 
 /**
- * Where the numeric keypad goes relative to the field it edits. Below if it fits, else above,
- * else docked to the bottom edge (the caller then switches to the compact layout first).
+ * Where the numeric keypad goes relative to the field it edits, in order: below, above, beside
+ * (right, then left: landscape phones are wide but short), docked to the bottom or the top edge
+ * clear of the field. The caller switches to the compact layout when it gets `dock` and tries
+ * again. When even that would cover the field (a short landscape viewport with the field in the
+ * middle), the result is the bottom dock plus `scrollBy`, the distance to scroll the field up to
+ * just above it: the field is never left under the keypad.
  */
 export function placeKeypad(
   field: Rect,
@@ -207,17 +224,39 @@ export function placeKeypad(
   viewport: Size,
   insets: Insets = NO_INSETS,
   gap = 8,
-): { placement: KeypadPlacement; left: number; top: number; coversField: boolean } {
-  const left = clamp(field.left, insets.left + 8, viewport.w - insets.right - size.w - 8);
+): KeypadPosition {
+  const minX = insets.left + 8;
+  const maxX = viewport.w - insets.right - size.w - 8;
+  const minY = insets.top + 8;
+  const maxY = viewport.h - insets.bottom - size.h - 8;
+  const left = clamp(field.left, minX, maxX);
+  const at = (placement: KeypadPlacement, l: number, top: number): KeypadPosition => ({
+    placement,
+    left: l,
+    top,
+    coversField: false,
+    scrollBy: 0,
+  });
   const belowTop = field.top + field.height + gap;
-  if (belowTop + size.h <= viewport.h - insets.bottom - 8) {
-    return { placement: 'below', left, top: belowTop, coversField: false };
-  }
+  if (belowTop <= maxY) return at('below', left, belowTop);
   const aboveTop = field.top - gap - size.h;
-  if (aboveTop >= insets.top + 8) {
-    return { placement: 'above', left, top: aboveTop, coversField: false };
+  if (aboveTop >= minY) return at('above', left, aboveTop);
+  if (maxY >= minY) {
+    const sideTop = clamp(field.top + field.height / 2 - size.h / 2, minY, maxY);
+    const right = field.left + field.width + gap;
+    if (right <= maxX) return at('beside', right, sideTop);
+    const leftOf = field.left - gap - size.w;
+    if (leftOf >= minX) return at('beside', leftOf, sideTop);
   }
-  const top = viewport.h - insets.bottom - size.h - 8;
-  const covers = top < field.top + field.height && top + size.h > field.top;
-  return { placement: 'dock', left, top, coversField: covers };
+  const overlaps = (top: number) => top < field.top + field.height && top + size.h > field.top;
+  const bottom = Math.max(minY, maxY);
+  if (!overlaps(bottom)) return at('dock', left, bottom);
+  if (!overlaps(minY)) return at('dock', left, minY);
+  return {
+    placement: 'dock',
+    left,
+    top: bottom,
+    coversField: true,
+    scrollBy: field.top + field.height + gap - bottom,
+  };
 }

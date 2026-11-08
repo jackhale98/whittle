@@ -46,3 +46,4 @@
 - Fix (M2 gate): 44 px touch targets on touch tiers for the welcome card actions and its Close button, the floating Library button, the prompt chip's Esc and the Params "Add description" (ADR-012 item 6), measured in the tablet and phone E2E; the landscape bubble-overlap check in m2-touch is now a real overlap assertion.
 - Fix (M2 gate): measure picks follow edits: after each regen face and edge picks are found again by persistent name (vertices by position), and picks that no longer resolve are dropped, so an undo while measuring never silently measures another face.
 - Fix (M2 gate): the bubble's Sketch action and undo/redo deferred behind a busy sketch are tracked, so `idle()` waits for them.
+- Fix (M2 gate): the keypad never covers its field on landscape phones (844 × 390): it also goes beside the field or docks at the top, and when even the compact layout would cover it, the field is scrolled up within its sheet to just above the keypad (ADR-012 item 5).

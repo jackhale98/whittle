@@ -25,3 +25,12 @@ export function readSafeInsets(): Insets {
     left: px(cs.paddingLeft),
   };
 }
+
+/** The nearest ancestor of `el` that scrolls vertically (has overflow and room to scroll). */
+export function scrollParent(el: Element): HTMLElement | null {
+  for (let p = el.parentElement; p; p = p.parentElement) {
+    const oy = getComputedStyle(p).overflowY;
+    if ((oy === 'auto' || oy === 'scroll') && p.scrollHeight > p.clientHeight) return p;
+  }
+  return null;
+}
