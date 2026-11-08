@@ -193,36 +193,6 @@ bool cachedMeshTooFine(const TopoDS_Shape& shape, double linear) {
   return false;
 }
 
-const char* surfaceTypeName(GeomAbs_SurfaceType t) {
-  switch (t) {
-    case GeomAbs_Plane: return "plane";
-    case GeomAbs_Cylinder: return "cylinder";
-    case GeomAbs_Cone: return "cone";
-    case GeomAbs_Sphere: return "sphere";
-    case GeomAbs_Torus: return "torus";
-    case GeomAbs_BezierSurface: return "bezier";
-    case GeomAbs_BSplineSurface: return "bspline";
-    case GeomAbs_SurfaceOfRevolution: return "revolution";
-    case GeomAbs_SurfaceOfExtrusion: return "extrusion";
-    case GeomAbs_OffsetSurface: return "offset";
-    default: return "other";
-  }
-}
-
-const char* curveTypeName(GeomAbs_CurveType t) {
-  switch (t) {
-    case GeomAbs_Line: return "line";
-    case GeomAbs_Circle: return "circle";
-    case GeomAbs_Ellipse: return "ellipse";
-    case GeomAbs_Hyperbola: return "hyperbola";
-    case GeomAbs_Parabola: return "parabola";
-    case GeomAbs_BezierCurve: return "bezier";
-    case GeomAbs_BSplineCurve: return "bspline";
-    case GeomAbs_OffsetCurve: return "offset";
-    default: return "other";
-  }
-}
-
 }  // namespace
 
 // ---------------------------------------------------------------------------------------------
@@ -433,6 +403,13 @@ std::string importFile(const std::string& path, const std::string& format) {
     if (format == "brep") return importBrep(path);
     if (format == "stl") return importStl(path);
     raiseError("INVALID_INPUT", "Unknown import format '" + format + "'", "Use step, stl or brep.");
+  });
+}
+
+std::string measure(const std::string& queryJson) {
+  return guarded("measure", [&]() {
+    const JsonPtr query = JsonParser(queryJson).parseDocument();
+    return okJson(measureQuery(*query));
   });
 }
 

@@ -70,6 +70,10 @@
  *   - Push/pull F (faces moved along their normal): a moved face keeps its name (Modified); the
  *     new wall faces are F…:side(<boundaryEdgeName>) for each boundary edge of the pushed faces
  *     (Generated); faces swallowed by the move disappear; faces split by it re-index as usual.
+ *   - Seams the push/pull creates between faces on one surface are merged: a wall coplanar with an
+ *     existing face becomes part of it (no F…:side() name); a moved face flush with an existing
+ *     face is swallowed. Priority when faces merge: existing > moved > wall. A face whose split
+ *     pieces merge back keeps the first piece's name (e.g. a lone `#0`).
  */
 export type PersistentName = string;
 

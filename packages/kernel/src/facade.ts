@@ -45,6 +45,11 @@ export interface WhittleKernelModule {
   exportShapes(shapesJson: string, format: string, optionsJson: string): string;
   /** Reads a MEMFS file (`step` | `stl` | `brep`). Returns `Result<RawImportResult>` JSON. */
   importFile(path: string, format: string): string;
+  /**
+   * Exact B-rep measurement. `queryJson`: `MeasureQuery`. Returns `Result<Measurement>` JSON
+   * (contracts kernel.ts).
+   */
+  measure(queryJson: string): string;
   /** Threaded build: caps OCCT's thread pool. Returns `Result<{threads, max}>` JSON. */
   configureThreads(count: number): string;
   release(shape: number): void;
@@ -81,6 +86,20 @@ export interface RawExportResult {
 /** Value of `importFile()` on success. */
 export interface RawImportResult {
   bodies: { shape: number; name?: string }[];
+}
+
+/**
+ * What `measure()` measures: a sub-shape of a live shape (a contracts `ResolvedRef`) or a world
+ * point (mm).
+ */
+export type MeasureSubject =
+  | { shape: number; kind: 'face' | 'edge' | 'vertex' | 'body'; index: number }
+  | { point: [number, number, number] };
+
+/** `measure()` query: one target (intrinsic values) or two (distance, angle). */
+export interface MeasureQuery {
+  a: MeasureSubject;
+  b?: MeasureSubject;
 }
 
 /** Value of `kernelInfo()` on success. */

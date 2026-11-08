@@ -4,8 +4,8 @@
 // Build note: the libcascade toolchain compiles `scope: 'main'` custom bindings by concatenating
 // their *contents* into one translation unit, so relative includes cannot be resolved there.
 // scripts/amalgamate.mjs inlines, in this order:
-//   whittle_kernel.h, whittle_core.cpp, whittle_modeling.cpp, whittle_io.cpp,
-//   whittle_kernel.cpp, whittle_bindings.cpp
+//   whittle_kernel.h, whittle_core.cpp, whittle_modeling.cpp, whittle_pushpull.cpp,
+//   whittle_measure.cpp, whittle_io.cpp, whittle_kernel.cpp, whittle_bindings.cpp
 // into .libcascade/whittle_facade.cpp, which is what libcascade.config.ts points at. The files
 // after this one share its anonymous namespace helpers and are not standalone TUs.
 
@@ -22,6 +22,7 @@
 #include <BRepBuilderAPI_MakeEdge.hxx>
 #include <BRepBuilderAPI_MakeFace.hxx>
 #include <BRepBuilderAPI_MakeVertex.hxx>
+#include <BRepExtrema_DistShapeShape.hxx>
 #include <BRepCheck_Analyzer.hxx>
 #include <BRepFilletAPI_MakeChamfer.hxx>
 #include <BRepFilletAPI_MakeFillet.hxx>
@@ -36,6 +37,7 @@
 #include <BRepPrimAPI_MakeRevol.hxx>
 #include <BRepPrimAPI_MakeSphere.hxx>
 #include <BRepTools.hxx>
+#include <BRepTools_History.hxx>
 #include <BRep_Builder.hxx>
 #include <BRep_Tool.hxx>
 #include <Bnd_Box.hxx>
@@ -53,6 +55,7 @@
 #include <NCollection_IndexedDataMap.hxx>
 #include <NCollection_IndexedMap.hxx>
 #include <NCollection_List.hxx>
+#include <NCollection_Map.hxx>
 #include <NCollection_Sequence.hxx>
 #include <OSD_Parallel.hxx>
 #include <OSD_ThreadPool.hxx>
@@ -66,6 +69,9 @@
 #include <STEPCAFControl_Reader.hxx>
 #include <STEPCAFControl_Writer.hxx>
 #include <STEPControl_StepModelType.hxx>
+#include <ShapeBuild_ReShape.hxx>
+#include <ShapeFix_Shape.hxx>
+#include <ShapeUpgrade_UnifySameDomain.hxx>
 #include <Standard_Failure.hxx>
 #include <Standard_Version.hxx>
 #include <TCollection_AsciiString.hxx>
@@ -95,6 +101,7 @@
 #include <gp_Ax2.hxx>
 #include <gp_Ax3.hxx>
 #include <gp_Circ.hxx>
+#include <gp_Cylinder.hxx>
 #include <gp_Dir.hxx>
 #include <gp_Elips.hxx>
 #include <gp_Lin.hxx>
@@ -102,6 +109,7 @@
 #include <gp_Pln.hxx>
 #include <gp_Pnt.hxx>
 #include <gp_Pnt2d.hxx>
+#include <gp_Sphere.hxx>
 #include <gp_Trsf.hxx>
 #include <gp_Vec.hxx>
 
@@ -1172,6 +1180,36 @@ int countSolids(const TopoDS_Shape& shape) {
   int n = 0;
   for (TopExp_Explorer ex(shape, TopAbs_SOLID); ex.More(); ex.Next()) ++n;
   return n;
+}
+
+const char* surfaceTypeName(GeomAbs_SurfaceType t) {
+  switch (t) {
+    case GeomAbs_Plane: return "plane";
+    case GeomAbs_Cylinder: return "cylinder";
+    case GeomAbs_Cone: return "cone";
+    case GeomAbs_Sphere: return "sphere";
+    case GeomAbs_Torus: return "torus";
+    case GeomAbs_BezierSurface: return "bezier";
+    case GeomAbs_BSplineSurface: return "bspline";
+    case GeomAbs_SurfaceOfRevolution: return "revolution";
+    case GeomAbs_SurfaceOfExtrusion: return "extrusion";
+    case GeomAbs_OffsetSurface: return "offset";
+    default: return "other";
+  }
+}
+
+const char* curveTypeName(GeomAbs_CurveType t) {
+  switch (t) {
+    case GeomAbs_Line: return "line";
+    case GeomAbs_Circle: return "circle";
+    case GeomAbs_Ellipse: return "ellipse";
+    case GeomAbs_Hyperbola: return "hyperbola";
+    case GeomAbs_Parabola: return "parabola";
+    case GeomAbs_BezierCurve: return "bezier";
+    case GeomAbs_BSplineCurve: return "bspline";
+    case GeomAbs_OffsetCurve: return "offset";
+    default: return "other";
+  }
 }
 
 std::string fmtMm(double v) {

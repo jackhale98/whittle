@@ -47,6 +47,8 @@ std::string kernelInfo();
 //             inputs.shapes["scope…"])
 //   fillet, chamfer (edges at refs "/edges/<n>"), boolean (refs "/target", "/tools/<n>"),
 //   plane (offset from refs "/definition/from" or a frame)
+//   pushPull  (M2: planar faces of inputs.target at refs "/faces/<n>", values "/distance" mm along
+//             each face's outward normal; prism + fuse/cut, naming.ts "M2 additions")
 // using Generated / Modified / IsDeleted history for names (PLAN §7.3).
 // Returns Result<{"shape":int,"naming":NamingMap,"warnings":KernelError[]}> plus, where they
 // apply: "frame" (sketch, plane), "regions" (sketch: region names) and "bodies" (cut/intersect
@@ -84,7 +86,15 @@ std::string importFile(const std::string& path, const std::string& format);
 std::string configureThreads(int32_t count);
 
 
-// M3+: measure; M4: hlrProject; M5: exportStep with PMI — added by contract proposal.
+// M2: exact measurement (contracts `Measurement`). queryJson: {"a": Target, "b"?: Target} with
+// Target = {"shape":int,"kind":"face"|"edge"|"vertex"|"body","index":int} (a ResolvedRef) or
+// {"point":[x,y,z]} (mm). One target: position (vertex/point), length (+ radius of circles) of
+// an edge, area (+ radius of cylinders/spheres) of a face, area of a body. Two targets: minimum
+// distance + closest points (BRepExtrema_DistShapeShape) and, for planar faces/straight edges,
+// the angle in radians (conventions in whittle_measure.cpp). Returns Result<Measurement>.
+std::string measure(const std::string& queryJson);
+
+// M4: hlrProject; M5: exportStep with PMI — added by contract proposal.
 
 // Releases a handle. Unknown handles are ignored.
 void release(ShapeHandle shape);

@@ -24,6 +24,7 @@ import type {
   KernelStatus,
   KernelVariant,
   MassProperties,
+  Measurement,
   MeshBuffers,
   MeshOptions,
   Result,
@@ -36,6 +37,7 @@ import {
   instantiateKernel,
   type KernelInitModule,
   type KernelModuleOptions,
+  type MeasureSubject,
   type RawExportResult,
   type RawImportResult,
   type RawKernelInfo,
@@ -63,7 +65,7 @@ export interface KernelApiDeps {
   canUseThreads?: () => boolean;
 }
 
-export type { ExportShape } from '@whittle/kernel';
+export type { ExportShape, MeasureSubject } from '@whittle/kernel';
 
 /** One exported file; `bytes` is transferred (never copied) across the worker boundary. */
 export interface ExportedFile {
@@ -95,6 +97,11 @@ export interface KernelLowLevelApi {
   importShapes(bytes: Uint8Array, format: ExportFormat): Promise<Result<ImportedBody[]>>;
   /** Threaded build: caps OCCT's thread pool (`init({ threads })` applies it automatically). */
   configureThreads(count: number): Promise<Result<{ threads: number; max: number }>>;
+  /**
+   * M2: exact B-rep measurement of sub-shapes of live shapes and/or world points: one subject
+   * gives its intrinsic values, two the minimum distance (+ angle). See whittle_kernel.h.
+   */
+  measureShapes(a: MeasureSubject, b?: MeasureSubject): Promise<Result<Measurement>>;
 }
 
 /** Everything the kernel worker exposes over Comlink. */
@@ -558,6 +565,18 @@ export function createKernelApi(deps: KernelApiDeps): KernelWorkerApi & KernelAp
         );
       } catch (e) {
         return caught('configureThreads', e);
+      }
+    },
+
+    async measureShapes(a: MeasureSubject, b?: MeasureSubject): Promise<Result<Measurement>> {
+      if (kernel === null) return notReady();
+      try {
+        return parseResult<Measurement>(
+          kernel.measure(JSON.stringify(b === undefined ? { a } : { a, b })),
+          'measure',
+        );
+      } catch (e) {
+        return caught('measure', e);
       }
     },
 

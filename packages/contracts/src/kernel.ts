@@ -77,7 +77,8 @@ export interface KernelInitOptions {
  */
 /**
  * Inputs per feature type beyond the documented keys above (M2):
- *   pushPull: `target` = the body; `refs["/faces/i"]` = its faces (planar in M2);
+ *   pushPull: `target` = the body (optional: defaults to the first face's shape);
+ *             `refs["/faces/i"]` = its faces (planar in M2);
  *             `values["/distance"]` mm, positive along each face's outward normal.
  */
 export interface FeatureInputs {
@@ -209,12 +210,14 @@ export type MeasureTarget =
 /**
  * Exact (B-rep) measurement (PLAN §9.1 phone: measure). One target: its intrinsic size; two:
  * minimum distance (with the closest points) and, when both are planar faces / straight edges,
- * the angle between them. Lengths mm, areas mm², angles rad in [0, π].
+ * the angle between them. Lengths mm, areas mm², angles rad. Angle conventions: face–face between
+ * outward normals [0, π]; edges sharing a vertex: the corner angle [0, π]; other edge pairs:
+ * between the lines [0, π/2]; face–edge: between the line and the plane. Diameter = 2 · radius.
  */
 export interface Measurement {
   distance?: { value: number; a: Vec3; b: Vec3 };
   angle?: number;
-  /** Edge length / face area / circle radius & diameter (circular edges, cylindrical faces). */
+  /** Edge length / face area / circle radius (circular edges, cylindrical faces). */
   length?: number;
   area?: number;
   radius?: number;

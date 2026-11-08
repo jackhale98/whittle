@@ -99,6 +99,32 @@ are cached per handle. Results carry fresh copies of cached meshes, transferred 
 Viewport meshing (`MESH_QUALITY`, relative to each shape's bbox): coarse 0.4 % / 0.5 rad, fine
 0.06 % / 0.25 rad.
 
+**Push/pull** (`PushPullFeature`, M2). The `/faces/i` refs resolve like any face refs: by name,
+then by fingerprint, else `needsAttention`. They must all be faces of one solid body, otherwise
+the feature is an `error` before the kernel runs. The kernel moves the faces (ADR-013) and returns
+the same body id, so features downstream keep resolving:
+- moved faces keep their names;
+- walls are `F<pp>:side(<edge name>)`;
+- walls coplanar with an old face merge into it, under the old face's name;
+- a face swallowed by the move disappears. A ref to it becomes `needsAttention`, never a guess.
+
+Kernel failures surface as the feature's `error`:
+- `UNSUPPORTED_FEATURE` for curved faces, with the selection number in the message and the face
+  in `entityRefs`;
+- `OPERATION_FAILED` "… removes the whole body".
+
+The body keeps its pre-feature geometry, and later features on it are `blocked`.
+
+**Measure** (M2). `measure(partId, a, b?)` measures on the latest regen. A `{bodyId, kind, index}`
+target resolves like `refFor`: the body by `BodyResult` id, and `index` = the mesh face/edge
+ordinal (TopExp index) or the TopExp vertex index. `{point}` targets are world points. Errors:
+- `INVALID_INPUT` if the part has not been regenerated, or for a non-finite point;
+- `UNRESOLVED_REFERENCE` for an unknown body or an index out of range;
+- `INVALID_INPUT` for a mesh reference body.
+
+The kernel computes the values exactly (BRepExtrema/GProp); the `KernelLowLevelApi.measureShapes`
+call takes shape handles directly.
+
 ## Imports (`src/regen/imports.ts`, `planImport` in the engine)
 
 - **STEP / BREP** → `kernel.importShapes` (one shape per solid). IGES → `UNSUPPORTED_FEATURE`
@@ -179,7 +205,11 @@ suppress/rollback/reorder, multi-body scopes, errors and ghosts, revolve/planes/
 transfer checks, and `import` (bracket STEP → import → same volume 1e-6, placement, cached/missing/
 corrupt attachments, stable names through a fillet over regens and fresh workers, a 1 %-scaled
 replacement resolved by fingerprint with `rebound`, an unrelated replacement → needs attention,
-multi-solid files, cut/add with the import, mesh reference bodies). `resolve.test.ts` holds the
+multi-solid files, cut/add with the import, mesh reference bodies), and `pushpull` (M2: a pulled
+top and a pulled side face re-run under width/depth edits with exact names, a downstream fillet on
+a moved face's edge and on a push/pull wall, a pocket pulled flush whose floor ref then needs
+attention, curved-face / whole-body / two-body failures, `measure` on the latest regen).
+`resolve.test.ts` holds the
 adversarial unit cases (near-equidistant, flipped normals, far moves, vanished pieces, weak
 names). Timings are printed as `[regen timing]` lines.
 
@@ -191,6 +221,12 @@ names). Timings are printed as `[regen timing]` lines.
   naming faces `F<id>:face#k` via `finalizeNamed` and applying the op via `applyBodyOp` (so tool
   faces keep `F<id>:face#k` instead of the nested boolean form) — would replace both. No IGES
   reader.
+- **Contracts (M2)**: `naming.ts` "M2 additions" should state the seam merge (ADR-013): a wall
+  coplanar with an existing face merges into it (no `F…:side()` name, e.g. a pulled box top), a
+  moved face flush with an existing face is swallowed by it, priority existing > moved > wall.
+  `kernel.ts` `Measurement` should state the angle conventions (faces: outward normals [0, π];
+  edges sharing a vertex: corner angle; other edges: between lines [0, π/2]; face + edge: line to
+  plane).
 - **Contracts** (`modeling.ts`): `FeatureStatus.rebound[]` gains `fingerprint?: Fingerprint`;
   `UnresolvedRef` gains `lastKnown?: Fingerprint`; `ModelingApi` gains
   `configureRegen(options: { maxSpareResults?: number }): Promise<void>` (all already emitted by
