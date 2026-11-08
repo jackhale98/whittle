@@ -39,7 +39,7 @@ export const DIMENSIONS: Record<NamedDimension, DimensionVector> = {
 
 export interface ExprError {
   message: string;
-  /** Character range in the expression, for inline highlighting. */
+  /** Half-open character range [start, end) in the expression, for inline highlighting. */
   span?: [number, number];
   /** Parameter names involved in a cycle, when the error is a dependency cycle. */
   cycle?: string[];

@@ -19,11 +19,11 @@ import type {
 import { DIMENSIONS } from '@whittle/contracts';
 import type { MaterialLibraryItem } from '../src';
 
-type Q = { v: number; d: [number, number, number] };
-const L: [number, number, number] = [1, 0, 0];
-const A: [number, number, number] = [0, 0, 1];
-const M: [number, number, number] = [0, 1, 0];
-const S: [number, number, number] = [0, 0, 0];
+type Q = { v: number; d: [number, number, number, number] };
+const L: [number, number, number, number] = [1, 0, 0, 0];
+const A: [number, number, number, number] = [0, 0, 1, 0];
+const M: [number, number, number, number] = [0, 1, 0, 0];
+const S: [number, number, number, number] = [0, 0, 0, 0];
 
 const UNITS: Record<string, Q> = {
   mm: { v: 1, d: L },
@@ -146,7 +146,7 @@ export function makeEvaluator(params: readonly Pick<Param, 'name' | 'expr'>[]) {
         i++;
         const ex = atom();
         const n = ex.v;
-        return { v: base.v ** n, d: [base.d[0] * n, base.d[1] * n, base.d[2] * n] };
+        return { v: base.v ** n, d: [base.d[0] * n, base.d[1] * n, base.d[2] * n, base.d[3] * n] };
       }
       return base;
     }
@@ -157,8 +157,8 @@ export function makeEvaluator(params: readonly Pick<Param, 'name' | 'expr'>[]) {
         const r = power();
         l =
           t.t === '*'
-            ? { v: l.v * r.v, d: [l.d[0] + r.d[0], l.d[1] + r.d[1], l.d[2] + r.d[2]] }
-            : { v: l.v / r.v, d: [l.d[0] - r.d[0], l.d[1] - r.d[1], l.d[2] - r.d[2]] };
+            ? { v: l.v * r.v, d: [l.d[0] + r.d[0], l.d[1] + r.d[1], l.d[2] + r.d[2], l.d[3] + r.d[3]] }
+            : { v: l.v / r.v, d: [l.d[0] - r.d[0], l.d[1] - r.d[1], l.d[2] - r.d[2], l.d[3] - r.d[3]] };
       }
       return l;
     }
