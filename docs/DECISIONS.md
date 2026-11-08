@@ -27,7 +27,7 @@ Newest last. Superseded entries stay, marked **Superseded by ADR-xxx**.
 | Tests           | Vitest, Playwright, C++/Node golden tests                                                                       |
 | Lint/format     | Biome                                                                                                           |
 | Package manager | pnpm workspaces                                                                                                 |
-| License         | Apache-2.0 for Whittle code; kernel ships as a separate, reproducibly built `.wasm` (LGPL-2.1 + OCCT exception) |
+| License         | ~~Apache-2.0~~ **Superseded by ADR-003** (GPL-3.0-or-later); kernel ships as a separate, reproducibly built `.wasm` (LGPL-2.1 + OCCT exception) |
 
 **Why.** See the rationale column in PLAN §3. In short: OCCT is the only mature open B-rep kernel;
 everything else is the boring, well-maintained option with the largest ecosystem, and keeps the
@@ -77,3 +77,27 @@ not from fine trimming. Track size per build in CI.
 **Alternatives.** Direct CMake + Emscripten build of OCCT 8.0.1 (kept as the fallback spike);
 using the prebuilt `libcascade` package with a JS-side façade (works, but violates the "coarse
 boundary" rule and ships every binding).
+
+---
+
+## ADR-003 — License: GPL-3.0-or-later (2026-11-08)
+
+**Decision.** Whittle's own code is licensed **GPL-3.0-or-later** (owner decision, 2026-11-08). This
+supersedes the Apache-2.0 row of ADR-001.
+
+**Why.** Mycelium's sync layer (same author) is GPL-3.0; matching it lets `packages/sync` port its
+provider adapters, auth flows and conflict handling directly (PLAN §8A) with no relicensing step.
+Copyleft also keeps forks of Whittle open.
+
+**Consequences.**
+- Every package declares `"license": "GPL-3.0-or-later"`; root `LICENSE` is the GPL-3.0 text.
+- OCCT (LGPL-2.1 WITH Open-CASCADE-Exception-1.0) is GPL-compatible. We still ship it as a separate,
+  reproducibly built `.wasm` with public build scripts.
+- Dependencies must be GPL-3.0-compatible: MIT, BSD, ISC, Apache-2.0, MPL-2.0, LGPL, and
+  MulanPSL-2.0 (planegcs) all are. **GPL-2.0-only dependencies are not allowed.** Check this when
+  adding entries to `docs/DEPENDENCIES.md`.
+- Mycelium's GPL-3.0 code: if it is GPL-3.0-only, the combined work is effectively distributed under
+  GPL-3.0. That is acceptable.
+
+**Alternatives.** Apache-2.0 (would need the Mycelium module relicensed); AGPL-3.0 (also closes the
+hosted-fork gap; may be revisited if share/collab hosting in §13 lands).

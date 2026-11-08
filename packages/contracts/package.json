@@ -2,7 +2,7 @@
   "name": "@whittle/contracts",
   "version": "0.0.0",
   "private": true,
-  "license": "Apache-2.0",
+  "license": "GPL-3.0-or-later",
   "type": "module",
   "description": "Lead-owned shared types: document schema, kernel API, viewport API, runtime events.",
   "exports": {

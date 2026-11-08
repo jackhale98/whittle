@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "description": "Free, open-source, browser-native parametric CAD.",
-  "license": "Apache-2.0",
+  "license": "GPL-3.0-or-later",
   "type": "module",
   "packageManager": "pnpm@10.28.0",
   "engines": {

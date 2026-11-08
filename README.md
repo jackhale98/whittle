@@ -16,5 +16,5 @@ pnpm dev
 pnpm test && pnpm e2e
 ```
 
-Licensed under Apache-2.0. The geometry kernel (OCCT, LGPL-2.1 with exception) ships as a separate,
+Licensed under GPL-3.0-or-later (see `LICENSE`, ADR-003). The geometry kernel (OCCT, LGPL-2.1 with exception) ships as a separate,
 reproducibly built `.wasm`; see `packages/kernel`.
