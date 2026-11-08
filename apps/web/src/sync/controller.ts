@@ -61,6 +61,7 @@ import {
   GraphAccount,
   gitRemoteHeads,
   type HistoryFiles,
+  hashProjectFiles,
   loadFolderHandle,
   mergeProjectFiles,
   oauthTokenSource,
@@ -69,6 +70,7 @@ import {
   resolveProjectFiles,
   saveFolderHandle,
   stripCallbackQuery,
+  versionedFiles,
 } from '@whittle/sync';
 import type {
   ConnectionItem,
@@ -119,7 +121,6 @@ import {
   patchTo,
   projectFiles,
   restoredExtra,
-  sameBytes,
   splitProject,
 } from './working-copy';
 
@@ -285,6 +286,7 @@ export class SyncController {
   private mergeFinish: ((r: MergeResolution[]) => Promise<StorageResult<unknown>>) | null = null;
   private offFocus: (() => void) | null = null;
   private opening: Promise<void> = Promise.resolve();
+  private refreshTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(private readonly host: SyncHost) {
     this.vault = createCredentialVault();
@@ -542,13 +544,33 @@ export class SyncController {
     });
   }
 
+  /** Picked folders this session (IndexedDB holds them across reloads; reading is not free). */
+  private readonly handles = new Map<string, FolderHandle>();
+
+  private async folderHandle(key: string): Promise<FolderHandle | null> {
+    const known = this.handles.get(key);
+    if (known) return known;
+    const h = await loadFolderHandle(key).catch(() => null);
+    if (h) this.handles.set(key, h);
+    return h;
+  }
+
   /** A folder on this device; a git working tree becomes a local git repo (ADR-029). */
   async addLocalFolder(): Promise<void> {
     const handle = await pickDirectory();
     if (!handle) return;
     const git = await isGitRepo(handle);
     const id = ulid();
-    const handleKey = await saveFolderHandle(handle as unknown as FolderHandle);
+    let handleKey: string;
+    try {
+      handleKey = await saveFolderHandle(handle as unknown as FolderHandle);
+    } catch (e) {
+      this.patch({
+        addError: `This browser can’t remember the folder ‘${handle.name}’ (${e instanceof Error ? e.message : e}).`,
+      });
+      return;
+    }
+    this.handles.set(handleKey, handle as unknown as FolderHandle);
     this.addConnection({
       id,
       kind: 'folder',
@@ -566,7 +588,7 @@ export class SyncController {
     const label = c.kind === 'folder' ? c.label : ('account' in c && c.account) || c.label;
     this.patch({ browse: { connectionId, connectionLabel: label, path, folders: null } });
     if (c.kind === 'folder' && c.git) {
-      const root = await loadFolderHandle(c.handleKey);
+      const root = await this.folderHandle(c.handleKey);
       if (!root) return;
       const manifest = await (root as unknown as FileSystemDirectoryHandle)
         .getFileHandle('whittle.project.json')
@@ -606,7 +628,7 @@ export class SyncController {
       vault: this.vault,
       oauth: oauthConfig(),
       workerUrl: syncConfig().syncWorkerUrl,
-      folderHandle: (key) => loadFolderHandle(key),
+      folderHandle: (key) => this.folderHandle(key),
       fetch: syncFetch,
     });
   }
@@ -834,7 +856,7 @@ export class SyncController {
     let provider: StorageProvider;
     let engineLink = link;
     if (c.kind === 'folder' && c.git) {
-      const root = await loadFolderHandle(c.handleKey);
+      const root = await this.folderHandle(c.handleKey);
       if (!root) {
         this.patchProject({ notice: `Choose the folder ‘${c.label}’ again to reconnect it.` });
         return;
@@ -902,13 +924,15 @@ export class SyncController {
     if (changed.length) this.engine?.notifyLocalChange(changed);
     if (this.view.get().project.kind === 'git') void this.gitFetchStatus(false);
     void this.autoSnapshot(files);
+    clearTimeout(this.refreshTimer);
+    this.refreshTimer = setTimeout(() => void this.refreshHistory(), 800);
   }
 
   /** Automatic snapshots every 10 minutes of editing, for projects that already keep versions. */
   private async autoSnapshot(files: ProjectFiles): Promise<void> {
     const h = this.history;
     const view = this.view.get().project.history;
-    if (!h || h.backend !== 'snapshot' || !view || view.versions.length === 0) return;
+    if (h?.backend !== 'snapshot' || !view || view.versions.length === 0) return;
     const now = Date.now();
     if (now - this.lastAuto < AUTO_EVERY_MS) return;
     this.lastAuto = now;
@@ -953,9 +977,17 @@ export class SyncController {
     if (this.history !== h) return;
     const current = branches.find((b) => b.current);
     const view: HistoryView = { backend: h.backend, versions, branches, diverged: null };
+    // "Current" only while the working copy is exactly that version (same content hash), so a
+    // version the user has since edited away from can be compared with what is on screen now.
+    const files = await this.readProject(id);
+    const wcHash = files ? await hashProjectFiles(versionedFiles(files)) : null;
+    const markCurrent = (base: string | null | undefined) => {
+      const v = versions.find((x) => x.id === base);
+      if (v && v.hash === wcHash) view.currentId = v.id;
+    };
     if (h.backend === 'snapshot') {
       const local = (h as unknown as { state(): { version: string | null } }).state();
-      if (local.version) view.currentId = local.version;
+      markCurrent(local.version);
       const other = branches.find((b) => b.name === current?.name && !b.current);
       if (other)
         view.diverged = {
@@ -963,8 +995,7 @@ export class SyncController {
           message: `Another device saved versions to ${other.name}.`,
         };
     } else {
-      if (current) view.currentId = current.head;
-      else if (versions[0]) view.currentId = versions[0].id;
+      markCurrent(current?.head ?? versions[0]?.id);
       const g = h as GitHistory;
       if (kind === 'localGit' && this.localGitRoot) {
         const wc = await g.workingChanges();
@@ -987,7 +1018,7 @@ export class SyncController {
   /** Git hosts: ahead count after a fetch, shown in the chip. */
   private async gitFetchStatus(fetch = true): Promise<void> {
     const h = this.history as GitHistory | null;
-    if (!h || h.backend !== 'git') return;
+    if (h?.backend !== 'git') return;
     if (!fetch) {
       this.patchProject({ status: { state: 'idle', pending: 0 } });
       return;
@@ -1159,7 +1190,7 @@ export class SyncController {
 
   async push(): Promise<void> {
     const h = this.history as GitHistory | null;
-    if (!h || h.backend !== 'git') return;
+    if (h?.backend !== 'git') return;
     this.patchProject({ busy: 'Pushing…', notice: null });
     try {
       const r = await h.push();
@@ -1180,7 +1211,7 @@ export class SyncController {
 
   async pull(): Promise<void> {
     const h = this.history as GitHistory | null;
-    if (!h || h.backend !== 'git') return;
+    if (h?.backend !== 'git') return;
     if (await this.uncommitted())
       return void this.patchProject({
         notice: 'The project has uncommitted changes. Save a version first, then pull.',
@@ -1420,6 +1451,7 @@ export class SyncController {
     const m = v.mode;
     return {
       kind: v.project.kind,
+      currentId: v.project.history?.currentId ?? null,
       status: v.project.status.state,
       link: this.link,
       connections: this.connections.map((c) => ({ id: c.id, kind: c.kind, label: c.label })),

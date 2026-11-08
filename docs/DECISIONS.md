@@ -1042,3 +1042,54 @@ repo's commits, not a parallel `.whittle-history/`. The owner asked for this in 
      in the UI.
 6. **Browsers.** Desktop Chromium only, because Firefox and Safari have no directory picker.
    Elsewhere, local git mode is hidden with that reason, and hosted git connections still work.
+
+## ADR-pending — M2.5 integration in apps/web
+
+1. **The library entry is the sync working copy.** `SyncLocalStore.readFiles` is the entry's
+   canonical document files plus its extra files (never `.whittle/`); `writeFiles` is a
+   compare-and-swap run under the same lock as autosave (`libLocked`). Sync may replace the open
+   document only when it is exactly the object last written to the library (no pending or
+   in-flight save, no unsaved history files) and the user is not mid-edit (sketch session,
+   push/pull drag, pointer down); otherwise it refuses, the app saves what is on screen (or waits
+   for the edit to end) and the engine merges again. Without this an autosave queued behind a
+   sync write could overwrite the merged result and the next push would drop the other device's
+   edit.
+2. **The merged document is loaded at the commit point, not when `SyncOutcome.files` arrives.**
+   It is applied inside `writeFiles`, where it is atomic with saves, as one `patch` command
+   ("Changes from another device") built with `diff`; the patch always sets `meta.modified` to
+   the merged value and is not autosaved, so devices never ping-pong a fresh timestamp.
+   `SyncOutcome.files` is then already on screen.
+3. **Connections and links live in localStorage** (`whittle:connections`, `whittle:links`,
+   `whittle:history-state:<id>`): small, never secret (tokens are only in the vault), and read
+   synchronously at boot to decide whether the sync chunk is needed for the opening document. The
+   contract says a `ProjectLink` is "stored with the library entry"; proposal: reword to "stored
+   on this device beside the library entry".
+4. **Git hosts link a repository, not a folder.** The token form gained a Repository field
+   (`owner/name` or a full HTTPS URL); `ProjectLink.path` is the clone URL and the clone lives in
+   `whittle-repo-<libraryId>`. The folder step shows that one repository: an empty one links the
+   open project (first commit and push), one with commits opens as a new library project.
+   Credentials are stored without an empty username, so GitHub always authenticates as
+   `x-access-token`.
+5. **Local git repo mode uses the same engine.** The project folder on disk syncs with the library
+   entry through a `SyncEngine` whose provider is a `FolderProvider` over the picked root (no
+   remote service), so outside edits are pulled on focus like any remote change, and `GitHistory`
+   over a File System Access fs commits it. Until packages/sync ships `fsaGitFs`/`openLocalGitRepo`
+   (`projectPath` scoping), `apps/web/src/sync/local-git.ts` falls back to its own fs adapter and
+   only offers the repo root as the project folder.
+6. **"Current" means content, not ancestry.** The versions panel marks a version Current only while
+   the working copy's content hash equals it, so the version a user edited away from can be
+   compared with what is on screen.
+7. **Releases are of the current state only.** A release freezes `exportPart` (main slot) output, so
+   it is refused unless the working copy is exactly that version (restore first).
+8. **Test seam.** `globalThis.__whittleSyncOverrides` (set by a Playwright init script) rewrites
+   provider origins to fakes, supplies public app keys the CI build lacks and replaces
+   `showDirectoryPicker` (OPFS in E2E). Only script already in the page can set it; such script
+   could read the vault anyway.
+9. **Bundle.** The status chip and version button are a 2.4 KB lazy chunk; the controller chunk
+   (`@whittle/sync`, isomorphic-git, merge, panels' logic) is ≈ 130 KB gzip and the panel chunk
+   ≈ 15 KB, both loaded on first use. The initial route grew by ≈ 2.6 KB (workbench glue).
+10. **Picked folders are cached in memory for the session.** `saveFolderHandle` still persists them
+    for reloads, but the controller reuses the handle it was given instead of reading IndexedDB
+    on every engine start. In this headless Chromium build, reading an OPFS directory handle back
+    from IndexedDB takes the browser down (the put is fine), which the local-git E2E would
+    otherwise hit; real picker handles are unaffected.

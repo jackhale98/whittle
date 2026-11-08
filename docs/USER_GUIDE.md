@@ -354,6 +354,57 @@ you need a copy, save a `.whittle` file.
   same ID but different content, Whittle opens it as a new library entry, named "Name (copy)" when
   the name is already taken. Your existing entry is never overwritten.
 
+## Connections, versions and compare
+
+The branch button and the sync chip in the top bar open the **Versions** and **Connections**
+panel (also ⌘K → "Versions" or "Connections"). Everything works by touch; nothing opens a
+dialog.
+
+### Connections
+
+- **Add connection** → choose a service. Dropbox and OneDrive open their sign-in page and bring you
+  back to where you were. WebDAV (Nextcloud) asks for the server, user name and an app password;
+  turn on **Use relay** if the server refuses requests from Whittle (CORS). Git hosts take a
+  repository (`owner/name` or its address) and an access token limited to that repository.
+- Then pick a folder. **Open** on a Whittle project folder copies it into your library; **Use** on
+  any other folder links the open project to it and uploads it.
+- **Open a local git repo…** (Chrome or Edge on a computer): pick the repository's top folder. The
+  project's files on disk are the working copy, and versions are real commits your own git tools
+  see. Whittle offers to add `.whittle/` to `.gitignore`, lists uncommitted changes, and won't
+  switch branches while there are any. Push and pull with your own git, or sign in to the
+  repository's host in Connections to push from Whittle.
+- Tokens and passwords are stored encrypted on this device only.
+
+### Background sync
+
+A linked project saves locally at once and uploads a few seconds later. It checks for changes
+from other devices every minute or so, whenever you come back to the app, and when you reconnect.
+Changes from another device arrive as one step you can undo; while you are sketching or dragging
+they wait until you finish. Offline edits queue up and upload when you're back online.
+
+If both devices changed the same thing, the chip shows **Resolve**. The merge panel lists each
+conflict side by side: keep yours, take theirs, or type a value, with a 3D preview of each choice.
+Nothing is uploaded until you finish.
+
+### Versions
+
+- **Save version** with a short message. Automatic snapshots are taken every 10 minutes while you
+  edit (show them with the switch) and thinned out over time. Named versions are never removed.
+- **Try an idea** starts a branch; switch branches with the Branch menu.
+- **Restore** brings an old version back as one undoable step.
+- **Mark as release** freezes a STEP export (AP214) into `releases/<name>/`. Releases are
+  read-only. Restore a version first if you want to release an older one.
+- Versions live in the project's `.whittle-history/` folder, so they sync with it. Git projects use
+  the repository's commits, branches and tags instead.
+
+### Compare
+
+Open a version and choose **Compare with current**. The panel lists what changed by feature
+("Pocket: depth 4 mm → 5 mm") and how mass and size moved. The viewport shows material the
+current model adds in green and material it removes in red, over a ghost of the model; the
+**Added** and **Removed** switches show one side at a time, and the swatches in the panel are the
+exact colours drawn. **Done** leaves compare.
+
 ## Offline, install and updates
 
 ### Offline

@@ -47,7 +47,7 @@ export default function ProjectPanel({ wb }: { wb: Workbench }) {
       data-testid="project-panel"
       data-tab={tab}
       style={{
-        top: 'calc(var(--safe-top, 0px) + var(--chrome-top, 0.75rem))',
+        top: 'calc(var(--safe-top, 0px) + var(--chrome-top, 3.5rem))',
         bottom: touch ? 'calc(var(--chrome-bottom, 80px) + 12px)' : '5.75rem',
       }}
       className={cn(
@@ -291,6 +291,7 @@ function Body({
           onSave={(msg) => ctl.saveVersion(msg)}
           saving={p.saving}
           saveError={p.saveError}
+          onOpen={(id) => void ctl.compareWith(id)}
           onRestore={(id) => void ctl.restore(id)}
           onCompare={(id) => void ctl.compareWith(id)}
           onRelease={(id, name) => void ctl.release(id, name)}

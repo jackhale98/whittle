@@ -120,7 +120,7 @@ export function cloneUrl(host: string, repo: string): string | null {
       const u = new URL(r);
       if (u.username || u.password) return null; // never keep credentials in a URL
       const path = u.pathname.replace(/\/+$/, '');
-      if (!/^\/[^/]+\/[^/]+/.test(path)) return null;
+      if (!/^\/[^/]+/.test(path)) return null;
       return `${u.origin}${path.endsWith('.git') ? path : `${path}.git`}`;
     } catch {
       return null;

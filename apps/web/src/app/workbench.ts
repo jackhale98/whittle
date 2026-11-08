@@ -2567,6 +2567,8 @@ export class Workbench {
         await c.idle();
       },
       syncLoaded: () => this.syncCtl !== null,
+      /** The sync controller itself (only usable inside page.evaluate). */
+      syncController: () => this.syncController(),
       projectBar: () => this.projectBar.get(),
       /** Replaces the document (fixtures for E2E scenarios), saved to the library. */
       load: (doc: WhittleDoc) => {
