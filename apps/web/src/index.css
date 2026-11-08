@@ -1,0 +1,29 @@
+@import "tailwindcss";
+
+/* Placeholder base styles. Design tokens arrive from packages/ui and replace these. */
+:root {
+  color-scheme: light dark;
+  --placeholder-bg: #f3f5f8;
+  --placeholder-fg: #1c2530;
+  --placeholder-accent: #0a84ff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --placeholder-bg: #14181d;
+    --placeholder-fg: #e6ebf1;
+  }
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--placeholder-bg);
+  color: var(--placeholder-fg);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}

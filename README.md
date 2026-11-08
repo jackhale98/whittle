@@ -1,5 +1,7 @@
 # Whittle
 
+[![CI](https://github.com/jackhale98/whittle/actions/workflows/ci.yml/badge.svg)](https://github.com/jackhale98/whittle/actions/workflows/ci.yml)
+
 Free, open-source, browser-native parametric CAD. Installs as a PWA, works offline, and runs the
 OpenCASCADE geometry kernel on your device via WebAssembly.
 

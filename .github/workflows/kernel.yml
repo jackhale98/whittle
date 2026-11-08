@@ -1,0 +1,75 @@
+# Reusable kernel build (PLAN §7.2). Called by ci.yml and deploy-pages.yml so the Wasm kernel is
+# built at most once per distinct input hash and never rebuilt when unchanged.
+#
+# - `pnpm kernel:build` runs the libcascade toolchain in Docker (digest-pinned images, ~12 GB each
+#   on disk) and writes packages/kernel/dist/ (whittle-kernel{,-st}.{js,wasm}, generated init/type
+#   files, size-report.json).
+# - packages/kernel/dist is cached with actions/cache, keyed by the kernel inputs. Build only on a
+#   cache miss. Wasm is never committed.
+# - `pnpm kernel:test` always runs (cache hit or miss).
+# - The result is uploaded as the `kernel-dist` artifact, consumed by the web build / Pages deploy.
+name: Kernel
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # Bump to force a rebuild without touching kernel inputs (e.g. toolchain image digest change
+  # that is not reflected in libcascade.config.ts).
+  KERNEL_CACHE_VERSION: v1
+
+jobs:
+  kernel:
+    name: Build and test kernel
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Restore kernel cache
+        id: kernel-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: packages/kernel/dist
+          key: kernel-${{ env.KERNEL_CACHE_VERSION }}-${{ hashFiles('packages/kernel/src/**', 'packages/kernel/libcascade.config.ts', 'packages/kernel/package.json', 'pnpm-lock.yaml') }}
+
+      - name: Free disk space for the toolchain images
+        if: steps.kernel-cache.outputs.cache-hit != 'true'
+        run: |
+          # The two toolchain images are ~12 GB each on disk; a stock runner has ~14 GB free.
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL \
+            /usr/local/share/boost /usr/share/swift /usr/local/.ghcup
+          sudo docker image prune --all --force
+          df -h /
+
+      - name: Build kernel (Docker)
+        if: steps.kernel-cache.outputs.cache-hit != 'true'
+        run: pnpm kernel:build
+
+      - name: Test kernel
+        run: pnpm kernel:test
+
+      - name: Upload kernel artefact
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: kernel-dist
+          path: packages/kernel/dist
+          if-no-files-found: error
+          retention-days: 14
