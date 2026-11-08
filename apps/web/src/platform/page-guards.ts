@@ -37,6 +37,24 @@ export function canScroll(target: EventTarget | null, dx: number, dy: number): b
   return false;
 }
 
+function isField(el: Element | null | undefined): boolean {
+  return (
+    !!el && el.nodeType === 1 && el.matches('input, textarea, select, [contenteditable="true"]')
+  );
+}
+
+/** Scrolls the (pinned) page and its root back to the origin after the keyboard moved them. */
+export function resetPagePosition(doc: Document): void {
+  const win = doc.defaultView;
+  if (win && (win.scrollX !== 0 || win.scrollY !== 0)) win.scrollTo(0, 0);
+  const root = doc.scrollingElement ?? doc.documentElement;
+  if (root && (root.scrollTop !== 0 || root.scrollLeft !== 0)) {
+    root.scrollTop = 0;
+    root.scrollLeft = 0;
+  }
+  if (doc.body && doc.body.scrollTop !== 0) doc.body.scrollTop = 0;
+}
+
 /** Installs the guards; returns an uninstall function. Safe to call in non-browser contexts. */
 export function installPageGuards(doc: Document | undefined = globalThis.document): () => void {
   if (!doc) return () => {};
@@ -60,12 +78,31 @@ export function installPageGuards(doc: Document | undefined = globalThis.documen
     if (!t || !start) return;
     if (!canScroll(e.target, t.clientX - start.x, t.clientY - start.y)) e.preventDefault();
   };
+  // The on-screen keyboard: iOS slides the page up to show the focused field and often leaves it
+  // there after the keyboard closes. Once no field has focus any more, put the page back.
+  const win = doc.defaultView;
+  let resetTimer: ReturnType<typeof setTimeout> | undefined;
+  const onFocusOut = (): void => {
+    clearTimeout(resetTimer);
+    resetTimer = setTimeout(() => {
+      if (isField(doc.activeElement)) return; // focus moved to another field
+      resetPagePosition(doc);
+    }, 50);
+  };
+  const onViewportResize = (): void => {
+    if (!isField(doc.activeElement)) resetPagePosition(doc);
+  };
   for (const type of GESTURE_EVENTS) doc.addEventListener(type, block, { passive: false });
   doc.addEventListener('touchstart', onTouchStart, { passive: true });
   doc.addEventListener('touchmove', onTouchMove, { passive: false });
+  doc.addEventListener('focusout', onFocusOut);
+  win?.visualViewport?.addEventListener('resize', onViewportResize);
   return () => {
+    clearTimeout(resetTimer);
     for (const type of GESTURE_EVENTS) doc.removeEventListener(type, block);
     doc.removeEventListener('touchstart', onTouchStart);
     doc.removeEventListener('touchmove', onTouchMove);
+    doc.removeEventListener('focusout', onFocusOut);
+    win?.visualViewport?.removeEventListener('resize', onViewportResize);
   };
 }

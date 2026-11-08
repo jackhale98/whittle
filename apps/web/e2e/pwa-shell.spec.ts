@@ -123,3 +123,23 @@ test('the page does not scroll', async ({ page, browserName }) => {
   expect(s.top).toBe(0);
   expect(s.overflow).toBeLessThanOrEqual(0);
 });
+
+test('fields use 16 px text on touch, so focusing one never zooms the page', async ({ page }) => {
+  await open(page);
+  const sizes = await page.evaluate(() => {
+    const host = document.createElement('div');
+    host.style.cssText = 'position:fixed;left:200px;top:200px;z-index:2147483647';
+    host.innerHTML =
+      '<input class="text-ui" aria-label="probe"><span data-field-mirror class="text-ui">x</span><button class="text-ui">b</button>';
+    document.body.appendChild(host);
+    const px = (sel: string) => getComputedStyle(host.querySelector(sel) as Element).fontSize;
+    return { input: px('input'), mirror: px('[data-field-mirror]'), chrome: px('button') };
+  });
+  // The expression input and its mirror layer stay in step; other chrome keeps its 13 px.
+  expect(sizes.input).toBe('16px');
+  expect(sizes.mirror).toBe('16px');
+  expect(sizes.chrome).not.toBe('16px');
+  await page.getByLabel('probe').tap();
+  await page.waitForTimeout(300);
+  expect(await scale(page)).toBe(1);
+});

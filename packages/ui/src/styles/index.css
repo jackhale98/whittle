@@ -170,3 +170,18 @@
     scroll-behavior: auto !important;
   }
 }
+
+/*
+ * iOS zooms the page into any focused field whose text is under 16 px (and installed web apps
+ * don't always honour maximum-scale). On touch devices fields use 16 px; the expression input's
+ * mirror layer (`data-field-mirror`) matches so its error underline stays aligned. Unlayered on
+ * purpose: it must beat the `text-ui` utility classes.
+ */
+@media (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  textarea,
+  select,
+  [data-field-mirror] {
+    font-size: 16px;
+  }
+}

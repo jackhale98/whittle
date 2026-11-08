@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { canScroll, installPageGuards } from './page-guards';
+import { canScroll, installPageGuards, resetPagePosition } from './page-guards';
 
 const root = resolve(import.meta.dirname, '../..');
 
@@ -88,6 +88,23 @@ describe('page guards', () => {
     doc.dispatchEvent(moved);
     expect(moved.defaultPrevented).toBe(true);
     uninstall();
+  });
+
+  it('puts the page back where it was once the keyboard has slid it up', () => {
+    const scrolled: number[][] = [];
+    const root = { scrollTop: 120, scrollLeft: 0 };
+    const doc = {
+      defaultView: {
+        scrollX: 0,
+        scrollY: 80,
+        scrollTo: (x: number, y: number) => scrolled.push([x, y]),
+      },
+      scrollingElement: root,
+      body: { scrollTop: 0 },
+    } as unknown as Document;
+    resetPagePosition(doc);
+    expect(scrolled).toEqual([[0, 0]]);
+    expect(root.scrollTop).toBe(0);
   });
 
   it('is a no-op without a document', () => {
