@@ -136,3 +136,56 @@ test('model mode: a pen tap with a finger resting on the screen still selects (D
   await expect.poll(async () => (await a.ui()).selection).toEqual(['face']);
   await t.up();
 });
+
+test('a pinch during a finger drag of a sketch point ends the drag (M2 re-gate N1)', async ({
+  page,
+}) => {
+  test.slow();
+  await boot(page);
+  await page.getByRole('button', { name: 'Close welcome' }).tap();
+  const a = app(page);
+  const t = await touch(page);
+  await page.getByRole('button', { name: 'Sketch', exact: true }).tap();
+  await page.getByTestId('plane-chooser').getByRole('button', { name: /Top/ }).tap();
+  await expect(page.getByRole('toolbar', { name: 'Sketch tools' })).toBeVisible();
+  await cameraStill(page);
+  // One line, then leave the line tool (select mode: a finger on a point drags it).
+  await t.tap([await toPage(page, [-20, 10, 0])]);
+  await a.settled();
+  await t.tap([await toPage(page, [20, 10, 0])]);
+  await a.settled();
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape');
+  await a.idle();
+  const points = async () =>
+    ((await sketchOf(page))?.entities ?? [])
+      .filter((e) => e.kind === 'point')
+      .map((e) => (e.kind === 'point' ? [e.x, e.y] : [0, 0]));
+
+  // Drag the right end a little with one finger, then add a second finger and pinch.
+  const end = await toPage(page, [20, 10, 0]);
+  await t.down([end]);
+  for (let k = 1; k <= 5; k++) await t.move([{ x: end.x + k * 4, y: end.y }]);
+  const f1 = { x: end.x + 20, y: end.y };
+  const f2 = { x: end.x + 150, y: end.y + 80 };
+  await t.down([f1, f2]);
+  for (let k = 1; k <= 6; k++)
+    await t.move([
+      { x: f1.x - k * 5, y: f1.y },
+      { x: f2.x + k * 5, y: f2.y },
+    ]);
+  await t.up();
+  await a.idle();
+  const afterPinch = await points();
+
+  // A later one-finger orbit on empty space must not move any sketch point.
+  await cameraStill(page);
+  const box = await page.getByTestId('viewport-canvas').boundingBox();
+  if (!box) throw new Error('no canvas');
+  const from = { x: box.x + 200, y: box.y + box.height - 220 };
+  await t.drag(from, { x: from.x + 60, y: from.y - 40 });
+  await a.idle();
+  expect(await points()).toEqual(afterPinch);
+  // The drag's result before the pinch was kept as an ordinary, undoable edit.
+  expect(afterPinch.some(([x]) => (x as number) > 20.5)).toBe(true);
+});

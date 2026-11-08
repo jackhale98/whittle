@@ -40,17 +40,22 @@ and note anything that fails, with the device, orientation and steps.
      selected.
    - Hovering the Pencil (on iPads that support hover) highlights what it would pick.
    - After using the Pencil, fingers only move the view.
-8. **Gestures in model and sketch mode:**
+8. **Sketch references and drags.**
+   - In a sketch, the origin and the dashed axes show. Dimension a point to the origin and a circle
+     centre to an axis.
+   - Drag a point with one finger, add a second finger and pinch, then lift both and orbit with
+     one finger: the point must stay where the first drag left it.
+9. **Gestures in model and sketch mode:**
    - tap selects;
    - double-tap zooms to a face, or fits on empty space;
    - long-press shows the action bubble;
    - two-finger tap undoes and three-finger tap redoes;
    - twisting two fingers rolls the view.
-9. **Memory, speed and offline.**
+10. **Memory, speed and offline.**
    - Peak memory stays under 1 GB (Web Inspector) on the demo with a few edits.
    - The kernel is ready within about 6 s on a first visit and 1 s afterwards.
    - The app works in airplane mode after one visit.
-10. **Keypad.**
+11. **Keypad.**
     - Edit values near the bottom of the history sheet, in both orientations: the keypad never
       covers the field.
     - Switching to the iOS keyboard and back works.

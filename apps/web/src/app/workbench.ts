@@ -88,6 +88,7 @@ import {
   resolvePick,
   toHighlight,
   toleranceFor,
+  vertexAt,
 } from '../selection/pick';
 import { type BubbleActionId, gestureAction } from './gestures';
 import { MeasureTool } from './measure-tool';
@@ -674,7 +675,13 @@ export class Workbench {
       const body = result.bodies.find((b) => b.id === s.hit.bodyId);
       const names =
         k === 'face' ? body?.mesh.faceNames : k === 'edge' ? body?.mesh.edgeNames : undefined;
-      const i = s.ref && names ? names.indexOf(s.ref.name) : -1;
+      // Vertices have no names in the mesh: re-find them by position (dropped if they moved).
+      const i =
+        k === 'vertex'
+          ? vertexAt(body?.mesh.vertexPositions, s.hit.point)
+          : s.ref && names
+            ? names.indexOf(s.ref.name)
+            : -1;
       if (i < 0) return [];
       const hit = { ...s.hit, index: i };
       return [{ ...s, hit, key: hitKey(hit) }];

@@ -1875,6 +1875,10 @@ class ViewportImpl implements ViewportEngine {
     // Capture phase on window runs before camera-controls' own pointerdown listener.
     const down = (e: PointerEvent) => {
       if (e.target !== canvas || this.disposed) return;
+      // A host-replayed press (e.g. sketch mode handing a held-back finger to the camera) is for
+      // camera-controls only: the recogniser already saw the real one, and a second entry would
+      // reset that finger's start and tap slop.
+      if (!e.isTrusted) return;
       const s = sample('down', e);
       const handle = this.handleAt(s.x, s.y, defaultTolerance(s.pointerType));
       if (handle) {

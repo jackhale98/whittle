@@ -1,7 +1,7 @@
 import type { EntityQuery, Feature, FilletFeature, PickHit } from '@whittle/contracts';
 import { describe, expect, it } from 'vitest';
 import { contextTools, newExtrude, newFillet, nextName } from '../features/factories';
-import { acceptsFor, applyPick, refForHit, resolvePick, toleranceFor } from './pick';
+import { acceptsFor, applyPick, refForHit, resolvePick, toleranceFor, vertexAt } from './pick';
 
 const hit = (p: Partial<PickHit>): PickHit => ({
   bodyId: 'B1',
@@ -107,5 +107,13 @@ describe('picking', () => {
     expect(contextTools(['face'])).toEqual(['sketch', 'pushPull']);
     expect(contextTools(['face', 'face'])).toEqual(['pushPull']);
     expect(contextTools(['face', 'edge'])).toEqual([]);
+  });
+
+  it('a selected vertex is re-found by position after a regen, or dropped if it moved', () => {
+    const pos = new Float32Array([0, 0, 0, 10, 0, 0, 10, 20, 0]);
+    expect(vertexAt(pos, [10, 20, 0])).toBe(2);
+    expect(vertexAt(pos, [10.0004, 20, 0])).toBe(2); // float noise
+    expect(vertexAt(pos, [10, 25, 0])).toBe(-1); // moved: never guessed
+    expect(vertexAt(undefined, [0, 0, 0])).toBe(-1);
   });
 });

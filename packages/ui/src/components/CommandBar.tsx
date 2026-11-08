@@ -5,6 +5,7 @@ import {
   type PointerEvent,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
 } from 'react';
@@ -126,23 +127,34 @@ export function CommandBar({
     return () => document.removeEventListener('pointerdown', down, true);
   }, [open]);
 
+  /** Focus the face tool if enabled, else the first enabled one, in the open flyout. */
+  function focusInto(g: ToolGroupDef) {
+    const items = [...(flyout.current?.querySelectorAll<HTMLElement>('button') ?? [])];
+    const face = faceOf(g, activeTool, last);
+    (
+      items.find((b) => b.dataset.tool === face && !b.hasAttribute('aria-disabled')) ??
+      items.find((b) => !b.hasAttribute('aria-disabled')) ??
+      items[0]
+    )?.focus();
+  }
+
+  // Focus moves in a layout effect, right after the flyout mounts and before the next event is
+  // handled, so fast keyboard input (Enter, then arrows) never lands on the category button.
+  const focusOnOpen = useRef<ToolGroupDef | null>(null);
+  useLayoutEffect(() => {
+    const g = focusOnOpen.current;
+    if (!g || open !== g.id) return;
+    focusOnOpen.current = null;
+    focusInto(g);
+  });
+
   function openGroup(g: ToolGroupDef, focus: boolean) {
     const btn = groupButton(g.id);
     const box = wrap.current?.getBoundingClientRect();
     if (btn && box) setLeft(btn.getBoundingClientRect().left - box.left);
+    if (focus && open === g.id) focusInto(g);
+    else if (focus) focusOnOpen.current = g;
     setOpen(g.id);
-    if (focus) {
-      // After the flyout mounts: the face tool if enabled, else the first enabled one.
-      requestAnimationFrame(() => {
-        const items = [...(flyout.current?.querySelectorAll<HTMLElement>('button') ?? [])];
-        const face = faceOf(g, activeTool, last);
-        (
-          items.find((b) => b.dataset.tool === face && !b.hasAttribute('aria-disabled')) ??
-          items.find((b) => !b.hasAttribute('aria-disabled')) ??
-          items[0]
-        )?.focus();
-      });
-    }
   }
 
   function pick(id: ToolId) {

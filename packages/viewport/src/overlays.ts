@@ -50,15 +50,20 @@ function sharedMaterial<M extends Material>(key: string, create: () => M): M {
   const m = create();
   m.userData[SHARED] = true;
   if (shared.size >= MAX_SHARED) {
-    // Forget the oldest style; objects still using it keep it, and it is collected with them.
+    // Forget the oldest style. It stops being shared, so the overlays still using it dispose it
+    // with themselves (three re-creates GPU resources if another one still draws with it).
     const first = shared.keys().next().value;
-    if (first !== undefined) shared.delete(first);
+    if (first !== undefined) {
+      const old = shared.get(first);
+      if (old) old.userData[SHARED] = false;
+      shared.delete(first);
+    }
   }
   shared.set(key, m);
   return m;
 }
 
-/** Number of distinct shared overlay materials (tests: overlay rebuilds must not grow this). */
+/** Number of distinct shared overlay materials (tests: overlay rebuilds must not grow it). */
 export function sharedOverlayMaterialCount(): number {
   return shared.size;
 }

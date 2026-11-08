@@ -771,11 +771,9 @@ export class SketchSession {
       this.scheduleOverlay();
     }
     this.touchStart = null;
-    const d = this.drag;
-    if (d && !d.moved && this.fingers.size > 0) {
-      this.drag = null;
-      void d.session.then((s) => solver().api.endDrag(s)).catch(() => undefined);
-    }
+    // Any drag ends here, moved or not: otherwise it outlives the pinch and the next one-finger
+    // orbit drags the point. What was already dragged is kept, as on a release.
+    this.endDrag();
     const canvas = this.wb.canvas;
     for (const [id, f] of this.fingers) {
       if (!f.withheld || !canvas) continue;
@@ -872,7 +870,29 @@ export class SketchSession {
     });
   }
 
+  /**
+   * Ends the drag in progress (if any) through the edit queue, like a release: a drag that moved
+   * keeps its result as one undo step, one that didn't move just closes its solver session.
+   */
+  private endDrag(onStill?: (entity: Id) => void): void {
+    const d = this.drag;
+    if (!d) return;
+    this.drag = null;
+    void this.serial(async () => {
+      const session = await d.session;
+      // Let an in-flight drag step land first.
+      while (d.inFlight) await new Promise((r) => setTimeout(r, 4));
+      const res = await solver().api.endDrag(session);
+      if (d.moved) {
+        this.applyDragResult(res, d.key);
+        this.wb.commit();
+      } else onStill?.(d.entity);
+    });
+  }
+
   onPointerCancel(e: PointerEvent): void {
+    // The system took the pointer (e.g. a gesture): never leave a drag running behind it.
+    this.endDrag();
     if (this.stroke?.pointerId === e.pointerId) {
       this.stroke = null;
       this.patch({ stroke: null });
@@ -1069,24 +1089,16 @@ export class SketchSession {
       this.fingerGone(e.pointerId);
       // Part of a pinch / pan / multi-finger tap: no click for the tool, and camera navigation
       // must see the release (no stopPropagation).
-      if (navigated) return;
+      if (navigated) {
+        this.endDrag();
+        return;
+      }
     }
-    const d = this.drag;
-    if (d) {
-      this.drag = null;
+    if (this.drag) {
       e.stopPropagation();
       // Queued like any edit, so the final drag result lands before anything after the release
       // (an immediate undo, a dimension, `whenSettled`) — never after it as a separate step.
-      void this.serial(async () => {
-        const session = await d.session;
-        // Let an in-flight drag step land first.
-        while (d.inFlight) await new Promise((r) => setTimeout(r, 4));
-        const res = await solver().api.endDrag(session);
-        if (d.moved) {
-          this.applyDragResult(res, d.key);
-          this.wb.commit();
-        } else this.selectEntity(d.entity, e.shiftKey);
-      });
+      this.endDrag((entity) => this.selectEntity(entity, e.shiftKey));
       return;
     }
     // Only this pointer's own press counts (never another finger's or the pen's).

@@ -213,3 +213,29 @@ export function applyPick<F extends Feature>(feature: F, path: string, ref: Enti
   else return feature;
   return root as unknown as F;
 }
+
+/**
+ * Index of the vertex at `point` (within `tol` mm) in a mesh's `vertexPositions`, or -1. Vertices
+ * carry no persistent names in the mesh, so a selected vertex is re-found by position after a
+ * regen (a vertex that moved is dropped, never guessed).
+ */
+export function vertexAt(
+  positions: Float32Array | undefined,
+  point: readonly [number, number, number],
+  tol = 1e-3,
+): number {
+  if (!positions) return -1;
+  let best = -1;
+  let bestD = tol * tol;
+  for (let i = 0; i + 2 < positions.length; i += 3) {
+    const dx = (positions[i] as number) - point[0];
+    const dy = (positions[i + 1] as number) - point[1];
+    const dz = (positions[i + 2] as number) - point[2];
+    const d = dx * dx + dy * dy + dz * dz;
+    if (d <= bestD) {
+      bestD = d;
+      best = i / 3;
+    }
+  }
+  return best;
+}
