@@ -11,3 +11,4 @@ test-results/
 .vite/
 .env*
 !.env.example
+.claude/worktrees/
