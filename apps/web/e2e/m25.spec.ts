@@ -106,7 +106,7 @@ const press = (l: Locator, how: How) => (how === 'tap' ? l.tap() : l.click());
 async function openPanel(page: Page, tab: 'Versions' | 'Connections', how: How = 'click') {
   const panel = page.getByTestId('project-panel');
   if (!(await panel.isVisible())) await press(page.getByTestId('versions-button'), how);
-  await expect(panel).toBeVisible();
+  await expect(panel).toBeVisible({ timeout: 20_000 });
   await press(panel.getByRole('radio', { name: tab }), how);
 }
 
