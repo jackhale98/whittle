@@ -1363,7 +1363,8 @@ export class Workbench {
 
   // ------------------------------------------------------------------ section view
 
-  private lastSection = '';
+  /** The plane last sent to the viewport (a new view starts without one: nothing to send). */
+  private lastSection = 'null';
 
   /** Section settings → the viewport plane (caps on); a new axis or face starts mid-part. */
   setSection(patch: Partial<SectionUi>): void {

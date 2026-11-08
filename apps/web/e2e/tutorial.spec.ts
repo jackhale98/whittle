@@ -53,17 +53,21 @@ test('the bracket tutorial, touch only, on an iPad', async ({ page }) => {
   expect(await page.getByTestId('app-shell').getAttribute('data-tier')).toBe('tablet');
   const card = page.getByTestId('tutorial-card');
   const step = (id: string) => expect(card).toHaveAttribute('data-step', id, { timeout: 30_000 });
-  /** A world point on screen, which must be the bare viewport (not under the coach card). */
+  /**
+   * A world point on screen once it is the bare viewport: sheets and the coach card animate
+   * (260 ms), so this waits for whatever covers the point to move off, and fails if it never does.
+   */
   const onView = async (p: [number, number, number]) => {
     const q = await toPage(page, p);
-    const hit = await page.evaluate((q) => {
-      const e = document.elementFromPoint(q.x, q.y);
-      const id = e?.getAttribute('data-testid');
-      return id === 'viewport-canvas'
-        ? id
-        : `${e?.tagName}.${e?.className} in ${e?.closest('[data-testid]')?.getAttribute('data-testid')}`;
-    }, q);
-    expect(hit, `${p} is covered by ${hit}`).toBe('viewport-canvas');
+    const covering = () =>
+      page.evaluate((q) => {
+        const e = document.elementFromPoint(q.x, q.y);
+        const id = e?.getAttribute('data-testid');
+        return id === 'viewport-canvas'
+          ? id
+          : `${e?.tagName}.${e?.className} in ${e?.closest('[data-testid]')?.getAttribute('data-testid')}`;
+      }, q);
+    await expect.poll(covering, { message: `${p} stays covered` }).toBe('viewport-canvas');
     return q;
   };
   const tapWorld = async (p: [number, number, number]) => t.tap([await onView(p)]);
