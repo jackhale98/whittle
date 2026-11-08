@@ -134,6 +134,8 @@ export interface MeshBuffers {
   edgePositions: Float32Array;
   /** [firstPoint, pointCount] pairs, one per B-rep edge. */
   edgeRanges: Uint32Array;
+  /** xyz per B-rep vertex in TopExp order (vertex picking/highlights). Optional until the façade emits it. */
+  vertexPositions?: Float32Array;
   faceNames: string[];
   edgeNames: string[];
   bbox: { min: Vec3; max: Vec3 };

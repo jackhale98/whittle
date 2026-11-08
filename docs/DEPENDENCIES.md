@@ -14,6 +14,7 @@ GPL-3.0-or-later (ADR-003): every dependency must be GPL-3.0-compatible (no GPL-
 | `comlink` | 4.4.2 | Apache-2.0 | ≈ 1.8 KB | kernel-client | Worker RPC with transferables |
 | `three` | 0.187.0 | MIT | ≈ 240 KB with camera-controls (lazy chunk) | viewport | `three/webgpu`, `three/tsl`, line/env addons |
 | `camera-controls` | 3.1.2 | MIT | (in the above) | viewport | |
+| `three-mesh-bvh` | 0.9.18 | MIT | ≈ 15 KB (lazy viewport chunk) | viewport | Edge/vertex occlusion and fallback face picking |
 | `motion` | 14.10.1 | MIT | ≈ 8 KB initial + 19 KB lazy | ui | Spring presets only |
 | `lucide-react` | 1.70.0 | ISC | ≈ 3 KB (tree-shaken) | ui | |
 | `@radix-ui/react-tooltip` / `-toolbar` / `-tabs` / `-separator` / `-dialog` | 1.4.1 / 1.2.1 / 1.2.1 / 1.2.0 / 1.3.1 | MIT | ≈ 20 KB (+ 7.7 KB lazy dialog) | ui | |

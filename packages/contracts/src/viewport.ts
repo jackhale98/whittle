@@ -21,6 +21,8 @@ export interface ViewportOptions {
   theme?: 'light' | 'dark';
   /** Honour prefers-reduced-motion: disable camera animation/damping when true. */
   reducedMotion?: boolean;
+  /** Show the view cube (top-right). Default true. */
+  viewCube?: boolean;
 }
 
 export type StandardView = 'front' | 'back' | 'left' | 'right' | 'top' | 'bottom' | 'iso';
@@ -112,7 +114,17 @@ export type CreateViewport = (
  * M1 surface (picking, selection, sketch overlays). Implemented by packages/viewport in M1;
  * `createViewport` will return this type once it lands, then this folds into `Viewport`.
  */
+/**
+ * Screen coordinates in this API are canvas-relative CSS pixels. For sketch picks/highlights,
+ * `bodyId` is the sketch feature id and `entity` the sketch entity id or region name.
+ */
 export interface InteractiveViewport extends Viewport {
+  /** Resolves once the face ID buffer is current (tests; picking is always correct regardless). */
+  whenPickReady(): Promise<void>;
+  /** Looks along `dir` (from the camera toward the target), animated unless reduced motion. */
+  setViewDirection(dir: Vec3, animate?: boolean): void;
+  /** Rendering context lost/restored (WebGL context or WebGPU device). The app decides to recreate. */
+  on(event: 'contextlost' | 'contextrestored', listener: () => void): () => void;
   /** Synchronous CPU/GPU pick (ID buffer + BVH). Returns null/[] when nothing is within tolerance. */
   pick(x: number, y: number, options?: PickOptions): PickHit[];
   /** Selected (accent) and preselected (hover/press) highlights; replaces previous sets. */

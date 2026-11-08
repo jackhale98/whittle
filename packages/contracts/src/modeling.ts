@@ -66,6 +66,8 @@ export interface SketchResult {
   featureId: Id;
   /** World-space polylines, one per sketch entity id. */
   curves: { entity: Id; points: Float32Array; construction: boolean }[];
+  /** Sketch points (world space), drawn as dots and picked as `sketchPoint`. */
+  points?: { entity: Id; at: Vec3; construction: boolean }[];
   /** Closed regions usable as profiles: persistent name + triangulated fill for picking. */
   regions: { name: string; mesh: MeshBuffers }[];
   /** Sketch plane frame (mm). */
