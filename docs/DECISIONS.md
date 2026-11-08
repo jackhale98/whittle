@@ -780,3 +780,43 @@ folder (`ProjectFiles`, docs/FILE_FORMAT.md) already exists. The contracts are i
   merge UI.
 - **platform-engineer:** the Worker port, `connect-src` and COEP for provider hosts, and the
   configuration plumbing.
+
+## ADR-pending — Regen slots and geometric compare without façade changes (2026-11-08)
+
+**Context.** ADR-020 item 8 asks for regen slots and `ModelingApi.compare`. A C++ façade change
+means a kernel rebuild in CI that takes about 30 minutes, and the façade already has a `boolean`
+feature, `mesh`, `massProperties` and `release`.
+
+**Decision.**
+
+1. **Separate caches per slot.** Each `(partId, slot)` has its own `PartCache`: entries, latest
+   state, ghosts, imports, `lastResolved` and revision. Main and a version slot don't share cache
+   entries, even when they have features in common.
+   - Isolation is then structural. Evicting entries in one slot can't release a shape the other
+     slot uses, and main's hit counts and revision never move because of a version.
+   - The cost is recomputing common features once per version slot.
+2. **Memory.** Each part keeps at most 2 version slots by default (`maxVersionSlots`, minimum 1).
+   The least recently used slot is evicted, and `regenerate` and `compare` both count as use. An
+   evicted slot releases all its shapes. Each slot's cache uses the same `maxSpareResults` tier.
+   Lowering the cap with `configureRegen` evicts at once rather than at the next regen, because
+   memory pressure is the reason to lower it.
+3. **Compare composes the `boolean` feature.**
+   - A side with several solids is fused first (`op: 'add'`, target plus `tools…` shapes).
+   - Then come two cuts: union(B) − union(A) and back.
+   - The union matters: overlapping bodies would otherwise count their overlap twice in mass, and
+     the per-body diffs would double-count too.
+   - The result is one mesh per non-empty difference. A compound can hold several disjoint
+     regions, and the façade has no call to split it into solids.
+4. **Identical keys skip the booleans.** If both sides' solid bodies have the same content keys,
+   they came from the same feature definitions, values and inputs, so their geometry is
+   identical. compare returns an empty diff without running OCCT. If the geometry is identical but
+   the definitions differ, the booleans still run, and OCCT returns empty results (tested).
+5. **Noise threshold.** A difference with no faces, or with a volume at most 1e-9 of the larger
+   side's volume, is reported as empty with volume 0, never as an error. On the fixtures OCCT
+   returns exactly empty cuts, so the threshold is only a guard against sliver noise along
+   coincident faces.
+6. **Bodies left out.** Mesh-only reference bodies can't take part in a boolean, and sheets have
+   no volume. Both are skipped, with a warning on `CompareOutput.warnings`, which is proposed for
+   `GeometricDiff`.
+7. **Selection stays on main.** `refFor`, `measure` and `exportPart` keep their signatures and
+   always read `'main'`.

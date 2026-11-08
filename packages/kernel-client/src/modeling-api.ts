@@ -9,7 +9,14 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import type { ModelingApi, RegenRequest } from '@whittle/contracts';
+import type {
+  Id,
+  MeshQuality,
+  ModelingApi,
+  RegenRequest,
+  RegenSlot,
+  Result,
+} from '@whittle/contracts';
 import { createSketchSolverCore } from '@whittle/sketch/core';
 import { transfer } from 'comlink';
 import {
@@ -19,6 +26,7 @@ import {
   type KernelLowLevelApi,
 } from './kernel-api';
 import { meshListTransferables, regenTransferables } from './regen/buffers';
+import type { CompareOutput } from './regen/compare';
 import {
   RegenEngine,
   type RegenEngineOptions,
@@ -31,15 +39,25 @@ import {
  * of it — `regenerate` resolves to `RegenOutput`, which adds per-feature `warnings` and `ghosts`,
  * proposed for the contract) plus the low-level `KernelLowLevelApi` calls.
  */
-export type ModelingWorkerApi = Omit<ModelingApi, 'regenerate'> &
+export type ModelingWorkerApi = Omit<ModelingApi, 'regenerate' | 'compare'> &
   KernelLowLevelApi & {
     regenerate(request: RegenRequest): Promise<RegenOutput>;
-    /** Changes the regen engine's cache budget (device tier); applies from the next regen. */
+    /** `GeometricDiff` plus `warnings` for bodies left out (proposed for the contract). */
+    compare(
+      partId: Id,
+      a: RegenSlot,
+      b: RegenSlot,
+      quality: MeshQuality,
+    ): Promise<Result<CompareOutput>>;
+    /**
+     * Changes the regen engine's cache budget (device tier): `maxSpareResults` applies from the
+     * next regen, a lower `maxVersionSlots` (proposed for the contract) releases slots at once.
+     */
     configureRegen(options: RegenWorkerOptions): Promise<void>;
   };
 
 /** Runtime-configurable regen engine options (structured-clonable). */
-export type RegenWorkerOptions = Pick<RegenEngineOptions, 'maxSpareResults'>;
+export type RegenWorkerOptions = Pick<RegenEngineOptions, 'maxSpareResults' | 'maxVersionSlots'>;
 
 export interface ModelingApiDeps extends KernelApiDeps {
   /** Bundler-resolved URL of `planegcs.wasm` (browser). Omit in Node. */
@@ -99,13 +117,13 @@ export function createModelingApi(deps: ModelingApiDeps): ModelingApiImpl {
       const r = await engine.importFile(bytes, format);
       return r.ok ? transfer(r, meshListTransferables(r.bodies.map((b) => b.mesh))) : r;
     },
-    closePart: (partId) => engine.closePart(partId),
+    closePart: (partId, slot) => engine.closePart(partId, slot),
     configureRegen: (options) => engine.configure(options),
     measure: (partId, a, b) => engine.measure(partId, a, b),
-    // M2.5 contract (ADR-020): slots and boolean compare land with the modeling workstream.
-    compare: async () => ({
-      ok: false,
-      error: { code: 'UNSUPPORTED_FEATURE', message: 'Geometric compare arrives in M2.5' },
-    }),
+    // The diff meshes are fresh kernel buffers that nothing else holds: transferred, not copied.
+    async compare(partId, a, b, quality) {
+      const r = await engine.compare(partId, a, b, quality);
+      return r.ok ? transfer(r, meshListTransferables([...r.value.added, ...r.value.removed])) : r;
+    },
   };
 }

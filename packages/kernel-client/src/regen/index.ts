@@ -5,6 +5,13 @@
  */
 
 export {
+  type CompareOutput,
+  DIFF_NOISE,
+  type DiffKernel,
+  type DiffSide,
+  geometricDiff,
+} from './compare';
+export {
   type ExportResult,
   type ImportResult,
   MESH_QUALITY,
