@@ -101,3 +101,21 @@ Copyleft also keeps forks of Whittle open.
 
 **Alternatives.** Apache-2.0 (would need the Mycelium module relicensed); AGPL-3.0 (also closes the
 hosted-fork gap; may be revisited if share/collab hosting in §13 lands).
+
+---
+
+## ADR-004 — Materials and density are part of the document (2026-11-08)
+
+**Decision.** `Part.material` is a structured `Material` (`libraryId?`, `name`, `density: Expr`,
+`appearance?`, `properties?`), stored inline in the part file. It is not a free-text name or a
+reference only. Density is an expression with units (`2.70 g/cm^3`, `0.0975 lb/in^3`).
+packages/document resolves it to kg/mm³. `KernelApi.massProperties(shape, density?)` returns mass and
+the inertia tensor when a density is given. Whittle ships a built-in material library (M1); STEP
+export writes material and density through `XCAFDoc_MaterialTool` (M5).
+
+**Why.** Owner request (2026-11-08): users must be able to assign a material and density to parts.
+Keeping the values inline keeps documents self-contained and mergeable by stable IDs, and survives
+library changes. `libraryId` lets the UI offer "reset to library values".
+
+**Consequences.** The expression/units engine must support compound units (mass/length³). The
+inspector shows material and mass. BOMs (M6) list the material.

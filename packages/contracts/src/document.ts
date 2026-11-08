@@ -58,9 +58,32 @@ export interface Part {
   features: Feature[];
   /** Features with index >= rollbackIndex are not evaluated. `features.length` = fully rolled forward. */
   rollbackIndex: number;
-  material?: string;
-  /** CSS hex colour, e.g. `"#9aa4b2"`. */
+  /** Physical material. Absent = no mass properties beyond volume (UI shows "Assign material"). */
+  material?: Material;
+  /** CSS hex colour, e.g. `"#9aa4b2"`. Overrides the material's appearance colour. */
   color?: string;
+}
+
+/**
+ * A part's physical material (PLAN §2.2). Stored inline (not by reference only) so documents stay
+ * self-contained and diff/merge cleanly; `libraryId` records where it came from so the UI can
+ * offer "reset to library values".
+ */
+export interface Material {
+  /** Built-in or user library id, e.g. `"whittle:aluminium-6061-t6"`. Absent for ad-hoc materials. */
+  libraryId?: string;
+  /** Display name, e.g. `"Aluminium 6061-T6"`. */
+  name: string;
+  /** Density expression with units, e.g. `"2.70 g/cm^3"`, `"2700 kg/m^3"`, `"0.0975 lb/in^3"`. */
+  density: Expr;
+  /** Optional appearance hint (CSS hex) used when the part has no explicit `color`. */
+  appearance?: string;
+  /** Optional extra properties for later use (FEA etc.), as expressions with units. */
+  properties?: {
+    youngsModulus?: Expr;
+    poissonsRatio?: Expr;
+    yieldStrength?: Expr;
+  };
 }
 
 /** Placeholder until M6; kept so documents are forward compatible. */

@@ -120,9 +120,18 @@ export interface MeshBuffers {
 
 /** Geometric measurements on a shape (M0: volume/area/bbox; extended in M1/M3). */
 export interface MassProperties {
+  /** mm³. */
   volume: number;
+  /** mm². */
   area: number;
+  /** Centre of volume, mm. Equals the centre of mass for a homogeneous part. */
   centroid: Vec3;
+  /**
+   * Present when a density was supplied (kg/mm³ after unit resolution by packages/document):
+   * mass in kg and the inertia tensor about the centroid in kg·mm², row-major 3×3.
+   */
+  mass?: number;
+  inertia?: [number, number, number, number, number, number, number, number, number];
   bbox: { min: Vec3; max: Vec3 };
   faceCount: number;
   edgeCount: number;
@@ -134,7 +143,8 @@ export interface KernelApi {
   init(options?: KernelInitOptions): Promise<Result<KernelInfo>>;
   execFeature(feature: Feature, inputs: FeatureInputs): Promise<Result<FeatureResult>>;
   mesh(shape: ShapeHandle, options: MeshOptions): Promise<Result<MeshBuffers>>;
-  massProperties(shape: ShapeHandle): Promise<Result<MassProperties>>;
+  /** `density` in kg/mm³ (resolved from the part's Material); omit for geometry-only results. */
+  massProperties(shape: ShapeHandle, density?: number): Promise<Result<MassProperties>>;
   release(shape: ShapeHandle): Promise<void>;
 }
 

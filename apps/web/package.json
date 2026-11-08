@@ -18,6 +18,8 @@
   },
   "dependencies": {
     "@whittle/contracts": "workspace:*",
+    "@whittle/ui": "workspace:*",
+    "@whittle/viewport": "workspace:*",
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "workbox-window": "7.4.1"

@@ -65,6 +65,7 @@ Priority: **P0** = MVP (M1–M2), **P1** = v1.0 (M3–M6), **P2** = after v1.0.
 | Direct push/pull of faces, recorded as parametric features                                                                                               | P0 (tablet), P1 (desktop) |
 | Shell, draft, sweep, loft, mirror, linear and circular pattern, hole wizard (simple/counterbore/countersink/tapped, ISO + ANSI tables), cosmetic threads | P1                        |
 | Reference planes, axes and points; measure; mass properties; section view; interference check                                                            | P1                        |
+| **Materials:** assign a material per part from a built-in library (steels, aluminium alloys, brass, titanium, common plastics such as ABS/PLA/PETG/nylon, wood) or a custom one; editable density with units (`2.70 g/cm^3`); appearance colour; mass, centre of mass and inertia in mass properties; material and density written to STEP (XCAF `XCAFDoc_MaterialTool`) and shown in BOMs | P0 (assign + density, M1) / P1 (mass properties, STEP, BOM; M3–M6) |
 | Variable fillet, face fillet, split body, thicken, offset/replace face, move face, delete face (defeature)                                               | P2                        |
 | Configurations (parameter tables), derived parts                                                                                                         | P2                        |
 
@@ -240,7 +241,7 @@ export interface Part {
   name: string;
   features: Feature[];
   rollbackIndex: number;
-  material?: string;
+  material?: Material;                   // { libraryId?, name, density: Expr, appearance?, properties? }
   color?: string;
 }
 
@@ -668,6 +669,7 @@ Each milestone ends with a reviewer gate. "Done" means every criterion is demons
 - Sketcher: P0 entities, constraints and dimensions; inference; DOF colouring; conflict explanations.
 - Features: extrude, revolve, cut, fillet, chamfer, boolean, multi-body; feature tree with rollback, edit, suppress and reorder; params with expressions and units.
 - Persistent naming per §7.3, with the golden "edit upstream" suite passing.
+- Materials: assign from the built-in library or custom, density as an expression with units (e.g. `g/cm^3`), shown in the inspector with the part's mass.
 - Undo/redo; local library; `.whittle` save and open; STL, 3MF, GLB and STEP AP214 export; STEP import.
 - **Accept:** a scripted E2E builds a bracket with holes and fillets. Changing three upstream dimensions regenerates it correctly. Exporting STEP and re-importing it gives the same volume within 1e-6 relative. Performance budgets (§10) are met.
 
