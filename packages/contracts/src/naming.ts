@@ -65,6 +65,12 @@
  *     resolution always requires fingerprint agreement.
  */
 
+/*
+ * M2 additions (normative):
+ *   - Push/pull F (faces moved along their normal): a moved face keeps its name (Modified); the
+ *     new wall faces are F…:side(<boundaryEdgeName>) for each boundary edge of the pushed faces
+ *     (Generated); faces swallowed by the move disappear; faces split by it re-index as usual.
+ */
 export type PersistentName = string;
 
 /** Sub-shape index space of a single shape handle, as enumerated by TopExp::MapShapes. */

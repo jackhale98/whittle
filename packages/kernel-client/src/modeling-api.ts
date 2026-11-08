@@ -100,5 +100,10 @@ export function createModelingApi(deps: ModelingApiDeps): ModelingApiImpl {
     },
     closePart: (partId) => engine.closePart(partId),
     configureRegen: (options) => engine.configure(options),
+    // M2 contract; the B-rep implementation lands with the kernel workstream.
+    measure: async () => ({
+      ok: false,
+      error: { code: 'UNSUPPORTED_FEATURE', message: 'Measuring is not available yet.' },
+    }),
   };
 }

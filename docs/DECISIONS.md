@@ -223,3 +223,32 @@ errors explicit. `5'6"` is not parsed as feet plus inches; write `5ft + 6in`.
    sliver faces where faces should be coplanar. The acceptance E2E draws oversize so dimensions
    really solve; a polish step in `packages/sketch` is proposed for M2.
 
+
+## ADR-009 — M2 touch & tablet: contracts and split (2026-11-08)
+
+**Context.** M2 (PLAN §12) adds the tablet and phone shells, the gesture map, Pencil drawing with
+primitive recognition, push/pull direct editing with a same-frame preview, and phone measure,
+section and export.
+
+**Decisions.**
+
+1. **Gestures.** The viewport owns continuous navigation: orbit, pan, pinch-zoom and twist-roll.
+   It only *reports* discrete gestures (`onGesture`: tap, double-tap, long-press, two- and
+   three-finger tap); the app decides what each means. This keeps undo/redo and context menus
+   out of the viewport.
+2. **Palm rejection is an input policy, not app logic.** With `setInputPolicy({ penDraws })`, pen
+   pointers never orbit, and touch taps are suppressed while a pen is down or was used within
+   `palmRejectMs`. Fingers still navigate while the Pencil draws, as in Shapr3D.
+3. **The push/pull preview is built by the viewport from meshes it already holds.**
+   `setPreview({ kind: 'prism' })` translates the picked faces' triangles and adds side walls, with
+   no kernel round trip, so feedback lands in the same frame (§10 ≤ 16 ms). The exact OCCT result
+   is committed on release as a `PushPullFeature`. In M2 the kernel supports planar faces only:
+   prism of the faces, then fuse (outward) or cut (inward), with names per naming.ts M2.
+4. **Measure runs in the kernel (B-rep exact), section in the viewport.**
+   `ModelingApi.measure(partId, a, b?)` uses BRepExtrema/GProp on the latest regen. The section
+   is a clipping plane with stencil caps, so it needs no kernel work.
+5. **Stroke recognition is a pure function in `packages/sketch`, run on the main thread** (no
+   Wasm), so the clean-up shows while the stroke is still live. The result becomes entities plus
+   constraints in the same way as the drawing tools' fragments.
+6. **Phone tier loads the kernel lazily** (PLAN §8.4): the phone shell is a viewer of cached
+   meshes until the user starts an edit or a measurement.

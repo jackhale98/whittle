@@ -225,6 +225,11 @@ export interface BooleanFeature extends FeatureBase {
 }
 
 /** Direct face push/pull recorded parametrically (M2). */
+/**
+ * Direct editing (PLAN §9.2, M2): moves faces of one body along their normal. Positive `distance`
+ * moves outward (adds material), negative inward (removes). M2 supports planar faces; others fail
+ * with an `UNSUPPORTED_FEATURE` error naming the face. Recorded as a feature, so it is parametric.
+ */
 export interface PushPullFeature extends FeatureBase {
   type: 'pushPull';
   faces: EntityRef[];

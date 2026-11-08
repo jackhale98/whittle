@@ -20,6 +20,7 @@ export function toleranceFor(pointerType: string): number {
 }
 
 const PRIORITY: Record<PickKind, number> = {
+  handle: -1,
   sketchPoint: 0,
   vertex: 0,
   sketchCurve: 1,
@@ -90,6 +91,8 @@ export function selectionKind(kind: PickKind): 'face' | 'edge' | 'vertex' | 'reg
       return 'vertex';
     case 'region':
       return 'region';
+    case 'handle': // handles are dragged, never selected; callers filter them out
+      return 'face';
   }
 }
 

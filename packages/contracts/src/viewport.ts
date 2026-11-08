@@ -45,7 +45,15 @@ export interface BodyDisplay {
 
 // ---- M1: picking, selection, sketch overlays -----------------------------------------------
 
-export type PickKind = 'face' | 'edge' | 'vertex' | 'sketchCurve' | 'sketchPoint' | 'region';
+export type PickKind =
+  | 'face'
+  | 'edge'
+  | 'vertex'
+  | 'sketchCurve'
+  | 'sketchPoint'
+  | 'region'
+  /** M2: a draggable handle (`entity` = handle id). */
+  | 'handle';
 
 /** What is under a screen point. `index` is the ordinal in the body's MeshBuffers face/edge ranges. */
 export interface PickHit {
@@ -143,4 +151,94 @@ export interface InteractiveViewport extends Viewport {
   worldToScreen(point: Vec3): { x: number; y: number; visible: boolean };
   /** Aligns the camera normal to a plane (enter sketch) with an animated transition. */
   lookAtPlane(plane: { origin: Vec3; x: Vec3; y: Vec3; z: Vec3 }, animate?: boolean): void;
+}
+
+// ---- M2: touch & tablet (PLAN §9.2, §9.3, §12 M2) ------------------------------------------
+
+/**
+ * Discrete gestures the viewport recognises; continuous ones (orbit, pan, pinch-zoom, twist-roll)
+ * it applies to the camera itself. The app decides what a gesture means (double-tap on geometry =
+ * zoom to it, two-finger tap = undo…). Coordinates are canvas-relative CSS px.
+ */
+export interface ViewportGesture {
+  kind: 'tap' | 'doubleTap' | 'longPress' | 'twoFingerTap' | 'threeFingerTap';
+  x: number;
+  y: number;
+  pointerType: 'mouse' | 'pen' | 'touch';
+}
+
+/**
+ * Input policy (PLAN §9.3). With `penDraws`, pen pointers never orbit: the app receives them for
+ * drawing/selecting, fingers keep navigating, and touch taps/long-presses are suppressed while a
+ * pen is in contact and for `palmRejectMs` after (palm rejection). Default: pen behaves like mouse.
+ */
+export interface InputPolicy {
+  penDraws: boolean;
+  palmRejectMs?: number;
+}
+
+/** A section plane through the model (PLAN §9.1 phone: section). Caps are filled solid. */
+export interface SectionPlane {
+  origin: Vec3;
+  /** Unit normal; geometry on the +normal side is clipped away. */
+  normal: Vec3;
+  caps?: boolean;
+}
+
+/**
+ * Same-frame preview geometry (PLAN §9.2 live previews, §10 ≤ 16 ms). `prism` is built by the
+ * viewport from the faces it already holds (no kernel round trip): the faces translated by
+ * `direction · distance`, joined to their originals by side walls; negative distance previews a
+ * cut. Updating `distance` must not allocate per frame beyond the first build.
+ */
+export type PreviewSpec =
+  | {
+      kind: 'prism';
+      bodyId: string;
+      /** Face ordinals in that body's MeshBuffers. */
+      faces: number[];
+      /** Unit vector (usually the face normal). */
+      direction: Vec3;
+      /** mm; sign gives add (+) / cut (−) styling. */
+      distance: number;
+    }
+  | { kind: 'mesh'; mesh: MeshBuffers; opacity?: number };
+
+/**
+ * A draggable handle drawn on top of geometry (push/pull arrow, later gizmos). Handles are picked
+ * as `{ kind: 'handle', entity: <handle id> }` before anything else.
+ */
+export type HandleSpec = { kind: 'arrow'; origin: Vec3; direction: Vec3; length?: number };
+
+/** Simple world-space annotation geometry (measure results, attention markers). Labels are app HTML. */
+export interface Marker {
+  kind: 'point' | 'line' | 'polyline';
+  points: Vec3[];
+  tone?: 'accent' | 'muted' | 'warning' | 'error';
+  dashed?: boolean;
+}
+
+export interface CameraChange {
+  position: Vec3;
+  target: Vec3;
+  /** True while transitioning/damping or under a pointer. */
+  moving: boolean;
+}
+
+/** M2 surface; folds into `InteractiveViewport` once implemented. */
+export interface TouchViewport extends InteractiveViewport {
+  setInputPolicy(policy: InputPolicy): void;
+  /** Discrete gestures; returns an unsubscribe function. */
+  onGesture(listener: (g: ViewportGesture) => void): () => void;
+  /** Camera moved (throttled to one call per frame), for HTML overlays such as the context bubble. */
+  onCamera(listener: (c: CameraChange) => void): () => void;
+  /** True while the camera is transitioning, damping or under a pointer. */
+  isCameraMoving(): boolean;
+  /** Animated zoom so `point` is centred and `radius` mm fills about half the view. */
+  zoomTo(point: Vec3, radius: number, animate?: boolean): void;
+  setSection(section: SectionPlane | null): void;
+  /** Adds/replaces a preview by id; `null` removes it. */
+  setPreview(id: string, preview: PreviewSpec | null): void;
+  setHandle(id: string, handle: HandleSpec | null): void;
+  setMarkers(id: string, markers: Marker[] | null): void;
 }

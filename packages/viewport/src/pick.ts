@@ -94,6 +94,7 @@ export function closestOnPolyline(
 
 /** Selection priority when several things lie within tolerance (lower wins). */
 export const KIND_PRIORITY: Readonly<Record<PickKind, number>> = {
+  handle: -1, // M2 drag handles sit above everything
   sketchPoint: 0,
   vertex: 1,
   sketchCurve: 2,

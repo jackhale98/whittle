@@ -75,6 +75,11 @@ export interface KernelInitOptions {
  *  - refs (JSON pointers into the feature): `/profile/n`, `/axis`, `/edges/n`, `/target`,
  *    `/tools/n`, `/end/target`, `/definition/from`, `/mode/face`
  */
+/**
+ * Inputs per feature type beyond the documented keys above (M2):
+ *   pushPull: `target` = the body; `refs["/faces/i"]` = its faces (planar in M2);
+ *             `values["/distance"]` mm, positive along each face's outward normal.
+ */
 export interface FeatureInputs {
   /** Body the feature operates on (for op add/cut/intersect, fillet, etc.). */
   target?: ShapeHandle;
@@ -195,3 +200,24 @@ export type KernelStatus =
   | { state: 'compiling' }
   | { state: 'ready'; info: KernelInfo }
   | { state: 'error'; error: KernelError };
+
+/** What a measurement is taken on: a picked sub-shape of the latest regen, or a world point. */
+export type MeasureTarget =
+  | { bodyId: string; kind: 'face' | 'edge' | 'vertex'; index: number }
+  | { point: Vec3 };
+
+/**
+ * Exact (B-rep) measurement (PLAN §9.1 phone: measure). One target: its intrinsic size; two:
+ * minimum distance (with the closest points) and, when both are planar faces / straight edges,
+ * the angle between them. Lengths mm, areas mm², angles rad in [0, π].
+ */
+export interface Measurement {
+  distance?: { value: number; a: Vec3; b: Vec3 };
+  angle?: number;
+  /** Edge length / face area / circle radius & diameter (circular edges, cylindrical faces). */
+  length?: number;
+  area?: number;
+  radius?: number;
+  /** Vertex or point position. */
+  position?: Vec3;
+}

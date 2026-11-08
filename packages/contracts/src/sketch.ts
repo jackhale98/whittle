@@ -206,3 +206,50 @@ export interface SketchSolverApi {
     tolerance: number,
   ): Promise<InferenceCandidate[]>;
 }
+
+// ---------------------------------------------------------------------------------------------
+// M2: Pencil primitive recognition (PLAN §12 M2, implemented in packages/sketch)
+// ---------------------------------------------------------------------------------------------
+
+/** One pointer sample of a stroke, already in sketch-local mm. `t` ms; pressure 0–1 when known. */
+export interface StrokeSample {
+  x: number;
+  y: number;
+  t: number;
+  pressure?: number;
+}
+
+/**
+ * What a freehand stroke was recognised as. Geometry is cleaned up (snapped to horizontal /
+ * vertical / right angles / closure within tolerance) and `constraints` lists the drafts that
+ * the clean-up implies, with `INFERENCE_DRAWING`/indices as for tool fragments: the app converts
+ * the result into entities + constraints like any drawing tool. `scribble` = an erase gesture
+ * over existing geometry (the app deletes what it crosses).
+ */
+export type RecognizedShape =
+  | { kind: 'line'; from: Vec2; to: Vec2 }
+  | { kind: 'polyline'; points: Vec2[]; closed: boolean }
+  | { kind: 'rectangle'; corners: [Vec2, Vec2, Vec2, Vec2] }
+  | { kind: 'circle'; center: Vec2; radius: number }
+  /** CCW from start to end around center. */
+  | { kind: 'arc'; center: Vec2; radius: number; start: Vec2; end: Vec2 }
+  | { kind: 'scribble'; points: Vec2[] };
+
+export interface StrokeRecognition {
+  shape: RecognizedShape;
+  /** 0–1; below ~0.5 the app keeps the stroke as a polyline. */
+  confidence: number;
+  /** Clean-up that was applied, as geometric constraint kinds (e.g. ['horizontal', 'perpendicular']). */
+  implied: GeometricConstraint['kind'][];
+}
+
+/** Pure function (no Wasm), safe on the main thread for same-frame feedback. */
+export type RecognizeStroke = (
+  samples: readonly StrokeSample[],
+  options: {
+    /** Snap/closure tolerance, mm (≈ 2 × the pen pick radius at the current zoom). */
+    tolerance: number;
+    /** Angle snap tolerance, rad (default ≈ 6°). */
+    angleTolerance?: number;
+  },
+) => StrokeRecognition | null;

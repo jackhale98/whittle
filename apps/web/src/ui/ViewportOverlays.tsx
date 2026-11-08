@@ -117,7 +117,7 @@ function candidateFor(doc: WhittleDoc, h: PickHit, i: number): PickCandidate {
       ? 'vertex'
       : h.kind === 'sketchCurve'
         ? 'edge'
-        : h.kind === 'region'
+        : h.kind === 'region' || h.kind === 'handle'
           ? 'face'
           : h.kind;
   const owner = doc.parts[0]?.features.findLast((f) => h.bodyId.includes(f.id));

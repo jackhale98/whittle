@@ -11,6 +11,8 @@ import type {
   KernelApi,
   KernelError,
   MassProperties,
+  Measurement,
+  MeasureTarget,
   MeshBuffers,
   Result,
   ShapeFingerprints,
@@ -161,4 +163,6 @@ export interface ModelingApi extends KernelApi {
   >;
   /** Drops cached results and shapes for a part (document closed). */
   closePart(partId: Id): Promise<void>;
+  /** M2: exact measurement on the latest regen of a part (bodies by BodyResult id). */
+  measure(partId: Id, a: MeasureTarget, b?: MeasureTarget): Promise<Result<Measurement>>;
 }
