@@ -213,7 +213,7 @@ attention, curved-face / whole-body / two-body failures, `measure` on the latest
 adversarial unit cases (near-equidistant, flipped normals, far moves, vanished pieces, weak
 names). Timings are printed as `[regen timing]` lines.
 
-## Kernel gaps and contract proposals (open)
+## Kernel gaps and contract notes
 
 - **Kernel**: no façade call to transform a shape (worked around by BREP location rewriting) and
   none to name a shape's topology (worked around by the no-op intersect + `translateName`). A
@@ -221,15 +221,7 @@ names). Timings are printed as `[regen timing]` lines.
   naming faces `F<id>:face#k` via `finalizeNamed` and applying the op via `applyBodyOp` (so tool
   faces keep `F<id>:face#k` instead of the nested boolean form) — would replace both. No IGES
   reader.
-- **Contracts (M2)**: `naming.ts` "M2 additions" should state the seam merge (ADR-013): a wall
-  coplanar with an existing face merges into it (no `F…:side()` name, e.g. a pulled box top), a
-  moved face flush with an existing face is swallowed by it, priority existing > moved > wall.
-  `kernel.ts` `Measurement` should state the angle conventions (faces: outward normals [0, π];
-  edges sharing a vertex: corner angle; other edges: between lines [0, π/2]; face + edge: line to
-  plane).
-- **Contracts** (`modeling.ts`): `FeatureStatus.rebound[]` gains `fingerprint?: Fingerprint`;
-  `UnresolvedRef` gains `lastKnown?: Fingerprint`; `ModelingApi` gains
-  `configureRegen(options: { maxSpareResults?: number }): Promise<void>` (all already emitted by
-  this package's `RegenFeatureStatus` / `ModelingWorkerApi`). `naming.ts`: document the import
-  names above (per-body `F<id>:face#k`, `B<id>#k`, `F<id>:face(F<id>:face#k)` for import booleans,
-  single-face mesh bodies).
+- **Contracts** (applied): `FeatureStatus.rebound[]` carries `fingerprint?`, `UnresolvedRef` has
+  `lastKnown?`, `ModelingApi` has `configureRegen` and (M2) `measure`, `naming.ts` documents the
+  import names and the M2 push/pull seam merge (existing > moved > wall), and `kernel.ts`
+  `Measurement` states the angle conventions. Nothing is pending on the contract side.

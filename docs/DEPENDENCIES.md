@@ -12,18 +12,18 @@ bundled package's licence text plus OCCT's LGPL-2.1 + exception (texts in `licen
 |---|---|---|---|---|---|
 | `react`, `react-dom` | 19.3.1 | MIT | ≈ 62 KB | apps/web, ui | UI chrome only |
 | `workbox-window` | 7.4.1 | MIT | ≈ 2.5 KB | apps/web | SW registration/update |
-| `workbox-core`, `-precaching`, `-routing`, `-strategies`, `-expiration`, `-cacheable-response` | 7.4.1 | MIT | ≈ 8 KB (in `sw.js`) | apps/web SW | Bundled into the service worker |
-| `comlink` | 4.4.2 | Apache-2.0 | ≈ 1.8 KB | kernel-client | Worker RPC with transferables |
+| `workbox-core`, `-precaching`, `-routing`, `-strategies`, `-expiration`, `-cacheable-response` | 7.4.1 | MIT | ≈ 8 KB (in `sw.js`) | apps/web SW | Declared as devDependencies of apps/web and bundled into `sw.js` at build time, so they are not separate runtime packages |
+| `comlink` | 4.4.2 | Apache-2.0 | ≈ 1.8 KB | kernel-client, sketch (runtime); apps/web (dev) | Worker RPC with transferables |
 | `three` | 0.187.0 | MIT | ≈ 240 KB with camera-controls (lazy chunk) | viewport | `three/webgpu`, `three/tsl`, line/env addons |
 | `camera-controls` | 3.1.2 | MIT | (in the above) | viewport | |
 | `three-mesh-bvh` | 0.9.18 | MIT | ≈ 15 KB (lazy viewport chunk) | viewport | Edge/vertex occlusion and fallback face picking |
 | `motion` | 14.10.1 | MIT | ≈ 8 KB initial + 19 KB lazy | ui | Spring presets only |
-| `lucide-react` | 1.70.0 | ISC | ≈ 3 KB (tree-shaken) | ui | |
+| `lucide-react` | 1.70.0 | ISC | ≈ 3 KB (tree-shaken) | ui, apps/web | |
 | `@radix-ui/react-tooltip` / `-toolbar` / `-tabs` / `-separator` / `-dialog` | 1.4.1 / 1.2.1 / 1.2.1 / 1.2.0 / 1.3.1 | MIT | ≈ 20 KB (+ 7.7 KB lazy dialog) | ui | |
 | `@fontsource-variable/inter` | 5.3.0 | OFL-1.1 | latin woff2 48 KB (on demand) | ui | Self-hosted font (font data, separate work) |
-| `@salusoft89/planegcs` | 1.3.0 | LGPL-2.0-or-later | wasm 173 KB gzip + glue 9.5 KB (sketch worker, lazy) | sketch | FreeCAD's PlaneGCS; outputs re-verified by our residual model |
+| `@salusoft89/planegcs` | 1.3.0 | LGPL-2.0-or-later | wasm 173 KB gzip + glue 9.5 KB (sketch worker, lazy) | sketch; kernel-client (lazy, for sketch re-solves in the kernel worker) | FreeCAD's PlaneGCS; outputs re-verified by our residual model |
 | `ulid` | 3.0.2 | MIT | < 1 KB | sketch | |
-| `fflate` | 0.8.3 | MIT | ≈ 8 KB | io (and document) | Zip for 3MF and `.whittle` |
+| `fflate` | 0.8.3 | MIT | ≈ 8 KB | document, io, kernel-client | Zip for 3MF and `.whittle` |
 | `idb` | 8.0.4 | ISC | ≈ 1.2 KB | io (browser) | IndexedDB wrapper for the local library |
 | Kernel artefacts `whittle-kernel{,-st}.{js,wasm}` | OCCT 8.0.1 | LGPL-2.1-only WITH Open-CASCADE-Exception-1.0 | ≈ 3.7 MB brotli / 5.3 MB gzip each since M1 (STEP/XCAF); lazy, runtime-cached | kernel | Built reproducibly from `packages/kernel` |
 
