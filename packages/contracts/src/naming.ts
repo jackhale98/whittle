@@ -45,6 +45,20 @@
  *   deterministic geometric key (centroid x, then y, then z, rounded to 1e-6 mm).
  *
  * Bodies: "B<featureId>" for the feature that created the body (op "new").
+ *
+ * Additions from the M1 kernel (normative):
+ *   - Cylinder roles: face.side face.zmin face.zmax. Sphere: face.sphere; its poles are
+ *     edge(face.sphere)#0/#1 and vertex(face.sphere)#0/#1.
+ *   - Primitive edges/vertices use the local form F…:edge(<role>|<role>) / F…:vertex(…) (as the M0
+ *     box), while every later feature writes the global form edge(F…:<role>|…). Both are valid
+ *     names; resolution treats them as opaque strings.
+ *   - Seam edges: edge(A|A). Free (boundary) edges: edge(A). Corner blends: F…:fillet(<vertexName>).
+ *     Last resort when history gives nothing: F…:unnamed#k (resolution then relies on fingerprints).
+ *   - Re-indexing: when an operation splits a face, every face sharing that base name is
+ *     renumbered so there is only one "#k" level (never "#0#1").
+ *   - Regions are minimal: a rectangle with a circle inside yields region(L1,L2,L3,L4|C1) (the ring)
+ *     and region(C1) (the disc). Selecting both = the full rectangle.
+ *   - Split sketch curves: S…:e(<id>)#k. Coincident sketch points each keep their own S…:p(<id>).
  */
 
 export type PersistentName = string;

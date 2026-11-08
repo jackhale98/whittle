@@ -211,7 +211,8 @@ export interface ChamferFeature extends FeatureBase {
   edges: EntityRef[];
   mode:
     | { kind: 'distance'; distance: Expr }
-    | { kind: 'distanceAngle'; distance: Expr; angle: Expr };
+    /** `face`: the face the distance is measured on (default: the adjacent face sorting first). */
+    | { kind: 'distanceAngle'; distance: Expr; angle: Expr; face?: EntityRef };
 }
 
 export interface BooleanFeature extends FeatureBase {

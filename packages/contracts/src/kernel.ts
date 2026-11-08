@@ -67,6 +67,14 @@ export interface KernelInitOptions {
  * Expressions are evaluated by packages/document before reaching the kernel; the kernel sees
  * numbers in millimetres and radians only.
  */
+/**
+ * Keys used by the façade (normative):
+ *  - frames: `plane` (sketch), `axis` (revolve about an origin axis), `upTo` (extrude to a plane),
+ *    `from` (offset plane from a frame)
+ *  - shapes: `scope…` (bodies a cut/add/intersect acts on), `tools…` (boolean tools), `sketch`
+ *  - refs (JSON pointers into the feature): `/profile/n`, `/axis`, `/edges/n`, `/target`,
+ *    `/tools/n`, `/end/target`, `/definition/from`, `/mode/face`
+ */
 export interface FeatureInputs {
   /** Body the feature operates on (for op add/cut/intersect, fillet, etc.). */
   target?: ShapeHandle;
@@ -100,6 +108,15 @@ export interface ShapeFingerprints {
 export interface FeatureResult {
   shape: ShapeHandle;
   naming: NamingMap;
+  /** Sketch/plane features: the resolved placement frame (mm). */
+  frame?: Frame;
+  /** Sketch features: persistent names of the closed regions, in a stable order. */
+  regions?: string[];
+  /**
+   * cut/intersect acting on several scope bodies: one result per body (`key` = the
+   * `inputs.shapes` key it came from, e.g. "scope:B…"). `shape` then holds the first body.
+   */
+  bodies?: { key: string; shape: ShapeHandle; naming: NamingMap }[];
   /** Non-fatal warnings (e.g. "fillet used fallback algorithm"). */
   warnings: KernelError[];
 }

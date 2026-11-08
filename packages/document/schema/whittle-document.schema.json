@@ -176,6 +176,9 @@
                 "distance": {
                   "$ref": "#/definitions/Expr"
                 },
+                "face": {
+                  "$ref": "#/definitions/EntityRef"
+                },
                 "kind": {
                   "const": "distanceAngle",
                   "type": "string"
