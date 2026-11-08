@@ -12,6 +12,9 @@
  *    explanation says so and removing the fix is offered.
  *  - Dragging: temporary planegcs constraints pull the grabbed geometry toward fixed cursor points
  *    in a dedicated planegcs system that is re-solved in place on every move.
+ *  - Polish: every accepted solution (solve and drag) gets minimum-norm Newton steps on our own
+ *    residuals until driving dimensions and coincidences hold to ~1e-11 mm (polish.ts), so
+ *    sketches dimensioned to meet are exactly coplanar (ADR-008 item 9).
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
@@ -45,6 +48,7 @@ import {
   type SketchModel,
   violatedRows,
 } from './model';
+import { polish } from './polish';
 
 const MAX_CONFLICTS = 8;
 
@@ -158,23 +162,29 @@ export class SketchSolverCore {
     };
   }
 
-  /** Solves `model` from `x0` (DogLeg, then Levenberg–Marquardt) and verifies every residual. */
+  /**
+   * Solves `model` from `x0` (DogLeg, then Levenberg–Marquardt) and verifies every residual.
+   * Accepted solutions are polished (`refine`, default on); the conflict search turns it off
+   * because it only needs a yes/no answer.
+   */
   private solveModel(
     model: SketchModel,
     x0: Float64Array,
-    session = this.gcs,
+    refine = true,
   ): { x: Float64Array; ok: boolean } {
     if (model.rows.length === 0) return { x: Float64Array.from(x0), ok: true };
-    if (isSatisfied(model, x0)) return { x: Float64Array.from(x0), ok: true };
+    const accept = (x: Float64Array) => ({ x: refine ? refined(model, x) : x, ok: true });
+    if (isSatisfied(model, x0)) return accept(Float64Array.from(x0));
     let best: Float64Array | null = null;
     let bestErr = Number.POSITIVE_INFINITY;
+    const session = this.gcs;
     for (const algorithm of [Algorithm.DogLeg, Algorithm.LevenbergMarquardt]) {
       session.load(model, x0);
       session.solve(algorithm);
       const x = Float64Array.from(x0);
       session.read(x);
       if (!finite(x)) continue;
-      if (isSatisfied(model, x)) return { x, ok: true };
+      if (isSatisfied(model, x)) return accept(x);
       const err = residualNorm(model, x);
       if (err < bestErr) {
         bestErr = err;
@@ -191,7 +201,7 @@ export class SketchSolverCore {
   ): boolean {
     const disabled = new Set(all.filter((id) => !enabled.has(id)));
     const m = buildModel(input, { disabled });
-    return this.solveModel(m, m.x0).ok;
+    return this.solveModel(m, m.x0, false).ok;
   }
 
   // -------------------------------------------------------------------------------------------
@@ -442,7 +452,7 @@ export class SketchSolverCore {
       const x = Float64Array.from(s.x);
       s.gcs.read(x);
       if (finite(x) && isSatisfied(s.model, x)) {
-        s.x = x;
+        s.x = refined(s.model, x);
       } else {
         // Keep the last good state; re-seed planegcs from it so the next move starts clean.
         status = 'failed';
@@ -493,6 +503,12 @@ export class SketchSolverCore {
 }
 
 // ---------------------------------------------------------------------------------------------
+
+/** Polished `x` when it still passes the solver's own check, else `x` unchanged. */
+function refined(model: SketchModel, x: Float64Array): Float64Array {
+  const p = polish(model, x);
+  return isSatisfied(model, p) ? p : x;
+}
 
 function finite(x: Float64Array): boolean {
   for (const v of x) if (!Number.isFinite(v)) return false;

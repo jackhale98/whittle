@@ -8,7 +8,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./worker": "./src/worker.ts",
-    "./core": "./src/core.ts"
+    "./core": "./src/core.ts",
+    "./recognize": "./src/recognize.ts"
   },
   "scripts": {
     "test": "vitest run",

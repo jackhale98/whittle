@@ -27,3 +27,6 @@
 - Published JSON Schemas at `/whittle/schema/`; the fake engine is dev/test only.
 - Acceptance: the PLAN §12 bracket built through the UI on the real engine, three parameter edits, STEP export and re-import (volume within 1e-6; holes checked to move).
 - Fixes: fast clicks close a sketch loop on its start point; several-group expressions convert Ø ↔ R correctly; CI E2E runs on one worker with real waits.
+
+### M2 — Touch & tablet excellence
+- Sketch: Pencil stroke recognition (`recognizeStroke`, `@whittle/sketch/recognize`, pure TS, ≈ 0.2 ms for 500 samples): line, polyline, rectangle (rotated or snapped axis-aligned), circle, arc (CCW), scribble; snaps H/V, right angles and closure; `strokeFragment` turns it into entities + constraints. Solver polish: driving dimensions and coincidences hold to ≤ 1e-10 mm, so sketches dimensioned to meet are exactly coplanar (ADR-010).
