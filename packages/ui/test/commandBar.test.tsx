@@ -141,8 +141,14 @@ describe('CommandBar (grouped)', () => {
       expect(solid).toHaveFocus();
 
       await userEvent.keyboard('{Enter}');
+      // Wait for focus to land in the flyout (its first item), not just for it to exist: on a slow
+      // runner the arrow key otherwise reaches the category button before the flyout takes focus.
       await vi.waitFor(() =>
-        expect(screen.getByRole('group', { name: 'Solid tools' })).toBeTruthy(),
+        expect(
+          within(screen.getByRole('group', { name: 'Solid tools' })).getByRole('button', {
+            name: /Extrude/,
+          }),
+        ).toHaveFocus(),
       );
       await userEvent.keyboard('{ArrowDown}{Enter}');
       expect(onTool).toHaveBeenCalledExactlyOnceWith('pushPull');
