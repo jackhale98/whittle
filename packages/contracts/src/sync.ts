@@ -16,7 +16,7 @@
 
 import type { Id, Vec3, WhittleDoc } from './document';
 import type { ProjectFiles } from './io';
-import type { MassProperties, MeshBuffers } from './kernel';
+import type { KernelError, MassProperties, MeshBuffers } from './kernel';
 import type { JsonPointer } from './store';
 
 // ---------------------------------------------------------------------------------------------
@@ -474,7 +474,10 @@ export type RegenSlot = 'main' | `version:${string}`;
 
 /** Added and removed material between two regenerations of a part (A = before, B = after). */
 export interface GeometricDiff {
-  /** B − A per body pair: material that B adds (shown green). */
+  /**
+   * B − A: material that B adds (shown green). Each side's solids are unioned first; one mesh per
+   * non-empty difference (several disjoint regions may share one mesh).
+   */
   added: MeshBuffers[];
   /** A − B: material that B removes (shown red). */
   removed: MeshBuffers[];
@@ -484,4 +487,6 @@ export interface GeometricDiff {
   /** Mass properties and bounding box of each side (deltas shown in the compare panel). */
   a: { mass: MassProperties; bbox: { min: Vec3; max: Vec3 } };
   b: { mass: MassProperties; bbox: { min: Vec3; max: Vec3 } };
+  /** Non-fatal notes, e.g. mesh-only (imported STL) bodies left out of the booleans. */
+  warnings?: KernelError[];
 }

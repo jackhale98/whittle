@@ -148,7 +148,11 @@ export interface ExportOptions {
 /** The kernel worker's full Comlink surface from M1 on. */
 export interface ModelingApi extends KernelApi {
   /** Per-part cache bound (device tiers pass smaller values). */
-  configureRegen(options: { maxSpareResults?: number }): Promise<void>;
+  configureRegen(options: {
+    maxSpareResults?: number;
+    /** M2.5: version slots kept per part besides `'main'` (LRU; default 2). */
+    maxVersionSlots?: number;
+  }): Promise<void>;
   fingerprints(shape: ShapeHandle): Promise<Result<ShapeFingerprints>>;
   regenerate(request: RegenRequest): Promise<RegenResult>;
   /** Persistent reference (with fingerprint) for a picked sub-shape of the latest regen. */

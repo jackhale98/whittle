@@ -125,6 +125,46 @@ ordinal (TopExp index) or the TopExp vertex index. `{point}` targets are world p
 The kernel computes the values exactly (BRepExtrema/GProp); the `KernelLowLevelApi.measureShapes`
 call takes shape handles directly.
 
+**Regen slots** (M2.5, ADR-020 item 8). `RegenRequest.slot` is `'main'` (the default, the live
+model) or `version:<id>`. Every `(partId, slot)` pair has its own result cache, latest state,
+last-good ghosts, import cache and revision counter. Regenerating a version therefore never
+changes main's result, revision, cache hits or shapes. `refFor`, `measure` and `exportPart` always
+use `'main'`, so the live selection never points into a version.
+
+- A part keeps at most `maxVersionSlots` version slots (default 2, minimum 1). When there are more,
+  the least recently used one is released with all its shapes; `regenerate` and `compare` count as
+  use.
+- `configureRegen({ maxVersionSlots })` lowers the cap at once. Each slot's cache is bounded by the
+  same `maxSpareResults` tier.
+- `closePart(partId)` closes every slot; `closePart(partId, slot)` closes only that one.
+- A malformed slot rejects `regenerate` with a `TypeError`.
+
+**Compare** (`src/regen/compare.ts`). `compare(partId, a, b, quality)` returns
+`Result<CompareOutput>`, which is `GeometricDiff` plus `warnings?`. It composes existing façade
+calls only:
+
+1. Each side is the solid bodies of its slot's latest regen. If there are several, they are fused
+   with `execFeature({type:'boolean', op:'add'})`.
+2. B − A (added) and A − B (removed) are `boolean` cuts.
+3. Each non-empty difference is meshed at `quality` (one `MeshBuffers` per difference; it can hold
+   several disjoint regions) and measured with `massProperties`.
+
+Details:
+
+- Each side's `mass` is the union's `MassProperties`, using that slot's material density. `bbox`
+  is its exact bounding box. A side with no bodies has zero mass and a zero box.
+- If both sides have the same body content keys, the geometry is identical, so the result is an
+  empty diff and no booleans run.
+- A difference with no faces, or with a volume at most 1e-9 of the larger side, is empty: `[]`
+  and volume 0, never an error.
+- Mesh-only reference bodies and bodies without volume are left out, with a warning.
+- Errors are `KernelError`s with user-facing messages and the raw cause in `detail`:
+  - `INVALID_INPUT` for a slot that was never regenerated or has been evicted ("Version 3 has not
+    been regenerated"), a malformed slot, or a bad quality;
+  - `OPERATION_FAILED` for a failed fuse or cut, naming both sides.
+- Every temporary shape is released, also on failure. The diff meshes are transferred over
+  Comlink, never copied.
+
 ## Imports (`src/regen/imports.ts`, `planImport` in the engine)
 
 - **STEP / BREP** → `kernel.importShapes` (one shape per solid). IGES → `UNSUPPORTED_FEATURE`
@@ -208,7 +248,13 @@ replacement resolved by fingerprint with `rebound`, an unrelated replacement →
 multi-solid files, cut/add with the import, mesh reference bodies), and `pushpull` (M2: a pulled
 top and a pulled side face re-run under width/depth edits with exact names, a downstream fillet on
 a moved face's edge and on a push/pull wall, a pocket pulled flush whose floor ref then needs
-attention, curved-face / whole-body / two-body failures, `measure` on the latest regen).
+attention, curved-face / whole-body / two-body failures, `measure` on the latest regen), and
+`compare` (M2.5: the five acceptance fixture pairs in `compare-fixtures.ts` with analytic volumes
+to 1e-6 relative, exact region boxes and face counts: box → taller box, plate → plate with a hole,
+a moved hole, a fillet radius change, identical versions; plus rewritten-but-identical geometry,
+overlapping multi-body sides, an empty side, slot isolation, LRU eviction, `closePart` per slot
+and a Comlink transfer check). `compare-unit.test.ts` covers the failure and noise paths with a
+fake kernel.
 `resolve.test.ts` holds the
 adversarial unit cases (near-equidistant, flipped normals, far moves, vanished pieces, weak
 names). Timings are printed as `[regen timing]` lines.
@@ -224,4 +270,9 @@ names). Timings are printed as `[regen timing]` lines.
 - **Contracts** (applied): `FeatureStatus.rebound[]` carries `fingerprint?`, `UnresolvedRef` has
   `lastKnown?`, `ModelingApi` has `configureRegen` and (M2) `measure`, `naming.ts` documents the
   import names and the M2 push/pull seam merge (existing > moved > wall), and `kernel.ts`
-  `Measurement` states the angle conventions. Nothing is pending on the contract side.
+  `Measurement` states the angle conventions.
+- **Contracts** (proposed, M2.5):
+  - `GeometricDiff.warnings?: KernelError[]` for bodies left out of a compare.
+  - `configureRegen` options gain `maxVersionSlots?: number`.
+  - The `GeometricDiff.added` comment "per body pair" should read "one mesh per non-empty
+    difference", because the sides are unioned first.

@@ -52,3 +52,8 @@
 - Fix (M2 gate): the bubble's Sketch action and undo/redo deferred behind a busy sketch are tracked, so `idle()` waits for them.
 - Fix (M2 gate): the keypad never covers its field on landscape phones (844 × 390): it also goes beside the field or docks at the top, and when even the compact layout would cover it, the field is scrolled up within its sheet to just above the keypad (ADR-012 item 5).
 - M2.5 (platform): sync Worker in `worker/` (git proxy, OAuth token exchange, WebDAV relay; ported from Mycelium), typed provider configuration from `VITE_*` repository variables, service-worker rules for provider traffic and OAuth redirects, `docs/SYNC_SETUP.md`.
+
+
+### M2.5 — Connections, sync & version control
+
+- Regen engine: regen slots (`RegenRequest.slot`: `'main'` or `version:<id>`, each with its own cache, latest state and revision; at most 2 version slots per part, LRU, tunable with `configureRegen({ maxVersionSlots })`; `closePart(partId, slot?)`) and `ModelingApi.compare`: geometric diff B − A / A − B from the existing boolean feature (multi-body sides unioned first), meshed and transferred, with volumes and each side's mass and bounding box; golden tests on the 5 acceptance fixture pairs (volumes to 1e-6).

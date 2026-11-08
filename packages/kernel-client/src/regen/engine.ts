@@ -53,6 +53,7 @@ import type {
   PushPullFeature,
   RegenRequest,
   RegenResult,
+  RegenSlot,
   ResolvedRef,
   Result,
   RevolveFeature,
@@ -80,6 +81,7 @@ import { IoError, importMesh, meshToStl } from '@whittle/io';
 import { zipSync } from 'fflate';
 import type { KernelApiInternals, KernelWorkerApi, MeasureSubject } from '../kernel-api';
 import { copyMesh, faceIndex, faceSubMesh } from './buffers';
+import { type CompareOutput, type DiffSide, geometricDiff } from './compare';
 import {
   type Box3,
   boxDiagonal,
@@ -126,6 +128,12 @@ export interface RegenEngineOptions {
    * meshes. Default 128; the tablet tier should use ~32 (PLAN §8.4 memory budget).
    */
   maxSpareResults?: number;
+  /**
+   * Version slots (`version:<id>`, M2.5 compare / merge preview) kept per part beside `'main'`,
+   * least recently used first out (its shapes are released). Default 2; at least 1. Each slot
+   * has its own result cache bounded by `maxSpareResults`.
+   */
+  maxVersionSlots?: number;
   /** Viewport mesh deflections per quality (relative to the shape's bbox size). */
   meshQuality?: Partial<
     Record<MeshQuality, { linearDeflection: number; angularDeflection: number }>
@@ -256,11 +264,21 @@ interface CacheEntry {
   lastUsed: number;
 }
 
+/** One regeneration of a part (`'main'` or a version slot): its own cache and latest state. */
 interface PartCache {
+  slot: RegenSlot;
+  /** Engine-wide LRU stamp among slots (regen and compare touch it). */
+  used: number;
   entries: Map<string, CacheEntry>;
   revision: number;
   tick: number;
-  latest: { bodies: BodyState[]; keys: Set<string>; partName: string } | null;
+  latest: {
+    bodies: BodyState[];
+    keys: Set<string>;
+    partName: string;
+    /** kg/mm³ of the part material at that regen, if any. */
+    density?: number;
+  } | null;
   lastGood: { bodies: BodyState[]; keys: Set<string> } | null;
   /** Imported attachments by sha256. */
   imports: Map<string, RawImport>;
@@ -379,7 +397,10 @@ export class RegenEngine {
     { linearDeflection: number; angularDeflection: number }
   >;
   private readonly now: () => number;
-  private readonly parts = new Map<Id, PartCache>();
+  private maxSlots: number;
+  /** Per part, per slot (`'main'` and up to `maxSlots` version slots). */
+  private readonly parts = new Map<Id, Map<RegenSlot, PartCache>>();
+  private slotTick = 0;
   /** Per-handle caches; dropped when the handle is released. */
   private readonly fps = new Map<ShapeHandle, ShapeFingerprints | null>();
   private readonly mass = new Map<string, MassProperties | null>();
@@ -393,6 +414,7 @@ export class RegenEngine {
     this.kernel = deps.kernel;
     this.solverLoader = deps.sketchSolver;
     this.maxSpare = validSpare(deps.options?.maxSpareResults) ?? 128;
+    this.maxSlots = validSlots(deps.options?.maxVersionSlots) ?? DEFAULT_VERSION_SLOTS;
     this.quality = { ...MESH_QUALITY, ...deps.options?.meshQuality };
     this.now = deps.options?.now ?? (() => performance.now());
   }
@@ -407,24 +429,43 @@ export class RegenEngine {
   // Public API
   // -------------------------------------------------------------------------------------------
 
+  /**
+   * Regenerates a part in `request.slot` (default `'main'`). Each slot keeps its own cache,
+   * latest state and revision counter, so a version slot never disturbs the live model.
+   * Rejects with a `TypeError` for a malformed slot (a programming error, not a model error).
+   */
   regenerate(request: RegenRequest): Promise<RegenOutput> {
-    return this.serial(() => this.regen(request));
+    const slot: unknown = request.slot ?? 'main';
+    if (!isSlot(slot)) {
+      return Promise.reject(new TypeError(`Invalid regen slot ${JSON.stringify(slot)}`));
+    }
+    return this.serial(() => this.regen(request, slot));
   }
 
   /**
-   * Changes the cache budget at runtime (e.g. the tablet/phone tier). Takes effect at the next
-   * regen of each part, which evicts down to the new bound.
+   * Changes the cache budget at runtime (e.g. the tablet/phone tier). `maxSpareResults` takes
+   * effect at the next regen of each slot, which evicts down to the new bound; a lower
+   * `maxVersionSlots` releases the least recently used version slots at once.
    */
-  configure(options: Pick<RegenEngineOptions, 'maxSpareResults'>): Promise<void> {
+  configure(
+    options: Pick<RegenEngineOptions, 'maxSpareResults' | 'maxVersionSlots'>,
+  ): Promise<void> {
     return this.serial(async () => {
       const spare = validSpare(options.maxSpareResults);
       if (spare !== undefined) this.maxSpare = spare;
+      const slots = validSlots(options.maxVersionSlots);
+      if (slots !== undefined) {
+        this.maxSlots = slots;
+        for (const partId of [...this.parts.keys()]) await this.evictSlots(partId);
+      }
     });
   }
 
+  /** Live model only (`'main'`): selection never refers to a version slot. */
   refFor(partId: Id, query: EntityQuery): Promise<EntityRef | null> {
     return this.serial(async () => {
-      const body = this.parts.get(partId)?.latest?.bodies.find((b) => b.id === query.bodyId);
+      const latest = this.slotCache(partId, 'main')?.latest;
+      const body = latest?.bodies.find((b) => b.id === query.bodyId);
       if (!body) return null;
       const entry = body.naming.find((n) => n.kind === query.kind && n.index === query.index);
       if (!entry) return null;
@@ -443,7 +484,7 @@ export class RegenEngine {
    */
   measure(partId: Id, a: MeasureTarget, b?: MeasureTarget): Promise<Result<Measurement>> {
     return this.serial(async () => {
-      const latest = this.parts.get(partId)?.latest;
+      const latest = this.slotCache(partId, 'main')?.latest;
       if (!latest) {
         return {
           ok: false,
@@ -497,7 +538,7 @@ export class RegenEngine {
 
   exportPart(partId: Id, format: ExportFormat, options: ExportOptions = {}): Promise<ExportResult> {
     return this.serial(async () => {
-      const latest = this.parts.get(partId)?.latest;
+      const latest = this.slotCache(partId, 'main')?.latest;
       if (!latest) {
         return {
           ok: false,
@@ -553,14 +594,106 @@ export class RegenEngine {
     });
   }
 
-  closePart(partId: Id): Promise<void> {
+  /** Releases a part's cached results and shapes: every slot, or only `slot`. */
+  closePart(partId: Id, slot?: RegenSlot): Promise<void> {
     return this.serial(async () => {
-      const pc = this.parts.get(partId);
-      if (!pc) return;
-      for (const e of pc.entries.values()) await this.releaseEntry(e);
-      for (const raw of pc.imports.values()) await this.releaseRaw(raw);
-      this.parts.delete(partId);
+      const slots = this.parts.get(partId);
+      if (!slots) return;
+      for (const pc of [...slots.values()]) {
+        if (slot === undefined || pc.slot === slot) await this.releaseSlot(partId, pc);
+      }
     });
+  }
+
+  /**
+   * Geometric compare (PLAN §8A.3) of the latest regens of a part in slots `a` and `b`: B − A
+   * (added) and A − B (removed) meshed at `quality`, their volumes, and each side's mass
+   * properties and bounding box. Mesh-only reference bodies and sheets are left out with a
+   * warning. Missing slots and failed booleans are `KernelError`s; this never throws.
+   */
+  compare(
+    partId: Id,
+    a: RegenSlot,
+    b: RegenSlot,
+    quality: MeshQuality,
+  ): Promise<Result<CompareOutput>> {
+    return this.serial(async (): Promise<Result<CompareOutput>> => {
+      for (const s of [a, b] as unknown[]) {
+        if (!isSlot(s)) {
+          return {
+            ok: false,
+            error: kerr('INVALID_INPUT', `${JSON.stringify(s)} is not a version to compare`, {
+              hint: "Use 'main' or 'version:<id>'.",
+            }),
+          };
+        }
+      }
+      if (quality !== 'coarse' && quality !== 'fine') {
+        return { ok: false, error: kerr('INVALID_INPUT', 'Mesh quality must be coarse or fine') };
+      }
+      const warnings: KernelError[] = [];
+      const sides: DiffSide[] = [];
+      for (const s of [a, b]) {
+        const pc = this.slotCache(partId, s);
+        if (!pc?.latest) {
+          return {
+            ok: false,
+            error: kerr('INVALID_INPUT', `${capitalise(slotLabel(s))} has not been regenerated`, {
+              hint:
+                s === 'main'
+                  ? 'Regenerate the part before comparing.'
+                  : `Regenerate the part in slot "${s}" before comparing; older version slots are released to save memory.`,
+            }),
+          };
+        }
+        pc.used = ++this.slotTick;
+        sides.push(await this.diffSide(pc, warnings));
+      }
+      const kernel = this.kernel;
+      const r = await geometricDiff(
+        {
+          exec: (f, i) => this.exec(f, i),
+          mesh: (shape, options) => kernel.mesh(shape, options),
+          massProperties: (shape, density) => kernel.massProperties(shape, density),
+          release: (shape) => kernel.release(shape),
+        },
+        sides[0] as DiffSide,
+        sides[1] as DiffSide,
+        { ...this.quality[quality], relative: true },
+      );
+      if (r.ok && warnings.length > 0) r.value.warnings = warnings;
+      return r;
+    });
+  }
+
+  /** The solid bodies of a slot's latest regen; mesh-only bodies and sheets become warnings. */
+  private async diffSide(pc: PartCache, warnings: KernelError[]): Promise<DiffSide> {
+    const latest = pc.latest as NonNullable<PartCache['latest']>;
+    const label = slotLabel(pc.slot);
+    const side: DiffSide = { label, bodies: [], keys: [] };
+    if (latest.density !== undefined) side.density = latest.density;
+    for (const body of latest.bodies) {
+      if (body.meshOnly) {
+        warnings.push(
+          kerr('UNSUPPORTED_FEATURE', `A mesh reference body in ${label} is not compared`, {
+            entityRefs: [body.id],
+          }),
+        );
+        continue;
+      }
+      const mp = await this.massOf(body.shape);
+      if (!mp || !(Math.abs(mp.volume) > 0)) {
+        warnings.push(
+          kerr('UNSUPPORTED_FEATURE', `A body without volume in ${label} is not compared`, {
+            entityRefs: [body.id],
+          }),
+        );
+        continue;
+      }
+      side.bodies.push({ shape: body.shape, naming: body.naming });
+      side.keys.push(body.key);
+    }
+    return side;
   }
 
   /** Is `shape` owned by the regen cache (released by the engine, never by callers)? */
@@ -568,13 +701,20 @@ export class RegenEngine {
     return this.ownedHandles.has(shape);
   }
 
-  /** Diagnostics: cache entries and owned handles per part. */
-  stats(partId: Id): { entries: number; handles: number } | null {
-    const pc = this.parts.get(partId);
+  /** Diagnostics: cache entries and owned handles of one slot of a part (default `'main'`). */
+  stats(partId: Id, slot: RegenSlot = 'main'): { entries: number; handles: number } | null {
+    const pc = this.slotCache(partId, slot);
     if (!pc) return null;
     let handles = 0;
     for (const e of pc.entries.values()) handles += e.owned.length;
     return { entries: pc.entries.size, handles };
+  }
+
+  /** Diagnostics: the slots a part holds, `'main'` first, then version slots by recency. */
+  slots(partId: Id): RegenSlot[] {
+    return [...(this.parts.get(partId)?.values() ?? [])]
+      .sort((x, y) => (x.slot === 'main' ? -1 : y.slot === 'main' ? 1 : y.used - x.used))
+      .map((pc) => pc.slot);
   }
 
   // -------------------------------------------------------------------------------------------
@@ -648,10 +788,21 @@ export class RegenEngine {
   // Regeneration
   // -------------------------------------------------------------------------------------------
 
-  private partCache(id: Id): PartCache {
-    let pc = this.parts.get(id);
+  private slotCache(partId: Id, slot: RegenSlot): PartCache | undefined {
+    return this.parts.get(partId)?.get(slot);
+  }
+
+  private partCache(id: Id, slot: RegenSlot): PartCache {
+    let slots = this.parts.get(id);
+    if (!slots) {
+      slots = new Map();
+      this.parts.set(id, slots);
+    }
+    let pc = slots.get(slot);
     if (!pc) {
       pc = {
+        slot,
+        used: 0,
         entries: new Map(),
         revision: 0,
         tick: 0,
@@ -660,16 +811,41 @@ export class RegenEngine {
         imports: new Map(),
         lastResolved: new Map(),
       };
-      this.parts.set(id, pc);
+      slots.set(slot, pc);
     }
+    pc.used = ++this.slotTick;
     return pc;
   }
 
-  private async regen(request: RegenRequest): Promise<RegenOutput> {
+  /** Keeps at most `maxSlots` version slots of a part (LRU out; `'main'` is never evicted). */
+  private async evictSlots(partId: Id): Promise<void> {
+    const slots = this.parts.get(partId);
+    if (!slots) return;
+    const versions = [...slots.values()]
+      .filter((pc) => pc.slot !== 'main')
+      .sort((x, y) => y.used - x.used);
+    for (const pc of versions.slice(this.maxSlots)) await this.releaseSlot(partId, pc);
+  }
+
+  private async releaseSlot(partId: Id, pc: PartCache): Promise<void> {
+    for (const e of pc.entries.values()) await this.releaseEntry(e);
+    for (const raw of pc.imports.values()) await this.releaseRaw(raw);
+    pc.entries.clear();
+    pc.imports.clear();
+    pc.latest = null;
+    pc.lastGood = null;
+    const slots = this.parts.get(partId);
+    slots?.delete(pc.slot);
+    if (slots?.size === 0) this.parts.delete(partId);
+  }
+
+  private async regen(request: RegenRequest, slot: RegenSlot): Promise<RegenOutput> {
     const t0 = this.now();
     const { doc, partId } = request;
     const part = doc.parts.find((p) => p.id === partId);
-    const pc = this.partCache(partId);
+    const pc = this.partCache(partId, slot);
+    // A new version slot may push the least recently used one out: free it before allocating.
+    if (slot !== 'main') await this.evictSlots(partId);
     pc.revision += 1;
     pc.tick += 1;
     if (!part) {
@@ -745,6 +921,7 @@ export class RegenEngine {
       }
     }
     pc.latest = { bodies: finalBodies, keys: new Set(ctx.used), partName: part.name };
+    if (density !== undefined) pc.latest.density = density;
     await this.evict(pc);
     await this.evictImports(pc, ctx.usedImports);
 
@@ -2510,6 +2687,24 @@ function fieldLabel(f: Feature, pointer: string): string {
 
 /** Spare (unused by the latest regen) imported attachments kept per part, LRU. */
 const IMPORT_SPARE = 8;
+const DEFAULT_VERSION_SLOTS = 2;
+
+function validSlots(n: number | undefined): number | undefined {
+  return n !== undefined && Number.isInteger(n) && n >= 1 ? n : undefined;
+}
+
+/** `'main'` or `version:<non-empty id>` (Comlink callers are not type-checked). */
+function isSlot(s: unknown): s is RegenSlot {
+  return s === 'main' || (typeof s === 'string' && s.startsWith('version:') && s.length > 8);
+}
+
+function slotLabel(s: RegenSlot): string {
+  return s === 'main' ? 'the live model' : `version ${s.slice('version:'.length)}`;
+}
+
+function capitalise(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
 
 function validSpare(n: number | undefined): number | undefined {
   return n !== undefined && Number.isInteger(n) && n >= 0 ? n : undefined;
