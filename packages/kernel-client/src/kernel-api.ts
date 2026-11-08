@@ -11,6 +11,8 @@
  */
 
 import type {
+  ExportFormat,
+  ExportOptions,
   Feature,
   FeatureInputs,
   FeatureResult,
@@ -25,13 +27,17 @@ import type {
   MeshBuffers,
   MeshOptions,
   Result,
+  ShapeFingerprints,
   ShapeHandle,
   Vec3,
 } from '@whittle/contracts';
 import {
+  type ExportShape,
   instantiateKernel,
   type KernelInitModule,
   type KernelModuleOptions,
+  type RawExportResult,
+  type RawImportResult,
   type RawKernelInfo,
   type WhittleKernelModule,
 } from '@whittle/kernel';
@@ -56,6 +62,43 @@ export interface KernelApiDeps {
   /** Capability probe; defaults to `crossOriginIsolated && SharedArrayBuffer`. */
   canUseThreads?: () => boolean;
 }
+
+export type { ExportShape } from '@whittle/kernel';
+
+/** One exported file; `bytes` is transferred (never copied) across the worker boundary. */
+export interface ExportedFile {
+  name: string;
+  bytes: Uint8Array;
+}
+
+/** A body read from an imported file (no mesh yet: call `mesh()`). */
+export interface ImportedBody {
+  shape: ShapeHandle;
+  name?: string;
+}
+
+/**
+ * Low-level worker surface beyond the contracts' `KernelApi` (M1). The regen engine
+ * (`ModelingApi`, packages/kernel-client/src/regen) is built on these. Names avoid
+ * `ModelingApi.importFile`/`exportPart`, which work on parts rather than shape handles.
+ */
+export interface KernelLowLevelApi {
+  /** Geometric fingerprints of every face/edge/vertex (TopExp order). */
+  fingerprints(shape: ShapeHandle): Promise<Result<ShapeFingerprints>>;
+  /** Writes STEP/STL/BREP of the given shapes; one file unless STL `stlPerBody`. */
+  exportShapes(
+    shapes: ExportShape[],
+    format: ExportFormat,
+    options?: ExportOptions,
+  ): Promise<Result<ExportedFile[]>>;
+  /** Reads STEP/BREP/STL bytes into shapes (one per solid; STEP names kept). */
+  importShapes(bytes: Uint8Array, format: ExportFormat): Promise<Result<ImportedBody[]>>;
+  /** Threaded build: caps OCCT's thread pool (`init({ threads })` applies it automatically). */
+  configureThreads(count: number): Promise<Result<{ threads: number; max: number }>>;
+}
+
+/** Everything the kernel worker exposes over Comlink. */
+export type KernelWorkerApi = KernelApi & KernelLowLevelApi;
 
 /** Extra surface used by tests and diagnostics; not part of the Comlink contract. */
 export interface KernelApiInternals {
@@ -82,6 +125,20 @@ const error = (
 });
 
 const fail = <T>(e: KernelError): Result<T> => ({ ok: false, error: e });
+
+/** A transferable, exactly-sized, non-shared copy (no-op when `bytes` already is one). */
+function ownedBytes(bytes: Uint8Array): Uint8Array {
+  if (
+    bytes.buffer instanceof ArrayBuffer &&
+    bytes.byteOffset === 0 &&
+    bytes.byteLength === bytes.buffer.byteLength
+  ) {
+    return bytes;
+  }
+  return bytes.slice();
+}
+
+let memfsCounter = 0;
 
 const describe = (e: unknown): string => {
   if (e instanceof Error) return `${e.name}: ${e.message}`;
@@ -156,7 +213,7 @@ function withProgress(
   });
 }
 
-export function createKernelApi(deps: KernelApiDeps): KernelApi & KernelApiInternals {
+export function createKernelApi(deps: KernelApiDeps): KernelWorkerApi & KernelApiInternals {
   const now = deps.now ?? (() => performance.now());
   const emit = (status: KernelStatus) => {
     try {
@@ -222,7 +279,16 @@ export function createKernelApi(deps: KernelApiDeps): KernelApi & KernelApiInter
       rejectLoad = reject;
     });
     try {
-      const moduleOptions: KernelModuleOptions = {};
+      const moduleOptions: KernelModuleOptions & { threadCount?: number } = {};
+      const threads = options.threads;
+      if (variant === 'threaded' && threads !== undefined) {
+        if (!Number.isInteger(threads) || threads < 1) {
+          const e = error('INVALID_INPUT', 'threads must be a positive integer');
+          emit({ state: 'error', error: e });
+          return fail(e);
+        }
+        moduleOptions.threadCount = threads;
+      }
       let streaming = false;
       if (wasmUrl !== undefined) {
         moduleOptions.locateFile = (path, prefix) =>
@@ -277,6 +343,17 @@ export function createKernelApi(deps: KernelApiDeps): KernelApi & KernelApiInter
         emit({ state: 'error', error: e });
         return fail(e);
       }
+      if (variant === 'threaded' && threads !== undefined) {
+        // Keep OCCT's pool within the pthread pool the module was started with.
+        const configured = parseResult<unknown>(
+          instance.configureThreads(threads),
+          'configureThreads',
+        );
+        if (!configured.ok) {
+          emit({ state: 'error', error: configured.error });
+          return configured;
+        }
+      }
       kernel = instance;
       poisoned = null;
       info = {
@@ -294,7 +371,7 @@ export function createKernelApi(deps: KernelApiDeps): KernelApi & KernelApiInter
     }
   }
 
-  const api: KernelApi & KernelApiInternals = {
+  const api: KernelWorkerApi & KernelApiInternals = {
     init(options: KernelInitOptions = {}): Promise<Result<KernelInfo>> {
       if (kernel !== null && info !== null) {
         const sameVariant = options.variant === undefined || options.variant === info.variant;
@@ -378,12 +455,109 @@ export function createKernelApi(deps: KernelApiDeps): KernelApi & KernelApiInter
       }
     },
 
-    async massProperties(shape: ShapeHandle): Promise<Result<MassProperties>> {
+    async massProperties(shape: ShapeHandle, density?: number): Promise<Result<MassProperties>> {
       if (kernel === null) return notReady();
+      if (density !== undefined && !(Number.isFinite(density) && density > 0)) {
+        return fail(
+          error(
+            'INVALID_INPUT',
+            'Density must be a positive number',
+            String(density),
+            "Check the part material's density.",
+          ),
+        );
+      }
       try {
-        return parseResult<MassProperties>(kernel.massProperties(shape), 'massProperties');
+        return parseResult<MassProperties>(
+          kernel.massProperties(shape, density ?? 0),
+          'massProperties',
+        );
       } catch (e) {
         return caught('massProperties', e);
+      }
+    },
+
+    async fingerprints(shape: ShapeHandle): Promise<Result<ShapeFingerprints>> {
+      if (kernel === null) return notReady();
+      try {
+        return parseResult<ShapeFingerprints>(kernel.fingerprints(shape), 'fingerprints');
+      } catch (e) {
+        return caught('fingerprints', e);
+      }
+    },
+
+    async exportShapes(
+      shapes: ExportShape[],
+      format: ExportFormat,
+      options: ExportOptions = {},
+    ): Promise<Result<ExportedFile[]>> {
+      if (kernel === null) return notReady();
+      const k = kernel;
+      let paths: string[] = [];
+      try {
+        const written = parseResult<RawExportResult>(
+          k.exportShapes(JSON.stringify(shapes), format, JSON.stringify(options)),
+          'exportShapes',
+        );
+        if (!written.ok) return written;
+        paths = written.value.files.map((f) => f.path);
+        // MEMFS → JS once; the bytes are then transferred to the caller.
+        const files = written.value.files.map((f) => ({
+          name: f.name,
+          bytes: ownedBytes(k.FS.readFile(f.path, { encoding: 'binary' })),
+        }));
+        const result: Result<ExportedFile[]> = { ok: true, value: files };
+        return transfer(
+          result,
+          files.map((f) => f.bytes.buffer as ArrayBuffer),
+        );
+      } catch (e) {
+        return caught('exportShapes', e);
+      } finally {
+        for (const path of paths) {
+          try {
+            k.FS.unlink(path);
+          } catch {
+            // Already gone (e.g. after a trap).
+          }
+        }
+      }
+    },
+
+    async importShapes(bytes: Uint8Array, format: ExportFormat): Promise<Result<ImportedBody[]>> {
+      if (kernel === null) return notReady();
+      const k = kernel;
+      memfsCounter += 1;
+      const path = `/tmp/whittle-import-${memfsCounter}.${format}`;
+      let written = false;
+      try {
+        k.FS.writeFile(path, bytes);
+        written = true;
+        const read = parseResult<RawImportResult>(k.importFile(path, format), 'importFile');
+        if (!read.ok) return read;
+        return { ok: true, value: read.value.bodies };
+      } catch (e) {
+        return caught('importShapes', e);
+      } finally {
+        if (written) {
+          try {
+            k.FS.unlink(path);
+          } catch {
+            // Already gone.
+          }
+        }
+      }
+    },
+
+    async configureThreads(count: number): Promise<Result<{ threads: number; max: number }>> {
+      if (kernel === null) return notReady();
+      try {
+        return parseResult<{ threads: number; max: number }>(
+          kernel.configureThreads(count),
+          'configureThreads',
+        );
+      } catch (e) {
+        return caught('configureThreads', e);
       }
     },
 

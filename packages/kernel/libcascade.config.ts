@@ -12,6 +12,10 @@ const facadeSymbols = [
   'execFeature',
   'mesh',
   'massProperties',
+  'fingerprints',
+  'exportShapes',
+  'importFile',
+  'configureThreads',
   'release',
   'liveHandleCount',
 ] as const;
@@ -40,7 +44,9 @@ export default defineBuild({
     // escaped exceptions in JS). wasmMemory exposes heap size for diagnostics, and is also what
     // makes the generated d.ts take the `{ … } & { … }` shape `libcascade assemble` parses
     // (toolchain 3.1.0 emits a one-line `{}` prelude without FS/wasmMemory and assemble rejects it).
+    // FS: the worker moves export/import bytes through MEMFS (exportShapes / importFile).
     EXPORTED_RUNTIME_METHODS: [
+      'FS',
       'wasmMemory',
       'getExceptionMessage',
       'incrementExceptionRefcount',

@@ -20,14 +20,14 @@ pnpm --filter @whittle/kernel test    # golden tests in Node, both variants
 
 `pnpm build` runs [`scripts/build.mjs`](scripts/build.mjs):
 
-1. `scripts/amalgamate.mjs` inlines `whittle_kernel.h`, `whittle_kernel.cpp` and
-   `whittle_bindings.cpp` into `.libcascade/whittle_facade.cpp`, and stamps `WHITTLE_BUILD_ID`.
+1. `scripts/amalgamate.mjs` inlines `whittle_kernel.h`, `whittle_core.cpp`, `whittle_modeling.cpp`,
+   `whittle_io.cpp`, `whittle_kernel.cpp` and `whittle_bindings.cpp` (in that order) into `.libcascade/whittle_facade.cpp`, and stamps `WHITTLE_BUILD_ID`.
    `WHITTLE_BUILD_ID` is a SHA-256 over the façade sources, `libcascade.config.ts`, the
    amalgamation script and the toolchain version, and `kernelInfo()` reports it. The amalgamation
    is needed because `customBindings` with `scope: 'main'` concatenates file _contents_ into the
    toolchain's embind translation unit, so relative `#include`s can't resolve there.
-2. `libcascade build` links both variants in the pinned images. Each variant takes about 2.5 min
-   with a warm image; the OCCT objects are prebuilt in the image.
+2. `libcascade build` links both variants in the pinned images. Each variant takes about 10 min
+   with a warm image at M1 (2.5 min at M0); the OCCT objects are prebuilt in the image.
 3. `libcascade assemble` generates the initialisers and the shared `types.d.ts`.
 4. `scripts/size-report.mjs` prints raw, gzip and brotli sizes and writes `dist/size-report.json`.
    It fails if a kernel `.wasm` is larger than 15 MB brotli.
@@ -57,17 +57,21 @@ amalgamated file.
 | `*.build-manifest.json`, `*.provenance.json`        | build records: flags, image digest, source SHA-256s           |
 | `size-report.json`                                  | raw, gzip and brotli sizes                                    |
 
-Sizes at M0 (toolchain 3.1.0, `-O3`, wasm-opt `-O4`, SIMD, native Wasm exceptions):
+Sizes at M1 (toolchain 3.1.0, `-O3`, wasm-opt `-O4`, SIMD, native Wasm exceptions). STEP
+(TKDESTEP + XCAF), booleans, fillets and sketch arrangement account for the growth; M0 was 3.79 MiB
+raw / 1.30 MiB brotli:
 
-| Artefact                 |      raw |     gzip |   brotli |
-| ------------------------ | -------: | -------: | -------: |
-| `whittle-kernel-st.wasm` | 3.79 MiB | 1.63 MiB | 1.30 MiB |
-| `whittle-kernel.wasm`    | 3.78 MiB | 1.64 MiB | 1.30 MiB |
-| `whittle-kernel-st.js`   |   42 KiB |   16 KiB |   14 KiB |
-| `whittle-kernel.js`      |   48 KiB |   19 KiB |   17 KiB |
+| Artefact                 |       raw |     gzip |   brotli |
+| ------------------------ | --------: | -------: | -------: |
+| `whittle-kernel-st.wasm` | 15.92 MiB | 5.31 MiB | 3.71 MiB |
+| `whittle-kernel.wasm`    | 15.47 MiB | 5.29 MiB | 3.71 MiB |
+| `whittle-kernel-st.js`   |    56 KiB |   21 KiB |   19 KiB |
+| `whittle-kernel.js`      |    63 KiB |   24 KiB |   21 KiB |
 
-Budget: ≤ 15 MB brotli per kernel (PLAN §7.2). Sizes will grow as the façade gains booleans,
-fillets, STEP and so on.
+Budget: ≤ 15 MB brotli per kernel (PLAN §7.2). A full two-variant build takes about 20 to 23 min
+at M1; most of that is wasm-opt `-O4 --converge` on the 16 MB binaries. For C++ iteration, a
+syntax-only `em++ -fsyntax-only` of `.libcascade/whittle_facade.cpp` against
+`/opencascade.js/build/occt-includes` in the image takes seconds.
 
 ## Package exports
 
@@ -88,12 +92,93 @@ With Vite, the threaded glue needs `worker: { format: 'es' }`.
 [`src/facade.ts`](src/facade.ts) types the embind module. Every structured value is a JSON string
 shaped like `packages/contracts/src/kernel.ts`, and every call returns a `Result` JSON. OCCT and
 C++ exceptions are caught at each entry point and returned as `KernelError`s
-(`OCCT_EXCEPTION`, `INVALID_INPUT`, `INVALID_HANDLE`, `UNSUPPORTED_FEATURE`, `INTERNAL`).
+(`OCCT_EXCEPTION`, `INVALID_INPUT`, `INVALID_HANDLE`, `UNRESOLVED_REFERENCE`,
+`OPERATION_FAILED`, `UNSUPPORTED_FEATURE`, `INTERNAL`). The catch handlers cannot throw: on
+`bad_alloc` a 256 KiB emergency reserve is released so the error JSON can still be built, and the
+last resort is an empty string (the worker reports it as a malformed result).
 
-M0 supports `primitive` / `box`. It reads `inputs.values["/dx"|"/dy"|"/dz"]` and an optional
-`frame`. It names the box per `naming.ts`: `F<id>:face.xmin`, `F<id>:edge(face.xmin|face.ymin)`,
-`F<id>:vertex(min,min,min)` and so on. Roles come from geometry in the box's local frame, so they
-don't depend on OCCT's internal ordering.
+| Call                                       | Returns                                                         |
+| ------------------------------------------ | --------------------------------------------------------------- |
+| `execFeature(feature, inputs)`             | `FeatureResult` (+ `frame`, `regions`, `bodies` where relevant) |
+| `mesh(shape, options, out)`                | `{}`; buffers in `MeshData`                                     |
+| `massProperties(shape, densityKgPerMm3)`   | `MassProperties`; `mass` + `inertia` when density > 0           |
+| `fingerprints(shape)`                      | `ShapeFingerprints` (TopExp order)                              |
+| `exportShapes(shapes, format, options)`    | `{path, files:[{path,name}]}` in MEMFS (`step`, `stl`, `brep`)  |
+| `importFile(path, format)`                 | `{bodies:[{shape,name?}]}`                                      |
+| `configureThreads(count)`                  | `{threads, max}` (threaded build; no-op single)                 |
+| `release(shape)`, `liveHandleCount()`      |                                                                 |
+
+The module also exports Emscripten's `FS`; the worker reads exported files with `FS.readFile` and
+unlinks them, and writes imported bytes with `FS.writeFile`.
+
+### Features (M1)
+
+The kernel never resolves persistent names: the regen engine passes sub-shapes as
+`inputs.refs[<JSON pointer>] = {shape, kind, index}` and values in mm/rad keyed by JSON pointer.
+
+| Feature     | Inputs                                                                                                                       |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `primitive` | `box` (`/dx /dy /dz`), `cylinder` (`/radius /height`, axis = frame Z), `sphere` (`/radius`); op ≠ new acts on `inputs.target` |
+| `sketch`    | `frames.plane` (default world XY); solved `entities`                                                                         |
+| `extrude`   | refs `/profile/<n>` (region faces); `/end/depth`; up-to: refs `/end/target` (planar face) or `frames.upTo`; `/draft` must be 0 |
+| `revolve`   | refs `/profile/<n>`; axis: refs `/axis` (straight edge) or `frames.axis` (origin + z); `/angle`                              |
+| `fillet`    | refs `/edges/<n>` on `inputs.target`; `/radius`                                                                              |
+| `chamfer`   | refs `/edges/<n>`; `/mode/distance` (+ `/mode/angle`)                                                                        |
+| `boolean`   | `inputs.target` or refs `/target`; refs `/tools/<n>` (or `shapes["tools…"]`)                                                 |
+| `plane`     | `definition.frame`, or offset `/definition/distance` from refs `/definition/from` or `frames.from`                           |
+
+Body ops `add | cut | intersect` act on `inputs.target` plus `inputs.shapes["scope…"]` (key
+order). `add` fuses all of them into one result; `cut`/`intersect` return the target's result as
+`shape` and the others in `bodies: [{key, shape, naming}]`.
+
+**Sketch regions** are the bounded faces of the planar arrangement of all non-construction
+curves (minimal regions, as in Onshape/Fusion): the curves are split at their intersections with
+the General Fuse algorithm (`BRepAlgoAPI_BuilderAlgo`, fuzzy 1e-6 mm, which also merges coincident
+end points of different entities), then every piece goes in both orientations to
+`BOPAlgo_BuilderFace` on the sketch plane, the recipe of `BOPAlgo_Tools::WiresToFaces`. A loop
+inside another becomes that face's hole and is also a region itself; open and dangling curves
+bound nothing and are dropped. A rectangle with a circle in it therefore gives
+`S…:region(L1,L2,L3,L4|C1)` (the plate) and `S…:region(C1)` (the disc).
+
+### Naming (packages/contracts/src/naming.ts)
+
+- Sketch: `S<id>:e(<entity>)` (split curves `…#k`), `S<id>:p(<point>)` (coincident points are
+  extra naming entries on the same vertex), `S<id>:region(…)`.
+- Extrude/revolve: `F<id>:start`, `F<id>:end` (from `FirstShape`/`LastShape`; revolve only below
+  360°) and `F<id>:side(<profile edge name>)` (`Generated`).
+- Booleans, fillets and chamfers carry face names through `Modified`/`IsDeleted`. Target faces
+  win over tool faces. New faces are `F<id>:fillet(<edge>)`, `F<id>:chamfer(<edge>)` (also
+  `(<vertex>)` for corner blends) and, in a `boolean` feature, `F<id>:face(<tool face>)`. Tool
+  faces of extrude/revolve/primitive body ops keep the tool's own names.
+- Edges `edge(<A>|<B>)` and vertices `vertex(<A>|<B>|<C>)` come from the sorted adjacent face
+  names; seams read `edge(A|A)`, free edges `edge(A)`. Primitives keep their local form,
+  `F<id>:edge(face.xmin|face.ymin)`.
+- Splits: when several faces inherit one name, every face sharing that base name is re-indexed
+  `#0…` by centroid (x, then y, then z, rounded to 1e-6 mm). So names keep a single `#k`
+  level, and names that survive one-to-one stay as they are.
+- Cylinder: `face.side`, `face.zmin`, `face.zmax`. Sphere: `face.sphere`; its pole edges are
+  `edge(face.sphere)#0/#1`.
+- Faces no rule names (not expected) get `F<id>:unnamed#k`.
+
+### Mesh caching
+
+Triangulations live in the shared TShapes, and `BRepMesh_IncrementalMesh` keeps any existing mesh
+that is fine enough. `mesh()` drops the cached triangulation (`BRepTools::Clean`) when its recorded
+edge deflection is under half the requested one, so a coarser request after a finer one is
+honoured. `relative` deflections are converted with the shape's largest bbox extent. STL export
+meshes a copy (`BRepBuilderAPI_Copy`), so export quality never changes the viewport mesh.
+
+### Data exchange
+
+- **STEP**: through an XCAF document (`STEPCAFControl_Writer`/`Reader`), so product names and
+  colours round-trip. OCCT 8 sets the schema with `DESTEP_Parameters::WriteSchema` passed to
+  `Transfer(doc, params, …)`. `Interface_Static` `write.step.schema` still exists but is not
+  needed: AP214 → `AP214IS`, AP203 → `AP203`, AP242 → `AP242DIS`. Units are mm. On import,
+  assemblies are flattened with their placements, one body per solid.
+- **STL**: our own writer (binary or ASCII; merged or one file per body) from a `BRepMesh`
+  triangulation at the requested deflection. The output is watertight because BRepMesh is
+  conformal across shared edges. Import uses `RWStl::ReadFile` into one triangulation-only face.
+- **BREP**: `BRepTools::Write`/`Read` (exact).
 
 ## Licensing
 

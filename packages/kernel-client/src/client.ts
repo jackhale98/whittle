@@ -7,7 +7,6 @@
  */
 
 import type {
-  KernelApi,
   KernelError,
   KernelInfo,
   KernelInitOptions,
@@ -15,6 +14,7 @@ import type {
   Result,
 } from '@whittle/contracts';
 import { type Remote, releaseProxy, wrap } from 'comlink';
+import type { KernelWorkerApi } from './kernel-api';
 import { isStatusMessage, STATUS_MESSAGE_TAG } from './protocol';
 
 export interface KernelClientOptions extends KernelInitOptions {
@@ -32,7 +32,7 @@ export interface KernelStatusStream {
 }
 
 export interface KernelClient {
-  api: Remote<KernelApi>;
+  api: Remote<KernelWorkerApi>;
   status: KernelStatusStream;
   /** Resolves with the first `init()` result (starting it if `autoInit` was false). */
   ready(): Promise<Result<KernelInfo>>;
@@ -84,7 +84,7 @@ export function createKernelClient(options: KernelClientOptions = {}): KernelCli
   worker.addEventListener('error', onError);
   worker.addEventListener('messageerror', onMessageError);
 
-  const api = wrap<KernelApi>(worker);
+  const api = wrap<KernelWorkerApi>(worker);
   let disposed = false;
   let initResult: Promise<Result<KernelInfo>> | null = null;
 

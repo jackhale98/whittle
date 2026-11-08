@@ -20,7 +20,14 @@ import { fileURLToPath } from 'node:url';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(import.meta.url);
 
-const sources = ['src/whittle_kernel.h', 'src/whittle_kernel.cpp', 'src/whittle_bindings.cpp'];
+const sources = [
+  'src/whittle_kernel.h',
+  'src/whittle_core.cpp',
+  'src/whittle_modeling.cpp',
+  'src/whittle_io.cpp',
+  'src/whittle_kernel.cpp',
+  'src/whittle_bindings.cpp',
+];
 const hashed = [...sources, 'libcascade.config.ts', 'scripts/amalgamate.mjs'];
 
 const toolchainVersion = require('@libcascade/toolchain/package.json').version;

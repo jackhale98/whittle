@@ -11,4 +11,11 @@ export {
   type KernelClientOptions,
   type KernelStatusStream,
 } from './client';
+export type {
+  ExportedFile,
+  ExportShape,
+  ImportedBody,
+  KernelLowLevelApi,
+  KernelWorkerApi,
+} from './kernel-api';
 export { isStatusMessage, STATUS_MESSAGE_TAG, type StatusMessage } from './protocol';

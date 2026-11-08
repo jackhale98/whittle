@@ -30,13 +30,57 @@ export interface WhittleKernelModule {
   execFeature(featureJson: string, inputsJson: string): string;
   /** `Result<{}>` JSON; buffers land in `out`. */
   mesh(shape: number, optionsJson: string, out: MeshDataHandle): string;
-  /** `Result<MassProperties>` JSON. */
-  massProperties(shape: number): string;
+  /**
+   * `Result<MassProperties>` JSON. `densityKgPerMm3` > 0 adds `mass` and `inertia` (ADR-004);
+   * pass 0 for geometry only.
+   */
+  massProperties(shape: number, densityKgPerMm3: number): string;
+  /** `Result<ShapeFingerprints>` JSON (TopExp order). */
+  fingerprints(shape: number): string;
+  /**
+   * Writes `format` (`step` | `stl` | `brep`) to MEMFS. `shapesJson`: `ExportShape[]`;
+   * `optionsJson`: contracts `ExportOptions`. Returns `Result<RawExportResult>` JSON; the caller
+   * reads every file with `FS.readFile` and unlinks it.
+   */
+  exportShapes(shapesJson: string, format: string, optionsJson: string): string;
+  /** Reads a MEMFS file (`step` | `stl` | `brep`). Returns `Result<RawImportResult>` JSON. */
+  importFile(path: string, format: string): string;
+  /** Threaded build: caps OCCT's thread pool. Returns `Result<{threads, max}>` JSON. */
+  configureThreads(count: number): string;
   release(shape: number): void;
   liveHandleCount(): number;
   MeshData: new () => MeshDataHandle;
   /** Live linear memory (exported for heap diagnostics). */
   wasmMemory: WebAssembly.Memory;
+  /** Emscripten MEMFS, used to move export/import bytes. */
+  FS: KernelFileSystem;
+}
+
+/** The subset of Emscripten's `FS` the worker uses. */
+export interface KernelFileSystem {
+  readFile(path: string, options?: { encoding: 'binary' }): Uint8Array;
+  writeFile(path: string, data: Uint8Array): void;
+  unlink(path: string): void;
+}
+
+/** One body handed to `exportShapes`. */
+export interface ExportShape {
+  shape: number;
+  name: string;
+  /** CSS hex `#rrggbb`; STEP only. */
+  color?: string;
+}
+
+/** Value of `exportShapes()` on success: MEMFS paths to read and unlink. */
+export interface RawExportResult {
+  /** First (for merged exports: only) file. */
+  path: string;
+  files: { path: string; name: string }[];
+}
+
+/** Value of `importFile()` on success. */
+export interface RawImportResult {
+  bodies: { shape: number; name?: string }[];
 }
 
 /** Value of `kernelInfo()` on success. */

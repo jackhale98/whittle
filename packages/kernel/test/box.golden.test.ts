@@ -315,7 +315,7 @@ for (const { variant, init } of VARIANTS) {
       checkNaming(result.naming);
       expect(k.liveHandleCount()).toBe(1);
 
-      const mp = ok<MassProperties>(k.massProperties(result.shape));
+      const mp = ok<MassProperties>(k.massProperties(result.shape, 0));
       expect(Math.abs(mp.volume - 6000) / 6000).toBeLessThan(1e-9);
       expect(Math.abs(mp.area - 2200) / 2200).toBeLessThan(1e-9);
       expect(mp.faceCount).toBe(6);
@@ -343,7 +343,7 @@ for (const { variant, init } of VARIANTS) {
         k.execFeature(JSON.stringify(box({ frame })), JSON.stringify(values(10, 20, 30))),
       );
       checkNaming(result.naming);
-      const mp = ok<MassProperties>(k.massProperties(result.shape));
+      const mp = ok<MassProperties>(k.massProperties(result.shape, 0));
       expect(Math.abs(mp.volume - 6000) / 6000).toBeLessThan(1e-9);
       expect(Math.abs(mp.area - 2200) / 2200).toBeLessThan(1e-9);
       expectVec3Close(mp.centroid, [90, -45, 22], 1e-9);
@@ -399,18 +399,20 @@ for (const { variant, init } of VARIANTS) {
             edges: [],
             radius: '1',
           }),
+          // M1: fillet is supported; with no edges selected it is an input error.
+          inputs: JSON.stringify({ values: { '/radius': 1 } }),
+          code: 'INVALID_INPUT',
+        },
+        {
+          feature: JSON.stringify({ ...box(), shape: 'torus', radius: '1' }),
           inputs: JSON.stringify({ values: { '/radius': 1 } }),
           code: 'UNSUPPORTED_FEATURE',
         },
         {
-          feature: JSON.stringify({ ...box(), shape: 'cylinder', radius: '1', height: '2' }),
-          inputs: JSON.stringify({ values: { '/radius': 1, '/height': 2 } }),
-          code: 'UNSUPPORTED_FEATURE',
-        },
-        {
+          // M1: body ops are supported, but a cut needs a target body.
           feature: JSON.stringify(box({ op: 'cut' })),
           inputs: JSON.stringify(values(1, 1, 1)),
-          code: 'UNSUPPORTED_FEATURE',
+          code: 'INVALID_INPUT',
         },
       ];
       for (const c of cases) {
@@ -426,7 +428,7 @@ for (const { variant, init } of VARIANTS) {
       expect(dxError.hint).toMatch(/dx/);
 
       for (const handle of [0, -3, 9999]) {
-        expect(err(k.massProperties(handle)).code).toBe('INVALID_HANDLE');
+        expect(err(k.massProperties(handle, 0)).code).toBe('INVALID_HANDLE');
         const md = new k.MeshData();
         expect(
           err(k.mesh(handle, '{"linearDeflection":0.1,"angularDeflection":0.5}', md)).code,

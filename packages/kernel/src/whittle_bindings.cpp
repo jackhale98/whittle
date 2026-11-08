@@ -11,7 +11,11 @@
 //   kernelInfo(): string
 //   execFeature(featureJson: string, inputsJson: string): string
 //   mesh(shape: number, optionsJson: string, out: MeshData): string
-//   massProperties(shape: number): string
+//   massProperties(shape: number, densityKgPerMm3: number): string
+//   fingerprints(shape: number): string
+//   exportShapes(shapesJson: string, format: string, optionsJson: string): string
+//   importFile(path: string, format: string): string
+//   configureThreads(count: number): string
 //   release(shape: number): void
 //   liveHandleCount(): number
 //   class MeshData { positions(), normals(), indices(), faceRanges(), edgePositions(),
@@ -31,9 +35,12 @@ namespace bindings {
 
 #if defined(__wasm__)
 // Views alias the Wasm heap: valid until the MeshData is mutated or deleted, or memory grows.
-// The worker copies them out (TypedArray.prototype.slice) immediately.
+// The worker copies them out (TypedArray.prototype.slice) immediately. An empty vector may
+// report a null data(); hand out a zero-length view of a static element instead.
 template <typename T>
 emscripten::val view(const std::vector<T>& v) {
+  static const T empty{};
+  if (v.empty()) return emscripten::val(emscripten::typed_memory_view(size_t{0}, &empty));
   return emscripten::val(emscripten::typed_memory_view(v.size(), v.data()));
 }
 #else
@@ -71,6 +78,10 @@ EMSCRIPTEN_BINDINGS(whittle_kernel) {
   emscripten::function("execFeature", &whittle::execFeature);
   emscripten::function("mesh", &whittle::bindings::meshInto);
   emscripten::function("massProperties", &whittle::massProperties);
+  emscripten::function("fingerprints", &whittle::fingerprints);
+  emscripten::function("exportShapes", &whittle::exportShapes);
+  emscripten::function("importFile", &whittle::importFile);
+  emscripten::function("configureThreads", &whittle::configureThreads);
   emscripten::function("release", &whittle::release);
   emscripten::function("liveHandleCount", &whittle::liveHandleCount);
 }

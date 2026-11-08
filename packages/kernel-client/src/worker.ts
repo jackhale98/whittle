@@ -1,6 +1,7 @@
 /**
  * Kernel worker entry (PLAN §4): owns the OCCT Wasm instance and every shape; exposes exactly
- * `KernelApi` over Comlink. Spawned by `createKernelClient()` as a module worker.
+ * `KernelWorkerApi` (contracts `KernelApi` + low-level M1 calls) over
+ * Comlink. Spawned by `createKernelClient()` as a module worker.
  *
  * Asset wiring is static so bundlers can see it:
  *  - `import('@whittle/kernel/<variant>/init')` pulls in the generated initialiser, which
@@ -13,18 +14,17 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import type { KernelApi } from '@whittle/contracts';
 import threadedWasmUrl from '@whittle/kernel/multi/wasm?url';
 import singleWasmUrl from '@whittle/kernel/single/wasm?url';
 import { expose } from 'comlink';
-import { createKernelApi } from './kernel-api';
+import { createKernelApi, type KernelWorkerApi } from './kernel-api';
 import { statusMessage } from './protocol';
 
 const scope = self as unknown as {
   postMessage(message: unknown): void;
 };
 
-const api: KernelApi = createKernelApi({
+const api: KernelWorkerApi = createKernelApi({
   variants: {
     single: { load: () => import('@whittle/kernel/single/init'), wasmUrl: singleWasmUrl },
     threaded: { load: () => import('@whittle/kernel/multi/init'), wasmUrl: threadedWasmUrl },
