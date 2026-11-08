@@ -12,3 +12,4 @@ test-results/
 .env*
 !.env.example
 .claude/worktrees/
+!apps/web/e2e/fixtures/*.wasm

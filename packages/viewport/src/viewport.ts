@@ -23,6 +23,7 @@ import {
   DirectionalLight,
   FrontSide,
   Group,
+  HemisphereLight,
   Line2NodeMaterial,
   Matrix4,
   Mesh,
@@ -113,7 +114,11 @@ class ViewportImpl implements ViewportEngine {
   private readonly grid = new Grid();
   private readonly shadow = new ContactShadow();
   private readonly keyLight = new DirectionalLight(0xffffff, 1);
-  private readonly envTarget: { dispose(): void; texture: Scene['environment'] };
+  /** Built after the first body frame (see scheduleEnvironment); null until then. */
+  private envTarget: { dispose(): void; texture: Scene['environment'] } | null = null;
+  private envScheduled = false;
+  /** Stand-in ambient light until the studio environment exists. */
+  private readonly fillLight = new HemisphereLight(0xffffff, 0x8a929e, 2.2);
 
   private theme: 'light' | 'dark';
   private palette: Palette;
@@ -167,13 +172,15 @@ class ViewportImpl implements ViewportEngine {
     canvas.style.outline = 'none';
     canvas.tabIndex = Math.max(canvas.tabIndex, 0);
 
-
-    // Procedural studio environment: no external HDR.
-    const pmrem = new PMREMGenerator(renderer);
-    const envRT = pmrem.fromScene(new RoomEnvironment(), 0.04);
-    this.envTarget = envRT;
-    this.scene.environment = envRT.texture;
-    pmrem.dispose();
+    // Procedural studio environment (no external HDR) is built *after* the first body frame:
+    // PMREM generation compiles and renders several shader passes, which costs ~1.6 s of
+    // main-thread time on software GL and would delay first paint (PLAN §10). Until then a
+    // hemisphere fill light stands in. See ADR-005.
+    this.scene.add(this.fillLight);
+    this.cleanup.push(() => {
+      clearTimeout(envFallback);
+    });
+    const envFallback = setTimeout(() => this.scheduleEnvironment(), 3000);
 
     this.keyLight.position.set(-60, -90, 120);
     this.scene.add(this.keyLight);
@@ -203,6 +210,8 @@ class ViewportImpl implements ViewportEngine {
 
   setBody(id: string, mesh: MeshBuffers, display: BodyDisplay = {}): void {
     if (this.disposed) return;
+    // The first body has priority over the environment; build it right after that frame.
+    queueMicrotask(() => this.scheduleEnvironment());
     const wasEmpty = this.bodies.size === 0;
     const previous = this.bodies.get(id);
     const merged: Required<BodyDisplay> = {
@@ -352,12 +361,37 @@ class ViewportImpl implements ViewportEngine {
     this.grid.dispose();
     this.shadow.dispose();
     this.edgeMaterial.dispose();
-    this.envTarget.dispose();
+    this.envTarget?.dispose();
+    this.envTarget = null;
     this.scene.environment = null;
     this.renderer.dispose();
     const waiters = this.waiters;
     this.waiters = [];
     for (const w of waiters) w();
+  }
+
+  /** Builds the studio environment once, on idle after the next presented frame. */
+  private scheduleEnvironment(): void {
+    if (this.envScheduled || this.disposed) return;
+    this.envScheduled = true;
+    void this.nextFrame().then(() => {
+      const build = () => {
+        if (this.disposed) return;
+        const pmrem = new PMREMGenerator(this.renderer);
+        // 64² faces: CAD materials are rough, so a small environment looks the same.
+        const envRT = pmrem.fromScene(new RoomEnvironment(), 0.04, 0.1, 100, { size: 64 });
+        pmrem.dispose();
+        this.envTarget = envRT;
+        this.scene.environment = envRT.texture;
+        this.scene.remove(this.fillLight);
+        this.requestRender();
+      };
+      const ric = (
+        globalThis as { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number }
+      ).requestIdleCallback;
+      if (ric) ric(build, { timeout: 500 });
+      else setTimeout(build, 0);
+    });
   }
 
   // ---------------------------------------------------------------- internals

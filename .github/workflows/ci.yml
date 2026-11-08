@@ -123,3 +123,25 @@ jobs:
             apps/web/test-results
           if-no-files-found: ignore
           retention-days: 7
+
+  package-e2e:
+    name: E2E (viewport + ui, chromium)
+    needs: lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Install chromium
+        run: pnpm --filter @whittle/viewport exec playwright install --with-deps chromium
+      - name: Viewport E2E
+        run: pnpm --filter @whittle/viewport e2e
+      # Visual baselines were recorded outside CI; until CI-generated baselines are committed,
+      # run the UI suite's functional/a11y assertions and skip pixel comparison.
+      - name: UI E2E (functional + axe)
+        run: pnpm --filter @whittle/ui exec playwright test --trace off --ignore-snapshots

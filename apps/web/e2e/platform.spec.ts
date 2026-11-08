@@ -120,11 +120,12 @@ test.describe('offline', () => {
     await expect
       .poll(() =>
         page.evaluate(
-          async (name) => (await (await caches.open(name)).keys()).length,
-          KERNEL_CACHE,
+          async ([name, url]) =>
+            (await (await caches.open(name)).keys()).some((r) => r.url.endsWith(url)),
+          [KERNEL_CACHE, FIXTURE_WASM] as const,
         ),
       )
-      .toBe(1);
+      .toBe(true);
     expect(await page.evaluate(() => caches.keys())).toContain('whittle-precache-v1');
 
     await context.setOffline(true);

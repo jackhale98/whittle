@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@whittle/contracts": "workspace:*",
+    "@whittle/kernel-client": "workspace:*",
     "@whittle/ui": "workspace:*",
     "@whittle/viewport": "workspace:*",
     "react": "19.3.1",

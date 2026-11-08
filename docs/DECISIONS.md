@@ -119,3 +119,29 @@ library changes. `libraryId` lets the UI offer "reset to library values".
 
 **Consequences.** The expression/units engine must support compound units (mass/length³). The
 inspector shows material and mass. BOMs (M6) list the material.
+
+---
+
+## ADR-005 — M0 integration decisions (2026-11-08)
+
+1. **COEP `require-corp` everywhere** (SW, dev/preview server, `_headers`). Safari/WebKit has not
+   shipped `credentialless` (through 26.5), so `credentialless` would leave every iOS browser
+   un-isolated. All assets are self-hosted, so `require-corp` costs nothing. COOP `same-origin`
+   severs `window.opener`, so OAuth flows (M2.5) must use redirects, not popups.
+2. **Kernel Wasm is runtime-cached, not precached.** The SW precaches the app shell. The kernel
+   `.wasm` and glue go in a `CacheFirst` `whittle-kernel-v1` cache the first time they load, so the
+   first visit doesn't block SW install on megabytes and phones don't download a kernel they may never
+   use. They are available offline after first use (verified by E2E).
+3. **Lazy viewport.** three.js + the viewport is ≈ 240 KB gzip, nearly the whole 250 KB
+   initial-route budget, so it is `import()`ed after the shell paints. Initial-route JS is 122 KB gzip.
+4. **Studio environment built after the first body frame.** PMREM generation of the procedural
+   `RoomEnvironment` compiles and renders several shader passes. Profiling on software GL
+   (SwiftShader, as in CI and this dev container) showed it as a ≈ 1.6 s main-thread block before
+   the first frame, and it starved the kernel worker's startup. The viewport now renders with a
+   hemisphere fill light first and builds a 64² environment on idle after the first body frame.
+   Warm time-to-box went from 2.5 s to ≈ 1.0 s on software GL.
+5. **Kernel boot waits for the isolation outcome** (`whenIsolationSettled`), so a kernel is never
+   booted in the document that the first-visit isolation reload discards. The threaded build is used
+   iff `crossOriginIsolated`.
+6. **CI visual baselines.** UI screenshot baselines were recorded in the dev container. CI runs the UI
+   suite with `--ignore-snapshots` until CI-generated baselines are committed.
