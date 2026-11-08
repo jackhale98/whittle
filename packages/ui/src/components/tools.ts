@@ -1,10 +1,13 @@
 import {
   ArrowUpFromLine,
+  Box,
   CircleDot,
   Grid3x3,
+  Hammer,
   PenLine,
   Rotate3d,
   Ruler,
+  ScanSearch,
   SquareDashed,
   SquareRoundCorner,
 } from 'lucide-react';
@@ -44,3 +47,20 @@ export const tools: readonly ToolDef[] = [
 ];
 
 export const COMING_SOON = 'Coming in M1';
+
+export type ToolGroupId = 'sketch' | 'solid' | 'modify' | 'inspect';
+
+export interface ToolGroupDef {
+  id: ToolGroupId;
+  label: string;
+  Icon: ToolDef['Icon'];
+  tools: readonly ToolId[];
+}
+
+/** Tablet rail groups (PLAN 9.1): Sketch / Solid / Modify / Inspect. Every tool is in one group. */
+export const toolGroups: readonly ToolGroupDef[] = [
+  { id: 'sketch', label: 'Sketch', Icon: PenLine, tools: ['sketch'] },
+  { id: 'solid', label: 'Solid', Icon: Box, tools: ['extrude', 'revolve', 'hole'] },
+  { id: 'modify', label: 'Modify', Icon: Hammer, tools: ['fillet', 'chamfer', 'shell', 'pattern'] },
+  { id: 'inspect', label: 'Inspect', Icon: ScanSearch, tools: ['measure'] },
+];

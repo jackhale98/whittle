@@ -254,7 +254,7 @@ export function Menu({ anchor, items, onDismiss, label, placement, size = 'md' }
                 onDismiss();
               }}
               className={cn(
-                'flex w-full items-center gap-2.5 rounded-[8px] px-2.5 text-left text-ui outline-none transition-colors duration-150',
+                'flex w-full items-center gap-2.5 rounded-[8px] px-2.5 text-left text-ui outline-none transition-colors duration-fast',
                 size === 'touch' ? 'h-11' : 'h-8',
                 'hover:bg-surface-2 focus-visible:bg-surface-3 aria-disabled:opacity-45',
                 item.danger ? 'text-danger-text' : 'text-fg',

@@ -333,3 +333,31 @@ function; ADR-008 item 9 left driving dimensions up to 1e-7 × sketch size off a
    worst residual. The conflict search does not polish: it only needs yes/no answers. Cost: drag
    median on the 200-entity chain went from ≈ 0.50 ms to ≈ 0.57 ms. A polish with real work on
    200 entities takes ≈ 0.7 ms.
+## ADR-012 — M2 UI: sheet, keypad and tablet rail (2026-11-08)
+
+1. **The bottom sheet moves with a CSS transform, not Motion.** Motion's features load lazily (ADR-005
+   keeps ~25 KB off the initial route), and a `style={{ y }}` motion value is not rendered until they
+   arrive, so the sheet sat at its open position on first paint. The sheet now renders
+   `translateY(...)` from React state: live under the finger, and a `transition` on
+   `--duration-standard` (260 ms, mirrored in `tokens.css` from `motion.ts`) when it settles.
+   `prefers-reduced-motion` already zeroes CSS transitions globally. Release velocity is projected
+   over 180 ms (the `fast` preset) before picking the nearest snap; a fast flick always moves one snap.
+2. **Stages use `overflow-clip`, not `hidden`.** A hidden box can be scrolled by focus or
+   `scrollIntoView`, which dragged a translated sheet's off-screen part into view and shifted the
+   whole stage by ~28 px.
+3. **`Measurement` is declared in the UI package** (`measure/types.ts`) because `@whittle/contracts`
+   has none yet (only `MassProperties`). It is structural: replace it with the contract type when the
+   lead adds it (proposed diff in the M2 UI hand-off).
+4. **Tablet rail groups.** Tools are reachable through their group (`[data-tool-group]`); a group
+   with several tools opens a flyout containing the same `[data-tool]` buttons, so tests that click
+   a tool on tablet must open its group first. Single-tool groups (Sketch, Inspect → Measure) stay
+   one tap. The tutorial uses comma selectors (`[data-tool="x"], [data-tool-group="y"]`) to point at
+   whichever is visible.
+5. **The keypad is placed, not floated.** Below the field if it fits, else above, else docked at the
+   bottom with a compact layout; it is portalled and follows the field every frame (sheets animate).
+   Keys never take focus, and the keyboard toggle exists in both layouts. Parameter names come from
+   `ParamNamesContext`, which the shells fill from `paramsTable`.
+6. **Touch targets are 44 px everywhere**, including `Segmented size="touch"` (was 40). The drag
+   handle of a sheet is the one exception (28 px strip): the whole peek area drags and the handle is
+   keyboard-operable.
+

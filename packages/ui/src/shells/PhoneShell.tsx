@@ -1,10 +1,30 @@
 import { Box, Download, Ruler, Scissors, SlidersHorizontal } from 'lucide-react';
-import { type ComponentType, useState } from 'react';
+import { type ComponentType, lazy, Suspense, useState } from 'react';
 import { Button, cn } from '../components/primitives';
 import { StatusChip } from '../components/StatusChip';
 import { ExportPanel } from '../export/ExportMenu';
-import { BottomSheet, EmptyState, Mark, ParamsPanel, ShellRoot, ViewportStage } from './shared';
+import { BottomSheet } from './BottomSheet';
+import {
+  EmptyState,
+  Mark,
+  ParamsPanel,
+  ShellRoot,
+  useSheetSnap,
+  ViewportOverlays,
+  ViewportStage,
+} from './shared';
 import type { ShellProps } from './types';
+
+// The viewer panels are fetched the first time their tab opens.
+const PartsPanel = lazy(() =>
+  import('../panels/PartsPanel').then((mod) => ({ default: mod.PartsPanel })),
+);
+const MeasurePanel = lazy(() =>
+  import('../panels/MeasurePanel').then((mod) => ({ default: mod.MeasurePanel })),
+);
+const SectionPanel = lazy(() =>
+  import('../panels/SectionPanel').then((mod) => ({ default: mod.SectionPanel })),
+);
 
 type SheetTab = 'parts' | 'params' | 'measure' | 'section' | 'export';
 
@@ -52,12 +72,20 @@ const sheetTabs: Array<{
   },
 ];
 
-const PEEK = 24 + 64;
+/** Handle (28) + tab row (56). */
+const PEEK = 28 + 56;
 
+const loading = <p className="p-6 text-center text-ui text-fg-muted">Loading…</p>;
+
+/**
+ * Phone shell (PLAN 9.1, viewer first): the viewport fills the screen; a bottom sheet with Parts /
+ * Params / Measure / Section / Export tabs slides over it. Editing is limited to parameters.
+ */
 export function PhoneShell(props: ShellProps) {
   const { documentName, kernelStatus, viewport, onExport, paramsTable, onExportRequest } = props;
-  const [open, setOpen] = useState(false);
+  const [snap, setSnap] = useSheetSnap(props);
   const [tab, setTab] = useState<SheetTab>('parts');
+  const open = snap !== 'peek';
 
   return (
     <ShellRoot tier="phone" props={props}>
@@ -87,11 +115,14 @@ export function PhoneShell(props: ShellProps) {
                 />
               </header>
 
+              <ViewportOverlays props={props} />
+
               <BottomSheet
-                open={open}
-                onOpenChange={setOpen}
+                snap={snap}
+                onSnapChange={setSnap}
                 peek={PEEK}
-                height="min(52dvh, 420px)"
+                halfMax={440}
+                topGap={64}
                 handleLabel="Tools"
                 testId="tools-sheet"
                 header={
@@ -104,12 +135,13 @@ export function PhoneShell(props: ShellProps) {
                           key={id}
                           type="button"
                           aria-pressed={on}
+                          data-sheet-tab={id}
                           onClick={() => {
                             setTab(id);
-                            setOpen(true);
+                            if (!open) setSnap('half');
                           }}
                           className={cn(
-                            'flex h-16 flex-col items-center justify-center gap-1 rounded-control text-2xs font-medium transition-colors duration-150',
+                            'flex h-14 flex-col items-center justify-center gap-1 rounded-control text-2xs font-medium transition-colors duration-fast',
                             on
                               ? 'bg-accent-soft text-accent-text'
                               : 'text-fg-muted active:bg-surface-2',
@@ -124,6 +156,15 @@ export function PhoneShell(props: ShellProps) {
                 }
               >
                 <div className="px-2 pb-4" data-testid="sheet-content">
+                  <Suspense fallback={loading}>
+                    {tab === 'parts' && props.parts ? <PartsPanel {...props.parts} /> : null}
+                    {tab === 'measure' && props.measure ? (
+                      <MeasurePanel {...props.measure} />
+                    ) : null}
+                    {tab === 'section' && props.section ? (
+                      <SectionPanel {...props.section} />
+                    ) : null}
+                  </Suspense>
                   {tab === 'params' && paramsTable ? (
                     <ParamsPanel {...paramsTable} density="touch" />
                   ) : null}
@@ -140,7 +181,10 @@ export function PhoneShell(props: ShellProps) {
                   ) : null}
                   {sheetTabs.map(({ id, Icon, title, body }) =>
                     id === tab &&
+                    !(id === 'parts' && props.parts) &&
                     !(id === 'params' && paramsTable) &&
+                    !(id === 'measure' && props.measure) &&
+                    !(id === 'section' && props.section) &&
                     !(id === 'export' && onExportRequest) ? (
                       <EmptyState key={id} icon={Icon} title={title}>
                         {body}

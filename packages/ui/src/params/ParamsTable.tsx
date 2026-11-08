@@ -101,7 +101,7 @@ function ParamRow({
         animate={{ x: 0 }}
         transition={spring}
         className={cn(
-          'flex gap-1.5 rounded-[10px] p-2 transition-colors duration-150 hover:bg-surface-2/70 focus-within:bg-surface-2/70',
+          'flex gap-1.5 rounded-[10px] p-2 transition-colors duration-fast hover:bg-surface-2/70 focus-within:bg-surface-2/70',
           dragging && 'bg-surface shadow-float',
           shaking > 0 && 'bg-danger-soft',
         )}
@@ -146,7 +146,7 @@ function ParamRow({
                   }
                 }}
                 className={cn(
-                  'w-full min-w-0 rounded-[7px] bg-transparent px-1.5 font-semibold text-fg outline-none transition-shadow duration-150 hover:shadow-[inset_0_0_0_1px_var(--color-border)] focus-visible:bg-surface focus-visible:shadow-[inset_0_0_0_2px_var(--color-accent)]',
+                  'w-full min-w-0 rounded-[7px] bg-transparent px-1.5 font-semibold text-fg outline-none transition-shadow duration-fast hover:shadow-[inset_0_0_0_1px_var(--color-border)] focus-visible:bg-surface focus-visible:shadow-[inset_0_0_0_2px_var(--color-accent)]',
                   touch ? 'h-11 text-sm' : 'h-7 text-ui',
                   nameError && 'shadow-[inset_0_0_0_1.5px_var(--color-danger)]',
                 )}

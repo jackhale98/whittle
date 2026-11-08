@@ -132,7 +132,7 @@ const isTyping = (t: EventTarget | null) => {
 };
 
 const itemBase =
-  'relative flex shrink-0 items-center justify-center rounded-control text-fg-muted transition-colors duration-150 select-none outline-none hover:bg-surface-2 hover:text-fg active:bg-surface-3 focus-visible:outline-2 focus-visible:outline-accent aria-pressed:bg-accent-soft aria-pressed:text-accent-text disabled:opacity-40';
+  'relative flex shrink-0 items-center justify-center rounded-control text-fg-muted transition-colors duration-fast select-none outline-none hover:bg-surface-2 hover:text-fg active:bg-surface-3 focus-visible:outline-2 focus-visible:outline-accent aria-pressed:bg-accent-soft aria-pressed:text-accent-text disabled:opacity-40';
 
 /**
  * Sketch-mode toolbar (PLAN 9.1, 9.4). Variants open on ArrowDown / right-click / long-press;
@@ -234,7 +234,7 @@ export function SketchToolbar({
         aria-label="Sketch tools"
         orientation={rail ? 'vertical' : 'horizontal'}
         className={cn(
-          'w-panel pointer-events-auto flex items-center gap-0.5 rounded-[18px] p-1.5',
+          'w-panel pointer-events-auto flex items-center gap-0.5 rounded-panel p-1.5',
           rail && 'flex-col',
           className,
         )}

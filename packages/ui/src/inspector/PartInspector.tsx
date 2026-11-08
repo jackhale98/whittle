@@ -152,7 +152,7 @@ export function PartInspector({
             aria-expanded={picking}
             icon={
               <ChevronDown
-                className={cn('size-4 transition-transform duration-150', picking && 'rotate-180')}
+                className={cn('size-4 transition-transform duration-fast', picking && 'rotate-180')}
               />
             }
             onClick={() => setPicking((p) => !p)}

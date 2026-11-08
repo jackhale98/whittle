@@ -54,15 +54,66 @@
     background: var(--panel-bg);
     -webkit-backdrop-filter: var(--panel-blur);
     backdrop-filter: var(--panel-blur);
-    box-shadow: var(--shadow-float);
+    box-shadow: var(--shadow-float), var(--shadow-highlight);
     border-radius: var(--radius-panel);
+  }
+
+  /* Bottom sheet: a floating panel, rounded on top only, shadow cast upward. */
+  .w-sheet {
+    background: var(--panel-bg);
+    -webkit-backdrop-filter: var(--panel-blur);
+    backdrop-filter: var(--panel-blur);
+    box-shadow: var(--shadow-sheet), var(--shadow-highlight);
+    border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
   }
 
   /* Opaque docked card (side panels, viewport frame). */
   .w-card {
     background: var(--color-surface);
-    box-shadow: var(--shadow-inset);
+    box-shadow: var(--shadow-card), var(--shadow-highlight);
     border-radius: var(--radius-panel);
+  }
+
+  /* Range slider with a 44px touch target (section offset). */
+  .w-range {
+    appearance: none;
+    -webkit-appearance: none;
+    height: 44px;
+    background: transparent;
+    touch-action: none;
+  }
+  .w-range::-webkit-slider-runnable-track {
+    height: 6px;
+    border-radius: 999px;
+    background: var(--color-surface-3);
+    box-shadow: inset 0 0 0 1px var(--color-border);
+  }
+  .w-range::-moz-range-track {
+    height: 6px;
+    border-radius: 999px;
+    background: var(--color-surface-3);
+  }
+  .w-range::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    margin-top: -11px;
+    width: 28px;
+    height: 28px;
+    border-radius: 999px;
+    border: 0;
+    background: var(--color-surface);
+    box-shadow:
+      0 0 0 2px var(--color-accent),
+      0 2px 6px rgb(15 23 42 / 0.25);
+  }
+  .w-range::-moz-range-thumb {
+    width: 26px;
+    height: 26px;
+    border-radius: 999px;
+    border: 0;
+    background: var(--color-surface);
+    box-shadow:
+      0 0 0 2px var(--color-accent),
+      0 2px 6px rgb(15 23 42 / 0.25);
   }
 
   .w-spinner {
@@ -74,6 +125,16 @@
   .w-pulse {
     animation: w-pulse 1.6s ease-in-out infinite;
   }
+}
+
+/* Transition durations use the motion presets (--duration-fast / --duration-standard). */
+@utility duration-fast {
+  transition-duration: var(--duration-fast);
+  transition-timing-function: var(--ease-standard);
+}
+@utility duration-standard {
+  transition-duration: var(--duration-standard);
+  transition-timing-function: var(--ease-standard);
 }
 
 @keyframes w-spin {

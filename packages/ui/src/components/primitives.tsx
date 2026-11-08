@@ -146,7 +146,7 @@ export function Button({
     <button
       type={type}
       className={cn(
-        'inline-flex shrink-0 items-center justify-center gap-1.5 rounded-control font-medium whitespace-nowrap transition-colors duration-150 select-none disabled:opacity-45 aria-disabled:opacity-45',
+        'inline-flex shrink-0 items-center justify-center gap-1.5 rounded-control font-medium whitespace-nowrap transition-colors duration-fast select-none disabled:opacity-45 aria-disabled:opacity-45',
         variants[variant],
         buttonSizes[size],
         className,
@@ -203,7 +203,7 @@ export function IconButton({
         aria-disabled={disabled || undefined}
         onClick={disabled ? (e) => e.preventDefault() : onClick}
         className={cn(
-          'inline-flex shrink-0 items-center justify-center rounded-control transition-colors duration-150 select-none aria-disabled:opacity-40',
+          'inline-flex shrink-0 items-center justify-center rounded-control transition-colors duration-fast select-none aria-disabled:opacity-40',
           size === 'touch' ? 'size-11' : 'size-8',
           pressed
             ? 'bg-accent-soft text-accent-text'

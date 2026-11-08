@@ -22,6 +22,7 @@ import {
   FeatureTree,
   geometricConstraintKinds,
   type MoveResult,
+  ParamNamesContext,
   ParamsTable,
   PartInspector,
   PromptChip,
@@ -247,6 +248,38 @@ function ExprSection() {
         />
       </Row>
     </div>
+  );
+}
+
+/** Two fields, one at the top and one at the bottom, to see the keypad flip above / below. */
+function KeypadSection() {
+  const { evaluate } = useSampleDoc();
+  const ev = (x: NamedDimension) => (e: Expr) => evaluate(e, x);
+  return (
+    <ParamNamesContext.Provider value={['width', 'height', 'wall', 'hole_d', 'tilt']}>
+      <div
+        className="flex min-h-dvh w-[min(100vw-16px,360px)] flex-col justify-between gap-4 p-4"
+        data-testid="g-keypad"
+      >
+        <ExpressionInput
+          label="Top field"
+          value="25mm"
+          evaluate={ev('length')}
+          size="touch"
+          keypad="always"
+          unitHint="mm"
+          onCommit={() => {}}
+        />
+        <ExpressionInput
+          label="Bottom field"
+          value="width / 2"
+          evaluate={ev('length')}
+          size="touch"
+          keypad="always"
+          onCommit={() => {}}
+        />
+      </div>
+    </ParamNamesContext.Provider>
   );
 }
 
@@ -480,6 +513,8 @@ export function Gallery({
         );
       case 'expr':
         return <ExprSection />;
+      case 'keypad':
+        return <KeypadSection />;
       case 'inspectors':
         return <InspectorSection tier={tier} />;
       case 'sketch':
