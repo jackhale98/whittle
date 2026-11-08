@@ -423,22 +423,20 @@ export class Workbench {
     for (const id of this.shownBodies) if (!next.has(id)) v.removeBody(id);
     this.shownBodies = next;
 
-    // Ghosts: last good geometry while something is in error (PLAN §9.2).
+    // Ghosts: last good geometry while something is in error (PLAN §9.2). The engine reports
+    // them (`RegenResult.ghosts`); engines that don't get the app's own last-all-ok fallback.
     const broken = result.features.some(
       (s) => s.state === 'error' || s.state === 'needsAttention' || s.state === 'blocked',
     );
-    if (!broken) {
-      this.lastGood = new Map(result.bodies.map((b) => [b.id, b.mesh]));
-      for (const id of this.ghosts) v.setGhost(id, null);
-      this.ghosts.clear();
-    } else {
-      for (const [id, mesh] of this.lastGood) {
-        const current = result.bodies.find((b) => b.id === id)?.mesh;
-        if (current === mesh) continue;
-        v.setGhost(id, mesh);
-        this.ghosts.add(id);
-      }
-    }
+    const ghosts = new Map<string, MeshBuffers>();
+    if (!broken) this.lastGood = new Map(result.bodies.map((b) => [b.id, b.mesh]));
+    else if (result.ghosts) for (const g of result.ghosts) ghosts.set(g.id, g.mesh);
+    else
+      for (const [id, mesh] of this.lastGood)
+        if (result.bodies.find((b) => b.id === id)?.mesh !== mesh) ghosts.set(id, mesh);
+    for (const id of this.ghosts) if (!ghosts.has(id)) v.setGhost(id, null);
+    for (const [id, mesh] of ghosts) v.setGhost(id, mesh);
+    this.ghosts = new Set(ghosts.keys());
     this.refreshSketchVisibility();
     this.pushHighlights();
   }
@@ -1041,7 +1039,10 @@ export class Workbench {
       return;
     }
     writeLastDoc(doc.meta.id);
-    if (old && old !== this.part?.id) void this.modeling?.closePart(old);
+    if (old && old !== this.part?.id) {
+      this.loop?.forget(old);
+      void this.modeling?.closePart(old);
+    }
     this.viewport?.fitAll(false);
   }
 

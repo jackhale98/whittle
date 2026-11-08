@@ -76,6 +76,8 @@ export interface RegenLoop {
   whenIdle(): Promise<void>;
   /** Number of regenerate calls made (diagnostics/tests). */
   readonly calls: number;
+  /** The part was closed in the engine (`closePart`): its revisions start again. */
+  forget(partId: Id): void;
   dispose(): void;
 }
 
@@ -189,6 +191,9 @@ export function createRegenLoop(options: RegenLoopOptions): RegenLoop {
     },
     get calls() {
       return calls;
+    },
+    forget(partId) {
+      lastRevision.delete(partId);
     },
     dispose() {
       disposed = true;

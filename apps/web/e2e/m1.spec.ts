@@ -2,8 +2,8 @@ import { expect, test } from '@playwright/test';
 import { app, boot, cameraStill, clickAt, palette } from './helpers';
 
 /**
- * M1 modeling flow against the production build with the fake regen engine (`?engine=fake`,
- * real OCCT kernel underneath): sketch → dimension → extrude by a parameter expression → tree
+ * M1 modeling flow against the production build with the real regen engine (kernel worker,
+ * OCCT + planegcs): sketch → dimension → extrude by a parameter expression → tree
  * edits → undo/redo → autosave + reload → export.
  */
 

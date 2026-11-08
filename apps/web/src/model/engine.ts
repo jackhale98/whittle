@@ -1,9 +1,7 @@
 /**
- * Picks and boots the regen engine.
- *
- * SWAP POINT for the real engine: once the kernel worker implements `ModelingApi`
- * (packages/kernel-client/src/regen), set `REAL_ENGINE_AVAILABLE = true`. `?engine=fake` keeps the
- * fake (E2E pins it until the real engine is merged); `?engine=real` forces the worker.
+ * Picks and boots the regen engine. The default is the real engine: the kernel worker's
+ * `Remote<ModelingWorkerApi>` (packages/kernel-client/src/regen). `?engine=fake` selects the
+ * main-thread fake (`fake-modeling.ts`, exact-name resolution only), kept for engine A/B checks.
  */
 
 import type { KernelStatus } from '@whittle/contracts';
@@ -12,8 +10,8 @@ import { mark } from '../app/timing';
 import { reportKernelVariant, whenIsolationSettled } from '../platform/runtime-state';
 import { createModeling, type Modeling, type ModelingPort } from './modeling';
 
-/** Flip to true when the kernel worker exposes `ModelingApi` (regenerate, refFor, …). */
-export const REAL_ENGINE_AVAILABLE = false;
+/** The kernel worker exposes `ModelingApi` (regenerate, refFor, …). */
+export const REAL_ENGINE_AVAILABLE = true;
 
 export type EngineKind = 'fake' | 'real';
 
@@ -56,8 +54,8 @@ export function bootEngine(onStatus: (status: KernelStatus) => void): EngineBoot
       const { createFakeModeling } = await import('./fake-modeling');
       port = createFakeModeling(client.api);
     } else {
-      // The real engine: the kernel worker's Comlink surface is `Remote<ModelingApi>`.
-      port = client.api as unknown as ModelingPort;
+      // The real engine: the kernel worker's Comlink surface is `Remote<ModelingWorkerApi>`.
+      port = client.api;
     }
     return createModeling(port);
   })();

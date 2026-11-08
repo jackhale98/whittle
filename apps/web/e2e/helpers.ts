@@ -17,8 +17,8 @@ export interface AppHooks {
 
 type W = { __whittle: WhittleTestHooks; __whittleApp: AppHooks };
 
-/** Opens the app with the fake regen engine and waits for the first regen to render. */
-export async function boot(page: Page, query = 'engine=fake'): Promise<void> {
+/** Opens the app (real regen engine unless `query` says `engine=fake`) and waits for the first regen to render. */
+export async function boot(page: Page, query = ''): Promise<void> {
   await page.goto(`./?${query}`);
   await page.waitForFunction(() => window.crossOriginIsolated === true);
   await page.evaluate(() => (window as unknown as W).__whittle.firstBodyRendered());
