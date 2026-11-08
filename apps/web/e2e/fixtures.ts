@@ -175,3 +175,43 @@ export function pocketDoc(): WhittleDoc {
     },
   ]);
 }
+
+/**
+ * Plate 80 × 50 × 10 and a 10 mm slot across its top (x 35…45, 3 deep) that splits the front top
+ * edge into two equal pieces; the fillet still names the unsplit edge: ambiguous, two candidates.
+ */
+export function slotDoc(): WhittleDoc {
+  const S1 = fid('S1');
+  const E1 = fid('E1');
+  const SS = fid('SS');
+  const SL = fid('SL');
+  const plate = new Sk();
+  const r = plate.rect('p', 'L', 0, 0, 80, 50, '80', '50');
+  plate.geo({ kind: 'fix', entity: r.a });
+  const top: EntityRef = { name: `F${E1}:end`, kind: 'face' };
+  const slot = new Sk();
+  slot.point('o', 0, 0, true);
+  slot.geo({ kind: 'fix', entity: 'o' });
+  const q = slot.rect('q', 'N', 35, -5, 45, 55, '10', '60');
+  slot.dim({ kind: 'hDistance', a: 'o', b: q.a }, '35');
+  slot.dim({ kind: 'vDistance', a: 'o', b: q.a }, '-5');
+  const frontTop: EntityRef = {
+    name: edgeName(`F${E1}:end`, side(E1, S1, 'L1')),
+    kind: 'edge',
+    fingerprint: { centroid: [40, 0, 10], length: 80 },
+  };
+  return docWith('Slotted plate', {}, [
+    plate.feature(S1, 'Plate sketch'),
+    extrude(E1, 'Plate', [region(S1, 'L1,L2,L3,L4')], '10'),
+    slot.feature(SS, 'Slot sketch', top),
+    extrude(SL, 'Slot', [region(SS, 'N1,N2,N3,N4')], '3', 'cut', 'reverse'),
+    {
+      id: fid('FT'),
+      type: 'fillet',
+      name: 'Front fillet',
+      suppressed: false,
+      edges: [frontTop],
+      radius: '2',
+    },
+  ]);
+}

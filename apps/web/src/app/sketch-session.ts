@@ -735,7 +735,9 @@ export class SketchSession {
     if (d) {
       this.drag = null;
       e.stopPropagation();
-      void (async () => {
+      // Queued like any edit, so the final drag result lands before anything after the release
+      // (an immediate undo, a dimension, `whenSettled`) — never after it as a separate step.
+      void this.serial(async () => {
         const session = await d.session;
         // Let an in-flight drag step land first.
         while (d.inFlight) await new Promise((r) => setTimeout(r, 4));
@@ -744,7 +746,7 @@ export class SketchSession {
           this.applyDragResult(res, d.key);
           this.wb.commit();
         } else this.selectEntity(d.entity, e.shiftKey);
-      })();
+      });
       return;
     }
     if (e.button !== 0 || !down) return;

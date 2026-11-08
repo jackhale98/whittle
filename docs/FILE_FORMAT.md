@@ -37,6 +37,7 @@ my-bracket/
 ├─ parts/bracket.part.json       one file per part: features, sketches, material (keyed by stable ids)
 ├─ drawings/sheet-1.drawing.json one file per drawing   (placeholder until M4)
 ├─ assemblies/asm.assembly.json  one file per assembly  (placeholder until M6)
+├─ imports/<featureId>.step      attachments: the bytes of import features (STEP, IGES, BREP, STL, OBJ, 3MF, GLB)
 ├─ releases/rev-A/…              frozen exports for a release (STEP/PDF)        — not read by Whittle
 ├─ previews/bracket.stl          optional small mesh for git-host 3D previews   — not read by Whittle
 ├─ .whittle-history/             snapshot history for non-git storage (§8A.3)    — not read by the codec
@@ -46,6 +47,19 @@ my-bracket/
 Only `whittle.project.json`, `params.json` and the files the manifest lists are read when opening a
 project. Everything else is ignored (and preserved by tools that copy folders). Derived geometry
 (meshes, BREP) never appears in source files.
+
+**Attachments.** An import feature (`type: "import"`) names its file in `source.path`
+(`imports/<featureId>.<format>`), with the lowercase hex `sha256` of the bytes and the original
+`fileName`. The bytes are a project file, never inline JSON. Whittle keeps every non-model file
+(`imports/`, `previews/`, `releases/`, …) when it opens and saves a project.
+
+**Mesh cache.** Whittle writes the latest fine meshes to `.whittle/meshes/` so a project renders
+before the kernel has loaded: `index.json` (`{ version: 1, key, bodies: [{ id, file }], sketches }`)
+and one `<bodyId>.bin` per body — `"WMB1"`, a little-endian `u32` header length, a JSON header
+(`faceNames`, `edgeNames`, `bbox`, `arrays: [{ key, type: "f32" | "u32", length }]`) padded to 4
+bytes, then the arrays. `key` is a hash of the canonical `schemaVersion`, `units`, `params` and
+`parts`: a cache whose key does not match the document is stale and ignored. Readers may ignore
+the cache entirely.
 
 ### Slugs
 

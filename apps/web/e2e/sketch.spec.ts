@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import type { SketchFeature } from '@whittle/contracts';
+import type { DimensionConstraint, SketchFeature } from '@whittle/contracts';
 import { app, boot, cameraStill, clickAt, toPage } from './helpers';
 
 /**
@@ -28,7 +28,7 @@ async function nearest(page: Page, x: number, y: number): Promise<{ x: number; y
 test('drag is one undo step; conflicts offer a fix; a failing extrude leaves a ghost', async ({
   page,
 }) => {
-  test.setTimeout(120_000);
+  test.slow(); // dozens of solves and regens; slow on 2-core software-GL CI runners
   await boot(page);
   const a = app(page);
   await page.keyboard.press('s');
@@ -57,6 +57,7 @@ test('drag is one undo step; conflicts offer a fix; a failing extrude leaves a g
     await page.waitForTimeout(30);
   }
   await page.mouse.up();
+  await a.settled();
   await expect
     .poll(async () => {
       const p = await nearest(page, 50, 38);
@@ -65,6 +66,7 @@ test('drag is one undo step; conflicts offer a fix; a failing extrude leaves a g
     .toBe(true);
   await page.keyboard.press('ControlOrMeta+z'); // the whole drag is one step
   await expect.poll(async () => nearest(page, start.x, start.y)).toEqual(start);
+  await a.settled();
 
   // Right edge 30 mm, then the left edge 35 mm: over-constrained → fix in one click.
   await page.keyboard.press('d');
@@ -73,6 +75,8 @@ test('drag is one undo step; conflicts offer a fix; a failing extrude leaves a g
   const editor = page.getByTestId('dimension-editor').getByRole('textbox');
   await expect(editor).toBeFocused();
   await editor.press('Enter'); // keep the measured 30 mm
+  await expect(editor).toBeHidden();
+  await a.settled();
   await clickAt(page, 0, 15);
   await clickAt(page, -8, 15);
   await expect(editor).toBeFocused();
@@ -81,9 +85,19 @@ test('drag is one undo step; conflicts offer a fix; a failing extrude leaves a g
   const panel = page.getByTestId('conflict-panel');
   await expect(panel).toBeVisible();
   await expect(page.getByTestId('sketch-status').first()).toContainText('Over-constrained');
+  // Fix labels wrap inside the card (no clipping).
+  for (const b of await panel.locator('li button').all()) {
+    const fits = await b.evaluate((el) => el.scrollWidth <= el.clientWidth + 1);
+    expect(fits, (await b.textContent()) ?? '').toBe(true);
+  }
+  await panel.locator('li').first().hover(); // highlights the conflicting constraints
+  await page.screenshot({ path: 'test-results/m1-conflict-panel.png' });
   await panel.getByRole('button').filter({ hasNotText: /^$/ }).nth(1).click();
   await expect(panel).toBeHidden();
   await expect.poll(async () => (await a.sketch())?.status).toBe('solved');
+  // Back to DOF colours: the hovered card's highlight is gone with it.
+  await expect.poll(async () => (await a.ui()).sketch?.highlight ?? null).toBeNull();
+  await page.screenshot({ path: 'test-results/m1-after-conflict-fix.png' });
 
   // Finish, extrude, then break it: depth 0 is an error, the last good body stays as a ghost.
   await page.getByTestId('finish-sketch').click();
@@ -103,4 +117,80 @@ test('drag is one undo step; conflicts offer a fix; a failing extrude leaves a g
   expect(r?.bodies).toHaveLength(0);
   await expect(page.getByTestId('feature-message')).toBeVisible();
   await page.screenshot({ path: 'test-results/m1-error-ghost.png' });
+});
+
+test('dimension tool: horizontal/vertical by placement, Ø ↔ R, driving ↔ reference', async ({
+  page,
+}) => {
+  test.slow();
+  await boot(page);
+  const a = app(page);
+  await page.keyboard.press('s');
+  await page.getByTestId('plane-chooser').getByRole('button', { name: /Top/ }).click();
+  await cameraStill(page);
+  // Slanted lines (0,0)→(30,20) and (40,0)→(60,15), then a circle at (−20, 10) R 6.
+  await clickAt(page, 0, 0);
+  await clickAt(page, 30, 20);
+  await page.keyboard.press('Escape');
+  await clickAt(page, 40, 0);
+  await clickAt(page, 60, 15);
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Shift+C');
+  await clickAt(page, -20, 10);
+  await clickAt(page, -14, 10);
+  await a.settled();
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('d');
+  const editor = page.getByTestId('dimension-editor').getByRole('textbox');
+  const dims = async () => {
+    await a.settled();
+    return (await sketchOf(page)).constraints.filter((c): c is DimensionConstraint => 'value' in c);
+  };
+
+  // Both end points, label above their span: horizontal distance (positive, left → right).
+  await clickAt(page, 0, 0);
+  await clickAt(page, 30, 20);
+  await clickAt(page, 15, 28);
+  await expect(editor).toBeFocused();
+  await editor.press('Enter');
+  // The line itself, label right of it: vertical distance between its ends.
+  await clickAt(page, 15, 10);
+  await clickAt(page, 38, 10);
+  await expect(editor).toBeFocused();
+  await editor.press('Enter');
+  // The other line, Shift while placing: aligned (its true length), wherever the label goes.
+  await clickAt(page, 50, 7.5);
+  await page.keyboard.down('Shift');
+  await clickAt(page, 50, 22);
+  await page.keyboard.up('Shift');
+  await expect(editor).toBeFocused();
+  await editor.press('Enter');
+  let d = await dims();
+  expect(d.map((c) => c.kind)).toEqual(['hDistance', 'vDistance', 'length']);
+  expect(d.map((c) => c.value)).toEqual(['30 mm', '20 mm', '25 mm']);
+
+  // Circle → diameter; the label's toggle makes it a radius (expression converted).
+  await clickAt(page, -26, 10);
+  await clickAt(page, -30, 20);
+  await expect(editor).toBeFocused();
+  const kindToggle = page.getByTestId('dimension-toggle-kind');
+  await expect(kindToggle).toHaveText('Ø → R');
+  await kindToggle.click();
+  await expect.poll(async () => (await dims()).at(-1)?.kind).toBe('radius');
+  d = await dims();
+  expect(d.at(-1)?.value).toBe('6 mm');
+
+  // Driving → reference (shown in parentheses), and back to driving from the selected label.
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: /^Dimension: 30/ }).click();
+  await expect(editor).toBeFocused();
+  await page.getByTestId('dimension-toggle-driving').click();
+  await expect.poll(async () => (await dims())[0]?.driving).toBe(false);
+  const ref = page.getByRole('button', { name: /^Reference dimension: / }).first();
+  await expect(ref).toHaveText(/^\(.*\)$/);
+  await page.screenshot({ path: 'test-results/m1-dimension-reference.png' });
+  await ref.click();
+  await page.getByTestId('dimension-toggle-driving').click();
+  await expect.poll(async () => (await dims())[0]?.driving).toBe(true);
+  expect((await dims())[0]?.value).toBe('30 mm');
 });

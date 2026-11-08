@@ -8,6 +8,9 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,
+  // One test at a time on CI: the 2-vCPU runners render with SwiftShader (software GL) and run
+  // the kernel's Wasm threads; parallel pages starve each other into timeouts.
+  ...(process.env.CI ? { workers: 1 } : {}),
   reporter: process.env.CI ? [['github'], ['html', { open: 'never' }]] : [['list']],
   use: {
     baseURL: `http://127.0.0.1:${PORT}${BASE_PATH}`,

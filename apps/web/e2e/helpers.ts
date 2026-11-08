@@ -33,6 +33,7 @@ export interface AppHooks {
       dimPicks: string[];
       editDimension: string | null;
       selected: string[];
+      highlight: readonly string[] | null;
     } | null;
   };
   load(doc: WhittleDoc): void;
@@ -43,6 +44,7 @@ export interface AppHooks {
     savedCacheKey: string | null;
   };
   sentAttachments(): string[];
+  attentionMarkers(): string[];
   pendingHeals(): Record<string, { path: string; name: string }[]>;
   library(): Promise<{ id: string; name: string }[]>;
   cacheSaved(): Promise<boolean>;
@@ -53,7 +55,10 @@ type W = { __whittle: WhittleTestHooks; __whittleApp: AppHooks };
 /** Opens the app (real regen engine unless `query` says `engine=fake`) and waits for the first regen to render. */
 export async function boot(page: Page, query = ''): Promise<void> {
   await page.goto(`./?${query}`);
-  await page.waitForFunction(() => window.crossOriginIsolated === true);
+  // The first visit reloads once for isolation: wait for the isolated document's own hooks.
+  await page.waitForFunction(
+    () => window.crossOriginIsolated === true && !!(window as unknown as Partial<W>).__whittle,
+  );
   await page.evaluate(() => (window as unknown as W).__whittle.firstBodyRendered());
 }
 
@@ -71,6 +76,8 @@ export const app = (page: Page) => ({
   projectFiles: () => page.evaluate(() => (window as unknown as W).__whittleApp.projectFiles()),
   sentAttachments: () =>
     page.evaluate(() => (window as unknown as W).__whittleApp.sentAttachments()),
+  attentionMarkers: () =>
+    page.evaluate(() => (window as unknown as W).__whittleApp.attentionMarkers()),
   pendingHeals: () => page.evaluate(() => (window as unknown as W).__whittleApp.pendingHeals()),
   library: () => page.evaluate(() => (window as unknown as W).__whittleApp.library()),
   cacheSaved: () => page.evaluate(() => (window as unknown as W).__whittleApp.cacheSaved()),

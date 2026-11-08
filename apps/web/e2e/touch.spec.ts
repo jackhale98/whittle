@@ -59,15 +59,32 @@ async function touchGesture(
       return { x: x + ((tx - x) * k) / steps, y: y + ((ty - y) * k) / steps, id: i + 1 };
     });
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: at(0) });
-  for (let k = 1; k <= steps; k++) {
+  for (let k = 1; k <= steps; k++)
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: at(k) });
-    await page.waitForTimeout(16);
-  }
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-  await page.waitForTimeout(600); // damping settles
+  await settled(page); // damping settles
+}
+
+/** Waits until the camera stops moving (two equal readings ~3 frames apart), not a fixed time. */
+async function settled(page: Page): Promise<void> {
+  let last = '';
+  for (let i = 0; i < 100; i++) {
+    const s = JSON.stringify(await camera(page));
+    if (s === last) return;
+    last = s;
+    await page.evaluate(
+      () =>
+        new Promise<void>((r) =>
+          requestAnimationFrame(() =>
+            requestAnimationFrame(() => requestAnimationFrame(() => r())),
+          ),
+        ),
+    );
+  }
 }
 
 test('one-finger drag over the part orbits the camera substantially', async ({ page }) => {
+  test.slow(); // software GL at 3× device pixels on CI
   await ready(page);
   const cdp = await page.context().newCDPSession(page);
   const box = await page.getByTestId('viewport-canvas').boundingBox();
@@ -83,6 +100,7 @@ test('one-finger drag over the part orbits the camera substantially', async ({ p
 });
 
 test('two-finger pinch zooms and two-finger drag pans', async ({ page }) => {
+  test.slow(); // software GL at 3× device pixels on CI
   await ready(page);
   const cdp = await page.context().newCDPSession(page);
   const box = await page.getByTestId('viewport-canvas').boundingBox();

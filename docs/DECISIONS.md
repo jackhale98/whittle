@@ -190,3 +190,36 @@ errors explicit. `5'6"` is not parsed as feet plus inches; write `5ft + 6in`.
    (8/s). Warm first body went from 1.38 s to 0.81 s on software GL.
 5. **Autosave** to the local library 500 ms after edits settle and on `visibilitychange: hidden`. The
    last document reopens on launch.
+
+---
+
+## ADR-008 — M1 gate fixes in the app (2026-11-08)
+
+1. **Reference healing is folded into the next user edit.** `FeatureStatus.rebound` (name and
+   fingerprint) is applied as extra patch ops in front of the user's next command, in the same undo
+   step (`apps/web/src/model/heal.ts`). A standalone history entry would make the first undo a
+   no-op, and the store has no history-free patch. Until then the engine keeps rebinding.
+2. **Opening a `.whittle` never overwrites a different library entry.** Same `meta.id` with
+   different content (document files or extra files) opens as a new entry: new id, " (copy)" when
+   the name is taken, and a non-modal note. Only an identical project reuses its entry.
+3. **Imports.** Open/Import (inspector, ⌘O) and drag-and-drop add an `ImportFeature` to the open
+   part; the library's and the welcome card's "Open or import…" start a new document for it (no
+   part is being worked on there). Bytes live at `imports/<featureId>.<format>` and are sent to the
+   engine once per part and worker (keyed by sha256), again after `closePart`.
+4. **Mesh cache for instant open.** Fine meshes go to `.whittle/meshes/` (FILE_FORMAT.md) with the
+   document. On launch the last document is read before React renders and the viewport is created
+   only after that read (≤ 400 ms): creating the view compiles shaders — a ≈ 0.5 s main-thread task
+   on software GL — which otherwise delays the IndexedDB/OPFS read behind it. Cached open went from
+   ≈ 0.9 s to ≈ 0.4 s (warm, SwiftShader); live regen then replaces the cached bodies.
+5. **Library thumbnails are rate-limited** (first save, flushes, else every 30 s): reading back the
+   WebGL canvas costs ≈ 200 ms on software GL and stalled interaction during editing.
+6. **Sketch overlays track the camera adaptively**: every frame while it moves or a pointer is
+   down, otherwise a 200 ms check. A perpetual `requestAnimationFrame` loop kept the compositor busy.
+7. **The fake engine is dev/test only** (`import.meta.env.DEV`); production builds do not contain it.
+8. **CI runs the web E2E with one worker** (2-vCPU runners, SwiftShader, Wasm threads). Heavy flows
+   use `test.slow()`; tests wait on app signals (`sketchSettled`, `idle`, camera settled), not time.
+9. **Sketch solver tolerance and coplanarity.** The solver treats a dimension within 1e-7 × sketch
+   size as satisfied and does not move geometry, so two sketches each ~1e-5 mm off can leave
+   sliver faces where faces should be coplanar. The acceptance E2E draws oversize so dimensions
+   really solve; a polish step in `packages/sketch` is proposed for M2.
+

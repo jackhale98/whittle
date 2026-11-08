@@ -176,7 +176,10 @@ export class Workbench {
   private sketchModule: Promise<typeof import('./sketch-session')> | null = null;
 
   constructor() {
-    this.store = createDocumentStore(freshDocument());
+    // Coalescing groups are closed explicitly (pointer up, Enter, blur); the idle window only
+    // guards against a forgotten commit, so it is long enough that a drag or a typed value on a
+    // busy main thread (software GL, long regens) never splits into several undo steps.
+    this.store = createDocumentStore(freshDocument(), { coalesceWindowMs: 10_000 });
     this.autosaver = createAutosaver({
       save: (doc) => this.saveToLibrary(doc),
       onError: (e) => this.toast(e instanceof Error ? e.message : 'Autosave failed', 'error'),
@@ -415,12 +418,21 @@ export class Workbench {
     this.store.commit();
   }
 
+  /** Undo/redo wait for sketch edits still being solved (they land first, then are undone). */
   undo(): void {
-    if (!this.store.undo()) this.toast('Nothing to undo', 'info');
+    const run = () => {
+      if (!this.store.undo()) this.toast('Nothing to undo', 'info');
+    };
+    if (this.sketch?.busy) void this.sketch.whenSettled().then(run);
+    else run();
   }
 
   redo(): void {
-    if (!this.store.redo()) this.toast('Nothing to redo', 'info');
+    const run = () => {
+      if (!this.store.redo()) this.toast('Nothing to redo', 'info');
+    };
+    if (this.sketch?.busy) void this.sketch.whenSettled().then(run);
+    else run();
   }
 
   // ------------------------------------------------------------------ regeneration → viewport
@@ -474,7 +486,9 @@ export class Workbench {
     this.cacheKey = geometry.key;
     this.savedCacheKey = geometry.key;
     const part = doc.parts[0];
-    if (!part || this.regen.get()?.source === 'live') return;
+    const current = this.regen.get();
+    // Never replace live geometry of this very part (only a previous document's, or nothing).
+    if (!part || (current?.source === 'live' && current.result.partId === part.id)) return;
     const view: RegenView = {
       source: 'cache',
       quality: 'fine',
@@ -634,7 +648,7 @@ export class Workbench {
     const v = this.viewport;
     if (!v) return;
     const items = attentionItems(this.treeStatuses.get());
-    const size = Math.max(partDiagonal(this.regen.get()?.result) * 0.03, 0.5);
+    const size = Math.max(partDiagonal(this.regen.get()?.result) * 0.05, 0.5);
     const next = new Map<string, MeshBuffers>();
     for (const it of items) {
       // The stored fingerprint, else the engine's last known location of the reference.
@@ -1676,6 +1690,7 @@ export class Workbench {
                 dimPicks: u.sketch.dimPicks,
                 editDimension: u.sketch.editDimension,
                 frame: u.sketch.frame !== null,
+                highlight: u.sketch.highlightConstraints,
                 selected: u.sketch.selected,
               }
             : null,
@@ -1692,6 +1707,8 @@ export class Workbench {
         savedCacheKey: this.savedCacheKey,
       }),
       sentAttachments: () => [...(this.loop?.sentAttachments ?? [])],
+      /** Ghost markers at the old location of unresolved references. */
+      attentionMarkers: () => [...this.markers],
       pendingHeals: () => Object.fromEntries(this.heals),
       library: async () => {
         const lib = await this.library();

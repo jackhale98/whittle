@@ -139,7 +139,7 @@ export function DimensionLabel({
     return (
       // biome-ignore lint/a11y/noStaticElementInteractions: Enter bubbling from the input
       <div
-        className="absolute z-[2] w-44"
+        className="pointer-events-auto absolute z-[2] w-44"
         style={pos}
         data-testid="dimension-editor"
         onKeyDown={(e) => {
@@ -200,7 +200,7 @@ export function DimensionLabel({
       aria-pressed={selected}
       onClick={() => (driving ? setEditing(true) : onSelect?.())}
       className={cn(
-        'tnum absolute z-[1] h-6 rounded-[8px] px-2 text-xs font-semibold whitespace-nowrap transition-colors duration-150',
+        'tnum pointer-events-auto absolute z-[1] h-6 rounded-[8px] px-2 text-xs font-semibold whitespace-nowrap transition-colors duration-150',
         conflicting
           ? 'bg-danger-soft text-danger-text shadow-[inset_0_0_0_1.5px_var(--color-danger)]'
           : driving
