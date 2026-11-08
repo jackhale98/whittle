@@ -179,6 +179,9 @@ importers:
       '@whittle/document':
         specifier: workspace:*
         version: link:../document
+      '@whittle/io':
+        specifier: workspace:*
+        version: link:../io
       '@whittle/kernel':
         specifier: workspace:*
         version: link:../kernel
@@ -191,10 +194,6 @@ importers:
       fflate:
         specifier: 0.8.3
         version: 0.8.3
-    devDependencies:
-      '@whittle/io':
-        specifier: workspace:*
-        version: link:../io
 
   packages/sketch:
     dependencies:

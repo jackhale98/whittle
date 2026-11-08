@@ -66,6 +66,21 @@ describe('createKernelClient', () => {
     client.dispose();
   });
 
+  it('sends the regen budget to the worker before init', () => {
+    const worker = new FakeWorker();
+    const client = createKernelClient({
+      regen: { maxSpareResults: 16 },
+      variant: 'single',
+      createWorker: () => worker as unknown as Worker,
+    });
+    const calls = worker.posted.map((m) => m as { path?: string[]; argumentList?: unknown[] });
+    expect(calls.map((m) => m.path?.[0])).toEqual(['configureRegen', 'init']);
+    expect(JSON.stringify(calls[0]?.argumentList)).toContain('16');
+    // The regen option is not an init option.
+    expect(JSON.stringify(calls[1]?.argumentList)).not.toContain('maxSpareResults');
+    client.dispose();
+  });
+
   it('starts init automatically and terminates the worker on dispose', () => {
     const { worker, client } = setup(true);
     // Comlink posted the init() call to the worker.

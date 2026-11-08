@@ -179,4 +179,21 @@ describe.skipIf(!built)(`regen golden: cache and handles${skipNote}`, () => {
     expect(small.liveHandleCount()).toBe(baseline);
     expect(small.engine.stats(PART)).toBeNull();
   }, 120_000);
+
+  it('configureRegen lowers the spare budget at runtime (device tiers)', async () => {
+    const doc = bracketDoc();
+    const regen = (width: string) =>
+      api.regenerate({ doc: withParams(doc, { width }), partId: PART, quality: 'coarse' });
+    for (const w of ['81 mm', '82 mm', '83 mm', '84 mm']) await regen(w);
+    const before = api.engine.stats(PART)?.entries ?? 0;
+    await api.configureRegen({ maxSpareResults: 0 });
+    await regen('85 mm');
+    const after = api.engine.stats(PART)?.entries ?? 0;
+    // Only the latest regen's and the last all-ok regen's entries survive (here the same: 9).
+    expect(after).toBe(9);
+    expect(before).toBeGreaterThan(after);
+    await api.configureRegen({ maxSpareResults: -1 }); // invalid: ignored
+    await api.configureRegen({ maxSpareResults: 128 });
+    await api.closePart(PART);
+  });
 });
