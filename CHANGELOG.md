@@ -27,3 +27,7 @@
 - Published JSON Schemas at `/whittle/schema/`; the fake engine is dev/test only.
 - Acceptance: the PLAN §12 bracket built through the UI on the real engine, three parameter edits, STEP export and re-import (volume within 1e-6; holes checked to move).
 - Fixes: fast clicks close a sketch loop on its start point; several-group expressions convert Ø ↔ R correctly; CI E2E runs on one worker with real waits.
+
+### M2 — Touch & tablet excellence
+
+- Platform: installed iPad/iPhone PWA hardening (no page zoom or scroll, no callouts or rubber-banding, safe-area variables), iPadOS-as-Mac tier detection, tier policy (regen cache, mesh quality, phone lazy kernel boot); CI performance gate (shell TTI, memory, viewport probes with a SwiftShader factor), non-gating Lighthouse job, failure-only Playwright traces.

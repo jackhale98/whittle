@@ -13,3 +13,4 @@ test-results/
 !.env.example
 .claude/worktrees/
 !apps/web/e2e/fixtures/*.wasm
+.lighthouseci/

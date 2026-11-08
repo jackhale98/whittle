@@ -24,7 +24,12 @@ test.use(PHONE);
 
 async function ready(page: Page): Promise<void> {
   await page.goto('./');
-  await page.waitForFunction(() => window.crossOriginIsolated === true);
+  // Isolation is known at document start; the app's hooks only exist once its module has run.
+  await page.waitForFunction(
+    () =>
+      window.crossOriginIsolated === true &&
+      !!(window as unknown as Partial<{ __whittle: unknown }>).__whittle,
+  );
   await page.evaluate(() =>
     (window as unknown as { __whittle: WhittleTestHooks }).__whittle.firstBodyRendered(),
   );

@@ -1,11 +1,56 @@
 /* App-level styles. Tailwind, tokens and fonts come from @whittle/ui/styles.css. */
+
+/*
+ * Safe-area insets for the shells (notch, home indicator, rounded iPad corners). Requires
+ * `viewport-fit=cover` (index.html). Use as `padding-top: var(--safe-top)` or, to keep a minimum,
+ * `max(var(--safe-top), 8px)`. Always 0px where the device has no inset.
+ */
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+}
+
 html,
 body,
 #root {
   height: 100%;
 }
 
+html {
+  /* No double-tap zoom and no 300 ms click delay; pinch is blocked in platform/page-guards.ts.
+     The viewport canvas sets its own `touch-action: none`. */
+  touch-action: manipulation;
+  /* No rubber-banding or pull-to-refresh at the page level; panels scroll themselves. */
+  overscroll-behavior: none;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
 body {
   margin: 0;
   overscroll-behavior: none;
+  /* The app is a fixed-size surface: the page itself never scrolls. */
+  overflow: hidden;
+  /* Chrome is not selectable and has no long-press callout; inputs below opt back in. */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+input,
+textarea,
+select,
+[contenteditable="true"],
+[data-selectable] {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
+
+/* Re-assert on the canvas: it owns all touch gestures. */
+canvas {
+  touch-action: none;
 }

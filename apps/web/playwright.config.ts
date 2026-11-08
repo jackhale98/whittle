@@ -2,6 +2,7 @@ import { defineConfig, devices } from '@playwright/test';
 
 const PORT = Number(process.env.WHITTLE_E2E_PORT ?? 4173);
 const BASE_PATH = '/whittle/';
+const PWA_SHELL = /pwa-shell\.spec\.ts/;
 
 export default defineConfig({
   testDir: './e2e',
@@ -27,10 +28,29 @@ export default defineConfig({
     timeout: 30_000,
   },
   projects: [
-    { name: 'chromium', testMatch: /.*\.spec\.ts/, use: { ...devices['Desktop Chrome'] } },
+    {
+      name: 'chromium',
+      testMatch: /.*\.spec\.ts/,
+      testIgnore: PWA_SHELL,
+      use: { ...devices['Desktop Chrome'] },
+    },
+    // Installed-PWA chrome checks (no page zoom, no scroll) with Chromium touch emulation at iPad
+    // Pro 11 size. Gating. The real iPad engine runs as `webkit-ipad` below (non-gating).
+    {
+      name: 'chromium-touch',
+      testMatch: PWA_SHELL,
+      use: {
+        ...devices['Desktop Chrome'],
+        viewport: devices['iPad Pro 11'].viewport,
+        deviceScaleFactor: 2,
+        isMobile: true,
+        hasTouch: true,
+      },
+    },
     {
       name: 'firefox',
       testMatch: /.*\.spec\.ts/,
+      testIgnore: PWA_SHELL,
       use: {
         ...devices['Desktop Firefox'],
         // CI runs Firefox headed under Xvfb (see ci.yml) so it gets Mesa's software GL.
@@ -46,7 +66,14 @@ export default defineConfig({
         },
       },
     },
-    { name: 'webkit', testMatch: /.*\.spec\.ts/, use: { ...devices['Desktop Safari'] } },
+    {
+      name: 'webkit',
+      testMatch: /.*\.spec\.ts/,
+      testIgnore: PWA_SHELL,
+      use: { ...devices['Desktop Safari'] },
+    },
+    // WebKit with Playwright's "iPad Pro 11" emulation. Non-gating like the other WebKit job.
+    { name: 'webkit-ipad', testMatch: PWA_SHELL, use: { ...devices['iPad Pro 11'] } },
     {
       name: 'perf',
       testMatch: /.*\.perf\.ts/,
