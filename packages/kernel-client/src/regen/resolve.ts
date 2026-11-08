@@ -4,14 +4,16 @@
  * (`missing` / `ambiguous` with candidates) and the feature goes to "needs attention".
  *
  * Order:
- *  1. Exact name, exactly one match → resolved. (A `#k` split name is re-checked against its
- *     fingerprint when the split family has several members; a clear fingerprint winner overrides
- *     the index, otherwise the exact name stands.)
+ *  1. Exact name, exactly one match → resolved. (A `#k` split name — or a weak, imported name —
+ *     is re-checked against its fingerprint when its family has several members; a clear
+ *     fingerprint winner overrides the index; otherwise the exact name stands only while it is
+ *     plausibly the same entity — near, normal agreeing and overlapping the old location — else
+ *     unresolved.)
  *  2. Name family: the same name once every `#k` split suffix in it is ignored (the entity — or a
  *     face its edge/vertex name is built from — was split, or split pieces merged back), or several
  *     exact matches → disambiguate by fingerprint: nearest centroid
  *     among candidates whose normal agrees, accepted only within the loose tolerance and with a
- *     clear margin over the runner-up.
+ *     clear margin over every other member (normal-rejected ones included).
  *  3. No name match → fingerprint-only: candidates of the same kind within the strict tolerance
  *     (centroid, normal, area/length all agree); exactly one → resolved.
  *  4. Otherwise unresolved.
@@ -21,7 +23,8 @@
  *  - strict (fingerprint-only): centroid within 1e-3·diag (≥ 1e-6 mm), normals within ~0.8°
  *    (dot ≥ 0.9999), area / length within 0.1 % relative;
  *  - loose (name family): centroid within 0.25·diag, normals within ~18° (dot ≥ 0.95);
- *  - margin: winner distance ≤ ½ × runner-up distance and ≥ 1e-3·diag apart.
+ *  - margin: winner distance ≤ ½ × runner-up distance and ≥ 1e-3·diag apart;
+ *  - weak names (imports): radius 0.1·diag, area/length within 25 %, planar vs curved must match.
  *
  * `planeLike` (sketch planes, offset planes, up-to targets): only the plane of a face matters, so
  * ambiguity among coplanar planar faces with the same outward normal is not ambiguity — any of
@@ -61,6 +64,11 @@ export interface ResolveContext {
   planeLike?: boolean;
   /** Fingerprints of a candidate shape (cached by the caller); null when unavailable. */
   fingerprints(shape: number): Promise<ShapeFingerprints | null>;
+  /**
+   * Names whose `#k` indices are pure geometric order with no construction history behind them
+   * (imported topology): the index alone is no evidence once the geometry may have changed.
+   */
+  weak?: (name: string) => boolean;
 }
 
 export const TOLERANCE = {
@@ -72,6 +80,9 @@ export const TOLERANCE = {
   looseNormalDot: 0.95,
   marginRatio: 0.5,
   marginRel: 1e-3,
+  /** Weak (imported) names: tighter family search radius and the measure must roughly agree. */
+  weakRel: 0.1,
+  weakMeasureRel: 0.25,
   /** planeLike: coplanar when offsets agree within this × diag (≥ 1e-6 mm). */
   coplanarRel: 1e-6,
 } as const;
@@ -139,11 +150,27 @@ async function measureAll(cands: Candidate[], ctx: ResolveContext): Promise<Meas
   return out;
 }
 
-/** Disambiguates a name family (or duplicate exact names) by fingerprint. */
+/** The candidate agrees with the ref's normal (weak names: planar vs curved must agree too). */
+function normalAgrees(fp: Fingerprint, m: Measured, weak: boolean): boolean {
+  if (fp.normal !== undefined && m.normal !== undefined) {
+    return dot(normalize(fp.normal), normalize(m.normal)) >= TOLERANCE.looseNormalDot;
+  }
+  return !weak || m.c.kind !== 'face' || (fp.normal === undefined) === (m.normal === undefined);
+}
+
+/**
+ * Disambiguates a name family (or duplicate exact names) by fingerprint: the nearest candidate
+ * whose normal agrees, within the search radius, by a clear margin over **every** other member —
+ * including members rejected for their normal (a nearer member facing the other way means the
+ * evidence is contradictory, so it is ambiguous rather than a pick).
+ */
 async function disambiguate(
   ref: EntityRef,
   family: Candidate[],
   ctx: ResolveContext,
+  weak = false,
+  /** Weak names: also require the area/length to roughly agree (not for plane-like refs). */
+  checkMeasure = weak,
 ): Promise<Resolution> {
   const names = family.map((c) => c.name);
   const ms = await measureAll(family, ctx);
@@ -157,19 +184,21 @@ async function disambiguate(
   }
   const fp = ref.fingerprint;
   if (!fp) return { ok: false, reason: 'ambiguous', candidates: names };
-  const loose = TOLERANCE.looseRel * ctx.diag;
-  const scored = ms
-    .filter(
-      (m) =>
-        fp.normal === undefined ||
-        m.normal === undefined ||
-        dot(normalize(fp.normal), normalize(m.normal)) >= TOLERANCE.looseNormalDot,
-    )
-    .map((m) => ({ m, d: dist(m.centroid, fp.centroid) }))
-    .sort((a, b) => a.d - b.d);
-  const best = scored[0];
-  if (!best || best.d > loose) return { ok: false, reason: 'ambiguous', candidates: names };
-  const next = scored[1];
+  const radius = (weak ? TOLERANCE.weakRel : TOLERANCE.looseRel) * ctx.diag;
+  const want = refMeasure(fp);
+  const all = ms.map((m) => ({ m, d: dist(m.centroid, fp.centroid) })).sort((a, b) => a.d - b.d);
+  const accepted = all.filter(
+    ({ m }) =>
+      normalAgrees(fp, m, weak) &&
+      (!checkMeasure ||
+        ctx.planeLike === true ||
+        want === undefined ||
+        m.measure === undefined ||
+        relDiff(want, m.measure) <= TOLERANCE.weakMeasureRel),
+  );
+  const best = accepted[0];
+  if (!best || best.d > radius) return { ok: false, reason: 'ambiguous', candidates: names };
+  const next = all.find((x) => x !== best);
   if (
     next &&
     !(best.d <= TOLERANCE.marginRatio * next.d && next.d - best.d >= TOLERANCE.marginRel * ctx.diag)
@@ -177,6 +206,45 @@ async function disambiguate(
     return { ok: false, reason: 'ambiguous', candidates: names };
   }
   return { ok: true, target: { ...best.m.c, via: 'name+fingerprint' } };
+}
+
+/**
+ * Could the exact-name candidate still be the referenced entity? Split names: within the family
+ * search radius of the ref's fingerprint with an agreeing normal. Weak (imported) names: it must
+ * be the clear nearest normal-compatible member of its family (its area/length may have changed,
+ * e.g. through a downstream fillet).
+ */
+async function plausible(
+  ref: EntityRef,
+  only: Candidate,
+  family: Candidate[],
+  ctx: ResolveContext,
+  weak: boolean,
+): Promise<boolean> {
+  const fp = ref.fingerprint;
+  if (!fp) return true;
+  if (weak) {
+    const d = await disambiguate(ref, family, ctx, true, false);
+    return d.ok && d.target.shape === only.shape && d.target.index === only.index;
+  }
+  const m = await measure(only, ctx);
+  if (!m) return true;
+  // The two entities must overlap: centroids no farther apart than their combined reach (the
+  // "radius" their area/length implies). An index that moved to a piece elsewhere is no evidence.
+  const reach = (kind: SubKind, v: number | undefined) =>
+    v === undefined
+      ? 0
+      : kind === 'face'
+        ? Math.sqrt(Math.abs(v))
+        : kind === 'edge'
+          ? Math.abs(v) / 2
+          : 0;
+  const overlap =
+    reach(only.kind, refMeasure(fp)) +
+    reach(only.kind, m.measure) +
+    Math.max(TOLERANCE.strictRel * ctx.diag, TOLERANCE.strictAbs);
+  const d = dist(m.centroid, fp.centroid);
+  return d <= TOLERANCE.looseRel * ctx.diag && d <= overlap && normalAgrees(fp, m, false);
 }
 
 /** Fingerprint-only match within the strict tolerance. */
@@ -227,24 +295,36 @@ export async function resolveRef(
   const exact = cands.filter((c) => c.name === ref.name);
   const base = baseName(ref.name);
   const family = cands.filter((c) => baseName(c.name) === base);
+  const weak = ctx.weak?.(ref.name) === true;
   if (exact.length === 1) {
     const only = exact[0] as Candidate;
-    if (SPLIT.test(ref.name) && ref.fingerprint && family.length > 1) {
-      const d = await disambiguate(ref, family, ctx);
+    if ((SPLIT.test(ref.name) || weak) && ref.fingerprint && family.length > 1) {
+      const d = await disambiguate(ref, family, ctx, weak);
       if (d.ok) return d;
+      // No clear fingerprint winner: the exact `#k` stands only while it is still plausibly the
+      // same entity (an index silently moves to another piece when an earlier piece vanishes).
+      if (!(await plausible(ref, only, family, ctx, weak))) {
+        return d.candidates
+          ? { ok: false, reason: 'ambiguous', candidates: d.candidates }
+          : { ok: false, reason: 'missing' };
+      }
     }
     return { ok: true, target: { ...only, via: 'name' } };
   }
-  if (exact.length > 1) return disambiguate(ref, exact, ctx);
-  if (family.length > 1) return disambiguate(ref, family, ctx);
+  if (exact.length > 1) return disambiguate(ref, exact, ctx, weak);
+  if (family.length > 1) return disambiguate(ref, family, ctx, weak);
   if (family.length === 1) {
     const only = family[0] as Candidate;
     // `X#k` → only `X` left: the split pieces merged back into one entity.
-    if (!SPLIT.test(only.name)) return { ok: true, target: { ...only, via: 'name' } };
+    if (!SPLIT.test(only.name) && !weak) return { ok: true, target: { ...only, via: 'name' } };
     // `X#k` → only `X#j` left: one piece vanished; accept only on strict fingerprint evidence
-    // (the surviving piece may well be a different one).
+    // (the surviving piece may well be a different one). Weak (imported) names: likewise.
     const d = await byFingerprint(ref, family, ctx);
-    return d.ok ? d : { ok: false, reason: 'missing' };
+    if (d.ok) return d;
+    if (weak && !ref.fingerprint && !SPLIT.test(only.name)) {
+      return { ok: true, target: { ...only, via: 'name' } };
+    }
+    return { ok: false, reason: 'missing' };
   }
   return byFingerprint(ref, cands, ctx);
 }

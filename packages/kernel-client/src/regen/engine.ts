@@ -36,8 +36,10 @@ import type {
   FeatureResult,
   FeatureStatus,
   FilletFeature,
+  Fingerprint,
   Frame,
   Id,
+  ImportFeature,
   KernelError,
   MassProperties,
   MeshBuffers,
@@ -50,6 +52,7 @@ import type {
   RegenRequest,
   RegenResult,
   ResolvedRef,
+  Result,
   RevolveFeature,
   ShapeFingerprints,
   ShapeHandle,
@@ -71,6 +74,7 @@ import {
   sketchSolveValues,
   tryResolveDensity,
 } from '@whittle/document';
+import { IoError, importMesh, meshToStl } from '@whittle/io';
 import { zipSync } from 'fflate';
 import type { KernelApiInternals, KernelWorkerApi } from '../kernel-api';
 import { copyMesh, faceIndex, faceSubMesh } from './buffers';
@@ -87,6 +91,20 @@ import {
   toWorld,
 } from './geometry';
 import { hashKey } from './hash';
+import {
+  compareGeoKey,
+  faceNamesByKey,
+  frameMatrix,
+  importNamingTag,
+  isIdentity,
+  type Matrix34,
+  mentionsImport,
+  placeBrep,
+  placeMesh,
+  sha256Hex,
+  translateName,
+  translateNaming,
+} from './imports';
 import { type Candidate, type ResolvedTarget, resolveRef, type SubKind } from './resolve';
 
 // ---------------------------------------------------------------------------------------------
@@ -119,10 +137,33 @@ export interface RegenEngineDeps {
   options?: RegenEngineOptions;
 }
 
+/**
+ * A reference that resolved by fingerprint / name-family disambiguation rather than by its exact
+ * stored name. `name` is the current name and `fingerprint` the entity's current fingerprint, so
+ * the app can heal the stored ref (proposed contract field: `fingerprint`, see README).
+ */
+export interface ReboundRef {
+  path: string;
+  name: string;
+  fingerprint?: Fingerprint;
+}
+
+/** `UnresolvedRef` plus the fingerprint seen the last time this ref resolved (proposed). */
+export interface RegenUnresolvedRef extends UnresolvedRef {
+  /**
+   * Where the entity was the last time this (feature, path) resolved in this worker — present
+   * when the stored ref has no fingerprint of its own (otherwise `ref.fingerprint` is the old
+   * location), so the app can always ghost the old location.
+   */
+  lastKnown?: Fingerprint;
+}
+
 /** Extensions over the contract (proposed for packages/contracts, see README). */
 export interface RegenFeatureStatus extends FeatureStatus {
   /** Non-fatal kernel/engine warnings (e.g. "The cut does not touch any body"). */
   warnings?: KernelError[];
+  unresolved?: RegenUnresolvedRef[];
+  rebound?: ReboundRef[];
 }
 
 export interface RegenOutput extends RegenResult {
@@ -159,6 +200,19 @@ interface BodyState {
   naming: NamingMap;
   /** Content key (changes iff the geometry/naming may have changed). */
   key: string;
+  /** A mesh-only reference body (STL/OBJ/3MF/GLB import): displayed and exported, never modified. */
+  meshOnly?: boolean;
+}
+
+/** An attachment read once and cached by sha256 (unplaced, unnamed kernel shapes or meshes). */
+interface RawImport {
+  sha: string;
+  format: ImportFeature['source']['format'];
+  /** B-rep solids in file order (owned by the import cache). */
+  shapes: ShapeHandle[];
+  /** Mesh formats: one mesh per object in the file (TS-side; placed and handed to the kernel per use). */
+  meshes: MeshBuffers[];
+  lastUsed: number;
 }
 
 interface SketchState {
@@ -205,6 +259,14 @@ interface PartCache {
   tick: number;
   latest: { bodies: BodyState[]; keys: Set<string>; partName: string } | null;
   lastGood: { bodies: BodyState[]; keys: Set<string> } | null;
+  /** Imported attachments by sha256. */
+  imports: Map<string, RawImport>;
+  /**
+   * Where each `(featureId|path)` ref resolved last (for `lastKnown`). The shape is one of the
+   * previous regen's, which stays live until the current regen ends; the fingerprint is computed
+   * only when needed.
+   */
+  lastResolved: Map<string, { shape: ShapeHandle; kind: SubKind; index: number }>;
 }
 
 class ModelState {
@@ -241,6 +303,13 @@ interface WalkContext {
   hits: number;
   misses: number;
   diag: { version: number; value: number } | null;
+  attachments: Record<string, Uint8Array>;
+  /** Ids of the part's import features (their names are geometric-key names: weak evidence). */
+  importIds: Set<Id>;
+  /** Imports used by this regen (sha256). */
+  usedImports: Set<string>;
+  /** The feature being planned: id and the refs rebound so far. */
+  current: { featureId: Id; rebound: ReboundRef[] };
 }
 
 /** What a feature needs once its references are resolved. */
@@ -248,7 +317,8 @@ interface Plan {
   key: string;
   /** Bodies the feature reads or acts on (taint check before running). */
   involved: string[];
-  run: () => Promise<{ result: EntryResult; owned: ShapeHandle[] }>;
+  /** `transient`: the outcome depends on something outside the key (attachments): don't cache it. */
+  run: () => Promise<{ result: EntryResult; owned: ShapeHandle[]; transient?: boolean }>;
 }
 
 interface Planned {
@@ -300,7 +370,7 @@ export class RegenEngine {
   private readonly kernel: RegenEngineDeps['kernel'];
   private readonly solverLoader: RegenEngineDeps['sketchSolver'];
   private solver: SketchSolve | null = null;
-  private readonly maxSpare: number;
+  private maxSpare: number;
   private readonly quality: Record<
     MeshQuality,
     { linearDeflection: number; angularDeflection: number }
@@ -319,7 +389,7 @@ export class RegenEngine {
   constructor(deps: RegenEngineDeps) {
     this.kernel = deps.kernel;
     this.solverLoader = deps.sketchSolver;
-    this.maxSpare = deps.options?.maxSpareResults ?? 128;
+    this.maxSpare = validSpare(deps.options?.maxSpareResults) ?? 128;
     this.quality = { ...MESH_QUALITY, ...deps.options?.meshQuality };
     this.now = deps.options?.now ?? (() => performance.now());
   }
@@ -338,6 +408,17 @@ export class RegenEngine {
     return this.serial(() => this.regen(request));
   }
 
+  /**
+   * Changes the cache budget at runtime (e.g. the tablet/phone tier). Takes effect at the next
+   * regen of each part, which evicts down to the new bound.
+   */
+  configure(options: Pick<RegenEngineOptions, 'maxSpareResults'>): Promise<void> {
+    return this.serial(async () => {
+      const spare = validSpare(options.maxSpareResults);
+      if (spare !== undefined) this.maxSpare = spare;
+    });
+  }
+
   refFor(partId: Id, query: EntityQuery): Promise<EntityRef | null> {
     return this.serial(async () => {
       const body = this.parts.get(partId)?.latest?.bodies.find((b) => b.id === query.bodyId);
@@ -346,21 +427,8 @@ export class RegenEngine {
       if (!entry) return null;
       const fp = await this.fingerprints(body.shape);
       const ref: EntityRef = { name: entry.name, kind: query.kind };
-      if (fp) {
-        if (query.kind === 'face') {
-          const f = fp.faces[query.index];
-          if (f) {
-            ref.fingerprint = { centroid: f.centroid, area: f.area };
-            if (f.normal) ref.fingerprint.normal = f.normal;
-          }
-        } else if (query.kind === 'edge') {
-          const e = fp.edges[query.index];
-          if (e) ref.fingerprint = { centroid: e.centroid, length: e.length };
-        } else {
-          const v = fp.vertices[query.index];
-          if (v) ref.fingerprint = { centroid: v.point };
-        }
-      }
+      const fingerprint = fp ? fingerprintOf(fp, query.kind, query.index) : undefined;
+      if (fingerprint) ref.fingerprint = fingerprint;
       return ref;
     });
   }
@@ -428,6 +496,7 @@ export class RegenEngine {
       const pc = this.parts.get(partId);
       if (!pc) return;
       for (const e of pc.entries.values()) await this.releaseEntry(e);
+      for (const raw of pc.imports.values()) await this.releaseRaw(raw);
       this.parts.delete(partId);
     });
   }
@@ -491,6 +560,28 @@ export class RegenEngine {
     e.owned = [];
   }
 
+  private async releaseRaw(raw: RawImport): Promise<void> {
+    for (const h of raw.shapes) await this.releaseHandle(h);
+    raw.shapes = [];
+  }
+
+  /**
+   * `execFeature` with kernel names translated to document names (imported topology: see
+   * `translateName`). Every kernel feature call of the engine goes through here.
+   */
+  private async exec(feature: Feature, inputs: FeatureInputs): Promise<Result<FeatureResult>> {
+    const r = await this.kernel.execFeature(feature, inputs);
+    if (!r.ok) return { ok: false, error: translateError(r.error) };
+    const v = r.value;
+    const out: FeatureResult = {
+      ...v,
+      naming: translateNaming(v.naming),
+      warnings: v.warnings.map(translateError),
+    };
+    if (v.bodies) out.bodies = v.bodies.map((b) => ({ ...b, naming: translateNaming(b.naming) }));
+    return { ok: true, value: out };
+  }
+
   // -------------------------------------------------------------------------------------------
   // Regeneration
   // -------------------------------------------------------------------------------------------
@@ -498,7 +589,15 @@ export class RegenEngine {
   private partCache(id: Id): PartCache {
     let pc = this.parts.get(id);
     if (!pc) {
-      pc = { entries: new Map(), revision: 0, tick: 0, latest: null, lastGood: null };
+      pc = {
+        entries: new Map(),
+        revision: 0,
+        tick: 0,
+        latest: null,
+        lastGood: null,
+        imports: new Map(),
+        lastResolved: new Map(),
+      };
       this.parts.set(id, pc);
     }
     return pc;
@@ -533,6 +632,10 @@ export class RegenEngine {
       hits: 0,
       misses: 0,
       diag: null,
+      attachments: request.attachments ?? {},
+      importIds: new Set(part.features.filter((f) => f.type === 'import').map((f) => f.id)),
+      usedImports: new Set(),
+      current: { featureId: '', rebound: [] },
     };
     const rollback = Math.max(0, Math.min(part.rollbackIndex, part.features.length));
     const features: RegenFeatureStatus[] = [];
@@ -581,6 +684,7 @@ export class RegenEngine {
     }
     pc.latest = { bodies: finalBodies, keys: new Set(ctx.used), partName: part.name };
     await this.evict(pc);
+    await this.evictImports(pc, ctx.usedImports);
 
     const result: RegenOutput = {
       partId,
@@ -610,6 +714,10 @@ export class RegenEngine {
     const mesh = await this.meshOf(b.shape, quality);
     if (!mesh) return null;
     const out: BodyResult = { id: b.id, shape: b.shape, mesh: copyMesh(mesh) };
+    // Names from the body's naming map: the kernel's mesh names are its internal ones (imports
+    // are translated, mesh-only bodies are named by the engine).
+    out.mesh.faceNames = namesByIndex(b.naming, 'face', out.mesh.faceRanges.length / 2);
+    out.mesh.edgeNames = namesByIndex(b.naming, 'edge', out.mesh.edgeRanges.length / 2);
     if (wantMass) {
       const mp = await this.massOf(b.shape, density);
       if (mp) out.massProperties = mp;
@@ -656,6 +764,21 @@ export class RegenEngine {
     };
   }
 
+  /** Keeps imports used by this regen plus the `IMPORT_SPARE` most recently used others. */
+  private async evictImports(pc: PartCache, used: Set<string>): Promise<void> {
+    for (const sha of used) {
+      const raw = pc.imports.get(sha);
+      if (raw) raw.lastUsed = pc.tick;
+    }
+    const spare = [...pc.imports.values()]
+      .filter((r) => !used.has(r.sha))
+      .sort((a, b) => b.lastUsed - a.lastUsed);
+    for (const raw of spare.slice(IMPORT_SPARE)) {
+      await this.releaseRaw(raw);
+      pc.imports.delete(raw.sha);
+    }
+  }
+
   private async evict(pc: PartCache): Promise<void> {
     const keep = new Set<string>([...(pc.latest?.keys ?? []), ...(pc.lastGood?.keys ?? [])]);
     const spare = [...pc.entries.values()]
@@ -672,8 +795,15 @@ export class RegenEngine {
   // -------------------------------------------------------------------------------------------
 
   private async runFeature(ctx: WalkContext, f: Feature): Promise<RegenFeatureStatus> {
-    const status = (state: RegenFeatureStatus['state'], extra: Partial<RegenFeatureStatus> = {}) =>
-      ({ featureId: f.id, state, cached: false, ms: 0, ...extra }) as RegenFeatureStatus;
+    ctx.current = { featureId: f.id, rebound: [] };
+    const status = (
+      state: RegenFeatureStatus['state'],
+      extra: Partial<RegenFeatureStatus> = {},
+    ) => {
+      const s = { featureId: f.id, state, cached: false, ms: 0, ...extra } as RegenFeatureStatus;
+      if (ctx.current.rebound.length > 0) s.rebound = ctx.current.rebound;
+      return s;
+    };
     const fail = (taint: string[]) => {
       ctx.failed.add(f.id);
       for (const b of taint) ctx.tainted.add(b);
@@ -762,7 +892,7 @@ export class RegenEngine {
     } else {
       cached = false;
       ctx.misses++;
-      let ran: { result: EntryResult; owned: ShapeHandle[] };
+      let ran: { result: EntryResult; owned: ShapeHandle[]; transient?: boolean };
       try {
         ran = await plan.run();
       } catch (e) {
@@ -776,10 +906,10 @@ export class RegenEngine {
       }
       entry = { key: plan.key, owned: ran.owned, result: ran.result, lastUsed: ctx.pc.tick };
       for (const h of ran.owned) this.ownedHandles.add(h);
-      ctx.pc.entries.set(plan.key, entry);
+      if (!ran.transient) ctx.pc.entries.set(plan.key, entry);
     }
     entry.lastUsed = ctx.pc.tick;
-    ctx.used.add(plan.key);
+    if (ctx.pc.entries.get(plan.key) === entry) ctx.used.add(plan.key);
     const r = entry.result;
     if (!r.ok) {
       fail(planned.taint);
@@ -861,10 +991,33 @@ export class RegenEngine {
       diag: await this.partDiag(ctx),
       planeLike,
       fingerprints: (s) => this.fingerprints(s),
+      weak: (name) => mentionsImport(name, ctx.importIds),
     });
-    if (r.ok) return r.target;
-    const u: UnresolvedRef = { path, ref, reason: r.reason };
+    const memo = `${ctx.current.featureId}|${path}`;
+    if (r.ok) {
+      const t = r.target;
+      ctx.pc.lastResolved.set(memo, { shape: t.shape, kind: t.kind, index: t.index });
+      if (t.name === ref.name && t.via === 'name') return t;
+      const fp = await this.fingerprints(t.shape);
+      const now = fp ? fingerprintOf(fp, t.kind, t.index) : undefined;
+      // Rebound: the name changed, or fingerprint evidence picked it and the stored fingerprint
+      // is out of date (the app heals both).
+      const stale = !ref.fingerprint || !now || !sameFingerprint(ref.fingerprint, now);
+      if (t.name !== ref.name || stale) {
+        const rebound: ReboundRef = { path, name: t.name };
+        if (now) rebound.fingerprint = now;
+        ctx.current.rebound.push(rebound);
+      }
+      return t;
+    }
+    const u: RegenUnresolvedRef = { path, ref, reason: r.reason };
     if (r.candidates) u.candidates = r.candidates;
+    const last = ctx.pc.lastResolved.get(memo);
+    if (last && !ref.fingerprint && this.ownedHandles.has(last.shape)) {
+      const fp = await this.fingerprints(last.shape);
+      const lastKnown = fp ? fingerprintOf(fp, last.kind, last.index) : undefined;
+      if (lastKnown) u.lastKnown = lastKnown;
+    }
     unresolved.push(u);
     return null;
   }
@@ -963,6 +1116,8 @@ export class RegenEngine {
         return this.planPlane(ctx, f, values);
       case 'pushPull':
         return this.planPushPull(ctx, f, values);
+      case 'import':
+        return this.planImport(ctx, f);
       default: {
         const unknown = f as { type: string };
         return Promise.resolve({
@@ -1025,7 +1180,7 @@ export class RegenEngine {
                   });
             return { result: { ok: false, error }, owned: [] };
           }
-          const r = await this.kernel.execFeature(
+          const r = await this.exec(
             { ...f, entities: solved.entities },
             { values: {}, frames: { plane: frame } },
           );
@@ -1060,17 +1215,20 @@ export class RegenEngine {
     ctx: WalkContext,
     scope: BodyScope | undefined,
     unresolved: UnresolvedRef[],
-  ): { bodies: BodyState[]; mode: 'default' | 'all' | 'bodies' } {
+  ): { bodies: BodyState[]; mode: 'default' | 'all' | 'bodies'; error?: KernelError } {
     if (scope?.kind === 'bodies') {
       const bodies: BodyState[] = [];
       scope.bodies.forEach((ref, i) => {
         const b = this.resolveBody(ctx, ref, `/scope/bodies/${i}`, unresolved);
         if (b) bodies.push(b);
       });
+      const mesh = bodies.find((b) => b.meshOnly);
+      if (mesh) return { bodies, mode: 'bodies', error: meshOnlyError('changed', mesh.id) };
       return { bodies, mode: 'bodies' };
     }
+    // Mesh reference bodies are never part of an implicit scope.
     return {
-      bodies: [...ctx.state.bodies.values()],
+      bodies: [...ctx.state.bodies.values()].filter((b) => !b.meshOnly),
       mode: scope?.kind === 'all' ? 'all' : 'default',
     };
   }
@@ -1125,6 +1283,9 @@ export class RegenEngine {
       f.op === 'new'
         ? { bodies: [] as BodyState[], mode: 'bodies' as const }
         : this.scopeBodies(ctx, f.scope, unresolved);
+    if ('error' in scoped && scoped.error) {
+      return { unresolved, taint: scoped.bodies.map((b) => b.id), error: scoped.error };
+    }
     // A failed `new` feature taints its would-be body id: implicit scopes can't know whether
     // that body would have been touched, so they are blocked rather than evaluated without it.
     const taint = f.op === 'new' ? [`B${f.id}`] : scoped.bodies.map((b) => b.id);
@@ -1172,7 +1333,7 @@ export class RegenEngine {
       owned: [r.shape],
     });
     if (f.op === 'new') {
-      const r = await this.kernel.execFeature(f, inputs);
+      const r = await this.exec(f, inputs);
       return r.ok ? newBody(r.value, r.value.warnings) : fail(r.error);
     }
 
@@ -1181,10 +1342,7 @@ export class RegenEngine {
     const throughAll = f.type === 'extrude' && f.end.kind === 'throughAll';
     if (scoped.mode === 'default' && !throughAll) {
       // Prefilter "every body the tool touches" by bounding boxes of the tool alone.
-      const t = await this.kernel.execFeature(
-        { ...f, op: 'new', scope: undefined } as Feature,
-        inputs,
-      );
+      const t = await this.exec({ ...f, op: 'new', scope: undefined } as Feature, inputs);
       if (!t.ok) return fail(t.error);
       tool = t.value;
       const tb = await this.massOf(tool.shape);
@@ -1217,10 +1375,7 @@ export class RegenEngine {
           tool = null;
           return newBody(t, [warning, ...t.warnings]);
         }
-        const r = await this.kernel.execFeature(
-          { ...f, op: 'new', scope: undefined } as Feature,
-          inputs,
-        );
+        const r = await this.exec({ ...f, op: 'new', scope: undefined } as Feature, inputs);
         return r.ok ? newBody(r.value, [warning, ...r.value.warnings]) : fail(r.error);
       }
       await dropTool();
@@ -1253,7 +1408,7 @@ export class RegenEngine {
       bodies.slice(1).forEach((b, i) => {
         shapes[`scope:${String(i + 1).padStart(4, '0')}`] = b.shape;
       });
-      return this.kernel.execFeature(f, {
+      return this.exec(f, {
         ...inputs,
         target: (bodies[0] as BodyState).shape,
         shapes: { ...inputs.shapes, ...shapes },
@@ -1368,6 +1523,9 @@ export class RegenEngine {
     const refKeys: Record<string, unknown> = {};
     const add = (path: string, t: ResolvedTarget): KernelError | null => {
       const body = ctx.state.bodies.get(t.owner);
+      if (body?.meshOnly) {
+        return meshOnlyError(f.type === 'fillet' ? 'filleted' : 'chamfered', body.id);
+      }
       if (!body)
         return kerr(
           'INVALID_INPUT',
@@ -1417,7 +1575,7 @@ export class RegenEngine {
           const owned: ShapeHandle[] = [];
           const warnings: KernelError[] = [];
           for (const g of groups.values()) {
-            const r = await this.kernel.execFeature(f, {
+            const r = await this.exec(f, {
               values,
               target: g.body.shape,
               refs: g.refs,
@@ -1455,6 +1613,8 @@ export class RegenEngine {
     });
     const involved = [...(target ? [target.id] : []), ...tools.map((t) => t.id)];
     const taint = involved.length > 0 ? involved : [...ctx.state.bodies.keys()];
+    const mesh = [...(target ? [target] : []), ...tools].find((b) => b.meshOnly);
+    if (mesh) return { unresolved, taint, error: meshOnlyError('combined', mesh.id) };
     if (target && tools.some((t) => t.id === target.id)) {
       return {
         unresolved,
@@ -1486,7 +1646,7 @@ export class RegenEngine {
               result: { ok: false, error: kerr('UNRESOLVED_REFERENCE', 'Select the target body') },
               owned: [],
             };
-          const r = await this.kernel.execFeature(f, { values, refs });
+          const r = await this.exec(f, { values, refs });
           if (!r.ok) return { result: { ok: false, error: r.error }, owned: [] };
           for (const extra of r.value.bodies ?? []) await this.releaseHandle(extra.shape);
           return {
@@ -1537,7 +1697,7 @@ export class RegenEngine {
         key,
         involved,
         run: async () => {
-          const r = await this.kernel.execFeature(f, { values, frames });
+          const r = await this.exec(f, { values, frames });
           if (!r.ok) return { result: { ok: false, error: r.error }, owned: [] };
           const plane: PlaneState = {
             id: f.id,
@@ -1581,6 +1741,8 @@ export class RegenEngine {
       }
     }
     const bodyIds = [...owners].filter((o) => ctx.state.bodies.has(o));
+    const mesh = bodyIds.find((id) => ctx.state.bodies.get(id)?.meshOnly);
+    if (mesh) return { unresolved, taint: [], error: meshOnlyError('pushed or pulled', mesh) };
     const key = hashKey({ t: 'pushPull', def: definition(f), values, refs: refKeys });
     return {
       unresolved,
@@ -1593,7 +1755,7 @@ export class RegenEngine {
             bodyIds.length === 1 ? ctx.state.bodies.get(bodyIds[0] as string) : undefined;
           const inputs: FeatureInputs = { values, refs };
           if (body) inputs.target = body.shape;
-          const r = await this.kernel.execFeature(f, inputs);
+          const r = await this.exec(f, inputs);
           if (!r.ok) return { result: { ok: false, error: r.error }, owned: [] };
           if (!body) {
             await this.releaseHandle(r.value.shape);
@@ -1626,6 +1788,494 @@ export class RegenEngine {
       },
     };
   }
+  // -------------------------------------------------------------------------------------------
+  // Import (STEP/BREP solids, mesh reference bodies)
+  // -------------------------------------------------------------------------------------------
+
+  private async planImport(ctx: WalkContext, f: ImportFeature): Promise<Planned> {
+    const unresolved: UnresolvedRef[] = [];
+    const format = f.source.format;
+    const taintNew = [`B${f.id}`];
+    const meshFormat = MESH_FORMATS.has(format);
+    if (format === 'iges') {
+      return {
+        unresolved,
+        taint: taintNew,
+        error: kerr('UNSUPPORTED_FEATURE', 'IGES files cannot be imported yet', {
+          hint: 'Export the part as STEP from the other program and import that instead.',
+        }),
+      };
+    }
+    if (meshFormat && f.op !== 'new') {
+      return {
+        unresolved,
+        taint: taintNew,
+        error: kerr('INVALID_INPUT', 'A mesh file can only be imported as a new reference body', {
+          hint: 'Set the operation to New, or import a STEP file to combine it with bodies.',
+        }),
+      };
+    }
+    const m = frameMatrix(f.frame ?? IDENTITY_FRAME);
+    if (!m) {
+      return {
+        unresolved,
+        taint: taintNew,
+        error: kerr('INVALID_INPUT', 'The placement of the imported file is invalid', {
+          hint: 'Use non-zero, non-parallel Z and X directions.',
+        }),
+      };
+    }
+    const sha = f.source.sha256.toLowerCase();
+    ctx.usedImports.add(sha);
+    const scoped =
+      f.op === 'new'
+        ? { bodies: [] as BodyState[], mode: 'bodies' as const }
+        : this.scopeBodies(ctx, f.scope, unresolved);
+    if ('error' in scoped && scoped.error) {
+      return { unresolved, taint: scoped.bodies.map((b) => b.id), error: scoped.error };
+    }
+    const taint = f.op === 'new' ? taintNew : scoped.bodies.map((b) => b.id);
+    const involved = new Set<string>();
+    if (scoped.mode === 'bodies') for (const b of scoped.bodies) involved.add(b.id);
+    else if (f.op !== 'new') {
+      for (const t of ctx.tainted) if (!ctx.state.bodies.has(t)) involved.add(t);
+    }
+    const key = hashKey({
+      t: 'import',
+      id: f.id,
+      sha,
+      format,
+      placement: m,
+      op: f.op,
+      scope: scoped.mode,
+      bodies: scoped.bodies.map((b) => [b.id, b.key]),
+    });
+    return {
+      unresolved,
+      taint,
+      plan: {
+        key,
+        involved: [...involved],
+        run: () => this.runImport(ctx, f, m, scoped, key),
+      },
+    };
+  }
+
+  /** The attachment's raw shapes/meshes: from the per-part cache by sha256, else from the request. */
+  private async rawImport(ctx: WalkContext, f: ImportFeature): Promise<Result<RawImport>> {
+    const sha = f.source.sha256.toLowerCase();
+    const format = f.source.format;
+    const cached = ctx.pc.imports.get(sha);
+    if (cached && cached.format === format) return { ok: true, value: cached };
+    const bytes = ctx.attachments[f.source.path];
+    const label = f.source.fileName || f.source.path;
+    if (!bytes) {
+      return {
+        ok: false,
+        error: kerr('INVALID_INPUT', 'The imported file is missing from this project', {
+          hint: `Import ${label} again.`,
+          detail: `attachment ${f.source.path} (sha256 ${sha}) was not provided`,
+        }),
+      };
+    }
+    const actual = await sha256Hex(bytes);
+    if (actual !== sha) {
+      return {
+        ok: false,
+        error: kerr(
+          'INVALID_INPUT',
+          'The imported file has changed since it was imported (its checksum does not match)',
+          {
+            hint: `Import ${label} again.`,
+            detail: `sha256 of ${f.source.path}: ${actual}, expected ${sha}`,
+          },
+        ),
+      };
+    }
+    const raw: RawImport = { sha, format, shapes: [], meshes: [], lastUsed: ctx.pc.tick };
+    if (MESH_FORMATS.has(format)) {
+      try {
+        raw.meshes = importMesh(bytes, f.source.fileName || `import.${format}`).map((x) => x.mesh);
+      } catch (e) {
+        return {
+          ok: false,
+          error: kerr(
+            'INVALID_INPUT',
+            e instanceof IoError ? e.message : 'The mesh file could not be read',
+            {
+              detail: String(e),
+            },
+          ),
+        };
+      }
+      if (raw.meshes.length === 0) {
+        return { ok: false, error: kerr('INVALID_INPUT', 'The mesh file contains no triangles') };
+      }
+    } else {
+      const r = await this.kernel.importShapes(bytes, format === 'brep' ? 'brep' : 'step');
+      if (!r.ok) return r;
+      raw.shapes = r.value.map((b) => b.shape);
+      for (const h of raw.shapes) this.ownedHandles.add(h);
+      if (raw.shapes.length === 0) {
+        return { ok: false, error: kerr('INVALID_INPUT', 'The file contains no solids') };
+      }
+    }
+    if (cached) await this.releaseRaw(cached);
+    ctx.pc.imports.set(sha, raw);
+    return { ok: true, value: raw };
+  }
+
+  /** Fresh copies of `shapes` moved by `m`, via a BREP round trip (see `placeBrep`). */
+  private async placedCopies(shapes: ShapeHandle[], m: Matrix34): Promise<Result<ShapeHandle[]>> {
+    const ex = await this.kernel.exportShapes(
+      shapes.map((shape, i) => ({ shape, name: `s${i}` })),
+      'brep',
+    );
+    if (!ex.ok) return ex;
+    const file = ex.value[0];
+    const text = file ? new TextDecoder().decode(file.bytes) : '';
+    const placed = isIdentity(m) ? text : placeBrep(text, m);
+    if (placed === null) {
+      return { ok: false, error: kerr('INTERNAL', 'The imported shape could not be placed') };
+    }
+    const back = await this.kernel.importShapes(new TextEncoder().encode(placed), 'brep');
+    if (!back.ok) return back;
+    const out = back.value.map((b) => b.shape);
+    if (out.length !== shapes.length) {
+      for (const h of out) await this.kernel.release(h);
+      return {
+        ok: false,
+        error: kerr('INTERNAL', 'The imported shape could not be placed', {
+          detail: `${shapes.length} solids in, ${out.length} out`,
+        }),
+      };
+    }
+    return { ok: true, value: out };
+  }
+
+  /**
+   * Placed, named B-rep solids of an import (fresh handles the caller owns), ordered by the
+   * geometric key of their volume centroids. Naming: the kernel names the topology during a no-op
+   * intersect with an enclosing box (tag `importNamingTag`) — faces `F<id>:face#k` by geometric
+   * key, edges/vertices from adjacent faces — checked to have left the solid unchanged.
+   */
+  private async namedSolids(
+    f: ImportFeature,
+    raw: RawImport,
+    m: Matrix34,
+  ): Promise<
+    Result<{ bodies: { shape: ShapeHandle; naming: NamingMap }[]; warnings: KernelError[] }>
+  > {
+    let shapes = raw.shapes;
+    const temp: ShapeHandle[] = [];
+    if (!isIdentity(m)) {
+      const p = await this.placedCopies(raw.shapes, m);
+      if (!p.ok) return p;
+      shapes = p.value;
+      temp.push(...shapes);
+    }
+    const box = emptyBox();
+    const before: (MassProperties | null)[] = [];
+    for (const s of shapes) {
+      const mp = await this.massOf(s);
+      before.push(mp);
+      if (mp) {
+        extendBox(box, mp.bbox.min);
+        extendBox(box, mp.bbox.max);
+      }
+    }
+    const margin = Math.max(1, 0.01 * boxDiagonal(box));
+    const size = (k: 0 | 1 | 2) => box.max[k] - box.min[k] + 2 * margin;
+    const namer: Feature = {
+      id: importNamingTag(f.id),
+      type: 'primitive',
+      name: f.name,
+      suppressed: false,
+      op: 'intersect',
+      shape: 'box',
+      frame: {
+        origin: [box.min[0] - margin, box.min[1] - margin, box.min[2] - margin],
+        z: [0, 0, 1],
+        x: [1, 0, 0],
+      },
+      dx: '0',
+      dy: '0',
+      dz: '0',
+    };
+    const extra: Record<string, ShapeHandle> = {};
+    shapes.slice(1).forEach((s, i) => {
+      extra[`scope:${String(i + 1).padStart(4, '0')}`] = s;
+    });
+    const r = await this.exec(namer, {
+      values: { '/dx': size(0), '/dy': size(1), '/dz': size(2) },
+      target: shapes[0] as ShapeHandle,
+      shapes: extra,
+    });
+    const named: ({ shape: ShapeHandle; naming: NamingMap } | null)[] = shapes.map(() => null);
+    if (r.ok) {
+      named[0] = { shape: r.value.shape, naming: r.value.naming };
+      for (const b of r.value.bodies ?? []) {
+        named[Number(b.key.slice('scope:'.length))] = { shape: b.shape, naming: b.naming };
+      }
+    }
+    const warnings: KernelError[] = [];
+    const out: { shape: ShapeHandle; naming: NamingMap; centroid: Vec3 }[] = [];
+    const fallback: number[] = [];
+    for (let i = 0; i < shapes.length; i++) {
+      const n = named[i];
+      const was = before[i];
+      const now = n ? await this.massOf(n.shape) : null;
+      const unchanged =
+        n &&
+        was &&
+        now &&
+        now.faceCount === was.faceCount &&
+        now.edgeCount === was.edgeCount &&
+        Math.abs(now.volume - was.volume) <= 1e-9 * Math.max(1, Math.abs(was.volume));
+      if (n && now && unchanged) {
+        out.push({ ...n, centroid: now.centroid });
+      } else {
+        if (n) await this.releaseHandle(n.shape);
+        fallback.push(i);
+      }
+    }
+    if (fallback.length > 0) {
+      // Unnamed copies (faces named by key only), so no handle of the raw cache leaks into results.
+      const copies = await this.placedCopies(
+        fallback.map((i) => raw.shapes[i] as ShapeHandle),
+        m,
+      );
+      if (!copies.ok) {
+        for (const o of out) await this.releaseHandle(o.shape);
+        for (const h of temp) await this.releaseHandle(h);
+        return copies;
+      }
+      for (const shape of copies.value) {
+        const fp = await this.fingerprints(shape);
+        const mp = await this.massOf(shape);
+        out.push({
+          shape,
+          naming: faceNamesByKey(
+            f.id,
+            (fp?.faces ?? []).map((x) => x.centroid),
+          ),
+          centroid: mp?.centroid ?? [0, 0, 0],
+        });
+      }
+      warnings.push(
+        kerr(
+          'OPERATION_FAILED',
+          'Edges and vertices of the imported shape could not be named; only its faces can be referenced',
+          {
+            hint: 'The file may contain invalid geometry; try repairing or re-exporting it.',
+            ...(r.ok ? {} : { detail: r.error.message }),
+          },
+        ),
+      );
+    }
+    for (const h of temp) await this.releaseHandle(h);
+    out.sort((a, b) => compareGeoKey(a.centroid, b.centroid));
+    return {
+      ok: true,
+      value: { bodies: out.map(({ shape, naming }) => ({ shape, naming })), warnings },
+    };
+  }
+
+  /** Mesh reference bodies (fresh handles): placed in TS, handed to the kernel as STL. */
+  private async meshBodies(
+    f: ImportFeature,
+    raw: RawImport,
+    m: Matrix34,
+  ): Promise<Result<{ shape: ShapeHandle; naming: NamingMap }[]>> {
+    const placed = raw.meshes.map((mesh) => (isIdentity(m) ? mesh : placeMesh(mesh, m)));
+    const order = placed
+      .map((mesh, i) => ({
+        mesh,
+        i,
+        c: [0, 1, 2].map(
+          (k) => ((mesh.bbox.min[k] as number) + (mesh.bbox.max[k] as number)) / 2,
+        ) as Vec3,
+      }))
+      .sort((a, b) => compareGeoKey(a.c, b.c) || a.i - b.i);
+    const out: { shape: ShapeHandle; naming: NamingMap }[] = [];
+    for (const o of order) {
+      const r = await this.kernel.importShapes(meshToStl([{ name: 'mesh', mesh: o.mesh }]), 'stl');
+      if (!r.ok) {
+        for (const x of out) await this.releaseHandle(x.shape);
+        return r;
+      }
+      for (const b of r.value)
+        out.push({ shape: b.shape, naming: [{ name: `F${f.id}:face`, kind: 'face', index: 0 }] });
+    }
+    return { ok: true, value: out };
+  }
+
+  private async runImport(
+    ctx: WalkContext,
+    f: ImportFeature,
+    m: Matrix34,
+    scoped: { bodies: BodyState[]; mode: 'default' | 'all' | 'bodies' },
+    key: string,
+  ): Promise<{ result: EntryResult; owned: ShapeHandle[]; transient?: boolean }> {
+    const fail = (error: KernelError) => ({ result: { ok: false as const, error }, owned: [] });
+    const raw = await this.rawImport(ctx, f);
+    // Missing/mismatching attachments are not cached: the next request may carry the file.
+    if (!raw.ok) return { ...fail(raw.error), transient: true };
+    const meshOnly = raw.value.meshes.length > 0;
+    let tools: { shape: ShapeHandle; naming: NamingMap }[];
+    let warnings: KernelError[] = [];
+    if (meshOnly) {
+      const r = await this.meshBodies(f, raw.value, m);
+      if (!r.ok) return fail(r.error);
+      tools = r.value;
+    } else {
+      const r = await this.namedSolids(f, raw.value, m);
+      if (!r.ok) return fail(r.error);
+      tools = r.value.bodies;
+      warnings = r.value.warnings;
+    }
+    const asNew = (extra: KernelError[]) => {
+      const set: BodyState[] = tools.map((t, k) => {
+        const id = tools.length === 1 ? `B${f.id}` : `B${f.id}#${k}`;
+        const b: BodyState = { id, shape: t.shape, naming: t.naming, key: `${key}/${id}` };
+        if (meshOnly) b.meshOnly = true;
+        return b;
+      });
+      return {
+        result: {
+          ok: true as const,
+          set,
+          remove: [],
+          touched: [],
+          warnings: [...extra, ...warnings],
+        },
+        owned: tools.map((t) => t.shape),
+      };
+    };
+    if (f.op === 'new') return asNew([]);
+
+    const dropTools = async () => {
+      for (const t of tools) await this.releaseHandle(t.shape);
+    };
+    let candidates = scoped.bodies;
+    if (scoped.mode === 'default' && candidates.length > 0) {
+      const tb = emptyBox();
+      for (const t of tools) {
+        const mp = await this.massOf(t.shape);
+        if (mp) {
+          extendBox(tb, mp.bbox.min);
+          extendBox(tb, mp.bbox.max);
+        }
+      }
+      const tol = 1e-6 * Math.max(1, boxDiagonal(tb));
+      const kept: BodyState[] = [];
+      for (const b of candidates) {
+        const bb = await this.massOf(b.shape);
+        if (!bb || boxesOverlap(bb.bbox, tb, tol)) kept.push(b);
+      }
+      candidates = kept;
+    }
+    if (candidates.length === 0) {
+      if (f.op === 'add' && scoped.mode === 'default') {
+        return asNew([
+          kerr(
+            'OPERATION_FAILED',
+            scoped.bodies.length === 0
+              ? 'There is no body to add to; created a new body'
+              : 'The imported shape touches no body; created a new body',
+          ),
+        ]);
+      }
+      await dropTools();
+      if (f.op === 'cut' && scoped.mode === 'default' && scoped.bodies.length > 0) {
+        return {
+          result: {
+            ok: true,
+            set: [],
+            remove: [],
+            touched: [],
+            warnings: [kerr('OPERATION_FAILED', 'The imported shape does not touch any body')],
+          },
+          owned: [],
+        };
+      }
+      return fail(
+        kerr('INVALID_INPUT', `There is no body to ${f.op === 'add' ? 'add to' : f.op}`, {
+          hint: 'Create a body first, or set the operation to New.',
+        }),
+      );
+    }
+    const booleanWith = (target: BodyState) => {
+      const refs: Record<string, ResolvedRef> = {
+        '/target': { shape: target.shape, kind: 'body', index: 0 },
+      };
+      tools.forEach((t, i) => {
+        refs[`/tools/${i}`] = { shape: t.shape, kind: 'body', index: 0 };
+      });
+      const op = f.op === 'new' ? 'add' : f.op;
+      return this.exec(
+        {
+          id: f.id,
+          type: 'boolean',
+          name: f.name,
+          suppressed: false,
+          op,
+          target: { name: target.id, kind: 'body' },
+          tools: tools.map((_, i) => ({ name: `tool${i}`, kind: 'body' as const })),
+          keepTools: false,
+        },
+        { values: {}, refs },
+      );
+    };
+
+    const set: BodyState[] = [];
+    const owned: ShapeHandle[] = [];
+    const touched: string[] = [];
+    const targets = f.op === 'add' ? candidates.slice(0, 1) : candidates;
+    if (f.op === 'add' && candidates.length > 1) {
+      warnings.push(
+        kerr(
+          'OPERATION_FAILED',
+          `The imported shape was merged into ${(candidates[0] as BodyState).id} only; it also touches ${candidates
+            .slice(1)
+            .map((b) => b.id)
+            .join(', ')}`,
+          { hint: 'Pick the bodies to merge with in the feature’s scope.' },
+        ),
+      );
+    }
+    let firstError: KernelError | null = null;
+    for (const b of targets) {
+      const r = await booleanWith(b);
+      if (!r.ok) {
+        firstError ??= r.error;
+        if (scoped.mode === 'bodies' || f.op === 'add') break;
+        continue;
+      }
+      for (const extra of r.value.bodies ?? []) await this.releaseHandle(extra.shape);
+      if (
+        f.op === 'cut' &&
+        scoped.mode !== 'bodies' &&
+        (await this.sameSolid(b.shape, r.value.shape))
+      ) {
+        await this.releaseHandle(r.value.shape);
+        continue;
+      }
+      set.push({ id: b.id, shape: r.value.shape, naming: r.value.naming, key: `${key}/${b.id}` });
+      owned.push(r.value.shape);
+      touched.push(b.id);
+      warnings.push(...r.value.warnings);
+    }
+    await dropTools();
+    if (firstError && (scoped.mode === 'bodies' || f.op === 'add' || set.length === 0)) {
+      for (const h of owned) await this.releaseHandle(h);
+      return fail(firstError);
+    }
+    if (f.op === 'cut' && touched.length === 0) {
+      warnings.push(kerr('OPERATION_FAILED', 'The imported shape does not touch any body'));
+    }
+    return { result: { ok: true, set, remove: [], touched, warnings }, owned };
+  }
 }
 
 function crossY(f: Frame): Vec3 {
@@ -1651,6 +2301,10 @@ function allBodiesFor(f: Feature, all: string[]): string[] {
       return all;
     case 'boolean':
       return [f.target.name, ...f.tools.map((t) => t.name)];
+    case 'import':
+      if (f.op === 'new') return [`B${f.id}`];
+      if (f.scope?.kind === 'bodies') return f.scope.bodies.map((b) => b.name);
+      return all;
     default:
       return all;
   }
@@ -1663,4 +2317,77 @@ function fieldLabel(f: Feature, pointer: string): string {
     return c ? `Sketch dimension ${c.id} (${c.kind})` : 'Sketch dimension';
   }
   return FIELD_LABELS[pointer] ?? pointer;
+}
+
+/** Spare (unused by the latest regen) imported attachments kept per part, LRU. */
+const IMPORT_SPARE = 8;
+
+function validSpare(n: number | undefined): number | undefined {
+  return n !== undefined && Number.isInteger(n) && n >= 0 ? n : undefined;
+}
+
+function translateError(e: KernelError): KernelError {
+  return e.entityRefs ? { ...e, entityRefs: e.entityRefs.map(translateName) } : e;
+}
+
+/** The first name per index of `kind` (aliases come later in a naming map), "" when unnamed. */
+function namesByIndex(naming: NamingMap, kind: 'face' | 'edge', count: number): string[] {
+  const out: string[] = Array(count).fill('');
+  for (let i = naming.length - 1; i >= 0; i--) {
+    const n = naming[i] as NamingMap[number];
+    if (n.kind === kind && n.index < count) out[n.index] = n.name;
+  }
+  return out;
+}
+
+/** The fingerprint stored with a ref to sub-shape `index` of `kind`. */
+function fingerprintOf(
+  fp: ShapeFingerprints,
+  kind: SubKind,
+  index: number,
+): Fingerprint | undefined {
+  if (kind === 'face') {
+    const f = fp.faces[index];
+    if (!f) return undefined;
+    return f.normal
+      ? { centroid: f.centroid, normal: f.normal, area: f.area }
+      : { centroid: f.centroid, area: f.area };
+  }
+  if (kind === 'edge') {
+    const e = fp.edges[index];
+    return e ? { centroid: e.centroid, length: e.length } : undefined;
+  }
+  const v = fp.vertices[index];
+  return v ? { centroid: v.point } : undefined;
+}
+
+const MESH_FORMATS: ReadonlySet<ImportFeature['source']['format']> = new Set([
+  'stl',
+  'obj',
+  '3mf',
+  'glb',
+]);
+
+const IDENTITY_FRAME: Frame = { origin: [0, 0, 0], z: [0, 0, 1], x: [1, 0, 0] };
+
+function meshOnlyError(verb: string, bodyId: string): KernelError {
+  return kerr('INVALID_INPUT', `A mesh reference body cannot be ${verb}`, {
+    hint: 'Meshes (STL, OBJ, 3MF, GLB) are for reference only; import a STEP file to model on it.',
+    entityRefs: [bodyId],
+  });
+}
+
+/** Equal up to float noise (1e-6 mm, 1e-9 relative). */
+function sameFingerprint(a: Fingerprint, b: Fingerprint): boolean {
+  const close = (x: number, y: number) => Math.abs(x - y) <= 1e-6 + 1e-9 * Math.abs(x);
+  const vec = (x: Vec3 | undefined, y: Vec3 | undefined) =>
+    x === undefined || y === undefined ? x === y : x.every((v, i) => close(v, y[i] as number));
+  const num = (x: number | undefined, y: number | undefined) =>
+    x === undefined || y === undefined ? x === y : close(x, y);
+  return (
+    vec(a.centroid, b.centroid) &&
+    vec(a.normal, b.normal) &&
+    num(a.area, b.area) &&
+    num(a.length, b.length)
+  );
 }
