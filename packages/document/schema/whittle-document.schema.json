@@ -454,7 +454,7 @@
           "type": "object"
         }
       ],
-      "description": "Dimensions. `driving: true` constrains the solver with `value`; `driving: false` is a reference (driven) dimension whose value is **measured** after solving (planegcs non-driving constraints are unreliable — PLAN §3). `label` positions the text in sketch space for display."
+      "description": "Conventions (normative): angles are CCW from `a` to `b`, reference values reported in [0, 2π); `hDistance`/`vDistance` are signed b − a (with `a === b` = a line: end − start); distances to circles/arcs measure to the curve; `diameter` solves as radius = value / 2.\n\nDimensions. `driving: true` constrains the solver with `value`; `driving: false` is a reference (driven) dimension whose value is **measured** after solving (planegcs non-driving constraints are unreliable — PLAN §3). `label` positions the text in sketch space for display."
     },
     "DocMeta": {
       "additionalProperties": false,
