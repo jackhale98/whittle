@@ -16,6 +16,7 @@ import type {
   ShapeFingerprints,
   ShapeHandle,
 } from './kernel';
+import type { SketchEntity } from './sketch';
 
 export type MeshQuality = 'coarse' | 'fine';
 
@@ -48,10 +49,14 @@ export interface FeatureStatus {
   unresolved?: UnresolvedRef[];
   /** Served from the result cache. */
   cached: boolean;
+  /** Non-fatal warnings (e.g. "The cut does not touch any body"). */
+  warnings?: KernelError[];
+  /** Refs resolved by fingerprint/disambiguation, with their current name, so the UI can heal stored refs. */
+  rebound?: { path: string; name: string }[];
   ms: number;
 }
 
-/** A solid (or sheet) body in the part's final state. */
+/** A solid (or sheet) body in the part's final state. Its `shape` is owned by the regen engine: never `release()` it. */
 export interface BodyResult {
   /** Stable body id: `B{featureId}` of the feature that created it (persistent across regens). */
   id: string;
@@ -70,6 +75,8 @@ export interface SketchResult {
   points?: { entity: Id; at: Vec3; construction: boolean }[];
   /** Closed regions usable as profiles: persistent name + triangulated fill for picking. */
   regions: { name: string; mesh: MeshBuffers }[];
+  /** Solved entities (sketch-local), so the UI can write positions back as the next initial guess. */
+  entities?: SketchEntity[];
   /** Sketch plane frame (mm). */
   frame: { origin: Vec3; x: Vec3; y: Vec3; z: Vec3 };
 }
@@ -91,6 +98,8 @@ export interface RegenResult {
   sketches: SketchResult[];
   totalMs: number;
   cache: { hits: number; misses: number };
+  /** Last all-ok geometry of bodies that differ now while some feature fails (PLAN §9.2 ghost). */
+  ghosts?: BodyResult[];
 }
 
 /** Answers "what is under the cursor" in persistent terms for selection → EntityRef. */

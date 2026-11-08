@@ -1,0 +1,182 @@
+/**
+ * Regen goldens 7 and 9: the incremental cache (PLAN §4) on a 50-feature part against the PLAN §10
+ * budget (≤ 300 ms after editing the last feature), and handle accounting across many regens.
+ * Timings are printed for the report.
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
+import type { Feature } from '@whittle/contracts';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { bracketDoc } from './bracket';
+import {
+  type Api,
+  built,
+  describeFailures,
+  extrude,
+  fid,
+  loadApi,
+  makeDoc,
+  region,
+  relClose,
+  Sk,
+  skipNote,
+  states,
+  totalVolume,
+  withParams,
+} from './helpers';
+
+const PART = fid('PART');
+const PI = Math.PI;
+
+/** Plate 240 × 100 × 10 + 24 hole (sketch, cut) pairs = 50 features; the last cut is blind. */
+function fiftyFeatures(): Feature[] {
+  const s = new Sk();
+  const r = s.rect('p', 'L', 0, 0, 240, 100, '240', '100');
+  s.geo({ kind: 'fix', entity: r.a });
+  const features: Feature[] = [
+    s.feature(fid('Q0')),
+    extrude(fid('QE'), [region(fid('Q0'), 'L1,L2,L3,L4')], '10'),
+  ];
+  for (let i = 0; i < 24; i++) {
+    const hs = new Sk();
+    const x = 10 + (i % 12) * 20;
+    const y = i < 12 ? 30 : 70;
+    hs.circle('C', x, y, 4);
+    hs.geo({ kind: 'fix', entity: 'Cc' });
+    hs.dim({ kind: 'radius', curve: 'C' }, '4');
+    const sid = fid(`QS${i}`);
+    features.push(hs.feature(sid));
+    features.push(
+      i === 23
+        ? extrude(fid(`QC${i}`), [region(sid, 'C')], 'last_depth', 'cut')
+        : extrude(fid(`QC${i}`), [region(sid, 'C')], 'throughAll', 'cut'),
+    );
+  }
+  return features;
+}
+
+const fiftyVolume = (lastDepth: number) =>
+  240 * 100 * 10 - 23 * PI * 16 * 10 - PI * 16 * Math.min(10, lastDepth);
+
+const ms = (x: number) => `${x.toFixed(1)} ms`;
+
+describe.skipIf(!built)(`regen golden: cache and handles${skipNote}`, () => {
+  let api: Api;
+  beforeAll(async () => {
+    api = await loadApi();
+  }, 60_000);
+  afterAll(async () => {
+    await api?.closePart(PART);
+  });
+
+  it('50 features: editing the last recomputes only it, within the 300 ms budget', async () => {
+    const doc = makeDoc({ last_depth: '4 mm' }, fiftyFeatures());
+    expect(doc.parts[0]?.features).toHaveLength(50);
+    const cold = await api.regenerate({
+      doc,
+      partId: PART,
+      quality: 'coarse',
+      massProperties: true,
+    });
+    expect(states(cold), describeFailures(cold)).toEqual(Array(50).fill('ok'));
+    expect(cold.cache).toEqual({ hits: 0, misses: 50 });
+    relClose(totalVolume(cold.bodies), fiftyVolume(4), 1e-9);
+
+    const warm = await api.regenerate({
+      doc,
+      partId: PART,
+      quality: 'coarse',
+      massProperties: true,
+    });
+    expect(warm.cache).toEqual({ hits: 50, misses: 0 });
+
+    const edits: number[] = [];
+    let last = warm;
+    for (const depth of ['5 mm', '6 mm', '7 mm', '3 mm', '8 mm']) {
+      last = await api.regenerate({
+        doc: withParams(doc, { last_depth: depth }),
+        partId: PART,
+        quality: 'coarse',
+        massProperties: true,
+      });
+      edits.push(last.totalMs);
+      expect(last.features.map((f) => f.cached)).toEqual([...Array(49).fill(true), false]);
+      expect(last.cache).toEqual({ hits: 49, misses: 1 });
+    }
+    relClose(totalVolume(last.bodies), fiftyVolume(8), 1e-9);
+    const fine = await api.regenerate({
+      doc: withParams(doc, { last_depth: '9 mm' }),
+      partId: PART,
+      quality: 'fine',
+      massProperties: true,
+    });
+    const median = [...edits].sort((a, b) => a - b)[2] as number;
+    console.log(
+      `[regen timing] 50 features: cold ${ms(cold.totalMs)}, all cached ${ms(warm.totalMs)}, ` +
+        `edit last (coarse) median ${ms(median)} [${edits.map(ms).join(', ')}], ` +
+        `edit last (fine) ${ms(fine.totalMs)}; last-feature kernel time ${ms(last.features[49]?.ms ?? 0)}`,
+    );
+    expect(median).toBeLessThan(300);
+  });
+
+  it('bracket timings (cold full regen, warm, one-dimension edit)', async () => {
+    await api.closePart(PART);
+    const doc = bracketDoc();
+    const cold = await api.regenerate({ doc, partId: PART, quality: 'fine', massProperties: true });
+    expect(states(cold), describeFailures(cold)).toEqual(Array(9).fill('ok'));
+    const warm = await api.regenerate({ doc, partId: PART, quality: 'fine', massProperties: true });
+    const edit = await api.regenerate({
+      doc: withParams(doc, { chamfer_d: '3 mm' }),
+      partId: PART,
+      quality: 'fine',
+      massProperties: true,
+    });
+    const width = await api.regenerate({
+      doc: withParams(doc, { width: '90 mm' }),
+      partId: PART,
+      quality: 'fine',
+      massProperties: true,
+    });
+    console.log(
+      `[regen timing] bracket (9 features, fine): cold (empty cache) ${ms(cold.totalMs)}, ` +
+        `all cached ${ms(warm.totalMs)}, chamfer edit ${ms(edit.totalMs)} ` +
+        `(hits ${edit.cache.hits}/${edit.features.length}), width edit (full) ${ms(width.totalMs)}`,
+    );
+    expect(warm.cache.hits).toBe(9);
+    expect(edit.cache).toEqual({ hits: 8, misses: 1 });
+  });
+
+  it('no handle leaks across 100 regens; closePart releases everything', async () => {
+    const small = await loadApi({ maxSpareResults: 8 });
+    const baseline = small.liveHandleCount();
+    const doc = bracketDoc();
+    const counts: number[] = [];
+    const t0 = performance.now();
+    for (let i = 0; i < 100; i++) {
+      // Mix of new values (cache misses), repeats (hits) and an occasional failure.
+      const width = i % 10 === 9 ? '-5 mm' : `${80 + (i % 7)} mm`;
+      const r = await small.regenerate({
+        doc: withParams(doc, { width, hole_spacing: `${30 + (i % 3) * 5} mm` }),
+        partId: PART,
+        quality: 'coarse',
+      });
+      expect(r.revision).toBe(i + 1);
+      counts.push(small.liveHandleCount() - baseline);
+    }
+    const peak = Math.max(...counts);
+    const settled = counts.slice(50);
+    console.log(
+      `[regen handles] 100 regens, maxSpareResults 8: live handles after regen 10/50/100 = ` +
+        `${counts[9]}/${counts[49]}/${counts[99]}, peak ${peak}; engine ${JSON.stringify(small.engine.stats(PART))}; ` +
+        `${ms((performance.now() - t0) / 100)} per regen`,
+    );
+    // Bounded: the latest regen's results + 8 spare entries (each ≤ 2 shapes) + ghosts.
+    expect(peak).toBeLessThanOrEqual(9 * 2 + 8 * 2 + 9);
+    expect(Math.max(...settled)).toBeLessThanOrEqual(Math.max(...counts.slice(10, 50)));
+    expect(small.engine.stats(PART)?.handles).toBe(counts[99]);
+    await small.closePart(PART);
+    expect(small.liveHandleCount()).toBe(baseline);
+    expect(small.engine.stats(PART)).toBeNull();
+  }, 120_000);
+});
