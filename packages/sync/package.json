@@ -1,0 +1,20 @@
+{
+  "name": "@whittle/sync",
+  "version": "0.0.0",
+  "private": true,
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "description": "Connections (storage providers), credential vault, background sync, structural merge and diff, snapshot and git history (PLAN §8A).",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@whittle/contracts": "workspace:*",
+    "@whittle/document": "workspace:*"
+  },
+  "devDependencies": {}
+}

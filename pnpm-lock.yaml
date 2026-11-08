@@ -213,6 +213,15 @@ importers:
         specifier: 3.0.2
         version: 3.0.2
 
+  packages/sync:
+    dependencies:
+      '@whittle/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@whittle/document':
+        specifier: workspace:*
+        version: link:../document
+
   packages/test-fixtures:
     dependencies:
       '@whittle/contracts':
