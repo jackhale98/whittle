@@ -13,7 +13,8 @@
     "test": "vitest run",
     "harness": "vite",
     "harness:build": "vite build",
-    "e2e": "playwright test --trace off"
+    "e2e": "playwright test --trace off",
+    "perf": "WHITTLE_PERF=1 playwright test --trace off -g \"perf probe\""
   },
   "dependencies": {
     "@whittle/contracts": "workspace:*",

@@ -89,6 +89,19 @@ export function onSwUpdateAvailable(listener: () => void): () => void {
   return () => window.removeEventListener(SW_UPDATE_EVENT, listener);
 }
 
+/** Manual "Check for updates": resolves with what was found. */
+export async function checkForSwUpdateNow(): Promise<'update' | 'current' | 'unavailable'> {
+  if (!workbox) return 'unavailable';
+  try {
+    await workbox.update();
+  } catch {
+    return 'unavailable';
+  }
+  const reg = await navigator.serviceWorker.getRegistration();
+  if (reg?.waiting || reg?.installing || updateAvailable) return 'update';
+  return 'current';
+}
+
 /** Asks the browser to look for a new service worker now (cheap; the SW script is tiny). */
 export function checkForSwUpdate(): void {
   void workbox?.update().catch(() => {

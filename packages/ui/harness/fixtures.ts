@@ -157,8 +157,14 @@ export function makeEvaluator(params: readonly Pick<Param, 'name' | 'expr'>[]) {
         const r = power();
         l =
           t.t === '*'
-            ? { v: l.v * r.v, d: [l.d[0] + r.d[0], l.d[1] + r.d[1], l.d[2] + r.d[2], l.d[3] + r.d[3]] }
-            : { v: l.v / r.v, d: [l.d[0] - r.d[0], l.d[1] - r.d[1], l.d[2] - r.d[2], l.d[3] - r.d[3]] };
+            ? {
+                v: l.v * r.v,
+                d: [l.d[0] + r.d[0], l.d[1] + r.d[1], l.d[2] + r.d[2], l.d[3] + r.d[3]],
+              }
+            : {
+                v: l.v / r.v,
+                d: [l.d[0] - r.d[0], l.d[1] - r.d[1], l.d[2] - r.d[2], l.d[3] - r.d[3]],
+              };
       }
       return l;
     }

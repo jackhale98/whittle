@@ -1,9 +1,9 @@
 import type { KernelStatus, MeshBuffers, Viewport } from '@whittle/contracts';
 import { AppShell, useTheme } from '@whittle/ui';
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { getDiagnostics } from '../platform/diagnostics';
 import { getRuntimeState, subscribeRuntimeState } from '../platform/runtime-state';
-import { applySwUpdate, onSwUpdateAvailable } from '../platform/sw-register';
+import { applySwUpdate, checkForSwUpdateNow, onSwUpdateAvailable } from '../platform/sw-register';
 import { DEMO_BOX } from './demo';
 import { bootKernel } from './kernel-boot';
 import { failBoot, mark } from './timing';
@@ -23,6 +23,33 @@ export function App() {
   const [kernelStatus, setKernelStatus] = useState<KernelStatus>({ state: 'idle' });
   const [updateReady, setUpdateReady] = useState(false);
   useEffect(() => onSwUpdateAvailable(() => setUpdateReady(true)), []);
+  const [updateNote, setUpdateNote] = useState<string | null>(null);
+  const commands = useMemo(
+    () => [
+      {
+        id: 'check-updates',
+        label: 'Check for updates',
+        run: () => {
+          setUpdateNote('Checking for updates…');
+          void checkForSwUpdateNow().then((r) => {
+            if (r === 'update') {
+              setUpdateNote(null);
+              setUpdateReady(true);
+            } else {
+              setUpdateNote(
+                r === 'current'
+                  ? `You're up to date (${diagnostics.appVersion}).`
+                  : "Couldn't check for updates (offline?).",
+              );
+            }
+            window.setTimeout(() => setUpdateNote(null), 4000);
+          });
+        },
+      },
+      { id: 'about', label: `About Whittle · ${diagnostics.appVersion}`, hint: 'Version' },
+    ],
+    [diagnostics.appVersion],
+  );
 
   const viewportRef = useRef<Viewport | null>(null);
   const meshRef = useRef<MeshBuffers | null>(null);
@@ -79,6 +106,7 @@ export function App() {
         documentName="Untitled part"
         kernelStatus={kernelStatus}
         diagnostics={{ ...diagnostics, ...runtimeOverrides(runtime) }}
+        commands={commands}
         theme={theme.setting}
         onThemeChange={theme.setSetting}
         viewport={
@@ -109,6 +137,14 @@ export function App() {
         >
           Update available · Reload
         </button>
+      )}
+      {updateNote && (
+        <output
+          data-testid="update-note"
+          className="fixed top-3 left-1/2 z-50 -translate-x-1/2 rounded-full bg-[var(--color-surface)] px-4 py-2 text-sm shadow-lg"
+        >
+          {updateNote}
+        </output>
       )}
       <p data-testid="status-line" className="sr-only" aria-live="polite">
         crossOriginIsolated: {String(diagnostics.crossOriginIsolated)} · service worker:{' '}

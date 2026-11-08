@@ -107,8 +107,9 @@ export function ShellRoot({
         run: theme.toggle,
       },
       ...(extraCommands ?? []),
+      ...(props.commands ?? []),
     ],
-    [theme.resolved, theme.toggle, extraCommands, props.enabledTools, props.onTool],
+    [theme.resolved, theme.toggle, extraCommands, props.commands, props.enabledTools, props.onTool],
   );
 
   const openPalette = useCallback(() => {

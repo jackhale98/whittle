@@ -1,5 +1,6 @@
 import type { KernelStatus, RuntimeDiagnostics } from '@whittle/contracts';
 import type { ReactNode } from 'react';
+import type { PaletteCommand } from '../components/CommandPalette';
 import type { ToolId } from '../components/tools';
 import type { ExportBody, ExportRequest, ExportTarget } from '../export/types';
 import type { FeatureTreeProps } from '../features/FeatureTree';
@@ -8,6 +9,8 @@ import type { ThemeSetting } from '../theme';
 
 /** Props every shell accepts. The shell never touches Wasm or the kernel: it only renders state. */
 export interface ShellProps {
+  /** App-level commands appended to the ⌘K palette (e.g. Check for updates, About). */
+  commands?: readonly PaletteCommand[];
   documentName: string;
   kernelStatus: KernelStatus;
   /**

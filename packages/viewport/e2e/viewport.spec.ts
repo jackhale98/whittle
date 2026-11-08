@@ -256,6 +256,8 @@ test('screenshot artefact (box, WebGL2, DPR 2)', async ({ browser }) => {
 });
 
 test('perf probe: 1M triangles orbiting', async ({ page }) => {
+  // Minutes on software GL: run with `pnpm --filter @whittle/viewport perf` (WHITTLE_PERF=1).
+  test.skip(!process.env.WHITTLE_PERF, 'perf probe: set WHITTLE_PERF=1');
   test.setTimeout(240_000);
   const backend = await open(page, '?backend=webgl2&reducedMotion=1');
   await page.evaluate(() => window.__viewport?.loadDense(1_000_000));

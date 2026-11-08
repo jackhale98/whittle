@@ -93,3 +93,18 @@ test('after interaction, an update shows a non-modal "Update available" button',
   await page.waitForFunction((t0) => performance.timeOrigin !== t0, before, { timeout: 15_000 });
   await expect(page.getByTestId('update-available')).toHaveCount(0);
 });
+
+test('⌘K → "Check for updates" reports up to date, or offers the update', async ({ page }) => {
+  await page.goto(BASE);
+  await page.waitForFunction(() => window.crossOriginIsolated === true);
+  await page.mouse.click(5, 300); // interacted: updates must not auto-apply
+
+  await page.keyboard.press('Control+k');
+  await page.getByText('Check for updates').click();
+  await expect(page.getByTestId('update-note')).toContainText("You're up to date");
+
+  deployNewServiceWorker();
+  await page.keyboard.press('Control+k');
+  await page.getByText('Check for updates').click();
+  await expect(page.getByTestId('update-available')).toBeVisible({ timeout: 15_000 });
+});

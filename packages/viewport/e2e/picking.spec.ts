@@ -522,6 +522,8 @@ test('screenshot artefacts (selection look, sketch, dark theme)', async ({ brows
 });
 
 test('perf probe: picking active on a 1M-triangle model', async ({ page }) => {
+  // Minutes on software GL: run with `pnpm --filter @whittle/viewport perf` (WHITTLE_PERF=1).
+  test.skip(!process.env.WHITTLE_PERF, 'perf probe: set WHITTLE_PERF=1');
   test.setTimeout(240_000);
   await open(page);
   await page.evaluate(() => window.__viewport?.loadDense(1_000_000));
