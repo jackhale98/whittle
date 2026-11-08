@@ -81,8 +81,10 @@ export {
   DEFAULT_CORS_PROXY,
   type GitHistoryOptions,
   gitError,
+  gitRemoteHeads,
   ownedPath,
 } from './history/git/git';
+export { browserGitHttp } from './history/git/http';
 export {
   CACHE_PREFIX,
   HISTORY_PREFIX,

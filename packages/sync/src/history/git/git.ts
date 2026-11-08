@@ -882,3 +882,43 @@ export function createGitHistory(
 ): GitHistory & { currentBranch(): Promise<string>; refresh(): void } {
   return new GitHistoryImpl(options);
 }
+
+/**
+ * Branch names on a remote repository, without cloning (the connection's "pick a repository"
+ * step): an empty list means a new, empty repository a local project can be pushed to.
+ */
+export async function gitRemoteHeads(options: {
+  http: HttpClient;
+  url: string;
+  host?: GitHost;
+  credentials?: () => Credential | null | Promise<Credential | null>;
+  corsProxy?: string | null;
+}): Promise<StorageResult<string[]>> {
+  const cred = (await options.credentials?.()) ?? null;
+  const host = options.host ?? 'other';
+  let name = 'the git host';
+  try {
+    name = new URL(options.url).host;
+  } catch {
+    return fail('NOT_FOUND', 'That isn’t a repository address');
+  }
+  const proxy = corsProxyFor(options.url, options.corsProxy);
+  try {
+    const info = await git.getRemoteInfo2({
+      http: options.http,
+      url: options.url,
+      protocolVersion: 1,
+      ...(proxy ? { corsProxy: proxy } : {}),
+      onAuth: () => (cred ? basicAuth(host, cred) : { cancel: true }),
+      onAuthFailure: (_url: string, failed: { username?: string }) =>
+        (cred && retryAuth(host, cred, failed)) || { cancel: true },
+    });
+    return ok(
+      (info.refs ?? [])
+        .filter((r) => r.ref.startsWith('refs/heads/'))
+        .map((r) => r.ref.slice('refs/heads/'.length)),
+    );
+  } catch (e) {
+    return { ok: false, error: gitError(e, secretOf(cred), name) };
+  }
+}
