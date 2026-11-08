@@ -661,17 +661,16 @@ when the origin is meant.
 11. **Setting.** "Show sketches in the history" (`whittle.nestSketches` = `flat`) lives in the row
     menu and the palette; the app owns the state and persists it with try/catch storage helpers.
 
-## ADR-019 — M3 contracts, and M3 before M2.5 (2026-11-08)
+## ADR-019 — M3 contracts (2026-11-08)
 
-**Context.** The user asked to start M3 as soon as M2 passes its gate, ahead of M2.5 (connections,
-sync and version control). M3 adds eleven feature types, linked sketch geometry and offset
+**Context.** The M3 contracts were written early, while the M2 deploy ran. M3 adds eleven feature types, linked sketch geometry and offset
 dimensions, and every workstream implements against these contracts.
 
 **Decision.**
 
-1. **Order.** M3 runs before M2.5 (PLAN §11.3, §12). M3's "versions/snapshots" item is local
-   in-browser snapshots only; HistoryStore, branches, compare and merge stay in M2.5. Nothing in M3
-   depends on a provider.
+1. **Order.** The PLAN order stands: M2.5 (connections, sync, version control) comes before M3.
+   An earlier draft of this ADR put M3 first; the user confirmed M2.5 first. These contracts are
+   additive and don't affect M2.5. M3's "versions/snapshots" item uses the M2.5 HistoryStore.
 2. **New feature types** (`packages/contracts/src/document.ts`): `shell`, `draft`, `sweep`, `loft`,
    `mirror`, `linearPattern`, `circularPattern`, `hole`, `thread` (cosmetic), `axis`, `point`.
    Fillet and chamfer gain `propagate?: boolean` (absent means true, matching OCCT's default and
