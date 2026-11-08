@@ -530,3 +530,29 @@ Implemented in packages/ui (FeatureTree) and apps/web, after the M2 integration 
     creating the view without waiting for the read (much worse, as in ADR-008 item 4), fetching
     three.js before React's first commit, deferring the idle shader warm-up past the cached frame,
     and dropping the view cube. None of them was kept.
+
+## ADR-017 — Dimensions to the origin, axes, planes and model geometry (2026-11-08)
+
+**Context.** Sketch dimensions and constraints could only reference the sketch's own entities. Users
+could not dimension a hole "20 mm from the origin" or an edge "15 mm from the right plane", so they
+had to anchor sketches with `fix`. That is fragile: it breaks design intent, and nothing follows
+when the origin is meant.
+
+**Decision.**
+
+1. **Origin and axes (now).** Every sketch implicitly has a fixed origin point and its two axes:
+   reserved ids `@origin`, `@x` and `@y` (contracts/sketch.ts). These are the part origin projected
+   onto the sketch plane (sketch-local (0, 0), which is how sketch frames are already placed), and
+   the lines through it along u and v.
+   - They are drawn as reference geometry (a small origin glyph and thin dashed axes, distinct
+     from construction lines). Dimension and constraint tools can pick them, and drawing inference
+     snaps to them.
+   - They are never stored in `entities`, never form profiles, and carry no degrees of freedom.
+     The solver adds them as fixed geometry when a constraint references them. The regen engine
+     uses the same solver core, so documents regenerate identically.
+2. **Planes, model edges and vertices (M3, with Convert Entities).** Dimensioning or constraining to
+   model geometry brings it into the sketch as a **linked reference entity** (projected, fixed,
+   construction). It is the same mechanism as Convert Entities, with `construction: true`.
+   - Origin planes and planes perpendicular to the sketch project to lines.
+   - A lost source makes the sketch "needs attention" (ghost + Re-pick), never a silent re-pick.
+   - Planes parallel to the sketch are dimensioned as the sketch plane's offset, not in-sketch.

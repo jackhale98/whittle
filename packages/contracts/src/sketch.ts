@@ -123,6 +123,19 @@ export type GeometricConstraintDraft = GeometricConstraint extends infer C
  */
 export const INFERENCE_CURSOR = '@cursor';
 export const INFERENCE_DRAWING = '@drawing';
+
+/**
+ * Sketch reference geometry (ADR-017). Every sketch implicitly has a fixed origin point and its two
+ * axes: the part origin projected onto the sketch plane (sketch-local (0, 0)) and the lines through
+ * it along u (`@x`) and v (`@y`). Constraints and dimensions may reference these ids like entities
+ * (e.g. a `distance` from `@origin` to a point, a point `pointOn` `@y`). They are never stored in
+ * `entities`, never form profiles, carry no degrees of freedom, and the solver adds them as fixed.
+ */
+export const SKETCH_ORIGIN = '@origin';
+export const SKETCH_X_AXIS = '@x';
+export const SKETCH_Y_AXIS = '@y';
+export const SKETCH_REFERENCES = [SKETCH_ORIGIN, SKETCH_X_AXIS, SKETCH_Y_AXIS] as const;
+export type SketchReferenceId = (typeof SKETCH_REFERENCES)[number];
 export type SketchConstraintKind = SketchConstraint['kind'];
 
 export function isDimension(c: SketchConstraint): c is DimensionConstraint {
