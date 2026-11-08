@@ -177,7 +177,10 @@ test('sketches nest under the feature that uses them; shared ones show a badge; 
   // 6. ... and Delete sketch too removes both, as one undo step.
   await items(page).filter({ hasText: 'Extrude 1' }).focus();
   await page.keyboard.press('Delete');
-  await page.getByTestId('delete-prompt').getByRole('button', { name: 'Delete sketch too' }).click();
+  await page
+    .getByTestId('delete-prompt')
+    .getByRole('button', { name: 'Delete sketch too' })
+    .click();
   await a.idle();
   expect(await features(page)).toHaveLength(0);
   await page.keyboard.press('ControlOrMeta+z');
@@ -196,6 +199,9 @@ test('sketches nest under the feature that uses them; shared ones show a badge; 
   await boot(page);
   await expect(items(page)).toHaveCount(2);
   await palette(page, 'Nest sketches under their features');
-  await expect(items(page).filter({ hasText: 'Extrude 1' })).toHaveAttribute('aria-expanded', 'false');
+  await expect(items(page).filter({ hasText: 'Extrude 1' })).toHaveAttribute(
+    'aria-expanded',
+    'false',
+  );
   await expect(items(page).filter({ hasText: 'Sketch 1' })).toHaveCount(0);
 });
