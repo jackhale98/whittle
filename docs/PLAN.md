@@ -50,7 +50,7 @@ Priority: **P0** = MVP (M1–M2), **P1** = v1.0 (M3–M6), **P2** = after v1.0.
 | Inferred constraints while drawing (auto-snap with subtle glyphs)                                                            | P0    |
 | Under-, fully- and over-constrained colouring; conflict explanation with a one-click fix                                     | P0    |
 | Construction geometry, trim/extend/split, offset, mirror, fillet/chamfer in sketch                                           | P0/P1 |
-| Project/convert edges, sketch on any planar face or plane, intersection curves                                               | P1    |
+| Project/convert edges (linked to the model), sketch on any planar face or plane, intersection curves                        | P1 (M3, first) |
 | Ellipse, spline (B-spline via control points), text (to profile), DXF/SVG import into sketch                                 | P1/P2 |
 | Pencil handwriting recognition for primitives (line/arc/circle/rectangle)                                                    | P1    |
 
@@ -708,7 +708,11 @@ Each milestone ends with a reviewer gate. "Done" means every criterion is demons
 ### M3 — Advanced part features
 
 - Fillet/chamfer option "propagate along tangent edges" (OCCT propagates by default; make it an explicit toggle, default on). A kernel `import` feature (transform + naming in C++, replacing the TS workarounds from M1). IGES import.
-- Shell, draft, sweep, loft, mirror, patterns, hole wizard with standards tables, cosmetic threads, reference geometry, measure, mass properties, section view, sketch on face, project edges, versions/snapshots.
+- **Sketch editing (first M3 workstream, user priority):**
+  - **Offset entities:** a curve, chain or loop at a distance, on one side or both. Parametric: lines stay parallel, arcs concentric, corners joined. One driving distance (an expression) controls the offset, and the offset follows its source.
+  - **Convert entities (project edges):** model edges, or a face's outline, projected into the sketch as linked, fixed curves. They update when the model changes upstream. A lost source edge makes the sketch "needs attention" (ghost + Re-pick), never a silent re-pick of another edge. A linked curve can be unlinked.
+  - Trim/extend, sketch fillet/chamfer, sketch mirror.
+- Shell, draft, sweep, loft, mirror, patterns, hole wizard with standards tables, cosmetic threads, reference geometry (planes, axes, points), measure, mass properties, section view, sketch on face, versions/snapshots.
 - **Accept:** reproduce 10 reference parts (in `test-fixtures/reference-parts/`, with specs) within dimensional tolerance, entirely from the UI, in E2E scripts.
 
 ### M4 — Drawings
