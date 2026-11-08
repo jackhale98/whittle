@@ -19,6 +19,7 @@ the CI build stays green without any of it.
 | GitHub / GitLab / Bitbucket client ID or key             | yes                        | repository variables `VITE_GITHUB_CLIENT_ID`, `VITE_GITLAB_CLIENT_ID`, `VITE_BITBUCKET_CLIENT_ID` |
 | The same client ID again, for the Worker                 | no (kept with the secret)  | Worker secrets `GITHUB_CLIENT_ID`, `GITLAB_CLIENT_ID`, `BITBUCKET_CLIENT_ID` |
 | GitHub / Bitbucket (and confidential GitLab) client secret | **secret**               | Worker secrets `GITHUB_CLIENT_SECRET`, `BITBUCKET_CLIENT_SECRET`, `GITLAB_CLIENT_SECRET` |
+| Google client ID and secret (Drive token exchange)       | id: no · secret: **secret** | Worker var `GOOGLE_CLIENT_ID`, Worker secret `GOOGLE_CLIENT_SECRET` |
 | Allowed origins, extra git hosts, WebDAV allow-list      | no                         | Worker variables `ALLOWED_ORIGINS`, `EXTRA_GIT_HOSTS`, `DAV_HOSTS` |
 
 Repository variables: GitHub repository **Settings -> Secrets and variables -> Actions -> Variables
@@ -138,10 +139,10 @@ you need more.
 3. **Credentials -> Create credentials -> OAuth client ID -> Web application.**
    - Authorized JavaScript origins: `https://jackhale98.github.io`, `http://localhost:5173`.
    - Authorized redirect URIs: the two redirect URIs above.
-4. Copy the **Client ID** into `VITE_GDRIVE_CLIENT_ID`.
-
-Note for the sync engineer: Google's "Web application" clients need a client secret for a code
-exchange, and the Worker has no Google route yet. See the open issue in the platform report.
+4. Copy the **Client ID** into `VITE_GDRIVE_CLIENT_ID` (repository variable) and into the Worker
+   as `GOOGLE_CLIENT_ID`; put the **Client secret** in the Worker secret `GOOGLE_CLIENT_SECRET`.
+   Google's web-application clients need the secret for the code exchange, so Drive sign-in goes
+   through the Worker's `/oauth/google/token` and `/oauth/google/refresh` routes.
 
 ## 5. GitHub
 

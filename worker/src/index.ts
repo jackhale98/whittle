@@ -30,6 +30,9 @@ export interface Env {
   GITLAB_CLIENT_SECRET?: string;
   BITBUCKET_CLIENT_ID?: string;
   BITBUCKET_CLIENT_SECRET?: string;
+  /** Google Drive (Web application client): Google requires the secret for the code exchange. */
+  GOOGLE_CLIENT_ID?: string;
+  GOOGLE_CLIENT_SECRET?: string;
 }
 
 const GIT_HOSTS = ['github.com', 'gitlab.com', 'bitbucket.org'];
@@ -55,6 +58,7 @@ const OAUTH: Record<string, { token: string; basicAuth: boolean }> = {
   github: { token: 'https://github.com/login/oauth/access_token', basicAuth: false },
   gitlab: { token: 'https://gitlab.com/oauth/token', basicAuth: false },
   bitbucket: { token: 'https://bitbucket.org/site/oauth2/access_token', basicAuth: true },
+  google: { token: 'https://oauth2.googleapis.com/token', basicAuth: false },
 };
 
 function list(value: string | undefined): string[] {
@@ -146,7 +150,7 @@ async function oauth(request: Request, env: Env, url: URL, origin: string): Prom
   const config = provider ? OAUTH[provider] : undefined;
   if (!config || (action !== 'token' && action !== 'refresh') || request.method !== 'POST')
     return deny(404, 'Unknown OAuth endpoint', origin);
-  const prefix = provider!.toUpperCase() as 'GITHUB' | 'GITLAB' | 'BITBUCKET';
+  const prefix = provider!.toUpperCase() as 'GITHUB' | 'GITLAB' | 'BITBUCKET' | 'GOOGLE';
   const clientId = env[`${prefix}_CLIENT_ID`];
   const secret = env[`${prefix}_CLIENT_SECRET`];
   // GitLab apps can be public (PKCE, no secret); GitHub and Bitbucket need one.
