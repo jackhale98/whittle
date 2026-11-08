@@ -1,0 +1,30 @@
+{
+  "$id": "https://whittle.dev/schema/whittle-drawing.schema.json",
+  "$ref": "#/definitions/Drawing",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "Drawing": {
+      "additionalProperties": false,
+      "description": "Placeholder until M4; kept so documents are forward compatible.",
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "type": "object"
+    },
+    "Id": {
+      "description": "ULID (26-char Crockford base32).",
+      "type": "string"
+    }
+  },
+  "description": "`drawings/<slug>.drawing.json`",
+  "title": "DrawingFile"
+}
