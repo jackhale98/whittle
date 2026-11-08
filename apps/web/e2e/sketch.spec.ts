@@ -42,7 +42,8 @@ test('drag is one undo step; conflicts offer a fix; a failing extrude leaves a g
   ] as const) {
     await clickAt(page, x, y);
   }
-  await expect.poll(async () => (await a.sketch())?.dof).toBe(4);
+  // From the origin along both axes: the corners snap to them (ADR-017), leaving width + height.
+  await expect.poll(async () => (await a.sketch())?.dof).toBe(2);
   await page.keyboard.press('Escape'); // select tool
 
   // Drag the top-right corner: the rectangle stays a rectangle, and it is one undo step.

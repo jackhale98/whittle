@@ -133,7 +133,7 @@ describe('infer', () => {
       ),
     ).toBe(false);
     const empty: SketchSolveInput = { entities: [], constraints: [], values: {} };
-    expect(infer(empty, [1, 1], null, 1)).toEqual([]);
+    expect(infer(empty, [5, 7], null, 1)).toEqual([]);
   });
 
   it('bindCandidate substitutes placeholders', () => {

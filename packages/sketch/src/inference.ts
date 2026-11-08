@@ -30,6 +30,7 @@ import {
   scale,
   sub,
 } from './geometry';
+import { SKETCH_ORIGIN, SKETCH_X_AXIS, SKETCH_Y_AXIS } from './references';
 
 /** Placeholder id for the point being placed at the cursor. */
 export const CURSOR_POINT = '@cursor';
@@ -50,6 +51,15 @@ const WEIGHT = {
   parallel: 0.6,
   equal: 0.5,
   align: 0.4,
+} as const;
+
+/**
+ * The origin and axes (ADR-017) rank just below the same snap on the user's own geometry, so a
+ * real point or curve at the same spot always wins.
+ */
+const REFERENCE_WEIGHT = {
+  coincident: 0.98,
+  pointOn: 0.68,
 } as const;
 
 const MAX_CANDIDATES = 12;
@@ -127,6 +137,65 @@ export function infer(
         d,
       });
     }
+  }
+
+  // 1b. The origin: coincident snap, else horizontal/vertical alignment guides from it.
+  const origin: Vec2 = [0, 0];
+  const nearOrigin = !atFrom(origin) && dist(cursor, origin) <= tol;
+  if (!atFrom(origin)) {
+    const d = dist(cursor, origin);
+    if (d <= tol) {
+      push(
+        { kind: 'coincident', a: CURSOR_POINT, b: SKETCH_ORIGIN },
+        origin,
+        REFERENCE_WEIGHT.coincident,
+        d / tol,
+      );
+    } else {
+      const dy = Math.abs(cursor[1]);
+      if (dy <= tol) {
+        align.push({
+          c: {
+            constraint: { kind: 'horizontalPoints', a: CURSOR_POINT, b: SKETCH_ORIGIN },
+            snapped: [cursor[0], 0],
+            score: WEIGHT.align * (1 - (0.5 * dy) / tol),
+          },
+          d,
+        });
+      }
+      const dx = Math.abs(cursor[0]);
+      if (dx <= tol) {
+        align.push({
+          c: {
+            constraint: { kind: 'verticalPoints', a: CURSOR_POINT, b: SKETCH_ORIGIN },
+            snapped: [0, cursor[1]],
+            score: WEIGHT.align * (1 - (0.5 * dx) / tol),
+          },
+          d,
+        });
+      }
+    }
+  }
+
+  // 1c. The axes: point on the horizontal (v = 0) / vertical (u = 0) axis. Not offered at the
+  //     origin itself (coincident says more).
+  if (!nearOrigin) {
+    const onX = Math.abs(cursor[1]);
+    if (onX <= tol)
+      push(
+        { kind: 'pointOn', point: CURSOR_POINT, on: SKETCH_X_AXIS },
+        [cursor[0], 0],
+        REFERENCE_WEIGHT.pointOn,
+        onX / tol,
+      );
+    const onY = Math.abs(cursor[0]);
+    if (onY <= tol)
+      push(
+        { kind: 'pointOn', point: CURSOR_POINT, on: SKETCH_Y_AXIS },
+        [0, cursor[1]],
+        REFERENCE_WEIGHT.pointOn,
+        onY / tol,
+      );
   }
 
   // 2. Midpoints and curves.

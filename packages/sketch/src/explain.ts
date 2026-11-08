@@ -12,6 +12,7 @@ import type {
   SketchEntity,
   SuggestedFix,
 } from '@whittle/contracts';
+import { isSketchReference, referenceName, SKETCH_ORIGIN } from './references';
 
 const KIND_LABEL: Record<SketchEntity['kind'], string> = {
   point: 'Point',
@@ -67,7 +68,9 @@ export class Namer {
       this.names.set(e.id, `${KIND_LABEL[e.kind]} ${counts[e.kind]}`);
     }
   }
+  /** "Line 2"; the reference geometry by name ("the origin", "the horizontal axis"). */
   entity(id: Id): string {
+    if (isSketchReference(id)) return referenceName(id);
     return this.names.get(id) ?? 'unknown geometry';
   }
 }
@@ -136,7 +139,9 @@ export function describeFor(
     case 'verticalPoints':
       return `vertically aligned with ${other(c.a, c.b)}`;
     case 'coincident':
-      return `coincident with ${other(c.a, c.b)}`;
+      return c.a === SKETCH_ORIGIN || c.b === SKETCH_ORIGIN
+        ? 'at the origin'
+        : `coincident with ${other(c.a, c.b)}`;
     case 'pointOn':
       return subject === c.point ? `on ${namer.entity(c.on)}` : `through ${namer.entity(c.point)}`;
     case 'parallel':
@@ -176,6 +181,16 @@ export function describeFor(
   }
 }
 
+/** The first referenced entity that is user geometry (else the first reference). */
+function subjectOf(ids: readonly Id[]): Id {
+  return (ids.find((id) => !isSketchReference(id)) ?? ids[0]) as Id;
+}
+
+/** Capitalised for the start of a sentence ("the origin" → "The origin"). */
+function sentence(name: string): string {
+  return name.charAt(0).toUpperCase() + name.slice(1);
+}
+
 function joinAnd(parts: string[]): string {
   if (parts.length <= 1) return parts.join('');
   if (parts.length === 2) return `${parts[0]} and ${parts[1]}`;
@@ -198,17 +213,20 @@ export function explainConflict(
       : ` while ${joinAnd(fixed.map((id) => namer.entity(id)))} ${fixed.length === 1 ? 'is' : 'are'} fixed`;
   if (set.length === 1) {
     const c = set[0] as SketchConstraint;
-    const subject = referencedEntities(c)[0] as Id;
-    return `${namer.entity(subject)} can't be ${describeFor(c, subject, namer, values)}${fixedNote || ' with the current geometry'}`;
+    const subject = subjectOf(referencedEntities(c));
+    return `${sentence(namer.entity(subject))} can't be ${describeFor(c, subject, namer, values)}${fixedNote || ' with the current geometry'}`;
   }
   // A subject every constraint mentions, preferring the most specific (first) reference.
+  // The origin and axes are never the subject while user geometry is involved: "Point 3 can't
+  // be both on the horizontal axis and …", not "the horizontal axis can't …".
   const refSets = set.map((c) => new Set(referencedEntities(c)));
-  const subject = referencedEntities(set[0] as SketchConstraint).find((id) =>
+  const shared = referencedEntities(set[0] as SketchConstraint).filter((id) =>
     refSets.every((s) => s.has(id)),
   );
+  const subject = shared.find((id) => !isSketchReference(id)) ?? shared[0];
   if (subject !== undefined) {
     const parts = set.map((c) => describeFor(c, subject, namer, values));
-    const name = namer.entity(subject);
+    const name = sentence(namer.entity(subject));
     if (parts.length === 2) return `${name} can't be both ${parts[0]} and ${parts[1]}${fixedNote}`;
     return `${name} can't be ${joinAnd(parts)} at the same time${fixedNote}`;
   }

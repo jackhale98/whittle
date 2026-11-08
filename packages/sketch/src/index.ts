@@ -51,6 +51,20 @@ export {
   infer,
 } from './inference';
 export {
+  constraintRefs,
+  isReservedSketchId,
+  isSketchReference,
+  referenceEntities,
+  referenceName,
+  SKETCH_ORIGIN,
+  SKETCH_REFERENCES,
+  SKETCH_X_AXIS,
+  SKETCH_Y_AXIS,
+  usesReferences,
+  X_AXIS_END,
+  Y_AXIS_END,
+} from './references';
+export {
   arc3PointTool,
   arcCenterTool,
   arcTangentTool,

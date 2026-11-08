@@ -16,7 +16,7 @@ import type {
   WhittleDoc,
 } from '@whittle/contracts';
 import { isDimension } from '@whittle/contracts';
-import { constraintLabel, Namer } from '@whittle/sketch';
+import { constraintLabel, isSketchReference, Namer } from '@whittle/sketch';
 import {
   ConflictPanel,
   ConstraintGlyph,
@@ -207,19 +207,21 @@ const GLYPH_KINDS = new Set([
   'fix',
 ]);
 
+/** The entity a constraint's glyph sits on: never the origin or an axis (ADR-017). */
 function glyphHost(c: SketchConstraint): Id | null {
+  const user = (...ids: Id[]) => ids.find((id) => !isSketchReference(id)) ?? null;
   switch (c.kind) {
     case 'horizontal':
     case 'vertical':
       return c.line;
     case 'midpoint':
-      return c.point;
+      return user(c.point, c.line);
     case 'fix':
       return c.entity;
     case 'symmetric':
-      return c.about;
+      return user(c.about, c.a, c.b);
     default:
-      return 'a' in c && typeof c.a === 'string' ? c.a : null;
+      return 'a' in c && typeof c.a === 'string' && typeof c.b === 'string' ? user(c.a, c.b) : null;
   }
 }
 

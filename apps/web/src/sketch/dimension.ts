@@ -1,6 +1,7 @@
 /**
  * Dimension tool (PLAN §2.1, §9.4 `D`): which driving dimension a set of picked sketch entities
- * makes, its current measured value, where its label sits, and its display text.
+ * makes, its current measured value, where its label sits, and its display text. Picks may include
+ * the sketch's origin and axes (`@origin`, `@x`, `@y`, ADR-017).
  */
 
 import type {
@@ -10,10 +11,15 @@ import type {
   SketchEntity,
   Vec2,
 } from '@whittle/contracts';
-import { indexEntities, newId } from '@whittle/sketch';
+import { indexEntities, isSketchReference, newId, SKETCH_ORIGIN } from '@whittle/sketch';
 import type { SketchData } from './draw';
+import { entitiesWithReferences } from './references';
 
 type Index = ReadonlyMap<Id, SketchEntity>;
+
+/** Entities by id, the origin and axes included. */
+const refIndex = (sketch: SketchData): Index =>
+  indexEntities(entitiesWithReferences(sketch.entities));
 
 const pos = (index: Index, id: Id): Vec2 | null => {
   const e = index.get(id);
@@ -60,11 +66,23 @@ export type DimensionDraft = DimensionConstraint extends infer C
 /**
  * The dimension for picked entities: line → length; circle → diameter; arc → radius; two points
  * → distance; point + line/circle → distance; two lines → distance when parallel, else angle.
+ * Reference geometry: origin ↔ point as two points; axis ↔ point the perpendicular distance;
+ * axis ↔ line an angle (distance when parallel); the origin or an axis ↔ circle/arc measures to
+ * its centre. A reference alone, or two references, make no dimension.
  */
 export function dimensionFor(sketch: SketchData, picks: readonly Id[]): DimensionDraft | null {
-  const index = indexEntities(sketch.entities);
-  const [a, b] = picks.map((id) => index.get(id));
+  const index = refIndex(sketch);
+  let [a, b] = picks.map((id) => index.get(id));
   if (!a) return null;
+  if (isSketchReference(a.id) && (!b || isSketchReference(b.id))) return null;
+  if (b && isSketchReference(b.id) && !isSketchReference(a.id)) [a, b] = [b, a];
+  if (b && isSketchReference(a.id) && (b.kind === 'circle' || b.kind === 'arc')) {
+    // To a hole from the origin / an axis: its centre (h/v by label placement from the origin).
+    const center = b.center;
+    return a.id === SKETCH_ORIGIN
+      ? { kind: 'distance', a: a.id, b: center }
+      : { kind: 'distance', a: center, b: a.id };
+  }
   if (!b) {
     if (a.kind === 'line') return { kind: 'length', line: a.id };
     if (a.kind === 'circle') return { kind: 'diameter', curve: a.id };
@@ -102,7 +120,7 @@ export function dimensionAt(
 ): DimensionDraft | null {
   const base = dimensionFor(sketch, picks);
   if (!base || !at || options.aligned) return base;
-  const index = indexEntities(sketch.entities);
+  const index = refIndex(sketch);
   let ends: [Id, Id] | null = null;
   if (base.kind === 'distance') {
     const ea = index.get(base.a);
@@ -136,7 +154,7 @@ export function dimensionAt(
 
 /** Current value of a dimension (mm or rad), or null if its entities are missing. */
 export function measure(sketch: SketchData, d: DimensionDraft): number | null {
-  const index = indexEntities(sketch.entities);
+  const index = refIndex(sketch);
   switch (d.kind) {
     case 'length': {
       const l = lineEnds(index, d.line);
@@ -195,7 +213,7 @@ export function measure(sketch: SketchData, d: DimensionDraft): number | null {
 /** Sketch-space anchor of a dimension's label (stored `label`, else next to its geometry). */
 export function labelAnchor(sketch: SketchData, c: DimensionConstraint): Vec2 | null {
   if (c.label) return c.label;
-  const index = indexEntities(sketch.entities);
+  const index = refIndex(sketch);
   const center = (id: Id): Vec2 | null => {
     const e = index.get(id);
     if (!e) return null;

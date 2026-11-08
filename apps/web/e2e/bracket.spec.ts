@@ -71,13 +71,12 @@ async function dimension(page: Page, picks: V3[], label: V3, expr: string): Prom
   await a.settled();
 }
 
-/** Select tool: click a sketch point and fix it. */
-async function fixPoint(page: Page, p: V3): Promise<void> {
-  await clickWorld(page, p);
-  await expect.poll(async () => (await app(page).ui()).sketch?.selected.length ?? 0).toBe(1);
-  await page.getByRole('button', { name: 'Constraints' }).click();
-  await page.getByRole('menuitem', { name: 'Fix' }).click();
-  await app(page).settled();
+/** The sketch at feature index `i` is anchored by a coincidence with its origin, not a `fix`. */
+async function expectAtOrigin(page: Page, i: number): Promise<void> {
+  const f = (await app(page).doc()).parts[0]?.features[i];
+  if (f?.type !== 'sketch') throw new Error(`feature ${i} is not a sketch`);
+  expect(f.constraints.some((c) => c.kind === 'fix')).toBe(false);
+  expect(f.constraints.filter((c) => c.kind === 'coincident' && c.b === '@origin')).toHaveLength(1);
 }
 
 async function addParam(page: Page, name: string, expr: string): Promise<void> {
@@ -177,7 +176,8 @@ test('M1 acceptance: bracket from scratch, three upstream edits, STEP round trip
   await expect(page.getByTestId('param-value')).toHaveCount(5);
   await page.getByRole('tab', { name: 'Features' }).click();
 
-  // 2. Plate: rectangle on Top, corner fixed at the origin, width × depth.
+  // 2. Plate: rectangle on Top, its corner snapped onto the sketch origin (coincident with
+  // `@origin`, no `fix`), width × depth.
   await page.keyboard.press('s');
   await sketchOn(page, 'Top');
   await page.getByRole('button', { name: 'Rectangle' }).click();
@@ -188,7 +188,7 @@ test('M1 acceptance: bracket from scratch, three upstream edits, STEP round trip
   await clickWorld(page, [83, 53, 0]);
   await a.settled();
   await page.keyboard.press('Escape'); // select tool
-  await fixPoint(page, [0, 0, 0]);
+  await expectAtOrigin(page, 0);
   await page.keyboard.press('d');
   // Labels inside the outline: the new sketch's view is framed for an empty part.
   await dimension(page, [[41, 0, 0]], [41, 6, 0], 'width');
@@ -209,7 +209,8 @@ test('M1 acceptance: bracket from scratch, three upstream edits, STEP round trip
   await page.getByRole('button', { name: 'Done' }).click();
 
   // 4. Holes: sketch on the plate's top face (select first), four circles, two rows spaced by
-  // `hole_spacing`, Ø 6.
+  // `hole_spacing`, Ø 6. The left column is dimensioned from the sketch origin (the part origin
+  // projected onto the face: world (0, 0, 8)).
   await view(page, '5'); // top
   await selectAt(page, [40, 25, 8], 'face');
   await page.keyboard.press('s');
@@ -229,9 +230,45 @@ test('M1 acceptance: bracket from scratch, three upstream edits, STEP round trip
   }
   await a.settled();
   await page.keyboard.press('Escape');
-  await fixPoint(page, [20, 11, T]);
-  await fixPoint(page, [20, 31, T]);
   await page.keyboard.press('d');
+  // Left column from the origin: label above a centre and the origin → horizontal, beside them →
+  // vertical (clear of the axes, which the dimension tool would pick).
+  await dimension(
+    page,
+    [
+      [20, 11, T],
+      [0, 0, T],
+    ],
+    [4, 17, T],
+    '20 mm',
+  );
+  await dimension(
+    page,
+    [
+      [20, 11, T],
+      [0, 0, T],
+    ],
+    [28, 4, T],
+    '11 mm',
+  );
+  await dimension(
+    page,
+    [
+      [20, 31, T],
+      [0, 0, T],
+    ],
+    [4, 41, T],
+    '20 mm',
+  );
+  await dimension(
+    page,
+    [
+      [20, 31, T],
+      [0, 0, T],
+    ],
+    [28, 20, T],
+    '31 mm',
+  );
   // Two centres, label below the pair: a horizontal distance.
   await dimension(
     page,
@@ -271,8 +308,11 @@ test('M1 acceptance: bracket from scratch, three upstream edits, STEP round trip
     await dimension(page, [[x - 3.6, y, T]], [x - 6, y + 5, T], '6 mm');
   const holes = (await a.doc()).parts[0]?.features[2];
   if (holes?.type !== 'sketch') throw new Error('no hole sketch');
-  expect(holes.constraints.filter((c) => c.kind === 'hDistance')).toHaveLength(2);
-  expect(holes.constraints.filter((c) => c.kind === 'vDistance')).toHaveLength(1);
+  expect(holes.constraints.filter((c) => c.kind === 'hDistance')).toHaveLength(4);
+  expect(holes.constraints.filter((c) => c.kind === 'vDistance')).toHaveLength(3);
+  expect(holes.constraints.some((c) => c.kind === 'fix')).toBe(false);
+  // As before (when the left column was fixed), the right column keeps one DOF: its height.
+  expect((await a.sketch())?.dof).toBe(1);
   expect(holes.constraints.filter((c) => c.kind === 'diameter')).toHaveLength(4);
   await page.getByTestId('finish-sketch').click();
 
@@ -304,12 +344,13 @@ test('M1 acceptance: bracket from scratch, three upstream edits, STEP round trip
   await a.idle();
   await cameraStill(page);
   await page.getByRole('button', { name: 'Rectangle' }).click();
+  // The corner snaps onto the sketch origin (world (0, 50, 0) on this face).
   await clickWorld(page, [0, 50, 0]);
   // Drawn short (the view is framed on the plate) and oversize; the dimensions size it.
   await clickWorld(page, [83, 50, 30]);
   await a.settled();
   await page.keyboard.press('Escape');
-  await fixPoint(page, [0, 50, 0]);
+  await expectAtOrigin(page, 4);
   await page.keyboard.press('d');
   await dimension(page, [[41, 50, 0]], [41, 50, 6], 'width');
   await dimension(page, [[0, 50, 15]], [6, 50, 15], 'thickness + height');

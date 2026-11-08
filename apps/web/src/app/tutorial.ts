@@ -27,26 +27,42 @@ const ok = (s: TutorialSnapshot, f: Feature) => {
 };
 
 /**
- * True when the sketch has a closed loop of at least three non-construction lines: every line
- * end is shared by two lines (through shared points or coincident constraints).
+ * True when the sketch contains a closed loop of at least three non-construction lines (joined
+ * through shared points or coincident constraints). Other lines (open, stray, construction) don't
+ * matter: one stray line must not hide a finished rectangle.
  */
 export function hasClosedLoop(f: Pick<SketchFeature, 'entities' | 'constraints'>): boolean {
-  const parent = new Map<Id, Id>();
-  const find = (x: Id): Id => {
+  const find = (map: Map<Id, Id>, x: Id): Id => {
     let r = x;
-    while (parent.get(r) && parent.get(r) !== r) r = parent.get(r) as Id;
+    for (let next = map.get(r); next !== undefined && next !== r; next = map.get(r)) r = next;
     return r;
   };
-  for (const c of f.constraints) if (c.kind === 'coincident') parent.set(find(c.a), find(c.b));
-  const lines = f.entities.filter((e) => e.kind === 'line' && !e.construction);
-  if (lines.length < 3) return false;
-  const degree = new Map<Id, number>();
-  for (const l of lines)
-    if (l.kind === 'line')
-      for (const p of [l.start, l.end]) degree.set(find(p), (degree.get(find(p)) ?? 0) + 1);
-  let closed = 0;
-  for (const d of degree.values()) if (d >= 2) closed++;
-  return closed >= 3 && [...degree.values()].filter((d) => d < 2).length === 0;
+  // Points joined by coincident constraints are one vertex.
+  const joined = new Map<Id, Id>();
+  for (const c of f.constraints) {
+    if (c.kind !== 'coincident') continue;
+    const a = find(joined, c.a);
+    const b = find(joined, c.b);
+    if (a !== b) joined.set(a, b);
+  }
+  // In a simple graph (vertices: joined points; edges: distinct lines) there is a cycle, always of
+  // three or more edges, exactly when an edge joins two vertices that are already connected.
+  const comp = new Map<Id, Id>();
+  const edges = new Set<string>();
+  for (const l of f.entities) {
+    if (l.kind !== 'line' || l.construction) continue;
+    const a = find(joined, l.start);
+    const b = find(joined, l.end);
+    if (a === b) continue; // degenerate
+    const key = a < b ? `${a}|${b}` : `${b}|${a}`;
+    if (edges.has(key)) continue; // two lines over the same two points are no loop
+    edges.add(key);
+    const ra = find(comp, a);
+    const rb = find(comp, b);
+    if (ra === rb) return true;
+    comp.set(ra, rb);
+  }
+  return false;
 }
 
 /** Parameter names a feature mentions in its expressions (word match on the stored JSON). */

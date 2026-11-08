@@ -21,6 +21,15 @@ import type {
   SketchSolveInput,
 } from '@whittle/contracts';
 import { anglePi, TAU } from './geometry';
+import {
+  constraintRefs,
+  isReservedSketchId,
+  isSketchReference,
+  referenceEntities,
+  referenceName,
+  SKETCH_ORIGIN,
+  usesReferences,
+} from './references';
 
 /** One scalar residual equation `f(x) = 0`. */
 export interface Row {
@@ -124,6 +133,9 @@ interface RoundRef {
   r: (x: Float64Array) => number;
 }
 
+const cap = (t: string): string => t.charAt(0).toUpperCase() + t.slice(1);
+const AXIS_NO_LENGTH = 'An axis is infinite: it has no length or midpoint';
+
 function hyp(x: Float64Array, i: number, j: number): number {
   return Math.hypot(
     (x[i] as number) - (x[j] as number),
@@ -173,6 +185,8 @@ export function buildModel(input: SketchSolveInput, options: ModelOptions = {}):
   const index = new Map<Id, SketchEntity>();
   for (const e of input.entities) {
     if (index.has(e.id)) throw new SketchInputError(`Duplicate entity id ${e.id}`);
+    if (isReservedSketchId(e.id))
+      throw new SketchInputError(`${e.id} is reserved for the sketch's reference geometry`);
     index.set(e.id, e);
   }
 
@@ -185,8 +199,11 @@ export function buildModel(input: SketchSolveInput, options: ModelOptions = {}):
 
   const pointOf = (id: Id, owner: Id): number => {
     const i = pointIdx.get(id);
-    if (i === undefined)
+    if (i === undefined) {
+      if (isSketchReference(id))
+        throw new SketchInputError(`${cap(referenceName(id))} is not a point`);
       throw new SketchInputError(`${owner} references ${id}, which is not a point`);
+    }
     return i;
   };
 
@@ -209,6 +226,27 @@ export function buildModel(input: SketchSolveInput, options: ModelOptions = {}):
     maxY = Math.max(maxY, e.y);
   }
   let extent = Number.isFinite(minX) ? Math.max(maxX - minX, maxY - minY) : 0;
+
+  // Reference geometry (ADR-017): the origin and the axes, fixed, only when a constraint uses them
+  // (sketches that don't are solved exactly as before). Not in `entities`, so no DOF and no output.
+  const refs = usesReferences(input.constraints) ? referenceEntities() : [];
+  const refPrims: SketchPrimitive[] = [];
+  const refParams: number[] = [];
+  for (const e of refs) {
+    if (e.kind === 'point') {
+      pointIdx.set(e.id, values.length);
+      entityParams.set(e.id, [values.length, values.length + 1]);
+      refParams.push(values.length, values.length + 1);
+      values.push(e.x, e.y);
+      refPrims.push({ id: gid(e.id), type: 'point', x: e.x, y: e.y, fixed: true });
+    } else if (e.kind === 'line') {
+      const s = pointIdx.get(e.start) as number;
+      const t = pointIdx.get(e.end) as number;
+      entityParams.set(e.id, [...P(s), ...P(t)]);
+      refPrims.push({ id: gid(e.id), type: 'line', p1_id: gid(e.start), p2_id: gid(e.end) });
+    }
+    if (e.id === SKETCH_ORIGIN || e.kind === 'line') index.set(e.id, e);
+  }
 
   const rows: Row[] = [];
   const primitives: SketchPrimitive[] = [];
@@ -309,10 +347,11 @@ export function buildModel(input: SketchSolveInput, options: ModelOptions = {}):
       }
     }
   }
-  primitives.push(...curvePrims);
+  primitives.push(...refPrims, ...curvePrims);
 
   const x0 = Float64Array.from(values);
   const grounded = new Uint8Array(values.length);
+  for (const i of refParams) grounded[i] = 1;
   const invalid = new Map<Id, string>();
   const active: SketchConstraint[] = [];
 
@@ -414,6 +453,14 @@ export function buildModel(input: SketchSolveInput, options: ModelOptions = {}):
       if (enc === null) continue;
       if (typeof enc === 'string') {
         invalid.set(c.id, enc);
+        continue;
+      }
+      const ids = constraintRefs(c);
+      if (ids.length > 0 && ids.every(isSketchReference)) {
+        // Only the origin and axes: nothing can move. True already → ignore; else it can't hold.
+        const tolOf = (r: Row) => (r.angular ? 1e-9 : 1e-9 * Math.max(1, extent));
+        if (enc.rows.every((r) => Math.abs(r.f(x0)) <= tolOf(r))) continue;
+        invalid.set(c.id, 'it only involves the origin and axes, which never move');
         continue;
       }
       active.push(c);
@@ -695,6 +742,7 @@ export function buildModel(input: SketchSolveInput, options: ModelOptions = {}):
         const la = lineRef(g.a);
         const lb = lineRef(g.b);
         if (g.a === g.b) return null;
+        if (isSketchReference(g.a) || isSketchReference(g.b)) return AXIS_NO_LENGTH;
         if (la && lb) {
           row(
             [...P(la.s), ...P(la.e), ...P(lb.s), ...P(lb.e)],
@@ -741,6 +789,7 @@ export function buildModel(input: SketchSolveInput, options: ModelOptions = {}):
         const p = pointOf(g.point, g.id);
         const l = lineRef(g.line);
         if (!l) return 'Midpoint needs a point and a line';
+        if (isSketchReference(g.line)) return AXIS_NO_LENGTH;
         if (p === l.s || p === l.e) return 'A line end cannot be its midpoint';
         const ps = [...P(p), ...P(l.s), ...P(l.e)];
         row(ps, (x) => (x[p] as number) - ((x[l.s] as number) + (x[l.e] as number)) / 2);
@@ -957,6 +1006,7 @@ export function buildModel(input: SketchSolveInput, options: ModelOptions = {}):
   function axisPair(a: Id, b: Id): [Id, Id] | string {
     const ea = ent(a);
     if (a === b) {
+      if (isSketchReference(a)) return AXIS_NO_LENGTH;
       if (ea.kind === 'line') return [ea.start, ea.end];
       return 'A horizontal/vertical distance on one entity needs a line';
     }
@@ -1041,6 +1091,7 @@ export function buildModel(input: SketchSolveInput, options: ModelOptions = {}):
       case 'length': {
         const l = lineRef(c.line);
         if (!l) return 'Length needs a line';
+        if (isSketchReference(c.line)) return AXIS_NO_LENGTH;
         return {
           params: uniq([...P(l.s), ...P(l.e)]),
           fn: (x) => hyp(x, l.s, l.e),

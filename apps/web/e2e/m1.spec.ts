@@ -42,7 +42,8 @@ test('sketch a rectangle, dimension it, extrude by width/2, edit history, reload
   await expect(page.getByTestId('prompt-chip')).toContainText('Select a plane');
   await sketchOn(page, 'Top');
 
-  // 2. Line tool (active by default for a new sketch): a closed rectangle, click-click.
+  // 2. Line tool (active by default for a new sketch): a closed rectangle, click-click. It starts
+  // on the sketch origin and runs along both axes, so its corners snap to them (ADR-017).
   for (const [x, y] of [
     [0, 0],
     [40, 0],
@@ -52,18 +53,21 @@ test('sketch a rectangle, dimension it, extrude by width/2, edit history, reload
   ] as const) {
     await clickAt(page, x, y);
   }
-  await expect.poll(async () => (await a.sketch())?.dof).toBe(4);
+  await expect.poll(async () => (await a.sketch())?.dof).toBe(2);
   const sketch = (await a.doc()).parts[0]?.features[0];
   expect(sketch?.type).toBe('sketch');
   if (sketch?.type !== 'sketch') throw new Error('no sketch');
   expect(sketch.entities.filter((e) => e.kind === 'line')).toHaveLength(4);
+  // Corner at the origin, corners on the axes; the edges along the axes need no H/V of their own.
   expect(sketch.constraints.map((c) => c.kind).sort()).toEqual([
+    'coincident',
     'horizontal',
-    'horizontal',
-    'vertical',
+    'pointOn',
+    'pointOn',
     'vertical',
   ]);
-  await expect(page.getByTestId('constraint-glyph')).toHaveCount(4);
+  expect(JSON.stringify(sketch.constraints)).toContain('"@origin"');
+  await expect(page.getByTestId('constraint-glyph')).toHaveCount(2);
 
   // 3. Dimension tool: bottom edge → 60, right edge → 30.
   await page.keyboard.press('Escape'); // leave the line tool
@@ -74,10 +78,10 @@ test('sketch a rectangle, dimension it, extrude by width/2, edit history, reload
   await expect(editor).toBeFocused();
   await editor.fill('60');
   await editor.press('Enter');
-  // The edit lands in the document only after its solve (the DOF count is already 3 after the
+  // The edit lands in the document only after its solve (the DOF count is already 1 after the
   // placement, before the 60 mm solve): wait for the sketch to settle, then read the geometry.
   await a.settled();
-  await expect.poll(async () => (await a.sketch())?.dof).toBe(3);
+  await expect.poll(async () => (await a.sketch())?.dof).toBe(1);
   // The right edge moved with the solve: find it from the document.
   const right = await rightEdge();
   await clickAt(page, right.x, right.y);
@@ -85,8 +89,8 @@ test('sketch a rectangle, dimension it, extrude by width/2, edit history, reload
   await expect(editor).toBeFocused();
   await editor.fill('30 mm');
   await editor.press('Enter');
-  await expect.poll(async () => (await a.sketch())?.dof).toBe(2);
-  await expect(page.getByTestId('sketch-status').first()).toContainText('2 degrees of freedom');
+  await expect.poll(async () => (await a.sketch())?.dof).toBe(0);
+  await expect(page.getByTestId('sketch-status').first()).toContainText('Fully constrained');
 
   // 4. Finish.
   await page.getByTestId('finish-sketch').click();

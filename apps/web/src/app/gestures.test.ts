@@ -26,6 +26,14 @@ describe('gesture map (PLAN §9.3)', () => {
     expect(gestureAction(g('doubleTap', 'mouse'), model)).toBe('zoomTo');
     expect(gestureAction(g('doubleTap'), { ...model, sketch: true })).toBe('fit');
     expect(gestureAction(g('doubleTap'), { ...model, sketch: true, drawing: true })).toBeNull();
+    // A drawing or dimension tool with nothing in progress: two quick taps are tool clicks.
+    expect(gestureAction(g('doubleTap'), { ...model, sketch: true, tool: true })).toBeNull();
+    expect(
+      gestureAction(g('doubleTap'), { ...model, sketch: true, tool: false, onGeometry: false }),
+    ).toBe('fit');
+    // Multi-finger taps still undo / redo while a tool is active.
+    expect(gestureAction(g('twoFingerTap'), { ...model, sketch: true, tool: true })).toBe('undo');
+    expect(gestureAction(g('threeFingerTap'), { ...model, sketch: true, tool: true })).toBe('redo');
   });
   it('long-press opens the context bubble (touch and pen, not in sketch mode)', () => {
     expect(gestureAction(g('longPress'), model)).toBe('menu');
