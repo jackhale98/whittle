@@ -408,6 +408,8 @@ export function ExportControl({
         onExport={props.onExportRequest}
         bodies={props.exportBodies}
         unavailable={props.exportUnavailable}
+        notes={props.exportNotes}
+        onTargetChange={props.onExportTargetChange}
         busy={props.exportBusy}
       />
     );

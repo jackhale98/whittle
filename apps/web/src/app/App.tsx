@@ -1,6 +1,13 @@
 import type { Id, TouchViewport } from '@whittle/contracts';
 import { ulid } from '@whittle/document';
-import { AppShell, type MoveResult, type PaletteCommand, type ToolId, useTheme } from '@whittle/ui';
+import {
+  AppShell,
+  type ExportTarget,
+  type MoveResult,
+  type PaletteCommand,
+  type ToolId,
+  useTheme,
+} from '@whittle/ui';
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { getDiagnostics } from '../platform/diagnostics';
 import { getRuntimeState, subscribeRuntimeState } from '../platform/runtime-state';
@@ -16,6 +23,7 @@ import {
 } from '../ui/touch-props';
 import { ViewportOverlays } from '../ui/ViewportOverlays';
 import { useObservable } from './observable';
+import type { EngineState } from './state';
 import { ViewportHost } from './ViewportHost';
 import type { Workbench } from './workbench';
 
@@ -24,6 +32,21 @@ function isolationLabel(isolation: ReturnType<typeof getRuntimeState>['isolation
   return isolation === 'isolated'
     ? 'threaded kernel available'
     : 'fallback (single-threaded kernel)';
+}
+
+/** Export targets the kernel writes (the mesh formats come from the render meshes). */
+const EXACT_EXPORTS: ReadonlySet<ExportTarget> = new Set(['step', 'stl']);
+
+/** What the export form says while the kernel boots (a phone starts it on demand). */
+function kernelLoadingNote(engine: EngineState): string | undefined {
+  if (engine.ready || engine.error) return undefined;
+  const s = engine.status;
+  if (s.state === 'downloading') {
+    const pct = s.total ? Math.min(99, Math.round((s.loaded / s.total) * 100)) : null;
+    return pct === null ? 'Loading the geometry kernel…' : `Loading the geometry kernel… ${pct}%`;
+  }
+  if (s.state === 'compiling' || s.state === 'ready') return 'Starting the geometry kernel…';
+  return undefined;
 }
 
 const ENABLED_TOOLS: readonly ToolId[] = [
@@ -156,7 +179,10 @@ export function App({ wb }: { wb: Workbench }) {
   const section = useSectionProps(wb);
   const parts = usePartsProps(wb);
   const tutorial = useBracketTutorial(wb);
-  const engineMissing = engine.ready ? undefined : 'The geometry kernel is still loading';
+  // Exact formats need the kernel. A phone starts it lazily: choosing STEP/STL (or pressing
+  // Export) boots it, so they are only unavailable when it failed to start.
+  const engineFailed = engine.error ? 'The geometry kernel failed to start' : undefined;
+  const engineNote = kernelLoadingNote(engine);
 
   const move = (id: Id, toIndex: number): MoveResult => {
     if (!part) return { ok: false, reason: 'No part' };
@@ -261,9 +287,11 @@ export function App({ wb }: { wb: Workbench }) {
           id: b.id,
           name: `Body ${i + 1}`,
         }))}
-        {...(engineMissing
-          ? { exportUnavailable: { step: engineMissing, stl: engineMissing } }
-          : {})}
+        {...(engineFailed ? { exportUnavailable: { step: engineFailed, stl: engineFailed } } : {})}
+        {...(engineNote ? { exportNotes: { step: engineNote, stl: engineNote } } : {})}
+        onExportTargetChange={(target) => {
+          if (EXACT_EXPORTS.has(target)) wb.ensureKernel();
+        }}
         exportBusy={ui.exporting}
         viewport={
           <>

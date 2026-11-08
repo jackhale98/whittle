@@ -53,6 +53,10 @@ export interface ShellProps {
   onExportRequest?(request: ExportRequest): void;
   exportBodies?: readonly ExportBody[];
   exportUnavailable?: Partial<Record<ExportTarget, string>>;
+  /** Status lines for export targets (e.g. "Loading the geometry kernel… 40%"); not disabled. */
+  exportNotes?: Partial<Record<ExportTarget, string>>;
+  /** The export form's chosen target (on open and on change), so the host can prepare it. */
+  onExportTargetChange?(target: ExportTarget): void;
   exportBusy?: boolean;
 
   /* ---- M2 touch & tablet ---- */

@@ -1,6 +1,7 @@
 import { devices, expect, type Page, test } from '@playwright/test';
 import type { WhittleTestHooks } from '@whittle/contracts';
 import { app, boot, cameraStill, touch, touchStats } from './helpers';
+import { expectTouchTarget } from './targets';
 
 /**
  * The phone viewer (PLAN §9.1, §8.4): cached meshes render without the kernel, which boots only
@@ -124,4 +125,126 @@ test('phone: a cached document is a viewer until the first measurement boots the
   await panel.getByRole('radio', { name: 'Y' }).tap();
   expect((await a.ui()).section.axis).toBe('y');
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/iphone-section.png` });
+});
+
+test('phone touch targets: welcome, Library, prompt Esc, Add description are 44 px', async ({
+  page,
+}) => {
+  test.slow();
+  await boot(page);
+  const a = app(page);
+  const welcome = page.getByTestId('welcome');
+  const actions = welcome.getByRole('button');
+  expect(await actions.count()).toBeGreaterThanOrEqual(5);
+  for (const b of await actions.all()) {
+    await expectTouchTarget(
+      b,
+      (await b.getAttribute('aria-label')) ?? ((await b.textContent()) || 'button'),
+    );
+  }
+  await expectTouchTarget(welcome.getByTestId('take-tour'), 'Take the 60-second tour');
+  await expectTouchTarget(page.getByRole('button', { name: 'Close welcome' }), 'Close welcome');
+  await page.getByTestId('open-demo').tap();
+  await expect.poll(async () => (await a.doc()).parts[0]?.features.length).toBeGreaterThan(0);
+  await a.idle();
+  await expectTouchTarget(page.getByTestId('library-button'), 'Library');
+  await tab(page, 'Params').tap();
+  await expectTouchTarget(
+    page.getByTestId('params-list').getByRole('button', { name: 'Add description' }).first(),
+    'Add description',
+  );
+  await tab(page, 'Measure').tap();
+  const chip = page.getByTestId('prompt-chip');
+  await expectTouchTarget(chip.getByRole('button', { name: /cancel selection/ }), 'Esc');
+});
+
+/** Reloads the cached document: on screen from the cache, the kernel not started. */
+async function reopenCached(page: Page): Promise<void> {
+  const a = app(page);
+  await page.reload();
+  await page.waitForFunction(
+    () => !!(window as unknown as { __whittle?: WhittleTestHooks }).__whittle,
+  );
+  await page.evaluate(() =>
+    (window as unknown as { __whittle: WhittleTestHooks }).__whittle.firstBodyRendered(),
+  );
+  expect((await a.regen())?.source).toBe('cache');
+  expect((await a.ui()).kernel.started).toBe(false);
+}
+
+/** The demo, cached (the kernel boots once to show it) and reopened from the cache. */
+async function cachedDemo(page: Page) {
+  await boot(page);
+  const a = app(page);
+  await page.getByTestId('open-demo').tap();
+  await expect.poll(async () => (await a.doc()).parts[0]?.features.length).toBeGreaterThan(0);
+  await a.idle();
+  expect(await a.cacheSaved()).toBe(true);
+  await reopenCached(page);
+  return a;
+}
+
+test('phone: STL and STEP export boot the kernel on demand', async ({ page }) => {
+  test.slow();
+  await page.addInitScript(() => {
+    // Downloads, not the File System Access picker (headless cancels it).
+    (window as unknown as { showSaveFilePicker?: unknown }).showSaveFilePicker = undefined;
+  });
+  const a = await cachedDemo(page);
+  for (const [format, ext] of [
+    ['STL', /\.stl$/],
+    ['STEP', /\.step$/],
+  ] as const) {
+    if (format === 'STEP') await reopenCached(page);
+    await tab(page, 'Export').tap();
+    const form = page.getByTestId('export-form');
+    const radio = form.getByRole('radio', { name: new RegExp(`^${format}\\b`) });
+    // Nothing is "still loading" before anything loads: both exact formats can be chosen.
+    await expect(form.getByRole('radio', { name: /^STL\b/ })).toBeEnabled();
+    await expect(form.getByRole('radio', { name: /^STEP\b/ })).toBeEnabled();
+    await expect(form).not.toContainText('still loading');
+    // 3MF and back again: exact formats stay selectable.
+    await form.getByRole('radio', { name: /^3MF\b/ }).tap();
+    await expect(form.getByRole('radio', { name: /^3MF\b/ })).toBeChecked();
+    await radio.tap();
+    await expect(radio).toBeChecked();
+    // An exact format starts the kernel; Export waits for it, then saves the file.
+    await expect.poll(async () => (await a.ui()).kernel.started).toBe(true);
+    const download = page.waitForEvent('download', { timeout: 60_000 });
+    await form.getByRole('button', { name: new RegExp(`^Export ${format}`) }).tap();
+    const file = await download;
+    expect(file.suggestedFilename()).toMatch(ext);
+    expect((await a.ui()).kernel.ready).toBe(true);
+  }
+});
+
+test('phone: a parameter edit boots the kernel and regenerates live', async ({ page }) => {
+  test.slow();
+  const a = await cachedDemo(page);
+  const width = (r: Awaited<ReturnType<typeof a.regen>>) => {
+    const b = r?.bodies[0]?.bbox;
+    return b ? (b.max[0] ?? 0) - (b.min[0] ?? 0) : 0;
+  };
+  const before = width(await a.regen());
+  await tab(page, 'Params').tap();
+  await page.getByRole('textbox', { name: 'Expression for width' }).tap();
+  const keypad = page.getByTestId('keypad');
+  await expect(keypad).toBeVisible();
+  expect((await a.ui()).kernel.started).toBe(false); // opening the field is not an edit
+  await keypad.getByRole('button', { name: 'AC (clear)' }).tap();
+  await keypad.getByRole('button', { name: '9', exact: true }).tap();
+  await keypad.getByRole('button', { name: '0', exact: true }).tap();
+  await keypad.getByRole('button', { name: 'mm (millimetres)' }).tap();
+  await keypad.getByRole('button', { name: 'Enter' }).tap();
+  await expect
+    .poll(async () => (await a.doc()).params.find((p) => p.name === 'width')?.expr)
+    .toMatch(/^90 ?mm$/);
+  await expect.poll(async () => (await a.ui()).kernel.started).toBe(true);
+  await expect.poll(async () => (await a.regen())?.source, { timeout: 60_000 }).toBe('live');
+  await a.idle();
+  const r = await a.regen();
+  expect(r?.features.length).toBeGreaterThan(0);
+  expect(r?.features.filter((f) => f.state !== 'ok')).toEqual([]);
+  expect(width(r) - before).toBeCloseTo(10, 3);
+  await expect(page.getByTestId('param-value').first()).toHaveText('90 mm');
 });
