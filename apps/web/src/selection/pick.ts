@@ -217,11 +217,6 @@ export function applyPick<F extends Feature>(feature: F, path: string, ref: Enti
 }
 
 /**
- * Index of the vertex at `point` (within `tol` mm) in a mesh's `vertexPositions`, or -1. Vertices
- * carry no persistent names in the mesh, so a selected vertex is re-found by position after a
- * regen (a vertex that moved is dropped, never guessed).
- */
-/**
  * The body's vertices numbered exactly as the viewport picks them (distinct edge-polyline
  * endpoints, `deriveVertices`), so a remapped index highlights the same vertex. The kernel's
  * optional `vertexPositions` is not used: its order is TopExp's, not the viewport's.
@@ -230,6 +225,11 @@ export function pickVertices(mesh: MeshBuffers | undefined): Float32Array | unde
   return mesh ? deriveVertices(mesh.edgePositions, mesh.edgeRanges, mesh.bbox) : undefined;
 }
 
+/**
+ * Index of the vertex at `point` (within `tol` mm) in `positions` (from `pickVertices`), or -1.
+ * Vertices carry no persistent names in the mesh, so a selected vertex is re-found by position
+ * after a regen (a vertex that moved is dropped, never guessed).
+ */
 export function vertexAt(
   positions: Float32Array | undefined,
   point: readonly [number, number, number],
