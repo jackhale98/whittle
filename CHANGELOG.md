@@ -71,5 +71,6 @@
 ### M2.5 — Connections, sync & version control
 
 - Sync: structural three-way merge keyed by stable ids (`docMerger`, with conflicts and `resolve`), one-line feature diffs (`docDiffer`), snapshot history in `.whittle-history/` and git history on isomorphic-git (`createSnapshotHistory`, `createGitHistory`); a seeded 1,000-pair concurrent-edit fuzz test never loses an edit.
+- Sync (ADR-029, package layer): local git repo mode. `fsaGitFs` runs isomorphic-git over a picked folder (File System Access); `openLocalGitRepo` finds `.git/`, `.git` files and worktrees inside the folder, reports read-only states (merge, rebase, detached HEAD, bare…) and keeps `.whittle/` gitignored; `GitHistory` takes `projectPath` (several projects per repo), commits only the project's files, never forces a checkout over uncommitted edits, leaves LFS pointers alone and writes reflog entries; tested against the real `git` CLI, including `git gc` packs and a seeded Whittle/CLI interleaving test (ADR-pending).
 
 - Viewport (M2.5): `setCompare` overlay for geometric compare: added material green, removed red (translucent fills, solid vs dashed edges, colour-vision-safe palette, light and dark), live bodies fade to `ghostOpacity` and restore exactly on `null`; clipped by section views, never pickable; `fitAll(animate, { includeOverlay })` frames it (ADR-pending).

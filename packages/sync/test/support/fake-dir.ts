@@ -60,8 +60,13 @@ export class FakeDir implements FolderHandle {
     this.children.set(name, f);
     return f;
   }
-  async removeEntry(name: string) {
-    if (!this.children.delete(name)) throw err('NotFoundError');
+  /** Like Chromium: a non-empty folder needs `recursive`. */
+  async removeEntry(name: string, options: { recursive?: boolean } = {}) {
+    const c = this.children.get(name);
+    if (!c) throw err('NotFoundError');
+    if (c instanceof FakeDir && c.children.size > 0 && !options.recursive)
+      throw err('InvalidModificationError');
+    this.children.delete(name);
   }
   async *values() {
     for (const c of [...this.children.values()]) yield c;

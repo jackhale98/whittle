@@ -1042,3 +1042,84 @@ repo's commits, not a parallel `.whittle-history/`. The owner asked for this in 
      in the UI.
 6. **Browsers.** Desktop Chromium only, because Firefox and Safari have no directory picker.
    Elsewhere, local git mode is hidden with that reason, and hosted git connections still work.
+
+## ADR-pending — Local git repo mode: the package layer (sync, ADR-029)
+
+**Context.** ADR-029 makes a picked folder with `.git` the project's history. Doing that through
+isomorphic-git over File System Access, in a repository the user also works on with their own
+git, raised choices ADR-029 leaves open.
+
+**Decision.**
+
+1. **Commits are built from tree objects, not the index.** Whittle writes the project's blobs,
+   builds the project folder's tree and splices it into the parent commit's tree, rewriting only
+   the trees on the path (one write per tree, nothing left dangling). Whatever else the user has
+   staged or edited is neither committed nor touched. Hosted connections use the same path.
+2. **Write order and compare-and-swap.** The steps are:
+   - a preflight: each working file the commit changes must still hold the replaced commit's
+     content, or already hold what is being committed. Anything else is someone's edit, so the
+     commit is refused with `CONFLICT` and nothing is written. CRLF checkouts under
+     `core.autocrlf` and smudged LFS content count as unchanged;
+   - write the working files, skipping files whose bytes are already right, so the folder
+     provider's `lastModified:size` revisions don't move for nothing;
+   - write the commit object;
+   - move the branch only if it still points where it did (`CONFLICT` if another git committed
+     meanwhile);
+   - update the index entries of the changed paths, with the files' own stats.
+
+   File System Access has no exclusive create or rename, so Whittle can't take git's
+   `index.lock`. It refuses to start while one exists, and the remaining race is the instant
+   between the check and the write (as in ADR-023 item 12).
+3. **Never a forced checkout.** `switchBranch` and fast-forward `pull` refuse with `CONFLICT`
+   while `workingChanges()` lists anything. They then check out without `force`, so another
+   file's local edits that the switch would replace refuse it too (isomorphic-git's
+   `CheckoutConflictError`, mapped to `CONFLICT` with the paths), and edits to files that are
+   the same on both branches carry over, as in git. A fast-forward checks the tree out before it
+   moves the branch. Hosted and local-only histories follow the same rules.
+4. **Automatic snapshots are objects plus a ref.** Their commits go under
+   `refs/whittle/auto[/<project>]/<oid>` and change neither the branch, the index nor the
+   working tree, so they never show as staged changes in the user's git and never block a
+   switch.
+5. **Scoping by `projectPath`.**
+   - Files read back are project-relative.
+   - `log()` is git's history simplification for the folder (`git log -- <folder>`): a commit is
+     kept unless its project tree equals a parent's, and parents are rewritten to the nearest
+     kept ancestors, so the graph stays connected. The interleaving test checks it against the
+     CLI after every step.
+   - Releases are tags named `<projectPath>/<name>`, so two projects can both have a "Rev A".
+     The root project keeps unprefixed tags and lists all of them.
+   - New files the repository ignores are left out of a commit, as `git add` would.
+6. **Merges in a multi-project repository** also merge everything outside the project, whole
+   file by blob id, so a pull or `commitMerge` never reverts the other side's changes to other
+   projects. When both sides changed the same outside path, or a submodule or symlink, the
+   merge is refused (`CONFLICT` / `UNSUPPORTED`) and left to the user's git tools, because the
+   merge panel can't show those files.
+7. **Status without rehashing.** `workingChanges()` walks HEAD, the working tree and the index
+   for the project folder only. A file is clean, without being read, when its index entry has
+   HEAD's blob and the same size and millisecond mtime. That works against an index the git CLI
+   wrote, because inode, ctime and owner (which File System Access lacks) aren't compared. A
+   file modified at or after the index's own mtime is hashed ("racy git"). isomorphic-git's
+   `statusMatrix` rehashes once against a CLI index and is stats-only after its refresh.
+8. **Finding the repository.**
+   - A `.git` file (`gitdir:`) works when its target is inside the picked folder.
+   - A linked worktree's `commondir` is supported by an fs view that serves per-worktree files
+     (HEAD, index, MERGE_HEAD…) from the worktree's git directory and the rest from the common
+     one, following git's `common_list`. isomorphic-git has no `commondir` support of its own.
+   - Absolute targets, which `git worktree add` and submodules write, are `UNSUPPORTED`, with
+     the reason.
+   - A bare repository and SHA-256 repositories are detected: bare opens read-only, SHA-256 is
+     `UNSUPPORTED`.
+9. **Read-only states** are checked fresh before every write: merge, rebase, cherry-pick,
+   revert, bisect, a detached HEAD, a bare repository, `index.lock`, and an index version other
+   than 2. The refusal code is `CONFLICT`, with the explanation from `state()`. Proposal: a
+   dedicated `READ_ONLY` code.
+10. **LFS.** A smudged checkout counts as unchanged when its SHA-256 is the pointer's oid, and a
+    commit keeps the pointer blob as it is. A changed LFS file is refused with `UNSUPPORTED`
+    (Whittle runs no clean filter). `read()` returns the pointer bytes.
+11. **No symlinks.** `readlink` and `symlink` reject with `ENOENT` or `ENOTSUP`.
+    isomorphic-git writes checkout files in parallel and only reports failures at the end, so a
+    switch or fast-forward that would create or replace a symlink is refused (`UNSUPPORTED`)
+    before anything is written (`symlinks: false`, which local mode sets).
+12. **Reflog.** Whittle appends git-format reflog entries for its commits, branch switches and
+    fast-forwards when the repository keeps reflogs (`logs/` exists), so `git reflog` can always
+    get back to an earlier state.

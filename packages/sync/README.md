@@ -8,3 +8,8 @@ Connections, background sync and version control (PLAN §8A, M2.5). Contracts li
 - `engine/`: `SyncEngine` (pull, structural three-way merge, push against the base revision).
 - `merge/`: `DocMerger` and `DocDiffer`.
 - `history/`: `SnapshotHistory` (`.whittle-history/`) and `GitHistory` (isomorphic-git).
+  Local git repo mode (ADR-029): `fsaGitFs(handle)` is isomorphic-git's `fs` over a picked
+  folder, and `openLocalGitRepo(handle, { projectPath })` returns the repo's `GitHistory` scoped
+  to the project folder, with `state()` (read-only reasons) and `ensureCacheIgnored()`.
+  `test/git-local*.test.ts` run it against the real `git` CLI through `test/support/node-dir.ts`
+  (a `FileSystemDirectoryHandle` over a temp folder).

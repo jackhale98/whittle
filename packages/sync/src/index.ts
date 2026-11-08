@@ -75,6 +75,7 @@ export { type FileChanges, MemorySyncStore, type SyncLocalStore } from './engine
 export { type HistoryFiles, MemoryHistoryFiles } from './history/files';
 export { type BasicAuth, basicAuth, type GitHost, retryAuth } from './history/git/auth';
 export { browserGitFs } from './history/git/browser-fs';
+export { FsaPromises, FsaStats, FsError, type FsErrorCode, fsaGitFs } from './history/git/fsa-fs';
 export {
   corsProxyFor,
   createGitHistory,
@@ -83,6 +84,18 @@ export {
   gitError,
   ownedPath,
 } from './history/git/git';
+export { type LfsPointer, lfsPointer, matchesLfs } from './history/git/lfs';
+export {
+  type LocalGitRepo,
+  type LocalGitRepoOptions,
+  type LocalRepoProblem,
+  type LocalRepoState,
+  openLocalGitRepo,
+  sharedGitPath,
+  worktreeGitFs,
+} from './history/git/local';
+export { normalizeProjectPath, ProjectScope } from './history/git/scope';
+export { projectStatus, type StatusCounters, type WorkingChange } from './history/git/status';
 export {
   CACHE_PREFIX,
   HISTORY_PREFIX,
