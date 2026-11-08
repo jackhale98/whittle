@@ -156,10 +156,12 @@ export {
 export {
   formatLengthMm,
   type Measurement,
+  type MeasurementExtra,
   type MeasurementKind,
   type MeasurementReading,
-  type MeasureTarget,
+  type MeasureTargetItem,
   type MeasureUnits,
+  measurementKind,
   parseLengthMm,
   readMeasurement,
   speakMeasurement,
@@ -181,7 +183,12 @@ export { BottomSheet, type BottomSheetProps } from './shells/BottomSheet';
 export { DesktopShell } from './shells/DesktopShell';
 export { PhoneShell } from './shells/PhoneShell';
 export { TabletShell } from './shells/TabletShell';
-export type { ShellProps } from './shells/types';
+export type {
+  PhoneSheetTab,
+  SheetTabId,
+  ShellProps,
+  TabletSheetTab,
+} from './shells/types';
 export { ConflictPanel, type ConflictPanelProps } from './sketch/ConflictPanelLazy';
 export {
   ConstraintGlyph,

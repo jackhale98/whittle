@@ -14,6 +14,10 @@ import type { ParamsTableProps } from '../params/ParamsTable';
 import type { ThemeSetting } from '../theme';
 import type { TutorialProps } from '../tutorial/TutorialLazy';
 
+export type TabletSheetTab = 'history' | 'params' | 'inspector';
+export type PhoneSheetTab = 'parts' | 'params' | 'measure' | 'section' | 'export';
+export type SheetTabId = TabletSheetTab | PhoneSheetTab;
+
 /** Props every shell accepts. The shell never touches Wasm or the kernel: it only renders state. */
 export interface ShellProps {
   /** App-level commands appended to the ⌘K palette (e.g. Check for updates, About). */
@@ -62,6 +66,12 @@ export interface ShellProps {
   /** Tablet and phone bottom sheet: controlled snap point (`peek` | `half` | `full`). */
   sheetSnap?: SheetSnap;
   onSheetSnapChange?(snap: SheetSnap): void;
+  /**
+   * Controlled sheet section: tablet `history` | `params` | `inspector`, phone `parts` | `params` |
+   * `measure` | `section` | `export`. Omit to let the shell keep it.
+   */
+  sheetTab?: SheetTabId;
+  onSheetTabChange?(tab: SheetTabId): void;
   /** Phone Parts tab. */
   parts?: PartsPanelProps;
   /** Phone Measure tab. */

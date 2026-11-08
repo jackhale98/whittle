@@ -39,6 +39,11 @@ export interface BottomSheetProps {
   children: ReactNode;
   className?: string;
   testId?: string;
+  /**
+   * Visible height (px, safe-area inset included) at the current snap, reported when it settles
+   * (not while dragging), so the host can keep floating chrome above the sheet.
+   */
+  onVisibleHeight?(px: number): void;
 }
 
 const DRAG_THRESHOLD = 6;
@@ -64,6 +69,7 @@ export function BottomSheet({
   children,
   className,
   testId,
+  onVisibleHeight,
 }: BottomSheetProps) {
   const ref = useRef<HTMLElement>(null);
   const [container, setContainer] = useState(0);
@@ -109,6 +115,10 @@ export function BottomSheet({
   );
   const full = heights.full;
   const target = full - heights[snap];
+  const visible = heights[snap];
+  const onVisible = useRef(onVisibleHeight);
+  onVisible.current = onVisibleHeight;
+  useLayoutEffect(() => onVisible.current?.(visible), [visible]);
 
   const first = useRef(true);
   useEffect(() => {

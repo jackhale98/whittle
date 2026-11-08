@@ -3,7 +3,7 @@ import { Segmented } from '../components/controls';
 import { Button, cn } from '../components/primitives';
 import {
   type Measurement,
-  type MeasureTarget,
+  type MeasureTargetItem,
   type MeasureUnits,
   readMeasurement,
   speakMeasurement,
@@ -14,7 +14,11 @@ export interface MeasurePanelProps {
   /** Readings, oldest first. The last one is shown large. */
   measurements: readonly Measurement[];
   /** The picks the current reading is computed from (face, edge, point ...). */
-  targets?: readonly MeasureTarget[];
+  targets?: readonly MeasureTargetItem[];
+  /** A one-line note under the reading (e.g. the kernel's error for the last pick). */
+  note?: string | null;
+  /** A measurement is being computed (the kernel may still be loading). */
+  busy?: boolean;
   units?: MeasureUnits;
   onUnitsChange?(units: MeasureUnits): void;
   onRemoveTarget?(id: string): void;
@@ -33,6 +37,8 @@ export function MeasurePanel({
   onUnitsChange,
   onRemoveTarget,
   onClear,
+  note,
+  busy,
   className,
 }: MeasurePanelProps) {
   const latest = measurements[measurements.length - 1];
@@ -58,14 +64,14 @@ export function MeasurePanel({
         <section
           aria-label="Latest measurement"
           data-testid="measure-reading"
-          data-kind={latest.kind}
+          data-kind={reading.kind}
           className="rounded-panel bg-surface-2 px-4 py-3"
         >
           <p className="text-2xs font-semibold tracking-wider text-fg-muted uppercase">
             {reading.label}
           </p>
           <p className="tnum mt-0.5 flex items-baseline gap-1.5">
-            {latest.kind === 'position' ? null : (
+            {reading.kind === 'position' ? null : (
               <>
                 <span className="text-[34px] leading-10 font-semibold tracking-tight text-fg">
                   {reading.value}
@@ -84,15 +90,37 @@ export function MeasurePanel({
               ))}
             </dl>
           ) : null}
+          {reading.extra ? (
+            <dl className="tnum mt-1.5 flex flex-col gap-0.5 text-ui" data-testid="measure-extra">
+              {reading.extra.map((x) => (
+                <div key={x.label} className="flex items-baseline justify-between gap-3">
+                  <dt className="text-fg-muted">{x.label}</dt>
+                  <dd className="font-medium text-fg">
+                    {x.value} {x.unit}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          ) : null}
           <span role="status" aria-live="polite" className="sr-only">
             {speakMeasurement(latest, units)}
           </span>
         </section>
+      ) : busy ? (
+        <p className="py-6 text-center text-ui text-fg-muted" role="status" aria-live="polite">
+          Measuring…
+        </p>
       ) : (
         <EmptyState icon={Ruler} title="Measure" className="py-6">
           Tap two points, edges or faces to read distances and angles.
         </EmptyState>
       )}
+
+      {note ? (
+        <p className="text-ui text-danger-text" role="alert" data-testid="measure-note">
+          {note}
+        </p>
+      ) : null}
 
       {targets.length > 0 ? (
         <section aria-label="Picked targets">
@@ -136,6 +164,7 @@ export function MeasurePanel({
           <ul className="m-0 flex list-none flex-col p-0" data-testid="measure-history">
             {earlier.map((m, i) => {
               const r = readMeasurement(m, units);
+              if (!r) return null;
               return (
                 <li
                   // biome-ignore lint/suspicious/noArrayIndexKey: readings have no ids; the list only grows at the end
@@ -144,7 +173,7 @@ export function MeasurePanel({
                 >
                   <span className="text-fg-muted">{r.label}</span>
                   <span className="tnum font-medium text-fg">
-                    {m.kind === 'position' ? r.value : `${r.value} ${r.unit}`}
+                    {r.kind === 'position' ? r.value : `${r.value} ${r.unit}`}
                   </span>
                 </li>
               );

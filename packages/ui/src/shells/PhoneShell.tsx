@@ -1,5 +1,5 @@
 import { Box, Download, Ruler, Scissors, SlidersHorizontal } from 'lucide-react';
-import { type ComponentType, lazy, Suspense, useState } from 'react';
+import { type ComponentType, type CSSProperties, lazy, Suspense, useState } from 'react';
 import { Button, cn } from '../components/primitives';
 import { StatusChip } from '../components/StatusChip';
 import { ExportPanel } from '../export/ExportMenu';
@@ -10,6 +10,7 @@ import {
   ParamsPanel,
   ShellRoot,
   useSheetSnap,
+  useSheetTab,
   ViewportOverlays,
   ViewportStage,
 } from './shared';
@@ -27,6 +28,7 @@ const SectionPanel = lazy(() =>
 );
 
 type SheetTab = 'parts' | 'params' | 'measure' | 'section' | 'export';
+const TABS: readonly SheetTab[] = ['parts', 'params', 'measure', 'section', 'export'];
 
 const sheetTabs: Array<{
   id: SheetTab;
@@ -84,7 +86,9 @@ const loading = <p className="p-6 text-center text-ui text-fg-muted">Loading…<
 export function PhoneShell(props: ShellProps) {
   const { documentName, kernelStatus, viewport, onExport, paramsTable, onExportRequest } = props;
   const [snap, setSnap] = useSheetSnap(props);
-  const [tab, setTab] = useState<SheetTab>('parts');
+  const [tab, setTab] = useSheetTab(props, TABS, 'parts');
+  // What the sheet covers, for app overlays above it (`--chrome-bottom`).
+  const [sheetPx, setSheetPx] = useState(PEEK);
   const open = snap !== 'peek';
 
   return (
@@ -92,7 +96,9 @@ export function PhoneShell(props: ShellProps) {
       {() => (
         <ViewportStage
           viewport={viewport}
-          className="h-full w-full"
+          // App overlays: below the title pill, beside the left inset, above the sheet.
+          className="h-full w-full [--chrome-left:max(10px,var(--safe-left))] [--chrome-top:calc(max(10px,var(--safe-top))+3.25rem)]"
+          style={{ '--chrome-bottom': `${sheetPx}px` } as CSSProperties}
           overlay={
             <>
               <header
@@ -125,6 +131,7 @@ export function PhoneShell(props: ShellProps) {
                 topGap={64}
                 handleLabel="Tools"
                 testId="tools-sheet"
+                onVisibleHeight={setSheetPx}
                 header={
                   <fieldset className="m-0 grid min-w-0 shrink-0 grid-cols-5 gap-1 border-0 px-2 pt-0 pb-1">
                     <legend className="sr-only">Viewer tools</legend>

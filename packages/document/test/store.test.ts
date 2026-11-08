@@ -595,3 +595,24 @@ describe('load', () => {
     expect(store.getDoc().meta.name).toBe('Bracket');
   });
 });
+
+describe('historyMentions', () => {
+  it('finds strings an undo or redo could bring back, until the history drops them', () => {
+    const { store } = setup({ maxHistory: 2 });
+    // Any stored string works the same way; an import's attachment path is the use case.
+    const imp = box(10, { dx: 'imports/a.step' });
+    must(add(store, imp));
+    expect(store.historyMentions(['imports/a.step', 'imports/b.step'])).toEqual(
+      new Set(['imports/a.step']),
+    );
+    must(store.apply({ kind: 'removeFeature', partId: pid, featureId: imp.id }));
+    store.undo();
+    expect(store.historyMentions(['imports/a.step']).size).toBe(1); // a redo removes it again
+    store.redo();
+    must(add(store, box(11)));
+    must(add(store, box(12)));
+    // The add and the remove fell off the two-entry history: nothing can restore it now.
+    expect(store.historyMentions(['imports/a.step']).size).toBe(0);
+    expect(store.historyMentions([]).size).toBe(0);
+  });
+});

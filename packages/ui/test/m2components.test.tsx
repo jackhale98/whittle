@@ -316,8 +316,8 @@ describe('phone panels', () => {
     renderUI(
       <MeasurePanel
         measurements={[
-          { kind: 'length', value: 60 },
-          { kind: 'distance', value: 42.5, delta: [30, 25.5, 17] },
+          { length: 60 },
+          { distance: { value: 42.5, a: [0, 0, 0], b: [30, 25.5, 17] }, angle: Math.PI / 2 },
         ]}
         targets={[
           { id: 't1', label: 'Face · Top' },
@@ -335,7 +335,10 @@ describe('phone panels', () => {
     expect(within(screen.getByTestId('measure-targets')).getAllByRole('listitem')).toHaveLength(2);
     fireEvent.click(screen.getByRole('button', { name: 'Remove Edge 4' }));
     expect(onRemove).toHaveBeenCalledWith('t2');
-    expect(screen.getByRole('status')).toHaveTextContent('Distance 42.50 millimetres');
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Distance 42.50 millimetres, angle 90.00 degrees',
+    );
+    expect(screen.getByTestId('measure-extra')).toHaveTextContent('Angle90.00 °');
   });
   it('MeasurePanel empty state', () => {
     renderUI(<MeasurePanel measurements={[]} />);
@@ -426,7 +429,7 @@ describe('phone panels', () => {
       <AppShell
         tier="phone"
         {...base}
-        measure={{ measurements: [{ kind: 'angle', value: Math.PI / 2 }] }}
+        measure={{ measurements: [{ angle: Math.PI / 2 }] }}
         section={{
           enabled: true,
           onEnabledChange: () => {},

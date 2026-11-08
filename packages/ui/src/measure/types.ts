@@ -1,26 +1,23 @@
 /**
- * Measurement readings for the phone Measure panel.
+ * Measurement readings for the Measure panel (phone sheet, desktop/tablet Inspect tool).
  *
- * `@whittle/contracts` has no `Measurement` type yet (only `MassProperties`), so the UI declares
- * the structural shape it needs here. It is meant to be replaced by (or aliased to) the contract
- * type once the lead adds it: see the proposed diff in the M2 UI hand-off. Canonical units: mm,
- * mm^2 and radians, exactly as the kernel reports them.
+ * Values are the contract's `Measurement` (packages/contracts kernel.ts), exactly as the kernel
+ * reports them: mm, mm² and radians. One measurement can carry several quantities (a distance and
+ * the angle between two faces; an edge's length and its radius): the reading leads with one and
+ * lists the others as extra rows.
  */
+
+import type { Measurement } from '@whittle/contracts';
+
+export type { Measurement };
 
 export type Vec3 = readonly [number, number, number];
 
-export type Measurement =
-  | { kind: 'distance'; value: number; delta?: Vec3 }
-  | { kind: 'angle'; value: number }
-  | { kind: 'length'; value: number }
-  | { kind: 'area'; value: number }
-  | { kind: 'radius'; value: number; diameter?: boolean }
-  | { kind: 'position'; value: Vec3 };
+/** The quantity a reading leads with (`readMeasurement`). */
+export type MeasurementKind = 'distance' | 'angle' | 'length' | 'area' | 'radius' | 'position';
 
-export type MeasurementKind = Measurement['kind'];
-
-/** A picked thing the measurement is computed from. */
-export interface MeasureTarget {
+/** A picked thing the measurement is computed from (shown in the panel's "Picked" list). */
+export interface MeasureTargetItem {
   id: string;
   /** Human text such as "Face · Top" or "Edge 4". */
   label: string;
@@ -40,8 +37,16 @@ const KIND_LABEL: Record<MeasurementKind, string> = {
   position: 'Position',
 };
 
-export const measurementLabel = (m: Measurement): string =>
-  m.kind === 'radius' && m.diameter ? 'Diameter' : KIND_LABEL[m.kind];
+/** The leading quantity: distance, then length, area, radius, angle, position. */
+export function measurementKind(m: Measurement): MeasurementKind | null {
+  if (m.distance) return 'distance';
+  if (m.length !== undefined) return 'length';
+  if (m.area !== undefined) return 'area';
+  if (m.radius !== undefined) return 'radius';
+  if (m.angle !== undefined) return 'angle';
+  if (m.position) return 'position';
+  return null;
+}
 
 const fmt = (n: number, digits: number, grouping = true): string =>
   n
@@ -52,69 +57,102 @@ const fmt = (n: number, digits: number, grouping = true): string =>
     })
     .replace('-', '−');
 
+export interface MeasurementExtra {
+  label: string;
+  value: string;
+  unit: string;
+}
+
 export interface MeasurementReading {
+  kind: MeasurementKind;
   label: string;
   /** Number text with a true minus sign and fixed decimals so columns line up. */
   value: string;
   unit: string;
   /** Extra axis readouts (ΔX/ΔY/ΔZ, or X/Y/Z for a position). */
   parts?: ReadonlyArray<{ axis: string; value: string }>;
+  /** Further quantities of the same measurement (the angle beside a distance, radius, Ø). */
+  extra?: readonly MeasurementExtra[];
 }
 
-/** Formats a measurement for display in `units` (length units only; angles are always degrees). */
-export function readMeasurement(m: Measurement, units: MeasureUnits = 'mm'): MeasurementReading {
-  const len = (mm: number) => (units === 'in' ? mm / MM_PER_IN : mm);
-  const d = units === 'in' ? 4 : 2;
-  const label = measurementLabel(m);
-  switch (m.kind) {
-    case 'distance':
+/**
+ * Formats a measurement for display in `units` (length units only; angles are always degrees).
+ * Null for a measurement without any quantity.
+ */
+export function readMeasurement(
+  m: Measurement,
+  units: MeasureUnits = 'mm',
+): MeasurementReading | null {
+  const kind = measurementKind(m);
+  if (!kind) return null;
+  const len = (mm: number) => fmt(units === 'in' ? mm / MM_PER_IN : mm, units === 'in' ? 4 : 2);
+  const area = (mm2: number) =>
+    fmt(units === 'in' ? mm2 / (MM_PER_IN * MM_PER_IN) : mm2, units === 'in' ? 4 : 1);
+  const deg = (rad: number) => fmt((rad * 180) / Math.PI, 2);
+
+  const extra: MeasurementExtra[] = [];
+  if (kind !== 'angle' && m.angle !== undefined)
+    extra.push({ label: 'Angle', value: deg(m.angle), unit: '°' });
+  if (kind !== 'length' && m.length !== undefined)
+    extra.push({ label: 'Length', value: len(m.length), unit: units });
+  if (kind !== 'area' && m.area !== undefined)
+    extra.push({ label: 'Area', value: area(m.area), unit: `${units}²` });
+  if (kind !== 'radius' && m.radius !== undefined)
+    extra.push({ label: 'Radius', value: len(m.radius), unit: units });
+  if (m.radius !== undefined)
+    extra.push({ label: 'Diameter', value: len(2 * m.radius), unit: units });
+
+  const label = KIND_LABEL[kind];
+  const base = (value: string, unit: string): MeasurementReading => ({
+    kind,
+    label,
+    value,
+    unit,
+    ...(extra.length ? { extra } : {}),
+  });
+  switch (kind) {
+    case 'distance': {
+      const d = m.distance as NonNullable<Measurement['distance']>;
       return {
-        label,
-        value: fmt(len(m.value), d),
-        unit: units,
-        parts: m.delta
-          ? (['X', 'Y', 'Z'] as const).map((axis, i) => ({
-              axis: `Δ${axis}`,
-              value: fmt(len(m.delta?.[i] ?? 0), d),
-            }))
-          : undefined,
-      };
-    case 'length':
-      return { label, value: fmt(len(m.value), d), unit: units };
-    case 'radius':
-      return { label, value: fmt(len(m.value), d), unit: units };
-    case 'angle':
-      return { label, value: fmt((m.value * 180) / Math.PI, 2), unit: '°' };
-    case 'area':
-      return {
-        label,
-        value: fmt(
-          units === 'in' ? m.value / (MM_PER_IN * MM_PER_IN) : m.value,
-          units === 'in' ? 4 : 1,
-        ),
-        unit: `${units}²`,
-      };
-    case 'position':
-      return {
-        label,
-        value: m.value.map((v) => fmt(len(v), d)).join(', '),
-        unit: units,
+        ...base(len(d.value), units),
         parts: (['X', 'Y', 'Z'] as const).map((axis, i) => ({
-          axis,
-          value: fmt(len(m.value[i] ?? 0), d),
+          axis: `Δ${axis}`,
+          value: len((d.b[i] ?? 0) - (d.a[i] ?? 0)),
         })),
       };
+    }
+    case 'length':
+      return base(len(m.length as number), units);
+    case 'radius':
+      return base(len(m.radius as number), units);
+    case 'angle':
+      return base(deg(m.angle as number), '°');
+    case 'area':
+      return base(area(m.area as number), `${units}²`);
+    case 'position': {
+      const p = m.position as Vec3;
+      return {
+        ...base(p.map((v) => len(v)).join(', '), units),
+        parts: (['X', 'Y', 'Z'] as const).map((axis, i) => ({ axis, value: len(p[i] ?? 0) })),
+      };
+    }
   }
 }
 
-/** Spoken form: "Distance 42.50 millimetres". */
+/** Spoken form: "Distance 42.50 millimetres, angle 90.00 degrees". */
 export function speakMeasurement(m: Measurement, units: MeasureUnits = 'mm'): string {
   const r = readMeasurement(m, units);
-  const unit = r.unit === '°' ? 'degrees' : units === 'in' ? 'inches' : 'millimetres';
-  const sq = m.kind === 'area' ? 'square ' : '';
-  return m.kind === 'position'
-    ? `${r.label} ${r.parts?.map((p) => `${p.axis} ${p.value}`).join(', ')} ${unit}`
-    : `${r.label} ${r.value} ${sq}${unit}`;
+  if (!r) return '';
+  const word = (unit: string) =>
+    unit === '°'
+      ? 'degrees'
+      : `${unit.endsWith('²') ? 'square ' : ''}${units === 'in' ? 'inches' : 'millimetres'}`;
+  const head =
+    r.kind === 'position'
+      ? `${r.label} ${r.parts?.map((p) => `${p.axis} ${p.value}`).join(', ')} ${word(r.unit)}`
+      : `${r.label} ${r.value} ${word(r.unit)}`;
+  const tail = (r.extra ?? []).map((x) => `${x.label.toLowerCase()} ${x.value} ${word(x.unit)}`);
+  return [head, ...tail].join(', ');
 }
 
 /** Lengths typed into the Section value field: "12", "12mm", "0.5in", "1.5 cm". Returns mm or null. */

@@ -4,6 +4,7 @@ import {
   CircleDot,
   Grid3x3,
   Hammer,
+  MoveVertical,
   PenLine,
   Rotate3d,
   Ruler,
@@ -18,6 +19,7 @@ export type ToolId =
   | 'sketch'
   | 'extrude'
   | 'revolve'
+  | 'pushPull'
   | 'fillet'
   | 'chamfer'
   | 'shell'
@@ -33,11 +35,12 @@ export interface ToolDef {
   Icon: ComponentType<{ className?: string; strokeWidth?: number; 'aria-hidden'?: boolean }>;
 }
 
-/** Command-bar tools in PLAN 9.1 order. All are placeholders until M1. */
+/** Command-bar tools in PLAN 9.1 order (plus M2 push/pull, the direct-editing tool). */
 export const tools: readonly ToolDef[] = [
   { id: 'sketch', label: 'Sketch', shortcut: 'S', Icon: PenLine },
   { id: 'extrude', label: 'Extrude', shortcut: 'E', Icon: ArrowUpFromLine },
   { id: 'revolve', label: 'Revolve', shortcut: 'R', Icon: Rotate3d },
+  { id: 'pushPull', label: 'Push/pull', shortcut: 'P', Icon: MoveVertical },
   { id: 'fillet', label: 'Fillet', shortcut: 'F', Icon: SquareRoundCorner },
   { id: 'chamfer', label: 'Chamfer', shortcut: 'C', Icon: ChamferIcon },
   { id: 'shell', label: 'Shell', Icon: SquareDashed },
@@ -60,7 +63,7 @@ export interface ToolGroupDef {
 /** Tablet rail groups (PLAN 9.1): Sketch / Solid / Modify / Inspect. Every tool is in one group. */
 export const toolGroups: readonly ToolGroupDef[] = [
   { id: 'sketch', label: 'Sketch', Icon: PenLine, tools: ['sketch'] },
-  { id: 'solid', label: 'Solid', Icon: Box, tools: ['extrude', 'revolve', 'hole'] },
+  { id: 'solid', label: 'Solid', Icon: Box, tools: ['extrude', 'pushPull', 'revolve', 'hole'] },
   { id: 'modify', label: 'Modify', Icon: Hammer, tools: ['fillet', 'chamfer', 'shell', 'pattern'] },
   { id: 'inspect', label: 'Inspect', Icon: ScanSearch, tools: ['measure'] },
 ];

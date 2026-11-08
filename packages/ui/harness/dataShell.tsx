@@ -33,9 +33,9 @@ const pt = (key: string): { x: number; y: number } | null => {
 };
 
 const sampleMeasurements: Measurement[] = [
-  { kind: 'length', value: 60 },
-  { kind: 'angle', value: Math.PI / 2 },
-  { kind: 'distance', value: 42.5, delta: [30, 25.5, 17] },
+  { length: 60 },
+  { angle: Math.PI / 2 },
+  { distance: { value: 42.5, a: [0, 0, 0], b: [30, 25.5, 17] } },
 ];
 
 declare global {

@@ -18,6 +18,8 @@ import {
 } from '../src/logic/tutorial';
 import {
   formatLengthMm,
+  type Measurement,
+  measurementKind,
   parseLengthMm,
   readMeasurement,
   speakMeasurement,
@@ -391,35 +393,48 @@ describe('tutorial state machine', () => {
 
 describe('measurement readings', () => {
   it('formats each kind with units and a true minus', () => {
-    expect(readMeasurement({ kind: 'length', value: 60 })).toMatchObject({
+    expect(readMeasurement({ length: 60 })).toMatchObject({
+      kind: 'length',
       label: 'Length',
       value: '60.00',
       unit: 'mm',
     });
-    expect(readMeasurement({ kind: 'angle', value: Math.PI / 2 })).toMatchObject({
+    expect(readMeasurement({ angle: Math.PI / 2 })).toMatchObject({
       value: '90.00',
       unit: '°',
     });
-    expect(readMeasurement({ kind: 'area', value: 1800 })).toMatchObject({
+    expect(readMeasurement({ area: 1800 })).toMatchObject({
       value: '1,800.0',
       unit: 'mm²',
     });
-    expect(readMeasurement({ kind: 'radius', value: 5, diameter: true }).label).toBe('Diameter');
-    const d = readMeasurement({ kind: 'distance', value: 42.5, delta: [30, -25.5, 17] });
-    expect(d.parts?.map((p) => p.value)).toEqual(['30.00', '−25.50', '17.00']);
-    const p = readMeasurement({ kind: 'position', value: [1, 2, 3] });
-    expect(p.parts?.map((x) => x.axis)).toEqual(['X', 'Y', 'Z']);
+    const r = readMeasurement({ radius: 5 });
+    expect(r?.label).toBe('Radius');
+    expect(r?.extra).toEqual([{ label: 'Diameter', value: '10.00', unit: 'mm' }]);
+    const d = readMeasurement({ distance: { value: 42.5, a: [0, 0, 0], b: [30, -25.5, 17] } });
+    expect(d?.parts?.map((p) => p.value)).toEqual(['30.00', '−25.50', '17.00']);
+    const p = readMeasurement({ position: [1, 2, 3] });
+    expect(p?.parts?.map((x) => x.axis)).toEqual(['X', 'Y', 'Z']);
+    expect(readMeasurement({})).toBeNull();
+  });
+  it('leads with the distance and lists the other quantities', () => {
+    const m: Measurement = { distance: { value: 6, a: [0, 0, 0], b: [0, 0, 6] }, angle: Math.PI };
+    expect(measurementKind(m)).toBe('distance');
+    expect(readMeasurement(m)?.extra).toEqual([{ label: 'Angle', value: '180.00', unit: '°' }]);
+    const edge = readMeasurement({ length: 31.416, radius: 5 });
+    expect(edge?.kind).toBe('length');
+    expect(edge?.extra?.map((x) => x.label)).toEqual(['Radius', 'Diameter']);
   });
   it('converts to inches', () => {
-    expect(readMeasurement({ kind: 'length', value: 25.4 }, 'in')).toMatchObject({
+    expect(readMeasurement({ length: 25.4 }, 'in')).toMatchObject({
       value: '1.0000',
       unit: 'in',
     });
-    expect(readMeasurement({ kind: 'area', value: 645.16 }, 'in').unit).toBe('in²');
+    expect(readMeasurement({ area: 645.16 }, 'in')?.unit).toBe('in²');
   });
   it('speaks readings', () => {
-    expect(speakMeasurement({ kind: 'angle', value: Math.PI })).toBe('Angle 180.00 degrees');
-    expect(speakMeasurement({ kind: 'length', value: 3 }, 'in')).toContain('inches');
+    expect(speakMeasurement({ angle: Math.PI })).toBe('Angle 180.00 degrees');
+    expect(speakMeasurement({ length: 3 }, 'in')).toContain('inches');
+    expect(speakMeasurement({ area: 10 })).toBe('Area 10.0 square millimetres');
   });
   it('parses and formats lengths', () => {
     expect(parseLengthMm('12')).toBe(12);

@@ -1,6 +1,8 @@
 /**
  * @whittle/sketch — main-thread entry: the worker client, constraint inference, drawing-tool
- * helpers, Pencil stroke recognition (also `@whittle/sketch/recognize`) and geometry utilities.
+ * helpers and geometry utilities. Pencil stroke recognition is its own entry,
+ * `@whittle/sketch/recognize`: the app's initial route imports this root (constraint labels), and a
+ * root re-export would pull the recogniser into it as soon as the lazy sketch chunk uses it.
  * Everything here is pure TS; planegcs (Wasm) only loads inside the sketch worker
  * (`@whittle/sketch/worker`) or via `@whittle/sketch/core` in Node.
  *
@@ -48,13 +50,6 @@ export {
   type DrawingState,
   infer,
 } from './inference';
-export {
-  type CircleFit,
-  DEFAULT_STROKE_ANGLE_TOLERANCE,
-  fitCircle,
-  recognizeStroke,
-  strokeFragment,
-} from './recognize';
 export {
   arc3PointTool,
   arcCenterTool,

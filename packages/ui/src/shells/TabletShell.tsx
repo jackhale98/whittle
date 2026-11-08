@@ -1,5 +1,5 @@
 import { History, Search } from 'lucide-react';
-import { useState } from 'react';
+import { type CSSProperties, useState } from 'react';
 import { Segmented } from '../components/controls';
 import { IconButton, Separator } from '../components/primitives';
 import { StatusChip } from '../components/StatusChip';
@@ -17,6 +17,7 @@ import {
   UndoRedo,
   UnitsChip,
   useSheetSnap,
+  useSheetTab,
   ViewportOverlays,
   ViewportStage,
 } from './shared';
@@ -24,6 +25,7 @@ import type { ShellProps } from './types';
 
 /** Handle (28) + header (40). */
 const PEEK = 68;
+const TABS = ['history', 'params', 'inspector'] as const;
 
 /**
  * Tablet shell (PLAN 9.1, Shapr3D-class): a full-bleed viewport, a slim tool rail with four groups,
@@ -42,7 +44,9 @@ export function TabletShell(props: ShellProps) {
     inspector,
   } = props;
   const [snap, setSnap] = useSheetSnap(props);
-  const [sheetTab, setSheetTab] = useState<'history' | 'params' | 'inspector'>('history');
+  const [sheetTab, setSheetTab] = useSheetTab(props, TABS, 'history');
+  // What the sheet covers, for app overlays above it (`--chrome-bottom`).
+  const [sheetPx, setSheetPx] = useState(PEEK);
   const hasData = !!(featureTree || paramsTable || inspector);
   const nFeatures = featureTree?.features.length ?? 0;
 
@@ -51,8 +55,11 @@ export function TabletShell(props: ShellProps) {
       {(core) => (
         <ViewportStage
           viewport={viewport}
-          // Space taken by the floating chrome (top bar, tool rail), for app panels in the overlay.
+          // Space taken by the floating chrome (top bar, tool rail, sheet), for app panels in the
+          // overlay: `--chrome-left` / `--chrome-top` clear the rail and the top bar,
+          // `--chrome-bottom` is the sheet's visible height at rest.
           className="h-full w-full [--chrome-left:4.75rem] [--chrome-top:4.75rem]"
+          style={{ '--chrome-bottom': `${sheetPx}px` } as CSSProperties}
           overlay={
             <>
               {/* Top-left: document + history + actions. Top-right stays free for the view cube. */}
@@ -108,6 +115,7 @@ export function TabletShell(props: ShellProps) {
                 topGap={96}
                 handleLabel="History"
                 testId="history-sheet"
+                onVisibleHeight={setSheetPx}
                 className="left-1/2 w-[min(640px,calc(100%-24px))] -translate-x-1/2 right-auto"
                 header={
                   <div className="flex h-10 shrink-0 items-center gap-2 px-5 text-ui">

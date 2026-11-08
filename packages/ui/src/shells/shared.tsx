@@ -3,6 +3,7 @@ import { Download, Grid3x3, Moon, Redo2, Sun, Undo2 } from 'lucide-react';
 import { LazyMotion } from 'motion/react';
 import {
   type ComponentType,
+  type CSSProperties,
   lazy,
   type ReactNode,
   Suspense,
@@ -164,13 +165,16 @@ export function ViewportStage({
   viewport,
   overlay,
   className,
+  style,
 }: {
   viewport: ReactNode;
   overlay?: ReactNode;
   className?: string;
+  style?: CSSProperties;
 }) {
   return (
     <div
+      style={style}
       className={cn(
         // `overflow-clip`, not hidden: a hidden box can still be scrolled by focus / scrollIntoView, which
         // would drag a translated sheet's offscreen part into view and shift the whole stage.
@@ -218,6 +222,27 @@ export function useSheetSnap(
     [props.onSheetSnapChange],
   );
   return [snap, set];
+}
+
+/** Sheet section: controlled via `sheetTab` / `onSheetTabChange` when it is one of `tabs`. */
+export function useSheetTab<T extends string>(
+  props: Pick<ShellProps, 'sheetTab' | 'onSheetTabChange'>,
+  tabs: readonly T[],
+  initial: T,
+): [T, (t: T) => void] {
+  const [local, setLocal] = useState<T>(initial);
+  const controlled = (tabs as readonly string[]).includes(props.sheetTab ?? '')
+    ? (props.sheetTab as T)
+    : undefined;
+  const tab = controlled ?? local;
+  const set = useCallback(
+    (t: T) => {
+      setLocal(t);
+      props.onSheetTabChange?.(t as never);
+    },
+    [props.onSheetTabChange],
+  );
+  return [tab, set];
 }
 
 /* ------------------------------------------------------------------------- small pieces */
