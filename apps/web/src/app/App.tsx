@@ -1,13 +1,15 @@
-import type { KernelStatus, MeshBuffers, Viewport } from '@whittle/contracts';
-import { AppShell, useTheme } from '@whittle/ui';
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import type { Id, InteractiveViewport } from '@whittle/contracts';
+import { ulid } from '@whittle/document';
+import { AppShell, type MoveResult, type PaletteCommand, type ToolId, useTheme } from '@whittle/ui';
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { getDiagnostics } from '../platform/diagnostics';
 import { getRuntimeState, subscribeRuntimeState } from '../platform/runtime-state';
 import { applySwUpdate, checkForSwUpdateNow, onSwUpdateAvailable } from '../platform/sw-register';
-import { DEMO_BOX } from './demo';
-import { bootKernel } from './kernel-boot';
-import { failBoot, mark } from './timing';
+import { Inspector, useDoc } from '../ui/Inspector';
+import { ViewportOverlays } from '../ui/ViewportOverlays';
+import { useObservable } from './observable';
 import { ViewportHost } from './ViewportHost';
+import type { Workbench } from './workbench';
 
 function isolationLabel(isolation: ReturnType<typeof getRuntimeState>['isolation']): string {
   if (isolation === 'pending') return 'checking isolation';
@@ -16,16 +18,48 @@ function isolationLabel(isolation: ReturnType<typeof getRuntimeState>['isolation
     : 'fallback (single-threaded kernel)';
 }
 
-export function App() {
+const ENABLED_TOOLS: readonly ToolId[] = ['sketch', 'extrude', 'revolve', 'fillet', 'chamfer'];
+
+export function App({ wb }: { wb: Workbench }) {
   const runtime = useSyncExternalStore(subscribeRuntimeState, getRuntimeState);
   const diagnostics = getDiagnostics();
   const theme = useTheme({});
-  const [kernelStatus, setKernelStatus] = useState<KernelStatus>({ state: 'idle' });
+  const doc = useDoc(wb);
+  const ui = useObservable(wb.ui);
+  const regen = useObservable(wb.regen);
+  const engine = useObservable(wb.engine);
+  const part = doc.parts[0];
   const [updateReady, setUpdateReady] = useState(false);
   useEffect(() => onSwUpdateAvailable(() => setUpdateReady(true)), []);
   const [updateNote, setUpdateNote] = useState<string | null>(null);
-  const commands = useMemo(
+
+  useEffect(() => {
+    wb.start();
+    return () => wb.dispose();
+  }, [wb]);
+
+  const commands = useMemo<PaletteCommand[]>(
     () => [
+      { id: 'new-doc', label: 'New document', run: () => void wb.newDocument() },
+      { id: 'library', label: 'Open library', run: () => wb.toggleLibrary(true) },
+      { id: 'open-file', label: 'Open file…', shortcut: '⌘O', run: () => void wb.openFromDisk() },
+      {
+        id: 'save-file',
+        label: 'Save as .whittle file',
+        shortcut: '⌘S',
+        run: () => void wb.exportWhittle(),
+      },
+      { id: 'box', label: 'Box', hint: 'Primitive', run: () => wb.addPrimitive('box') },
+      {
+        id: 'cylinder',
+        label: 'Cylinder',
+        hint: 'Primitive',
+        run: () => wb.addPrimitive('cylinder'),
+      },
+      { id: 'plane', label: 'Plane', hint: 'Offset reference plane', run: () => wb.addPlane() },
+      { id: 'boolean', label: 'Boolean', hint: 'Combine bodies', run: () => wb.addBoolean() },
+      { id: 'undo', label: 'Undo', run: () => wb.undo() },
+      { id: 'redo', label: 'Redo', run: () => wb.redo() },
       {
         id: 'check-updates',
         label: 'Check for updates',
@@ -48,67 +82,128 @@ export function App() {
       },
       { id: 'about', label: `About Whittle · ${diagnostics.appVersion}`, hint: 'Version' },
     ],
-    [diagnostics.appVersion],
+    [diagnostics.appVersion, wb],
   );
-
-  const viewportRef = useRef<Viewport | null>(null);
-  const meshRef = useRef<MeshBuffers | null>(null);
-
-  const showBody = useCallback(() => {
-    const viewport = viewportRef.current;
-    const mesh = meshRef.current;
-    if (!viewport || !mesh) return;
-    viewport.setBody(DEMO_BOX.id, mesh);
-    void viewport.nextFrame().then(() => mark('firstBodyMs'));
-  }, []);
-
-  useEffect(() => {
-    mark('shellInteractiveMs');
-    const boot = bootKernel(setKernelStatus);
-    boot.firstMesh.then(
-      (mesh) => {
-        meshRef.current = mesh;
-        showBody();
-      },
-      (err: unknown) => {
-        if (err instanceof Error && err.message === 'disposed') return;
-        failBoot(`kernel: ${err instanceof Error ? err.message : String(err)}`);
-        setKernelStatus({
-          state: 'error',
-          error: {
-            code: 'INTERNAL',
-            message: err instanceof Error ? err.message : 'The geometry kernel failed to start.',
-          },
-        });
-      },
-    );
-    return () => boot.dispose();
-  }, [showBody]);
-
-  const [viewportError, setViewportError] = useState<string | null>(null);
-  const onViewportError = useCallback((message: string) => {
-    failBoot(`viewport: ${message}`);
-    setViewportError(message);
-  }, []);
 
   const onViewportReady = useCallback(
-    (viewport: Viewport) => {
-      viewportRef.current = viewport;
-      showBody();
-    },
-    [showBody],
+    (viewport: InteractiveViewport, canvas: HTMLCanvasElement) =>
+      wb.attachViewport(viewport, canvas),
+    [wb],
   );
+  const [viewportError, setViewportError] = useState<string | null>(null);
+  const onViewportError = useCallback(
+    (message: string) => {
+      wb.viewportFailed(message);
+      setViewportError(message);
+    },
+    [wb],
+  );
+
+  const touch = diagnostics.tier !== 'desktop';
+  const density = touch ? 'touch' : 'compact';
+  const statuses = regen?.result.features;
+  const canUndo = wb.store.canUndo();
+  const canRedo = wb.store.canRedo();
+  const activeTool: ToolId | null = ui.sketch ? 'sketch' : (ui.prompt?.tool ?? null);
+  const engineMissing = engine.ready ? undefined : 'The geometry kernel is still loading';
+
+  const move = (id: Id, toIndex: number): MoveResult => {
+    if (!part) return { ok: false, reason: 'No part' };
+    const r = wb.store.apply({ kind: 'moveFeature', partId: part.id, featureId: id, toIndex });
+    wb.commit();
+    return r.ok ? { ok: true } : { ok: false, reason: r.error };
+  };
 
   return (
     <>
       <AppShell
         tier={diagnostics.tier}
-        documentName="Untitled part"
-        kernelStatus={kernelStatus}
+        documentName={doc.meta.name}
+        kernelStatus={engine.status}
         diagnostics={{ ...diagnostics, ...runtimeOverrides(runtime) }}
         commands={commands}
         theme={theme.setting}
         onThemeChange={theme.setSetting}
+        {...(canUndo ? { onUndo: () => wb.undo() } : {})}
+        {...(canRedo ? { onRedo: () => wb.redo() } : {})}
+        featureTree={
+          part
+            ? {
+                features: part.features,
+                ...(statuses ? { statuses } : {}),
+                rollbackIndex: part.rollbackIndex,
+                selectedId: ui.featureId ?? ui.sketch?.featureId ?? null,
+                onSelect: (id) => wb.selectFeature(id),
+                onRename: (id, name) => {
+                  const f = part.features.find((x) => x.id === id);
+                  if (f)
+                    wb.apply(
+                      {
+                        kind: 'updateFeature',
+                        partId: part.id,
+                        featureId: id,
+                        feature: { ...f, name },
+                      },
+                      `Rename ${f.name}`,
+                    );
+                  wb.commit();
+                },
+                onRollback: (index) => {
+                  wb.apply({ kind: 'setRollback', partId: part.id, index }, undefined, 'rollback');
+                  wb.commit();
+                },
+                onMove: move,
+                onEdit: (id) => wb.editFeature(id),
+                onSuppress: (id, suppressed) => {
+                  wb.apply({ kind: 'setSuppressed', partId: part.id, featureId: id, suppressed });
+                  wb.commit();
+                },
+                onDelete: (id) => {
+                  wb.apply({ kind: 'removeFeature', partId: part.id, featureId: id });
+                  wb.commit();
+                },
+                density,
+              }
+            : undefined
+        }
+        paramsTable={{
+          params: doc.params,
+          evaluate: (e) => wb.evaluate(e),
+          onAdd: () => {
+            const names = new Set(doc.params.map((p) => p.name));
+            let n = doc.params.length + 1;
+            while (names.has(`param${n}`)) n++;
+            wb.apply({ kind: 'addParam', param: { id: ulid(), name: `param${n}`, expr: '10 mm' } });
+            wb.commit();
+          },
+          onUpdate: (paramId, patch) => {
+            wb.apply({ kind: 'updateParam', paramId, ...patch });
+            wb.commit();
+          },
+          onRemove: (paramId) => {
+            wb.apply({ kind: 'removeParam', paramId });
+            wb.commit();
+          },
+          density,
+        }}
+        inspector={<Inspector wb={wb} density={density} />}
+        enabledTools={ENABLED_TOOLS}
+        activeTool={activeTool}
+        onTool={(tool) => {
+          if (ui.sketch) return;
+          if (activeTool === tool) wb.cancel();
+          else if (tool === 'sketch') wb.sketchTool();
+          else void wb.runTool(tool);
+        }}
+        onExportRequest={(r) => void wb.export(r)}
+        exportBodies={(regen?.result.bodies ?? []).map((b, i) => ({
+          id: b.id,
+          name: `Body ${i + 1}`,
+        }))}
+        {...(engineMissing
+          ? { exportUnavailable: { step: engineMissing, stl: engineMissing } }
+          : {})}
+        exportBusy={ui.exporting}
         viewport={
           <>
             <ViewportHost
@@ -116,6 +211,7 @@ export function App() {
               onReady={onViewportReady}
               onError={onViewportError}
             />
+            <ViewportOverlays wb={wb} touch={touch} />
             {viewportError && (
               <div
                 role="alert"

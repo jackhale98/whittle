@@ -5,13 +5,19 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './app/App';
 import { firstBodyRendered } from './app/timing';
+import { Workbench } from './app/workbench';
 import { installTestHooks } from './platform/diagnostics';
 import { initServiceWorker, keepServiceWorkerFresh } from './platform/sw-register';
 
 // Theme before first paint (no flash), then platform: test hooks and the service worker (settles
 // cross-origin isolation, may reload once on the very first visit).
 initTheme();
+const workbench = new Workbench();
 installTestHooks({ firstBodyRendered });
+// The kernel streams and compiles in its worker while the shell paints.
+workbench.bootKernel();
+// App-level test hooks (E2E only; not an extension API).
+(window as unknown as { __whittleApp?: unknown }).__whittleApp = workbench.testHooks();
 void initServiceWorker();
 keepServiceWorkerFresh();
 
@@ -19,6 +25,6 @@ const root = document.getElementById('root');
 if (!root) throw new Error('#root missing');
 createRoot(root).render(
   <StrictMode>
-    <App />
+    <App wb={workbench} />
   </StrictMode>,
 );

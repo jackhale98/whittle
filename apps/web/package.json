@@ -24,6 +24,7 @@
     "@whittle/sketch": "workspace:*",
     "@whittle/ui": "workspace:*",
     "@whittle/viewport": "workspace:*",
+    "lucide-react": "1.70.0",
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "workbox-window": "7.4.1"

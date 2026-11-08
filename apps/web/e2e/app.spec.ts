@@ -1,10 +1,13 @@
 import { expect, type Page, test } from '@playwright/test';
 import type { RuntimeDiagnostics, WhittleTestHooks } from '@whittle/contracts';
+import { addBox } from './helpers';
 
 /**
- * M0 acceptance: "a deployed URL shows a shaded box with edges in under 2 s (warm), works in
- * airplane mode after the first visit". Runs against the production build served like GitHub
- * Pages (base /whittle/, isolation only via the service worker).
+ * M0 acceptance, on the M1 document flow: "a deployed URL shows a shaded box with edges in under
+ * 2 s (warm), works in airplane mode after the first visit". The first visit opens a new
+ * "Untitled part"; the test adds a box (⌘K → Box), which autosaves to the local library, so the
+ * warm and offline visits reopen it from the library and `firstBodyRendered` (= the first regen of
+ * the opened document rendered) times the box. Production build served like GitHub Pages.
  */
 
 interface Timings {
@@ -91,7 +94,14 @@ async function canvasStats(page: Page) {
 async function firstVisit(page: Page): Promise<Timings> {
   await page.goto('./');
   await page.waitForFunction(() => window.crossOriginIsolated === true);
-  return hooks(page).firstBody();
+  const t = await hooks(page).firstBody();
+  await addBox(page);
+  await page.evaluate(() =>
+    (
+      window as unknown as { __whittleApp: { flushSave(): Promise<void> } }
+    ).__whittleApp.flushSave(),
+  );
+  return t;
 }
 
 test.describe('box on screen (M0)', () => {
@@ -151,6 +161,7 @@ test.describe('fallback without cross-origin isolation', () => {
   test('single-threaded kernel still renders the box', async ({ page }) => {
     await page.goto('./');
     const t = await hooks(page).firstBody();
+    await addBox(page);
     const d = await hooks(page).diagnostics();
     expect(d.crossOriginIsolated).toBe(false);
     expect(d.kernelVariant).toBe('single');
@@ -164,6 +175,7 @@ test('forced WebGL2 backend renders the box (deterministic CI path)', async ({ p
   await page.goto('./?backend=webgl2');
   await page.waitForFunction(() => window.crossOriginIsolated === true);
   await hooks(page).firstBody();
+  await addBox(page);
   expect((await hooks(page).diagnostics()).renderBackend).toBe('webgl2');
   await page.screenshot({ path: 'test-results/m0-box-desktop.png' });
 });

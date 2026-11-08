@@ -41,7 +41,6 @@ import type {
   SketchFeature,
   SketchResult,
   UnresolvedRef,
-  Vec2,
   Vec3,
   WhittleDoc,
 } from '@whittle/contracts';
@@ -52,7 +51,8 @@ import {
   scopeOf,
   tryResolveDensity,
 } from '@whittle/document';
-import { indexEntities, sampleEntity } from '@whittle/sketch';
+import { indexEntities } from '@whittle/sketch';
+import { sketchCurves } from '../sketch/overlay';
 import {
   frameFromNormal,
   isOriginAxis,
@@ -61,7 +61,6 @@ import {
   ORIGIN_AXES,
   ORIGIN_FRAMES,
   offsetFrame,
-  type PlaneFrame,
   sub3,
   toPlaneFrame,
   toWorld,
@@ -168,34 +167,6 @@ export function faceSubMesh(mesh: MeshBuffers, face: number): MeshBuffers {
     edgeNames: [],
     bbox: count > 0 ? bboxOf(mesh.positions, indices) : mesh.bbox,
   };
-}
-
-/** World-space curves and points of a sketch (display + picking), sampled in TS. */
-export function sketchCurves(
-  sketch: Pick<SketchFeature, 'entities'>,
-  frame: PlaneFrame,
-): Pick<SketchResult, 'curves' | 'points'> {
-  const index = indexEntities(sketch.entities);
-  const curves: SketchResult['curves'] = [];
-  const points: NonNullable<SketchResult['points']> = [];
-  for (const e of sketch.entities) {
-    if (e.kind === 'point') {
-      points.push({ entity: e.id, at: toWorld(frame, [e.x, e.y]), construction: e.construction });
-      continue;
-    }
-    let poly: Vec2[];
-    try {
-      poly = sampleEntity(index, e, { chordTolerance: 0.02 });
-    } catch {
-      continue; // dangling reference: nothing to draw
-    }
-    const pts = new Float32Array(poly.length * 3);
-    poly.forEach((p, i) => {
-      pts.set(toWorld(frame, p), i * 3);
-    });
-    curves.push({ entity: e.id, points: pts, construction: e.construction });
-  }
-  return { curves, points };
 }
 
 export interface FakeModelingOptions {
@@ -358,7 +329,12 @@ export function createFakeModeling(kernel: KernelPort, options: FakeModelingOpti
           });
         }
       }
-      sketches.push({ featureId: s.feature.id, ...sketchCurves(s.feature, frame), regions, frame });
+      sketches.push({
+        featureId: s.feature.id,
+        ...sketchCurves(s.feature.entities, frame),
+        regions,
+        frame,
+      });
     }
 
     parts.set(partId, state);
