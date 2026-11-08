@@ -1,0 +1,23 @@
+{
+  "name": "@whittle/sketch",
+  "version": "0.0.0",
+  "private": true,
+  "license": "GPL-3.0-or-later",
+  "description": "2D sketch solver (planegcs in a worker), inference, tool helpers and geometry utilities.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./worker": "./src/worker.ts",
+    "./core": "./src/core.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@salusoft89/planegcs": "1.3.0",
+    "@whittle/contracts": "workspace:*",
+    "comlink": "4.4.2",
+    "ulid": "3.0.2"
+  }
+}
