@@ -167,7 +167,11 @@ test('dimension tool: horizontal/vertical by placement, Ø ↔ R, driving ↔ re
   await editor.press('Enter');
   let d = await dims();
   expect(d.map((c) => c.kind)).toEqual(['hDistance', 'vDistance', 'length']);
-  expect(d.map((c) => c.value)).toEqual(['30 mm', '20 mm', '25 mm']);
+  // Measured from clicked geometry (rounded to 0.01 mm), positive left → right / bottom → top.
+  const mm = d.map((c) => Number.parseFloat(c.value));
+  expect(mm[0]).toBeCloseTo(30, 1);
+  expect(mm[1]).toBeCloseTo(20, 1);
+  expect(mm[2]).toBeCloseTo(25, 1);
 
   // Circle → diameter; the label's toggle makes it a radius (expression converted).
   await clickAt(page, -26, 10);
@@ -182,7 +186,7 @@ test('dimension tool: horizontal/vertical by placement, Ø ↔ R, driving ↔ re
 
   // Driving → reference (shown in parentheses), and back to driving from the selected label.
   await page.keyboard.press('Escape');
-  await page.getByRole('button', { name: /^Dimension: 30/ }).click();
+  await page.locator('button[data-kind="hDistance"]').click();
   await expect(editor).toBeFocused();
   await page.getByTestId('dimension-toggle-driving').click();
   await expect.poll(async () => (await dims())[0]?.driving).toBe(false);
@@ -192,5 +196,6 @@ test('dimension tool: horizontal/vertical by placement, Ø ↔ R, driving ↔ re
   await ref.click();
   await page.getByTestId('dimension-toggle-driving').click();
   await expect.poll(async () => (await dims())[0]?.driving).toBe(true);
-  expect((await dims())[0]?.value).toBe('30 mm');
+  // Back to driving at its measured value (no jump).
+  expect(Number.parseFloat((await dims())[0]?.value ?? '')).toBeCloseTo(mm[0] as number, 1);
 });

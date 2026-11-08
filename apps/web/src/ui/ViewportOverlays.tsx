@@ -413,7 +413,7 @@ export function ViewportOverlays({ wb, touch }: { wb: Workbench; touch: boolean 
             ) : null}
           </div>
           {sk.solve?.conflicts.length && !sk.conflictsDismissed ? (
-            <div className="absolute top-20 right-3">
+            <div className="absolute top-20 right-3 z-[3]">
               <ConflictPanel
                 conflicts={sk.solve.conflicts}
                 constraintName={(id) => {
@@ -499,7 +499,7 @@ export function ViewportOverlays({ wb, touch }: { wb: Workbench; touch: boolean 
             data-testid="toast"
             data-tone={ui.toast.tone}
             className={cn(
-              'w-panel block rounded-full px-4 py-2 text-ui font-medium',
+              'w-panel block max-w-[min(560px,calc(100vw-32px))] rounded-[14px] px-4 py-2 text-center text-ui font-medium',
               ui.toast.tone === 'error' ? 'text-danger-text' : 'text-fg',
             )}
           >
