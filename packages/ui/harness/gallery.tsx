@@ -46,6 +46,7 @@ import {
   sampleParams,
   sampleStatuses,
 } from './fixtures';
+import { SyncGallery } from './syncGallery';
 
 type Tier = 'desktop' | 'tablet' | 'phone';
 
@@ -572,6 +573,12 @@ export function Gallery({
             />
           </div>
         );
+      case 'sync':
+      case 'connections':
+      case 'versions':
+      case 'compare':
+      case 'merge':
+        return <SyncGallery section={section} tier={tier} />;
       default:
         return <p className="p-4">Unknown section {section}</p>;
     }

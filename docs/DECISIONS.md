@@ -780,3 +780,13 @@ folder (`ProjectFiles`, docs/FILE_FORMAT.md) already exists. The contracts are i
   merge UI.
 - **platform-engineer:** the Worker port, `connect-src` and COEP for provider hosts, and the
   configuration plumbing.
+
+## ADR-pending — M2.5 sync UI: controlled panels, inline flows, compare tokens
+
+- **Presentational and controlled.** `ConnectionsPanel`, `SyncStatusChip`, `VersionsPanel`, `ComparePanel` and `MergePanel` take props and callbacks only. The add-connection flow is inline (provider, sign-in or fields, folders): the panel owns the typed fields and the current step, the host supplies `signingIn`, `browse` (the folder step) and `addError`. Removing a connection and marking a release also confirm inline, never in a dialog.
+- **Provider icons are generic lucide icons**, never brand logos. Providers without an app key are shown disabled with the host's reason, not hidden, so the user knows why.
+- **Compare colours.** New tokens `compare.added` / `compare.removed` (plus `-soft` fills), light and dark, each at least 4.5:1 on surface and on its soft fill. The added colour leans teal-green and the removed one orange-red, with different lightness, and both always carry a + or − glyph, so colour-blind users are not left relying on hue.
+- **⌘S / Ctrl+S** (apps/web saves the project file on it, workbench `onKey`) is handled only while focus is inside the versions panel: it focuses the "Save version" field, or saves from it. It calls `preventDefault`, so the app-level handler yields. A global "save version" binding is the lead's call.
+- **Diff subject icons** are inferred from the label's first word ("Fillet 3" is a fillet); hosts can pass `featureType`. Proposed contract field: `DiffSubject.featureType`.
+- **ExpressionInput `largeText`** is opt-in (16 px on touch) so existing baselines are unchanged; the merge panel uses it.
+- Panels use `density="touch"` (44 px targets, 16 px inputs) in the tablet and phone bottom sheet. They are not yet registered as shell tabs: that wiring belongs to apps/web.

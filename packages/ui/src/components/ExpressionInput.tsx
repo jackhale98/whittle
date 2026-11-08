@@ -76,6 +76,8 @@ export interface ExpressionInputProps {
   align?: 'left' | 'right';
   className?: string;
   testId?: string;
+  /** 16 px text (stops iOS Safari zooming into the field on focus). Default off: 13 px. */
+  largeText?: boolean;
 }
 
 type Evaluated = { text: string; result: EvalResult | undefined };
@@ -108,6 +110,7 @@ export function ExpressionInput({
   align = 'left',
   className,
   testId,
+  largeText,
 }: ExpressionInputProps) {
   const ctxNames = useContext(ParamNamesContext);
   const names = paramNames ?? ctxNames;
@@ -259,7 +262,10 @@ export function ExpressionInput({
             <span
               ref={mirror}
               data-field-mirror
-              className="tnum text-ui whitespace-pre text-transparent"
+              className={cn(
+                'tnum whitespace-pre text-transparent',
+                largeText ? 'text-base' : 'text-ui',
+              )}
             >
               {pre}
               {mid ? (
@@ -302,7 +308,8 @@ export function ExpressionInput({
               }
             }}
             className={cn(
-              'tnum relative h-full w-full min-w-0 bg-transparent text-ui text-fg outline-none placeholder:text-fg-subtle disabled:text-fg-muted',
+              largeText ? 'text-base' : 'text-ui',
+              'tnum relative h-full w-full min-w-0 bg-transparent text-fg outline-none placeholder:text-fg-subtle disabled:text-fg-muted',
               align === 'right' && 'text-right',
             )}
           />

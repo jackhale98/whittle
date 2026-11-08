@@ -47,6 +47,12 @@ export interface ColorTokens {
   /** Viewport clear-colour gradient, top to bottom. */
   viewportTop: string;
   viewportBottom: string;
+  /** Compare overlay: material the new version adds. Always paired with a + glyph. */
+  compareAdded: string;
+  compareAddedSoft: string;
+  /** Compare overlay: material the new version removes. Always paired with a - glyph. */
+  compareRemoved: string;
+  compareRemovedSoft: string;
 }
 
 export const colors: Record<ThemeName, ColorTokens> = {
@@ -77,6 +83,10 @@ export const colors: Record<ThemeName, ColorTokens> = {
     successText: '#13693a',
     viewportTop: '#f7f9fc',
     viewportBottom: '#d9e0eb',
+    compareAdded: '#0b6e4f',
+    compareAddedSoft: '#dcf3ea',
+    compareRemoved: '#b3261e',
+    compareRemovedSoft: '#fde8e4',
   },
   dark: {
     bg: '#0c0f16',
@@ -105,6 +115,10 @@ export const colors: Record<ThemeName, ColorTokens> = {
     successText: '#6fdc95',
     viewportTop: '#1d2331',
     viewportBottom: '#0f131c',
+    compareAdded: '#4fe0a8',
+    compareAddedSoft: '#0f3328',
+    compareRemoved: '#ff8f80',
+    compareRemovedSoft: '#3d1b1d',
   },
 };
 
