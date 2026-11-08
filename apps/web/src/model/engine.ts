@@ -1,7 +1,9 @@
 /**
  * Picks and boots the regen engine. The default is the real engine: the kernel worker's
  * `Remote<ModelingWorkerApi>` (packages/kernel-client/src/regen). `?engine=fake` selects the
- * main-thread fake (`fake-modeling.ts`, exact-name resolution only), kept for engine A/B checks.
+ * main-thread fake (`fake-modeling.ts`, exact-name resolution only), kept for engine A/B checks in
+ * dev servers and unit tests only: production builds drop it (`import.meta.env.DEV` is false there,
+ * so the dynamic import is dead code and the chunk is never emitted).
  */
 
 import type { KernelStatus } from '@whittle/contracts';
@@ -17,7 +19,8 @@ export type EngineKind = 'fake' | 'real';
 
 export function engineKind(search = globalThis.location?.search ?? ''): EngineKind {
   const v = new URLSearchParams(search).get('engine');
-  if (v === 'fake' || v === 'real') return v;
+  if (v === 'fake' && import.meta.env.DEV) return 'fake';
+  if (v === 'real') return v;
   return REAL_ENGINE_AVAILABLE ? 'real' : 'fake';
 }
 
@@ -50,7 +53,7 @@ export function bootEngine(onStatus: (status: KernelStatus) => void): EngineBoot
     mark('kernelReadyMs');
 
     let port: ModelingPort;
-    if (kind === 'fake') {
+    if (import.meta.env.DEV && kind === 'fake') {
       const { createFakeModeling } = await import('./fake-modeling');
       port = createFakeModeling(client.api);
     } else {

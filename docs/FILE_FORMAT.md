@@ -11,7 +11,8 @@ well in git and other version-control systems (PLAN §8A.1, §8A.3). The same do
 produces **byte-identical** files.
 
 Machine-readable schemas (JSON Schema draft-07) are generated from the TypeScript types and
-shipped in [`packages/document/schema/`](../packages/document/schema):
+shipped in [`packages/document/schema/`](../packages/document/schema) and published with the app at
+`https://jackhale98.github.io/whittle/schema/<file>` (each schema's `$id`):
 
 | File | Describes |
 |---|---|

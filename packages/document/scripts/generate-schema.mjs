@@ -48,7 +48,7 @@ export function generate() {
       jsDoc: 'extended',
       skipTypeCheck: true,
     }).createSchema(type);
-    schema.$id = `https://whittle.dev/schema/${file}`;
+    schema.$id = `https://jackhale98.github.io/whittle/schema/${file}`;
     schema.title = type;
     out[file] = `${JSON.stringify(sortKeys(schema), null, 2)}\n`;
   }

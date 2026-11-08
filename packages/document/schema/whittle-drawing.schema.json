@@ -1,5 +1,5 @@
 {
-  "$id": "https://whittle.dev/schema/whittle-drawing.schema.json",
+  "$id": "https://jackhale98.github.io/whittle/schema/whittle-drawing.schema.json",
   "$ref": "#/definitions/Drawing",
   "$schema": "http://json-schema.org/draft-07/schema#",
   "definitions": {

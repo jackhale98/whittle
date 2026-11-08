@@ -38,6 +38,7 @@
     "@vitejs/plugin-react": "6.2.1",
     "@whittle/kernel": "workspace:*",
     "@whittle/test-fixtures": "workspace:*",
+    "ajv": "8.20.0",
     "comlink": "4.4.2",
     "size-limit": "14.3.0",
     "tailwindcss": "4.3.5",

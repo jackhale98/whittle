@@ -1,5 +1,5 @@
 {
-  "$id": "https://whittle.dev/schema/whittle-project.schema.json",
+  "$id": "https://jackhale98.github.io/whittle/schema/whittle-project.schema.json",
   "$schema": "http://json-schema.org/draft-07/schema#",
   "additionalProperties": false,
   "definitions": {

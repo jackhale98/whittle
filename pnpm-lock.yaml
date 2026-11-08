@@ -81,6 +81,9 @@ importers:
       '@whittle/test-fixtures':
         specifier: workspace:*
         version: link:../../packages/test-fixtures
+      ajv:
+        specifier: 8.20.0
+        version: 8.20.0
       comlink:
         specifier: 4.4.2
         version: 4.4.2

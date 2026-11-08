@@ -1,5 +1,5 @@
 import { execSync } from 'node:child_process';
-import { copyFileSync, existsSync, readFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
@@ -53,6 +53,31 @@ function spaFallback404(): Plugin {
   };
 }
 
+/**
+ * Publishes the document JSON Schemas (packages/document/schema, `$id`
+ * `https://jackhale98.github.io/whittle/schema/<file>`) next to the app at `schema/`.
+ */
+function publishSchemas(): Plugin {
+  let outDir = 'dist';
+  const src = resolve(import.meta.dirname, '../../packages/document/schema');
+  return {
+    name: 'whittle:schemas',
+    apply: 'build',
+    configResolved(config) {
+      outDir = resolve(config.root, config.build.outDir);
+    },
+    closeBundle: {
+      order: 'post',
+      handler() {
+        const dest = resolve(outDir, 'schema');
+        mkdirSync(dest, { recursive: true });
+        for (const f of readdirSync(src))
+          if (f.endsWith('.schema.json')) copyFileSync(resolve(src, f), resolve(dest, f));
+      },
+    },
+  };
+}
+
 export default defineConfig(({ command }) => {
   // `/whittle/` for the GitHub project site; override with WHITTLE_BASE (e.g. `/` for a custom
   // domain or Cloudflare Pages). Dev always serves at `/` unless overridden.
@@ -68,6 +93,7 @@ export default defineConfig(({ command }) => {
       react(),
       tailwindcss(),
       spaFallback404(),
+      publishSchemas(),
       VitePWA({
         strategies: 'injectManifest',
         srcDir: 'src',
