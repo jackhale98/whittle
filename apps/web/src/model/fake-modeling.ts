@@ -497,6 +497,9 @@ export function createFakeModeling(kernel: KernelPort, options: FakeModelingOpti
       }
       case 'plane': {
         const def = f.definition;
+        if (def.kind !== 'frame' && def.kind !== 'offset') {
+          return fail(err('UNSUPPORTED_FEATURE', 'This plane type needs the real engine'));
+        }
         let from: Frame | null;
         if (def.kind === 'frame') from = def.frame;
         else from = await frameOf(ctx, def.from);
@@ -603,6 +606,18 @@ export function createFakeModeling(kernel: KernelPort, options: FakeModelingOpti
         return fail(err('UNSUPPORTED_FEATURE', 'Push/pull arrives in M2'));
       case 'import':
         return fail(err('UNSUPPORTED_FEATURE', 'Import needs the real engine'));
+      case 'shell':
+      case 'draft':
+      case 'sweep':
+      case 'loft':
+      case 'mirror':
+      case 'linearPattern':
+      case 'circularPattern':
+      case 'hole':
+      case 'thread':
+      case 'axis':
+      case 'point':
+        return fail(err('UNSUPPORTED_FEATURE', `${f.type} needs the real engine`));
       default: {
         const _never: never = f;
         return _never;

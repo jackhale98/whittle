@@ -75,6 +75,23 @@
  *     face is swallowed. Priority when faces merge: existing > moved > wall. A face whose split
  *     pieces merge back keeps the first piece's name (e.g. a lone `#0`).
  */
+/*
+ * M3 additions (normative):
+ *   - Shell F: kept faces keep their names; each offset (inner) face is F…:shell(<faceName>);
+ *     removed open faces disappear; new rim faces between them are F…:rim(<openFaceName>|<edge>).
+ *   - Draft: drafted faces keep their names (Modified).
+ *   - Sweep / loft: as extrude — F…:start, F…:end (absent when closed), F…:side(<profileCurve>)
+ *     for sweep; for loft F…:side(<curve of the first section>) and F…:start/F…:end at the first and
+ *     last section.
+ *   - Mirror / patterns: copies of a source name N are F…:mirror(N) and F…:inst<k>(N) (k = 1… in
+ *     row-major order; instance 0 is the original and keeps its names); fused copies keep these.
+ *   - Hole F at sketch point P: F…:hole(<P>):wall, :bottom (blind flat), :tip (blind cone),
+ *     :cbore.wall, :cbore.floor, :csink.
+ *   - Reference geometry: F…:axis (edge kind), F…:point (vertex kind), F…:plane (face kind),
+ *     usable as references like origin:X / origin:O / origin:XY.
+ *   - Sketch linked entities: S…:e(<id>) / S…:p(<id>) as for any entity; their source is the
+ *     model reference in `source.ref`, resolved by the regen engine like any other reference.
+ */
 export type PersistentName = string;
 
 /** Sub-shape index space of a single shape handle, as enumerated by TopExp::MapShapes. */

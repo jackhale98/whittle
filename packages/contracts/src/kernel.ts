@@ -77,6 +77,18 @@ export interface KernelInitOptions {
  */
 /**
  * Inputs per feature type beyond the documented keys above (M2):
+ *   M3 (refs keyed by JSON pointer into the feature, as always):
+ *   shell: `target`; refs["/openFaces/i"]; values["/thickness"]; inward unless direction says.
+ *   draft: `target`; refs["/faces/i"], refs["/neutral"]; values["/angle"] rad.
+ *   sweep: shapes.profile (sketch faces) or refs["/profile/i"]; refs["/path/i"] (edges, chained
+ *          in order by the engine); `target` / scope bodies as extrude.
+ *   loft: refs["/sections/i"] (faces or vertices); `target` / scope bodies as extrude.
+ *   mirror / linearPattern / circularPattern: shapes["tool:<featureId>"] (the source features'
+ *          tool solids, op per feature in values["/ops/<featureId>"] as 0 add, 1 cut, 2 intersect)
+ *          or refs["/source/bodies/i"]; frames.plane / frames.axis; values for counts/spacing.
+ *   hole: `target`; frames["hole:i"] (origin on the face, z into the material) per point;
+ *          values for the resolved diameters/depths/angles (the engine reads the tables).
+ *   axis / point / plane: frames only (no shape); the result's `frame` carries the geometry.
  *   pushPull: `target` = the body (optional: defaults to the first face's shape);
  *             `refs["/faces/i"]` = its faces (planar in M2);
  *             `values["/distance"]` mm, positive along each face's outward normal.

@@ -111,6 +111,7 @@ export const PRIORITY: Record<SketchConstraint['kind'], number> = {
   radius: 10,
   diameter: 10,
   angle: 10,
+  offset: 10,
 };
 
 const uniq = (xs: number[]): number[] => [...new Set(xs)];
@@ -1115,6 +1116,9 @@ export function buildModel(input: SketchSolveInput, options: ModelOptions = {}):
           angular: true,
         };
       }
+      case 'offset':
+        // M3 Offset Entities: implemented by the sketch-editing workstream (contracts/sketch.ts).
+        return 'Offset dimensions are not supported yet';
     }
   }
 }

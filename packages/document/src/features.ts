@@ -135,12 +135,72 @@ function ownExprFields(f: Feature): ExprField[] {
       return [];
     case 'pushPull':
       return [{ pointer: '/distance', expected: 'length' }];
-    case 'plane':
-      return f.definition.kind === 'offset'
-        ? [{ pointer: '/definition/distance', expected: 'length' }]
-        : [];
+    case 'plane': {
+      const d = f.definition;
+      if (d.kind === 'offset') return [{ pointer: '/definition/distance', expected: 'length' }];
+      if (d.kind === 'angle') return [{ pointer: '/definition/angle', expected: 'angle' }];
+      if (d.kind === 'normalToCurve' && 't' in d.at)
+        return [{ pointer: '/definition/at/t', expected: 'scalar' }];
+      return [];
+    }
     case 'import':
       return [];
+    case 'axis':
+      return [];
+    case 'point': {
+      const d = f.definition;
+      if (d.kind === 'coordinates')
+        return ['x', 'y', 'z'].map((k) => ({
+          pointer: `/definition/${k}`,
+          expected: 'length' as const,
+        }));
+      if (d.kind === 'alongEdge') return [{ pointer: '/definition/t', expected: 'scalar' }];
+      return [];
+    }
+    case 'shell':
+      return [{ pointer: '/thickness', expected: 'length' }];
+    case 'draft':
+      return [{ pointer: '/angle', expected: 'angle' }];
+    case 'sweep':
+    case 'loft':
+      return [];
+    case 'mirror':
+      return [];
+    case 'linearPattern': {
+      const out: ExprField[] = [
+        { pointer: '/count', expected: 'scalar' },
+        { pointer: '/spacing', expected: 'length' },
+      ];
+      if (f.second)
+        out.push(
+          { pointer: '/second/count', expected: 'scalar' },
+          { pointer: '/second/spacing', expected: 'length' },
+        );
+      return out;
+    }
+    case 'circularPattern':
+      return [
+        { pointer: '/count', expected: 'scalar' },
+        { pointer: '/angle', expected: 'angle' },
+      ];
+    case 'hole': {
+      const out: ExprField[] = [];
+      if (f.diameter !== undefined) out.push({ pointer: '/diameter', expected: 'length' });
+      if (f.end.kind === 'blind') out.push({ pointer: '/end/depth', expected: 'length' });
+      if (f.tipAngle !== undefined) out.push({ pointer: '/tipAngle', expected: 'angle' });
+      if (f.counterbore?.diameter !== undefined)
+        out.push({ pointer: '/counterbore/diameter', expected: 'length' });
+      if (f.counterbore?.depth !== undefined)
+        out.push({ pointer: '/counterbore/depth', expected: 'length' });
+      if (f.countersink?.diameter !== undefined)
+        out.push({ pointer: '/countersink/diameter', expected: 'length' });
+      if (f.countersink?.angle !== undefined)
+        out.push({ pointer: '/countersink/angle', expected: 'angle' });
+      if (f.thread?.depth !== undefined) out.push({ pointer: '/thread/depth', expected: 'length' });
+      return out;
+    }
+    case 'thread':
+      return f.length !== undefined ? [{ pointer: '/length', expected: 'length' }] : [];
     default: {
       const _never: never = f;
       return _never;
@@ -160,6 +220,7 @@ export function entityRefs(f: Feature): EntityRef[] {
       break;
     case 'sketch':
       refs.push(f.on);
+      for (const e of f.entities) if (e.source) refs.push(e.source.ref); // M3 linked entities
       break;
     case 'extrude':
       refs.push(...f.profile);
@@ -180,11 +241,71 @@ export function entityRefs(f: Feature): EntityRef[] {
     case 'pushPull':
       refs.push(...f.faces);
       break;
-    case 'plane':
-      if (f.definition.kind === 'offset') refs.push(f.definition.from);
+    case 'plane': {
+      const d = f.definition;
+      if (d.kind === 'offset' || d.kind === 'throughPoint') refs.push(d.from);
+      if (d.kind === 'throughPoint') refs.push(d.point);
+      if (d.kind === 'threePoints') refs.push(...d.points);
+      if (d.kind === 'angle') refs.push(d.from, d.axis);
+      if (d.kind === 'normalToCurve') {
+        refs.push(d.curve);
+        if (!('t' in d.at)) refs.push(d.at);
+      }
+      if (d.kind === 'midplane') refs.push(d.a, d.b);
       break;
+    }
     case 'import':
       scope(f.scope);
+      break;
+    case 'axis': {
+      const d = f.definition;
+      if (d.kind === 'twoPoints' || d.kind === 'twoPlanes') refs.push(d.a, d.b);
+      if (d.kind === 'edge') refs.push(d.edge);
+      if (d.kind === 'cylinder') refs.push(d.face);
+      if (d.kind === 'pointNormal') refs.push(d.point, d.plane);
+      break;
+    }
+    case 'point': {
+      const d = f.definition;
+      if (d.kind === 'vertex') refs.push(d.vertex);
+      if (d.kind === 'center') refs.push(d.of);
+      if (d.kind === 'alongEdge') refs.push(d.edge);
+      if (d.kind === 'intersection') refs.push(d.a, d.b);
+      break;
+    }
+    case 'shell':
+      refs.push(...f.openFaces);
+      if (f.body) refs.push(f.body);
+      break;
+    case 'draft':
+      refs.push(...f.faces, f.neutral);
+      break;
+    case 'sweep':
+      refs.push(...f.profile, ...f.path);
+      scope(f.scope);
+      break;
+    case 'loft':
+      refs.push(...f.sections, ...(f.guides ?? []));
+      scope(f.scope);
+      break;
+    case 'mirror':
+    case 'linearPattern':
+    case 'circularPattern': {
+      if (f.source.kind === 'bodies') refs.push(...f.source.bodies);
+      if (f.type === 'mirror') refs.push(f.plane);
+      if (f.type === 'linearPattern') {
+        refs.push(f.direction);
+        if (f.second) refs.push(f.second.direction);
+      }
+      if (f.type === 'circularPattern') refs.push(f.axis);
+      break;
+    }
+    case 'hole':
+      refs.push(...f.points, f.face);
+      if (f.end.kind === 'upTo') refs.push(f.end.target);
+      break;
+    case 'thread':
+      refs.push(f.face);
       break;
     default: {
       const _never: never = f;

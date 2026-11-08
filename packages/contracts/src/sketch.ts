@@ -8,7 +8,7 @@
  * an explicit `coincident` constraint joins points of different entities.
  */
 
-import type { Expr, Id, Vec2 } from './document';
+import type { EntityRef, Expr, Id, Vec2 } from './document';
 
 // ---------------------------------------------------------------------------------------------
 // Entities
@@ -18,6 +18,15 @@ interface EntityBase {
   id: Id;
   /** Construction geometry is solved and constrainable but never forms profiles. */
   construction: boolean;
+  /**
+   * M3 Convert Entities: a **linked** entity whose geometry is the projection of model geometry
+   * onto the sketch plane, recomputed by the regen engine every time (points, lines, arcs and
+   * circles; other curves project as an approximating chain of lines marked `approximate`). Linked
+   * entities are fixed (no DOF) and can be dimensioned and constrained to. If `ref` no longer
+   * resolves, the sketch is "needs attention" (never re-picked silently). Removing `source`
+   * unlinks the entity into ordinary geometry.
+   */
+  source?: { ref: EntityRef; approximate?: boolean };
 }
 
 export interface SketchPoint extends EntityBase {
@@ -106,6 +115,13 @@ export type DimensionConstraint = ConstraintBase & {
     | { kind: 'radius'; curve: Id }
     | { kind: 'diameter'; curve: Id }
     | { kind: 'angle'; a: Id; b: Id } // between two lines, measured CCW from a to b
+    /**
+     * M3 Offset Entities: `targets[i]` stays offset from `sources[i]` by `value` (lines parallel at
+     * that distance, arcs/circles concentric with radius ± value; positive = left of the source
+     * direction, i.e. outward for a CCW loop). Corners of a target chain stay joined by the
+     * chain's own coincident constraints. One dimension drives the whole offset.
+     */
+    | { kind: 'offset'; sources: Id[]; targets: Id[] }
   );
 
 export type SketchConstraint = GeometricConstraint | DimensionConstraint;

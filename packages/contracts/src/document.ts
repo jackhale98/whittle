@@ -117,7 +117,19 @@ export type Feature =
   | BooleanFeature
   | PushPullFeature
   | PlaneFeature
-  | ImportFeature;
+  | ImportFeature
+  // M3
+  | ShellFeature
+  | DraftFeature
+  | SweepFeature
+  | LoftFeature
+  | MirrorFeature
+  | LinearPatternFeature
+  | CircularPatternFeature
+  | HoleFeature
+  | ThreadFeature
+  | AxisFeature
+  | PointFeature;
 
 export type FeatureType = Feature['type'];
 
@@ -205,6 +217,8 @@ export interface FilletFeature extends FeatureBase {
   type: 'fillet';
   edges: EntityRef[];
   radius: Expr;
+  /** M3: extend along tangent-continuous edges (OCCT's behaviour). Default true. */
+  propagate?: boolean;
 }
 
 export interface ChamferFeature extends FeatureBase {
@@ -214,6 +228,8 @@ export interface ChamferFeature extends FeatureBase {
     | { kind: 'distance'; distance: Expr }
     /** `face`: the face the distance is measured on (default: the adjacent face sorting first). */
     | { kind: 'distanceAngle'; distance: Expr; angle: Expr; face?: EntityRef };
+  /** M3: extend along tangent-continuous edges. Default true. */
+  propagate?: boolean;
 }
 
 export interface BooleanFeature extends FeatureBase {
@@ -263,7 +279,174 @@ export interface ImportFeature extends FeatureBase {
 
 export interface PlaneFeature extends FeatureBase {
   type: 'plane';
-  definition: { kind: 'offset'; from: EntityRef; distance: Expr } | { kind: 'frame'; frame: Frame };
+  definition:
+    | { kind: 'offset'; from: EntityRef; distance: Expr }
+    | { kind: 'frame'; frame: Frame }
+    // M3 reference planes. `from` planes may be origin planes, plane features or planar faces.
+    | { kind: 'threePoints'; points: [EntityRef, EntityRef, EntityRef] }
+    /** Through a line (edge or axis), rotated `angle` from `from`. */
+    | { kind: 'angle'; from: EntityRef; axis: EntityRef; angle: Expr }
+    /** Normal to a curve at a point on it (`at`: a vertex, or a 0–1 parameter along the edge). */
+    | { kind: 'normalToCurve'; curve: EntityRef; at: EntityRef | { t: Expr } }
+    /** Midway between two parallel planes/faces. */
+    | { kind: 'midplane'; a: EntityRef; b: EntityRef }
+    /** Parallel to `from`, through a point. */
+    | { kind: 'throughPoint'; from: EntityRef; point: EntityRef };
+  /** Flip the plane normal (and so the sketch's orientation on it). */
+  flip?: boolean;
+}
+
+// ---- M3: reference geometry ----------------------------------------------------------------
+
+/** A construction axis, usable wherever an axis or direction is picked (revolve, patterns…). */
+export interface AxisFeature extends FeatureBase {
+  type: 'axis';
+  definition:
+    | { kind: 'twoPoints'; a: EntityRef; b: EntityRef }
+    /** Along a straight edge. */
+    | { kind: 'edge'; edge: EntityRef }
+    /** The axis of a cylindrical/conical face or circular edge. */
+    | { kind: 'cylinder'; face: EntityRef }
+    | { kind: 'twoPlanes'; a: EntityRef; b: EntityRef }
+    /** Through a point, normal to a plane. */
+    | { kind: 'pointNormal'; point: EntityRef; plane: EntityRef };
+}
+
+/** A construction point (sketch references, measure, axes and planes). */
+export interface PointFeature extends FeatureBase {
+  type: 'point';
+  definition:
+    | { kind: 'coordinates'; x: Expr; y: Expr; z: Expr }
+    | { kind: 'vertex'; vertex: EntityRef }
+    /** Centre of a circular edge / spherical face. */
+    | { kind: 'center'; of: EntityRef }
+    | { kind: 'alongEdge'; edge: EntityRef; t: Expr }
+    | { kind: 'intersection'; a: EntityRef; b: EntityRef };
+}
+
+// ---- M3: modelling features ----------------------------------------------------------------
+
+/** Hollow a body: remove `openFaces`, offset the rest by `thickness` (inward by default). */
+export interface ShellFeature extends FeatureBase {
+  type: 'shell';
+  /** Faces to remove (on one body). Empty = a closed hollow solid. */
+  openFaces: EntityRef[];
+  /** The body, when `openFaces` is empty. */
+  body?: EntityRef;
+  thickness: Expr;
+  direction: 'inward' | 'outward';
+}
+
+/** Taper faces by `angle` about a neutral plane, along its normal (flip with `reverse`). */
+export interface DraftFeature extends FeatureBase {
+  type: 'draft';
+  faces: EntityRef[];
+  neutral: EntityRef;
+  angle: Expr;
+  reverse: boolean;
+}
+
+/** Sweep closed profile regions along a path (a chain of sketch curves or model edges). */
+export interface SweepFeature extends FeatureBase {
+  type: 'sweep';
+  profile: EntityRef[];
+  path: EntityRef[];
+  /** `followPath`: the profile turns with the path (Frenet); `fixed`: it keeps its orientation. */
+  orientation: 'followPath' | 'fixed';
+  op: BodyOp;
+  scope?: BodyScope;
+}
+
+/** Loft through ordered sections (each a closed region, or a point for the first/last). */
+export interface LoftFeature extends FeatureBase {
+  type: 'loft';
+  sections: EntityRef[];
+  /** Optional guide curves (M3: best-effort; OCCT ThruSections ignores them). */
+  guides?: EntityRef[];
+  /** Straight (ruled) faces between sections instead of smooth ones. */
+  ruled: boolean;
+  /** Join the last section back to the first. */
+  closed: boolean;
+  op: BodyOp;
+  scope?: BodyScope;
+}
+
+/**
+ * What a mirror or pattern copies. `features`: the listed features' **tool shapes** are copied
+ * and applied with each feature's own op (a pattern of holes cuts every copy); `bodies`: whole
+ * bodies are copied (and merged when `merge`).
+ */
+export type CopySource =
+  | { kind: 'features'; features: Id[] }
+  | { kind: 'bodies'; bodies: EntityRef[]; merge: boolean };
+
+export interface MirrorFeature extends FeatureBase {
+  type: 'mirror';
+  source: CopySource;
+  /** A plane feature, origin plane or planar face. */
+  plane: EntityRef;
+}
+
+export interface LinearPatternFeature extends FeatureBase {
+  type: 'linearPattern';
+  source: CopySource;
+  /** Edge, axis or plane (its normal) giving the direction; `reverse` flips it. */
+  direction: EntityRef;
+  reverse: boolean;
+  count: Expr;
+  spacing: Expr;
+  second?: { direction: EntityRef; reverse: boolean; count: Expr; spacing: Expr };
+  /** Instance indices (0 = the original) to leave out, row-major with `second`. */
+  skip?: number[];
+}
+
+export interface CircularPatternFeature extends FeatureBase {
+  type: 'circularPattern';
+  source: CopySource;
+  axis: EntityRef;
+  count: Expr;
+  /** Total angle spanned. With `equalSpacing` the instances fill it (360° = a full ring). */
+  angle: Expr;
+  equalSpacing: boolean;
+  skip?: number[];
+}
+
+/**
+ * Hole wizard. Holes are placed at sketch points on a planar face (one hole per point), drilled
+ * along the face's inward normal. Sizes come from the standards tables (contracts/standards.ts);
+ * explicit diameters override them.
+ */
+export interface HoleFeature extends FeatureBase {
+  type: 'hole';
+  /** Sketch points (`S…:p(id)`) or vertices; their sketch must lie on the hole's face. */
+  points: EntityRef[];
+  face: EntityRef;
+  standard: 'ISO' | 'ANSI';
+  kind: 'simple' | 'counterbore' | 'countersink' | 'tapped';
+  /** Table size key, e.g. "M6", "#10", "1/4". */
+  size: string;
+  fit: 'close' | 'normal' | 'loose';
+  /** Override of the table diameter (drill diameter for tapped holes). */
+  diameter?: Expr;
+  end:
+    | { kind: 'blind'; depth: Expr }
+    | { kind: 'throughAll' }
+    | { kind: 'upTo'; target: EntityRef };
+  /** Drill-point cone at a blind end (118° default); omitted = flat bottom. */
+  tipAngle?: Expr;
+  counterbore?: { diameter?: Expr; depth?: Expr };
+  countersink?: { diameter?: Expr; angle?: Expr };
+  /** Tapped holes: a cosmetic thread (no helical geometry) over `depth` (default: full). */
+  thread?: { depth?: Expr };
+}
+
+/** A cosmetic thread on a cylindrical face: an annotation (drawings, PMI), no geometry change. */
+export interface ThreadFeature extends FeatureBase {
+  type: 'thread';
+  face: EntityRef;
+  standard: 'ISO' | 'ANSI';
+  size: string;
+  length?: Expr;
 }
 
 // ---------------------------------------------------------------------------------------------

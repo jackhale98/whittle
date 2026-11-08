@@ -44,6 +44,7 @@ const CONSTRAINT_LABEL: Record<SketchConstraint['kind'], string> = {
   radius: 'Radius',
   diameter: 'Diameter',
   angle: 'Angle',
+  offset: 'Offset',
 };
 
 export function formatLength(mm: number): string {
@@ -100,6 +101,8 @@ export function referencedEntities(c: SketchConstraint): Id[] {
       return [c.a, c.b, c.about];
     case 'fix':
       return [c.entity];
+    case 'offset':
+      return [...c.sources, ...c.targets];
     default:
       return [c.a, c.b];
   }
@@ -178,6 +181,8 @@ export function describeFor(
       return `${v === undefined ? 'a set distance' : formatLength(Math.abs(v))} vertically from ${other(c.a, c.b)}`;
     case 'angle':
       return `at ${v === undefined ? 'a set angle' : formatAngle(v)} to ${other(c.a, c.b)}`;
+    case 'offset':
+      return `offset ${v === undefined ? 'by a set distance' : `by ${formatLength(Math.abs(v))}`}`;
   }
 }
 

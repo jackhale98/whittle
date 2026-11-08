@@ -24,6 +24,7 @@ export const constraintLabels: Record<SketchConstraintKind, string> = {
   radius: 'Radius',
   diameter: 'Diameter',
   angle: 'Angle',
+  offset: 'Offset',
 };
 
 /** Geometric constraints in menu order (the P0 set of PLAN 2.1). */
@@ -150,6 +151,7 @@ const glyphs: Record<SketchConstraintKind, ReactNode> = {
     </>
   ),
   angle: <path d="M4 19h16M4 19 17 7M11 19a7 7 0 0 0-2.4-5.3" />,
+  offset: <path d="M4 16h11a5 5 0 0 0 5-5V4M4 20h11a9 9 0 0 0 9-9V4" />,
 };
 
 export type GlyphTone = 'placed' | 'hint' | 'selected' | 'conflict' | 'redundant' | 'plain';

@@ -6,5 +6,6 @@ export * from './modeling';
 export * from './naming';
 export * from './runtime';
 export * from './sketch';
+export * from './standards';
 export * from './store';
 export * from './viewport';

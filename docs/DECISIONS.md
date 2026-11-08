@@ -660,3 +660,52 @@ when the origin is meant.
     Both removals are one undo step (`onDelete(id, alsoIds)`).
 11. **Setting.** "Show sketches in the history" (`whittle.nestSketches` = `flat`) lives in the row
     menu and the palette; the app owns the state and persists it with try/catch storage helpers.
+
+## ADR-019 — M3 contracts, and M3 before M2.5 (2026-11-08)
+
+**Context.** The user asked to start M3 as soon as M2 passes its gate, ahead of M2.5 (connections,
+sync and version control). M3 adds eleven feature types, linked sketch geometry and offset
+dimensions, and every workstream implements against these contracts.
+
+**Decision.**
+
+1. **Order.** M3 runs before M2.5 (PLAN §11.3, §12). M3's "versions/snapshots" item is local
+   in-browser snapshots only; HistoryStore, branches, compare and merge stay in M2.5. Nothing in M3
+   depends on a provider.
+2. **New feature types** (`packages/contracts/src/document.ts`): `shell`, `draft`, `sweep`, `loft`,
+   `mirror`, `linearPattern`, `circularPattern`, `hole`, `thread` (cosmetic), `axis`, `point`.
+   Fillet and chamfer gain `propagate?: boolean` (absent means true, matching OCCT's default and
+   M1 files).
+3. **Reference geometry.** `plane` gains `threePoints`, `angle`, `normalToCurve`, `midplane` and
+   `throughPoint` definitions plus `flip`. `axis` and `point` are first-class features with
+   several definitions each (two points, an edge, a cylinder, two planes, a point and normal;
+   coordinates, a vertex, a centre, a position along an edge, an intersection). Their names are
+   `F…:axis`, `F…:point` and `F…:plane`, so they are referable like any other entity.
+4. **Copies.** Mirror and both patterns share `CopySource`: either a list of features (re-applied
+   as tool shapes, `shapes["tool:<id>"]`, with their ops in `values["/ops/<id>"]`) or whole bodies
+   (optionally merged). Instance `k` names its entities `F…:inst<k>(N)`; mirrored ones
+   `F…:mirror(N)`. `skip` lists suppressed instance indices, so removing an instance never
+   renumbers the others.
+5. **Holes.** `HoleFeature` places one or more points on a face (`frames["hole:i"]`) and refers to
+   a standard table (`standards.ts`: ISO and ANSI rows with clearance per fit, counterbore,
+   countersink and tap drill). The kind is simple, counterbore, countersink or tapped; explicit
+   `diameter` overrides the table. Named roles: `:wall`, `:bottom`, `:tip`, `:cbore.wall`,
+   `:cbore.floor`, `:csink`. A cosmetic `thread` records the standard and size on a cylindrical
+   face; it changes no geometry, and M5 carries it into PMI.
+6. **Linked sketch entities.** `EntityBase.source = { ref, approximate? }` marks an entity
+   converted from a model edge or face outline. It is fixed for the solver and re-projected on each
+   regen; a lost source is "needs attention" (ghost plus Re-pick), never a silent re-pick. Deleting
+   `source` unlinks it. `approximate` flags a projection that had to be fitted (for example a
+   B-spline edge seen at an angle).
+7. **Offset dimension.** `DimensionConstraint` gains `{ kind: 'offset', sources, targets }`: one
+   driving distance between a chain and its offset copy. Until the sketch package implements it, it
+   is labelled and explained but reports "Offset dimensions are not supported yet", and the fake
+   engine and the web helpers return no measured value.
+8. **Expressions.** `exprFields` covers every new numeric field (counts and pattern parameters are
+   `scalar`), and `entityRefs` covers every new reference, including linked sketch sources, so
+   renaming, needs-attention and the nested tree work for the new types without per-type code.
+
+**Consequences.** The JSON Schemas are regenerated (additive; `schemaVersion` unchanged because
+every new field is optional or belongs to a new feature type). The fake engine reports the new
+types as needing the real engine. The UI has names and icons for them; the inspectors arrive with
+the UI workstream.

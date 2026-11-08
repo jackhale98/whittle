@@ -6,7 +6,7 @@ import { defaultFormatValue, type FormatValue } from '../format';
 
 type DimKind = Extract<
   SketchConstraintKind,
-  'distance' | 'hDistance' | 'vDistance' | 'length' | 'radius' | 'diameter' | 'angle'
+  'distance' | 'hDistance' | 'vDistance' | 'length' | 'radius' | 'diameter' | 'angle' | 'offset'
 >;
 
 export interface DimensionLabelProps {

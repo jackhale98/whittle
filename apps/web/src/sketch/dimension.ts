@@ -207,6 +207,9 @@ export function measure(sketch: SketchData, d: DimensionDraft): number | null {
       if (la && lb) return pointLine(la[0], lb);
       return null;
     }
+    case 'offset':
+      // M3: measured by the sketch package once offset geometry lands.
+      return null;
   }
 }
 
@@ -235,6 +238,8 @@ export function labelAnchor(sketch: SketchData, c: DimensionConstraint): Vec2 | 
     case 'radius':
     case 'diameter':
       return center(c.curve);
+    case 'offset':
+      return c.sources[0] === undefined ? null : center(c.sources[0]);
     default: {
       const a = center(c.a);
       const b = center(c.b);

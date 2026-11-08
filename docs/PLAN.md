@@ -657,13 +657,16 @@ Whittle can do better because its source format is text-based parametric data (�
 - **M1:** kernel-engineer ∥ sketch-engineer ∥ document-engineer ∥ viewport-engineer, then modeling-engineer (after the contracts settle), then io-engineer (basic STEP/STL).
 - **M2:** ui-engineer (tablet shell) ∥ viewport-engineer (gestures, Pencil, preview path) ∥ modeling-engineer (push/pull feature). sync-engineer can start the M2.5 provider spike in parallel, because it only depends on the M1 document format.
 - **M2.5:** sync-engineer (providers, sync, HistoryStore, merge) ∥ kernel-engineer (geometric diff booleans) ∥ ui-engineer (connections, versions and compare/merge UI) ∥ platform-engineer (proxy + token-exchange Worker).
-- **M3–M6:** as in §12.
+- **M3** (before M2.5, ADR-019): sketch-engineer (offset, convert entities, trim/extend, sketch fillet/chamfer, mirror) first ∥ kernel-engineer (shell, draft, sweep, loft, pattern/mirror tool shapes, hole, propagate toggle, kernel `import`, IGES) ∥ modeling-engineer (regen for the new types, reference axes/points/planes, linked-entity projection, hole tables) ∥ ui-engineer (inspectors, tools, Reference group, hole wizard). Then integration and the reference parts (§12A).
+- **M4–M6:** as in §12.
 
 ---
 
 ## 12. Milestones & acceptance criteria
 
 Each milestone ends with a reviewer gate. "Done" means every criterion is demonstrably met, with test evidence.
+
+**Build order:** M0 → M1 → M2 → **M3 → M2.5** → M4 → M5 → M6 → M7. M3 runs before M2.5 at the user's request (2026-11-08, ADR-019). M3's "versions/snapshots" item therefore covers local, in-browser snapshots only; branches, compare and merge stay in M2.5.
 
 ### M0 — Foundations
 
