@@ -708,3 +708,75 @@ dimensions, and every workstream implements against these contracts.
 every new field is optional or belongs to a new feature type). The fake engine reports the new
 types as needing the real engine. The UI has names and icons for them; the inspectors arrive with
 the UI workstream.
+
+## ADR-020 — M2.5 contracts: connections, sync, history, merge, compare (2026-11-08)
+
+**Context.** M2.5 (PLAN §8A, §12) follows M2. Mycelium (same author, GPL-3.0-or-later, so ADR-003
+lets us port it) already has file-service adapters for Dropbox, OneDrive and WebDAV. It also has
+an isomorphic-git repo wrapper, a two-way sync engine with a three-way merge, and a Cloudflare
+Worker for the git CORS proxy, OAuth token exchange and WebDAV relay. Whittle's canonical project
+folder (`ProjectFiles`, docs/FILE_FORMAT.md) already exists. The contracts are in
+`packages/contracts/src/sync.ts`; `ModelingApi.compare` and `RegenRequest.slot` are in
+`modeling.ts`.
+
+**Decision.**
+
+1. **Two kinds of provider.** File services (`folder`, `dropbox`, `onedrive`, `gdrive`, `webdav`)
+   implement `StorageProvider` and keep history with `SnapshotHistory`. Git hosts (`github`,
+   `gitlab`, `bitbucket`, `forgejo`) don't pretend to be file stores: they use `GitHistory`
+   (isomorphic-git), where versions are commits, branches are branches and releases are tags. This
+   refines PLAN §8A.2's single interface, as Mycelium does, because git moves commits, not files.
+2. **Errors are values** (`StorageResult`, `StorageErrorCode`), not Mycelium's thrown classes, so
+   they cross the worker boundary like `KernelError`. Messages are human-readable and never contain
+   a token.
+3. **Optimistic concurrency everywhere.** A write or remove with `ifRev` succeeds only if the
+   service still has that revision; `ifRev: null` means "create only". Nothing overwrites blindly.
+4. **Sync** follows Mycelium's `syncFolder`: pull, then a three-way merge against the base, then
+   push against the base's revision. Bases are stored as bytes keyed by SHA-256 hash. Mycelium's
+   line merge is replaced by `DocMerger` on parsed documents, and non-JSON files (attachments,
+   releases) conflict as whole files. The `.whittle/` cache never syncs. The offline queue is
+   `SyncState.pending`. Pushes are debounced (3 s); pulls happen on poll, focus and reconnect.
+5. **Structural merge.** Arrays of items with ids merge as maps plus an order. Both sides editing
+   the same leaf is a conflict (`bothModified`, `modifiedDeleted`, `bothAdded`), and two different
+   reorders are an `order` conflict. `meta.modified` takes the later time. Conflict paths use ids,
+   not indices. The merged document is always schema-valid. A reference the merge breaks shows up
+   as "needs attention" on regen and is never silently re-picked. `DocDiffer` produces one-line
+   feature diffs ("Fillet 3: radius 2 mm → 3 mm") from the same walk.
+6. **Snapshot history** (`.whittle-history/`) is append-only and content-addressed:
+   - `versions/<id>.json` holds the metadata;
+   - `snapshots/<hash>.zip` holds the packed files;
+   - `refs/heads/<branch>/<versionId>` and `refs/releases/<name>` hold one empty file per head.
+
+   Two devices adding versions offline therefore merge by union, never by conflict. A branch left
+   with two heads shows as diverged and offers a merge. sync-engineer specifies the layout in
+   docs/FILE_FORMAT.md. Named versions are never pruned. Automatic snapshots are pruned by
+   `PrunePolicy`. A release is read-only.
+7. **Credentials** live in `CredentialVault`, encrypted with a non-extractable AES-GCM key in
+   IndexedDB. They are never in the document, never synced and never logged. A `Connection` holds
+   no secrets.
+8. **Geometric compare** runs in the kernel worker. `RegenRequest.slot` (`'main'` or
+   `version:<id>`) keeps a second regeneration beside the live one, with its own cache.
+   `compare(partId, a, b)` returns B − A (added) and A − B (removed) meshes, their volumes, and the
+   mass and bounding box of each side. Until the modeling workstream lands, kernel-client returns
+   `UNSUPPORTED_FEATURE`.
+9. **Hosted pieces.**
+   - Dropbox and OneDrive need app registrations whose redirect URIs include Whittle's Pages
+     origin.
+   - Git over HTTP from a browser always needs a CORS proxy, even with a fine-grained token.
+   - Development uses the isomorphic-git public proxy. Production uses Mycelium's Worker, ported
+     and restricted to Whittle's origin.
+   - These need the owner's accounts and settings; the app reads them from build-time config, and
+     a missing key hides that provider instead of failing.
+
+**Workstreams (PLAN §11.3).**
+
+- **sync-engineer A:** `packages/sync` providers, `CredentialVault`, `SyncEngine` and OAuth PKCE,
+  ported from Mycelium with its tests.
+- **sync-engineer B:** `DocMerger`, `DocDiffer`, `SnapshotHistory` and `GitHistory`, plus the
+  1,000-pair merge fuzz test.
+- **modeling-engineer:** regen slots and `compare`, with kernel booleans and golden tests on five
+  fixture pairs.
+- **ui-engineer:** the connections panel, sync status chip, versions panel, branches, compare and
+  merge UI.
+- **platform-engineer:** the Worker port, `connect-src` and COEP for provider hosts, and the
+  configuration plumbing.

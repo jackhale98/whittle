@@ -102,5 +102,10 @@ export function createModelingApi(deps: ModelingApiDeps): ModelingApiImpl {
     closePart: (partId) => engine.closePart(partId),
     configureRegen: (options) => engine.configure(options),
     measure: (partId, a, b) => engine.measure(partId, a, b),
+    // M2.5 contract (ADR-020): slots and boolean compare land with the modeling workstream.
+    compare: async () => ({
+      ok: false,
+      error: { code: 'UNSUPPORTED_FEATURE', message: 'Geometric compare arrives in M2.5' },
+    }),
   };
 }

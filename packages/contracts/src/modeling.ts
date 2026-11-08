@@ -19,6 +19,7 @@ import type {
   ShapeHandle,
 } from './kernel';
 import type { SketchEntity } from './sketch';
+import type { GeometricDiff, RegenSlot } from './sync';
 
 export type MeshQuality = 'coarse' | 'fine';
 
@@ -96,6 +97,11 @@ export interface RegenRequest {
   quality: MeshQuality;
   /** Compute mass properties for every body (always on when the part has a material). */
   massProperties?: boolean;
+  /**
+   * M2.5: which regeneration this is. `'main'` (default) is the live model; `version:<id>` holds
+   * another version beside it (compare, merge preview) with its own cache and latest state.
+   */
+  slot?: RegenSlot;
 }
 
 export interface RegenResult {
@@ -161,8 +167,18 @@ export interface ModelingApi extends KernelApi {
     | { ok: true; bodies: { shape: ShapeHandle; mesh: MeshBuffers; name?: string }[] }
     | { ok: false; error: KernelError }
   >;
-  /** Drops cached results and shapes for a part (document closed). */
-  closePart(partId: Id): Promise<void>;
+  /** Drops cached results and shapes for a part (document closed); one slot, or all of them. */
+  closePart(partId: Id, slot?: RegenSlot): Promise<void>;
   /** M2: exact measurement on the latest regen of a part (bodies by BodyResult id). */
   measure(partId: Id, a: MeasureTarget, b?: MeasureTarget): Promise<Result<Measurement>>;
+  /**
+   * M2.5: geometric compare of the latest regens of a part in two slots (PLAN §8A.3): boolean
+   * differences B − A and A − B, meshed at `quality`, plus mass and bounding box of each side.
+   */
+  compare(
+    partId: Id,
+    a: RegenSlot,
+    b: RegenSlot,
+    quality: MeshQuality,
+  ): Promise<Result<GeometricDiff>>;
 }
