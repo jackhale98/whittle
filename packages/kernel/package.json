@@ -1,0 +1,42 @@
+{
+  "name": "@whittle/kernel",
+  "version": "0.0.0",
+  "private": true,
+  "license": "GPL-3.0-or-later",
+  "description": "OCCT 8.0.1 → WebAssembly kernel with Whittle's coarse C++ façade (built with @libcascade/toolchain). Sources are Apache-2.0; the produced .wasm/.js are LGPL-2.1-only WITH Open-CASCADE-Exception-1.0.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./single/init": {
+      "types": "./dist/init.single.d.ts",
+      "default": "./dist/init.single.js"
+    },
+    "./multi/init": {
+      "types": "./dist/init.multi.d.ts",
+      "default": "./dist/init.multi.js"
+    },
+    "./single/wasm": "./dist/whittle-kernel-st.wasm",
+    "./multi/wasm": "./dist/whittle-kernel.wasm",
+    "./single": {
+      "types": "./dist/variant.d.ts",
+      "default": "./dist/whittle-kernel-st.js"
+    },
+    "./multi": {
+      "types": "./dist/variant.d.ts",
+      "default": "./dist/whittle-kernel.js"
+    },
+    "./size-report.json": "./dist/size-report.json"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "size": "node scripts/size-report.mjs",
+    "test": "vitest run",
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@whittle/contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "@libcascade/toolchain": "3.1.0"
+  }
+}

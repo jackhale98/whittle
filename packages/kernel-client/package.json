@@ -1,0 +1,22 @@
+{
+  "name": "@whittle/kernel-client",
+  "version": "0.0.0",
+  "private": true,
+  "license": "GPL-3.0-or-later",
+  "description": "Kernel worker (Comlink) and main-thread client for the Whittle OCCT kernel.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./worker": "./src/worker.ts",
+    "./kernel-api": "./src/kernel-api.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@whittle/contracts": "workspace:*",
+    "@whittle/kernel": "workspace:*",
+    "comlink": "4.4.2"
+  }
+}
