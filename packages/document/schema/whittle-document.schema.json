@@ -1,0 +1,2013 @@
+{
+  "$id": "https://whittle.dev/schema/whittle-document.schema.json",
+  "$ref": "#/definitions/WhittleDoc",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "AngleUnit": {
+      "enum": [
+        "deg",
+        "rad"
+      ],
+      "type": "string"
+    },
+    "Assembly": {
+      "additionalProperties": false,
+      "description": "Placeholder until M6; kept so documents are forward compatible.",
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "type": "object"
+    },
+    "BodyOp": {
+      "description": "Body operation shared by solid-producing features.",
+      "enum": [
+        "new",
+        "add",
+        "cut",
+        "intersect"
+      ],
+      "type": "string"
+    },
+    "BodyScope": {
+      "anyOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "all",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "bodies": {
+              "items": {
+                "$ref": "#/definitions/EntityRef"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "const": "bodies",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "bodies"
+          ],
+          "type": "object"
+        }
+      ],
+      "description": "Which existing bodies a solid feature with op add/cut/intersect acts on. Default (`undefined`) = every body the new tool solid touches (Onshape-style \"merge scope: all\")."
+    },
+    "BooleanFeature": {
+      "additionalProperties": false,
+      "properties": {
+        "annotations": {
+          "items": {
+            "$ref": "#/definitions/PmiAnnotation"
+          },
+          "type": "array"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "keepTools": {
+          "type": "boolean"
+        },
+        "name": {
+          "type": "string"
+        },
+        "op": {
+          "enum": [
+            "add",
+            "cut",
+            "intersect"
+          ],
+          "type": "string"
+        },
+        "suppressed": {
+          "type": "boolean"
+        },
+        "target": {
+          "$ref": "#/definitions/EntityRef"
+        },
+        "tools": {
+          "items": {
+            "$ref": "#/definitions/EntityRef"
+          },
+          "type": "array"
+        },
+        "type": {
+          "const": "boolean",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "keepTools",
+        "name",
+        "op",
+        "suppressed",
+        "target",
+        "tools",
+        "type"
+      ],
+      "type": "object"
+    },
+    "ChamferFeature": {
+      "additionalProperties": false,
+      "properties": {
+        "annotations": {
+          "items": {
+            "$ref": "#/definitions/PmiAnnotation"
+          },
+          "type": "array"
+        },
+        "edges": {
+          "items": {
+            "$ref": "#/definitions/EntityRef"
+          },
+          "type": "array"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "mode": {
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "distance": {
+                  "$ref": "#/definitions/Expr"
+                },
+                "kind": {
+                  "const": "distance",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "distance"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "angle": {
+                  "$ref": "#/definitions/Expr"
+                },
+                "distance": {
+                  "$ref": "#/definitions/Expr"
+                },
+                "kind": {
+                  "const": "distanceAngle",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "distance",
+                "angle"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "suppressed": {
+          "type": "boolean"
+        },
+        "type": {
+          "const": "chamfer",
+          "type": "string"
+        }
+      },
+      "required": [
+        "edges",
+        "id",
+        "mode",
+        "name",
+        "suppressed",
+        "type"
+      ],
+      "type": "object"
+    },
+    "DimensionConstraint": {
+      "anyOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "a": {
+              "$ref": "#/definitions/Id"
+            },
+            "b": {
+              "$ref": "#/definitions/Id"
+            },
+            "driving": {
+              "type": "boolean"
+            },
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "const": "distance",
+              "type": "string"
+            },
+            "label": {
+              "$ref": "#/definitions/Vec2"
+            },
+            "value": {
+              "$ref": "#/definitions/Expr"
+            }
+          },
+          "required": [
+            "a",
+            "b",
+            "driving",
+            "id",
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "a": {
+              "$ref": "#/definitions/Id"
+            },
+            "b": {
+              "$ref": "#/definitions/Id"
+            },
+            "driving": {
+              "type": "boolean"
+            },
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "const": "hDistance",
+              "type": "string"
+            },
+            "label": {
+              "$ref": "#/definitions/Vec2"
+            },
+            "value": {
+              "$ref": "#/definitions/Expr"
+            }
+          },
+          "required": [
+            "a",
+            "b",
+            "driving",
+            "id",
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "a": {
+              "$ref": "#/definitions/Id"
+            },
+            "b": {
+              "$ref": "#/definitions/Id"
+            },
+            "driving": {
+              "type": "boolean"
+            },
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "const": "vDistance",
+              "type": "string"
+            },
+            "label": {
+              "$ref": "#/definitions/Vec2"
+            },
+            "value": {
+              "$ref": "#/definitions/Expr"
+            }
+          },
+          "required": [
+            "a",
+            "b",
+            "driving",
+            "id",
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "driving": {
+              "type": "boolean"
+            },
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "const": "length",
+              "type": "string"
+            },
+            "label": {
+              "$ref": "#/definitions/Vec2"
+            },
+            "line": {
+              "$ref": "#/definitions/Id"
+            },
+            "value": {
+              "$ref": "#/definitions/Expr"
+            }
+          },
+          "required": [
+            "driving",
+            "id",
+            "kind",
+            "line",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "curve": {
+              "$ref": "#/definitions/Id"
+            },
+            "driving": {
+              "type": "boolean"
+            },
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "const": "radius",
+              "type": "string"
+            },
+            "label": {
+              "$ref": "#/definitions/Vec2"
+            },
+            "value": {
+              "$ref": "#/definitions/Expr"
+            }
+          },
+          "required": [
+            "curve",
+            "driving",
+            "id",
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "curve": {
+              "$ref": "#/definitions/Id"
+            },
+            "driving": {
+              "type": "boolean"
+            },
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "const": "diameter",
+              "type": "string"
+            },
+            "label": {
+              "$ref": "#/definitions/Vec2"
+            },
+            "value": {
+              "$ref": "#/definitions/Expr"
+            }
+          },
+          "required": [
+            "curve",
+            "driving",
+            "id",
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "a": {
+              "$ref": "#/definitions/Id"
+            },
+            "b": {
+              "$ref": "#/definitions/Id"
+            },
+            "driving": {
+              "type": "boolean"
+            },
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "const": "angle",
+              "type": "string"
+            },
+            "label": {
+              "$ref": "#/definitions/Vec2"
+            },
+            "value": {
+              "$ref": "#/definitions/Expr"
+            }
+          },
+          "required": [
+            "a",
+            "b",
+            "driving",
+            "id",
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        }
+      ],
+      "description": "Dimensions. `driving: true` constrains the solver with `value`; `driving: false` is a reference (driven) dimension whose value is **measured** after solving (planegcs non-driving constraints are unreliable — PLAN §3). `label` positions the text in sketch space for display."
+    },
+    "DocMeta": {
+      "additionalProperties": false,
+      "properties": {
+        "app": {
+          "description": "Writer identification, e.g. `\"whittle/0.1.0\"`.",
+          "type": "string"
+        },
+        "created": {
+          "description": "ISO-8601 timestamps.",
+          "type": "string"
+        },
+        "modified": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "partNumber": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "created",
+        "modified",
+        "app"
+      ],
+      "type": "object"
+    },
+    "Drawing": {
+      "additionalProperties": false,
+      "description": "Placeholder until M4; kept so documents are forward compatible.",
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "type": "object"
+    },
+    "EntityKind": {
+      "enum": [
+        "face",
+        "edge",
+        "vertex",
+        "region",
+        "body"
+      ],
+      "type": "string"
+    },
+    "EntityRef": {
+      "additionalProperties": false,
+      "description": "Persistent reference to topology.",
+      "properties": {
+        "fingerprint": {
+          "$ref": "#/definitions/Fingerprint"
+        },
+        "kind": {
+          "$ref": "#/definitions/EntityKind"
+        },
+        "name": {
+          "description": "Persistent name, e.g. `\"F3:side(S1:e7)\"`. See `naming.ts`.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "kind"
+      ],
+      "type": "object"
+    },
+    "Expr": {
+      "description": "Expression with optional units, e.g. `\"width/2 + 3mm\"`, `\"25mm + 1/8in\"`, `\"30deg\"`.",
+      "type": "string"
+    },
+    "ExtrudeFeature": {
+      "additionalProperties": false,
+      "properties": {
+        "annotations": {
+          "items": {
+            "$ref": "#/definitions/PmiAnnotation"
+          },
+          "type": "array"
+        },
+        "direction": {
+          "enum": [
+            "normal",
+            "reverse",
+            "symmetric"
+          ],
+          "type": "string"
+        },
+        "draft": {
+          "$ref": "#/definitions/Expr"
+        },
+        "end": {
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "depth": {
+                  "$ref": "#/definitions/Expr"
+                },
+                "kind": {
+                  "const": "blind",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "depth"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "upTo",
+                  "type": "string"
+                },
+                "target": {
+                  "$ref": "#/definitions/EntityRef"
+                }
+              },
+              "required": [
+                "kind",
+                "target"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "throughAll",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "name": {
+          "type": "string"
+        },
+        "op": {
+          "$ref": "#/definitions/BodyOp"
+        },
+        "profile": {
+          "description": "Sketch regions.",
+          "items": {
+            "$ref": "#/definitions/EntityRef"
+          },
+          "type": "array"
+        },
+        "scope": {
+          "$ref": "#/definitions/BodyScope"
+        },
+        "suppressed": {
+          "type": "boolean"
+        },
+        "type": {
+          "const": "extrude",
+          "type": "string"
+        }
+      },
+      "required": [
+        "direction",
+        "end",
+        "id",
+        "name",
+        "op",
+        "profile",
+        "suppressed",
+        "type"
+      ],
+      "type": "object"
+    },
+    "Feature": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/PrimitiveFeature"
+        },
+        {
+          "$ref": "#/definitions/SketchFeature"
+        },
+        {
+          "$ref": "#/definitions/ExtrudeFeature"
+        },
+        {
+          "$ref": "#/definitions/RevolveFeature"
+        },
+        {
+          "$ref": "#/definitions/FilletFeature"
+        },
+        {
+          "$ref": "#/definitions/ChamferFeature"
+        },
+        {
+          "$ref": "#/definitions/BooleanFeature"
+        },
+        {
+          "$ref": "#/definitions/PushPullFeature"
+        },
+        {
+          "$ref": "#/definitions/PlaneFeature"
+        }
+      ]
+    },
+    "FilletFeature": {
+      "additionalProperties": false,
+      "properties": {
+        "annotations": {
+          "items": {
+            "$ref": "#/definitions/PmiAnnotation"
+          },
+          "type": "array"
+        },
+        "edges": {
+          "items": {
+            "$ref": "#/definitions/EntityRef"
+          },
+          "type": "array"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "name": {
+          "type": "string"
+        },
+        "radius": {
+          "$ref": "#/definitions/Expr"
+        },
+        "suppressed": {
+          "type": "boolean"
+        },
+        "type": {
+          "const": "fillet",
+          "type": "string"
+        }
+      },
+      "required": [
+        "edges",
+        "id",
+        "name",
+        "radius",
+        "suppressed",
+        "type"
+      ],
+      "type": "object"
+    },
+    "Fingerprint": {
+      "additionalProperties": false,
+      "properties": {
+        "area": {
+          "type": "number"
+        },
+        "centroid": {
+          "$ref": "#/definitions/Vec3"
+        },
+        "length": {
+          "type": "number"
+        },
+        "normal": {
+          "$ref": "#/definitions/Vec3"
+        }
+      },
+      "required": [
+        "centroid"
+      ],
+      "type": "object"
+    },
+    "Frame": {
+      "additionalProperties": false,
+      "description": "Placement frame: origin plus Z (normal) and X directions. Right-handed; Y = Z × X. Numbers are **millimetres** — the canonical internal length unit for all stored geometry, whatever `WhittleDoc.units` says (units only affect display and unit-less expression input). User-editable offsets belong in feature Exprs.",
+      "properties": {
+        "origin": {
+          "$ref": "#/definitions/Vec3"
+        },
+        "x": {
+          "$ref": "#/definitions/Vec3"
+        },
+        "z": {
+          "$ref": "#/definitions/Vec3"
+        }
+      },
+      "required": [
+        "origin",
+        "z",
+        "x"
+      ],
+      "type": "object"
+    },
+    "GeometricConstraint": {
+      "anyOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "a": {
+              "$ref": "#/definitions/Id"
+            },
+            "b": {
+              "$ref": "#/definitions/Id"
+            },
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "const": "coincident",
+              "type": "string"
+            }
+          },
+          "required": [
+            "a",
+            "b",
+            "id",
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "const": "pointOn",
+              "type": "string"
+            },
+            "on": {
+              "$ref": "#/definitions/Id"
+            },
+            "point": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "on",
+            "point"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "const": "horizontal",
+              "type": "string"
+            },
+            "line": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "line"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "const": "vertical",
+              "type": "string"
+            },
+            "line": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "line"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "a": {
+              "$ref": "#/definitions/Id"
+            },
+            "b": {
+              "$ref": "#/definitions/Id"
+            },
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "const": "horizontalPoints",
+              "type": "string"
+            }
+          },
+          "required": [
+            "a",
+            "b",
+            "id",
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "a": {
+              "$ref": "#/definitions/Id"
+            },
+            "b": {
+              "$ref": "#/definitions/Id"
+            },
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "const": "verticalPoints",
+              "type": "string"
+            }
+          },
+          "required": [
+            "a",
+            "b",
+            "id",
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "a": {
+              "$ref": "#/definitions/Id"
+            },
+            "b": {
+              "$ref": "#/definitions/Id"
+            },
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "const": "parallel",
+              "type": "string"
+            }
+          },
+          "required": [
+            "a",
+            "b",
+            "id",
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "a": {
+              "$ref": "#/definitions/Id"
+            },
+            "b": {
+              "$ref": "#/definitions/Id"
+            },
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "const": "perpendicular",
+              "type": "string"
+            }
+          },
+          "required": [
+            "a",
+            "b",
+            "id",
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "a": {
+              "$ref": "#/definitions/Id"
+            },
+            "b": {
+              "$ref": "#/definitions/Id"
+            },
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "const": "tangent",
+              "type": "string"
+            }
+          },
+          "required": [
+            "a",
+            "b",
+            "id",
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "a": {
+              "$ref": "#/definitions/Id"
+            },
+            "b": {
+              "$ref": "#/definitions/Id"
+            },
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "const": "equal",
+              "type": "string"
+            }
+          },
+          "required": [
+            "a",
+            "b",
+            "id",
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "const": "midpoint",
+              "type": "string"
+            },
+            "line": {
+              "$ref": "#/definitions/Id"
+            },
+            "point": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "line",
+            "point"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "a": {
+              "$ref": "#/definitions/Id"
+            },
+            "b": {
+              "$ref": "#/definitions/Id"
+            },
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "const": "concentric",
+              "type": "string"
+            }
+          },
+          "required": [
+            "a",
+            "b",
+            "id",
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "a": {
+              "$ref": "#/definitions/Id"
+            },
+            "about": {
+              "$ref": "#/definitions/Id"
+            },
+            "b": {
+              "$ref": "#/definitions/Id"
+            },
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "const": "symmetric",
+              "type": "string"
+            }
+          },
+          "required": [
+            "a",
+            "about",
+            "b",
+            "id",
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "entity": {
+              "$ref": "#/definitions/Id"
+            },
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "const": "fix",
+              "type": "string"
+            }
+          },
+          "required": [
+            "entity",
+            "id",
+            "kind"
+          ],
+          "type": "object"
+        }
+      ],
+      "description": "Geometric constraints (no value). Ids refer to entities; points are entities too."
+    },
+    "Id": {
+      "description": "ULID (26-char Crockford base32).",
+      "type": "string"
+    },
+    "LengthUnit": {
+      "enum": [
+        "mm",
+        "cm",
+        "m",
+        "in",
+        "ft"
+      ],
+      "type": "string"
+    },
+    "Material": {
+      "additionalProperties": false,
+      "description": "A part's physical material (PLAN §2.2). Stored inline (not by reference only) so documents stay self-contained and diff/merge cleanly; `libraryId` records where it came from so the UI can offer \"reset to library values\".",
+      "properties": {
+        "appearance": {
+          "description": "Optional appearance hint (CSS hex) used when the part has no explicit `color`.",
+          "type": "string"
+        },
+        "density": {
+          "$ref": "#/definitions/Expr",
+          "description": "Density expression with units, e.g. `\"2.70 g/cm^3\"`, `\"2700 kg/m^3\"`, `\"0.0975 lb/in^3\"`."
+        },
+        "libraryId": {
+          "description": "Built-in or user library id, e.g. `\"whittle:aluminium-6061-t6\"`. Absent for ad-hoc materials.",
+          "type": "string"
+        },
+        "name": {
+          "description": "Display name, e.g. `\"Aluminium 6061-T6\"`.",
+          "type": "string"
+        },
+        "properties": {
+          "additionalProperties": false,
+          "description": "Optional extra properties for later use (FEA etc.), as expressions with units.",
+          "properties": {
+            "poissonsRatio": {
+              "$ref": "#/definitions/Expr"
+            },
+            "yieldStrength": {
+              "$ref": "#/definitions/Expr"
+            },
+            "youngsModulus": {
+              "$ref": "#/definitions/Expr"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "name",
+        "density"
+      ],
+      "type": "object"
+    },
+    "Param": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "expr": {
+          "$ref": "#/definitions/Expr"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "expr"
+      ],
+      "type": "object"
+    },
+    "Part": {
+      "additionalProperties": false,
+      "properties": {
+        "color": {
+          "description": "CSS hex colour, e.g. `\"#9aa4b2\"`. Overrides the material's appearance colour.",
+          "type": "string"
+        },
+        "features": {
+          "items": {
+            "$ref": "#/definitions/Feature"
+          },
+          "type": "array"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "material": {
+          "$ref": "#/definitions/Material",
+          "description": "Physical material. Absent = no mass properties beyond volume (UI shows \"Assign material\")."
+        },
+        "name": {
+          "type": "string"
+        },
+        "rollbackIndex": {
+          "description": "Features with index >= rollbackIndex are not evaluated. `features.length` = fully rolled forward.",
+          "type": "number"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "features",
+        "rollbackIndex"
+      ],
+      "type": "object"
+    },
+    "PlaneFeature": {
+      "additionalProperties": false,
+      "properties": {
+        "annotations": {
+          "items": {
+            "$ref": "#/definitions/PmiAnnotation"
+          },
+          "type": "array"
+        },
+        "definition": {
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "distance": {
+                  "$ref": "#/definitions/Expr"
+                },
+                "from": {
+                  "$ref": "#/definitions/EntityRef"
+                },
+                "kind": {
+                  "const": "offset",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "from",
+                "distance"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "frame": {
+                  "$ref": "#/definitions/Frame"
+                },
+                "kind": {
+                  "const": "frame",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "frame"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "name": {
+          "type": "string"
+        },
+        "suppressed": {
+          "type": "boolean"
+        },
+        "type": {
+          "const": "plane",
+          "type": "string"
+        }
+      },
+      "required": [
+        "definition",
+        "id",
+        "name",
+        "suppressed",
+        "type"
+      ],
+      "type": "object"
+    },
+    "PmiAnnotation": {
+      "additionalProperties": false,
+      "description": "Model-based definition: becomes STEP AP242 semantic PMI and can be imported into drawings.",
+      "properties": {
+        "gdt": {
+          "additionalProperties": false,
+          "properties": {
+            "characteristic": {
+              "type": "string"
+            },
+            "datums": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "modifiers": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "zone": {
+              "$ref": "#/definitions/Expr"
+            }
+          },
+          "required": [
+            "characteristic",
+            "zone"
+          ],
+          "type": "object"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "kind": {
+          "enum": [
+            "linear",
+            "diameter",
+            "radius",
+            "angle",
+            "datum",
+            "geomTolerance"
+          ],
+          "type": "string"
+        },
+        "placement": {
+          "additionalProperties": false,
+          "properties": {
+            "plane": {
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 6,
+              "minItems": 6,
+              "type": "array"
+            },
+            "textPos": {
+              "$ref": "#/definitions/Vec3"
+            }
+          },
+          "required": [
+            "plane",
+            "textPos"
+          ],
+          "type": "object"
+        },
+        "refs": {
+          "items": {
+            "$ref": "#/definitions/EntityRef"
+          },
+          "type": "array"
+        },
+        "tolerance": {
+          "additionalProperties": false,
+          "properties": {
+            "fit": {
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "symmetric",
+                "bilateral",
+                "limits",
+                "fit"
+              ],
+              "type": "string"
+            },
+            "lower": {
+              "$ref": "#/definitions/Expr"
+            },
+            "upper": {
+              "$ref": "#/definitions/Expr"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        "value": {
+          "$ref": "#/definitions/Expr",
+          "description": "Usually bound to a feature/sketch dimension."
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "refs"
+      ],
+      "type": "object"
+    },
+    "PrimitiveFeature": {
+      "anyOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "annotations": {
+              "items": {
+                "$ref": "#/definitions/PmiAnnotation"
+              },
+              "type": "array"
+            },
+            "dx": {
+              "$ref": "#/definitions/Expr"
+            },
+            "dy": {
+              "$ref": "#/definitions/Expr"
+            },
+            "dz": {
+              "$ref": "#/definitions/Expr"
+            },
+            "frame": {
+              "$ref": "#/definitions/Frame"
+            },
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "name": {
+              "type": "string"
+            },
+            "op": {
+              "$ref": "#/definitions/BodyOp"
+            },
+            "scope": {
+              "$ref": "#/definitions/BodyScope"
+            },
+            "shape": {
+              "const": "box",
+              "type": "string"
+            },
+            "suppressed": {
+              "type": "boolean"
+            },
+            "type": {
+              "const": "primitive",
+              "type": "string"
+            }
+          },
+          "required": [
+            "dx",
+            "dy",
+            "dz",
+            "id",
+            "name",
+            "op",
+            "shape",
+            "suppressed",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "annotations": {
+              "items": {
+                "$ref": "#/definitions/PmiAnnotation"
+              },
+              "type": "array"
+            },
+            "frame": {
+              "$ref": "#/definitions/Frame"
+            },
+            "height": {
+              "$ref": "#/definitions/Expr"
+            },
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "name": {
+              "type": "string"
+            },
+            "op": {
+              "$ref": "#/definitions/BodyOp"
+            },
+            "radius": {
+              "$ref": "#/definitions/Expr"
+            },
+            "scope": {
+              "$ref": "#/definitions/BodyScope"
+            },
+            "shape": {
+              "const": "cylinder",
+              "type": "string"
+            },
+            "suppressed": {
+              "type": "boolean"
+            },
+            "type": {
+              "const": "primitive",
+              "type": "string"
+            }
+          },
+          "required": [
+            "height",
+            "id",
+            "name",
+            "op",
+            "radius",
+            "shape",
+            "suppressed",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "annotations": {
+              "items": {
+                "$ref": "#/definitions/PmiAnnotation"
+              },
+              "type": "array"
+            },
+            "frame": {
+              "$ref": "#/definitions/Frame"
+            },
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "name": {
+              "type": "string"
+            },
+            "op": {
+              "$ref": "#/definitions/BodyOp"
+            },
+            "radius": {
+              "$ref": "#/definitions/Expr"
+            },
+            "scope": {
+              "$ref": "#/definitions/BodyScope"
+            },
+            "shape": {
+              "const": "sphere",
+              "type": "string"
+            },
+            "suppressed": {
+              "type": "boolean"
+            },
+            "type": {
+              "const": "primitive",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "op",
+            "radius",
+            "shape",
+            "suppressed",
+            "type"
+          ],
+          "type": "object"
+        }
+      ],
+      "description": "Solid primitive (box/cylinder/sphere). Used by M0 (\"façade makes a box\") and kept for quick blocking-out. The box spans [0,dx]×[0,dy]×[0,dz] in `frame` (default: world)."
+    },
+    "PushPullFeature": {
+      "additionalProperties": false,
+      "description": "Direct face push/pull recorded parametrically (M2).",
+      "properties": {
+        "annotations": {
+          "items": {
+            "$ref": "#/definitions/PmiAnnotation"
+          },
+          "type": "array"
+        },
+        "distance": {
+          "$ref": "#/definitions/Expr"
+        },
+        "faces": {
+          "items": {
+            "$ref": "#/definitions/EntityRef"
+          },
+          "type": "array"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "name": {
+          "type": "string"
+        },
+        "suppressed": {
+          "type": "boolean"
+        },
+        "type": {
+          "const": "pushPull",
+          "type": "string"
+        }
+      },
+      "required": [
+        "distance",
+        "faces",
+        "id",
+        "name",
+        "suppressed",
+        "type"
+      ],
+      "type": "object"
+    },
+    "RevolveFeature": {
+      "additionalProperties": false,
+      "properties": {
+        "angle": {
+          "$ref": "#/definitions/Expr"
+        },
+        "annotations": {
+          "items": {
+            "$ref": "#/definitions/PmiAnnotation"
+          },
+          "type": "array"
+        },
+        "axis": {
+          "$ref": "#/definitions/EntityRef"
+        },
+        "direction": {
+          "enum": [
+            "normal",
+            "reverse",
+            "symmetric"
+          ],
+          "type": "string"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "name": {
+          "type": "string"
+        },
+        "op": {
+          "$ref": "#/definitions/BodyOp"
+        },
+        "profile": {
+          "items": {
+            "$ref": "#/definitions/EntityRef"
+          },
+          "type": "array"
+        },
+        "scope": {
+          "$ref": "#/definitions/BodyScope"
+        },
+        "suppressed": {
+          "type": "boolean"
+        },
+        "type": {
+          "const": "revolve",
+          "type": "string"
+        }
+      },
+      "required": [
+        "angle",
+        "axis",
+        "direction",
+        "id",
+        "name",
+        "op",
+        "profile",
+        "suppressed",
+        "type"
+      ],
+      "type": "object"
+    },
+    "SketchArc": {
+      "additionalProperties": false,
+      "description": "Counter-clockwise from `start` to `end` around `center` (both on the circle).",
+      "properties": {
+        "center": {
+          "$ref": "#/definitions/Id"
+        },
+        "construction": {
+          "description": "Construction geometry is solved and constrainable but never forms profiles.",
+          "type": "boolean"
+        },
+        "end": {
+          "$ref": "#/definitions/Id"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "kind": {
+          "const": "arc",
+          "type": "string"
+        },
+        "start": {
+          "$ref": "#/definitions/Id"
+        }
+      },
+      "required": [
+        "center",
+        "construction",
+        "end",
+        "id",
+        "kind",
+        "start"
+      ],
+      "type": "object"
+    },
+    "SketchCircle": {
+      "additionalProperties": false,
+      "properties": {
+        "center": {
+          "$ref": "#/definitions/Id"
+        },
+        "construction": {
+          "description": "Construction geometry is solved and constrainable but never forms profiles.",
+          "type": "boolean"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "kind": {
+          "const": "circle",
+          "type": "string"
+        },
+        "radius": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "center",
+        "construction",
+        "id",
+        "kind",
+        "radius"
+      ],
+      "type": "object"
+    },
+    "SketchConstraint": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/GeometricConstraint"
+        },
+        {
+          "$ref": "#/definitions/DimensionConstraint"
+        }
+      ]
+    },
+    "SketchEllipse": {
+      "additionalProperties": false,
+      "description": "P1. Axis-aligned before rotation; `rotation` in radians.",
+      "properties": {
+        "center": {
+          "$ref": "#/definitions/Id"
+        },
+        "construction": {
+          "description": "Construction geometry is solved and constrainable but never forms profiles.",
+          "type": "boolean"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "kind": {
+          "const": "ellipse",
+          "type": "string"
+        },
+        "majorRadius": {
+          "type": "number"
+        },
+        "minorRadius": {
+          "type": "number"
+        },
+        "rotation": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "center",
+        "construction",
+        "id",
+        "kind",
+        "majorRadius",
+        "minorRadius",
+        "rotation"
+      ],
+      "type": "object"
+    },
+    "SketchEntity": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/SketchPoint"
+        },
+        {
+          "$ref": "#/definitions/SketchLine"
+        },
+        {
+          "$ref": "#/definitions/SketchCircle"
+        },
+        {
+          "$ref": "#/definitions/SketchArc"
+        },
+        {
+          "$ref": "#/definitions/SketchEllipse"
+        }
+      ]
+    },
+    "SketchFeature": {
+      "additionalProperties": false,
+      "description": "A 2D sketch on a plane or planar face. Geometry and constraints are defined in `sketch.ts`. The kernel turns the solved sketch into wires and regions (names: see `naming.ts`).",
+      "properties": {
+        "annotations": {
+          "items": {
+            "$ref": "#/definitions/PmiAnnotation"
+          },
+          "type": "array"
+        },
+        "constraints": {
+          "items": {
+            "$ref": "#/definitions/SketchConstraint"
+          },
+          "type": "array"
+        },
+        "entities": {
+          "items": {
+            "$ref": "#/definitions/SketchEntity"
+          },
+          "type": "array"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "name": {
+          "type": "string"
+        },
+        "on": {
+          "$ref": "#/definitions/EntityRef",
+          "description": "Plane or planar face the sketch lies on (`origin:XY` etc. or a face/plane-feature ref)."
+        },
+        "suppressed": {
+          "type": "boolean"
+        },
+        "type": {
+          "const": "sketch",
+          "type": "string"
+        }
+      },
+      "required": [
+        "constraints",
+        "entities",
+        "id",
+        "name",
+        "on",
+        "suppressed",
+        "type"
+      ],
+      "type": "object"
+    },
+    "SketchLine": {
+      "additionalProperties": false,
+      "properties": {
+        "construction": {
+          "description": "Construction geometry is solved and constrainable but never forms profiles.",
+          "type": "boolean"
+        },
+        "end": {
+          "$ref": "#/definitions/Id"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "kind": {
+          "const": "line",
+          "type": "string"
+        },
+        "start": {
+          "$ref": "#/definitions/Id"
+        }
+      },
+      "required": [
+        "construction",
+        "end",
+        "id",
+        "kind",
+        "start"
+      ],
+      "type": "object"
+    },
+    "SketchPoint": {
+      "additionalProperties": false,
+      "properties": {
+        "construction": {
+          "description": "Construction geometry is solved and constrainable but never forms profiles.",
+          "type": "boolean"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "kind": {
+          "const": "point",
+          "type": "string"
+        },
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "construction",
+        "id",
+        "kind",
+        "x",
+        "y"
+      ],
+      "type": "object"
+    },
+    "Vec2": {
+      "items": {
+        "type": "number"
+      },
+      "maxItems": 2,
+      "minItems": 2,
+      "type": "array"
+    },
+    "Vec3": {
+      "items": {
+        "type": "number"
+      },
+      "maxItems": 3,
+      "minItems": 3,
+      "type": "array"
+    },
+    "WhittleDoc": {
+      "additionalProperties": false,
+      "properties": {
+        "assemblies": {
+          "description": "M6.",
+          "items": {
+            "$ref": "#/definitions/Assembly"
+          },
+          "type": "array"
+        },
+        "drawings": {
+          "description": "M4.",
+          "items": {
+            "$ref": "#/definitions/Drawing"
+          },
+          "type": "array"
+        },
+        "meta": {
+          "$ref": "#/definitions/DocMeta"
+        },
+        "params": {
+          "description": "Global variables.",
+          "items": {
+            "$ref": "#/definitions/Param"
+          },
+          "type": "array"
+        },
+        "parts": {
+          "items": {
+            "$ref": "#/definitions/Part"
+          },
+          "type": "array"
+        },
+        "schemaVersion": {
+          "type": "number"
+        },
+        "units": {
+          "additionalProperties": false,
+          "properties": {
+            "angle": {
+              "$ref": "#/definitions/AngleUnit"
+            },
+            "length": {
+              "$ref": "#/definitions/LengthUnit"
+            }
+          },
+          "required": [
+            "length",
+            "angle"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "units",
+        "params",
+        "parts",
+        "assemblies",
+        "drawings",
+        "meta"
+      ],
+      "type": "object"
+    }
+  },
+  "description": "The whole in-memory document (what `DocumentStore.load` accepts).",
+  "title": "DocumentFile"
+}

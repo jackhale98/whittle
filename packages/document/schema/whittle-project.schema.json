@@ -1,0 +1,133 @@
+{
+  "$id": "https://whittle.dev/schema/whittle-project.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "definitions": {
+    "DocMeta": {
+      "additionalProperties": false,
+      "properties": {
+        "app": {
+          "description": "Writer identification, e.g. `\"whittle/0.1.0\"`.",
+          "type": "string"
+        },
+        "created": {
+          "description": "ISO-8601 timestamps.",
+          "type": "string"
+        },
+        "modified": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "partNumber": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "created",
+        "modified",
+        "app"
+      ],
+      "type": "object"
+    },
+    "Id": {
+      "description": "ULID (26-char Crockford base32).",
+      "type": "string"
+    },
+    "ManifestEntry": {
+      "additionalProperties": false,
+      "description": "Index entry in the manifest: the file is keyed by the object's stable `id`, not its name.",
+      "properties": {
+        "file": {
+          "description": "Path relative to the project root, e.g. `parts/bracket.part.json`.",
+          "type": "string"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "name": {
+          "description": "Display name (informational copy; the file is authoritative).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "file"
+      ],
+      "type": "object"
+    }
+  },
+  "description": "`whittle.project.json`",
+  "properties": {
+    "assemblies": {
+      "items": {
+        "$ref": "#/definitions/ManifestEntry"
+      },
+      "type": "array"
+    },
+    "drawings": {
+      "items": {
+        "$ref": "#/definitions/ManifestEntry"
+      },
+      "type": "array"
+    },
+    "format": {
+      "const": "whittle-project",
+      "type": "string"
+    },
+    "meta": {
+      "$ref": "#/definitions/DocMeta"
+    },
+    "parts": {
+      "description": "Order here is the order in the document.",
+      "items": {
+        "$ref": "#/definitions/ManifestEntry"
+      },
+      "type": "array"
+    },
+    "schemaVersion": {
+      "type": "number"
+    },
+    "units": {
+      "additionalProperties": false,
+      "properties": {
+        "angle": {
+          "enum": [
+            "deg",
+            "rad"
+          ],
+          "type": "string"
+        },
+        "length": {
+          "enum": [
+            "mm",
+            "cm",
+            "m",
+            "in",
+            "ft"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "length",
+        "angle"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "format",
+    "schemaVersion",
+    "units",
+    "meta",
+    "parts",
+    "drawings",
+    "assemblies"
+  ],
+  "title": "ProjectManifest",
+  "type": "object"
+}
