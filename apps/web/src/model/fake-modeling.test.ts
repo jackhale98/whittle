@@ -72,7 +72,8 @@ describe.skipIf(!built)('fake ModelingApi over the real kernel', () => {
     expect(r1.features.map((s) => s.state)).toEqual(['ok']);
     const region = r1.sketches[0]?.regions[0];
     expect(region?.name).toMatch(new RegExp(`^S${sketch.id}:region\\(`));
-    expect(r1.sketches[0]?.curves).toHaveLength(4);
+    // 4 lines + the 4 corner points as one-point curves (how the viewport draws/picks points).
+    expect(r1.sketches[0]?.curves).toHaveLength(8);
     expect(r1.sketches[0]?.points).toHaveLength(4);
 
     const extrude: Feature = {

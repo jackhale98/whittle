@@ -93,6 +93,7 @@ export function App({ wb }: { wb: Workbench }) {
     [diagnostics.appVersion, wb],
   );
 
+  const beforeViewport = useMemo(() => wb.initialDocumentRead(), [wb]);
   const onViewportReady = useCallback(
     (viewport: InteractiveViewport, canvas: HTMLCanvasElement) =>
       wb.attachViewport(viewport, canvas),
@@ -215,6 +216,7 @@ export function App({ wb }: { wb: Workbench }) {
         viewport={
           <>
             <ViewportHost
+              beforeCreate={beforeViewport}
               theme={theme.resolved}
               onReady={onViewportReady}
               onError={onViewportError}

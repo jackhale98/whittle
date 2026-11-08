@@ -211,8 +211,11 @@ export class Workbench {
       ? this.library().then(async (lib) => {
           if (!lib) return null;
           try {
-            return await lib.open(lastId);
-          } catch {
+            const bundle = await lib.open(lastId);
+            markOnce('libraryOpenMs');
+            return bundle;
+          } catch (e) {
+            console.warn('Could not reopen the last document:', String(e));
             writeLastDoc(undefined);
             return null;
           }
@@ -277,6 +280,19 @@ export class Workbench {
       .then((m) => m.createDocLibrary())
       .catch(() => null);
     return this.libraryPromise;
+  }
+
+  /**
+   * Settles once the last document has been read from the library (or at most `timeoutMs`): the
+   * viewport waits for it before compiling its shaders, which would otherwise hold up the read.
+   */
+  initialDocumentRead(timeoutMs = 400): Promise<void> {
+    this.prefetchInitialDocument();
+    const read = (this.initialBundle ?? Promise.resolve(null)).then(
+      () => undefined,
+      () => undefined,
+    );
+    return Promise.race([read, new Promise<void>((r) => setTimeout(r, timeoutMs))]);
   }
 
   private async resolveInitialDocument(): Promise<void> {
@@ -526,6 +542,7 @@ export class Workbench {
   }
 
   attachViewport(viewport: InteractiveViewport, canvas: HTMLCanvasElement): void {
+    markOnce('viewportReadyMs');
     this.viewport = viewport;
     this.canvas = canvas;
     const host = canvas.parentElement ?? canvas;
@@ -620,7 +637,12 @@ export class Workbench {
     const size = Math.max(partDiagonal(this.regen.get()?.result) * 0.03, 0.5);
     const next = new Map<string, MeshBuffers>();
     for (const it of items) {
-      const mesh = markerMesh(it.unresolved.ref, size);
+      // The stored fingerprint, else the engine's last known location of the reference.
+      const { ref, lastKnown } = it.unresolved;
+      const mesh = markerMesh(
+        ref.fingerprint || !lastKnown ? ref : { ...ref, fingerprint: lastKnown },
+        size,
+      );
       if (mesh) next.set(`attention:${it.featureId}:${it.unresolved.path}`, mesh);
     }
     for (const id of this.markers) if (!next.has(id)) v.setGhost(id, null);
@@ -1653,6 +1675,7 @@ export class Workbench {
                 tool: u.sketch.tool,
                 dimPicks: u.sketch.dimPicks,
                 editDimension: u.sketch.editDimension,
+                frame: u.sketch.frame !== null,
                 selected: u.sketch.selected,
               }
             : null,

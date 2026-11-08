@@ -135,7 +135,7 @@ describe('validateDoc', () => {
     expect(errs.join('\n')).toMatch(/units.length must be one of/);
     expect(errs.join('\n')).toMatch(/duplicate id/);
     expect(errs.join('\n')).toMatch(/duplicate parameter name ‘width’/);
-    expect(errs.join('\n')).toMatch(/rollbackIndex must be an integer between 0 and 14/);
+    expect(errs.join('\n')).toMatch(/rollbackIndex must be an integer between 0 and 15/);
     expect(errs.join('\n')).toMatch(/features\[0\].type ‘teleport’/);
     expect(errs.join('\n')).toMatch(/features\[2\]\/dx must be an expression string/);
   });

@@ -10,9 +10,18 @@
  * rebinding by fingerprint on every regen.
  */
 
-import type { Command, Feature, FeatureStatus, Id, JsonPatchOp, Part } from '@whittle/contracts';
+import type {
+  Command,
+  Feature,
+  FeatureStatus,
+  Fingerprint,
+  Id,
+  JsonPatchOp,
+  Part,
+} from '@whittle/contracts';
 
-export type Heal = { path: string; name: string };
+/** A rebound reference: its current name and, when the engine reports one, its fingerprint. */
+export type Heal = { path: string; name: string; fingerprint?: Fingerprint };
 export type Heals = ReadonlyMap<Id, readonly Heal[]>;
 
 /** Rebound names from a regen of the current document (features that resolved by fingerprint). */
@@ -32,18 +41,28 @@ function at(f: unknown, path: string): unknown {
   return cur;
 }
 
-const isRef = (v: unknown): v is { name: string } =>
+type RefLike = { name: string; fingerprint?: Fingerprint };
+const isRef = (v: unknown): v is RefLike =>
   !!v && typeof v === 'object' && typeof (v as { name?: unknown }).name === 'string';
+
+/** The stored ref differs from the healed one (name, or the fingerprint when one is reported). */
+const stale = (r: RefLike, h: Heal) =>
+  r.name !== h.name ||
+  (h.fingerprint !== undefined && JSON.stringify(r.fingerprint) !== JSON.stringify(h.fingerprint));
 
 /** A copy of `feature` with healed reference names (the same object when nothing applies). */
 export function healFeature<F extends Feature>(feature: F, heals: readonly Heal[]): F {
   const todo = heals.filter((h) => {
     const r = at(feature, h.path);
-    return isRef(r) && r.name !== h.name;
+    return isRef(r) && stale(r, h);
   });
   if (!todo.length) return feature;
   const copy = structuredClone(feature);
-  for (const h of todo) (at(copy, h.path) as { name: string }).name = h.name;
+  for (const h of todo) {
+    const r = at(copy, h.path) as RefLike;
+    r.name = h.name;
+    if (h.fingerprint) r.fingerprint = structuredClone(h.fingerprint);
+  }
   return copy;
 }
 
@@ -54,12 +73,11 @@ export function healOps(part: Part, partIndex: number, heals: Heals, except?: Id
     if (f.id === except) return;
     for (const h of heals.get(f.id) ?? []) {
       const r = at(f, h.path);
-      if (isRef(r) && r.name !== h.name)
-        ops.push({
-          op: 'replace',
-          path: `/parts/${partIndex}/features/${i}${h.path}/name`,
-          value: h.name,
-        });
+      if (!isRef(r) || !stale(r, h)) continue;
+      const base = `/parts/${partIndex}/features/${i}${h.path}`;
+      ops.push({ op: 'replace', path: `${base}/name`, value: h.name });
+      // `add` sets the member whether or not the stored ref had a fingerprint.
+      if (h.fingerprint) ops.push({ op: 'add', path: `${base}/fingerprint`, value: h.fingerprint });
     }
   });
   return ops;

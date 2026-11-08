@@ -192,7 +192,7 @@ describe('introspection', () => {
     for (const f of part?.features ?? []) {
       const refs = entityRefs(f);
       const frame = f.type === 'plane' && f.definition.kind === 'frame';
-      if (!frame && f.type !== 'primitive') {
+      if (!frame && f.type !== 'primitive' && f.type !== 'import') {
         expect(refs.length, f.name).toBeGreaterThan(0);
       }
     }

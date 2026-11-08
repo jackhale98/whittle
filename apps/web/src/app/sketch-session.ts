@@ -189,11 +189,11 @@ export class SketchSession {
       isNew: this.isNew,
     };
     this.wb.patchUi({ sketch });
+    this.tickCamera();
     if (frame) this.wb.viewport?.lookAtPlane(frame, true);
     this.wb.refreshSketchVisibility();
     this.scheduleOverlay();
     void this.resolve();
-    this.tickCamera();
   }
 
   /** Leaves sketch mode. `finish`: remove a new sketch that stayed empty. */
@@ -220,21 +220,62 @@ export class SketchSession {
     for (const fn of this.cleanup) fn();
   }
 
+  /**
+   * Re-projects the HTML overlays when the camera moves. Every frame while the camera is moving
+   * (or a pointer is down / the wheel turned), otherwise a cheap check every 200 ms: a perpetual
+   * requestAnimationFrame loop keeps the compositor producing frames for nothing, which on
+   * software GL starves the page.
+   */
   private tickCamera(): void {
-    const loop = () => {
-      if (this.disposed) return;
+    let hot = 0; // frames left at full rate
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const check = (): boolean => {
       const v = this.wb.viewport as unknown as { getCameraState?: () => unknown } | null;
-      const key = v?.getCameraState
-        ? JSON.stringify(v.getCameraState())
-        : String(performance.now());
-      if (key !== this.lastCam) {
-        this.lastCam = key;
-        this.camera.set((n) => n + 1);
-      }
-      this.raf = requestAnimationFrame(loop);
+      const key = v?.getCameraState ? JSON.stringify(v.getCameraState()) : '';
+      if (key === this.lastCam) return false;
+      this.lastCam = key;
+      this.camera.set((n) => n + 1);
+      return true;
     };
-    this.raf = requestAnimationFrame(loop);
+    const frame = () => {
+      this.raf = 0;
+      if (this.disposed) return;
+      if (check()) hot = 30;
+      if (--hot > 0) this.raf = requestAnimationFrame(frame);
+      else timer = setTimeout(slow, 200);
+    };
+    const slow = () => {
+      timer = undefined;
+      if (this.disposed) return;
+      if (check()) wake();
+      else timer = setTimeout(slow, 200);
+    };
+    const wake = () => {
+      hot = 30;
+      if (timer !== undefined) clearTimeout(timer);
+      timer = undefined;
+      if (!this.raf && !this.disposed) this.raf = requestAnimationFrame(frame);
+    };
+    this.wakeCamera = wake;
+    const host = this.wb.canvas?.parentElement;
+    for (const type of ['pointerdown', 'pointermove', 'wheel'] as const) {
+      const on = (e: Event) => {
+        if (type !== 'pointermove' || (e as PointerEvent).buttons !== 0) wake();
+      };
+      host?.addEventListener(type, on, { passive: true });
+      this.cleanup.push(() => host?.removeEventListener(type, on));
+    }
+    // View keys (1–7, 0) animate the camera too.
+    window.addEventListener('keydown', wake);
+    this.cleanup.push(() => {
+      window.removeEventListener('keydown', wake);
+      if (timer !== undefined) clearTimeout(timer);
+    });
+    wake();
   }
+
+  /** Full-rate overlay tracking for a moment (camera animations: enter sketch, frame changes). */
+  private wakeCamera: () => void = () => {};
 
   onDocChange(): void {
     const f = this.feature();
@@ -254,6 +295,7 @@ export class SketchSession {
     if (s && u && !u.frame) {
       this.patch({ frame: s.frame });
       this.wb.viewport?.lookAtPlane(s.frame, true);
+      this.wakeCamera();
     }
     this.scheduleOverlay();
   }

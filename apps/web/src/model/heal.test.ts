@@ -26,7 +26,9 @@ describe('reference healing', () => {
       state: 'ok',
       cached: false,
       ms: 1,
-      rebound: [{ path: '/edges/0', name: 'new0' }],
+      rebound: [
+        { path: '/edges/0', name: 'new0', fingerprint: { centroid: [1, 2, 3], length: 4 } },
+      ],
     },
     { featureId: 'B', state: 'ok', cached: false, ms: 1 },
   ]);
@@ -39,7 +41,8 @@ describe('reference healing', () => {
     const f = part.features[0] as FilletFeature;
     const h = healFeature(f, heals.get('A') ?? []);
     expect(h.edges.map((e) => e.name)).toEqual(['new0', 'keep']);
-    expect(h.edges[0]?.fingerprint).toEqual({ centroid: [0, 0, 0] });
+    expect(h.edges[0]?.fingerprint).toEqual({ centroid: [1, 2, 3], length: 4 });
+    expect(h.edges[1]?.fingerprint).toEqual({ centroid: [0, 0, 0] });
     expect(f.edges[0]?.name).toBe('old0');
     expect(healFeature(h, heals.get('A') ?? [])).toBe(h); // already current
   });
@@ -47,6 +50,11 @@ describe('reference healing', () => {
   it('emits replace ops for other features', () => {
     expect(healOps(part, 0, heals)).toEqual([
       { op: 'replace', path: '/parts/0/features/0/edges/0/name', value: 'new0' },
+      {
+        op: 'add',
+        path: '/parts/0/features/0/edges/0/fingerprint',
+        value: { centroid: [1, 2, 3], length: 4 },
+      },
     ]);
     expect(healOps(part, 0, heals, 'A')).toEqual([]);
   });
@@ -61,6 +69,7 @@ describe('reference healing', () => {
     expect(store.apply(edit.command, { label: edit.label ?? '' }).ok).toBe(true);
     const healed = store.getDoc().parts[0]?.features[0] as FilletFeature;
     expect(healed.edges[0]?.name).toBe('new0');
+    expect(healed.edges[0]?.fingerprint?.centroid).toEqual([1, 2, 3]);
     expect(store.getDoc().meta.name).toBe('renamed');
     expect(store.history().past).toHaveLength(1);
     store.undo();

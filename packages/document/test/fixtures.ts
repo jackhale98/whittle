@@ -194,6 +194,17 @@ export function sampleDoc(): WhittleDoc {
     planeFrame(22),
     sketch(23),
     revolve(24, 23),
+    {
+      ...base(25, 'bracket'),
+      type: 'import',
+      source: {
+        path: `imports/${id(25)}.step`,
+        format: 'step',
+        sha256: '0f'.repeat(32),
+        fileName: 'bracket.step',
+      },
+      op: 'new',
+    },
   ];
   doc.params = [
     { id: id(1), name: 'width', expr: '40mm', description: 'Overall width' },

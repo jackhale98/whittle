@@ -23,7 +23,13 @@ import type {
 export type ModelingPort = Pick<
   ModelingApi,
   'regenerate' | 'refFor' | 'exportPart' | 'importFile' | 'closePart'
->;
+> &
+  Partial<Pick<ModelingApi, 'configureRegen'>>;
+
+/** Per-part result cache bound by device tier (PLAN §8.4, §10 memory budget); desktop = engine default. */
+export function spareResultsFor(tier: 'desktop' | 'tablet' | 'phone'): number | undefined {
+  return tier === 'phone' ? 2 : tier === 'tablet' ? 4 : undefined;
+}
 
 export interface RegenOutcome {
   result: RegenResult;

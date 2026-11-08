@@ -8,6 +8,8 @@ export interface ViewportHostProps {
   onReady(viewport: InteractiveViewport, canvas: HTMLCanvasElement): void;
   /** The 3D view could not be created (no WebGPU and no WebGL2, context lost at start...). */
   onError(message: string): void;
+  /** Settles when the view may be created (the initial document has been read). */
+  beforeCreate?: Promise<unknown>;
 }
 
 function forcedBackend(): 'webgl2' | 'webgpu' | 'auto' {
@@ -21,7 +23,8 @@ function forcedBackend(): 'webgl2' | 'webgpu' | 'auto' {
  * Pointer input is read by the workbench from the wrapper (`viewport-host`), so HTML overlays
  * (siblings) never count as viewport clicks.
  */
-export function ViewportHost({ theme, onReady, onError }: ViewportHostProps) {
+export function ViewportHost({ theme, onReady, onError, beforeCreate }: ViewportHostProps) {
+  const beforeCreateRef = useRef(beforeCreate);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const viewportRef = useRef<InteractiveViewport | null>(null);
   const themeRef = useRef(theme);
@@ -38,6 +41,10 @@ export function ViewportHost({ theme, onReady, onError }: ViewportHostProps) {
     const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
     void import('@whittle/viewport')
       .then(async ({ createViewport }) => {
+        // Creating the view compiles its shaders: a long main-thread task (≈ 0.5 s on software
+        // GL). Let the last document (and its mesh cache) finish reading from the library first,
+        // so its cached meshes are in the very first frame (PLAN §10 cached open ≤ 500 ms).
+        await beforeCreateRef.current;
         if (disposed) return;
         const viewport = await createViewport(canvas, {
           backend: forcedBackend(),

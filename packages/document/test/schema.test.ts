@@ -52,7 +52,7 @@ describe('JSON Schema', () => {
     expect(ok, fmt(validators.document.errors)).toBe(true);
   });
 
-  it('covers all nine feature types and sketch geometry in the fixture', () => {
+  it('covers all ten feature types and sketch geometry in the fixture', () => {
     const part = JSON.parse(strFromU8(toFiles(doc).get('parts/bracket.part.json') as Uint8Array));
     expect(new Set(part.features.map((f: { type: string }) => f.type))).toEqual(
       new Set([
@@ -65,6 +65,7 @@ describe('JSON Schema', () => {
         'boolean',
         'pushPull',
         'plane',
+        'import',
       ]),
     );
   });

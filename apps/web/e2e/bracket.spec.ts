@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { expect, type Page, test } from '@playwright/test';
-import { app, boot, cameraStill, clickAt, toPage } from './helpers';
+import { app, boot, cameraStill, toPage } from './helpers';
 import { schemaErrors } from './schema';
 
 /**
@@ -12,7 +12,7 @@ import { schemaErrors } from './schema';
  * matches too; the STEP export re-imported through Open/Import has the same volume (1e-6 rel).
  */
 
-test.use({ viewport: { width: 1440, height: 900 } });
+test.use({ viewport: { width: 1280, height: 720 } });
 
 type V3 = [number, number, number];
 
@@ -51,28 +51,24 @@ const DIMS: Dims = {
   chamfer_d: 2,
 };
 
-async function clickWorld(page: Page, p: V3, modifiers: ('Shift' | 'Alt')[] = []): Promise<void> {
-  for (const m of modifiers) await page.keyboard.down(m);
-  await clickAt(page, p[0], p[1], p[2]);
-  for (const m of modifiers) await page.keyboard.up(m);
+async function clickWorld(page: Page, p: V3): Promise<void> {
+  const s = await toPage(page, p);
+  await page.mouse.move(s.x, s.y);
+  await page.mouse.down();
+  await page.mouse.up();
 }
 
 /** Dimension tool: pick entities at `picks`, place the label at `label`, type `expr`. */
 async function dimension(page: Page, picks: V3[], label: V3, expr: string): Promise<void> {
   const a = app(page);
-  const t = Date.now();
   for (const p of picks) await clickWorld(page, p);
-  const t1 = Date.now();
   await clickWorld(page, label);
   const editor = page.getByTestId('dimension-editor').getByRole('textbox');
   await expect(editor).toBeFocused();
-  const t2 = Date.now();
   await editor.fill(expr);
   await editor.press('Enter');
   await expect(editor).toBeHidden();
-  const t3 = Date.now();
   await a.settled();
-  console.log('DIM', t1 - t, t2 - t1, t3 - t2, Date.now() - t3);
 }
 
 /** Select tool: click a sketch point and fix it. */
@@ -147,7 +143,6 @@ test('M1 acceptance: bracket from scratch, three upstream edits, STEP round trip
   const a = app(page);
   await page.getByRole('button', { name: 'Close welcome' }).click();
 
-  console.log('STEP 1', Date.now() - t0);
   // 1. Parameters in the Params table.
   await page.getByRole('tab', { name: 'Params' }).click();
   for (const [n, e] of [
@@ -161,25 +156,26 @@ test('M1 acceptance: bracket from scratch, three upstream edits, STEP round trip
   await expect(page.getByTestId('param-value')).toHaveCount(5);
   await page.getByRole('tab', { name: 'Features' }).click();
 
-  console.log('STEP 2', Date.now() - t0);
   // 2. Plate: rectangle on Top, corner fixed at the origin, width × depth.
   await page.keyboard.press('s');
   await page.getByTestId('plane-chooser').getByRole('button', { name: /Top/ }).click();
   await cameraStill(page);
   await page.getByRole('button', { name: 'Rectangle' }).click();
   await clickWorld(page, [0, 0, 0]);
-  await clickWorld(page, [80, 50, 0]);
+  // Drawn oversize on purpose: the solver then moves the geometry onto the dimensions exactly. (A
+  // click that lands within ~1e-5 mm counts as already satisfied, and two sketches that are each
+  // 1e-5 mm off leave slivers where faces should be coplanar.)
+  await clickWorld(page, [83, 53, 0]);
   await a.settled();
   await page.keyboard.press('Escape'); // select tool
   await fixPoint(page, [0, 0, 0]);
   await page.keyboard.press('d');
   // Labels inside the outline: the new sketch's view is framed for an empty part.
-  await dimension(page, [[40, 0, 0]], [40, 6, 0], 'width');
-  await dimension(page, [[80, 25, 0]], [72, 25, 0], 'depth');
+  await dimension(page, [[41, 0, 0]], [41, 6, 0], 'width');
+  await dimension(page, [[80, 28, 0]], [72, 28, 0], 'depth');
   expect((await a.sketch())?.dof).toBe(0);
   await page.getByTestId('finish-sketch').click();
 
-  console.log('STEP 3', Date.now() - t0);
   // 3. Extrude by `thickness`.
   await page.keyboard.press('e');
   await a.idle();
@@ -192,7 +188,6 @@ test('M1 acceptance: bracket from scratch, three upstream edits, STEP round trip
   expect(rel(await totalVolume(page), 80 * 50 * 8)).toBeLessThan(1e-6);
   await page.getByRole('button', { name: 'Done' }).click();
 
-  console.log('STEP 4', Date.now() - t0);
   // 4. Holes: sketch on the plate's top face (select first), four circles, two rows spaced by
   // `hole_spacing`, Ø 6.
   await view(page, '5'); // top
@@ -210,7 +205,7 @@ test('M1 acceptance: bracket from scratch, three upstream edits, STEP round trip
     [60, 31],
   ] as const) {
     await clickWorld(page, [x, y, T]);
-    await clickWorld(page, [x + 3, y, T]);
+    await clickWorld(page, [x + 3.6, y, T]);
   }
   await a.settled();
   await page.keyboard.press('Escape');
@@ -236,6 +231,7 @@ test('M1 acceptance: bracket from scratch, three upstream edits, STEP round trip
     [40, 37, T],
     'hole_spacing',
   );
+
   // Vertical alignment of the right column, label beside it: a vertical distance.
   await dimension(
     page,
@@ -252,7 +248,7 @@ test('M1 acceptance: bracket from scratch, three upstream edits, STEP round trip
     [20, 31],
     [60, 31],
   ] as const)
-    await dimension(page, [[x - 3, y, T]], [x - 5, y + 5, T], '6 mm');
+    await dimension(page, [[x - 3.6, y, T]], [x - 6, y + 5, T], '6 mm');
   const holes = (await a.doc()).parts[0]?.features[2];
   if (holes?.type !== 'sketch') throw new Error('no hole sketch');
   expect(holes.constraints.filter((c) => c.kind === 'hDistance')).toHaveLength(2);
@@ -260,7 +256,6 @@ test('M1 acceptance: bracket from scratch, three upstream edits, STEP round trip
   expect(holes.constraints.filter((c) => c.kind === 'diameter')).toHaveLength(4);
   await page.getByTestId('finish-sketch').click();
 
-  console.log('STEP 5', Date.now() - t0);
   // 5. Cut through all (reverse: into the plate).
   await page.keyboard.press('e');
   await a.idle();
@@ -280,7 +275,6 @@ test('M1 acceptance: bracket from scratch, three upstream edits, STEP round trip
   expect(rel(await totalVolume(page), 80 * 50 * 8 - 4 * Math.PI * 9 * 8)).toBeLessThan(1e-6);
   await page.getByRole('button', { name: 'Done' }).click();
 
-  console.log('STEP 6', Date.now() - t0);
   // 6. Upright: sketched on the plate's back face (sketch u = −x, v = z), extruded back into
   // the plate by `thickness` and added.
   await view(page, '2'); // back
@@ -291,13 +285,14 @@ test('M1 acceptance: bracket from scratch, three upstream edits, STEP round trip
   await cameraStill(page);
   await page.getByRole('button', { name: 'Rectangle' }).click();
   await clickWorld(page, [0, 50, 0]);
-  await clickWorld(page, [80, 50, 48]);
+  // Drawn short (the view is framed on the plate) and oversize; the dimensions size it.
+  await clickWorld(page, [83, 50, 30]);
   await a.settled();
   await page.keyboard.press('Escape');
   await fixPoint(page, [0, 50, 0]);
   await page.keyboard.press('d');
-  await dimension(page, [[40, 50, 0]], [40, 50, -8], 'width');
-  await dimension(page, [[0, 50, 24]], [-8, 50, 24], 'thickness + height');
+  await dimension(page, [[41, 50, 0]], [41, 50, 6], 'width');
+  await dimension(page, [[0, 50, 15]], [6, 50, 15], 'thickness + height');
   expect((await a.sketch())?.dof).toBe(0);
   await page.getByTestId('finish-sketch').click();
   await page.keyboard.press('e');
@@ -310,7 +305,6 @@ test('M1 acceptance: bracket from scratch, three upstream edits, STEP round trip
   expect(await featureStates(page)).toEqual(Array(6).fill('ok'));
   await page.getByRole('button', { name: 'Done' }).click();
 
-  console.log('STEP 7', Date.now() - t0);
   // 7. Select first, act second: fillet the two outer vertical edges (R5), then the bend (R3),
   // then chamfer the upright's top front edge (2 mm).
   await view(page, '0'); // iso
@@ -346,7 +340,6 @@ test('M1 acceptance: bracket from scratch, three upstream edits, STEP round trip
   );
   await page.screenshot({ path: 'test-results/m1-bracket-built.png' });
 
-  console.log('STEP 8', Date.now() - t0);
   // 8. Three upstream dimensions in the Params table → every feature still ok.
   await page.getByRole('tab', { name: 'Params' }).click();
   await setParam(page, 'width', '100 mm');
@@ -364,7 +357,6 @@ test('M1 acceptance: bracket from scratch, three upstream edits, STEP round trip
   const doc = await a.doc();
   expect(schemaErrors(doc)).toEqual([]);
 
-  console.log('STEP 9', Date.now() - t0);
   // 9. Export → STEP (a download), then Open/Import it into a new document.
   await page.getByRole('button', { name: 'Export' }).click();
   const form = page.getByTestId('export-form');

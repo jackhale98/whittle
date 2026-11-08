@@ -42,6 +42,7 @@ export const FEATURE_TYPES = [
   'boolean',
   'pushPull',
   'plane',
+  'import',
 ] as const satisfies readonly Feature['type'][];
 
 export interface ExprField {
