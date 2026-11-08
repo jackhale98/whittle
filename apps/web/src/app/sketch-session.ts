@@ -27,7 +27,8 @@ import type { GeometricConstraintKind, SketchToolId } from '@whittle/ui';
 import { toWorld } from '../model/frames';
 import { toleranceFor } from '../selection/pick';
 import {
-  dimensionFor,
+  convertRadiusDiameter,
+  dimensionAt,
   initialExpr,
   makeDimension,
   measure,
@@ -136,6 +137,8 @@ export class SketchSession {
   private raf = 0;
   private lastCam = '';
   private overlayQueued = false;
+  /** The sketch geometry the viewport overlay was last built from (picking is served from it). */
+  private pushedFor: SketchFeature['entities'] | null = null;
   private drag: DragState | null = null;
   private queue: Promise<unknown> = Promise.resolve();
   private solvedFor: SketchFeature | null = null;
@@ -289,9 +292,29 @@ export class SketchSession {
   }
 
   private serial<T>(fn: () => Promise<T>): Promise<T> {
-    const next = this.queue.then(fn, fn);
+    this.pending++;
+    const next = this.queue.then(fn, fn).finally(() => {
+      this.pending--;
+    });
     this.queue = next.catch(() => undefined);
     return next;
+  }
+
+  /** Solves/edits queued or running (an edit lands in the document only after its solve). */
+  private pending = 0;
+
+  get busy(): boolean {
+    return this.pending > 0 || this.drag !== null;
+  }
+
+  /**
+   * Resolves once every queued edit has been solved and written to the document and the overlay
+   * shows it (tests and anything that reads geometry after an edit).
+   */
+  async whenSettled(): Promise<void> {
+    while (this.pending > 0) await this.queue;
+    while (this.drag?.inFlight) await new Promise((r) => setTimeout(r, 4));
+    if (this.overlayQueued || this.pushedFor !== this.feature()?.entities) this.pushOverlay();
   }
 
   /**
@@ -439,16 +462,64 @@ export class SketchSession {
         c.id === a.constraint && 'value' in c ? { ...c, value: initialExpr(c.kind, a.value) } : c,
       );
     };
+    // The conflict card under the pointer unmounts with the fix, so it never sees mouseleave:
+    // drop its highlight here or the sketch keeps the stale conflict colours.
+    this.patch({ highlightConstraints: null });
+    this.pushHighlights();
     void this.commitEdit(
       (cur) => ({ entities: cur.entities, constraints: fixConstraints(cur.constraints) }),
       fix.label,
     );
   }
 
-  private placeDimension(picks: Id[], at: Vec2): void {
+  /** Driving ↔ reference. A reference becoming driving keeps its measured value (no jump). */
+  toggleDriving(id: Id): void {
+    const u = this.ui();
+    void this.commitEdit(
+      (cur) => ({
+        entities: cur.entities,
+        constraints: cur.constraints.map((c) => {
+          if (c.id !== id || !('value' in c)) return c;
+          if (c.driving) return { ...c, driving: false };
+          const measured = u?.solve?.driven[id] ?? measure(cur, c);
+          return {
+            ...c,
+            driving: true,
+            ...(measured !== null && measured !== undefined
+              ? { value: initialExpr(c.kind, Math.abs(measured)) }
+              : {}),
+          };
+        }),
+      }),
+      'Toggle reference dimension',
+    );
+    this.patch({ editDimension: null });
+  }
+
+  /** Radius ↔ diameter on a circle/arc dimension (the expression is converted). */
+  toggleRadiusDiameter(id: Id): void {
+    void this.commitEdit(
+      (cur) => ({
+        entities: cur.entities,
+        constraints: cur.constraints.map((c) =>
+          c.id === id && (c.kind === 'radius' || c.kind === 'diameter')
+            ? {
+                ...c,
+                kind: c.kind === 'radius' ? 'diameter' : 'radius',
+                value: convertRadiusDiameter(c.value, c.kind === 'radius'),
+              }
+            : c,
+        ),
+      }),
+      'Toggle radius / diameter',
+    );
+  }
+
+  /** `aligned`: Shift held — no automatic horizontal/vertical distance. */
+  private placeDimension(picks: Id[], at: Vec2, aligned = false): void {
     const f = this.feature();
     if (!f) return;
-    const draft = dimensionFor(f, picks);
+    const draft = dimensionAt(f, picks, at, { aligned });
     if (!draft) {
       this.wb.toast('Those can’t be dimensioned together.', 'info');
       this.patch({ dimPicks: [] });
@@ -490,6 +561,10 @@ export class SketchSession {
   private pickSketch(e: PointerEvent | MouseEvent): PickHit | null {
     const v = this.wb.viewport;
     if (!v) return null;
+    // Sketch picks are answered from the overlay's polylines. After a solve moved the geometry the
+    // overlay is only rebuilt on the next animation frame, so a click arriving first (fast input,
+    // busy main thread) would hit the *old* positions: rebuild it now from the document.
+    if (this.overlayQueued || this.pushedFor !== this.feature()?.entities) this.pushOverlay();
     const { x, y } = this.wb.local(e);
     const tol = toleranceFor('pointerType' in e ? e.pointerType : 'mouse') + 2;
     const hits = v
@@ -657,19 +732,16 @@ export class SketchSession {
       e.stopPropagation();
       const hit = this.pickSketch(e);
       const at = this.toSketch(e) ?? [0, 0];
-      const picks = hit?.entity
-        ? [...u.dimPicks.filter((p) => p !== hit.entity), hit.entity]
-        : u.dimPicks;
-      if (hit?.entity && picks.length < 2) {
-        const f = this.feature();
-        const single = f && dimensionFor(f, picks);
+      if (hit?.entity) {
+        // Up to two entities; a click in empty space then places the label (and, for two points
+        // or an oblique line, its position picks horizontal / vertical / aligned).
+        const picks = [...u.dimPicks.filter((p) => p !== hit.entity), hit.entity].slice(-2);
         this.patch({ dimPicks: picks });
-        if (!single) return; // a point needs a second pick
         this.pushHighlights();
-        return; // wait: a click on empty space places it, a second entity combines
+        return;
       }
-      if (picks.length === 0) return;
-      this.placeDimension(picks.slice(-2), at);
+      if (u.dimPicks.length === 0) return;
+      this.placeDimension(u.dimPicks, at, e.shiftKey);
       this.pushHighlights();
       return;
     }
@@ -751,6 +823,7 @@ export class SketchSession {
             if (key !== 'id' && typeof val === 'string' && f.entities.some((e) => e.id === val))
               conflicting.add(val);
       }
+    this.pushedFor = f.entities;
     v.setSketch(f.id, {
       sketch: {
         featureId: f.id,

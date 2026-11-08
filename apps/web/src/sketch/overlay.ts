@@ -4,7 +4,11 @@ import type { Id, SketchEntity, SketchResult, Vec2 } from '@whittle/contracts';
 import { indexEntities, sampleEntity } from '@whittle/sketch';
 import { type PlaneFrame, toWorld } from '../model/frames';
 
-/** World-space curves and points of a sketch (display + picking). */
+/**
+ * World-space curves and points of a sketch (display + picking). Points are also emitted as
+ * one-point curves: that is how the viewport draws them as dots and picks them as `sketchPoint`
+ * (it does not read `SketchResult.points`).
+ */
 export function sketchCurves(
   entities: readonly SketchEntity[],
   frame: PlaneFrame,
@@ -14,7 +18,10 @@ export function sketchCurves(
   const points: NonNullable<SketchResult['points']> = [];
   for (const e of entities) {
     if (e.kind === 'point') {
-      points.push({ entity: e.id, at: toWorld(frame, [e.x, e.y]), construction: e.construction });
+      const at = toWorld(frame, [e.x, e.y]);
+      points.push({ entity: e.id, at, construction: e.construction });
+      // The viewport draws and picks a one-point curve as a sketch point (dot, `sketchPoint`).
+      curves.push({ entity: e.id, points: new Float32Array(at), construction: e.construction });
       continue;
     }
     let poly: Vec2[];

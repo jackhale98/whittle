@@ -1,6 +1,8 @@
 import { rectangleCornerTool } from '@whittle/sketch';
 import { describe, expect, it } from 'vitest';
 import {
+  convertRadiusDiameter,
+  dimensionAt,
   dimensionFor,
   initialExpr,
   labelAnchor,
@@ -50,5 +52,62 @@ describe('dimension tool', () => {
     expect(next.constraints.some((c) => 'line' in c && c.line === 'e5')).toBe(false);
     const pt = removeEntities(rect, ['e1']);
     expect(pt.entities.map((e) => e.id)).toEqual(['e2', 'e3', 'e4', 'e6', 'e7']);
+  });
+
+  it('places horizontal / vertical distances by where the label goes', () => {
+    // e1 (0,0) and e3 (40,30): above/below the span → horizontal, left/right → vertical.
+    expect(dimensionAt(rect, ['e1', 'e3'], [20, 40])).toEqual({
+      kind: 'hDistance',
+      a: 'e1',
+      b: 'e3',
+    });
+    expect(dimensionAt(rect, ['e3', 'e1'], [20, -10])).toEqual({
+      kind: 'hDistance',
+      a: 'e1',
+      b: 'e3',
+    });
+    expect(dimensionAt(rect, ['e1', 'e3'], [50, 15])).toEqual({
+      kind: 'vDistance',
+      a: 'e1',
+      b: 'e3',
+    });
+    // Inside the span or diagonal off it: aligned. Shift (aligned) forces it.
+    expect(dimensionAt(rect, ['e1', 'e3'], [20, 15])?.kind).toBe('distance');
+    expect(dimensionAt(rect, ['e1', 'e3'], [60, 50])?.kind).toBe('distance');
+    expect(dimensionAt(rect, ['e1', 'e3'], [20, 40], { aligned: true })?.kind).toBe('distance');
+    // Axis-aligned lines keep their length.
+    expect(dimensionAt(rect, ['e5'], [20, -8])).toEqual({ kind: 'length', line: 'e5' });
+    const h = dimensionAt(rect, ['e1', 'e3'], [20, 40]);
+    expect(h && measure(rect, h)).toBeCloseTo(40);
+    const v = dimensionAt(rect, ['e1', 'e3'], [50, 15]);
+    expect(v && measure(rect, v)).toBeCloseTo(30);
+  });
+
+  it('oblique lines: h/v distance between their end points', () => {
+    const sk = {
+      entities: [
+        { id: 'p', kind: 'point' as const, x: 10, y: 0, construction: false },
+        { id: 'q', kind: 'point' as const, x: 0, y: 20, construction: false },
+        { id: 'l', kind: 'line' as const, start: 'p', end: 'q', construction: false },
+      ],
+      constraints: [],
+    };
+    expect(dimensionAt(sk, ['l'], [5, 30])).toEqual({ kind: 'hDistance', a: 'q', b: 'p' });
+    expect(dimensionAt(sk, ['l'], [-5, 10])).toEqual({ kind: 'vDistance', a: 'p', b: 'q' });
+    expect(dimensionAt(sk, ['l'], [5, 10])).toEqual({ kind: 'length', line: 'l' });
+    // A line as both ends (contract: end − start).
+    expect(measure(sk, { kind: 'hDistance', a: 'l', b: 'l' })).toBeCloseTo(-10);
+    expect(measure(sk, { kind: 'vDistance', a: 'l', b: 'l' })).toBeCloseTo(20);
+  });
+
+  it('converts radius ↔ diameter expressions', () => {
+    expect(convertRadiusDiameter('3 mm', true)).toBe('6 mm');
+    expect(convertRadiusDiameter('6 mm', false)).toBe('3 mm');
+    expect(convertRadiusDiameter('hole_d/2', true)).toBe('hole_d');
+    expect(convertRadiusDiameter('hole_d', false)).toBe('hole_d/2');
+    expect(convertRadiusDiameter('(a + b)/2', true)).toBe('a + b');
+    expect(convertRadiusDiameter('a + b', false)).toBe('(a + b)/2');
+    expect(convertRadiusDiameter('r1', true)).toBe('2 * r1');
+    expect(convertRadiusDiameter('2 * r1', false)).toBe('r1');
   });
 });

@@ -5,7 +5,7 @@
  */
 
 import { Button, cn, IconButton } from '@whittle/ui';
-import { Download, ExternalLink, Plus, Share, Sparkles, X } from 'lucide-react';
+import { Download, ExternalLink, FolderOpen, Plus, Share, Sparkles, X } from 'lucide-react';
 import type { Workbench } from '../app/workbench';
 import { promptInstall, useInstallState } from '../platform/install';
 
@@ -42,6 +42,14 @@ export function WelcomeContent({ wb, compact }: { wb: Workbench; compact?: boole
           onClick={() => void wb.newDocument()}
         >
           New part
+        </Button>
+        <Button
+          variant="secondary"
+          icon={<FolderOpen className="size-4" />}
+          onClick={() => void wb.openFromDisk('new')}
+          data-testid="welcome-open-file"
+        >
+          Open or import a file…
         </Button>
         {install.kind === 'prompt' ? (
           <Button

@@ -20,11 +20,13 @@ import type {
   Part,
   PickHit,
   PickKind,
+  ProjectFiles,
   RegenResult,
   SketchFeature,
   WhittleDoc,
 } from '@whittle/contracts';
 import {
+  compileCommand,
   createDocumentStore,
   type DocumentStoreImpl,
   expressionEngine,
@@ -34,7 +36,14 @@ import {
 } from '@whittle/document';
 import type { ExportRequest, ToolId } from '@whittle/ui';
 import { type Autosaver, createAutosaver } from '../doc/autosave';
-import type { DocLibrary } from '../doc/library';
+import type { DocLibrary, OpenedFile, ProjectBundle } from '../doc/library';
+import {
+  type CachedGeometry,
+  decodeCache,
+  docKey,
+  encodeCache,
+  withoutMeshes,
+} from '../doc/mesh-cache';
 import {
   contextTools,
   defaultAxisFor,
@@ -49,9 +58,12 @@ import {
   newSketch,
   TOOL_NEEDS,
 } from '../features/factories';
+import { attentionItems, locateName, markerMesh, partDiagonal } from '../model/attention';
 import { bootEngine, type EngineBoot } from '../model/engine';
 import { isOriginPlane, ORIGIN_FRAMES, type PlaneFrame, toPlaneFrame } from '../model/frames';
-import { createRegenLoop, type Modeling, type RegenLoop } from '../model/modeling';
+import { foldHeals, type Heal, healsFrom } from '../model/heal';
+import { IMPORT_EXTENSIONS, importFeature, importFormat } from '../model/import';
+import { type Attachment, createRegenLoop, type Modeling, type RegenLoop } from '../model/modeling';
 import {
   acceptsFor,
   applyPick,
@@ -70,10 +82,15 @@ import {
   type SelectionItem,
   type UiState,
 } from './state';
-import { failBoot, mark } from './timing';
+import { failBoot, mark, markOnce, marks } from './timing';
 
 const LAST_DOC_KEY = 'whittle:last-document';
-const THUMB_EVERY_MS = 4000;
+/**
+ * Library thumbnails read the WebGL canvas back (≈ 200 ms on software GL), so while editing they
+ * are taken at most this often; flushes (page hidden, switching documents, opening the library)
+ * and a document's first save always take one.
+ */
+const THUMB_EVERY_MS = 30_000;
 
 function readLastDoc(): string | null {
   try {
@@ -132,6 +149,22 @@ export class Workbench {
   private shownBodies = new Set<string>();
   private shownSketches = new Set<string>();
   private ghosts = new Set<string>();
+  private markers = new Set<string>();
+  /** Project files outside the document model (attachments, previews/, releases/). */
+  private extra: ProjectFiles = new Map();
+  /** `.whittle/` cache of the open project (mesh cache, other regenerable files). */
+  private cache: ProjectFiles = new Map();
+  /** Document key of the meshes in `cache` and of the last cache that reached the library. */
+  private cacheKey: string | null = null;
+  private savedCacheKey: string | null = null;
+  private cacheTimer: ReturnType<typeof setTimeout> | undefined;
+  /** The open document has a library entry (saved or opened from it). */
+  private inLibrary = false;
+  /** Rebound reference names waiting to be folded into the next user edit (ADR-008). */
+  private heals = new Map<Id, Heal[]>();
+  /** Auto-fit once per opened document, then leave the camera to the user. */
+  private fitPending = true;
+  private initialBundle: Promise<ProjectBundle | null> | null = null;
   private lastGood = new Map<string, MeshBuffers>();
   private firstRendered = false;
   private lastThumbAt = 0;
@@ -165,6 +198,26 @@ export class Workbench {
     );
     this.bootKernel();
     void this.resolveInitialDocument();
+  }
+
+  /**
+   * Starts reading the last document (and its mesh cache) from the library before React renders,
+   * so a cached document is on screen before the kernel is ready (PLAN §10: ≤ 500 ms).
+   */
+  prefetchInitialDocument(): void {
+    if (this.initialBundle) return;
+    const lastId = readLastDoc();
+    this.initialBundle = lastId
+      ? this.library().then(async (lib) => {
+          if (!lib) return null;
+          try {
+            return await lib.open(lastId);
+          } catch {
+            writeLastDoc(undefined);
+            return null;
+          }
+        })
+      : Promise.resolve(null);
   }
 
   /**
@@ -227,17 +280,13 @@ export class Workbench {
   }
 
   private async resolveInitialDocument(): Promise<void> {
-    const lastId = readLastDoc();
-    if (!lastId) this.patchUi({ welcome: true }); // first launch
-    if (lastId) {
-      const lib = await this.library();
-      if (lib) {
-        try {
-          const doc = await lib.open(lastId);
-          this.store.load(doc);
-        } catch {
-          writeLastDoc(undefined);
-        }
+    if (!readLastDoc()) this.patchUi({ welcome: true }); // first launch
+    this.prefetchInitialDocument();
+    const bundle = await this.initialBundle;
+    if (bundle && !this.ui.get().ready) {
+      if (this.store.load(bundle.doc).ok) {
+        this.setProjectFiles(bundle, true);
+        this.showCached(bundle.doc);
       }
     }
     this.ui.set((u) => ({ ...u, ready: true }));
@@ -256,8 +305,9 @@ export class Workbench {
     this.loop = createRegenLoop({
       port: modeling.port,
       getDoc: () => this.viewDoc(),
-      onResult: (o) => this.onRegen(o),
+      onResult: (o) => this.onRegen({ ...o, source: 'live' }),
       onError: (e) => this.toast(e.message, 'error'),
+      attachments: (doc) => this.attachmentsFor(doc),
     });
     if (this.ui.get().ready) this.loop.request();
   }
@@ -328,8 +378,14 @@ export class Workbench {
   }
 
   apply(command: Command, label?: string, coalesceKey?: string): boolean {
-    const r = this.store.apply(command, {
-      ...(label ? { label } : {}),
+    // Stale reference names the engine rebound ride along with this edit (ADR-008).
+    const folded = foldHeals(command, this.part ?? undefined, this.heals, (c) =>
+      compileCommand(this.store.getDoc(), c),
+    );
+    this.heals = new Map();
+    const lbl = label ?? folded.label;
+    const r = this.store.apply(folded.command, {
+      ...(lbl ? { label: lbl } : {}),
       ...(coalesceKey ? { coalesceKey } : {}),
     });
     if (!r.ok) {
@@ -354,17 +410,102 @@ export class Workbench {
   // ------------------------------------------------------------------ regeneration → viewport
 
   private onRegen(outcome: RegenView): void {
-    if (outcome.doc === this.store.getDoc() || !this.ui.get().picking)
-      this.treeStatuses.set(outcome.result.features);
+    const current = outcome.doc === this.store.getDoc();
+    if (current || !this.ui.get().picking) this.treeStatuses.set(outcome.result.features);
+    if (current) this.heals = healsFrom(outcome.result.features);
     this.regen.set(outcome);
     this.remapSelection(outcome.result);
     this.syncViewport();
     this.sketch?.onRegen(outcome.result);
-    if (!this.firstRendered && this.viewport) {
+    this.keepInView(outcome);
+    if (!this.firstRendered && this.viewport && outcome.source === 'live') {
       this.firstRendered = true;
       void this.viewport.nextFrame().then(() => mark('firstBodyMs'));
     }
-    if (outcome.quality === 'fine') this.maybeThumbnail();
+    if (outcome.quality === 'fine') {
+      if (current) this.updateMeshCache(outcome);
+    }
+  }
+
+  /**
+   * Fits the view once per opened document — when its first geometry arrives, and, for a document
+   * that started empty, when its first body would not be fully visible — then leaves the camera to
+   * the user.
+   */
+  private keepInView(view: RegenView): void {
+    const v = this.viewport;
+    if (!v || !this.fitPending || this.ui.get().sketch) return;
+    const bodies = view.result.bodies;
+    if (bodies.length === 0) return;
+    this.fitPending = false;
+    const outside = bodies.some((b) => {
+      const { min, max } = b.mesh.bbox;
+      for (const x of [min[0], max[0]])
+        for (const y of [min[1], max[1]])
+          for (const z of [min[2], max[2]]) if (!v.worldToScreen([x, y, z]).visible) return true;
+      return false;
+    });
+    if (this.fitOnFirstGeometry || outside) v.fitAll(false);
+  }
+
+  /** Set by document loads (the first geometry always fits); a fresh empty document fits only if needed. */
+  private fitOnFirstGeometry = false;
+
+  /** Shows the document's cached meshes until the live regen replaces them (PLAN §4). */
+  private showCached(doc: WhittleDoc): void {
+    const geometry = decodeCache(this.cache, docKey(doc));
+    if (!geometry) return;
+    this.cacheKey = geometry.key;
+    this.savedCacheKey = geometry.key;
+    const part = doc.parts[0];
+    if (!part || this.regen.get()?.source === 'live') return;
+    const view: RegenView = {
+      source: 'cache',
+      quality: 'fine',
+      doc,
+      result: {
+        partId: part.id,
+        revision: -1,
+        features: [],
+        bodies: geometry.bodies.map((b) => ({ id: b.id, shape: 0, mesh: b.mesh })),
+        sketches: geometry.sketches,
+        totalMs: 0,
+        cache: { hits: 0, misses: 0 },
+      },
+    };
+    this.regen.set(view);
+    this.syncViewport();
+    this.keepInView(view);
+    this.markCachedFrame();
+  }
+
+  private markCachedFrame(): void {
+    const v = this.viewport;
+    if (!v || this.regen.get()?.source !== 'cache' || !this.regen.get()?.result.bodies.length)
+      return;
+    void v.nextFrame().then(() => {
+      if (this.regen.get()?.source === 'cache') markOnce('cachedBodyMs');
+    });
+  }
+
+  /** Keeps the latest fine meshes in the project's `.whittle/` cache (saved with the document). */
+  private updateMeshCache(view: RegenView): void {
+    const key = docKey(view.doc);
+    if (key === this.cacheKey) return;
+    const geometry: CachedGeometry = {
+      key,
+      bodies: view.result.bodies.map((b) => ({ id: b.id, mesh: b.mesh })),
+      sketches: view.result.sketches,
+    };
+    this.cache = new Map([...withoutMeshes(this.cache), ...encodeCache(geometry)]);
+    this.cacheKey = key;
+    // A save already queued for this document picks the cache up; otherwise save it shortly.
+    if (!this.inLibrary || this.autosaver.pending) return;
+    clearTimeout(this.cacheTimer);
+    this.cacheTimer = setTimeout(() => {
+      if (this.cacheKey !== this.savedCacheKey && docKey(this.doc) === this.cacheKey)
+        void this.autosaver.flush().then(() => this.saveToLibrary(this.doc));
+    }, 600);
   }
 
   /** Body pick indices change between regens: re-find selected faces/edges by name. */
@@ -394,12 +535,36 @@ export class Workbench {
       this.listen(host, 'pointerup', (e) => this.onPointerUp(e as PointerEvent), true),
       this.listen(host, 'pointerleave', () => this.setHover(null)),
       this.listen(host, 'dblclick', (e) => this.sketch?.onDoubleClick(e as MouseEvent), true),
+      this.listen(host, 'dragover', (e) => this.onDragOver(e as DragEvent)),
+      this.listen(host, 'drop', (e) => void this.onDrop(e as DragEvent)),
     );
     this.syncViewport();
-    if (this.regen.get() && !this.firstRendered) {
+    const view = this.regen.get();
+    if (view) this.keepInView(view);
+    if (view?.source === 'live' && !this.firstRendered) {
       this.firstRendered = true;
       void viewport.nextFrame().then(() => mark('firstBodyMs'));
     }
+    this.markCachedFrame();
+  }
+
+  private onDragOver(e: DragEvent): void {
+    if (!e.dataTransfer?.types.includes('Files')) return;
+    e.preventDefault(); // allow the drop
+    e.dataTransfer.dropEffect = 'copy';
+  }
+
+  /** Files dropped on the viewport: a `.whittle` opens, CAD/mesh files import into the part. */
+  private async onDrop(e: DragEvent): Promise<void> {
+    const list = [...(e.dataTransfer?.files ?? [])];
+    if (list.length === 0) return;
+    e.preventDefault();
+    const files = await Promise.all(
+      list.map(async (f) => ({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) })),
+    );
+    const project = files.find((f) => /\.whittle$/i.test(f.name));
+    if (project) await this.openBytes(project.name, project.bytes);
+    else await this.importFiles(files, 'current');
   }
 
   viewportFailed(message: string): void {
@@ -439,8 +604,28 @@ export class Workbench {
     for (const id of this.ghosts) if (!ghosts.has(id)) v.setGhost(id, null);
     for (const [id, mesh] of ghosts) v.setGhost(id, mesh);
     this.ghosts = new Set(ghosts.keys());
+    this.syncAttentionMarkers();
     this.refreshSketchVisibility();
     this.pushHighlights();
+  }
+
+  /**
+   * The old location of every unresolved reference, ghosted (PLAN §7.3 rule 4): a dashed proxy at
+   * the stored fingerprint, until the user re-picks it.
+   */
+  private syncAttentionMarkers(): void {
+    const v = this.viewport;
+    if (!v) return;
+    const items = attentionItems(this.treeStatuses.get());
+    const size = Math.max(partDiagonal(this.regen.get()?.result) * 0.03, 0.5);
+    const next = new Map<string, MeshBuffers>();
+    for (const it of items) {
+      const mesh = markerMesh(it.unresolved.ref, size);
+      if (mesh) next.set(`attention:${it.featureId}:${it.unresolved.path}`, mesh);
+    }
+    for (const id of this.markers) if (!next.has(id)) v.setGhost(id, null);
+    for (const [id, mesh] of next) v.setGhost(id, mesh);
+    this.markers = new Set(next.keys());
   }
 
   /** Which sketches are shown: unconsumed ones, or any when regions are being picked. */
@@ -546,7 +731,17 @@ export class Workbench {
     if (!v) return [];
     const { x, y } = this.local(e);
     const type = 'pointerType' in e ? e.pointerType : 'mouse';
-    return v.pick(x, y, { kinds, tolerancePx: toleranceFor(type), all });
+    const hits = v.pick(x, y, { kinds, tolerancePx: toleranceFor(type), all });
+    // Sketch regions are all "0 px away": of stacked ones (a sketch on a face above another
+    // sketch's region) the one nearest the camera is the one under the cursor.
+    const cam = (
+      v as { getCameraState?: () => { position: [number, number, number] } }
+    ).getCameraState?.()?.position;
+    if (!cam) return hits;
+    const d = (h: PickHit) =>
+      h.kind === 'region' ? Math.hypot(...h.point.map((c, k) => c - (cam[k] as number))) : 0;
+    const regions = hits.filter((h) => h.kind === 'region').sort((p, q) => d(p) - d(q));
+    return [...hits.filter((h) => h.kind !== 'region'), ...regions];
   }
 
   /** Only presses on the canvas itself count (not the view cube or other host children). */
@@ -986,27 +1181,69 @@ export class Workbench {
 
   // ------------------------------------------------------------------ library & files
 
+  /** The open project's extra files and cache (open/new/import replace them). */
+  private setProjectFiles(
+    bundle: { extra?: ProjectFiles; cache?: ProjectFiles },
+    inLibrary: boolean,
+  ): void {
+    this.extra = new Map(bundle.extra ?? []);
+    this.cache = new Map(bundle.cache ?? []);
+    this.cacheKey = null;
+    this.savedCacheKey = null;
+    this.inLibrary = inLibrary;
+    this.heals = new Map();
+    this.fitPending = true;
+    this.fitOnFirstGeometry = true;
+  }
+
+  /** Attachment bytes of the document's import features (ImportFeature.source.path). */
+  private attachmentsFor(doc: WhittleDoc): Attachment[] {
+    const out: Attachment[] = [];
+    for (const f of doc.parts[0]?.features ?? []) {
+      if (f.type !== 'import') continue;
+      const bytes = this.extra.get(f.source.path);
+      if (bytes) out.push({ path: f.source.path, sha256: f.source.sha256, bytes });
+    }
+    return out;
+  }
+
   private async saveToLibrary(doc: WhittleDoc): Promise<void> {
     const lib = await this.library();
     if (!lib) return;
-    const thumb = await this.thumbnail();
-    await lib.save(doc, thumb);
+    const thumbnail = await this.thumbnail();
+    const key = this.cacheKey;
+    await lib.save(doc, {
+      ...(thumbnail ? { thumbnail } : {}),
+      extra: this.extra,
+      cache: this.cache,
+    });
+    this.inLibrary = true;
+    this.savedCacheKey = key;
     writeLastDoc(doc.meta.id);
     if (this.ui.get().library) void this.refreshLibrary();
   }
 
-  /** Saves pending changes now (page hidden, switching documents, tests). */
+  /** Saves pending changes now (page hidden, switching documents, tests), with a thumbnail. */
   flushSave(): Promise<void> {
-    return this.autosaver.flush();
+    this.thumbWanted = true;
+    return this.autosaver.flush().finally(() => {
+      this.thumbWanted = false;
+    });
   }
+
+  private thumbWanted = false;
+  private thumbDocs = new Set<string>();
 
   private async thumbnail(): Promise<Uint8Array | undefined> {
     const canvas = this.canvas;
     const v = this.viewport;
-    if (!canvas || !v || this.shownBodies.size === 0) return undefined;
+    if (!canvas || !v || this.shownBodies.size === 0 || this.ui.get().sketch) return undefined;
     const now = performance.now();
-    if (now - this.lastThumbAt < THUMB_EVERY_MS) return undefined;
+    const id = this.doc.meta.id ?? '';
+    const first = !this.thumbDocs.has(id);
+    if (!first && !this.thumbWanted && now - this.lastThumbAt < THUMB_EVERY_MS) return undefined;
     this.lastThumbAt = now;
+    this.thumbDocs.add(id);
     try {
       const { canvasToThumbnail } = await import('../doc/library');
       // Read pixels in the same task as a fresh frame (the drawing buffer is not preserved).
@@ -1015,11 +1252,6 @@ export class Workbench {
     } catch {
       return undefined;
     }
-  }
-
-  private maybeThumbnail(): void {
-    // Fine results are the nicest picture; the next autosave picks it up.
-    this.lastThumbAt = Math.min(this.lastThumbAt, performance.now() - THUMB_EVERY_MS);
   }
 
   async refreshLibrary(query = ''): Promise<void> {
@@ -1033,26 +1265,40 @@ export class Workbench {
   }
 
   /** Replaces the open document (history cleared). */
-  private loadDocument(doc: WhittleDoc): void {
+  private loadDocument(
+    bundle: { doc: WhittleDoc; extra?: ProjectFiles; cache?: ProjectFiles },
+    inLibrary: boolean,
+  ): boolean {
     this.sketch?.exit(false);
-    this.patchUi({ selection: [], featureId: null, picking: null, prompt: null, hover: null });
+    this.patchUi({
+      selection: [],
+      featureId: null,
+      picking: null,
+      prompt: null,
+      hover: null,
+      chooser: null,
+      candidates: null,
+    });
     const old = this.part?.id;
-    const r = this.store.load(doc);
+    const r = this.store.load(bundle.doc);
     if (!r.ok) {
       this.toast(r.error, 'error');
-      return;
+      return false;
     }
-    writeLastDoc(doc.meta.id);
+    clearTimeout(this.cacheTimer);
+    this.setProjectFiles(bundle, inLibrary);
+    writeLastDoc(bundle.doc.meta.id);
     if (old && old !== this.part?.id) {
       this.loop?.forget(old);
       void this.modeling?.closePart(old);
     }
-    this.viewport?.fitAll(false);
+    this.showCached(this.doc);
+    return true;
   }
 
   async newDocument(): Promise<void> {
     await this.flushSave();
-    this.loadDocument(freshDocument());
+    this.loadDocument({ doc: freshDocument() }, false);
     this.patchUi({ library: false, welcome: false });
   }
 
@@ -1061,10 +1307,9 @@ export class Workbench {
     await this.flushSave();
     const { demoBracket } = await import('../samples/bracket');
     const doc = demoBracket();
-    this.loadDocument(doc);
+    this.loadDocument({ doc }, false);
     this.autosaver.schedule(doc);
     this.patchUi({ library: false, welcome: false });
-    void this.loop?.whenIdle().then(() => this.viewport?.fitAll(true));
   }
 
   async openFromLibrary(id: string): Promise<void> {
@@ -1072,7 +1317,7 @@ export class Workbench {
     const lib = await this.library();
     if (!lib) return;
     try {
-      this.loadDocument(await lib.open(id));
+      this.loadDocument(await lib.open(id), true);
       this.patchUi({ library: false });
     } catch (e) {
       this.toast(e instanceof Error ? e.message : 'Could not open that document', 'error');
@@ -1096,38 +1341,111 @@ export class Workbench {
     if (id === this.doc.meta.id) {
       this.autosaver.cancel();
       await lib.remove(id);
-      this.loadDocument(freshDocument());
+      this.loadDocument({ doc: freshDocument() }, false);
       this.patchUi({ library: true });
     } else await lib.remove(id);
     await this.refreshLibrary();
   }
 
-  async openFromDisk(): Promise<void> {
+  /**
+   * Open… : a `.whittle` project replaces the document; a CAD/mesh file is imported. `into`:
+   * `current` adds the import to the open part (the inspector's Open…, ⌘O, drag and drop), `new`
+   * starts a new document for it (library and welcome, where no part is being worked on).
+   */
+  async openFromDisk(into: 'current' | 'new' = 'current'): Promise<void> {
     const { openFile } = await import('../doc/library');
-    const f = await openFile(['.whittle', '.step', '.stp']);
-    if (f) await this.openBytes(f.name, f.bytes);
+    const f = await openFile(['.whittle', ...IMPORT_EXTENSIONS]);
+    if (f) await this.openBytes(f.name, f.bytes, into);
   }
 
-  async openBytes(name: string, bytes: Uint8Array): Promise<void> {
+  async openBytes(
+    name: string,
+    bytes: Uint8Array,
+    into: 'current' | 'new' = 'current',
+  ): Promise<void> {
     if (/\.whittle$/i.test(name)) {
       try {
         const { fromWhittleBytes } = await import('../doc/library');
-        await this.flushSave();
-        const doc = fromWhittleBytes(bytes);
-        this.loadDocument(doc);
-        this.autosaver.schedule(doc); // opened from disk: keep a copy in the library
+        await this.openProject(fromWhittleBytes(bytes));
       } catch (e) {
         this.toast(e instanceof Error ? e.message : 'That file could not be read', 'error');
       }
       return;
     }
-    this.toast('STEP import arrives with the regen engine (M1 merge).', 'info');
+    await this.importFiles([{ name, bytes }], into);
+  }
+
+  /**
+   * Opens a project from a file without ever overwriting a different library entry: the same
+   * library id with different content (the entry was edited after this file was saved, or the
+   * file comes from elsewhere) opens as a new entry — new id, " (copy)" when the name is taken —
+   * and says so; only the identical project reuses its entry.
+   */
+  private async openProject(bundle: ProjectBundle): Promise<void> {
+    await this.flushSave();
+    const lib = await this.library();
+    let { doc } = bundle;
+    let note: string | null = null;
+    let inLibrary = false;
+    if (lib && doc.meta.id) {
+      const { sameProject, copyName } = await import('../doc/library');
+      const existing = await lib.find(doc.meta.id).catch(() => null);
+      if (existing && sameProject(existing, bundle)) inLibrary = true;
+      else if (existing) {
+        const names = new Set((await lib.list()).map((e) => e.name));
+        const name = copyName(doc.meta.name, names);
+        doc = { ...doc, meta: { ...doc.meta, id: ulid(), name } };
+        note = `Opened as “${name}”: your library already has a different version of this document, and it is unchanged.`;
+      }
+    }
+    if (!this.loadDocument({ ...bundle, doc }, inLibrary)) return;
+    this.autosaver.schedule(this.doc); // opened from disk: keep a copy in the library
+    this.patchUi({ library: false, welcome: false });
+    if (note) this.toast(note, 'info');
+  }
+
+  /** Imports CAD/mesh files as ImportFeatures (attachments `imports/<featureId>.<ext>`). */
+  async importFiles(files: readonly OpenedFile[], into: 'current' | 'new'): Promise<void> {
+    const usable = files.filter((f) => importFormat(f.name));
+    if (usable.length === 0) {
+      const names = files.map((f) => f.name).join(', ');
+      this.toast(
+        `Whittle can open .whittle projects and import STEP, IGES, BREP, STL, OBJ, 3MF and GLB files${names ? ` (not ${names})` : ''}.`,
+        'info',
+      );
+      return;
+    }
+    if (into === 'new' || !this.part) {
+      await this.flushSave();
+      const doc = freshDocument();
+      const stem = (usable[0]?.name ?? 'Import').replace(/\.[^.]+$/, '');
+      this.loadDocument({ doc: { ...doc, meta: { ...doc.meta, name: stem } } }, false);
+    }
+    if (this.ui.get().sketch) this.sketch?.exit(true);
+    for (const f of usable) {
+      const part = this.part;
+      if (!part) return;
+      const made = await importFeature(part, f.name, f.bytes);
+      if (!made) continue;
+      this.extra.set(made.path, f.bytes);
+      if (
+        !this.apply(
+          { kind: 'addFeature', partId: part.id, feature: made.feature },
+          `Import ${f.name}`,
+        )
+      )
+        this.extra.delete(made.path);
+      this.commit();
+    }
+    this.fitPending = true;
+    this.fitOnFirstGeometry = true;
+    this.patchUi({ library: false, welcome: false, selection: [], featureId: null });
   }
 
   async exportWhittle(): Promise<void> {
     const { toWhittleBytes, saveFile, MIME } = await import('../doc/library');
     await saveFile(
-      toWhittleBytes(this.doc),
+      toWhittleBytes(this.doc, this.extra, this.cache),
       `${fileBase(this.doc.meta.name)}.whittle`,
       MIME.whittle,
     );
@@ -1162,7 +1480,8 @@ export class Workbench {
         return;
       }
       const modeling = this.modeling;
-      if (!modeling) return this.toast('The geometry kernel is still loading.', 'info');
+      if (!modeling || view?.source !== 'live')
+        return this.toast('The geometry kernel is still loading.', 'info');
       const r = await modeling.exportPart(part.id, request.target, request.options);
       if (!r.ok) return this.toast(r.error.message, 'error');
       const ext = request.target === 'step' ? 'step' : request.target;
@@ -1170,6 +1489,91 @@ export class Workbench {
     } finally {
       this.patchUi({ exporting: false });
     }
+  }
+
+  // ------------------------------------------------------------------ needs attention
+
+  /**
+   * One-click re-pick of an unresolved reference: picking starts on that entry (the model rolls
+   * back to the feature's input) and, when the engine found several candidates, the "Which one?"
+   * chooser lists them at the reference's old location.
+   */
+  repick(featureId: Id, path?: string): void {
+    const status = this.treeStatuses.get()?.find((s) => s.featureId === featureId);
+    const u = path ? status?.unresolved?.find((x) => x.path === path) : status?.unresolved?.[0];
+    const target = u?.path ?? path;
+    if (!target) return;
+    this.patchUi({ featureId, picking: { featureId, path: target }, selection: [], prompt: null });
+    this.refreshSketchVisibility();
+    this.pushHighlights();
+    if (u?.reason === 'ambiguous' && u.candidates?.length) {
+      const fp = u.ref.fingerprint?.centroid;
+      const s = fp && this.viewport ? this.viewport.worldToScreen(fp) : null;
+      const r = this.canvas?.getBoundingClientRect();
+      this.patchUi({
+        candidates: {
+          featureId,
+          path: target,
+          kind: u.ref.kind,
+          names: [...u.candidates],
+          x: (r?.left ?? 0) + (s?.visible ? s.x : (r?.width ?? 0) / 2),
+          y: (r?.top ?? 0) + (s?.visible ? s.y : (r?.height ?? 0) / 2),
+        },
+      });
+    } else this.patchUi({ candidates: null });
+  }
+
+  /** A candidate from the "Which one?" list for an ambiguous reference. */
+  async chooseCandidate(name: string | null): Promise<void> {
+    const c = this.ui.get().candidates;
+    this.patchUi({ candidates: null });
+    if (!c || name === null) return;
+    // The picking view (rolled back to the feature's input) holds the candidates.
+    await this.loop?.whenIdle();
+    const at = locateName(this.regen.get()?.result, name, c.kind);
+    const part = this.part;
+    const f = part?.features.find((x) => x.id === c.featureId);
+    if (!part || !f) return;
+    const ref = at ? await this.modeling?.refFor(part.id, at) : null;
+    const next = applyPick(f, c.path, ref ?? { name, kind: c.kind });
+    this.apply({ kind: 'updateFeature', partId: part.id, featureId: f.id, feature: next });
+    this.commit();
+    this.patchUi({ picking: null });
+  }
+
+  /** Rough centre (mm) of a named face/edge in the current regen, for labels. */
+  locate(name: string, kind: EntityRef['kind']): [number, number, number] | null {
+    const result = this.regen.get()?.result;
+    const at = locateName(result, name, kind);
+    const mesh = result?.bodies.find((b) => b.id === at?.bodyId)?.mesh;
+    if (!at || !mesh) return null;
+    const sum: [number, number, number] = [0, 0, 0];
+    let n = 0;
+    const addPoint = (arr: Float32Array, i: number) => {
+      sum[0] += arr[i * 3] as number;
+      sum[1] += arr[i * 3 + 1] as number;
+      sum[2] += arr[i * 3 + 2] as number;
+      n++;
+    };
+    if (at.kind === 'edge') {
+      const first = mesh.edgeRanges[at.index * 2] ?? 0;
+      const count = mesh.edgeRanges[at.index * 2 + 1] ?? 0;
+      for (let i = first; i < first + count; i++) addPoint(mesh.edgePositions, i);
+    } else {
+      const first = mesh.faceRanges[at.index * 2] ?? 0;
+      const count = mesh.faceRanges[at.index * 2 + 1] ?? 0;
+      for (let t = first; t < first + count; t++)
+        for (let k = 0; k < 3; k++) addPoint(mesh.positions, mesh.indices[t * 3 + k] as number);
+    }
+    return n ? [sum[0] / n, sum[1] / n, sum[2] / n] : null;
+  }
+
+  /** Preselect a candidate while hovering it in the chooser. */
+  previewCandidate(name: string | null): void {
+    const c = this.ui.get().candidates;
+    const at = c && name ? locateName(this.regen.get()?.result, name, c.kind) : null;
+    this.patchUi({ hover: at ? { ...at, point: [0, 0, 0], distancePx: 0 } : null });
+    this.pushHighlights();
   }
 
   // ------------------------------------------------------------------ misc
@@ -1197,12 +1601,25 @@ export class Workbench {
     return {
       doc: () => this.doc,
       regen: () => {
-        const r = this.regen.get()?.result;
-        return r
+        const view = this.regen.get();
+        const r = view?.result;
+        return r && view
           ? {
               revision: r.revision,
-              bodies: r.bodies.map((b) => ({ id: b.id, volume: b.massProperties?.volume ?? null })),
-              features: r.features.map((f) => ({ id: f.featureId, state: f.state })),
+              source: view.source,
+              quality: view.quality,
+              bodies: r.bodies.map((b) => ({
+                id: b.id,
+                volume: b.massProperties?.volume ?? null,
+                bbox: b.mesh.bbox,
+              })),
+              features: r.features.map((f) => ({
+                id: f.featureId,
+                state: f.state,
+                ...(f.unresolved ? { unresolved: f.unresolved } : {}),
+                ...(f.rebound ? { rebound: f.rebound } : {}),
+                ...(f.error ? { error: f.error.message } : {}),
+              })),
               sketches: r.sketches.map((s) => ({
                 id: s.featureId,
                 regions: s.regions.map((x) => x.name),
@@ -1211,13 +1628,62 @@ export class Workbench {
           : null;
       },
       idle: async () => {
+        await this.sketch?.whenSettled();
         await this.boot?.modeling;
         for (let i = 0; i < 50 && !this.loop; i++) await new Promise((r) => setTimeout(r, 20));
         await this.loop?.whenIdle();
         await this.viewport?.nextFrame();
       },
       flushSave: () => this.flushSave(),
-      sketch: () => this.ui.get().sketch?.solve ?? null,
+      sketch: () => {
+        const solve = this.ui.get().sketch?.solve;
+        return solve ? { ...solve, busy: this.sketch?.busy ?? false } : null;
+      },
+      sketchSettled: () => this.sketch?.whenSettled() ?? Promise.resolve(),
+      marks: () => marks(),
+      ui: () => {
+        const u = this.ui.get();
+        return {
+          featureId: u.featureId,
+          picking: u.picking,
+          candidates: u.candidates?.names ?? null,
+          toast: u.toast?.text ?? null,
+          sketch: u.sketch
+            ? {
+                tool: u.sketch.tool,
+                dimPicks: u.sketch.dimPicks,
+                editDimension: u.sketch.editDimension,
+                selected: u.sketch.selected,
+              }
+            : null,
+        };
+      },
+      /** Replaces the document (fixtures for E2E scenarios), saved to the library. */
+      load: (doc: WhittleDoc) => {
+        if (this.loadDocument({ doc }, false)) this.autosaver.schedule(doc);
+      },
+      projectFiles: () => ({
+        extra: [...this.extra.keys()].sort(),
+        cache: [...this.cache.keys()].sort(),
+        cacheKey: this.cacheKey,
+        savedCacheKey: this.savedCacheKey,
+      }),
+      sentAttachments: () => [...(this.loop?.sentAttachments ?? [])],
+      pendingHeals: () => Object.fromEntries(this.heals),
+      library: async () => {
+        const lib = await this.library();
+        return (await lib?.list())?.map((e) => ({ id: e.id, name: e.name })) ?? [];
+      },
+      /** Waits until the mesh cache of the current document has reached the library. */
+      cacheSaved: async () => {
+        for (let i = 0; i < 200; i++) {
+          await this.loop?.whenIdle();
+          await this.autosaver.flush();
+          if (this.cacheKey && this.cacheKey === this.savedCacheKey) return true;
+          await new Promise((r) => setTimeout(r, 50));
+        }
+        return false;
+      },
     };
   }
 }

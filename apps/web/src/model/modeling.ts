@@ -67,6 +67,19 @@ export interface RegenLoopOptions {
   idle?: IdleScheduler;
   /** Skip the fine pass (tests, low-power). */
   fine?: boolean;
+  /**
+   * Attachment files the document's import features reference (`ImportFeature.source`). Each is
+   * sent to the engine once per part and loop (= worker) lifetime, keyed by sha256, then omitted:
+   * the engine caches imported shapes per part by sha256 (contracts `RegenRequest.attachments`).
+   * `forget(partId)` (the part was closed in the engine) sends them again next time.
+   */
+  attachments?(doc: WhittleDoc): readonly Attachment[];
+}
+
+export interface Attachment {
+  path: string;
+  sha256: string;
+  bytes: Uint8Array;
 }
 
 export interface RegenLoop {
@@ -76,6 +89,8 @@ export interface RegenLoop {
   whenIdle(): Promise<void>;
   /** Number of regenerate calls made (diagnostics/tests). */
   readonly calls: number;
+  /** `<partId>:<sha256>` of every attachment already sent to this engine. */
+  readonly sentAttachments: ReadonlySet<string>;
   /** The part was closed in the engine (`closePart`): its revisions start again. */
   forget(partId: Id): void;
   dispose(): void;
@@ -110,6 +125,7 @@ export function createRegenLoop(options: RegenLoopOptions): RegenLoop {
   let seq = 0;
   let lastDelivered = 0;
   const lastRevision = new Map<Id, number>();
+  const sent = new Set<string>();
   let cancelFine: (() => void) | null = null;
   let finePendingFor: WhittleDoc | null = null;
   let waiters: Array<() => void> = [];
@@ -128,7 +144,19 @@ export function createRegenLoop(options: RegenLoopOptions): RegenLoop {
     calls++;
     const mySeq = ++seq;
     try {
-      const result = await port.regenerate({ doc, partId, quality, massProperties: true });
+      const fresh = (options.attachments?.(doc) ?? []).filter(
+        (a) => !sent.has(`${partId}:${a.sha256}`),
+      );
+      const attachments: Record<string, Uint8Array> = {};
+      for (const a of fresh) attachments[a.path] = a.bytes;
+      const result = await port.regenerate({
+        doc,
+        partId,
+        quality,
+        massProperties: true,
+        ...(fresh.length ? { attachments } : {}),
+      });
+      for (const a of fresh) sent.add(`${partId}:${a.sha256}`);
       if (disposed) return;
       const stale =
         mySeq < lastDelivered ||
@@ -192,8 +220,12 @@ export function createRegenLoop(options: RegenLoopOptions): RegenLoop {
     get calls() {
       return calls;
     },
+    get sentAttachments() {
+      return sent;
+    },
     forget(partId) {
       lastRevision.delete(partId);
+      for (const k of [...sent]) if (k.startsWith(`${partId}:`)) sent.delete(k);
     },
     dispose() {
       disposed = true;

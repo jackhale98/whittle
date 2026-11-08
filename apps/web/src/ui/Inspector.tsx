@@ -107,7 +107,7 @@ function DocumentSection({ wb }: { wb: Workbench }) {
           icon={<FolderOpen className="size-4" />}
           onClick={() => void wb.openFromDisk()}
         >
-          Open…
+          Open or import…
         </Button>
         <Button
           variant="secondary"
@@ -173,7 +173,9 @@ export function Inspector({ wb, density }: { wb: Workbench; density: 'compact' |
         </dl>
         <p className="text-2xs leading-4 text-fg-muted">
           Click to place points; the line tool chains until you close a loop or press Esc. Press{' '}
-          <Kbd>D</Kbd> and click geometry to dimension it. Drag points to adjust.
+          <Kbd>D</Kbd>, click geometry, then click where the label goes: above or below measures
+          horizontally, beside measures vertically (<Kbd>Shift</Kbd>: aligned). Drag points to
+          adjust.
         </p>
         <Button variant="primary" onClick={() => wb.sketch?.finish()} data-testid="finish-sketch">
           Finish sketch
@@ -194,7 +196,12 @@ export function Inspector({ wb, density }: { wb: Workbench; density: 'compact' |
           evaluate={(e, d) => wb.evaluate(e, d)}
           onChange={(next: Feature) => wb.updateFeature(next, 'commit')}
           onPreview={(next: Feature) => wb.updateFeature(next, 'preview')}
-          onPick={(path) => wb.startPicking(f.id, path)}
+          onPick={(path) =>
+            status?.unresolved?.some((u) => u.path === path)
+              ? wb.repick(f.id, path)
+              : wb.startPicking(f.id, path)
+          }
+          {...(status?.state === 'needsAttention' ? { onRepick: () => wb.repick(f.id) } : {})}
           pickingPath={ui.picking?.featureId === f.id ? ui.picking.path : null}
           describeRef={(r) => describeRef(doc, r)}
           {...(f.type === 'sketch' ? { onEditSketch: () => wb.editFeature(f.id) } : {})}

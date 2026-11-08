@@ -157,4 +157,49 @@ describe('regen loop', () => {
     loop.request();
     expect(s.calls).toHaveLength(2);
   });
+
+  it('sends each attachment once per engine lifetime (keyed by sha256), resending after a failure', async () => {
+    let doc: WhittleDoc = newDoc({ firstPart: 'P' });
+    const s = scripted();
+    const a = { path: 'imports/A.step', sha256: 'aa', bytes: new Uint8Array([1, 2, 3]) };
+    const b = { path: 'imports/B.stl', sha256: 'bb', bytes: new Uint8Array([4]) };
+    let list = [a];
+    const loop = createRegenLoop({
+      port: s.port,
+      getDoc: () => doc,
+      onResult: () => {},
+      onError: () => {},
+      fine: false,
+      attachments: () => list,
+    });
+    loop.request();
+    s.calls[0]?.reject(new Error('worker hiccup'));
+    await tick();
+    doc = { ...doc };
+    loop.request();
+    expect(Object.keys(s.calls[1]?.request.attachments ?? {})).toEqual(['imports/A.step']);
+    s.answer(1);
+    await tick();
+    list = [a, b];
+    doc = { ...doc };
+    loop.request();
+    expect(s.calls[2]?.request.attachments).toEqual({ 'imports/B.stl': b.bytes });
+    s.answer(2);
+    await tick();
+    doc = { ...doc };
+    loop.request();
+    expect(s.calls[3]?.request.attachments).toBeUndefined();
+    const part = doc.parts[0]?.id;
+    expect([...loop.sentAttachments].sort()).toEqual([`${part}:aa`, `${part}:bb`]);
+    // The part was closed in the engine: its attachments go again.
+    s.answer(3);
+    await tick();
+    loop.forget(part as string);
+    doc = { ...doc };
+    loop.request();
+    expect(Object.keys(s.calls[4]?.request.attachments ?? {}).sort()).toEqual([
+      'imports/A.step',
+      'imports/B.stl',
+    ]);
+  });
 });

@@ -16,8 +16,10 @@ initTheme();
 watchInstallPrompt();
 const workbench = new Workbench();
 installTestHooks({ firstBodyRendered });
-// The kernel streams and compiles in its worker while the shell paints.
+// The kernel streams and compiles in its worker while the shell paints, and the last document (with
+// its mesh cache) is read from the library meanwhile, so it renders before the kernel is ready.
 workbench.bootKernel();
+workbench.prefetchInitialDocument();
 // App-level test hooks (E2E only; not an extension API).
 (window as unknown as { __whittleApp?: unknown }).__whittleApp = workbench.testHooks();
 void initServiceWorker();

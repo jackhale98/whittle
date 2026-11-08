@@ -39,7 +39,7 @@ import { ORIGIN_FRAMES, type OriginPlane } from '../model/frames';
 import { acceptsFor } from '../selection/pick';
 import { labelAnchor } from '../sketch/dimension';
 import { entityAnchor } from '../sketch/overlay';
-import { useDoc } from './Inspector';
+import { describeRef, useDoc } from './Inspector';
 
 const LibraryPanel = lazy(() => import('./LibraryPanel'));
 const Welcome = lazy(() => import('./Welcome'));
@@ -127,6 +127,20 @@ function candidateFor(doc: WhittleDoc, h: PickHit, i: number): PickCandidate {
     kind,
     label: `${noun}${owner ? ` of ${owner.name}` : ''}`,
     detail: `${h.distancePx.toFixed(1)} px away`,
+  };
+}
+
+/** A candidate of an ambiguous reference: "Edge of Plate" + where it is (they share a name family). */
+function candidateForName(wb: Workbench, doc: WhittleDoc, name: string): PickCandidate {
+  const kind = wb.ui.get().candidates?.kind ?? 'edge';
+  const label = describeRef(doc, { name, kind });
+  const at = wb.locate(name, kind);
+  const fmt = (v: number) => (Math.round(v * 10) / 10).toString();
+  return {
+    id: name,
+    kind: kind === 'face' ? 'face' : kind === 'vertex' ? 'vertex' : 'edge',
+    label,
+    ...(at ? { detail: `at ${at.map(fmt).join(', ')} mm` } : {}),
   };
 }
 
@@ -295,6 +309,10 @@ function SketchLayer({
             onCommit={(e) => session.updateDimension(c.id, e, 'commit')}
             onCancel={() => session.doneEditingDimension()}
             onSelect={() => session.selectConstraint(c.id)}
+            onToggleDriving={() => session.toggleDriving(c.id)}
+            {...(c.kind === 'radius' || c.kind === 'diameter'
+              ? { onToggleKind: () => session.toggleRadiusDiameter(c.id) }
+              : {})}
           />
         );
       })}
@@ -435,6 +453,17 @@ export function ViewportOverlays({ wb, touch }: { wb: Workbench; touch: boolean 
             void wb.choose(ui.chooser?.hits[Number(id)] ?? null, ui.chooser?.additive)
           }
           onDismiss={() => wb.patchUi({ chooser: null })}
+        />
+      ) : null}
+
+      {ui.candidates ? (
+        <WhichOneChooser
+          candidates={ui.candidates.names.map((name) => candidateForName(wb, doc, name))}
+          at={{ x: ui.candidates.x, y: ui.candidates.y }}
+          size={touch ? 'touch' : 'md'}
+          onPick={(name) => void wb.chooseCandidate(name)}
+          onHover={(name) => wb.previewCandidate(name)}
+          onDismiss={() => void wb.chooseCandidate(null)}
         />
       ) : null}
 

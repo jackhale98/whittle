@@ -54,6 +54,18 @@ export interface Chooser {
   additive: boolean;
 }
 
+/** "Which one?" for an ambiguous reference: the engine's candidate names (PLAN §7.3, §9.2). */
+export interface CandidateChooser {
+  featureId: Id;
+  /** JSON pointer of the reference inside the feature, e.g. `/edges/0`. */
+  path: string;
+  kind: EntityRef['kind'];
+  names: string[];
+  /** Client (page) coordinates to show it at. */
+  x: number;
+  y: number;
+}
+
 export interface Toast {
   id: number;
   text: string;
@@ -72,6 +84,7 @@ export interface UiState {
   /** Act-first tool waiting for a selection. */
   prompt: { tool: ModelTool; text: string } | null;
   chooser: Chooser | null;
+  candidates: CandidateChooser | null;
   sketch: SketchUi | null;
   library: boolean;
   /** The welcome card (first launch, ⌘K "Welcome / samples"). */
@@ -90,6 +103,7 @@ export const initialUi: UiState = {
   picking: null,
   prompt: null,
   chooser: null,
+  candidates: null,
   sketch: null,
   library: false,
   welcome: false,
@@ -102,6 +116,8 @@ export interface RegenView {
   result: RegenResult;
   quality: MeshQuality;
   doc: WhittleDoc;
+  /** `cache`: meshes from the document's `.whittle/` cache, shown before the kernel is ready. */
+  source: 'live' | 'cache';
 }
 
 export interface EngineState {

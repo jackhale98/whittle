@@ -6,13 +6,46 @@ export interface AppHooks {
   doc(): WhittleDoc;
   regen(): {
     revision: number;
-    bodies: { id: string; volume: number | null }[];
-    features: { id: string; state: string }[];
+    source: 'live' | 'cache';
+    quality: 'coarse' | 'fine';
+    bodies: { id: string; volume: number | null; bbox: { min: number[]; max: number[] } }[];
+    features: {
+      id: string;
+      state: string;
+      unresolved?: { path: string; reason: string; candidates?: string[] }[];
+      rebound?: { path: string; name: string }[];
+      error?: string;
+    }[];
     sketches: { id: string; regions: string[] }[];
   } | null;
   idle(): Promise<void>;
   flushSave(): Promise<void>;
-  sketch(): { status: string; dof: number } | null;
+  sketch(): { status: string; dof: number; busy: boolean } | null;
+  sketchSettled(): Promise<void>;
+  marks(): Record<string, number>;
+  ui(): {
+    featureId: string | null;
+    picking: { featureId: string; path: string } | null;
+    candidates: string[] | null;
+    toast: string | null;
+    sketch: {
+      tool: string | null;
+      dimPicks: string[];
+      editDimension: string | null;
+      selected: string[];
+    } | null;
+  };
+  load(doc: WhittleDoc): void;
+  projectFiles(): {
+    extra: string[];
+    cache: string[];
+    cacheKey: string | null;
+    savedCacheKey: string | null;
+  };
+  sentAttachments(): string[];
+  pendingHeals(): Record<string, { path: string; name: string }[]>;
+  library(): Promise<{ id: string; name: string }[]>;
+  cacheSaved(): Promise<boolean>;
 }
 
 type W = { __whittle: WhittleTestHooks; __whittleApp: AppHooks };
@@ -30,6 +63,17 @@ export const app = (page: Page) => ({
   idle: () => page.evaluate(() => (window as unknown as W).__whittleApp.idle()),
   flushSave: () => page.evaluate(() => (window as unknown as W).__whittleApp.flushSave()),
   sketch: () => page.evaluate(() => (window as unknown as W).__whittleApp.sketch()),
+  settled: () => page.evaluate(() => (window as unknown as W).__whittleApp.sketchSettled()),
+  ui: () => page.evaluate(() => (window as unknown as W).__whittleApp.ui()),
+  marks: () => page.evaluate(() => (window as unknown as W).__whittleApp.marks()),
+  load: (doc: WhittleDoc) =>
+    page.evaluate((d) => (window as unknown as W).__whittleApp.load(d), doc),
+  projectFiles: () => page.evaluate(() => (window as unknown as W).__whittleApp.projectFiles()),
+  sentAttachments: () =>
+    page.evaluate(() => (window as unknown as W).__whittleApp.sentAttachments()),
+  pendingHeals: () => page.evaluate(() => (window as unknown as W).__whittleApp.pendingHeals()),
+  library: () => page.evaluate(() => (window as unknown as W).__whittleApp.library()),
+  cacheSaved: () => page.evaluate(() => (window as unknown as W).__whittleApp.cacheSaved()),
 });
 
 /** Runs a ⌘K palette command by its label. */

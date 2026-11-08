@@ -76,6 +76,9 @@ test('sketch a rectangle, dimension it, extrude by width/2, edit history, reload
   await expect(editor).toBeFocused();
   await editor.fill('60');
   await editor.press('Enter');
+  // The edit lands in the document only after its solve (the DOF count is already 3 after the
+  // placement, before the 60 mm solve): wait for the sketch to settle, then read the geometry.
+  await a.settled();
   await expect.poll(async () => (await a.sketch())?.dof).toBe(3);
   // The right edge moved with the solve: find it from the document.
   const right = await rightEdge();

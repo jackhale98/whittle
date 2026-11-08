@@ -44,7 +44,13 @@ export function App({ wb }: { wb: Workbench }) {
       { id: 'demo', label: 'Open the demo bracket', hint: 'Sample', run: () => void wb.openDemo() },
       { id: 'new-doc', label: 'New document', run: () => void wb.newDocument() },
       { id: 'library', label: 'Open library', run: () => wb.toggleLibrary(true) },
-      { id: 'open-file', label: 'Open file…', shortcut: '⌘O', run: () => void wb.openFromDisk() },
+      {
+        id: 'open-file',
+        label: 'Open or import file…',
+        hint: '.whittle, STEP, IGES, BREP, STL, OBJ, 3MF, GLB',
+        shortcut: '⌘O',
+        run: () => void wb.openFromDisk(),
+      },
       {
         id: 'save-file',
         label: 'Save as .whittle file',

@@ -88,6 +88,52 @@ export function dimensionFor(sketch: SketchData, picks: readonly Id[]): Dimensio
   return null;
 }
 
+/**
+ * Horizontal or vertical distance by where the label is placed (PLAN §2.1, as in most CAD): for
+ * two points — or an oblique line — a label above/below their span measures horizontally, a label
+ * left/right of it vertically, anywhere else (or `aligned`, e.g. Shift held) stays aligned. The
+ * points are ordered so the value is positive. Axis-aligned lines keep their length.
+ */
+export function dimensionAt(
+  sketch: SketchData,
+  picks: readonly Id[],
+  at: Vec2 | null,
+  options: { aligned?: boolean } = {},
+): DimensionDraft | null {
+  const base = dimensionFor(sketch, picks);
+  if (!base || !at || options.aligned) return base;
+  const index = indexEntities(sketch.entities);
+  let ends: [Id, Id] | null = null;
+  if (base.kind === 'distance') {
+    const ea = index.get(base.a);
+    const eb = index.get(base.b);
+    if (ea?.kind === 'point' && eb?.kind === 'point') ends = [ea.id, eb.id];
+  } else if (base.kind === 'length') {
+    const l = index.get(base.line);
+    if (l?.kind === 'line') ends = [l.start, l.end];
+    const le = lineEnds(index, base.line);
+    // Horizontal/vertical lines: their length already is the h/v distance.
+    if (le && (Math.abs(le[0][0] - le[1][0]) < 1e-6 || Math.abs(le[0][1] - le[1][1]) < 1e-6))
+      ends = null;
+  }
+  if (!ends) return base;
+  const pa = pos(index, ends[0]);
+  const pb = pos(index, ends[1]);
+  if (!pa || !pb) return base;
+  const [x0, x1] = [Math.min(pa[0], pb[0]), Math.max(pa[0], pb[0])];
+  const [y0, y1] = [Math.min(pa[1], pb[1]), Math.max(pa[1], pb[1])];
+  const m = 0.02 * Math.max(x1 - x0, y1 - y0, 1e-6);
+  const outX = at[0] < x0 - m || at[0] > x1 + m;
+  const outY = at[1] < y0 - m || at[1] > y1 + m;
+  let kind: 'hDistance' | 'vDistance' | null = null;
+  if (outY && !outX && x1 - x0 > 1e-9) kind = 'hDistance';
+  else if (outX && !outY && y1 - y0 > 1e-9) kind = 'vDistance';
+  if (!kind) return base;
+  const axis = kind === 'hDistance' ? 0 : 1;
+  const [a, b] = (pb[axis] as number) >= (pa[axis] as number) ? ends : [ends[1], ends[0]];
+  return { kind, a, b };
+}
+
 /** Current value of a dimension (mm or rad), or null if its entities are missing. */
 export function measure(sketch: SketchData, d: DimensionDraft): number | null {
   const index = indexEntities(sketch.entities);
@@ -118,6 +164,12 @@ export function measure(sketch: SketchData, d: DimensionDraft): number | null {
       const pa = pos(index, d.a);
       const eb = index.get(d.b);
       if (d.kind !== 'distance') {
+        if (d.a === d.b) {
+          // A line: end − start (contract convention).
+          const l = lineEnds(index, d.a);
+          if (!l) return null;
+          return d.kind === 'hDistance' ? l[1][0] - l[0][0] : l[1][1] - l[0][1];
+        }
         const pb = pos(index, d.b);
         if (!pa || !pb) return null;
         return d.kind === 'hDistance' ? pb[0] - pa[0] : pb[1] - pa[1];
@@ -171,6 +223,27 @@ export function labelAnchor(sketch: SketchData, c: DimensionConstraint): Vec2 | 
       return a && b ? mid(a, b) : (a ?? b);
     }
   }
+}
+
+/**
+ * The expression of a radius dimension shown as a diameter (`toDiameter`) or back: literals are
+ * converted (`3 mm` ↔ `6 mm`), parametric expressions wrapped (`hole_d/2` ↔ `hole_d`).
+ */
+export function convertRadiusDiameter(expr: string, toDiameter: boolean): string {
+  const t = expr.trim();
+  const lit = /^([+-]?(?:\d+\.?\d*|\.\d+))\s*([a-zA-Zµ]*)$/.exec(t);
+  if (lit) {
+    const n = Number.parseFloat((Number(lit[1]) * (toDiameter ? 2 : 0.5)).toPrecision(12));
+    return lit[2] ? `${n} ${lit[2]}` : String(n);
+  }
+  const ident = /^[A-Za-z_]\w*$/;
+  const unwrap = (x: string) => (/^\(.*\)$/.test(x) ? x.slice(1, -1).trim() : x);
+  const inner = toDiameter
+    ? /^(\(.*\)|[A-Za-z_]\w*)\s*\/\s*2$/.exec(t)?.[1]
+    : /^2\s*\*\s*(\(.*\)|[A-Za-z_]\w*)$/.exec(t)?.[1];
+  if (inner) return unwrap(inner);
+  if (toDiameter) return ident.test(t) ? `2 * ${t}` : `2 * (${t})`;
+  return ident.test(t) ? `${t}/2` : `(${t})/2`;
 }
 
 /** Expression text for a freshly placed dimension: the measured value, rounded. */

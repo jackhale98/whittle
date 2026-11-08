@@ -148,9 +148,10 @@ export default function LibraryPanel({ wb }: { wb: Workbench }) {
         <Button
           variant="secondary"
           icon={<FolderOpen className="size-4" />}
-          onClick={() => void wb.openFromDisk()}
+          onClick={() => void wb.openFromDisk('new')}
+          data-testid="library-open-file"
         >
-          Open file…
+          Open or import…
         </Button>
         <Button
           variant="primary"
