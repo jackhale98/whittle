@@ -221,10 +221,10 @@ export interface StrokeSample {
 
 /**
  * What a freehand stroke was recognised as. Geometry is cleaned up (snapped to horizontal /
- * vertical / right angles / closure within tolerance) and `constraints` lists the drafts that
- * the clean-up implies, with `INFERENCE_DRAWING`/indices as for tool fragments: the app converts
- * the result into entities + constraints like any drawing tool. `scribble` = an erase gesture
- * over existing geometry (the app deletes what it crosses).
+ * vertical / right angles / closure within tolerance, exactly) and `StrokeRecognition.implied`
+ * names the constraint kinds that clean-up implies; `strokeFragment` in packages/sketch turns it
+ * into entities + constraints like any drawing tool. Rectangle corners are counter-clockwise.
+ * `scribble` = an erase gesture over existing geometry (the app deletes what it crosses).
  */
 export type RecognizedShape =
   | { kind: 'line'; from: Vec2; to: Vec2 }
@@ -239,7 +239,10 @@ export interface StrokeRecognition {
   shape: RecognizedShape;
   /** 0–1; below ~0.5 the app keeps the stroke as a polyline. */
   confidence: number;
-  /** Clean-up that was applied, as geometric constraint kinds (e.g. ['horizontal', 'perpendicular']). */
+  /**
+   * Clean-up that was applied, as geometric constraint kinds (e.g. ['horizontal', 'perpendicular']).
+   * `'coincident'` means the stroke's ends were joined (a shared point, no extra constraint).
+   */
   implied: GeometricConstraint['kind'][];
 }
 

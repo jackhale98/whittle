@@ -31,3 +31,4 @@
 ### M2 — Touch & tablet excellence
 
 - Platform: installed iPad/iPhone PWA hardening (no page zoom or scroll, no callouts or rubber-banding, safe-area variables), iPadOS-as-Mac tier detection, tier policy (regen cache, mesh quality, phone lazy kernel boot); CI performance gate (shell TTI, memory, viewport probes with a SwiftShader factor), non-gating Lighthouse job, failure-only Playwright traces.
+- Sketch: Pencil stroke recognition (`recognizeStroke`, `@whittle/sketch/recognize`, pure TS, ≈ 0.2 ms for 500 samples): line, polyline, rectangle (rotated or snapped axis-aligned), circle, arc (CCW), scribble; snaps H/V, right angles and closure; `strokeFragment` turns it into entities + constraints. Solver polish: driving dimensions and coincidences hold to ≤ 1e-10 mm, so sketches dimensioned to meet are exactly coplanar (ADR-011).

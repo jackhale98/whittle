@@ -297,3 +297,39 @@ section and export.
 7. **E2E on slow runners.** CI runs Playwright with `--trace retain-on-failure` (still one worker);
    traces land in the existing failure-only `playwright-report-*` artefact. The installed-PWA
    checks run as `chromium-touch` (gating) and `webkit-ipad` (non-gating) projects.
+
+
+## ADR-011 — M2 sketch: stroke recognition and solver polish (2026-11-08)
+
+**Context.** ADR-009 item 5 puts Pencil recognition in `packages/sketch` as a main-thread pure
+function; ADR-008 item 9 left driving dimensions up to 1e-7 × sketch size off after a solve.
+
+**Decisions.**
+
+1. **Recognition pipeline** (`packages/sketch/src/recognize.ts`): resample at bounding-box
+   diagonal / 40 (ShortStraw), straw corner candidates, then per-segment total-least-squares
+   lines with split / hook-drop / merge, and Pratt circle fits for whole-stroke circles and arcs.
+   Thresholds are relative to the stroke length L, which is measured on the resampled polyline:
+   per-sample jitter inflates the raw length up to 2× on slow strokes and would loosen every
+   threshold. A 0.3 × tolerance floor absorbs hand noise on short strokes.
+2. **Arc vs polyline vs circle vs oval.** A circle fit alone accepts polylines that turn one way
+   and ovals. An arc must also have uniform turning (no 8% / 15% window holding a corner's share),
+   beat a two-line model, and progress monotonically. A circle must have a principal-axis aspect
+   ≤ 1.2 (ovals of 1.3 and above are reported as closed polylines with confidence 0.3). When in
+   doubt, the result is the polyline: a stroke wrongly turned into an arc is worse than an arc
+   kept as a stroke.
+3. **Clean-up is exact.** Snapped vertices are intersections of the fitted lines, with exact
+   coordinates on horizontal/vertical lines, so `strokeFragment` derives constraints from the
+   geometry (only kinds in `implied`). The fragment solves without moving and has no redundant
+   constraints (a direction union-find skips a loop's last right angle). `implied: ['coincident']`
+   means the ends were joined; the fragment shares the point instead of adding a constraint.
+4. **Rectangle tolerance is 2 × angleTolerance per corner** (12° by default). Snapping to an
+   axis uses angleTolerance on the fitted orientation (circular mean of 4θ).
+5. **Solver polish** (`packages/sketch/src/polish.ts`): after every accepted solve and drag step,
+   minimum-norm Gauss–Newton steps (CG on J Jᵀ, unit-scaled rows, finite-difference Jacobian of
+   our own residual rows) until every row is ≤ 1e-11 mm (1e-13 rad). The minimum-norm step keeps
+   under-constrained geometry from drifting, and redundant consistent rows are harmless. Exact
+   geometry is returned unchanged (no step is taken), and a step is kept only if it lowers the
+   worst residual. The conflict search does not polish: it only needs yes/no answers. Cost: drag
+   median on the 200-entity chain went from ≈ 0.50 ms to ≈ 0.57 ms. A polish with real work on
+   200 entities takes ≈ 0.7 ms.

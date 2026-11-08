@@ -1,7 +1,8 @@
 /**
  * @whittle/sketch — main-thread entry: the worker client, constraint inference, drawing-tool
- * helpers and geometry utilities. Everything here is pure TS; planegcs (Wasm) only loads inside
- * the sketch worker (`@whittle/sketch/worker`) or via `@whittle/sketch/core` in Node.
+ * helpers, Pencil stroke recognition (also `@whittle/sketch/recognize`) and geometry utilities.
+ * Everything here is pure TS; planegcs (Wasm) only loads inside the sketch worker
+ * (`@whittle/sketch/worker`) or via `@whittle/sketch/core` in Node.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
@@ -47,6 +48,13 @@ export {
   type DrawingState,
   infer,
 } from './inference';
+export {
+  type CircleFit,
+  DEFAULT_STROKE_ANGLE_TOLERANCE,
+  fitCircle,
+  recognizeStroke,
+  strokeFragment,
+} from './recognize';
 export {
   arc3PointTool,
   arcCenterTool,
