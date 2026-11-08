@@ -1,0 +1,13 @@
+node_modules/
+dist/
+dev-dist/
+coverage/
+*.tsbuildinfo
+.DS_Store
+.libcascade/
+*.wasm
+playwright-report/
+test-results/
+.vite/
+.env*
+!.env.example

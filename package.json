@@ -1,0 +1,31 @@
+{
+  "name": "whittle",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Free, open-source, browser-native parametric CAD.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @whittle/web dev",
+    "build": "pnpm --filter @whittle/web build",
+    "preview": "pnpm --filter @whittle/web preview",
+    "test": "pnpm -r --if-present test",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "e2e": "pnpm --filter @whittle/web e2e",
+    "perf": "pnpm --filter @whittle/web perf",
+    "kernel:build": "pnpm --filter @whittle/kernel build",
+    "kernel:test": "pnpm --filter @whittle/kernel test"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.6.6",
+    "@types/node": "22.20.5",
+    "typescript": "6.0.3",
+    "vitest": "5.1.0"
+  }
+}

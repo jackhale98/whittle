@@ -1,0 +1,15 @@
+{
+  "name": "@whittle/contracts",
+  "version": "0.0.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "description": "Lead-owned shared types: document schema, kernel API, viewport API, runtime events.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p .",
+    "test": "vitest run"
+  }
+}
