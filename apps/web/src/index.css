@@ -31,6 +31,10 @@ html {
 
 body {
   margin: 0;
+  /* Pinned in place: iOS can otherwise drag an `overflow: hidden` page (rubber-band, or the
+     whole screen sliding when a bottom sheet is dragged). page-guards.ts backs this up. */
+  position: fixed;
+  inset: 0;
   overscroll-behavior: none;
   /* The app is a fixed-size surface: the page itself never scrolls. */
   overflow: hidden;
