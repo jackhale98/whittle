@@ -221,3 +221,72 @@ test('section: ⌘K Section view, axis, offset within the part, flip, off', asyn
   await panel.getByRole('switch', { name: 'Section view' }).click();
   await expect.poll(async () => (await touchStats(page)).sectionActive).toBe(false);
 });
+
+/** A binary STL of an axis-aligned cube (12 triangles), `s` mm (as in files.spec.ts). */
+function cubeStl(s: number): string {
+  const v = (i: number) => [i & 1 ? s : 0, i & 2 ? s : 0, i & 4 ? s : 0];
+  const quads = [
+    [0, 2, 3, 1],
+    [4, 5, 7, 6],
+    [0, 1, 5, 4],
+    [2, 6, 7, 3],
+    [0, 4, 6, 2],
+    [1, 3, 7, 5],
+  ];
+  const tris = quads.flatMap(([a, b, c, d]) => [
+    [a, b, c],
+    [a, c, d],
+  ]) as number[][];
+  const buf = Buffer.alloc(84 + tris.length * 50);
+  buf.writeUInt32LE(tris.length, 80);
+  tris.forEach((t, i) => {
+    const o = 84 + i * 50 + 12;
+    t.forEach((idx, k) => {
+      const p = v(idx);
+      for (let j = 0; j < 3; j++) buf.writeFloatLE(p[j] as number, o + k * 12 + j * 4);
+    });
+  });
+  return buf.toString('base64');
+}
+
+test('a deleted import’s attachment is never saved, but undo still finds its bytes', async ({
+  page,
+}) => {
+  test.slow();
+  await box(page);
+  const a = app(page);
+  await page.evaluate((b64) => {
+    const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+    const dt = new DataTransfer();
+    dt.items.add(new File([bytes], 'cube.stl', { type: 'model/stl' }));
+    const target = document.querySelector('[data-testid="viewport-canvas"]') as HTMLElement;
+    target.dispatchEvent(new DragEvent('dragover', { dataTransfer: dt, bubbles: true }));
+    target.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true }));
+  }, cubeStl(10));
+  const tree = page.getByTestId('feature-tree');
+  await expect(tree).toContainText('cube');
+  await a.idle();
+  const imported = (await a.doc()).parts[0]?.features[1];
+  if (imported?.type !== 'import') throw new Error('no import feature');
+  const path = imported.source.path;
+  const id = (await a.doc()).meta.id ?? '';
+  await a.flushSave();
+  expect(await a.libraryFiles(id)).toContain(path);
+
+  // Delete the import: the saved project drops the attachment; memory keeps it for undo.
+  await tree.getByRole('treeitem', { name: /cube/ }).click();
+  await tree.getByRole('treeitem', { name: /cube/ }).press('Delete');
+  await a.idle();
+  expect((await a.doc()).parts[0]?.features).toHaveLength(1);
+  await a.flushSave();
+  expect(await a.libraryFiles(id)).not.toContain(path);
+  expect((await a.projectFiles()).extra).toContain(path);
+
+  // Undo brings the import back with its bytes: it rebuilds, and the next save carries it again.
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('ControlOrMeta+z');
+  await a.idle();
+  expect((await a.regen())?.features.map((f) => f.state)).toEqual(['ok', 'ok']);
+  await a.flushSave();
+  expect(await a.libraryFiles(id)).toContain(path);
+});

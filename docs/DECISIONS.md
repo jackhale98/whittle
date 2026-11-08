@@ -432,3 +432,74 @@ extension, and it would also extend non-perpendicular neighbours instead of addi
   (same frame).
 - **Gesture timing** uses event timestamps, not handler time, so it survives main-thread stalls.
   The long-press timer gives queued moves 60 ms to cancel it when it fires late.
+
+## ADR-015 — M2 app integration: gestures, direct editing, tiers (2026-11-08)
+
+1. **One input path per pointer type.** With `onGesture` subscribed, touch taps select through
+   the viewport's `tap` gesture and the workbench's pointer-up path ignores touch in model mode;
+   mouse clicks (they carry Shift/⌘) and Pencil taps (with `penDraws` the viewport reports no pen
+   gestures) keep pointer-up. Sketch mode keeps its own pointer path for every type. Double-tap
+   zooms to the face (`zoomTo(centroid, faceRadius / 2)`, so the face fills the view) or fits on
+   empty space, and is ignored while a sketch shape is in progress; long-press opens the context
+   bubble (view actions on empty space); two/three-finger taps undo/redo in every mode.
+2. **The context bubble hides while the camera moves** and appears 320 ms after a new selection
+   (the double-tap window). It is anchored at `worldToScreen` of the picked point, recomputed
+   when `onCamera` reports rest, so orbiting never re-renders the shell; the delay keeps a second
+   tap of a double-tap on the model instead of on a bubble that popped up under the finger. The
+   bubble's tip passes taps through. Tablet: Sketch / Push/pull (flat faces), Fillet / Chamfer
+   (edges), Extrude / Cut / Revolve (regions), Measure; phone: Measure, Section (viewer-first).
+3. **Push/pull** follows the viewport recipe (ADR-014): the arrow on the first face's centroid
+   and normal, the drag projected on the screen image of the normal (snapped to 0.1 mm), handle
+   and GPU prism updated inside the pointer handler, the chip once per frame. Faces of several
+   normals preview as one prism per normal. A press on the arrow without a drag keeps it for a
+   typed value. The preview stays up until the regen with the new feature lands (no flash of the
+   old shape). Curved faces are refused before the drag (the prism cannot show them); the
+   kernel's errors (e.g. "removes the whole body") are shown as a toast and on the feature.
+4. **"Cut" for sketch regions** (bubble): an extrude with `op: 'cut'`, reversed, through all,
+   with the profile pick field left open so more regions can be tapped. With no Hole tool yet,
+   this is how the tutorial's holes are made. A visible sketch region drawn over a face now wins a
+   tie with that face (`resolvePick`), so tapping a hole sketched on a face selects the hole.
+5. **Pencil.** Touch tiers set `penDraws`. In sketch mode a pen press draws a stroke (a pen tap
+   is a click for the active tool, a press on geometry with no tool drags it), recognised live
+   (ink + cleaned-up shape as preview entities, a shape chip by the pen) and committed through
+   `commitEdit` with the pending-click logic. Only open strokes' free ends get end-point
+   inference: a hole's circle centre must not snap onto a nearby edge. Once the Pencil has been
+   used in a sketch session, fingers no longer draw there (PLAN §9.3). Fingers can drag-to-draw
+   two-click shapes (the press is the first click). Recognition is imported from
+   `@whittle/sketch/recognize` only; the package root no longer re-exports it, since the root is
+   on the initial route and the re-export would pull the recogniser into it.
+6. **Tutorial conditions are document facts** (`app/tutorial.ts`): a sketch; a closed loop of
+   ≥ 3 lines; a driving dimension not being edited; an extrude / a cut / a fillet that rebuilt;
+   a parameter used by a feature whose value changed after it was first used; an export since
+   the tour began. The tour starts on a new part. Coach cards for targets low on the screen dock
+   at the top, and cards never cover the bubble, the value chip or the keypad.
+7. **Tiers.** `policyFor(tier)`: the regen budget goes to the worker at creation and again via
+   `configureRegen`; phones skip the fine pass and cache coarse meshes. Phones boot the kernel on
+   the first edit (`apply`), measurement or exact export, or when the document has nothing
+   cached; until then the cached meshes' first frame is the "first body" mark, and the loader only
+   shows while the kernel is actually loading. Attention markers are `setMarkers` (dashed warning
+   polylines and a dot) instead of ghost meshes.
+8. **Overlays against the chrome.** Tablet and phone stages expose `--chrome-top`,
+   `--chrome-left` and `--chrome-bottom` (the sheet's visible height at rest; on the tablet at
+   least up to the bottom-right chips); the Library button, sketch status, sketch toolbar, prompt
+   chip and toasts are placed with them. The app keeps the sheet snap and section (controlled
+   props); a sheet the app opened for the user (a new feature's inspector, Measure on a tablet)
+   collapses again on Done.
+9. **Import attachments.** Saved files (library, `.whittle`) never carry orphans: only the
+   attachments the current document references, plus all non-import extra files. In memory an
+   orphan stays while the undo/redo history still mentions its path
+   (`DocumentStoreImpl.historyMentions`), so undoing the delete always finds the bytes; once the
+   history has dropped it (it fell off the end, the redo branch was replaced, the document was
+   closed) it is pruned at the next save.
+10. **Tool groups.** Section joins Measure in the Inspect group, so Inspect is a flyout (ADR-012
+    item 4's single-tool Inspect no longer holds). `toolGroups` is the single source of truth; the
+    desktop command bar keeps PLAN §9.1's flat set (`commandBarTools`): Push/pull and Section are
+    reached from their groups, the palette, shortcuts (P) and context actions.
+11. **Cached open, profiled.** On SwiftShader the critical path is the library read (≈ 60–80 ms
+    after the main chunk evaluates), the view's creation (≈ 40–60 ms) and its first frame with
+    the cached bodies, which compiles their shaders (≈ 120–160 ms). Interleaved A/B runs (8 + 8
+    reloads per variant) found no gain beyond run-to-run noise (± 40 ms under load) for: reading
+    the library in a worker (worse: +55 ms, the worker's start-up outweighs the decode it saves),
+    creating the view without waiting for the read (much worse, as in ADR-008 item 4), fetching
+    three.js before React's first commit, deferring the idle shader warm-up past the cached frame,
+    and dropping the view cube. None of them was kept.
