@@ -381,7 +381,7 @@ export async function openLocalGitRepo(
     symlinks: false,
     writable: async () => {
       const s = await state();
-      return s.readOnly ? { code: 'CONFLICT', message: s.readOnly.message } : null;
+      return s.readOnly ? { code: 'READ_ONLY', message: s.readOnly.message } : null;
     },
     ...(options.author ? { author: options.author } : {}),
     ...(options.host ? { host: options.host } : {}),

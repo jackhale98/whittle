@@ -1043,7 +1043,7 @@ repo's commits, not a parallel `.whittle-history/`. The owner asked for this in 
 6. **Browsers.** Desktop Chromium only, because Firefox and Safari have no directory picker.
    Elsewhere, local git mode is hidden with that reason, and hosted git connections still work.
 
-## ADR-pending — Local git repo mode: the package layer (sync, ADR-029)
+## ADR-030 — Local git repo mode: the package layer (sync, ADR-029)
 
 **Context.** ADR-029 makes a picked folder with `.git` the project's history. Doing that through
 isomorphic-git over File System Access, in a repository the user also works on with their own

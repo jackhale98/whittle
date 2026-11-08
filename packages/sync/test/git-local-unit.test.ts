@@ -116,7 +116,7 @@ describe('openLocalGitRepo: read-only states', () => {
     await root.put('.git/index.lock', '');
     expect((await repo.state()).readOnly?.reason).toBe('busy');
     const busy = errorOf(await repo.history.saveVersion(files, 'x', { author }));
-    expect(busy).toMatchObject({ code: 'CONFLICT' });
+    expect(busy).toMatchObject({ code: 'READ_ONLY' });
     expect(busy.message).toMatch(/index\.lock/);
     await (await root.getDirectoryHandle('.git')).removeEntry('index.lock');
     const index = (await root.getDirectoryHandle('.git')).children.get('index') as {

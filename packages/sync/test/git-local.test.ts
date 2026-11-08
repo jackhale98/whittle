@@ -515,7 +515,7 @@ describe('local git repo: read-only states and layouts', { timeout: 30_000 }, ()
         { author: ann },
       ),
     );
-    expect(e.code).toBe('CONFLICT');
+    expect(e.code).toBe('READ_ONLY');
     expect(e.message).toMatch(/merge is in progress/);
     expect(errorOf(await repo.history.switchBranch('other')).message).toMatch(
       /merge is in progress/,
@@ -576,7 +576,7 @@ describe('local git repo: read-only states and layouts', { timeout: 30_000 }, ()
       project('Bracket'),
     );
     expect(errorOf(await repo.history.saveVersion(project(), 'x', { author: ann })).code).toBe(
-      'CONFLICT',
+      'READ_ONLY',
     );
   });
 
