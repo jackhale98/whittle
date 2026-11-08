@@ -66,3 +66,8 @@
 
 ### M2.5 — Connections and versions
 - UI: connections panel (inline add flow), sync status chip, versions, compare and merge panels with compare colour tokens; visual baselines for all tiers and themes.
+
+
+### M2.5 — Connections, sync & version control
+
+- Sync: structural three-way merge keyed by stable ids (`docMerger`, with conflicts and `resolve`), one-line feature diffs (`docDiffer`), snapshot history in `.whittle-history/` and git history on isomorphic-git (`createSnapshotHistory`, `createGitHistory`); a seeded 1,000-pair concurrent-edit fuzz test never loses an edit.

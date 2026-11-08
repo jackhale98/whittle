@@ -4,8 +4,10 @@
 /// is the last one written by the only device that changed it, or (both changed it) the one the
 /// resolver chose, and both devices and the remote agree byte for byte.
 
+import type { DocMerger } from '@whittle/contracts';
 import { PARAMS_FILE, toFiles } from '@whittle/document';
 import { afterEach, describe, expect, it } from 'vitest';
+import { docMerger } from '../../src/merge/merge';
 import { MemoryProvider } from '../../src/providers/memory';
 import { Device, LINK, remoteSnapshot } from '../support/device';
 import { makeDoc, paramOf, withParam } from '../support/project';
@@ -33,14 +35,15 @@ afterEach(() => {
 
 const totals = { conflicts: 0, races: 0, offline: 0 };
 
-async function scenario(seed: number) {
+async function scenario(seed: number, merger?: DocMerger) {
   const r = rng(seed);
   const pick = <T>(xs: readonly T[]): T => xs[Math.floor(r() * xs.length)] as T;
   const remote = new MemoryProvider();
   const doc = makeDoc(Object.fromEntries(PARAMS.map((p) => [p, '0 mm'])));
   for (const [p, b] of toFiles(doc)) remote.put(abs(p), b);
-  const a = new Device(remote);
-  const b = new Device(remote);
+  const opts = merger ? { merger } : {};
+  const a = new Device(remote, undefined, opts);
+  const b = new Device(remote, undefined, opts);
   devices.push(a, b);
   await a.sync();
   await b.sync();
@@ -122,9 +125,11 @@ async function scenario(seed: number) {
             ? null
             : file
               ? new TextDecoder().decode(x as Uint8Array)
-              : ((x as { expr?: string }).expr ?? null);
+              : typeof x === 'string'
+                ? x // the real merger reports the conflicting leaf (a parameter's expression)
+                : ((x as { expr?: string }).expr ?? null);
         const res = merge.conflicts.map((c) => {
-          const file = c.id.startsWith('file:');
+          const file = c.file !== undefined || c.id.startsWith('file:');
           const take = r() < 0.5 ? ('ours' as const) : ('theirs' as const);
           const ours = text(c.ours, file);
           const theirs = text(c.theirs, file);
@@ -190,5 +195,11 @@ describe('sync fuzz: concurrent edits on two devices', () => {
     expect(totals.conflicts).toBeGreaterThan(50);
     expect(totals.races).toBeGreaterThan(50);
     expect(totals.offline).toBeGreaterThan(20);
+  }, 120_000);
+
+  it('never loses an edit with the real structural merger (DocMerger) over 100 scenarios', async () => {
+    const before = { ...totals };
+    for (let seed = 1001; seed <= 1100; seed += 1) await scenario(seed, docMerger);
+    expect(totals.conflicts - before.conflicts).toBeGreaterThan(10);
   }, 120_000);
 });

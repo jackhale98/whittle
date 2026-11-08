@@ -929,3 +929,67 @@ Picker, not `browse()`.
 - **Diff subject icons** are inferred from the label's first word ("Fillet 3" is a fillet); hosts can pass `featureType`. Proposed contract field: `DiffSubject.featureType`.
 - **ExpressionInput `largeText`** is opt-in (16 px on touch) so existing baselines are unchanged; the merge panel uses it.
 - Panels use `density="touch"` (44 px targets, 16 px inputs) in the tablet and phone bottom sheet. They are not yet registered as shell tabs: that wiring belongs to apps/web.
+
+## ADR-026 — Structural merge details (sync B, M2.5)
+
+**Context.** ADR-020 item 5 fixes the merge rules at a high level. Implementing them on every
+array and union in `document.ts` and `sketch.ts` needed several decisions the contract leaves open.
+The 1,000-pair fuzz test made the gaps concrete.
+
+**Decision.**
+
+1. **Union variants merge whole.** An object whose `type`, `kind` or `shape` differs between any
+   two versions is a single leaf, and so is a material whose `libraryId` differs. Merging the
+   fields of two variants (an extrude `end` that is `throughAll` but keeps a `depth`) would break
+   the schema. Entity references (`{name, kind, fingerprint}`) are always leaves, because a name
+   and a fingerprint belong together.
+2. **Order is merged on the items all three versions share.** The side that reordered them wins.
+   Two different reorders, or the same new id placed differently by each side, are one `order`
+   conflict per list. Added items are woven in after the nearest preceding shared item of their
+   own version. Runs inserted at the same place are ordered by their first id (ULIDs: oldest
+   first), so `merge(b, x, y)` and `merge(b, y, x)` give the same document when nothing conflicts.
+   A delete wins over a move of the same item; that is not a conflict.
+3. **`rollbackIndex` merges as "the bar sits before feature X".** It is mapped back to an index
+   afterwards. As a number, features added on both sides would end up rolled back.
+4. **Parameter names stay unique.** A name that only theirs introduced, by adding or renaming a
+   parameter, and that clashes in the merge is a conflict on theirs' parameter. Taking "theirs"
+   there throws `MergeResolutionError`; the user types a new name instead. `meta.created` takes
+   the earlier time, and `meta.app` follows the later edit.
+5. **`resolve()` re-runs the merge with the user's choices.** It does this when it has the result
+   `merge()` returned (held in a `WeakMap`), so a restored feature returns to its own place.
+   Resolving every conflict to "theirs" gives exactly `merge(b, theirs, ours).doc`, and the fuzz
+   test checks this. A structured-cloned result falls back to patching by path. Choices that would
+   make an invalid document throw. Conflict ids are `<kind>:<pointer>`, deterministic across runs.
+6. **Whole projects.** `mergeProjectFiles` merges the model files with `DocMerger` and every other
+   file as bytes. File conflicts share the result's `conflicts` list at `/files/<path>`, with
+   `{ sha256, size }` per side. `resolveProjectFiles` applies both kinds. The sync engine can use
+   the same function.
+
+## ADR-027 — History backends (sync B, M2.5)
+
+**Decision.**
+
+1. **Snapshot history.** Automatic snapshots hang off the branch head and never become heads.
+   Pruning them therefore can't disconnect the version graph, and named versions keep a clean
+   chain. Releases are `refs/releases/<name>/<versionId>` files holding their metadata. They are
+   not empty, but they are still immutable and union-safe. If a name was released twice offline,
+   the earliest stands.
+2. **The hash is SHA-256 over `path, length, bytes`**, not over the zip. Content identity then
+   doesn't depend on fflate's DEFLATE output (FILE_FORMAT §9.3).
+3. **`log` is topological**: children come before parents, and the newest of the ready versions
+   comes first. Ordering by timestamp alone put a merge below its parent when two devices' clocks
+   disagreed.
+4. **GitHistory takes an injected isomorphic-git `fs`, `dir` and optional `gitdir`.** This is for
+   a later "local git repo" mode over the user's own checkout through File System Access.
+   - Without a remote, history works fully, and fetch, pull and push return a clear `NOT_FOUND`.
+   - Refs, the index and the working tree are read on every call. `refresh()` drops cached
+     packfile reads.
+   - Whittle only writes the paths it owns (model, `imports/`, `previews/`, `releases/`), so a
+     README or CI config in the repository is never deleted or overwritten by a save.
+5. **Git fetches all refs with tags.** isomorphic-git's `singleBranch` fetch never requests
+   annotated tag objects, so releases made on another device would not arrive. Project
+   repositories are small.
+6. **Git automatic snapshots are local commits** under `refs/whittle/auto/<oid>`. They are never
+   pushed, so a GitHub history only shows the versions people named.
+7. **Tests use LightningFS on fake-indexeddb** (the production fs, in memory) and a real
+   `git http-backend`, as Mycelium's tests do.

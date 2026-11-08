@@ -4,7 +4,7 @@
   "private": true,
   "license": "GPL-3.0-or-later",
   "type": "module",
-  "description": "Connections and background sync: storage providers (folder, Dropbox, OneDrive/SharePoint, WebDAV, Google Drive), credential vault, OAuth PKCE and the sync engine (PLAN §8A).",
+  "description": "Connections, sync and version control (PLAN §8A): storage providers, credential vault, OAuth PKCE, the sync engine, structural merge and feature diff, snapshot and git history. Ported in part from Mycelium (GPL-3.0-or-later).",
   "exports": {
     ".": "./src/index.ts"
   },
@@ -13,11 +13,16 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@isomorphic-git/lightning-fs": "4.10.3",
     "@whittle/contracts": "workspace:*",
     "@whittle/document": "workspace:*",
-    "idb": "8.0.4"
+    "@whittle/sketch": "workspace:*",
+    "buffer": "6.0.3",
+    "idb": "8.0.4",
+    "isomorphic-git": "1.44.3"
   },
   "devDependencies": {
+    "ajv": "8.20.0",
     "fake-indexeddb": "6.2.7"
   }
 }

@@ -341,3 +341,116 @@ returns `{ values, errors }` keyed by JSON pointer, in millimetres / radians.
    parameter names, `rollbackIndex` in range, known feature types, and that every `Expr` field
    is a string. Semantic problems (an expression that does not evaluate, an unresolved reference)
    are *not* load errors; they surface in the UI as inline errors / "needs attention".
+
+## 9. Version history (`.whittle-history/`)
+
+Projects stored on cloud drives or only on the device keep their history in `.whittle-history/`
+beside the model (PLAN §8A.3, ADR-020). It syncs with the project like any other file. Git
+projects use git itself instead (§9.6). The reference implementation is `SnapshotHistory` in
+`packages/sync`.
+
+### 9.1 Layout
+
+```
+.whittle-history/
+├─ versions/<versionId>.json            one file per version: metadata (immutable)
+├─ snapshots/<sha256>.zip               the project files of a version (content-addressed, immutable)
+└─ refs/
+   ├─ heads/<branch>/<versionId>        one empty file per branch head
+   └─ releases/<release>/<versionId>    one file per release: its metadata (immutable)
+```
+
+- **Append-only.** Every file is created once and never edited, and is named by what it holds.
+  Two devices adding versions offline therefore merge by **union**, with no conflicts. The only
+  removals are a head ref replaced by a newer version of the same branch, and pruning (§9.5).
+- `<versionId>` is a ULID. `<branch>` and `<release>` are the names people typed, encoded as one
+  path segment: `A–Z a–z 0–9 _ -` are kept and every other UTF-8 byte is written `%XX` (uppercase
+  hex). For example, `Rev A` becomes `Rev%20A`. The encoding is safe on every file service and
+  reversible.
+- `.whittle-history/` is never part of a version: it is excluded from snapshots and from hashes,
+  and so is the `.whittle/` cache.
+
+### 9.2 `versions/<id>.json`
+
+Canonical JSON (§2):
+
+```jsonc
+{
+  "at": "2026-05-01T12:00:00.000Z",      // ISO-8601, when it was saved
+  "author": { "email": "ann@example.com", "name": "Ann" },
+  "auto": true,                          // optional: an automatic snapshot (§9.4)
+  "branch": "main",                      // the branch it was saved on
+  "format": "whittle-version",
+  "hash": "9f2c…",                       // §9.3; also names its snapshot
+  "id": "01J…",
+  "message": "Thinner wall",
+  "parents": ["01J…"]                    // [] for the first version, two for a merge
+}
+```
+
+The versions form a commit graph: each one has its parents, message, author, time and content
+hash.
+
+### 9.3 Content hash and snapshots
+
+`hash` is the lowercase hex SHA-256 over the version's files, in ascending UTF-16 path order.
+`.whittle/` and `.whittle-history/` are excluded. Each file contributes the following bytes:
+
+```
+utf8(path) 0x00 utf8(decimal byte length) 0x00 bytes
+```
+
+The hash doesn't depend on compression, so identical content gives an identical hash on every
+device, in both history backends, and across library versions. `snapshots/<hash>.zip` holds the
+files as a deterministic `.whittle` archive (§3, without the cache). Readers recompute the hash
+after unpacking and reject a snapshot that doesn't match. Saving content whose hash equals the
+current head's returns that head; no new version is written.
+
+### 9.4 Branches, heads and automatic snapshots
+
+- A branch is the set of `refs/heads/<branch>/*` files whose versions exist. A head that is an
+  ancestor of another head of the same branch is stale (a sync brought back an old ref) and is
+  ignored.
+- A branch with **two or more heads** is *diverged*. This happens when two devices saved offline.
+  `branches()` lists the branch once per head. A merge version with both heads as parents joins
+  them.
+- Which branch and version a device is on is local state, not stored here.
+- **Automatic snapshots** (`auto: true`) have the branch head as their parent but never become
+  heads, and nothing has them as a parent. They are listed per branch by their `branch` field.
+
+### 9.5 Pruning
+
+Only automatic snapshots are ever removed, according to `PrunePolicy`:
+
+- keep all of them for `keepAllForMs` (default 1 day);
+- then keep the newest one per hour until `hourlyForMs` (default 7 days);
+- then keep the newest one per day.
+
+Buckets are per branch. Named versions are never pruned, and neither is anything a release
+refers to. Pruning deletes the version file, and the snapshot as well unless another remaining
+version has the same hash. A pruned snapshot reads as "not found".
+
+### 9.6 Releases
+
+`refs/releases/<release>/<versionId>` holds canonical JSON:
+
+```json
+{ "at": "…", "author": { "name": "Ann" }, "files": ["releases/rev-a/bracket.step"], "format": "whittle-release", "name": "Rev A", "versionId": "01J…" }
+```
+
+- The frozen exports are written once under `releases/<slug>/` in the project (slug as in §1).
+- A release can't be changed or reused: releasing a name that exists, or into a folder that
+  already holds files, is refused.
+- If two devices release the same name offline, the earliest `at` stands. Ties go to the smaller
+  version id.
+
+**Git projects.** Versions are commits, branches are git branches and releases are annotated
+tags:
+
+- The tag name is the release name made ref-safe (`Rev A` → `Rev-A`).
+- The tag message starts with the release name, and has one `Whittle-Release-File: <path>`
+  trailer per frozen export. The exports are committed to the branch.
+- Automatic snapshots are commits under the local ref `refs/whittle/auto/<oid>`. They are never
+  pushed; pruning deletes the refs.
+- Whittle only writes the paths it owns: the model files, `imports/`, `previews/` and
+  `releases/`. Every other file in the repository is carried through unchanged.

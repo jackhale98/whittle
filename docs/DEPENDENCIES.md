@@ -25,6 +25,11 @@ bundled package's licence text plus OCCT's LGPL-2.1 + exception (texts in `licen
 | `ulid` | 3.0.2 | MIT | < 1 KB | sketch | |
 | `fflate` | 0.8.3 | MIT | ≈ 8 KB | document, io, kernel-client | Zip for 3MF and `.whittle` |
 | `idb` | 8.0.4 | ISC | ≈ 1.2 KB | io (browser), sync | IndexedDB wrapper for the local library; sync's credential vault, sync state and merge bases, folder handles |
+
+| `idb` | 8.0.4 | ISC | ≈ 1.2 KB | io (browser) | IndexedDB wrapper for the local library |
+| `isomorphic-git` | 1.44.3 | MIT (deps MIT, Apache-2.0, BSD-3-Clause, Zlib) | ≈ 97 KB with the next two (lazy chunk, git connections only) | sync (`GitHistory`) | Pinned to Mycelium's version. Clone, fetch, pull, push, tags in the browser |
+| `@isomorphic-git/lightning-fs` | 4.10.3 | MIT (dep `@isomorphic-git/idb-keyval` Apache-2.0) | (in the above, ≈ 7.5 KB) | sync (`browserGitFs`) | IndexedDB filesystem for cloned repositories. Pinned to Mycelium's version |
+| `buffer` | 6.0.3 | MIT | (in the above, ≈ 13 KB) | sync (git polyfill) | isomorphic-git needs Node's `Buffer` in browsers and workers |
 | Kernel artefacts `whittle-kernel{,-st}.{js,wasm}` | OCCT 8.0.1 | LGPL-2.1-only WITH Open-CASCADE-Exception-1.0 | ≈ 3.7 MB brotli / 5.3 MB gzip each since M1 (STEP/XCAF); lazy, runtime-cached | kernel | Built reproducibly from `packages/kernel` |
 
 ## Kernel toolchain (build-time, Docker)
@@ -52,6 +57,7 @@ bundled package's licence text plus OCCT's LGPL-2.1 + exception (texts in `licen
 | `jsdom` | 31.0.0 | MIT |
 | `fake-indexeddb` | 6.2.7 | Apache-2.0 |
 | `ajv` | 8.20.0 | MIT |
+| system `git` (not an npm package; `git http-backend` serves the sync tests' local repositories) | ≥ 2.34 | GPL-2.0-only (run as a separate program, not linked or shipped) |
 | `ts-json-schema-generator` | 2.9.0 | MIT |
 | `@testing-library/react`, `jest-dom`, `user-event` | 16.3.3, 7.0.1, 14.6.8 | MIT |
 | `@types/three`, `@types/react`, `@types/react-dom` | 0.187.0, 19.3.0, 19.3.0 | MIT |
