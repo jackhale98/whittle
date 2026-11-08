@@ -3,7 +3,7 @@ import { expect, type Page, test } from '@playwright/test';
 
 type Tier = 'desktop' | 'tablet' | 'phone';
 const themes = ['light', 'dark'] as const;
-const sections = ['tree', 'params', 'expr', 'inspectors', 'sketch', 'chooser'] as const;
+const sections = ['tree', 'nested', 'params', 'expr', 'inspectors', 'sketch', 'chooser'] as const;
 
 async function gallery(page: Page, tier: string, theme: string, section: string) {
   await page.goto(`/?view=gallery&section=${section}&shell=${tier}&theme=${theme}`);
