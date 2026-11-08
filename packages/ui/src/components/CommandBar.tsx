@@ -4,8 +4,11 @@ import { cn, Tooltip } from './primitives';
 import { COMING_SOON, type ToolId, tools } from './tools';
 
 export interface CommandBarProps {
-  /** Highlights a tool (visual state only; tools are not wired until M1). */
+  /** Highlights a tool. */
   activeTool?: ToolId | null;
+  /** Tools that are wired up; every other tool stays disabled with a "Coming in M1" hint. */
+  enabledTools?: readonly ToolId[];
+  onTool?(tool: ToolId): void;
   /** "More" opens the command palette. */
   onMore?: () => void;
   /** `bar` = labelled bottom-centre bar (desktop); `rail` = icon-only vertical rail (tablet). */
@@ -22,6 +25,8 @@ const itemBase =
  */
 export function CommandBar({
   activeTool = null,
+  enabledTools,
+  onTool,
   onMore,
   layout = 'bar',
   className,
@@ -39,22 +44,27 @@ export function CommandBar({
     >
       {tools.map(({ id, label, shortcut, Icon }) => {
         const active = activeTool === id;
+        const enabled = !!enabledTools?.includes(id);
         return (
           <Tooltip
             key={id}
-            content={`${label} — ${COMING_SOON}`}
+            content={enabled ? label : `${label} — ${COMING_SOON}`}
             shortcut={shortcut}
             side={rail ? 'right' : 'top'}
           >
             <RToolbar.Button
               aria-label={label}
-              aria-disabled="true"
-              aria-pressed={active || undefined}
+              aria-disabled={enabled ? undefined : 'true'}
+              aria-pressed={enabled ? active : undefined}
               data-tool={id}
-              onClick={(e) => e.preventDefault()}
+              onClick={(e) => {
+                if (enabled) onTool?.(id);
+                else e.preventDefault();
+              }}
               className={cn(
                 itemBase,
                 rail ? 'size-11' : 'h-[52px] w-[58px]',
+                enabled && 'aria-disabled:opacity-100',
                 active && 'bg-accent-soft text-accent-text',
               )}
             >

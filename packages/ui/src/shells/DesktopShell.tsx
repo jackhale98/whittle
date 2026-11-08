@@ -1,7 +1,6 @@
 import * as RTabs from '@radix-ui/react-tabs';
 import {
   ChevronDown,
-  Download,
   GitBranch,
   ListTree,
   MousePointer2,
@@ -14,11 +13,14 @@ import { type KeyboardEvent, type PointerEvent, useRef, useState } from 'react';
 import { CommandBar } from '../components/CommandBar';
 import { Button, cn, IconButton, Kbd, Separator, Tooltip } from '../components/primitives';
 import { StatusChip } from '../components/StatusChip';
+import { FeatureTree } from '../features/FeatureTree';
 import { reducedTransition, useSpring } from '../motion';
 import {
   DiagnosticsList,
   EmptyState,
+  ExportControl,
   Mark,
+  ParamsPanel,
   ShellRoot,
   ThemeToggle,
   UndoRedo,
@@ -45,7 +47,17 @@ function SectionTitle({ children }: { children: string }) {
 }
 
 export function DesktopShell(props: ShellProps) {
-  const { documentName, kernelStatus, viewport, diagnostics, onUndo, onRedo, onExport } = props;
+  const {
+    documentName,
+    kernelStatus,
+    viewport,
+    diagnostics,
+    onUndo,
+    onRedo,
+    featureTree,
+    paramsTable,
+    inspector,
+  } = props;
   const [leftOpen, setLeftOpen] = useState(true);
   const [rightOpen, setRightOpen] = useState(true);
   const [leftWidth, setLeftWidth] = useState(LEFT_DEFAULT);
@@ -114,14 +126,7 @@ export function DesktopShell(props: ShellProps) {
                 <span className="sr-only">Version menu</span>
               </Button>
             </Tooltip>
-            <Button
-              variant="secondary"
-              onClick={onExport}
-              icon={<Download className="size-4" />}
-              className="ml-1"
-            >
-              Export
-            </Button>
+            <ExportControl props={props} className="ml-1" />
             <Separator orientation="vertical" className="mx-1.5" />
             <ThemeToggle theme={core.theme} />
             <IconButton
@@ -163,18 +168,26 @@ export function DesktopShell(props: ShellProps) {
                     </RTabs.List>
                   </div>
                   <RTabs.Content value="features" className="min-h-0 flex-1 overflow-y-auto">
-                    <EmptyState icon={ListTree} title="No features yet">
-                      <p>Start with a sketch on a plane.</p>
-                      <p className="mt-2 inline-flex items-center gap-1.5">
-                        Press <Kbd>S</Kbd> to begin
-                      </p>
-                    </EmptyState>
+                    {featureTree ? (
+                      <FeatureTree {...featureTree} />
+                    ) : (
+                      <EmptyState icon={ListTree} title="No features yet">
+                        <p>Start with a sketch on a plane.</p>
+                        <p className="mt-2 inline-flex items-center gap-1.5">
+                          Press <Kbd>S</Kbd> to begin
+                        </p>
+                      </EmptyState>
+                    )}
                   </RTabs.Content>
                   <RTabs.Content value="params" className="min-h-0 flex-1 overflow-y-auto">
-                    <EmptyState icon={Variable} title="No parameters">
-                      <p>Name a dimension to reuse it. Values accept expressions like</p>
-                      <p className="tnum mt-1.5 font-medium text-fg">25mm + 1/8in</p>
-                    </EmptyState>
+                    {paramsTable ? (
+                      <ParamsPanel {...paramsTable} />
+                    ) : (
+                      <EmptyState icon={Variable} title="No parameters">
+                        <p>Name a dimension to reuse it. Values accept expressions like</p>
+                        <p className="tnum mt-1.5 font-medium text-fg">25mm + 1/8in</p>
+                      </EmptyState>
+                    )}
                   </RTabs.Content>
                 </RTabs.Root>
                 {/* biome-ignore lint/a11y/useSemanticElements: an <hr> cannot be a focusable resize handle */}
@@ -215,7 +228,12 @@ export function DesktopShell(props: ShellProps) {
                   </div>
                   {/* Top-right is intentionally free: the view cube mounts there. */}
                   <div className="absolute bottom-4 left-1/2 -translate-x-1/2">
-                    <CommandBar onMore={core.openPalette} />
+                    <CommandBar
+                      onMore={core.openPalette}
+                      enabledTools={props.enabledTools}
+                      activeTool={props.activeTool}
+                      onTool={props.onTool}
+                    />
                   </div>
                 </>
               }
@@ -234,9 +252,19 @@ export function DesktopShell(props: ShellProps) {
               <div className="flex h-full pl-2" style={{ width: RIGHT_WIDTH + GUTTER }}>
                 <div className="w-card flex min-w-0 flex-1 flex-col overflow-hidden">
                   <SectionTitle>Inspector</SectionTitle>
-                  <EmptyState icon={MousePointer2} title="Nothing selected" className="flex-1 pt-6">
-                    Select a face, edge or feature to see its properties.
-                  </EmptyState>
+                  {inspector ? (
+                    <div className="min-h-0 flex-1 overflow-y-auto" data-testid="inspector-slot">
+                      {inspector}
+                    </div>
+                  ) : (
+                    <EmptyState
+                      icon={MousePointer2}
+                      title="Nothing selected"
+                      className="flex-1 pt-6"
+                    >
+                      Select a face, edge or feature to see its properties.
+                    </EmptyState>
+                  )}
                   {diagnostics ? (
                     <div className="border-t border-border px-4 py-3">
                       <h3 className="pb-2 text-2xs font-semibold tracking-wider text-fg-muted uppercase">

@@ -2,7 +2,8 @@ import { Box, Download, Ruler, Scissors, SlidersHorizontal } from 'lucide-react'
 import { type ComponentType, useState } from 'react';
 import { Button, cn } from '../components/primitives';
 import { StatusChip } from '../components/StatusChip';
-import { BottomSheet, EmptyState, Mark, ShellRoot, ViewportStage } from './shared';
+import { ExportPanel } from '../export/ExportMenu';
+import { BottomSheet, EmptyState, Mark, ParamsPanel, ShellRoot, ViewportStage } from './shared';
 import type { ShellProps } from './types';
 
 type SheetTab = 'parts' | 'params' | 'measure' | 'section' | 'export';
@@ -54,7 +55,7 @@ const sheetTabs: Array<{
 const PEEK = 24 + 64;
 
 export function PhoneShell(props: ShellProps) {
-  const { documentName, kernelStatus, viewport, onExport } = props;
+  const { documentName, kernelStatus, viewport, onExport, paramsTable, onExportRequest } = props;
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<SheetTab>('parts');
 
@@ -123,8 +124,24 @@ export function PhoneShell(props: ShellProps) {
                 }
               >
                 <div className="px-2 pb-4" data-testid="sheet-content">
+                  {tab === 'params' && paramsTable ? (
+                    <ParamsPanel {...paramsTable} density="touch" />
+                  ) : null}
+                  {tab === 'export' && onExportRequest ? (
+                    <div className="px-3 pt-1 pb-4">
+                      <ExportPanel
+                        onExport={onExportRequest}
+                        bodies={props.exportBodies}
+                        unavailable={props.exportUnavailable}
+                        busy={props.exportBusy}
+                        size="touch"
+                      />
+                    </div>
+                  ) : null}
                   {sheetTabs.map(({ id, Icon, title, body }) =>
-                    id === tab ? (
+                    id === tab &&
+                    !(id === 'params' && paramsTable) &&
+                    !(id === 'export' && onExportRequest) ? (
                       <EmptyState key={id} icon={Icon} title={title}>
                         {body}
                         {id === 'export' ? (
