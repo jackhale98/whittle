@@ -116,7 +116,8 @@ export type Feature =
   | ChamferFeature
   | BooleanFeature
   | PushPullFeature
-  | PlaneFeature;
+  | PlaneFeature
+  | ImportFeature;
 
 export type FeatureType = Feature['type'];
 
@@ -228,6 +229,31 @@ export interface PushPullFeature extends FeatureBase {
   type: 'pushPull';
   faces: EntityRef[];
   distance: Expr;
+}
+
+/**
+ * A body imported from a file (STEP/IGES/BREP solids, or STL/OBJ/3MF/GLB meshes as reference
+ * bodies). The file's bytes live in the project folder at `source.path` (an attachment, e.g.
+ * `imports/<featureId>.step`), never inline in the JSON, so documents stay diffable. `sha256`
+ * (hex) identifies the bytes for caching and integrity.
+ *
+ * Imported faces have no construction history; the regen engine names them
+ * `F<id>:face#k` ordered by the deterministic geometric key in naming.ts, and downstream references
+ * to them rely on fingerprints when the file is replaced.
+ */
+export interface ImportFeature extends FeatureBase {
+  type: 'import';
+  source: {
+    path: string;
+    format: 'step' | 'iges' | 'brep' | 'stl' | 'obj' | '3mf' | 'glb';
+    sha256: string;
+    /** Original file name, for display. */
+    fileName: string;
+  };
+  /** Placement of the imported geometry (mm); default identity. */
+  frame?: Frame;
+  op: BodyOp;
+  scope?: BodyScope;
 }
 
 export interface PlaneFeature extends FeatureBase {

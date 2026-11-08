@@ -84,6 +84,11 @@ export interface SketchResult {
 export interface RegenRequest {
   doc: WhittleDoc;
   partId: Id;
+  /**
+   * Attachment bytes referenced by features (ImportFeature.source.path → bytes). Only needed the
+   * first time a path/sha is seen; the engine caches imported shapes by sha256.
+   */
+  attachments?: Record<string, Uint8Array>;
   quality: MeshQuality;
   /** Compute mass properties for every body (always on when the part has a material). */
   massProperties?: boolean;

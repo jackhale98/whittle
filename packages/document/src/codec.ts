@@ -304,7 +304,12 @@ const MODEL_PATH = /^(whittle\.project\.json|params\.json|(parts|drawings|assemb
 export const projectCodec: ProjectCodec = {
   toFiles,
   fromFiles,
-  toWhittle: (doc, cache) => packFiles(toFiles(doc), cache),
+  toWhittle: (doc, cache, extra) => {
+    const files = toFiles(doc);
+    // Attachments and other non-model files (imports/, previews/, releases/) ride along.
+    if (extra) for (const [path, data] of extra) if (!MODEL_PATH.test(path)) files.set(path, data);
+    return packFiles(files, cache);
+  },
   fromWhittle(bytes) {
     const { files, cache } = unpackFiles(bytes);
     // Files outside the document model (previews/, releases/, …) are returned so a round trip

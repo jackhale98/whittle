@@ -608,6 +608,9 @@
         },
         {
           "$ref": "#/definitions/PlaneFeature"
+        },
+        {
+          "$ref": "#/definitions/ImportFeature"
         }
       ]
     },
@@ -1045,6 +1048,84 @@
     "Id": {
       "description": "ULID (26-char Crockford base32).",
       "type": "string"
+    },
+    "ImportFeature": {
+      "additionalProperties": false,
+      "description": "A body imported from a file (STEP/IGES/BREP solids, or STL/OBJ/3MF/GLB meshes as reference bodies). The file's bytes live in the project folder at `source.path` (an attachment, e.g. `imports/<featureId>.step`), never inline in the JSON, so documents stay diffable. `sha256` (hex) identifies the bytes for caching and integrity.\n\nImported faces have no construction history; the regen engine names them `F<id>:face#k` ordered by the deterministic geometric key in naming.ts, and downstream references to them rely on fingerprints when the file is replaced.",
+      "properties": {
+        "annotations": {
+          "items": {
+            "$ref": "#/definitions/PmiAnnotation"
+          },
+          "type": "array"
+        },
+        "frame": {
+          "$ref": "#/definitions/Frame",
+          "description": "Placement of the imported geometry (mm); default identity."
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "name": {
+          "type": "string"
+        },
+        "op": {
+          "$ref": "#/definitions/BodyOp"
+        },
+        "scope": {
+          "$ref": "#/definitions/BodyScope"
+        },
+        "source": {
+          "additionalProperties": false,
+          "properties": {
+            "fileName": {
+              "description": "Original file name, for display.",
+              "type": "string"
+            },
+            "format": {
+              "enum": [
+                "step",
+                "iges",
+                "brep",
+                "stl",
+                "obj",
+                "3mf",
+                "glb"
+              ],
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            },
+            "sha256": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "path",
+            "format",
+            "sha256",
+            "fileName"
+          ],
+          "type": "object"
+        },
+        "suppressed": {
+          "type": "boolean"
+        },
+        "type": {
+          "const": "import",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "op",
+        "source",
+        "suppressed",
+        "type"
+      ],
+      "type": "object"
     },
     "Material": {
       "additionalProperties": false,

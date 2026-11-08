@@ -3,6 +3,7 @@ import {
   ArrowUpFromLine,
   Box,
   Combine,
+  FileInput,
   Layers,
   MoveVertical,
   PenLine,
@@ -28,4 +29,5 @@ export const featureMeta: Record<FeatureType, FeatureMeta> = {
   boolean: { label: 'Boolean', Icon: Combine },
   pushPull: { label: 'Push/Pull', Icon: MoveVertical },
   plane: { label: 'Plane', Icon: Layers },
+  import: { label: 'Import', Icon: FileInput },
 };

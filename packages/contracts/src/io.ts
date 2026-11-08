@@ -6,6 +6,12 @@
 import type { Id, WhittleDoc } from './document';
 import type { MeshBuffers } from './kernel';
 
+/**
+ * Attachments: binary project files referenced by features (e.g. `imports/<featureId>.step`).
+ * `ProjectCodec.toWhittle/fromWhittle` carry them in `extra`; libraries must persist `extra` and
+ * the `.whittle/` cache with the document (opening and re-saving never drops files).
+ */
+
 /** A project as its canonical folder: relative POSIX path → file bytes. */
 export type ProjectFiles = Map<string, Uint8Array>;
 
@@ -14,7 +20,7 @@ export interface ProjectCodec {
   toFiles(doc: WhittleDoc): ProjectFiles;
   fromFiles(files: ProjectFiles): WhittleDoc;
   /** `.whittle` = the folder zipped (fflate). Cache (`.whittle/`) entries are optional. */
-  toWhittle(doc: WhittleDoc, cache?: ProjectFiles): Uint8Array;
+  toWhittle(doc: WhittleDoc, cache?: ProjectFiles, extra?: ProjectFiles): Uint8Array;
   /** `extra` holds project files outside the document model (previews/, releases/), kept on round trips. */
   fromWhittle(bytes: Uint8Array): { doc: WhittleDoc; cache: ProjectFiles; extra?: ProjectFiles };
 }
@@ -40,12 +46,12 @@ export interface LibraryEntry {
 /** Local document library (IndexedDB metadata + OPFS blobs). */
 export interface LocalLibrary {
   list(): Promise<LibraryEntry[]>;
-  open(id: Id): Promise<{ doc: WhittleDoc; cache: ProjectFiles }>;
+  open(id: Id): Promise<{ doc: WhittleDoc; cache: ProjectFiles; extra: ProjectFiles }>;
   save(
     doc: WhittleDoc,
     cache?: ProjectFiles,
     thumbnail?: Uint8Array,
-    options?: { id?: Id },
+    options?: { id?: Id; extra?: ProjectFiles },
   ): Promise<LibraryEntry>;
   remove(id: Id): Promise<void>;
   search(query: string): Promise<LibraryEntry[]>;

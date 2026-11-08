@@ -138,6 +138,8 @@ function ownExprFields(f: Feature): ExprField[] {
       return f.definition.kind === 'offset'
         ? [{ pointer: '/definition/distance', expected: 'length' }]
         : [];
+    case 'import':
+      return [];
     default: {
       const _never: never = f;
       return _never;
@@ -179,6 +181,9 @@ export function entityRefs(f: Feature): EntityRef[] {
       break;
     case 'plane':
       if (f.definition.kind === 'offset') refs.push(f.definition.from);
+      break;
+    case 'import':
+      scope(f.scope);
       break;
     default: {
       const _never: never = f;

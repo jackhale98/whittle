@@ -601,6 +601,8 @@ export function createFakeModeling(kernel: KernelPort, options: FakeModelingOpti
       }
       case 'pushPull':
         return fail(err('UNSUPPORTED_FEATURE', 'Push/pull arrives in M2'));
+      case 'import':
+        return fail(err('UNSUPPORTED_FEATURE', 'Import needs the real engine'));
       default: {
         const _never: never = f;
         return _never;

@@ -5,8 +5,8 @@ import { type DBSchema, type IDBPDatabase, openDB } from 'idb';
 
 /** The subset of `ProjectCodec` (packages/document) the library needs; inject any instance. */
 export interface LibraryCodec {
-  toWhittle(doc: WhittleDoc, cache?: ProjectFiles): Uint8Array;
-  fromWhittle(bytes: Uint8Array): { doc: WhittleDoc; cache: ProjectFiles };
+  toWhittle(doc: WhittleDoc, cache?: ProjectFiles, extra?: ProjectFiles): Uint8Array;
+  fromWhittle(bytes: Uint8Array): { doc: WhittleDoc; cache: ProjectFiles; extra?: ProjectFiles };
 }
 
 export type LibraryErrorCode = 'quota' | 'not-found' | 'storage' | 'corrupt';
@@ -220,7 +220,7 @@ export class IdbLibrary implements LocalLibrary {
     return q ? all.filter((e) => e.name.toLowerCase().includes(q)) : all;
   }
 
-  async open(id: Id): Promise<{ doc: WhittleDoc; cache: ProjectFiles }> {
+  async open(id: Id): Promise<{ doc: WhittleDoc; cache: ProjectFiles; extra: ProjectFiles }> {
     let meta: MetaRecord | undefined;
     let bytes: Uint8Array | undefined;
     try {
@@ -233,7 +233,8 @@ export class IdbLibrary implements LocalLibrary {
       throw new LibraryError('not-found', 'That document is no longer in the library.');
     }
     try {
-      return this.opts.codec.fromWhittle(bytes);
+      const r = this.opts.codec.fromWhittle(bytes);
+      return { doc: r.doc, cache: r.cache, extra: r.extra ?? new Map() };
     } catch (e) {
       throw new LibraryError(
         'corrupt',
@@ -251,9 +252,9 @@ export class IdbLibrary implements LocalLibrary {
     doc: WhittleDoc,
     cache?: ProjectFiles,
     thumbnail?: Uint8Array,
-    options: { id?: Id } = {},
+    options: { id?: Id; extra?: ProjectFiles } = {},
   ): Promise<LibraryEntry> {
-    const bytes = this.opts.codec.toWhittle(doc, cache);
+    const bytes = this.opts.codec.toWhittle(doc, cache, options.extra);
     const name = doc.meta.name || 'Untitled';
     let id = options.id ?? (doc.meta as { id?: unknown }).id;
     let prev: MetaRecord | undefined;
