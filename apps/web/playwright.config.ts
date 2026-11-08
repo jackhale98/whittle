@@ -30,6 +30,8 @@ export default defineConfig({
       testMatch: /.*\.spec\.ts/,
       use: {
         ...devices['Desktop Firefox'],
+        // CI runs Firefox headed under Xvfb (see ci.yml) so it gets Mesa's software GL.
+        headless: !process.env.WHITTLE_HEADED,
         // GPU-less CI runners: headless Firefox refuses WebGL unless software GL is allowed
         // ("this.gl is null" in the viewport). Real Firefox with a GPU needs none of this.
         launchOptions: {
