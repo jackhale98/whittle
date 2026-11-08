@@ -39,6 +39,39 @@ async function tabletBox(page: Page) {
 
 const bubble = (page: Page) => page.getByTestId('context-bubble');
 
+/**
+ * A point on the canvas with no geometry under it and no panel over it. After a zoom the part can
+ * fill most of the view, and where exactly depends on the renderer, so "empty space" is searched
+ * for rather than assumed.
+ */
+async function emptySpot(page: Page): Promise<{ x: number; y: number }> {
+  const spot = await page.evaluate(() => {
+    const v = (
+      window as unknown as {
+        __whittleViewport: { pick(x: number, y: number, o: object): unknown[] };
+      }
+    ).__whittleViewport;
+    const canvas = document.querySelector('[data-testid="viewport-canvas"]') as HTMLElement;
+    const r = canvas.getBoundingClientRect();
+    for (let fy = 0.25; fy <= 0.85; fy += 0.05) {
+      for (let fx = 0.95; fx >= 0.15; fx -= 0.05) {
+        const x = r.left + r.width * fx;
+        const y = r.top + r.height * fy;
+        if (document.elementFromPoint(x, y) !== canvas) continue; // a panel or chip is there
+        const hits = v.pick(x - r.left, y - r.top, {
+          kinds: ['face', 'edge', 'vertex'],
+          tolerancePx: 30,
+          all: true,
+        });
+        if (hits.length === 0) return { x, y };
+      }
+    }
+    return null;
+  });
+  if (!spot) throw new Error('no empty spot on the canvas');
+  return spot;
+}
+
 test('touch taps select once; bubble; double-tap zoom; long-press; 2/3-finger undo/redo', async ({
   page,
 }) => {
@@ -71,7 +104,7 @@ test('touch taps select once; bubble; double-tap zoom; long-press; 2/3-finger un
   await cameraStill(page);
   const near = (await cameraState(page)).distance;
   expect(near).toBeLessThan(far * 0.9);
-  await t.doubleTap({ x: 1100, y: 160 });
+  await t.doubleTap(await emptySpot(page));
   await cameraStill(page);
   expect((await cameraState(page)).distance).toBeGreaterThan(near * 1.1);
 
