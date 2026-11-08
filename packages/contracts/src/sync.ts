@@ -14,7 +14,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import type { Id, Vec3, WhittleDoc } from './document';
+import type { FeatureType, Id, Vec3, WhittleDoc } from './document';
 import type { ProjectFiles } from './io';
 import type { KernelError, MassProperties, MeshBuffers } from './kernel';
 import type { JsonPointer } from './store';
@@ -260,6 +260,8 @@ export interface DiffSubject {
   partId?: Id;
   /** For sketch entities and constraints: the sketch feature. */
   featureId?: Id;
+  /** For features: its type, so the UI can show the feature's icon. */
+  featureType?: FeatureType;
   /** Display name at the time of the change: "Fillet 3", "width", "Line 2 in Sketch 1". */
   label: string;
 }

@@ -62,3 +62,7 @@
 ### M2.5 — Connections, sync & version control
 
 - Sync: `@whittle/sync` providers (local folder, Dropbox, OneDrive/SharePoint, WebDAV with the Worker relay; Google Drive sign-in, provider stubbed), encrypted `CredentialVault`, OAuth PKCE by full-page redirect, and a `SyncEngine` that pulls deltas, merges project JSON by stable id, pushes against revisions (never overwrites), debounces, polls, syncs on focus and reconnect and keeps an offline queue; ported from Mycelium.
+
+
+### M2.5 — Connections and versions
+- UI: connections panel (inline add flow), sync status chip, versions, compare and merge panels with compare colour tokens; visual baselines for all tiers and themes.

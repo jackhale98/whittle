@@ -223,6 +223,45 @@ export {
   sketchTools,
 } from './sketch/SketchToolbar';
 export {
+  type CompareOverlay,
+  ComparePanel,
+  type ComparePanelProps,
+  inferFeatureType,
+} from './sync/ComparePanel';
+export {
+  type ConnectionHealth,
+  type ConnectionItem,
+  ConnectionsPanel,
+  type ConnectionsPanelProps,
+  type FolderBrowse,
+  type ProviderOption,
+  providerMeta,
+  type TokenForm,
+  type WebDavForm,
+} from './sync/ConnectionsPanel';
+export {
+  defaultDescribeValue,
+  defaultIsExpression,
+  type MergeChoice,
+  MergePanel,
+  type MergePanelProps,
+} from './sync/MergePanel';
+export {
+  describeSyncStatus,
+  type SyncAction,
+  type SyncDescription,
+  SyncStatusChip,
+  type SyncStatusChipProps,
+  type SyncTone,
+} from './sync/SyncStatusChip';
+export { plural, relativeTime, relativeTimeShort, type SyncDensity } from './sync/shared';
+export {
+  type DivergedNotice,
+  suggestReleaseName,
+  VersionsPanel,
+  type VersionsPanelProps,
+} from './sync/VersionsPanel';
+export {
   applyTheme,
   initTheme,
   readStoredTheme,

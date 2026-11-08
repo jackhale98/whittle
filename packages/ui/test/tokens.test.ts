@@ -79,6 +79,12 @@ const pairs: Pair[] = [
   ['underConstrained', 'viewportBottom', 3, 'under-constrained geometry'],
   ['fullyConstrained', 'viewportTop', 3, 'fully-constrained geometry'],
   ['fullyConstrained', 'viewportBottom', 3, 'fully-constrained geometry'],
+  ['compareAdded', 'surface', 4.5, 'added text on panels'],
+  ['compareAdded', 'compareAddedSoft', 4.5, 'added text on its soft fill'],
+  ['compareRemoved', 'surface', 4.5, 'removed text on panels'],
+  ['compareRemoved', 'compareRemovedSoft', 4.5, 'removed text on its soft fill'],
+  ['compareAdded', 'viewportBottom', 3, 'added overlay over viewport'],
+  ['compareRemoved', 'viewportBottom', 3, 'removed overlay over viewport'],
 ];
 
 describe.each(['light', 'dark'] as ThemeName[])('WCAG 2.2 AA contrast (%s)', (theme) => {
