@@ -3,6 +3,7 @@ import { AppShell, useTheme } from '@whittle/ui';
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { getDiagnostics } from '../platform/diagnostics';
 import { getRuntimeState, subscribeRuntimeState } from '../platform/runtime-state';
+import { applySwUpdate, onSwUpdateAvailable } from '../platform/sw-register';
 import { DEMO_BOX } from './demo';
 import { bootKernel } from './kernel-boot';
 import { failBoot, mark } from './timing';
@@ -20,6 +21,8 @@ export function App() {
   const diagnostics = getDiagnostics();
   const theme = useTheme({});
   const [kernelStatus, setKernelStatus] = useState<KernelStatus>({ state: 'idle' });
+  const [updateReady, setUpdateReady] = useState(false);
+  useEffect(() => onSwUpdateAvailable(() => setUpdateReady(true)), []);
 
   const viewportRef = useRef<Viewport | null>(null);
   const meshRef = useRef<MeshBuffers | null>(null);
@@ -97,6 +100,16 @@ export function App() {
           </>
         }
       />
+      {updateReady && (
+        <button
+          type="button"
+          data-testid="update-available"
+          onClick={applySwUpdate}
+          className="fixed top-3 left-1/2 z-50 -translate-x-1/2 rounded-full bg-[var(--color-accent)] px-4 py-2 text-sm font-medium text-[var(--color-accent-fg)] shadow-lg"
+        >
+          Update available · Reload
+        </button>
+      )}
       <p data-testid="status-line" className="sr-only" aria-live="polite">
         crossOriginIsolated: {String(diagnostics.crossOriginIsolated)} · service worker:{' '}
         {runtime.serviceWorker} · {isolationLabel(runtime.isolation)}

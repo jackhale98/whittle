@@ -89,6 +89,36 @@ export function onSwUpdateAvailable(listener: () => void): () => void {
   return () => window.removeEventListener(SW_UPDATE_EVENT, listener);
 }
 
+/** Asks the browser to look for a new service worker now (cheap; the SW script is tiny). */
+export function checkForSwUpdate(): void {
+  void workbox?.update().catch(() => {
+    // offline or server error: try again on the next focus
+  });
+}
+
+/**
+ * Keeps an open app current: re-check on focus/visibility and every 30 minutes. A new version that
+ * is found before the user has interacted with this page (typically: right after launch) is applied
+ * immediately — documents are saved locally on every change, so a reload loses nothing. Otherwise
+ * the UI shows "Update available" (subscribe with onSwUpdateAvailable).
+ */
+export function keepServiceWorkerFresh(): void {
+  let interacted = false;
+  const markInteracted = () => {
+    interacted = true;
+  };
+  window.addEventListener('pointerdown', markInteracted, { once: true, capture: true });
+  window.addEventListener('keydown', markInteracted, { once: true, capture: true });
+  onSwUpdateAvailable(() => {
+    if (!interacted) applySwUpdate();
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') checkForSwUpdate();
+  });
+  window.addEventListener('focus', checkForSwUpdate);
+  setInterval(checkForSwUpdate, 30 * 60 * 1000);
+}
+
 /** Activate the waiting worker and reload into the new version. */
 export function applySwUpdate(): void {
   if (!workbox) return;
