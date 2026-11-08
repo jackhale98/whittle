@@ -671,7 +671,8 @@ Each milestone ends with a reviewer gate. "Done" means every criterion is demons
 - Persistent naming per §7.3, with the golden "edit upstream" suite passing.
 - Open file format: `docs/FILE_FORMAT.md` specification plus a published **JSON Schema** (generated from `packages/contracts`, versioned with `schemaVersion`) that validates every project file in CI; the spec is licensed CC-BY-4.0 so anyone can implement readers and writers.
 - Materials: assign from the built-in library or custom, density as an expression with units (e.g. `g/cm^3`), shown in the inspector with the part's mass.
-- Undo/redo; local library; `.whittle` save and open; STL, 3MF, GLB and STEP AP214 export; STEP import.
+- Undo/redo; local library; `.whittle` save and open; STL (binary/ASCII, per body or merged, quality presets), 3MF, GLB and STEP AP214 export; STEP import.
+- E2E: the exported STL of the bracket is watertight (every edge shared by exactly two triangles) and its volume matches the B-rep volume within the chosen deflection.
 - **Accept:** a scripted E2E builds a bracket with holes and fillets. Changing three upstream dimensions regenerates it correctly. Exporting STEP and re-importing it gives the same volume within 1e-6 relative. Performance budgets (§10) are met.
 
 ### M2 — Touch & tablet excellence

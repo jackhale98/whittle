@@ -104,9 +104,19 @@ export type ExportFormat = 'step' | 'stl' | 'brep';
 export interface ExportOptions {
   /** STEP schema; AP214 in M1, AP242 + PMI in M5. */
   stepSchema?: 'AP203' | 'AP214' | 'AP242';
-  /** STL: binary (default) or ASCII; deflection in mm. */
+  /** Export only these bodies (BodyResult ids); default all visible bodies of the part. */
+  bodies?: string[];
+  /** STL: binary (default) or ASCII. Units are always millimetres. */
   stlBinary?: boolean;
+  /** STL: one file per body (zip) instead of one merged file. */
+  stlPerBody?: boolean;
+  /**
+   * STL tessellation quality. UI presets: coarse (0.1 mm, 0.5 rad), standard (0.02 mm, 0.25 rad),
+   * fine (0.005 mm, 0.1 rad) — chord deviation in mm and angle in radians, independent of the
+   * viewport meshing.
+   */
   linearDeflection?: number;
+  angularDeflection?: number;
 }
 
 /** The kernel worker's full Comlink surface from M1 on. */
