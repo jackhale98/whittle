@@ -2,5 +2,5 @@
   "$schema": "../../node_modules/@biomejs/biome/configuration_schema.json",
   "root": false,
   "extends": "//",
-  "files": { "includes": ["**", "!schema"] }
+  "files": { "includes": ["**", "!**/*.md", "!schema"] }
 }
