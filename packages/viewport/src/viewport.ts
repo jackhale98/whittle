@@ -6,18 +6,25 @@
 
 import type {
   BodyDisplay,
+  CameraChange,
   CreateViewport,
+  HandleSpec,
   HighlightItem,
-  InteractiveViewport,
+  InputPolicy,
+  Marker,
   MeshBuffers,
   PickHit,
   PickKind,
   PickOptions,
+  PreviewSpec,
   RenderBackend,
+  SectionPlane,
   SketchOverlay,
   StandardView,
+  TouchViewport,
   Vec2,
   Vec3,
+  ViewportGesture,
   ViewportOptions,
   ViewportStats,
 } from '@whittle/contracts';
@@ -26,29 +33,40 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js';
 import { LineSegments2 } from 'three/addons/lines/webgpu/LineSegments2.js';
 import {
+  AlwaysStencilFunc,
+  BackSide,
   Box3,
   BufferAttribute,
   BufferGeometry,
+  ClippingGroup,
   Color,
+  DecrementWrapStencilOp,
   DirectionalLight,
+  DoubleSide,
   FrontSide,
   Group,
   HemisphereLight,
+  IncrementWrapStencilOp,
   Line2NodeMaterial,
   Matrix4,
   Mesh,
   MeshBasicNodeMaterial,
   MeshStandardNodeMaterial,
   NearestFilter,
+  NotEqualStencilFunc,
   PerspectiveCamera,
+  Plane,
+  PlaneGeometry,
   PMREMGenerator,
   Quaternion,
   Ray,
   Raycaster,
   RenderTarget,
+  ReplaceStencilOp,
   Scene,
   Sphere,
   Spherical,
+  type StencilOp,
   Vector2,
   Vector3,
   Vector4,
@@ -56,8 +74,16 @@ import {
 } from 'three/webgpu';
 import { MeshBVH } from 'three-mesh-bvh';
 import { probeWebGPU } from './backend';
+import { HANDLE_PICK_PAD_PX, LONG_PRESS_GRACE_MS, LONG_PRESS_JANK_MS } from './constants';
 import { edgesToSegments, meshBuffersToGeometry } from './geometry';
+import {
+  type GestureOutput,
+  GestureRecognizer,
+  type PointerKind,
+  type PointerSample,
+} from './gestures';
 import { ContactShadow, Grid } from './ground';
+import { ArrowHandle, worldPerPixel } from './handles';
 import {
   deriveVertices,
   encodeId,
@@ -81,13 +107,18 @@ import {
 import {
   bestCandidate,
   closestOnPolyline,
+  defaultTolerance,
+  distPointSegment2D,
   type ProjectFn,
   raycastTriangles,
   sortByDistance,
 } from './pick';
 import { lookAtPlanePose, type PlaneFrame, rayToPlane } from './plane';
+import { MeshPreview, PrismPreview } from './preview';
+import { buildPrism } from './prism';
+import { isClipped, keptRayRange, type SectionEq, sectionEq, threePlane } from './section';
 import { entityColor, mixHex } from './sketchStyle';
-import { OVERLAY_COLORS, type OverlayColors, PALETTES, type Palette } from './themes';
+import { MARKER_TONES, OVERLAY_COLORS, type OverlayColors, PALETTES, type Palette } from './themes';
 import { type CubeHit, ViewCube } from './viewcube';
 import {
   type Bounds,
@@ -123,6 +154,8 @@ export interface CameraState {
 export interface ViewportEngineOptions extends ViewportOptions {
   /** Render the view cube in the canvas' top-right corner. Default true. */
   viewCube?: boolean;
+  /** Warm the shader cache on an idle frame after creation. Default true. */
+  precompile?: boolean;
 }
 
 export type ViewportEventMap = {
@@ -131,8 +164,8 @@ export type ViewportEventMap = {
   contextrestored: Record<string, never>;
 };
 
-/** The contract `InteractiveViewport` plus a few extras for hosts and tests. */
-export interface ViewportEngine extends InteractiveViewport {
+/** The contract `TouchViewport` plus a few extras for hosts and tests. */
+export interface ViewportEngine extends TouchViewport {
   readonly canvas: HTMLCanvasElement;
   getCameraState(): CameraState;
   setReducedMotion(reduced: boolean): void;
@@ -140,6 +173,12 @@ export interface ViewportEngine extends InteractiveViewport {
   getRenderCount(): number;
   /** True while the camera is transitioning, damping or under a pointer (tests wait on it). */
   isCameraMoving(): boolean;
+  /** Current roll of the camera around its view axis relative to world +Z up, radians. */
+  getRoll(): number;
+  /** Preview/handle/section diagnostics for tests. */
+  getTouchStats(): TouchStats;
+  /** On-screen length (CSS px) of a handle arrow right now; null if unknown or behind the camera. */
+  getHandleScreenLength(id: string): number | null;
   /** Animate to look along `dir` (unit vector from the target toward the camera). */
   setViewDirection(dir: Vec3, animate?: boolean): void;
   /**
@@ -149,6 +188,18 @@ export interface ViewportEngine extends InteractiveViewport {
   whenPickReady(): Promise<void>;
   getPickStats(): PickStats;
   on<K extends keyof ViewportEventMap>(type: K, cb: (e: ViewportEventMap[K]) => void): () => void;
+}
+
+export interface TouchStats {
+  /** Number of prism geometry builds (a distance-only update must not increase this). */
+  prismBuilds: number;
+  /** Frame index (render count) at which the last preview update was presented. */
+  lastPreviewPresentedAt: number;
+  warmMs: number;
+  /** The studio environment (built on idle after the first frame) is in place. */
+  environmentReady: boolean;
+  handleHover: string | null;
+  sectionActive: boolean;
 }
 
 export interface PickStats {
@@ -180,6 +231,34 @@ interface BodyEntry {
   /** Global id base the id colours were built with (-1 = not built). */
   idBuiltBase: number;
   idBase: number;
+  /** Stencil section cap passes; built lazily when a section with caps is active. */
+  cap: CapSet | null;
+}
+
+interface CapSet {
+  back: Mesh;
+  front: Mesh;
+  quad: Mesh;
+  backMat: MeshBasicNodeMaterial;
+  frontMat: MeshBasicNodeMaterial;
+  quadMat: MeshBasicNodeMaterial;
+}
+
+type PreviewEntry =
+  | {
+      kind: 'prism';
+      view: PrismPreview;
+      bodyId: string;
+      faces: number[];
+      buffers: MeshBuffers;
+      spec: Extract<PreviewSpec, { kind: 'prism' }>;
+    }
+  | { kind: 'mesh'; view: MeshPreview };
+
+interface MarkerEntry {
+  group: Group;
+  dots: Dot[];
+  markers: Marker[];
 }
 
 interface GhostEntry {
@@ -215,6 +294,13 @@ class ViewportImpl implements ViewportEngine {
 
   private readonly renderer: WebGPURenderer;
   private readonly scene = new Scene();
+  /** Parent of all clippable scene content (bodies, highlights, ghosts); planes set by sections. */
+  private readonly bodyRoot = new ClippingGroup();
+  /** Same for the ID-buffer scene so picking sees what is drawn. */
+  private readonly idRoot = new ClippingGroup();
+  private readonly sectionPlane = new Plane();
+  private section: { eq: SectionEq; caps: boolean } | null = null;
+  private capCounter = 0;
   private readonly camera = new PerspectiveCamera(FOV_DEG, 1, 0.1, 10000);
   private readonly controls: CameraControls;
   private readonly bodies = new Map<string, BodyEntry>();
@@ -240,6 +326,8 @@ class ViewportImpl implements ViewportEngine {
   private dirty = true;
   /** True between camera-controls `controlstart` and `controlend` (a pointer is down). */
   private interacting = false;
+  /** camera-controls dispatched 'wake' and not yet 'sleep'. */
+  private cameraAwake = false;
   private disposed = false;
   private lastFrameTime = 0;
   private frameTimes: number[] = [];
@@ -280,12 +368,42 @@ class ViewportImpl implements ViewportEngine {
   private readonly ghosts = new Map<string, GhostEntry>();
   private cube: ViewCube | null = null;
 
+  // ---- M2 touch state
+  private readonly recognizer = new GestureRecognizer();
+  private readonly gestureListeners = new Set<(g: ViewportGesture) => void>();
+  private readonly cameraListeners = new Set<(c: CameraChange) => void>();
+  /** Until an app subscribes to gestures, a double tap/click fits the view (M1 behaviour). */
+  private appOwnsGestures = false;
+  private longPressTimer = 0;
+  private cameraChangedSinceEmit = false;
+  private lastEmittedMoving = false;
+  private readonly previews = new Map<string, PreviewEntry>();
+  private readonly handles = new Map<string, ArrowHandle>();
+  private hoveredHandle: string | null = null;
+  private readonly markerSets = new Map<string, MarkerEntry>();
+  private readonly touchStats: TouchStats = {
+    prismBuilds: 0,
+    lastPreviewPresentedAt: 0,
+    warmMs: 0,
+    environmentReady: false,
+    handleHover: null,
+    sectionActive: false,
+  };
+  private followSystemMotion = false;
+  private previewDirty = false;
+
   static async create(
     canvas: HTMLCanvasElement,
     options: ViewportEngineOptions,
   ): Promise<ViewportImpl> {
     const forceWebGL = options.backend === 'webgl2' || !(await probeWebGPU());
-    const renderer = new WebGPURenderer({ canvas, antialias: true, forceWebGL, alpha: false });
+    const renderer = new WebGPURenderer({
+      canvas,
+      antialias: true,
+      forceWebGL,
+      alpha: false,
+      stencil: true, // section caps
+    });
     try {
       await renderer.init();
     } catch (err) {
@@ -308,7 +426,11 @@ class ViewportImpl implements ViewportEngine {
     this.theme = options.theme ?? 'light';
     this.palette = PALETTES[this.theme];
     this.ui = OVERLAY_COLORS[this.theme];
-    this.reducedMotion = options.reducedMotion ?? false;
+    // Honour prefers-reduced-motion unless the host decides explicitly.
+    this.followSystemMotion = options.reducedMotion === undefined;
+    this.reducedMotion =
+      options.reducedMotion ??
+      (typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches);
     this.maxPixelRatio = options.maxPixelRatio ?? 2;
 
     canvas.style.touchAction = 'none';
@@ -332,7 +454,13 @@ class ViewportImpl implements ViewportEngine {
     this.scene.add(this.keyLight);
 
     this.edgeMaterial = new Line2NodeMaterial({ color: this.palette.edge, linewidth: 1.6 });
-    this.scene.add(this.grid.mesh, this.shadow.mesh, this.highlightGroup);
+    this.scene.add(this.grid.mesh, this.shadow.mesh, this.bodyRoot);
+    this.bodyRoot.add(this.highlightGroup);
+    this.bodyRoot.enabled = false;
+    this.idRoot.enabled = false;
+    this.bodyRoot.clippingPlanes = [this.sectionPlane];
+    this.idRoot.clippingPlanes = [this.sectionPlane];
+    this.idScene.add(this.idRoot);
     this.highlightGroup.renderOrder = 20;
 
     // Z-up CAD convention. Must be set before camera-controls captures the up vector.
@@ -353,7 +481,14 @@ class ViewportImpl implements ViewportEngine {
       this.resizeObserver = new ResizeObserver(() => this.resize());
       this.resizeObserver.observe(canvas);
     }
+    if (this.followSystemMotion && typeof matchMedia !== 'undefined') {
+      const mq = matchMedia('(prefers-reduced-motion: reduce)');
+      const change = () => this.setReducedMotion(mq.matches);
+      mq.addEventListener('change', change);
+      this.cleanup.push(() => mq.removeEventListener('change', change));
+    }
     this.requestRender();
+    if (options.precompile !== false) this.scheduleWarmup();
   }
 
   // ---------------------------------------------------------------- Viewport API
@@ -383,20 +518,12 @@ class ViewportImpl implements ViewportEngine {
       entry.display = merged;
     } else {
       const geometry = meshBuffersToGeometry(mesh);
-      const material = new MeshStandardNodeMaterial({
-        color: this.resolveBodyColor(merged.color),
-        roughness: 0.52,
-        metalness: 0.0,
-        side: FrontSide,
-        polygonOffset: true,
-        polygonOffsetFactor: 1,
-        polygonOffsetUnits: 1,
-      });
+      const material = this.createBodyMaterial(this.resolveBodyColor(merged.color));
       const object = new Mesh(geometry, material);
       object.frustumCulled = false;
       const group = new Group();
       group.add(object);
-      this.scene.add(group);
+      this.bodyRoot.add(group);
       entry = {
         group,
         object,
@@ -414,9 +541,11 @@ class ViewportImpl implements ViewportEngine {
         idMesh: null,
         idBuiltBase: -1,
         idBase: 0,
+        cap: null,
       };
       this.bodies.set(id, entry);
       this.setEdges(entry, mesh);
+      if (this.section) this.ensureCap(entry);
     }
     this.invalidatePickData(entry);
     this.applyDisplay(entry);
@@ -424,6 +553,7 @@ class ViewportImpl implements ViewportEngine {
     if (wasEmpty) this.fitAll(false);
     this.viewVersion++;
     this.rebuildHighlights();
+    if (previous) this.refreshPreviewsFor(id);
     this.requestRender();
   }
 
@@ -449,7 +579,7 @@ class ViewportImpl implements ViewportEngine {
   }
 
   fitAll(animate = true): void {
-    this.fitTo(this.currentDirection(), animate);
+    this.fitTo(this.currentDirection(), animate, true);
   }
 
   setView(view: StandardView, animate = true): void {
@@ -470,6 +600,14 @@ class ViewportImpl implements ViewportEngine {
     this.rebuildHighlights();
     for (const [id, s] of [...this.sketches]) this.setSketch(id, s.overlay);
     for (const [id, g] of [...this.ghosts]) this.rebuildGhostColors(id, g);
+    for (const p of this.previews.values()) {
+      if (p.kind === 'prism') p.view.setColors(this.previewColors());
+      else p.view.setColor(this.ui.accent);
+    }
+    for (const h of this.handles.values()) {
+      h.setColors(this.ui.accent, mixHex(this.ui.accent, '#ffffff', 0.45));
+    }
+    for (const [id, m] of [...this.markerSets]) this.setMarkers(id, m.markers);
     this.requestRender();
   }
 
@@ -514,7 +652,9 @@ class ViewportImpl implements ViewportEngine {
   }
 
   isCameraMoving(): boolean {
-    return this.controls.active || this.interacting;
+    // `controls.active` only clears on a "rest" frame, which never comes when smoothing is off
+    // (reduced motion): the 'sleep' event is the reliable end of a transition.
+    return this.interacting || (this.controls.active && this.cameraAwake);
   }
 
   getPickStats(): PickStats {
@@ -554,6 +694,9 @@ class ViewportImpl implements ViewportEngine {
     this.clearHighlightObjects();
     for (const id of [...this.sketches.keys()]) this.setSketch(id, null);
     for (const id of [...this.ghosts.keys()]) this.setGhost(id, null);
+    for (const [id, p] of [...this.previews]) this.removePreview(id, p);
+    for (const id of [...this.handles.keys()]) this.setHandle(id, null);
+    for (const id of [...this.markerSets.keys()]) this.setMarkers(id, null);
     this.idTarget?.dispose();
     this.idTarget = null;
     this.grid.dispose();
@@ -579,8 +722,26 @@ class ViewportImpl implements ViewportEngine {
     const tol = options.tolerancePx ?? DEFAULT_TOLERANCE_PX;
     const want = (k: PickKind) => !options.kinds || options.kinds.includes(k);
     const out: PickHit[] = [];
+    // Handles sit above everything.
+    const handleHits: PickHit[] = [];
+    if (want('handle') && this.handles.size > 0) {
+      const h = this.handleAt(x, y, tol);
+      if (h) {
+        const handle = this.handles.get(h.id) as ArrowHandle;
+        handleHits.push({
+          bodyId: h.id,
+          kind: 'handle',
+          index: 0,
+          entity: h.id,
+          point: [...handle.origin],
+          distancePx: h.distancePx,
+        });
+      }
+      if (handleHits.length > 0 && !options.all) return handleHits;
+    }
     const ray = this.rayAt(x, y);
     const project = this.projector();
+    const sectionEq = this.section?.eq ?? null;
     const anySketchActive = [...this.sketches.values()].some((s) => s.overlay.active);
 
     // Sketch entities.
@@ -639,7 +800,7 @@ class ViewportImpl implements ViewportEngine {
         const v = this.vertexPositions(e);
         for (let i = 0; i < v.length / 3; i++) {
           const h = closestOnPolyline(v, i, 1, project, x, y);
-          if (h && h.distancePx <= tol) {
+          if (h && h.distancePx <= tol && !isClipped(sectionEq, h.point, 1e-6)) {
             thin.push({
               bodyId: id,
               kind: 'vertex',
@@ -657,7 +818,7 @@ class ViewportImpl implements ViewportEngine {
           const first = edgeRanges[2 * i] as number;
           const count = Math.min(edgeRanges[2 * i + 1] as number, pointCount - first);
           const h = closestOnPolyline(edgePositions, first, count, project, x, y);
-          if (h && h.distancePx <= tol) {
+          if (h && h.distancePx <= tol && !isClipped(sectionEq, h.point, 1e-6)) {
             thin.push({
               bodyId: id,
               kind: 'edge',
@@ -679,7 +840,7 @@ class ViewportImpl implements ViewportEngine {
       if (f) out.push(f);
     }
 
-    if (options.all) return sortByDistance(out);
+    if (options.all) return [...handleHits, ...sortByDistance(out)];
     const best = bestCandidate(out);
     return best ? [best] : [];
   }
@@ -709,7 +870,7 @@ class ViewportImpl implements ViewportEngine {
   setGhost(bodyId: string, mesh: MeshBuffers | null): void {
     const prev = this.ghosts.get(bodyId);
     if (prev) {
-      this.scene.remove(prev.group);
+      this.bodyRoot.remove(prev.group);
       disposeOverlay(prev.group);
       this.ghosts.delete(bodyId);
     }
@@ -738,7 +899,7 @@ class ViewportImpl implements ViewportEngine {
         l.renderOrder = 3;
         group.add(l);
       }
-      this.scene.add(group);
+      this.bodyRoot.add(group);
       this.ghosts.set(bodyId, { group, material, lineMaterial });
     }
     this.requestRender();
@@ -772,7 +933,9 @@ class ViewportImpl implements ViewportEngine {
       [target.x, target.y, target.z],
       Math.max(pos.distanceTo(target), this.sceneRadius * 0.2),
     );
-    const transition = animate && !this.reducedMotion;
+    const rolled = this.resetRoll();
+    const transition = animate && !this.reducedMotion && !rolled;
+    this.cameraAwake = true;
     void this.controls.setLookAt(
       pose.position[0],
       pose.position[1],
@@ -862,7 +1025,7 @@ class ViewportImpl implements ViewportEngine {
     e.faceLayout = null;
     e.idBuiltBase = -1;
     if (e.idMesh) {
-      this.idScene.remove(e.idMesh);
+      this.idRoot.remove(e.idMesh);
       disposeOverlay(e.idMesh, true);
       e.idMesh = null;
     }
@@ -896,13 +1059,17 @@ class ViewportImpl implements ViewportEngine {
     const dist = Math.hypot(dx, dy, dz);
     if (dist < 1e-9) return true;
     const eps = dist * 3e-3 + this.sceneRadius * 2e-3;
+    const dir: Vec3 = [dx / dist, dy / dist, dz / dist];
     const ray = new Ray(
       new Vector3(origin[0], origin[1], origin[2]),
-      new Vector3(dx / dist, dy / dist, dz / dist),
+      new Vector3(dir[0], dir[1], dir[2]),
     );
+    // Geometry removed by the section cannot occlude.
+    const range = keptRayRange(this.section?.eq ?? null, origin, dir, Math.max(dist - eps, 0));
+    if (!range) return true;
     for (const e of this.bodies.values()) {
       if (!e.display.visible) continue;
-      const hit = this.bvhFor(e).raycastFirst(ray, FrontSide, 0, Math.max(dist - eps, 0));
+      const hit = this.bvhFor(e).raycastFirst(ray, FrontSide, range[0], range[1]);
       if (hit) return false;
     }
     return true;
@@ -929,7 +1096,7 @@ class ViewportImpl implements ViewportEngine {
         this.pickStats.idBufferPicks++;
         const face = id - 1 - slot.base;
         const hit = this.faceHit(slot.id, slot.entry, face, ray);
-        if (hit) return hit;
+        if (hit && !isClipped(this.section?.eq ?? null, hit.point, 1e-6)) return hit;
         // The pixel's face was missed by the exact ray (silhouette rounding): use the BVH.
       }
     }
@@ -951,9 +1118,11 @@ class ViewportImpl implements ViewportEngine {
       new Vector3(ray.origin[0], ray.origin[1], ray.origin[2]),
       new Vector3(ray.dir[0], ray.dir[1], ray.dir[2]),
     );
+    const range = keptRayRange(this.section?.eq ?? null, ray.origin, ray.dir);
+    if (!range) return null;
     for (const [id, e] of this.bodies) {
       if (!e.display.visible) continue;
-      const hit = this.bvhFor(e).raycastFirst(r, FrontSide);
+      const hit = this.bvhFor(e).raycastFirst(r, FrontSide, range[0], range[1]);
       if (hit && hit.faceIndex != null && (!best || hit.distance < best.dist)) {
         best = {
           id,
@@ -1168,7 +1337,7 @@ class ViewportImpl implements ViewportEngine {
     const material = new MeshBasicNodeMaterial({ vertexColors: true, side: FrontSide });
     const mesh = new Mesh(geometry, material);
     mesh.frustumCulled = false;
-    this.idScene.add(mesh);
+    this.idRoot.add(mesh);
     e.idMesh = mesh;
     e.idBuiltBase = e.idBase;
   }
@@ -1345,6 +1514,22 @@ class ViewportImpl implements ViewportEngine {
       });
       group.add(lines);
     }
+    // SketchResult.points: dots, picked as sketchPoint. Skip ids already drawn as one-point curves.
+    const drawn = new Set(curves.map((c) => c.entity));
+    for (const pt of sketch.points ?? []) {
+      if (drawn.has(pt.entity)) continue;
+      drawn.add(pt.entity);
+      curves.push({
+        entity: pt.entity,
+        points: Float32Array.of(pt.at[0], pt.at[1], pt.at[2]),
+        isPoint: true,
+      });
+      const base = entityColor(ui, overlay.dof?.[pt.entity], conflicting.has(pt.entity));
+      const color = pt.construction ? mixHex(base, this.palette.background, 0.4) : base;
+      const dot = makeDot(8, color, this.palette.background, 31, pt.at);
+      group.add(dot.sprite);
+      dots.push(dot);
+    }
     // Faint region fills (also the pick surface for profiles).
     for (const r of sketch.regions) {
       group.add(makeFill(meshBuffersToGeometry(r.mesh), ui.accent, 0.1, onTop, onTop ? 28 : 5));
@@ -1470,6 +1655,10 @@ class ViewportImpl implements ViewportEngine {
       const next = meshBuffersToGeometry(mesh);
       e.object.geometry = next;
       e.geometry = next;
+      if (e.cap) {
+        e.cap.back.geometry = next;
+        e.cap.front.geometry = next;
+      }
       g.dispose();
     }
     this.setEdges(e, mesh);
@@ -1512,6 +1701,7 @@ class ViewportImpl implements ViewportEngine {
         this.envTarget = envRT;
         this.scene.environment = envRT.texture;
         this.scene.remove(this.fillLight);
+        this.touchStats.environmentReady = true;
         this.requestRender();
       };
       const ric = (
@@ -1551,7 +1741,15 @@ class ViewportImpl implements ViewportEngine {
     on('contextmenu', (e) => e.preventDefault());
 
     // Wake the render loop whenever the controls start moving.
-    const wake = () => this.requestRender();
+    const wake = () => {
+      this.cameraAwake = true;
+      this.requestRender();
+    };
+    const redraw = () => this.requestRender();
+    const sleep = () => {
+      this.cameraAwake = false;
+      this.requestRender(); // one more frame so onCamera can report moving=false
+    };
     const start = () => {
       this.interacting = true;
       this.requestRender();
@@ -1561,47 +1759,616 @@ class ViewportImpl implements ViewportEngine {
       this.requestRender(); // let damping settle
     };
     this.controls.addEventListener('wake', wake);
+    this.controls.addEventListener('sleep', sleep);
     this.controls.addEventListener('controlstart', start);
     this.controls.addEventListener('controlend', end);
-    this.controls.addEventListener('update', wake);
+    this.controls.addEventListener('update', redraw);
     this.cleanup.push(() => {
       this.controls.removeEventListener('wake', wake);
+      this.controls.removeEventListener('sleep', sleep);
       this.controls.removeEventListener('controlstart', start);
       this.controls.removeEventListener('controlend', end);
-      this.controls.removeEventListener('update', wake);
+      this.controls.removeEventListener('update', redraw);
     });
 
-    // Double click / double tap -> fit all. Uniform across mouse, touch and pen via pointer events.
-    let downAt: { x: number; y: number; t: number } | null = null;
-    let lastTap: { x: number; y: number; t: number } | null = null;
-    on('pointerdown', (e) => {
-      downAt = e.isPrimary ? { x: e.clientX, y: e.clientY, t: e.timeStamp } : null;
-    });
-    const cancel = () => {
-      downAt = null;
+    this.attachPointerGestures();
+  }
+
+  // ---------------------------------------------------------------- M2: input policy, gestures
+
+  setInputPolicy(policy: InputPolicy): void {
+    this.recognizer.setPolicy(policy);
+  }
+
+  onGesture(listener: (g: ViewportGesture) => void): () => void {
+    this.appOwnsGestures = true; // the app decides what a double tap means from now on
+    this.gestureListeners.add(listener);
+    return () => {
+      this.gestureListeners.delete(listener);
     };
-    on('pointercancel', cancel);
-    on('pointerup', (e) => {
-      const d = downAt;
-      downAt = null;
-      if (!d || !e.isPrimary || (e.pointerType === 'mouse' && e.button !== 0)) return;
-      const moved = Math.hypot(e.clientX - d.x, e.clientY - d.y);
-      if (moved > 8 || e.timeStamp - d.t > 350) {
-        lastTap = null;
+  }
+
+  onCamera(listener: (c: CameraChange) => void): () => void {
+    this.cameraListeners.add(listener);
+    this.lastEmittedMoving = this.isCameraMoving();
+    return () => {
+      this.cameraListeners.delete(listener);
+    };
+  }
+
+  zoomTo(point: Vec3, radius: number, animate = true): void {
+    const distance = fitDistance(
+      Math.max(radius, 1e-6) * 2,
+      this.camera.fov,
+      this.camera.aspect || 1,
+      1,
+    );
+    const pos = cameraPositionFor(point, this.currentDirection(), distance);
+    const transition = animate && !this.reducedMotion;
+    this.cameraAwake = true;
+    void this.controls.setLookAt(pos[0], pos[1], pos[2], point[0], point[1], point[2], transition);
+    if (!transition) this.controls.update(0);
+    this.requestRender();
+  }
+
+  getRoll(): number {
+    const t = this.controls.getTarget(new Vector3());
+    const f = this.controls.getPosition(new Vector3()).sub(t).negate().normalize();
+    const z = new Vector3(0, 0, 1);
+    const zp = z.addScaledVector(f, -f.dot(z));
+    if (zp.lengthSq() < 1e-8) return 0;
+    zp.normalize();
+    const up = this.camera.up.clone().addScaledVector(f, -f.dot(this.camera.up)).normalize();
+    return Math.atan2(new Vector3().crossVectors(zp, up).dot(f), zp.dot(up));
+  }
+
+  getTouchStats(): TouchStats {
+    return { ...this.touchStats };
+  }
+
+  getHandleScreenLength(id: string): number | null {
+    const h = this.handles.get(id);
+    if (!h) return null;
+    const wpp = worldPerPixel(
+      this.depthOf(h.origin),
+      this.camera.projectionMatrix.elements[5] as number,
+      this.canvas.clientHeight || 1,
+    );
+    const world = h.place(wpp);
+    const a = this.worldToScreen(h.origin);
+    const tip: Vec3 = [
+      h.origin[0] + h.direction[0] * world,
+      h.origin[1] + h.direction[1] * world,
+      h.origin[2] + h.direction[2] * world,
+    ];
+    const b = this.worldToScreen(tip);
+    return Math.hypot(b.x - a.x, b.y - a.y);
+  }
+
+  /** camera-controls' public `enabled` setter cancels drags; we only veto a single pointerdown. */
+  private setCameraEnabled(enabled: boolean): void {
+    (this.controls as unknown as { _enabled: boolean })._enabled = enabled;
+  }
+
+  private attachPointerGestures(): void {
+    const canvas = this.canvas;
+    const kind = (e: PointerEvent): PointerKind =>
+      e.pointerType === 'pen' ? 'pen' : e.pointerType === 'touch' ? 'touch' : 'mouse';
+    const sample = (type: PointerSample['type'], e: PointerEvent): PointerSample => {
+      const r = canvas.getBoundingClientRect();
+      return {
+        type,
+        id: e.pointerId,
+        pointerType: kind(e),
+        x: e.clientX - r.left,
+        y: e.clientY - r.top,
+        t: eventTime(e),
+        button: e.button,
+      };
+    };
+    let vetoed = false;
+    const restore = () => {
+      if (!vetoed) return;
+      vetoed = false;
+      this.setCameraEnabled(true);
+    };
+    // Capture phase on window runs before camera-controls' own pointerdown listener.
+    const down = (e: PointerEvent) => {
+      if (e.target !== canvas || this.disposed) return;
+      const s = sample('down', e);
+      const handle = this.handleAt(s.x, s.y, defaultTolerance(s.pointerType));
+      if (handle) {
+        s.onHandle = true;
+        this.setHoveredHandle(handle.id);
+      }
+      if (handle || this.recognizer.blocksCamera(s.pointerType)) {
+        vetoed = true;
+        this.setCameraEnabled(false);
+        setTimeout(restore, 0); // in case an app listener stops propagation before the bubble hook
+      }
+      this.dispatch(this.recognizer.handle(s));
+      this.armLongPress();
+    };
+    const move = (e: PointerEvent) => {
+      if (this.disposed) return;
+      if (e.target === canvas && e.buttons === 0 && this.handles.size > 0) {
+        const s = sample('move', e);
+        this.setHoveredHandle(this.handleAt(s.x, s.y, defaultTolerance(s.pointerType))?.id ?? null);
+      }
+      this.dispatch(this.recognizer.handle(sample('move', e)));
+      this.armLongPress();
+    };
+    const end = (type: 'up' | 'cancel') => (e: PointerEvent) => {
+      if (this.disposed) return;
+      this.dispatch(this.recognizer.handle(sample(type, e)));
+      this.armLongPress();
+    };
+    const up = end('up');
+    const cancel = end('cancel');
+    const leave = () => this.setHoveredHandle(null);
+    window.addEventListener('pointerdown', down, true);
+    window.addEventListener('pointerdown', restore, false);
+    window.addEventListener('pointermove', move, true);
+    window.addEventListener('pointerup', up, true);
+    window.addEventListener('pointercancel', cancel, true);
+    canvas.addEventListener('pointerleave', leave);
+    this.cleanup.push(() => {
+      window.removeEventListener('pointerdown', down, true);
+      window.removeEventListener('pointerdown', restore, false);
+      window.removeEventListener('pointermove', move, true);
+      window.removeEventListener('pointerup', up, true);
+      window.removeEventListener('pointercancel', cancel, true);
+      canvas.removeEventListener('pointerleave', leave);
+      clearTimeout(this.longPressTimer);
+    });
+  }
+
+  private armLongPress(graceUsed = false): void {
+    clearTimeout(this.longPressTimer);
+    const at = this.recognizer.nextDeadline();
+    if (at === null) return;
+    this.longPressTimer = window.setTimeout(
+      () => {
+        const now = performance.now();
+        // A badly late timer means the main thread was stalled; pointer moves that queued up
+        // behind the stall have not been seen yet. Give them one short chance to cancel the press.
+        if (!graceUsed && now - at > LONG_PRESS_JANK_MS) {
+          this.armLongPressAfter(LONG_PRESS_GRACE_MS);
+          return;
+        }
+        this.dispatch(this.recognizer.tick(now));
+        this.armLongPress(); // timers can fire a hair early: re-arm until the deadline passes
+      },
+      Math.max(0, at - performance.now()),
+    );
+  }
+
+  private armLongPressAfter(ms: number): void {
+    clearTimeout(this.longPressTimer);
+    this.longPressTimer = window.setTimeout(() => {
+      this.dispatch(this.recognizer.tick(performance.now()));
+      this.armLongPress(true);
+    }, ms);
+  }
+
+  private dispatch(outputs: GestureOutput[]): void {
+    for (const o of outputs) {
+      if (o.type === 'gesture') this.emitGesture(o.gesture);
+      else if (o.type === 'twist') this.applyRoll(o.delta);
+      else this.controls.cancel(); // a long-press fired: the held finger must not orbit
+    }
+  }
+
+  private emitGesture(g: ViewportGesture): void {
+    if (!this.appOwnsGestures) {
+      if (g.kind === 'doubleTap') this.fitAll(true); // M1 behaviour until the app takes over
+      return;
+    }
+    for (const l of [...this.gestureListeners]) l(g);
+  }
+
+  /** Two-finger twist: roll the camera around its view axis. */
+  private applyRoll(delta: number): void {
+    const t = this.controls.getTarget(new Vector3());
+    const axis = this.controls.getPosition(new Vector3()).sub(t).negate().normalize();
+    this.camera.up.applyAxisAngle(axis, -delta).normalize();
+    this.controls.applyCameraUp();
+    this.requestRender();
+  }
+
+  /** Back to world +Z up. Returns true when the camera was rolled (the caller then cuts, not tweens). */
+  private resetRoll(): boolean {
+    const up = this.camera.up;
+    if (up.x === 0 && up.y === 0 && up.z === 1) return false;
+    up.set(0, 0, 1);
+    this.controls.updateCameraUp();
+    return true;
+  }
+
+  private emitCamera(): void {
+    const moving = this.isCameraMoving();
+    if (
+      this.cameraListeners.size > 0 &&
+      (this.cameraChangedSinceEmit || moving !== this.lastEmittedMoving)
+    ) {
+      const p = this.camera.position;
+      const t = this.controls.getTarget(new Vector3());
+      const change: CameraChange = {
+        position: [p.x, p.y, p.z],
+        target: [t.x, t.y, t.z],
+        moving,
+      };
+      for (const l of [...this.cameraListeners]) l(change);
+    }
+    this.cameraChangedSinceEmit = false;
+    this.lastEmittedMoving = moving;
+  }
+
+  // ---------------------------------------------------------------- M2: section
+
+  setSection(section: SectionPlane | null): void {
+    if (this.disposed) return;
+    const eq = section ? sectionEq(section) : null;
+    if (!section || !eq) {
+      this.section = null;
+      this.bodyRoot.enabled = false;
+      this.idRoot.enabled = false;
+      for (const e of this.bodies.values()) this.applyCapState(e);
+    } else {
+      const tp = threePlane(eq);
+      this.sectionPlane.normal.set(tp.normal[0], tp.normal[1], tp.normal[2]);
+      this.sectionPlane.constant = tp.constant;
+      this.section = { eq, caps: section.caps !== false };
+      this.bodyRoot.enabled = true;
+      this.idRoot.enabled = true;
+      for (const e of this.bodies.values()) {
+        if (this.section.caps) this.ensureCap(e);
+        this.applyCapState(e);
+      }
+      this.placeCaps();
+    }
+    this.touchStats.sectionActive = this.section !== null;
+    this.viewVersion++;
+    this.requestRender();
+  }
+
+  private ensureCap(e: BodyEntry): void {
+    if (e.cap) return;
+    const stencil = (m: MeshBasicNodeMaterial, op: StencilOp) => {
+      m.colorWrite = false;
+      m.depthWrite = false;
+      m.depthTest = false;
+      m.stencilWrite = true;
+      m.stencilFunc = AlwaysStencilFunc;
+      m.stencilFail = op;
+      m.stencilZFail = op;
+      m.stencilZPass = op;
+    };
+    // Count back faces up and front faces down (clipped geometry only): non-zero = inside solid.
+    const backMat = new MeshBasicNodeMaterial({ side: BackSide });
+    stencil(backMat, IncrementWrapStencilOp);
+    const frontMat = new MeshBasicNodeMaterial({ side: FrontSide });
+    stencil(frontMat, DecrementWrapStencilOp);
+    // The cap: a plane quad drawn where the count is non-zero; it also resets the count to 0.
+    const quadMat = new MeshBasicNodeMaterial({ side: DoubleSide });
+    quadMat.stencilWrite = true;
+    quadMat.stencilRef = 0;
+    quadMat.stencilFunc = NotEqualStencilFunc;
+    quadMat.stencilFail = ReplaceStencilOp;
+    quadMat.stencilZFail = ReplaceStencilOp;
+    quadMat.stencilZPass = ReplaceStencilOp;
+    const base = 1000 + 3 * this.capCounter++;
+    const back = new Mesh(e.geometry, backMat);
+    const front = new Mesh(e.geometry, frontMat);
+    const quad = new Mesh(new PlaneGeometry(1, 1), quadMat);
+    for (const [m, order] of [
+      [back, base],
+      [front, base + 1],
+      [quad, base + 2],
+    ] as const) {
+      m.frustumCulled = false;
+      m.renderOrder = order;
+    }
+    e.group.add(back, front); // inside the clipping group: only the kept half is counted
+    this.scene.add(quad); // outside it: the cap lies exactly on the plane
+    e.cap = { back, front, quad, backMat, frontMat, quadMat };
+  }
+
+  private applyCapState(e: BodyEntry): void {
+    const cap = e.cap;
+    if (!cap) return;
+    const on = this.section?.caps === true && e.display.visible && e.display.opacity >= 1;
+    cap.back.visible = on;
+    cap.front.visible = on;
+    cap.quad.visible = on;
+    if (on) cap.quadMat.color.set(mixHex(this.effectiveBodyColor(e), '#000000', 0.2));
+  }
+
+  private placeCaps(): void {
+    const sec = this.section;
+    if (!sec) return;
+    const c = boundsCenter(this.sceneBounds);
+    const n = sec.eq.n;
+    const d = n[0] * c[0] + n[1] * c[1] + n[2] * c[2] - sec.eq.offset;
+    const q = new Quaternion().setFromUnitVectors(
+      new Vector3(0, 0, 1),
+      new Vector3(n[0], n[1], n[2]),
+    );
+    const size = Math.max(this.sceneRadius * 2.6, 1);
+    for (const e of this.bodies.values()) {
+      if (!e.cap) continue;
+      e.cap.quad.position.set(c[0] - n[0] * d, c[1] - n[1] * d, c[2] - n[2] * d);
+      e.cap.quad.quaternion.copy(q);
+      e.cap.quad.scale.set(size, size, 1);
+    }
+  }
+
+  private disposeCap(e: BodyEntry): void {
+    const cap = e.cap;
+    if (!cap) return;
+    e.group.remove(cap.back, cap.front);
+    this.scene.remove(cap.quad);
+    cap.quad.geometry.dispose();
+    cap.backMat.dispose();
+    cap.frontMat.dispose();
+    cap.quadMat.dispose();
+    e.cap = null;
+  }
+
+  // ---------------------------------------------------------------- M2: previews
+
+  setPreview(id: string, spec: PreviewSpec | null): void {
+    if (this.disposed) return;
+    const prev = this.previews.get(id);
+    if (spec === null) {
+      if (prev) this.removePreview(id, prev);
+      this.requestRender();
+      return;
+    }
+    if (spec.kind === 'prism') {
+      const body = this.bodies.get(spec.bodyId);
+      if (!body) {
+        if (prev) this.removePreview(id, prev);
         return;
       }
-      const tap = { x: e.clientX, y: e.clientY, t: e.timeStamp };
       if (
-        lastTap &&
-        tap.t - lastTap.t < 400 &&
-        Math.hypot(tap.x - lastTap.x, tap.y - lastTap.y) < 30
+        prev?.kind === 'prism' &&
+        prev.bodyId === spec.bodyId &&
+        prev.buffers === body.buffers &&
+        sameFaces(prev.faces, spec.faces)
       ) {
-        lastTap = null;
-        this.fitAll(true);
-      } else {
-        lastTap = tap;
+        // The same-frame path: three uniform writes, no allocation, no geometry work.
+        prev.spec = spec;
+        prev.view.update(spec.direction, spec.distance);
+        this.previewDirty = true;
+        this.requestRender();
+        return;
       }
-    });
+      if (prev) this.removePreview(id, prev);
+      const prism = buildPrism(body.buffers, spec.faces);
+      if (!prism) return;
+      this.touchStats.prismBuilds++;
+      const view = new PrismPreview(prism, this.previewColors());
+      view.update(spec.direction, spec.distance);
+      this.scene.add(view.mesh);
+      this.previews.set(id, {
+        kind: 'prism',
+        view,
+        bodyId: spec.bodyId,
+        faces: [...spec.faces],
+        buffers: body.buffers,
+        spec,
+      });
+    } else {
+      if (prev) this.removePreview(id, prev);
+      const view = new MeshPreview(spec.mesh, this.ui.accent, spec.opacity ?? 0.4);
+      this.scene.add(view.mesh);
+      this.previews.set(id, { kind: 'mesh', view });
+    }
+    this.previewDirty = true;
+    this.requestRender();
+  }
+
+  private removePreview(id: string, p: PreviewEntry): void {
+    this.scene.remove(p.view.mesh);
+    p.view.dispose();
+    this.previews.delete(id);
+  }
+
+  private previewColors(): { add: string; cut: string } {
+    return { add: this.ui.accent, cut: this.ui.danger };
+  }
+
+  /** A body's buffers changed: rebuild prism previews that were made from the old ones. */
+  private refreshPreviewsFor(bodyId: string): void {
+    for (const [id, p] of [...this.previews]) {
+      if (p.kind === 'prism' && p.bodyId === bodyId) this.setPreview(id, p.spec);
+    }
+  }
+
+  // ---------------------------------------------------------------- M2: handles
+
+  setHandle(id: string, handle: HandleSpec | null): void {
+    if (this.disposed) return;
+    const prev = this.handles.get(id);
+    if (handle === null || handle.kind !== 'arrow') {
+      if (prev) {
+        this.scene.remove(prev.group);
+        prev.dispose();
+        this.handles.delete(id);
+        if (this.hoveredHandle === id) this.setHoveredHandle(null);
+      }
+      this.requestRender();
+      return;
+    }
+    if (prev) {
+      prev.apply(handle);
+    } else {
+      const h = new ArrowHandle(handle, this.ui.accent, mixHex(this.ui.accent, '#ffffff', 0.45));
+      this.scene.add(h.group);
+      this.handles.set(id, h);
+    }
+    this.requestRender();
+  }
+
+  private setHoveredHandle(id: string | null): void {
+    if (id === this.hoveredHandle) return;
+    if (this.hoveredHandle) this.handles.get(this.hoveredHandle)?.setHover(false);
+    this.hoveredHandle = id;
+    if (id) this.handles.get(id)?.setHover(true);
+    this.touchStats.handleHover = id;
+    this.requestRender();
+  }
+
+  /** Nearest handle within `tolerancePx` of a screen point (arrow thickness is added). */
+  private handleAt(
+    x: number,
+    y: number,
+    tolerancePx: number,
+  ): { id: string; distancePx: number } | null {
+    if (this.handles.size === 0) return null;
+    const project = this.projector();
+    const a = { x: 0, y: 0 };
+    const b = { x: 0, y: 0 };
+    const p11 = this.camera.projectionMatrix.elements[5] as number;
+    const h = this.canvas.clientHeight || 1;
+    let best: { id: string; distancePx: number } | null = null;
+    for (const [id, handle] of this.handles) {
+      const [ox, oy, oz] = handle.origin;
+      const len = handle.lengthPx * worldPerPixel(this.depthOf(handle.origin), p11, h);
+      if (!project(ox, oy, oz, a)) continue;
+      const ex = ox + handle.direction[0] * len;
+      const ey = oy + handle.direction[1] * len;
+      const ez = oz + handle.direction[2] * len;
+      if (!project(ex, ey, ez, b)) continue;
+      const d = distPointSegment2D(x, y, a.x, a.y, b.x, b.y).d;
+      if (d <= tolerancePx + HANDLE_PICK_PAD_PX && (!best || d < best.distancePx)) {
+        best = { id, distancePx: d };
+      }
+    }
+    return best;
+  }
+
+  /** Distance of a world point in front of the camera plane. */
+  private depthOf(p: Vec3): number {
+    this.syncCameraMatrices();
+    const m = this.camera.matrixWorldInverse.elements;
+    return -(
+      (m[2] as number) * p[0] +
+      (m[6] as number) * p[1] +
+      (m[10] as number) * p[2] +
+      (m[14] as number)
+    );
+  }
+
+  // ---------------------------------------------------------------- M2: markers
+
+  setMarkers(id: string, markers: Marker[] | null): void {
+    if (this.disposed) return;
+    const prev = this.markerSets.get(id);
+    if (prev) {
+      this.scene.remove(prev.group);
+      disposeOverlay(prev.group);
+      this.markerSets.delete(id);
+    }
+    if (markers && markers.length > 0) {
+      const tones = MARKER_TONES[this.theme];
+      const group = new Group();
+      const dots: Dot[] = [];
+      const dash = Math.max(this.sceneRadius / 45, 1e-3);
+      const buckets = new Map<string, { color: string; dashed: boolean; segs: number[] }>();
+      for (const m of markers) {
+        const color = tones[m.tone ?? 'accent'];
+        if (m.kind === 'point') {
+          for (const p of m.points) {
+            const dot = makeDot(10, color, this.palette.background, 45, p);
+            group.add(dot.sprite);
+            dots.push(dot);
+          }
+          continue;
+        }
+        const dashed = m.dashed === true;
+        const key = `${color}|${dashed ? 'd' : 's'}`;
+        const b = buckets.get(key) ?? { color, dashed, segs: [] as number[] };
+        buckets.set(key, b);
+        for (let i = 0; i + 1 < m.points.length; i++) {
+          b.segs.push(...(m.points[i] as Vec3), ...(m.points[i + 1] as Vec3));
+        }
+      }
+      for (const b of buckets.values()) {
+        if (b.segs.length === 0) continue;
+        group.add(
+          makeLines(Float32Array.from(b.segs), {
+            color: b.color,
+            width: 2.6,
+            dashed: b.dashed,
+            dash,
+            onTop: true,
+            renderOrder: 44,
+          }),
+        );
+      }
+      this.scene.add(group);
+      this.markerSets.set(id, { group, dots, markers });
+    }
+    this.requestRender();
+  }
+
+  // ---------------------------------------------------------------- M2: shader warm-up
+
+  /**
+   * Compiles the shader variants every first frame needs (body, edges, overlays) on an idle frame
+   * after creation, so the first `setBody` does not stall on program compilation (PLAN §10).
+   */
+  private scheduleWarmup(): void {
+    const run = async () => {
+      if (this.disposed) return;
+      const t0 = performance.now();
+      const warm = new Scene();
+      const geometry = new BufferGeometry();
+      geometry.setAttribute(
+        'position',
+        new BufferAttribute(new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]), 3),
+      );
+      geometry.setAttribute(
+        'normal',
+        new BufferAttribute(new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]), 3),
+      );
+      geometry.setIndex(new BufferAttribute(new Uint32Array([0, 1, 2]), 1));
+      const material = this.createBodyMaterial(this.palette.body);
+      const body = new Mesh(geometry, material);
+      body.frustumCulled = false;
+      const edgeGeometry = new LineSegmentsGeometry();
+      edgeGeometry.setPositions(new Float32Array([0, 0, 0, 1, 0, 0]));
+      const edges = new LineSegments2(edgeGeometry, this.edgeMaterial);
+      edges.frustumCulled = false;
+      const fill = makeFill(geometry, this.ui.accent, 0.3, false, 5);
+      const lines = makeLines(new Float32Array([0, 0, 0, 1, 1, 0]), {
+        color: this.ui.accent,
+        width: 2,
+        onTop: false,
+        renderOrder: 5,
+      });
+      const dot = makeDot(8, this.ui.accent, this.palette.background, 5, [0, 0, 0]);
+      warm.add(body, edges, fill, lines, dot.sprite);
+      try {
+        await this.renderer.compileAsync(warm, this.camera, this.scene);
+      } catch {
+        // warm-up is best effort
+      }
+      geometry.dispose();
+      edgeGeometry.dispose();
+      material.dispose();
+      for (const o of [fill, lines]) disposeOverlay(o, true);
+      disposeOverlay(dot.sprite);
+      this.touchStats.warmMs = performance.now() - t0;
+    };
+    const ric = (
+      globalThis as { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number }
+    ).requestIdleCallback;
+    const kick = () => void run();
+    if (ric) ric(kick, { timeout: 300 });
+    else setTimeout(kick, 0);
   }
 
   private currentDirection(): Readonly<[number, number, number]> {
@@ -1612,12 +2379,19 @@ class ViewportImpl implements ViewportEngine {
     return [d.x, d.y, d.z];
   }
 
-  private fitTo(direction: Readonly<[number, number, number]>, animate: boolean): void {
+  private fitTo(
+    direction: Readonly<[number, number, number]>,
+    animate: boolean,
+    keepRoll = false,
+  ): void {
     const target = boundsCenter(this.sceneBounds);
     const distance = fitDistance(this.sceneRadius, this.camera.fov, this.camera.aspect || 1);
     const pos = cameraPositionFor(target, direction, distance);
-    const transition = animate && !this.reducedMotion;
+    // Standard views are level: undo any twist-roll (cut, since a tween would swing through it).
+    const rolled = !keepRoll && this.resetRoll();
+    const transition = animate && !this.reducedMotion && !rolled;
     // setLookAt is synchronous when transition is false (smoothing is bypassed via a jump).
+    this.cameraAwake = true;
     void this.controls.setLookAt(
       pos[0],
       pos[1],
@@ -1654,6 +2428,7 @@ class ViewportImpl implements ViewportEngine {
       .set(-0.4, -0.6, 0.9)
       .multiplyScalar(this.sceneRadius * 6)
       .add(new Vector3(cx, cy, 0));
+    this.placeCaps();
   }
 
   private applyPalette(): void {
@@ -1668,28 +2443,45 @@ class ViewportImpl implements ViewportEngine {
     this.keyLight.intensity = p.keyLight;
   }
 
+  private createBodyMaterial(color: string): MeshStandardNodeMaterial {
+    return new MeshStandardNodeMaterial({
+      color,
+      roughness: 0.52,
+      metalness: 0.0,
+      side: FrontSide,
+      polygonOffset: true,
+      polygonOffsetFactor: 1,
+      polygonOffsetUnits: 1,
+    });
+  }
+
+  /** Body colour as drawn: dimmed toward the background while a sketch is being edited. */
+  private effectiveBodyColor(e: BodyEntry): string {
+    const base = this.resolveBodyColor(e.display.color);
+    return this.anySketchActive() ? mixHex(base, this.palette.background, 0.6) : base;
+  }
+
   private resolveBodyColor(color: string): string {
     return color === DEFAULT_BODY_COLOR_KEY ? this.palette.body : color;
   }
 
   private applyDisplay(e: BodyEntry): void {
     e.group.visible = e.display.visible;
-    const base = this.resolveBodyColor(e.display.color);
     // While a sketch is being edited the rest of the model recedes toward the background.
-    e.material.color.set(
-      this.anySketchActive() ? mixHex(base, this.palette.background, 0.6) : base,
-    );
+    e.material.color.set(this.effectiveBodyColor(e));
     const translucent = e.display.opacity < 1;
     e.material.transparent = translucent;
     e.material.opacity = e.display.opacity;
     e.material.depthWrite = !translucent;
     e.material.needsUpdate = true;
+    this.applyCapState(e);
   }
 
   private disposeBody(e: BodyEntry): void {
-    this.scene.remove(e.group);
+    this.bodyRoot.remove(e.group);
+    this.disposeCap(e);
     if (e.idMesh) {
-      this.idScene.remove(e.idMesh);
+      this.idRoot.remove(e.idMesh);
       disposeOverlay(e.idMesh, true);
       e.idMesh = null;
     }
@@ -1718,10 +2510,15 @@ class ViewportImpl implements ViewportEngine {
     if (moving || this.dirty) {
       this.dirty = false;
       this.renderOnce();
+      if (this.previewDirty) {
+        this.previewDirty = false;
+        this.touchStats.lastPreviewPresentedAt = this.renderCount;
+      }
       const waiters = this.waiters;
       this.waiters = [];
       for (const w of waiters) w();
     }
+    this.emitCamera();
     // While a pointer is down the loop must keep ticking even if nothing moved this frame:
     // camera-controls only applies pointer deltas inside update() (`_dragNeedsUpdate`), and it
     // emits no event on pointermove, so an idle loop would swallow touch drags.
@@ -1742,11 +2539,20 @@ class ViewportImpl implements ViewportEngine {
       this.camera.far = far;
       this.camera.updateProjectionMatrix();
     }
+    const p11 = this.camera.projectionMatrix.elements[5] as number;
+    const heightCss = this.canvas.clientHeight;
     sizeDots(
-      [...this.highlightDots, ...[...this.sketches.values()].flatMap((s) => s.dots)],
-      this.camera.projectionMatrix.elements[5] as number,
-      this.canvas.clientHeight,
+      [
+        ...this.highlightDots,
+        ...[...this.sketches.values()].flatMap((s) => s.dots),
+        ...[...this.markerSets.values()].flatMap((m) => m.dots),
+      ],
+      p11,
+      heightCss,
     );
+    for (const h of this.handles.values()) {
+      h.place(worldPerPixel(this.depthOf(h.origin), p11, heightCss));
+    }
     const t0 = performance.now();
     this.renderer.render(this.scene, this.camera);
     const dt = performance.now() - t0;
@@ -1764,6 +2570,7 @@ class ViewportImpl implements ViewportEngine {
     ];
     if (key.length !== this.cameraKey.length || key.some((v, i) => v !== this.cameraKey[i])) {
       this.cameraKey = key;
+      this.cameraChangedSinceEmit = true;
       this.viewVersion++;
       this.cube?.update({
         right: [m[0] as number, m[1] as number, m[2] as number],
@@ -1772,6 +2579,23 @@ class ViewportImpl implements ViewportEngine {
       });
     }
   }
+}
+
+/**
+ * Event creation time on the performance.now() clock. Using it (not "now at handling") keeps tap
+ * and double-tap timing right when the main thread stalls and events queue up. Falls back to
+ * `performance.now()` for events with an implausible timestamp.
+ */
+function eventTime(e: Event): number {
+  const now = performance.now();
+  const t = e.timeStamp;
+  return t > 0 && Math.abs(now - t) < 10_000 && t <= now + 1 ? t : now;
+}
+
+function sameFaces(a: readonly number[], b: readonly number[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
 }
 
 function stripUndefined(d: BodyDisplay): BodyDisplay {

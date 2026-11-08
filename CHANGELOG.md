@@ -27,3 +27,7 @@
 - Published JSON Schemas at `/whittle/schema/`; the fake engine is dev/test only.
 - Acceptance: the PLAN §12 bracket built through the UI on the real engine, three parameter edits, STEP export and re-import (volume within 1e-6; holes checked to move).
 - Fixes: fast clicks close a sketch loop on its start point; several-group expressions convert Ø ↔ R correctly; CI E2E runs on one worker with real waits.
+
+### M2 — Touch & tablet excellence
+
+- Viewport: `TouchViewport` — twist-roll plus tap/double-tap/long-press/two- and three-finger-tap gestures with palm rejection (`setInputPolicy`), throttled `onCamera`, `zoomTo`, section planes with stencil caps (WebGPU and WebGL2), same-frame push/pull prism previews, constant-size arrow handles picked before geometry, tone/dash markers and `SketchResult.points`; idle shader warm-up and a 1M-triangle frame-time assertion (`WHITTLE_PERF_ASSERT=1`).

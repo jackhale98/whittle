@@ -9,6 +9,8 @@ export interface HarnessApi {
   /** Replace the scene with a dense sphere of ~n triangles (perf probe). */
   loadDense(triangles: number): void;
   loadBox(): void;
+  /** Add (or replace) another box body, e.g. to test several bodies at once. */
+  addBox(id: string, size: [number, number, number], origin: [number, number, number]): void;
   /** Replace the box body with another size (same buffer sizes: the cheap refill path). */
   resizeBox(dx: number, dy: number, dz: number): number;
   /** Replace the box body with a sphere mesh (different buffer sizes: geometry swap). */
@@ -17,6 +19,10 @@ export interface HarnessApi {
   /** Show the synthetic rectangle + circle sketch on top of the box (id `F02`). */
   showSketch(active?: boolean): void;
   hideSketch(): void;
+  /** Translucent mesh preview: a box at `origin` (kind 'mesh'); `null` removes it. */
+  previewBox(id: string, origin: [number, number, number] | null): void;
+  /** The synthetic sketch plus `SketchResult.points` entries (id `F03`, z = 20). */
+  showSketchPoints(points: Array<{ entity: string; at: [number, number, number] }>): void;
   /** Last hover pick result (what the harness is highlighting). */
   lastHover: PickHit[];
 }
@@ -32,9 +38,13 @@ const params = new URLSearchParams(location.search);
 const backendParam = params.get('backend');
 const backend = backendParam === 'webgl2' || backendParam === 'webgpu' ? backendParam : 'auto';
 const theme = params.get('theme') === 'dark' ? 'dark' : 'light';
-const reducedMotion = params.get('reducedMotion') === '1';
+const reducedParam = params.get('reducedMotion');
+/** Absent = follow the system `prefers-reduced-motion` (the engine default). */
+const reducedMotion = reducedParam === null ? undefined : reducedParam === '1';
+const precompile = params.get('warm') !== '0';
 const maxPixelRatio = Number(params.get('maxDpr') ?? '2');
 const hover = params.get('hover') !== '0';
+const empty = params.get('empty') === '1';
 
 const canvas = document.getElementById('c') as HTMLCanvasElement;
 const hud = document.getElementById('hud') as HTMLDivElement;
@@ -48,7 +58,13 @@ const toItem = (h: PickHit): HighlightItem => ({
 });
 
 async function main() {
-  const viewport = await createViewport(canvas, { backend, theme, reducedMotion, maxPixelRatio });
+  const viewport = await createViewport(canvas, {
+    backend,
+    theme,
+    maxPixelRatio,
+    precompile,
+    ...(reducedMotion === undefined ? {} : { reducedMotion }),
+  });
   const loadBox = () => {
     viewport.removeBody('dense');
     viewport.setBody('box', boxMesh(40, 30, 20));
@@ -57,6 +73,9 @@ async function main() {
     viewport,
     backend: viewport.backend,
     loadBox,
+    addBox(id, size, origin) {
+      viewport.setBody(id, boxMesh(size[0], size[1], size[2], { origin }));
+    },
     loadDense(triangles) {
       viewport.removeBody('box');
       viewport.setBody('dense', denseMesh(triangles));
@@ -76,13 +95,26 @@ async function main() {
     showSketch(active = false) {
       viewport.setSketch('F02', { sketch: sketchFixture(20, 'F02'), active, dof: DOF });
     },
+    showSketchPoints(points) {
+      const sketch = sketchFixture(20, 'F03');
+      viewport.setSketch('F03', {
+        sketch: { ...sketch, points: points.map((p) => ({ ...p, construction: false })) },
+        active: false,
+      });
+    },
+    previewBox(id, origin) {
+      viewport.setPreview(
+        id,
+        origin ? { kind: 'mesh', mesh: boxMesh(12, 12, 12, { origin }) } : null,
+      );
+    },
     hideSketch() {
       viewport.setSketch('F02', null);
     },
     lastHover: [],
   };
   window.__viewport = api;
-  loadBox();
+  if (!empty) loadBox();
 
   // Hover = preselection; click = selection (demo of the app's wiring).
   let selected: HighlightItem[] = [];
