@@ -11,8 +11,6 @@ import { watchInstallPrompt } from './platform/install';
 import { installPageGuards } from './platform/page-guards';
 import { initServiceWorker, keepServiceWorkerFresh } from './platform/sw-register';
 
-installPageGuards();
-
 // Theme before first paint (no flash), then platform: test hooks and the service worker (settles
 // cross-origin isolation, may reload once on the very first visit).
 initTheme();

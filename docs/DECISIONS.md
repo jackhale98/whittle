@@ -411,3 +411,24 @@ edges keep resolving by exact name. A pocket pulled flush leaves no trace. The c
 UnifySameDomain pass, restricted to the operation's seams. Curved faces stay `UNSUPPORTED_FEATURE`
 in M2. Offsetting curved faces (`BRepOffset_MakeOffset` with per-face offsets) is the natural M3
 extension, and it would also extend non-perpendicular neighbours instead of adding walls.
+
+## ADR-014 — M2 viewport: camera veto, section caps, GPU prism (2026-11-08)
+
+- **Camera veto.** Pen presses (with `penDraws`) and presses on handles are kept from the camera by a
+  window-capture `pointerdown` that disables camera-controls (private `_enabled`) for that one
+  event and restores it in a bubble listener and via `setTimeout(0)`. This relies on
+  camera-controls internals, so the dependency is pinned to 3.1.2.
+- **Double-tap fit** stays the M1 behaviour until the app subscribes to `onGesture`; from then on the
+  viewport never acts on gestures itself.
+- **Section.** A three.js `ClippingGroup` wraps the body root, the ID-buffer root and the
+  highlights, so clipped geometry is neither drawn nor picked. The `WebGPURenderer` is created
+  with `stencil: true`. Caps use a per-body stencil pass: a back-face increment, a front-face
+  decrement, then a plane quad drawn where the count is non-zero, which also resets it. This
+  assumes closed shells. WebGPU is untested in CI (no adapter) and needs a real-device check.
+- **Prism preview.** The prism is built once from the faces' triangles and their boundary edges
+  (welded by position). A per-vertex `lift` attribute plus direction and distance uniforms move it
+  on the GPU, so a distance update allocates nothing. Cuts draw a second mesh with depth test off
+  so they show through the solid. Measured on SwiftShader: p95 6.5 ms from handler to render
+  (same frame).
+- **Gesture timing** uses event timestamps, not handler time, so it survives main-thread stalls.
+  The long-press timer gives queued moves 60 ms to cancel it when it fires late.

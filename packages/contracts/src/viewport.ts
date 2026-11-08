@@ -19,7 +19,8 @@ export interface ViewportOptions {
   maxPixelRatio?: number;
   /** Light/dark theme drives background and edge colours. */
   theme?: 'light' | 'dark';
-  /** Honour prefers-reduced-motion: disable camera animation/damping when true. */
+  /** Disable camera animation/damping when true; when omitted the engine follows the system
+   *  `prefers-reduced-motion` setting (and reacts to changes). */
   reducedMotion?: boolean;
   /** Show the view cube (top-right). Default true. */
   viewCube?: boolean;
@@ -160,6 +161,13 @@ export interface InteractiveViewport extends Viewport {
  * it applies to the camera itself. The app decides what a gesture means (double-tap on geometry =
  * zoom to it, two-finger tap = undo…). Coordinates are canvas-relative CSS px.
  */
+/*
+ * Semantics: a double-tap emits `tap` on the first lift, then `doubleTap` instead of a second
+ * `tap`. Mouse primary-button taps are reported too. With `InputPolicy.penDraws`, pen pointers
+ * emit no gestures (the app handles them via its own canvas pointer listeners). Until the app
+ * subscribes with `onGesture`, a double-tap still fits the view; after that the viewport never
+ * acts on gestures itself.
+ */
 export interface ViewportGesture {
   kind: 'tap' | 'doubleTap' | 'longPress' | 'twoFingerTap' | 'threeFingerTap';
   x: number;
@@ -206,9 +214,16 @@ export type PreviewSpec =
 
 /**
  * A draggable handle drawn on top of geometry (push/pull arrow, later gizmos). Handles are picked
- * as `{ kind: 'handle', entity: <handle id> }` before anything else.
+ * before anything else as `{ kind: 'handle', bodyId: <id>, entity: <id>, index: 0 }`; a press
+ * that starts on a handle never moves the camera.
  */
-export type HandleSpec = { kind: 'arrow'; origin: Vec3; direction: Vec3; length?: number };
+export type HandleSpec = {
+  kind: 'arrow';
+  origin: Vec3;
+  direction: Vec3;
+  /** On-screen length in CSS px (default 84), constant while zooming. */
+  length?: number;
+};
 
 /** Simple world-space annotation geometry (measure results, attention markers). Labels are app HTML. */
 export interface Marker {
