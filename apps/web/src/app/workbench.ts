@@ -857,7 +857,12 @@ export class Workbench {
   }
 
   /** A hit was chosen (click or "Which one?"). */
-  async choose(hit: PickHit | null, additive = false): Promise<void> {
+  /** Applies a pick (a click or the overlap chooser); tracked so `idle()` waits for it. */
+  choose(hit: PickHit | null, additive = false): Promise<void> {
+    return this.track(this.applyChoice(hit, additive));
+  }
+
+  private async applyChoice(hit: PickHit | null, additive: boolean): Promise<void> {
     this.patchUi({ chooser: null });
     const u = this.ui.get();
     const part = this.part;
@@ -1604,8 +1609,22 @@ export class Workbench {
     } else this.patchUi({ candidates: null });
   }
 
+  /** UI actions still in flight (they await the engine before editing the document). */
+  private actions = new Set<Promise<unknown>>();
+
+  private track<T>(p: Promise<T>): Promise<T> {
+    this.actions.add(p);
+    const done = () => this.actions.delete(p);
+    p.then(done, done);
+    return p;
+  }
+
   /** A candidate from the "Which one?" list for an ambiguous reference. */
-  async chooseCandidate(name: string | null): Promise<void> {
+  chooseCandidate(name: string | null): Promise<void> {
+    return this.track(this.applyCandidate(name));
+  }
+
+  private async applyCandidate(name: string | null): Promise<void> {
     const c = this.ui.get().candidates;
     this.patchUi({ candidates: null });
     if (!c || name === null) return;
@@ -1712,7 +1731,17 @@ export class Workbench {
         await this.sketch?.whenSettled();
         await this.boot?.modeling;
         for (let i = 0; i < 50 && !this.loop; i++) await new Promise((r) => setTimeout(r, 20));
-        await this.loop?.whenIdle();
+        // Settled = no UI action in flight, the regen loop idle, and the last live result is of
+        // the document as displayed now (not of the version before the last edit).
+        for (let i = 0; i < 200; i++) {
+          while (this.actions.size > 0) await Promise.allSettled([...this.actions]);
+          await this.sketch?.whenSettled();
+          await this.loop?.whenIdle();
+          const r = this.regen.get();
+          if (!this.loop || (r?.source === 'live' && r.doc === this.viewDoc())) break;
+          if (this.actions.size === 0 && !this.ui.get().ready) break;
+          await new Promise((res) => setTimeout(res, 25));
+        }
         await this.viewport?.nextFrame();
       },
       flushSave: () => this.flushSave(),

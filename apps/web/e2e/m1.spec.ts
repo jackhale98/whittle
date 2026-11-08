@@ -134,11 +134,14 @@ test('sketch a rectangle, dimension it, extrude by width/2, edit history, reload
   const bar = page.getByRole('separator', { name: 'Rollback bar' });
   await bar.focus();
   await page.keyboard.press('ArrowUp');
+  await expect(bar).toHaveAttribute('aria-valuenow', '1');
   await a.idle();
   regen = await a.regen();
   expect(regen?.features.map((f) => f.state)).toEqual(['ok', 'rolledBack']);
   expect(regen?.bodies).toHaveLength(0);
+  await expect(bar).toBeFocused();
   await page.keyboard.press('ArrowDown');
+  await expect(bar).toHaveAttribute('aria-valuenow', '2');
   await a.idle();
   expect((await a.regen())?.bodies).toHaveLength(1);
 
