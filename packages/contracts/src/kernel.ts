@@ -11,7 +11,7 @@
  * `KernelError`. A failing call must never crash or poison the worker.
  */
 
-import type { Feature, Vec3 } from './document';
+import type { Feature, Frame, Vec3 } from './document';
 import type { NamingMap } from './naming';
 
 /** Integer handle into the worker's shape cache. `0` is never a valid handle. */
@@ -70,10 +70,31 @@ export interface KernelInitOptions {
 export interface FeatureInputs {
   /** Body the feature operates on (for op add/cut/intersect, fillet, etc.). */
   target?: ShapeHandle;
-  /** Additional input shapes keyed by role (e.g. tool bodies). */
+  /** Additional input shapes keyed by role (e.g. `"tools"`, `"profile"`, `"sketch"`). */
   shapes?: Record<string, ShapeHandle>;
   /** Resolved numeric values for every Expr in the feature, keyed by JSON pointer into the feature (e.g. `"/dx"`). Millimetres / radians. */
   values: Record<string, number>;
+  /**
+   * EntityRefs resolved by the regen engine (§7.3) to concrete sub-shapes, keyed by JSON pointer
+   * into the feature (e.g. `"/edges/0"`, `"/profile/1"`). The kernel never resolves names itself.
+   */
+  refs?: Record<string, ResolvedRef>;
+  /** Placement frames keyed by role (e.g. `"plane"` for a sketch), mm. */
+  frames?: Record<string, Frame>;
+}
+
+/** A sub-shape of a live shape: `index` into its TopExp map for `kind` (0-based). */
+export interface ResolvedRef {
+  shape: ShapeHandle;
+  kind: 'face' | 'edge' | 'vertex' | 'body';
+  index: number;
+}
+
+/** Geometric fingerprints of every face/edge/vertex of a shape (TopExp order), for §7.3 resolution. */
+export interface ShapeFingerprints {
+  faces: { centroid: Vec3; normal?: Vec3; area: number; surface: string }[];
+  edges: { centroid: Vec3; length: number; curve: string }[];
+  vertices: { point: Vec3 }[];
 }
 
 export interface FeatureResult {

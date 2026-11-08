@@ -9,6 +9,8 @@
  *  - No derived geometry lives here; meshes/BREPs are caches (PLAN §8A.1).
  */
 
+import type { SketchConstraint, SketchEntity } from './sketch';
+
 /** ULID (26-char Crockford base32). */
 export type Id = string;
 
@@ -16,6 +18,7 @@ export type Id = string;
 export type Expr = string;
 
 export type Vec3 = [number, number, number];
+export type Vec2 = [number, number];
 
 export type LengthUnit = 'mm' | 'cm' | 'm' | 'in' | 'ft';
 export type AngleUnit = 'deg' | 'rad';
@@ -127,9 +130,10 @@ export interface FeatureBase {
 export type BodyOp = 'new' | 'add' | 'cut' | 'intersect';
 
 /**
- * Axis-aligned placement frame: origin plus Z (normal) and X directions. Right-handed; Y = Z × X.
- * Values are numbers in document length units (placements are resolved geometry, not inputs;
- * user-editable offsets belong in feature Exprs).
+ * Placement frame: origin plus Z (normal) and X directions. Right-handed; Y = Z × X.
+ * Numbers are **millimetres** — the canonical internal length unit for all stored geometry,
+ * whatever `WhittleDoc.units` says (units only affect display and unit-less expression input).
+ * User-editable offsets belong in feature Exprs.
  */
 export interface Frame {
   origin: Vec3;
@@ -145,40 +149,30 @@ export type PrimitiveFeature = FeatureBase & {
   type: 'primitive';
   frame?: Frame;
   op: BodyOp;
+  scope?: BodyScope;
 } & (
     | { shape: 'box'; dx: Expr; dy: Expr; dz: Expr }
     | { shape: 'cylinder'; radius: Expr; height: Expr }
     | { shape: 'sphere'; radius: Expr }
   );
 
-/** Sketch geometry and constraints are defined by packages/sketch contracts in M1. */
+/**
+ * A 2D sketch on a plane or planar face. Geometry and constraints are defined in `sketch.ts`.
+ * The kernel turns the solved sketch into wires and regions (names: see `naming.ts`).
+ */
 export interface SketchFeature extends FeatureBase {
   type: 'sketch';
-  /** Plane or planar face the sketch lies on. */
+  /** Plane or planar face the sketch lies on (`origin:XY` etc. or a face/plane-feature ref). */
   on: EntityRef;
   entities: SketchEntity[];
   constraints: SketchConstraint[];
 }
 
-/** M1: refined by sketch-engineer via a contract proposal. */
-export interface SketchEntity {
-  id: Id;
-  kind: 'point' | 'line' | 'circle' | 'arc' | 'ellipse' | 'bspline';
-  construction: boolean;
-  /** Kind-specific parameters (solver state), plain numbers in sketch-local coordinates. */
-  data: Record<string, number | Id>;
-}
-
-/** M1: refined by sketch-engineer via a contract proposal. */
-export interface SketchConstraint {
-  id: Id;
-  kind: string;
-  refs: Id[];
-  /** Driving dimension value; absent for geometric constraints. */
-  value?: Expr;
-  /** Driven (reference) dimensions are measured, never fed to the solver as driving. */
-  driving?: boolean;
-}
+/**
+ * Which existing bodies a solid feature with op add/cut/intersect acts on. Default (`undefined`) =
+ * every body the new tool solid touches (Onshape-style "merge scope: all").
+ */
+export type BodyScope = { kind: 'all' } | { kind: 'bodies'; bodies: EntityRef[] };
 
 export interface ExtrudeFeature extends FeatureBase {
   type: 'extrude';
@@ -190,6 +184,7 @@ export interface ExtrudeFeature extends FeatureBase {
     | { kind: 'upTo'; target: EntityRef }
     | { kind: 'throughAll' };
   op: BodyOp;
+  scope?: BodyScope;
   draft?: Expr;
 }
 
@@ -200,6 +195,7 @@ export interface RevolveFeature extends FeatureBase {
   angle: Expr;
   direction: 'normal' | 'reverse' | 'symmetric';
   op: BodyOp;
+  scope?: BodyScope;
 }
 
 export interface FilletFeature extends FeatureBase {
