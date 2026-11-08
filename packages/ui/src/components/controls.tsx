@@ -83,8 +83,8 @@ export function Segmented<T extends string>({
             tabIndex={on ? 0 : -1}
             onClick={() => onChange(o.value)}
             className={cn(
-              'flex min-w-0 flex-1 items-center justify-center gap-1 rounded-[8px] px-2 text-xs font-medium whitespace-nowrap transition-colors duration-150 disabled:opacity-40',
-              size === 'touch' ? 'h-10' : 'h-7',
+              'flex min-w-0 flex-1 items-center justify-center gap-1 rounded-[8px] px-2 text-xs font-medium whitespace-nowrap transition-colors duration-fast disabled:opacity-40',
+              size === 'touch' ? 'h-11' : 'h-7',
               on
                 ? 'bg-surface text-fg shadow-[0_1px_2px_rgb(15_23_42/0.14)]'
                 : 'text-fg-muted hover:text-fg',
@@ -173,13 +173,13 @@ export function Switch({
       <span
         aria-hidden
         className={cn(
-          'relative inline-block h-5 w-9 shrink-0 rounded-full transition-colors duration-150',
+          'relative inline-block h-5 w-9 shrink-0 rounded-full transition-colors duration-fast',
           checked ? 'bg-accent' : 'bg-border-strong/60',
         )}
       >
         <span
           className={cn(
-            'absolute top-0.5 left-0.5 size-4 rounded-full bg-white shadow transition-transform duration-150',
+            'absolute top-0.5 left-0.5 size-4 rounded-full bg-white shadow transition-transform duration-fast',
             checked && 'translate-x-4',
           )}
         />
@@ -192,4 +192,4 @@ export function Switch({
 /* ------------------------------------------------------------------------- text field */
 
 export const fieldClass =
-  'h-8 w-full min-w-0 rounded-control bg-surface-2 px-2.5 text-ui text-fg shadow-[inset_0_0_0_1px_var(--color-border)] outline-none transition-shadow duration-150 placeholder:text-fg-subtle hover:shadow-[inset_0_0_0_1px_var(--color-border-strong)] focus-visible:shadow-[inset_0_0_0_2px_var(--color-accent)]';
+  'h-8 w-full min-w-0 rounded-control bg-surface-2 px-2.5 text-ui text-fg shadow-[inset_0_0_0_1px_var(--color-border)] outline-none transition-shadow duration-fast placeholder:text-fg-subtle hover:shadow-[inset_0_0_0_1px_var(--color-border-strong)] focus-visible:shadow-[inset_0_0_0_2px_var(--color-accent)]';

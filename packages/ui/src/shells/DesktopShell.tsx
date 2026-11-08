@@ -26,6 +26,7 @@ import {
   ThemeToggle,
   UndoRedo,
   UnitsChip,
+  ViewportOverlays,
   ViewportStage,
 } from './shared';
 import type { ShellProps } from './types';
@@ -37,11 +38,11 @@ const RIGHT_WIDTH = 296;
 const GUTTER = 8;
 
 const tabTrigger =
-  'h-7 flex-1 rounded-[8px] px-3 text-xs font-medium text-fg-muted transition-colors duration-150 hover:text-fg data-[state=active]:bg-surface data-[state=active]:text-fg data-[state=active]:shadow-[0_1px_2px_rgb(15_23_42/0.12)]';
+  'h-7 flex-1 rounded-[8px] px-3 text-xs font-medium tracking-[0.005em] text-fg-muted transition-colors duration-fast hover:text-fg data-[state=active]:bg-surface data-[state=active]:text-fg data-[state=active]:shadow-[0_1px_2px_rgb(15_23_42/0.12)]';
 
 function SectionTitle({ children }: { children: string }) {
   return (
-    <h2 className="px-4 pt-3.5 pb-2 text-2xs font-semibold tracking-wider text-fg-muted uppercase">
+    <h2 className="px-4 pt-3.5 pb-2 text-2xs font-semibold tracking-[0.08em] text-fg-muted uppercase">
       {children}
     </h2>
   );
@@ -96,7 +97,10 @@ export function DesktopShell(props: ShellProps) {
     <ShellRoot tier="desktop" props={props} className="flex flex-col">
       {(core) => (
         <>
-          <header className="flex h-12 shrink-0 items-center gap-1 px-3" data-testid="top-bar">
+          <header
+            className="flex h-12 shrink-0 items-center gap-1 px-3 pb-px"
+            data-testid="top-bar"
+          >
             <IconButton
               label="Feature panel"
               icon={<PanelLeft className="size-[18px]" />}
@@ -209,7 +213,7 @@ export function DesktopShell(props: ShellProps) {
                 >
                   <span
                     className={cn(
-                      'h-10 w-1 rounded-full transition-colors duration-150 group-hover:bg-border-strong/50',
+                      'h-10 w-1 rounded-full transition-colors duration-fast group-hover:bg-border-strong/50',
                       dragging ? 'bg-accent' : 'bg-transparent',
                     )}
                   />
@@ -220,13 +224,14 @@ export function DesktopShell(props: ShellProps) {
             {/* Centre: viewport */}
             <ViewportStage
               viewport={viewport}
-              className="flex-1 rounded-panel shadow-inset"
+              className="flex-1 rounded-panel shadow-[var(--shadow-card)]"
               overlay={
                 <>
                   <div className="absolute top-3 left-3 flex items-center gap-2">
                     <UnitsChip />
                     <StatusChip status={kernelStatus} className="pointer-events-auto" />
                   </div>
+                  <ViewportOverlays props={props} />
                   {/* Top-right is intentionally free: the view cube mounts there. */}
                   <div className="absolute bottom-4 left-1/2 -translate-x-1/2">
                     <CommandBar
@@ -274,7 +279,7 @@ export function DesktopShell(props: ShellProps) {
                     >
                       <summary className="flex cursor-pointer list-none items-center gap-1.5 px-4 py-2.5 text-2xs font-semibold tracking-wider text-fg-muted uppercase select-none hover:text-fg focus-visible:outline-2 focus-visible:outline-accent [&::-webkit-details-marker]:hidden">
                         <ChevronRight
-                          className="size-3.5 transition-transform duration-150 group-open:rotate-90"
+                          className="size-3.5 transition-transform duration-fast group-open:rotate-90"
                           aria-hidden
                         />
                         Runtime

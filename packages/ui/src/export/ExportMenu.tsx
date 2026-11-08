@@ -35,6 +35,7 @@ export function ExportMenu({
         variant={variant}
         size={size}
         aria-haspopup="dialog"
+        data-testid="export-trigger"
         aria-expanded={open}
         icon={<Download className={size === 'touch' ? 'size-[18px]' : 'size-4'} />}
         onClick={() => setOpen((o) => !o)}

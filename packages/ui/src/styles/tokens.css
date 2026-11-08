@@ -15,7 +15,7 @@
 
   --radius-control: 10px;
   --radius-panel: 14px;
-  --radius-sheet: 20px;
+  --radius-sheet: 14px;
 
   --shadow-float:
     0 1px 2px rgb(15 23 42 / 0.06), 0 8px 24px -4px rgb(15 23 42 / 0.12),
@@ -24,6 +24,18 @@
     0 2px 6px rgb(15 23 42 / 0.08), 0 16px 40px -8px rgb(15 23 42 / 0.2),
     0 0 0 1px rgb(15 23 42 / 0.06);
   --shadow-inset: inset 0 0 0 1px rgb(15 23 42 / 0.06);
+  --shadow-highlight: inset 0 1px 0 rgb(255 255 255 / 0.7);
+  --shadow-card:
+    0 1px 2px rgb(15 23 42 / 0.05), 0 6px 18px -8px rgb(15 23 42 / 0.12),
+    0 0 0 1px rgb(15 23 42 / 0.05);
+  --shadow-sheet:
+    0 -1px 2px rgb(15 23 42 / 0.05), 0 -10px 32px -8px rgb(15 23 42 / 0.16),
+    0 0 0 1px rgb(15 23 42 / 0.05);
+
+  /* Motion presets (PLAN 9.5), mirrored from motion.ts for CSS transitions. */
+  --duration-fast: 180ms;
+  --duration-standard: 260ms;
+  --ease-standard: cubic-bezier(0.2, 0.8, 0.2, 1);
 
   --color-bg: #e9edf3;
   --color-surface: #ffffff;
@@ -118,6 +130,13 @@
       0 2px 6px rgb(0 0 0 / 0.4), 0 18px 44px -8px rgb(0 0 0 / 0.65),
       0 0 0 1px rgb(255 255 255 / 0.09);
     --shadow-inset: inset 0 0 0 1px rgb(255 255 255 / 0.07);
+    --shadow-highlight: inset 0 1px 0 rgb(255 255 255 / 0.07);
+    --shadow-card:
+      0 1px 2px rgb(0 0 0 / 0.3), 0 8px 22px -8px rgb(0 0 0 / 0.5),
+      0 0 0 1px rgb(255 255 255 / 0.06);
+    --shadow-sheet:
+      0 -1px 2px rgb(0 0 0 / 0.3), 0 -12px 34px -8px rgb(0 0 0 / 0.55),
+      0 0 0 1px rgb(255 255 255 / 0.07);
   }
 }
 
@@ -155,4 +174,10 @@
     0 2px 6px rgb(0 0 0 / 0.4), 0 18px 44px -8px rgb(0 0 0 / 0.65),
     0 0 0 1px rgb(255 255 255 / 0.09);
   --shadow-inset: inset 0 0 0 1px rgb(255 255 255 / 0.07);
+  --shadow-highlight: inset 0 1px 0 rgb(255 255 255 / 0.07);
+  --shadow-card:
+    0 1px 2px rgb(0 0 0 / 0.3), 0 8px 22px -8px rgb(0 0 0 / 0.5), 0 0 0 1px rgb(255 255 255 / 0.06);
+  --shadow-sheet:
+    0 -1px 2px rgb(0 0 0 / 0.3), 0 -12px 34px -8px rgb(0 0 0 / 0.55),
+    0 0 0 1px rgb(255 255 255 / 0.07);
 }

@@ -62,7 +62,7 @@ export default function ExportForm({
             <label
               key={t.id}
               className={cn(
-                'flex cursor-default items-center gap-3 rounded-control px-2.5 transition-colors duration-150 has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-accent',
+                'flex cursor-default items-center gap-3 rounded-control px-2.5 transition-colors duration-fast has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-accent',
                 size === 'touch' ? 'min-h-12' : 'min-h-10',
                 on ? 'bg-accent-soft' : 'hover:bg-surface-2',
                 reason && 'opacity-50',

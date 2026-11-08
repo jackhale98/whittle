@@ -17,7 +17,7 @@ export interface CommandBarProps {
 }
 
 const itemBase =
-  'relative flex shrink-0 flex-col items-center justify-center gap-0.5 rounded-control text-fg-muted transition-colors duration-150 select-none hover:bg-surface-2 hover:text-fg active:bg-surface-3 aria-disabled:opacity-60';
+  'relative flex shrink-0 flex-col items-center justify-center gap-0.5 rounded-control text-fg-muted transition-colors duration-fast select-none hover:bg-surface-2 hover:text-fg active:bg-surface-3 aria-disabled:opacity-60';
 
 /**
  * Floating command bar (PLAN 9.1). Arrow keys move between tools (roving tabindex). Tools stay
@@ -38,7 +38,7 @@ export function CommandBar({
       orientation={rail ? 'vertical' : 'horizontal'}
       className={cn(
         'w-panel pointer-events-auto flex gap-0.5 p-1.5',
-        rail ? 'flex-col rounded-[18px]' : 'items-stretch rounded-[18px]',
+        rail ? 'flex-col rounded-panel' : 'items-stretch rounded-panel',
         className,
       )}
     >

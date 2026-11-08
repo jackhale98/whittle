@@ -27,3 +27,7 @@
 - Published JSON Schemas at `/whittle/schema/`; the fake engine is dev/test only.
 - Acceptance: the PLAN §12 bracket built through the UI on the real engine, three parameter edits, STEP export and re-import (volume within 1e-6; holes checked to move).
 - Fixes: fast clicks close a sketch loop on its start point; several-group expressions convert Ø ↔ R correctly; CI E2E runs on one worker with real waits.
+
+### M2 — Touch & tablet excellence
+- UI: tablet shell reworked (PLAN §9.1): slim tool rail with Sketch / Solid / Modify / Inspect groups and flyouts, a context bubble that follows the selection (flips at the edges, never covers the anchor), and a three-snap bottom sheet (peek / half / full) with drag, fling and an accessible handle. Phone shell gains real Parts, Measure and Section panels (lazy). Inline keypad now has units, an expression row and parameter names, never covers its field, and hands over to the OS keyboard and back. Push/pull value chip, non-modal bracket tutorial coach marks (`useTutorial`, `bracketTutorial`), long-press menus on history rows, 44 px targets throughout, `overflow-clip` stages, motion presets mirrored as CSS tokens (ADR-010).
+

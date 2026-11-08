@@ -97,7 +97,7 @@ export function WhichOneChooser({
                   onPick(c.id);
                 }}
                 className={cn(
-                  'flex w-full items-center gap-2.5 rounded-[8px] px-2 text-left outline-none transition-colors duration-150 hover:bg-surface-2 focus-visible:bg-accent-soft',
+                  'flex w-full items-center gap-2.5 rounded-[8px] px-2 text-left outline-none transition-colors duration-fast hover:bg-surface-2 focus-visible:bg-accent-soft',
                   size === 'touch' ? 'h-12' : 'h-9',
                 )}
               >

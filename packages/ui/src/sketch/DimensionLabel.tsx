@@ -200,7 +200,7 @@ export function DimensionLabel({
       aria-pressed={selected}
       onClick={() => (driving ? setEditing(true) : onSelect?.())}
       className={cn(
-        'tnum pointer-events-auto absolute z-[1] h-6 rounded-[8px] px-2 text-xs font-semibold whitespace-nowrap transition-colors duration-150',
+        'tnum pointer-events-auto absolute z-[1] h-6 rounded-[8px] px-2 text-xs font-semibold whitespace-nowrap transition-colors duration-fast',
         conflicting
           ? 'bg-danger-soft text-danger-text shadow-[inset_0_0_0_1.5px_var(--color-danger)]'
           : driving

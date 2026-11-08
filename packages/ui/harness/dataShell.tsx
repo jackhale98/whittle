@@ -1,14 +1,20 @@
 import type { DeviceTier, Expr, Feature, Id, KernelStatus } from '@whittle/contracts';
+import { ArrowUpFromLine, EyeOff, PenLine, Trash2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import {
   AppShell,
+  bracketTutorial,
   type ExportRequest,
   FeatureInspector,
+  type Measurement,
   type MoveResult,
   PartInspector,
+  type SectionAxis,
   SelectionInspector,
+  type SheetSnap,
   type ThemeSetting,
   type ToolId,
+  useTutorial,
 } from '../src';
 import {
   makeEvaluator,
@@ -17,6 +23,26 @@ import {
   sampleParams,
   sampleStatuses,
 } from './fixtures';
+
+const q = new URLSearchParams(location.search);
+const pt = (key: string): { x: number; y: number } | null => {
+  const v = q.get(key);
+  if (!v) return null;
+  const [x, y] = v.split(',').map(Number);
+  return Number.isFinite(x) && Number.isFinite(y) ? { x: x as number, y: y as number } : null;
+};
+
+const sampleMeasurements: Measurement[] = [
+  { kind: 'length', value: 60 },
+  { kind: 'angle', value: Math.PI / 2 },
+  { kind: 'distance', value: 42.5, delta: [30, 25.5, 17] },
+];
+
+declare global {
+  interface Window {
+    __harness?: { advance(id?: string): void; state(): unknown };
+  }
+}
 
 /** The shells wired to sample data, the way apps/web will wire them to the store. */
 export function DataShell({
@@ -41,6 +67,29 @@ export function DataShell({
   const evaluate = useMemo(() => makeEvaluator(params), [params]);
   const feature = features.find((f) => f.id === selected);
   const touch = tier === 'desktop' ? 'compact' : 'touch';
+
+  // M2 touch state, switched on by query params so every state has a stable URL for screenshots.
+  const [snap, setSnap] = useState<SheetSnap>((q.get('sheet') as SheetSnap | null) ?? 'peek');
+  const [measureUnits, setMeasureUnits] = useState<'mm' | 'in'>('mm');
+  const [section, setSection] = useState({
+    enabled: true,
+    axis: 'x' as SectionAxis,
+    offset: 12,
+    flipped: false,
+  });
+  const [targets, setTargets] = useState([
+    { id: 't1', label: 'Face · Top', kind: 'face' as const },
+    { id: 't2', label: 'Edge 4', kind: 'edge' as const },
+  ]);
+  const [parts, setParts] = useState([
+    { id: 'B1', name: 'Bracket', visible: true, color: '#c9ced6' },
+    { id: 'B2', name: 'Mounting plate', visible: false, color: '#d9a066' },
+  ]);
+  const [chipValue, setChipValue] = useState('12.5mm');
+  const [selPart, setSelPart] = useState<string | null>('B1');
+  const bubbleAnchor = pt('bubble');
+  const tutorial = useTutorial(bracketTutorial);
+  window.__harness = { advance: (id) => tutorial.advance(id), state: () => tutorial.state };
 
   const move = (id: Id, to: number): MoveResult => {
     const from = features.findIndex((f) => f.id === id);
@@ -125,6 +174,93 @@ export function DataShell({
         onExportRequest={setExported}
         exportBodies={[{ id: 'B1', name: 'Bracket' }]}
         exportUnavailable={{ '3mf': 'Coming soon' }}
+        sheetSnap={snap}
+        onSheetSnapChange={setSnap}
+        contextBubble={
+          bubbleAnchor
+            ? {
+                anchor: bubbleAnchor,
+                label: 'Face actions',
+                actions: [
+                  {
+                    id: 'sketch',
+                    label: 'Sketch',
+                    icon: <PenLine className="size-5" strokeWidth={1.7} />,
+                    onSelect: () => setTool('sketch'),
+                  },
+                  {
+                    id: 'extrude',
+                    label: 'Extrude',
+                    icon: <ArrowUpFromLine className="size-5" strokeWidth={1.7} />,
+                    onSelect: () => setTool('extrude'),
+                  },
+                  {
+                    id: 'hide',
+                    label: 'Hide',
+                    icon: <EyeOff className="size-5" strokeWidth={1.7} />,
+                    onSelect: () => {},
+                  },
+                  {
+                    id: 'delete',
+                    label: 'Delete',
+                    tone: 'danger',
+                    icon: <Trash2 className="size-5" strokeWidth={1.7} />,
+                    onSelect: () => {},
+                  },
+                ],
+              }
+            : undefined
+        }
+        valueChip={
+          pt('chip')
+            ? {
+                point: pt('chip'),
+                value: chipValue,
+                display: chipValue.replace(/(\d)mm$/, '$1 mm'),
+                label: 'Distance',
+                dragging: q.get('chipstate') === 'drag',
+                evaluate: (e) => evaluate(e, 'length'),
+                unitHint: 'mm',
+                onCommit: setChipValue,
+              }
+            : undefined
+        }
+        parts={{
+          parts,
+          selectedId: selPart,
+          onSelect: setSelPart,
+          onToggleVisible: (id, visible) =>
+            setParts((ps) => ps.map((p) => (p.id === id ? { ...p, visible } : p))),
+        }}
+        measure={{
+          measurements: sampleMeasurements,
+          targets,
+          units: measureUnits,
+          onUnitsChange: setMeasureUnits,
+          onRemoveTarget: (id) => setTargets((ts) => ts.filter((t) => t.id !== id)),
+          onClear: () => setTargets([]),
+        }}
+        section={{
+          ...section,
+          onEnabledChange: (enabled) => setSection((s) => ({ ...s, enabled })),
+          onAxisChange: (axis) => setSection((s) => ({ ...s, axis })),
+          faceLabel: 'Face · Top',
+          onPickFace: () => {},
+          range: { min: 0, max: 60 },
+          onOffsetChange: (offset) => setSection((s) => ({ ...s, offset })),
+          onFlippedChange: (flipped) => setSection((s) => ({ ...s, flipped })),
+        }}
+        tutorial={
+          q.get('tutorial')
+            ? {
+                steps: bracketTutorial,
+                state: tutorial.state,
+                title: 'Make a bracket',
+                onSkip: tutorial.skip,
+                onBack: tutorial.back,
+              }
+            : undefined
+        }
         diagnostics={undefined}
         onUndo={() => {}}
         onRedo={() => {}}

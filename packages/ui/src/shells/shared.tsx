@@ -1,6 +1,6 @@
 import type { DeviceTier, RuntimeDiagnostics } from '@whittle/contracts';
 import { Download, Grid3x3, Moon, Redo2, Sun, Undo2 } from 'lucide-react';
-import { LazyMotion, m } from 'motion/react';
+import { LazyMotion } from 'motion/react';
 import {
   type ComponentType,
   lazy,
@@ -8,18 +8,18 @@ import {
   Suspense,
   useCallback,
   useEffect,
-  useLayoutEffect,
   useMemo,
-  useRef,
   useState,
 } from 'react';
 import type { PaletteCommand } from '../components/CommandPalette';
+import { ParamNamesContext } from '../components/paramNames';
 import { Button, cn, IconButton, TooltipProvider } from '../components/primitives';
 import { COMING_SOON, tools } from '../components/tools';
 import { ExportMenu } from '../export/ExportMenu';
-import { useSpring } from '../motion';
+import type { SheetSnap } from '../logic/sheet';
 import type { ParamsTableProps } from '../params/ParamsTable';
 import { type ThemeControl, useTheme } from '../theme';
+import { TutorialCoach } from '../tutorial/TutorialLazy';
 import type { ShellProps } from './types';
 
 // The palette (Dialog + focus scope + scroll lock) is only fetched the first time it is opened.
@@ -112,6 +112,11 @@ export function ShellRoot({
     [theme.resolved, theme.toggle, extraCommands, props.commands, props.enabledTools, props.onTool],
   );
 
+  const paramNames = useMemo(
+    () => (props.paramsTable?.params ?? []).map((p) => p.name),
+    [props.paramsTable?.params],
+  );
+
   const openPalette = useCallback(() => {
     setPaletteWanted(true);
     setPaletteOpen(true);
@@ -120,21 +125,28 @@ export function ShellRoot({
   return (
     <LazyMotion features={loadMotionFeatures} strict>
       <TooltipProvider>
-        <div
-          data-testid="app-shell"
-          data-tier={tier}
-          className={cn(
-            'relative h-dvh w-full overflow-hidden bg-bg text-fg select-none',
-            className,
-          )}
-        >
-          {children({ theme, openPalette })}
-        </div>
-        {paletteWanted ? (
-          <Suspense fallback={null}>
-            <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} commands={commands} />
-          </Suspense>
-        ) : null}
+        <ParamNamesContext.Provider value={paramNames}>
+          <div
+            data-testid="app-shell"
+            data-tier={tier}
+            className={cn(
+              'relative h-dvh w-full overflow-clip bg-bg text-fg select-none',
+              className,
+            )}
+          >
+            {children({ theme, openPalette })}
+          </div>
+          {props.tutorial ? <TutorialCoach {...props.tutorial} /> : null}
+          {paletteWanted ? (
+            <Suspense fallback={null}>
+              <CommandPalette
+                open={paletteOpen}
+                onOpenChange={setPaletteOpen}
+                commands={commands}
+              />
+            </Suspense>
+          ) : null}
+        </ParamNamesContext.Provider>
       </TooltipProvider>
     </LazyMotion>
   );
@@ -159,7 +171,9 @@ export function ViewportStage({
   return (
     <div
       className={cn(
-        'relative isolate min-h-0 min-w-0 overflow-hidden bg-gradient-to-b from-viewport-top to-viewport-bottom',
+        // `overflow-clip`, not hidden: a hidden box can still be scrolled by focus / scrollIntoView, which
+        // would drag a translated sheet's offscreen part into view and shift the whole stage.
+        'relative isolate min-h-0 min-w-0 overflow-clip bg-gradient-to-b from-viewport-top to-viewport-bottom',
         className,
       )}
     >
@@ -169,6 +183,40 @@ export function ViewportStage({
       <div className="pointer-events-none absolute inset-0 z-[var(--z-overlay)]">{overlay}</div>
     </div>
   );
+}
+
+const ContextBubbleLazy = lazy(() =>
+  import('../components/ContextBubble').then((mod) => ({ default: mod.ContextBubble })),
+);
+const ValueChipLazy = lazy(() =>
+  import('../components/ValueChip').then((mod) => ({ default: mod.ValueChip })),
+);
+
+/** Context bubble and push/pull value chip: positioned inside the viewport stage's overlay. */
+export function ViewportOverlays({ props }: { props: ShellProps }) {
+  return (
+    <Suspense fallback={null}>
+      {props.contextBubble ? <ContextBubbleLazy {...props.contextBubble} /> : null}
+      {props.valueChip ? <ValueChipLazy {...props.valueChip} /> : null}
+    </Suspense>
+  );
+}
+
+/** Sheet snap state: controlled via `sheetSnap` / `onSheetSnapChange`, otherwise local. */
+export function useSheetSnap(
+  props: Pick<ShellProps, 'sheetSnap' | 'onSheetSnapChange'>,
+  initial: SheetSnap = 'peek',
+): [SheetSnap, (s: SheetSnap) => void] {
+  const [local, setLocal] = useState<SheetSnap>(initial);
+  const snap = props.sheetSnap ?? local;
+  const set = useCallback(
+    (s: SheetSnap) => {
+      setLocal(s);
+      props.onSheetSnapChange?.(s);
+    },
+    [props.onSheetSnapChange],
+  );
+  return [snap, set];
 }
 
 /* ------------------------------------------------------------------------- small pieces */
@@ -270,7 +318,7 @@ export function EmptyState({
 }) {
   return (
     <div className={cn('flex flex-col items-center px-6 py-10 text-center', className)}>
-      <div className="mb-3 flex size-11 items-center justify-center rounded-2xl bg-surface-2 text-fg-muted">
+      <div className="mb-3 flex size-11 items-center justify-center rounded-panel bg-surface-2 text-fg-muted">
         <Icon className="size-5" strokeWidth={1.5} />
       </div>
       <p className="text-sm font-semibold text-fg">{title}</p>
@@ -301,106 +349,6 @@ export function DiagnosticsList({ d }: { d: RuntimeDiagnostics }) {
         </div>
       ))}
     </dl>
-  );
-}
-
-/* ------------------------------------------------------------------------- bottom sheet */
-
-/**
- * Bottom sheet with a peek state (tablet history, phone tools). The handle toggles it on click /
- * Enter / Space and on a short vertical swipe. Collapsed content is `inert`.
- */
-export function BottomSheet({
-  open,
-  onOpenChange,
-  peek,
-  height,
-  handleLabel,
-  header,
-  children,
-  className,
-  testId,
-}: {
-  open: boolean;
-  onOpenChange(open: boolean): void;
-  /** Visible height (px) when collapsed, including the handle and any header. */
-  peek: number;
-  /** Fixed sheet height (CSS length) when expanded. */
-  height: string;
-  handleLabel: string;
-  header?: ReactNode;
-  children: ReactNode;
-  className?: string;
-  testId?: string;
-}) {
-  const ref = useRef<HTMLElement>(null);
-  const [full, setFull] = useState(0);
-  const transition = useSpring('standard');
-  const startY = useRef<number | null>(null);
-  const swiped = useRef(false);
-
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const measure = () => setFull(el.offsetHeight);
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-
-  const y = open ? 0 : Math.max(full - peek, 0);
-
-  return (
-    <m.section
-      ref={ref}
-      aria-label={handleLabel}
-      data-testid={testId}
-      data-open={open}
-      initial={false}
-      animate={{ y }}
-      transition={transition}
-      style={{ height }}
-      className={cn(
-        'w-panel pointer-events-auto absolute right-0 bottom-0 left-0 z-[var(--z-sheet)] flex flex-col rounded-b-none pb-[var(--safe-bottom)]',
-        'rounded-t-[var(--radius-sheet)]',
-        className,
-      )}
-    >
-      <button
-        type="button"
-        aria-expanded={open}
-        aria-label={`${handleLabel}${open ? ', collapse' : ', expand'}`}
-        onClick={() => {
-          if (swiped.current) swiped.current = false;
-          else onOpenChange(!open);
-        }}
-        onPointerDown={(e) => {
-          startY.current = e.clientY;
-          swiped.current = false;
-        }}
-        onPointerUp={(e) => {
-          const s = startY.current;
-          startY.current = null;
-          if (s === null) return;
-          const dy = e.clientY - s;
-          if (dy < -24 && !open) {
-            swiped.current = true;
-            onOpenChange(true);
-          } else if (dy > 24 && open) {
-            swiped.current = true;
-            onOpenChange(false);
-          }
-        }}
-        className="flex h-6 w-full shrink-0 touch-none items-center justify-center"
-      >
-        <span className="h-1 w-9 rounded-full bg-border-strong/60" />
-      </button>
-      {header}
-      <div className="min-h-0 flex-1 overflow-y-auto" inert={!open}>
-        {children}
-      </div>
-    </m.section>
   );
 }
 
@@ -438,6 +386,7 @@ export function ExportControl({
     <Button
       variant={variant}
       size={size}
+      data-testid="export-trigger"
       onClick={props.onExport}
       icon={<Download className={size === 'touch' ? 'size-[18px]' : 'size-4'} />}
       className={className}

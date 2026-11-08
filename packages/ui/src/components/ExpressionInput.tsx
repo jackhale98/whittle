@@ -1,10 +1,12 @@
 import type { EvalResult, Expr } from '@whittle/contracts';
+import { Calculator } from 'lucide-react';
 import {
   type ChangeEvent,
   type KeyboardEvent,
   lazy,
   Suspense,
   useCallback,
+  useContext,
   useEffect,
   useId,
   useMemo,
@@ -19,7 +21,8 @@ import {
   nudgeExpression,
   splitSpan,
 } from '../format';
-import type { KeypadKey } from './Keypad';
+import { applyKeypadKey, type KeypadKey } from '../logic/keypad';
+import { ParamNamesContext } from './paramNames';
 import { cn } from './primitives';
 
 const Keypad = lazy(() => import('./Keypad'));
@@ -58,6 +61,8 @@ export interface ExpressionInputProps {
   step?: number;
   /** Inline numeric keypad: `auto` = on touch devices. */
   keypad?: 'auto' | 'always' | 'never';
+  /** Parameter names offered as one-tap keys on the keypad's expression row. */
+  paramNames?: readonly string[];
   /** Accessible name (required: the field has no visible label of its own). */
   label: string;
   placeholder?: string;
@@ -92,6 +97,7 @@ export function ExpressionInput({
   unitHint,
   step = 1,
   keypad = 'auto',
+  paramNames,
   label,
   placeholder,
   disabled,
@@ -103,6 +109,8 @@ export function ExpressionInput({
   className,
   testId,
 }: ExpressionInputProps) {
+  const ctxNames = useContext(ParamNamesContext);
+  const names = paramNames ?? ctxNames;
   const [draft, setDraft] = useState<string | null>(null);
   const [focused, setFocused] = useState(false);
   const [keypadOn, setKeypadOn] = useState(false);
@@ -217,22 +225,10 @@ export function ExpressionInput({
     }
     const a = el?.selectionStart ?? text.length;
     const b = el?.selectionEnd ?? text.length;
-    let next: string;
-    let caret: number;
-    if (k.kind === 'backspace') {
-      if (a !== b) {
-        next = text.slice(0, a) + text.slice(b);
-        caret = a;
-      } else {
-        next = text.slice(0, Math.max(0, a - 1)) + text.slice(b);
-        caret = Math.max(0, a - 1);
-      }
-    } else {
-      next = text.slice(0, a) + k.text + text.slice(b);
-      caret = a + k.text.length;
-    }
-    edit(next);
-    requestAnimationFrame(() => el?.setSelectionRange(caret, caret));
+    const r = applyKeypadKey(text, a, b, k);
+    if (!r) return;
+    if (r.text !== text) edit(r.text);
+    requestAnimationFrame(() => el?.setSelectionRange(r.caret, r.caret));
   }
 
   const [pre, mid, post] = splitSpan(text, error);
@@ -246,7 +242,7 @@ export function ExpressionInput({
         data-invalid={invalid || undefined}
         data-testid={testId}
         className={cn(
-          'group/expr flex min-w-0 items-center gap-1.5 rounded-control bg-surface-2 px-2.5 transition-shadow duration-150',
+          'group/expr flex min-w-0 items-center gap-1.5 rounded-control bg-surface-2 px-2.5 transition-shadow duration-fast',
           tall ? 'h-11' : 'h-8',
           disabled && 'bg-surface-3',
           invalid
@@ -307,6 +303,22 @@ export function ExpressionInput({
             )}
           />
         </div>
+        {wantsKeypad && osKeyboard && focused ? (
+          <button
+            type="button"
+            tabIndex={-1}
+            aria-label="Use the numeric keypad"
+            onPointerDown={(e) => e.preventDefault()}
+            onClick={() => {
+              setOsKeyboard(false);
+              setKeypadOn(true);
+              input.current?.focus();
+            }}
+            className="-mr-2 flex h-full min-w-11 shrink-0 items-center justify-center rounded-control text-fg-muted active:bg-surface-3"
+          >
+            <Calculator className="size-4" aria-hidden />
+          </button>
+        ) : null}
         {readout ? (
           <span
             data-testid="expr-readout"
@@ -328,7 +340,7 @@ export function ExpressionInput({
       ) : null}
       {keypadOn && box ? (
         <Suspense fallback={null}>
-          <Keypad anchor={box} onKey={onKeypad} />
+          <Keypad anchor={box} onKey={onKeypad} params={names} />
         </Suspense>
       ) : null}
     </div>

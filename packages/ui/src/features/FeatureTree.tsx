@@ -25,6 +25,7 @@ import {
 } from 'react';
 import { type FloatingAnchor, Menu, type MenuItem } from '../components/floating';
 import { cn, Tooltip } from '../components/primitives';
+import { useLongPress } from '../logic/longPress';
 import { useSpring } from '../motion';
 import { EmptyState } from '../shells/shared';
 import { featureMeta } from './featureMeta';
@@ -124,6 +125,11 @@ export function FeatureTree({
   const [focusId, setFocusId] = useState<Id | null>(null);
   const [renaming, setRenaming] = useState<Id | null>(null);
   const [menu, setMenu] = useState<{ id: Id; anchor: FloatingAnchor } | null>(null);
+  // Touch and pen: press and hold a row for its menu (mouse has right-click, keyboards the Menu key).
+  const longPress = useLongPress<Id>((id, at) => {
+    setFocusId(id);
+    setMenu({ id, anchor: at });
+  });
   const [shake, setShake] = useState<{ id: Id; key: number } | null>(null);
   const [notice, setNotice] = useState('');
   const [boundaries, setBoundaries] = useState<number[]>([]);
@@ -427,6 +433,7 @@ export function FeatureTree({
                   onSelect?.(f.id);
                 }}
                 onKeyDown={(e) => rowKey(e, f.id, i)}
+                {...longPress(f.id)}
                 onContextMenu={(e) => {
                   e.preventDefault();
                   setFocusId(f.id);
@@ -444,7 +451,7 @@ export function FeatureTree({
                   animate={{ x: 0 }}
                   transition={rejectSpring}
                   className={cn(
-                    'flex items-start gap-2 rounded-[9px] pr-1 pl-1 transition-colors duration-150',
+                    'flex items-start gap-2 rounded-[9px] pr-1 pl-1 transition-colors duration-fast',
                     rowH,
                     'group-focus-visible/row:outline-2 group-focus-visible/row:outline-offset-[-2px] group-focus-visible/row:outline-accent',
                     selected ? 'bg-accent-soft' : 'hover:bg-surface-2',
@@ -456,6 +463,7 @@ export function FeatureTree({
                   <span
                     aria-hidden
                     data-grip
+                    data-no-longpress
                     onPointerDown={(e) => gripDown(e, f.id, i)}
                     onPointerMove={gripMove}
                     onPointerUp={gripUp}
@@ -629,14 +637,14 @@ export function FeatureTree({
             className={cn(
               'group/bar absolute right-0 left-0 z-[3] flex cursor-row-resize touch-none items-center outline-none',
               touch ? 'h-6' : 'h-3.5',
-              barDrag === null && 'transition-[top] duration-150',
+              barDrag === null && 'transition-[top] duration-fast',
             )}
             style={{ top: barY - (touch ? 12 : 7) }}
           >
             <span
               aria-hidden
               className={cn(
-                'pointer-events-none mx-2 flex-1 rounded-full transition-colors duration-150',
+                'pointer-events-none mx-2 flex-1 rounded-full transition-colors duration-fast',
                 rollback < n
                   ? 'h-[3px] bg-warning'
                   : 'h-0.5 bg-accent/55 group-hover/bar:bg-accent',

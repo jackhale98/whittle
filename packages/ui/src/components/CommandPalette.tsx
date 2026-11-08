@@ -71,7 +71,7 @@ export function CommandPalette({ open, onOpenChange, commands }: CommandPaletteP
               initial={{ opacity: 0, scale: 0.97, y: -6 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               transition={transition}
-              className="pointer-events-auto flex max-h-[60vh] w-full max-w-[560px] flex-col overflow-hidden rounded-[18px] bg-surface shadow-pop"
+              className="pointer-events-auto flex max-h-[60vh] w-full max-w-[560px] flex-col overflow-hidden rounded-panel bg-surface shadow-pop"
               data-testid="command-palette"
               aria-describedby={undefined}
             >

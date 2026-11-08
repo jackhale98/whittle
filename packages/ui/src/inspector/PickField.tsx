@@ -116,7 +116,7 @@ export function PickField({
             aria-pressed={picking}
             onClick={() => onPick?.(path)}
             className={cn(
-              'inline-flex h-7 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium transition-colors duration-150',
+              'inline-flex h-7 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium transition-colors duration-fast',
               picking
                 ? 'bg-accent text-accent-fg'
                 : 'text-fg-muted shadow-[inset_0_0_0_1px_var(--color-border-strong)] hover:bg-surface-2 hover:text-fg',

@@ -130,7 +130,7 @@ export default function MaterialPicker({
                           aria-pressed={on}
                           onClick={() => onSelect(toMaterial(m))}
                           className={cn(
-                            'flex w-full items-center gap-2.5 rounded-[8px] px-1.5 text-left transition-colors duration-150 hover:bg-surface-2 focus-visible:bg-surface-2',
+                            'flex w-full items-center gap-2.5 rounded-[8px] px-1.5 text-left transition-colors duration-fast hover:bg-surface-2 focus-visible:bg-surface-2',
                             size === 'touch' ? 'h-12' : 'h-9',
                             on && 'bg-accent-soft hover:bg-accent-soft',
                           )}
@@ -213,7 +213,7 @@ export default function MaterialPicker({
                 onClick={() => setColor(s)}
                 style={{ background: s }}
                 className={cn(
-                  'rounded-full shadow-[inset_0_0_0_1px_rgb(0_0_0/0.2)] transition-shadow duration-150',
+                  'rounded-full shadow-[inset_0_0_0_1px_rgb(0_0_0/0.2)] transition-shadow duration-fast',
                   size === 'touch' ? 'size-9' : 'size-6',
                   color === s && 'ring-2 ring-accent ring-offset-2 ring-offset-surface',
                 )}

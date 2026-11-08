@@ -1,11 +1,18 @@
 import type { KernelStatus, RuntimeDiagnostics } from '@whittle/contracts';
 import type { ReactNode } from 'react';
 import type { PaletteCommand } from '../components/CommandPalette';
+import type { ContextBubbleProps } from '../components/ContextBubble';
 import type { ToolId } from '../components/tools';
+import type { ValueChipProps } from '../components/ValueChip';
 import type { ExportBody, ExportRequest, ExportTarget } from '../export/types';
 import type { FeatureTreeProps } from '../features/FeatureTree';
+import type { SheetSnap } from '../logic/sheet';
+import type { MeasurePanelProps } from '../panels/MeasurePanel';
+import type { PartsPanelProps } from '../panels/PartsPanel';
+import type { SectionPanelProps } from '../panels/SectionPanel';
 import type { ParamsTableProps } from '../params/ParamsTable';
 import type { ThemeSetting } from '../theme';
+import type { TutorialProps } from '../tutorial/TutorialLazy';
 
 /** Props every shell accepts. The shell never touches Wasm or the kernel: it only renders state. */
 export interface ShellProps {
@@ -43,4 +50,24 @@ export interface ShellProps {
   exportBodies?: readonly ExportBody[];
   exportUnavailable?: Partial<Record<ExportTarget, string>>;
   exportBusy?: boolean;
+
+  /* ---- M2 touch & tablet ---- */
+  /**
+   * Context bubble near the selection (3-4 actions). `anchor` is in px relative to the viewport
+   * slot; pass `anchor: null` (or omit the prop) to hide it.
+   */
+  contextBubble?: ContextBubbleProps;
+  /** Push/pull value label that follows a screen point; tap to type an exact value. */
+  valueChip?: ValueChipProps;
+  /** Tablet and phone bottom sheet: controlled snap point (`peek` | `half` | `full`). */
+  sheetSnap?: SheetSnap;
+  onSheetSnapChange?(snap: SheetSnap): void;
+  /** Phone Parts tab. */
+  parts?: PartsPanelProps;
+  /** Phone Measure tab. */
+  measure?: MeasurePanelProps;
+  /** Phone Section tab. */
+  section?: SectionPanelProps;
+  /** Coach marks for the "make a bracket" tutorial; drive it with `useTutorial`. */
+  tutorial?: TutorialProps;
 }
