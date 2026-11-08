@@ -1,0 +1,28 @@
+{
+  "name": "@whittle/io",
+  "version": "0.0.0",
+  "private": true,
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "description": "Mesh exporters/importers (3MF, GLB, STL, OBJ), local library, file pickers, thumbnails.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./browser": "./src/browser.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p .",
+    "test": "vitest run",
+    "harness": "vite",
+    "e2e": "playwright test --trace off"
+  },
+  "dependencies": {
+    "@whittle/contracts": "workspace:*",
+    "fflate": "0.8.3",
+    "idb": "8.0.4"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "fake-indexeddb": "6.2.7",
+    "vite": "8.3.6"
+  }
+}
