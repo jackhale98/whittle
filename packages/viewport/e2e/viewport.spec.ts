@@ -5,7 +5,7 @@ import { expect, type Page, test } from '@playwright/test';
 import type { HarnessApi } from '../harness/main';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const SHOTS = join(here, '__screenshots__');
+const SHOTS = join(here, '..', 'test-results', 'screenshots'); // untracked output
 
 type Backend = 'webgpu' | 'webgl2';
 
@@ -164,11 +164,14 @@ test.describe('camera', () => {
     await touch('touchStart', [{ x: cx, y: cy, id: 1 }]);
     for (let i = 1; i <= 12; i++) {
       await touch('touchMove', [{ x: cx + i * 12, y: cy + i * 4, id: 1 }]);
+      await page.waitForTimeout(16); // real finger cadence: one move per frame
     }
     await touch('touchEnd', []);
     await page.evaluate(() => window.__viewport?.viewport.nextFrame());
     const orbited = (await cam())!;
-    expect(dist(orbited.position, before.position)).toBeGreaterThan(5);
+    // A 144 px drag must turn the view substantially (≈ chord of > 30°), not a token amount:
+    // regression for the render loop idling between touch moves.
+    expect(dist(orbited.position, before.position)).toBeGreaterThan(0.5 * before.distance);
     expect(dist(orbited.target, before.target)).toBeLessThan(1e-3);
 
     // Pinch out (fingers apart) -> dolly in.

@@ -5,7 +5,7 @@
  * file is the hand-maintained counterpart of the EMSCRIPTEN_BINDINGS block. Every structured
  * value crosses the boundary as a JSON string shaped like packages/contracts/src/kernel.ts.
  *
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
 /** Owned render buffers (C++ `whittle::MeshData`). Must be `delete()`d. */

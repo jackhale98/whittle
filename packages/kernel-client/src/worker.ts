@@ -10,7 +10,7 @@
  * Vite: the threaded glue spawns its pthread workers as ES modules with top-level await, so the
  * app's Vite config needs `worker: { format: 'es' }`.
  *
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
 import type { KernelApi } from '@whittle/contracts';

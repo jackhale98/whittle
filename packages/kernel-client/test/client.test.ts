@@ -1,6 +1,6 @@
 /**
  * Main-thread client: status stream and lifecycle, against a fake worker (no Wasm needed).
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
 import type { KernelStatus } from '@whittle/contracts';

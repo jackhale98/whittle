@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Full kernel build: amalgamate → libcascade build (Docker) → assemble → size report.
 // Usage: node scripts/build.mjs [--variant single|multi]   (default: every variant)
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 import { spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';

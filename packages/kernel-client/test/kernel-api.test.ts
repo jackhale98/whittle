@@ -3,7 +3,7 @@
  * variants), plus once over a real MessageChannel to prove mesh buffers are transferred.
  * Skipped when packages/kernel/dist is missing (run `pnpm --filter @whittle/kernel build`).
  *
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
 import { createReadStream, existsSync, statSync } from 'node:fs';

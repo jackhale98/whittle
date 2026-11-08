@@ -9,7 +9,7 @@
 // Also stamps WHITTLE_BUILD_ID: a content hash of the façade sources, the toolchain config and
 // the pinned toolchain version (PLAN §7.2 cache key inputs), reported by kernelInfo().
 //
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';

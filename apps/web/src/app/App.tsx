@@ -5,7 +5,7 @@ import { getDiagnostics } from '../platform/diagnostics';
 import { getRuntimeState, subscribeRuntimeState } from '../platform/runtime-state';
 import { DEMO_BOX } from './demo';
 import { bootKernel } from './kernel-boot';
-import { mark } from './timing';
+import { failBoot, mark } from './timing';
 import { ViewportHost } from './ViewportHost';
 
 function isolationLabel(isolation: ReturnType<typeof getRuntimeState>['isolation']): string {
@@ -42,6 +42,7 @@ export function App() {
       },
       (err: unknown) => {
         if (err instanceof Error && err.message === 'disposed') return;
+        failBoot(`kernel: ${err instanceof Error ? err.message : String(err)}`);
         setKernelStatus({
           state: 'error',
           error: {
@@ -53,6 +54,12 @@ export function App() {
     );
     return () => boot.dispose();
   }, [showBody]);
+
+  const [viewportError, setViewportError] = useState<string | null>(null);
+  const onViewportError = useCallback((message: string) => {
+    failBoot(`viewport: ${message}`);
+    setViewportError(message);
+  }, []);
 
   const onViewportReady = useCallback(
     (viewport: Viewport) => {
@@ -71,7 +78,24 @@ export function App() {
         diagnostics={{ ...diagnostics, ...runtimeOverrides(runtime) }}
         theme={theme.setting}
         onThemeChange={theme.setSetting}
-        viewport={<ViewportHost theme={theme.resolved} onReady={onViewportReady} />}
+        viewport={
+          <>
+            <ViewportHost
+              theme={theme.resolved}
+              onReady={onViewportReady}
+              onError={onViewportError}
+            />
+            {viewportError && (
+              <div
+                role="alert"
+                data-testid="viewport-error"
+                className="absolute inset-0 flex items-center justify-center p-8 text-center text-sm"
+              >
+                {viewportError} Your browser may have WebGL disabled.
+              </div>
+            )}
+          </>
+        }
       />
       <p data-testid="status-line" className="sr-only" aria-live="polite">
         crossOriginIsolated: {String(diagnostics.crossOriginIsolated)} · service worker:{' '}

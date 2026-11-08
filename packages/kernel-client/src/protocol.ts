@@ -2,7 +2,7 @@
  * Out-of-band messages from the kernel worker to the main thread. They share the worker's port
  * with Comlink; Comlink ignores messages that do not carry one of its request ids.
  *
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
 import type { KernelStatus } from '@whittle/contracts';

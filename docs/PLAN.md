@@ -203,7 +203,7 @@ whittle/
 │  └─ test-fixtures/          # Golden models, STEP samples (incl. NIST PMI cases), expected outputs
 ├─ docs/ (PLAN.md, DECISIONS.md, DEPENDENCIES.md, FILE_FORMAT.md, ARCHITECTURE.md)
 ├─ .claude/agents/            # Subagent definitions (Appendix B)
-├─ .github/workflows/         # ci.yml, kernel.yml (cached Wasm build), deploy-pages.yml
+├─ .github/workflows/         # ci.yml, kernel.yml (cached Wasm build); Pages deploy is the last ci.yml job
 └─ CLAUDE.md
 ```
 

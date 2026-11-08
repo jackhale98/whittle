@@ -2,7 +2,7 @@
  * Kernel golden tests (PLAN §10 test pyramid): run the real Wasm kernel in Node, both variants.
  * Skipped (not failed) only when dist/ has not been built; CI runs them after `pnpm build`.
  *
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
 import { existsSync } from 'node:fs';

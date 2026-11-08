@@ -2,7 +2,7 @@
 // C++ façade as the only JS-visible surface. Run through `pnpm build` (scripts/build.mjs), which
 // first amalgamates the façade into .libcascade/whittle_facade.cpp (see scripts/amalgamate.mjs).
 //
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: GPL-3.0-or-later
 import { defineBuild } from '@libcascade/toolchain';
 
 /** Every JS-visible registration in src/whittle_bindings.cpp. */

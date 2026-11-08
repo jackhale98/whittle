@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Prints raw / gzip / brotli sizes of every kernel artefact in dist/ and writes
 // dist/size-report.json. Fails (exit 1) when a main kernel exceeds the PLAN §7.2 budget of
-// 15 MB brotli. SPDX-License-Identifier: Apache-2.0
+// 15 MB brotli. SPDX-License-Identifier: GPL-3.0-or-later
 
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';

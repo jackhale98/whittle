@@ -97,7 +97,7 @@ don't depend on OCCT's internal ordering.
 
 ## Licensing
 
-- Whittle's sources in this package (C++ façade, scripts, TS) are **Apache-2.0**.
+- Whittle's sources in this package (C++ façade, scripts, TS) are **GPL-3.0-or-later** (ADR-003).
 - The produced `.wasm` and `.js` contain OCCT and are **LGPL-2.1-only WITH
   Open-CASCADE-Exception-1.0**. They ship as separate files that the app loads at runtime.
 - **Relinking:** the build is fully reproducible from public inputs: this directory, the npm-pinned

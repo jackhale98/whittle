@@ -16,6 +16,8 @@ import { patchRuntimeState } from './runtime-state';
 export const SW_UPDATE_EVENT = 'whittle:sw-update';
 const RELOAD_KEY = 'whittle:coi-reload';
 const CONTROLLER_WAIT_MS = 3000;
+/** A worker that never activates (failed install: precache 404 mid-deploy, quota, network) must not hang boot. */
+const READY_WAIT_MS = 8000;
 
 export interface IsolationReloadInput {
   isolated: boolean;
@@ -123,16 +125,25 @@ export async function initServiceWorker(): Promise<void> {
       updateAvailable = true;
       window.dispatchEvent(new Event(SW_UPDATE_EVENT));
     });
-    patchRuntimeState({ serviceWorker: 'installing' });
-    await workbox.register({ immediate: true });
-    await navigator.serviceWorker.ready;
-    patchRuntimeState({ serviceWorker: 'active' });
-
+    // Already isolated (warm visit through the SW, or real headers): settle now so the kernel can
+    // boot in parallel with registration instead of waiting for it.
     if (window.crossOriginIsolated) {
       clearReloadFlag(() => sessionStorage);
       patchRuntimeState({ isolation: 'isolated' });
+    }
+    patchRuntimeState({ serviceWorker: 'installing' });
+    await workbox.register({ immediate: true });
+    const ready = await Promise.race([
+      navigator.serviceWorker.ready.then(() => true),
+      new Promise<false>((resolve) => setTimeout(() => resolve(false), READY_WAIT_MS)),
+    ]);
+    if (!ready) {
+      // Install failed or stalled: keep working without isolation (single-threaded kernel).
+      settleWithoutServiceWorker();
       return;
     }
+    patchRuntimeState({ serviceWorker: 'active' });
+    if (window.crossOriginIsolated) return;
 
     const controlled = await waitForController(CONTROLLER_WAIT_MS);
     const alreadyReloaded = readReloadFlag(() => sessionStorage);

@@ -10,9 +10,19 @@ export interface BootTimings {
 
 const marks: Partial<BootTimings> = {};
 let resolveFirstBody: ((t: BootTimings) => void) | null = null;
-const firstBody = new Promise<BootTimings>((resolve) => {
+let rejectFirstBody: ((err: Error) => void) | null = null;
+const firstBody = new Promise<BootTimings>((resolve, reject) => {
   resolveFirstBody = resolve;
+  rejectFirstBody = reject;
 });
+firstBody.catch(() => {}); // observed by tests; avoid unhandled-rejection noise
+
+/** Boot failed (kernel or viewport): tests get the reason instead of a timeout. */
+export function failBoot(reason: string): void {
+  if (marks.firstBodyMs !== undefined) return;
+  rejectFirstBody?.(new Error(reason));
+  rejectFirstBody = null;
+}
 
 export function mark(name: keyof BootTimings): void {
   if (marks[name] !== undefined) return;

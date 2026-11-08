@@ -1,4 +1,4 @@
-# Reusable kernel build (PLAN §7.2). Called by ci.yml and deploy-pages.yml so the Wasm kernel is
+# Reusable kernel build (PLAN §7.2). Called by ci.yml (which also deploys Pages) so the Wasm kernel is
 # built at most once per distinct input hash and never rebuilt when unchanged.
 #
 # - `pnpm kernel:build` runs the libcascade toolchain in Docker (digest-pinned images, ~12 GB each
@@ -48,7 +48,7 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: packages/kernel/dist
-          key: kernel-${{ env.KERNEL_CACHE_VERSION }}-${{ hashFiles('packages/kernel/src/**', 'packages/kernel/libcascade.config.ts', 'packages/kernel/package.json', 'pnpm-lock.yaml') }}
+          key: kernel-${{ env.KERNEL_CACHE_VERSION }}-${{ hashFiles('packages/kernel/src/**', 'packages/kernel/scripts/**', 'packages/kernel/libcascade.config.ts', 'packages/kernel/package.json', 'pnpm-lock.yaml') }}
 
       - name: Free disk space for the toolchain images
         if: steps.kernel-cache.outputs.cache-hit != 'true'

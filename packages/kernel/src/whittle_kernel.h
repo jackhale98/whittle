@@ -46,10 +46,9 @@ std::string execFeature(const std::string& featureJson, const std::string& input
 std::string mesh(ShapeHandle shape, const std::string& optionsJson, MeshData& out);
 
 // Returns Result<MassProperties> (GProp volume/area/centroid, Bnd_Box, topology counts).
-// densityKgPerMm3 <= 0 means "geometry only" (no mass/inertia fields).
-std::string massProperties(ShapeHandle shape, double densityKgPerMm3);
+std::string massProperties(ShapeHandle shape);
 
-// ---- M1 ------------------------------------------------------------------------------------
+// ---- M1 (planned; implement with the M1 kernel task, then move above this line) ----------
 // execFeature additionally handles (inputs per contracts FeatureInputs, refs pre-resolved):
 //   sketch   (inputs.frames.plane; entities already solved) -> compound of wires + region faces,
 //            naming per naming.ts (S…:e(), S…:p(), S…:region())
@@ -58,19 +57,21 @@ std::string massProperties(ShapeHandle shape, double densityKgPerMm3);
 // using BRepTools_History / Generated / Modified for names (PLAN §7.3).
 
 // Result<ShapeFingerprints> (contracts kernel.ts).
-std::string fingerprints(ShapeHandle shape);
+// std::string fingerprints(ShapeHandle shape);
 
 // format: "step" | "stl" | "brep"; optionsJson: contracts ExportOptions. Writes to MEMFS and
 // returns Result<{"path":string}>; the worker reads the bytes and unlinks the file.
 // shapesJson: [{"shape":int,"name":string,"color"?:string}]
-std::string exportShapes(const std::string& shapesJson, const std::string& format,
-                         const std::string& optionsJson);
+// std::string exportShapes(const std::string& shapesJson, const std::string& format,
+//                          const std::string& optionsJson);
 
 // Reads a MEMFS file; returns Result<{"bodies":[{"shape":int,"name"?:string}]}>.
-std::string importFile(const std::string& path, const std::string& format);
+// std::string importFile(const std::string& path, const std::string& format);
 
 // Threaded build only: caps OSD_ThreadPool / default thread count (kernel agent proposal).
-std::string configureThreads(int32_t count);
+// std::string configureThreads(int32_t count);
+//
+// massProperties(ShapeHandle shape, double densityKgPerMm3)  -- mass + inertia when density > 0 (ADR-004)
 
 // M3+: measure; M4: hlrProject; M5: exportStep with PMI — added by contract proposal.
 

@@ -3,7 +3,7 @@
  * turns its lifecycle messages into a subscribable `KernelStatus` stream for the status chip.
  * Never touches Wasm itself (golden rule).
  *
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
 import type {

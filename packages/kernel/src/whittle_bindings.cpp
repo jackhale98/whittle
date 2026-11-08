@@ -1,5 +1,5 @@
 // Embind registrations for the Whittle kernel façade (whittle_kernel.h).
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: GPL-3.0-or-later
 //
 // The toolchain parses this TU twice: once for real with emcc (Wasm target), and once with
 // libclang 18 against parse-only Embind stubs to extract registration names (any parse error

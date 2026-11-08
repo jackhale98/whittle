@@ -9,7 +9,7 @@
  * This module only holds types and pure helpers; it never loads Wasm, so the main thread may
  * import it freely (golden rule: only the kernel worker instantiates the kernel).
  *
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
 /// <reference path="./generated-entries.d.ts" />

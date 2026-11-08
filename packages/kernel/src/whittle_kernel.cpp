@@ -1,5 +1,5 @@
 // Whittle kernel façade — implementation of whittle_kernel.h (PLAN §7).
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: GPL-3.0-or-later
 //
 // Build note: the libcascade toolchain compiles `scope: 'main'` custom bindings by concatenating
 // their *contents* into one translation unit, so relative includes cannot be resolved there.

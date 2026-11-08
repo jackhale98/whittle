@@ -40,7 +40,7 @@ Mycelium relicensing question is settled — **must be decided in an ADR before 
 
 **Version pins (M0, verified against the npm registry on 2026-11-08).** TypeScript 6.0.3 (not 7.x:
 the native-port 7.0 line is recent and tooling compatibility is unproven; revisit in M1),
-Vite 8.3.x, React 19.3.x, three 0.187.0, Vitest 5.1.0, Playwright 1.65.0, Biome 2.6.6,
+Vite 8.3.x, React 19.3.x, three 0.187.0, Vitest 5.1.0, Playwright 1.63.0 (matches the browsers pre-installed in the dev container), Biome 2.6.6,
 vite-plugin-pwa 2.0.0 / Workbox 7.4.1, Tailwind 4.3.5. Exact pins live in each `package.json`
 and in `docs/DEPENDENCIES.md`.
 
@@ -143,5 +143,14 @@ inspector shows material and mass. BOMs (M6) list the material.
 5. **Kernel boot waits for the isolation outcome** (`whenIsolationSettled`), so a kernel is never
    booted in the document that the first-visit isolation reload discards. The threaded build is used
    iff `crossOriginIsolated`.
+7. **Deploys are gated on CI** (reviewer M0 defect 6): the Pages deploy is the last job of `ci.yml`
+   and needs lint, unit tests, build/size and the Chromium + package E2E suites. Firefox and WebKit
+   E2E run but don't gate yet: on the first CI run, headless Firefox never rendered the box (cause
+   under investigation; failures now surface their reason through `firstBodyRendered`), and
+   Playwright WebKit cannot reload offline under a SW (harness limitation; those two tests are
+   skipped on WebKit). Make them gating once they're green.
+8. **Touch orbit fix.** The render-on-demand loop stopped between touch moves because camera-controls
+   only applies drag deltas inside `update()`. The loop now ticks for as long as a pointer is down.
+   Covered by phone-emulation E2E (`apps/web/e2e/touch.spec.ts`).
 6. **CI visual baselines.** UI screenshot baselines were recorded in the dev container. CI runs the UI
    suite with `--ignore-snapshots` until CI-generated baselines are committed.

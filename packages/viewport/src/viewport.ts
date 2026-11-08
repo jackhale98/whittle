@@ -129,6 +129,8 @@ class ViewportImpl implements ViewportEngine {
 
   private raf = 0;
   private dirty = true;
+  /** True between camera-controls `controlstart` and `controlend` (a pointer is down). */
+  private interacting = false;
   private disposed = false;
   private lastFrameTime = 0;
   private frameTimes: number[] = [];
@@ -426,12 +428,22 @@ class ViewportImpl implements ViewportEngine {
 
     // Wake the render loop whenever the controls start moving.
     const wake = () => this.requestRender();
+    const start = () => {
+      this.interacting = true;
+      this.requestRender();
+    };
+    const end = () => {
+      this.interacting = false;
+      this.requestRender(); // let damping settle
+    };
     this.controls.addEventListener('wake', wake);
-    this.controls.addEventListener('controlstart', wake);
+    this.controls.addEventListener('controlstart', start);
+    this.controls.addEventListener('controlend', end);
     this.controls.addEventListener('update', wake);
     this.cleanup.push(() => {
       this.controls.removeEventListener('wake', wake);
-      this.controls.removeEventListener('controlstart', wake);
+      this.controls.removeEventListener('controlstart', start);
+      this.controls.removeEventListener('controlend', end);
       this.controls.removeEventListener('update', wake);
     });
 
@@ -575,7 +587,10 @@ class ViewportImpl implements ViewportEngine {
       this.waiters = [];
       for (const w of waiters) w();
     }
-    if (moving) {
+    // While a pointer is down the loop must keep ticking even if nothing moved this frame:
+    // camera-controls only applies pointer deltas inside update() (`_dragNeedsUpdate`), and it
+    // emits no event on pointermove, so an idle loop would swallow touch drags.
+    if (moving || this.interacting) {
       this.schedule();
     } else {
       // Idle: stop the loop; the next frame's dt must not include the idle gap.

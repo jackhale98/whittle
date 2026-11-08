@@ -3,7 +3,7 @@
  * TypeScript resolves the real dist/*.d.ts when they exist and falls back to these before the
  * first `pnpm build`, so `pnpm -r typecheck` works without Docker.
  *
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
 declare module '@whittle/kernel/single/init' {

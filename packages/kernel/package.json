@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "license": "GPL-3.0-or-later",
-  "description": "OCCT 8.0.1 → WebAssembly kernel with Whittle's coarse C++ façade (built with @libcascade/toolchain). Sources are Apache-2.0; the produced .wasm/.js are LGPL-2.1-only WITH Open-CASCADE-Exception-1.0.",
+  "description": "OCCT 8.0.1 → WebAssembly kernel with Whittle's coarse C++ façade (built with @libcascade/toolchain). Sources are GPL-3.0-or-later; the produced .wasm/.js are LGPL-2.1-only WITH Open-CASCADE-Exception-1.0.",
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
