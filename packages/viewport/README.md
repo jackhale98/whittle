@@ -81,3 +81,11 @@ See [`docs/DEPENDENCIES.md`](../../docs/DEPENDENCIES.md) for licences and sizes.
 - [`docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md), section 6: the viewport in context.
 - ADR-005 (lazy viewport, first-frame environment, touch orbit) and ADR-007 (picking rolls back to the input):
   [`docs/DECISIONS.md`](../../docs/DECISIONS.md).
+
+## Compare overlay (M2.5)
+
+`setCompare({ added, removed, ghostOpacity?, show? })` draws added material green and removed red over
+the live bodies, which fade to `ghostOpacity` (default 0.15); `setCompare(null)` restores them.
+Test hooks on the engine: `getCompareStats()` (active, show, mesh counts, ghost opacity, geometry
+builds, bounds) and `getBodyMaterialState(id)`. `fitAll(animate, { includeOverlay: true })` frames
+the overlay. Palette and rendering choices: see ADR-pending in docs/DECISIONS.md.

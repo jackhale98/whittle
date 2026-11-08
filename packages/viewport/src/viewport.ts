@@ -7,6 +7,8 @@
 import type {
   BodyDisplay,
   CameraChange,
+  CompareOverlay,
+  CompareViewport,
   CreateViewport,
   HandleSpec,
   HighlightItem,
@@ -21,7 +23,6 @@ import type {
   SectionPlane,
   SketchOverlay,
   StandardView,
-  TouchViewport,
   Vec2,
   Vec3,
   ViewportGesture,
@@ -74,6 +75,16 @@ import {
 } from 'three/webgpu';
 import { MeshBVH } from 'three-mesh-bvh';
 import { probeWebGPU } from './backend';
+import {
+  buildCompareGroup,
+  COMPARE_COLORS,
+  type CompareObjects,
+  compareBounds,
+  effectiveOpacity,
+  ghostOpacityOf,
+  sameGeometry,
+  sideVisibility,
+} from './compare';
 import { HANDLE_PICK_PAD_PX, LONG_PRESS_GRACE_MS, LONG_PRESS_JANK_MS } from './constants';
 import { edgesToSegments, meshBuffersToGeometry } from './geometry';
 import {
@@ -164,8 +175,41 @@ export type ViewportEventMap = {
   contextrestored: Record<string, never>;
 };
 
-/** The contract `TouchViewport` plus a few extras for hosts and tests. */
-export interface ViewportEngine extends TouchViewport {
+/** Compare overlay diagnostics for tests (the `__viewport` probe). */
+export interface CompareStats {
+  /** An overlay is set (bodies are ghosted). */
+  active: boolean;
+  /** Which sides are currently drawn. */
+  show: 'both' | 'added' | 'removed';
+  addedMeshes: number;
+  removedMeshes: number;
+  /** Ghost opacity applied to live bodies; null when no overlay is set. */
+  ghostOpacity: number | null;
+  /** Geometry builds so far (a `show`/`ghostOpacity` change must not increase this). */
+  geometryBuilds: number;
+  /** Bounds of the visible overlay meshes, null when none. */
+  bounds: Bounds | null;
+}
+
+export interface FitOptions {
+  /** Also frame the visible compare overlay (default false: bodies only). */
+  includeOverlay?: boolean;
+}
+
+export interface BodyMaterialState {
+  opacity: number;
+  transparent: boolean;
+  depthWrite: boolean;
+  color: string;
+}
+
+/** The contract `CompareViewport` plus a few extras for hosts and tests. */
+export interface ViewportEngine extends CompareViewport {
+  /** `fitAll` with an option to frame the compare overlay as well. */
+  fitAll(animate?: boolean, options?: FitOptions): void;
+  getCompareStats(): CompareStats;
+  /** Live material state of a body (tests: ghosting is restored exactly on `setCompare(null)`). */
+  getBodyMaterialState(id: string): BodyMaterialState | null;
   readonly canvas: HTMLCanvasElement;
   getCameraState(): CameraState;
   setReducedMotion(reduced: boolean): void;
@@ -366,6 +410,9 @@ class ViewportImpl implements ViewportEngine {
   private highlightDots: Dot[] = [];
   private readonly sketches = new Map<string, SketchEntry>();
   private readonly ghosts = new Map<string, GhostEntry>();
+  private compare: { overlay: CompareOverlay; objects: CompareObjects; ghost: number } | null =
+    null;
+  private compareBuilds = 0;
   private cube: ViewCube | null = null;
 
   // ---- M2 touch state
@@ -578,8 +625,13 @@ class ViewportImpl implements ViewportEngine {
     this.requestRender();
   }
 
-  fitAll(animate = true): void {
-    this.fitTo(this.currentDirection(), animate, true);
+  fitAll(animate = true, options: FitOptions = {}): void {
+    let bounds: Bounds | undefined;
+    if (options.includeOverlay && this.compare) {
+      const ob = compareBounds(this.compare.overlay);
+      if (ob) bounds = unionBounds([...this.bodyBoundsList(), ob]) ?? undefined;
+    }
+    this.fitTo(this.currentDirection(), animate, true, bounds);
   }
 
   setView(view: StandardView, animate = true): void {
@@ -600,6 +652,7 @@ class ViewportImpl implements ViewportEngine {
     this.rebuildHighlights();
     for (const [id, s] of [...this.sketches]) this.setSketch(id, s.overlay);
     for (const [id, g] of [...this.ghosts]) this.rebuildGhostColors(id, g);
+    if (this.compare) this.buildCompare(this.compare.overlay);
     for (const p of this.previews.values()) {
       if (p.kind === 'prism') p.view.setColors(this.previewColors());
       else p.view.setColor(this.ui.accent);
@@ -694,6 +747,7 @@ class ViewportImpl implements ViewportEngine {
     this.clearHighlightObjects();
     for (const id of [...this.sketches.keys()]) this.setSketch(id, null);
     for (const id of [...this.ghosts.keys()]) this.setGhost(id, null);
+    this.setCompare(null);
     for (const [id, p] of [...this.previews]) this.removePreview(id, p);
     for (const id of [...this.handles.keys()]) this.setHandle(id, null);
     for (const id of [...this.markerSets.keys()]) this.setMarkers(id, null);
@@ -1540,16 +1594,98 @@ class ViewportImpl implements ViewportEngine {
 
   private applyDimming(): void {
     for (const e of this.bodies.values()) this.applyDisplay(e);
-    this.edgeMaterial.color.set(
-      this.anySketchActive()
-        ? mixHex(this.palette.edge, this.palette.background, 0.65)
-        : this.palette.edge,
-    );
+    this.edgeMaterial.color.set(this.bodyEdgeColor());
+  }
+
+  /** Body edge colour: faded toward the background while sketching or comparing. */
+  private bodyEdgeColor(): string {
+    const p = this.palette;
+    if (this.anySketchActive()) return mixHex(p.edge, p.background, 0.65);
+    if (this.compare) return mixHex(p.edge, p.background, 0.6);
+    return p.edge;
   }
 
   private anySketchActive(): boolean {
     for (const s of this.sketches.values()) if (s.overlay.active) return true;
     return false;
+  }
+
+  // ---------------------------------------------------------------- compare overlay (M2.5)
+
+  setCompare(overlay: CompareOverlay | null): void {
+    if (this.disposed && overlay) return;
+    const prev = this.compare;
+    if (!overlay) {
+      if (!prev) return;
+      this.disposeCompareObjects(prev.objects);
+      this.compare = null;
+      this.refreshBodiesForCompare();
+      this.requestRender();
+      return;
+    }
+    if (prev && sameGeometry(prev.overlay, overlay)) {
+      // show / ghostOpacity only: no geometry rebuild, no material change on the overlay.
+      const vis = sideVisibility(overlay.show);
+      prev.objects.added.visible = vis.added;
+      prev.objects.removed.visible = vis.removed;
+      prev.overlay = overlay;
+      const ghost = ghostOpacityOf(overlay);
+      if (ghost !== prev.ghost) {
+        prev.ghost = ghost;
+        this.refreshBodiesForCompare();
+      }
+    } else {
+      this.buildCompare(overlay);
+      if (!prev || prev.ghost !== this.compare?.ghost) this.refreshBodiesForCompare();
+    }
+    this.requestRender();
+  }
+
+  /** (Re)build overlay objects for `overlay`, replacing and disposing any previous ones. */
+  private buildCompare(overlay: CompareOverlay): void {
+    const prev = this.compare;
+    if (prev) this.disposeCompareObjects(prev.objects);
+    const dash = Math.max(this.sceneRadius * 0.025, 1e-3);
+    const objects = buildCompareGroup(overlay, COMPARE_COLORS[this.theme], 1.8, dash);
+    this.bodyRoot.add(objects.root); // clipped by sections; never in the ID scene, so not pickable
+    this.compareBuilds++;
+    this.compare = { overlay, objects, ghost: ghostOpacityOf(overlay) };
+  }
+
+  private disposeCompareObjects(objects: CompareObjects): void {
+    this.bodyRoot.remove(objects.root);
+    disposeOverlay(objects.root);
+  }
+
+  /** Apply (or restore) the ghost opacity on the live bodies. */
+  private refreshBodiesForCompare(): void {
+    for (const e of this.bodies.values()) this.applyDisplay(e);
+    this.edgeMaterial.color.set(this.bodyEdgeColor());
+    this.viewVersion++;
+  }
+
+  getCompareStats(): CompareStats {
+    const c = this.compare;
+    return {
+      active: c !== null,
+      show: c?.overlay.show ?? 'both',
+      addedMeshes: c?.overlay.added.length ?? 0,
+      removedMeshes: c?.overlay.removed.length ?? 0,
+      ghostOpacity: c ? c.ghost : null,
+      geometryBuilds: this.compareBuilds,
+      bounds: c ? compareBounds(c.overlay) : null,
+    };
+  }
+
+  getBodyMaterialState(id: string): BodyMaterialState | null {
+    const e = this.bodies.get(id);
+    if (!e) return null;
+    return {
+      opacity: e.material.opacity,
+      transparent: e.material.transparent,
+      depthWrite: e.material.depthWrite,
+      color: `#${e.material.color.getHexString()}`,
+    };
   }
 
   // ---------------------------------------------------------------- ghosts
@@ -2081,7 +2217,7 @@ class ViewportImpl implements ViewportEngine {
   private applyCapState(e: BodyEntry): void {
     const cap = e.cap;
     if (!cap) return;
-    const on = this.section?.caps === true && e.display.visible && e.display.opacity >= 1;
+    const on = this.section?.caps === true && e.display.visible && this.drawnOpacity(e) >= 1;
     cap.back.visible = on;
     cap.front.visible = on;
     cap.quad.visible = on;
@@ -2392,9 +2528,14 @@ class ViewportImpl implements ViewportEngine {
     direction: Readonly<[number, number, number]>,
     animate: boolean,
     keepRoll = false,
+    bounds?: Bounds,
   ): void {
-    const target = boundsCenter(this.sceneBounds);
-    const distance = fitDistance(this.sceneRadius, this.camera.fov, this.camera.aspect || 1);
+    const target = boundsCenter(bounds ?? this.sceneBounds);
+    const distance = fitDistance(
+      bounds ? boundsRadius(bounds) : this.sceneRadius,
+      this.camera.fov,
+      this.camera.aspect || 1,
+    );
     const pos = cameraPositionFor(target, direction, distance);
     // Standard views are level: undo any twist-roll (cut, since a tween would swing through it).
     const rolled = !keepRoll && this.resetRoll();
@@ -2415,7 +2556,7 @@ class ViewportImpl implements ViewportEngine {
   }
 
   private updateSceneBounds(): void {
-    const visible = [...this.bodies.values()].filter((b) => b.display.visible).map((b) => b.bounds);
+    const visible = this.bodyBoundsList();
     this.sceneBounds = unionBounds(visible) ?? EMPTY_BOUNDS;
     this.sceneRadius = boundsRadius(this.sceneBounds);
     const [cx, cy] = boundsCenter(this.sceneBounds);
@@ -2443,9 +2584,7 @@ class ViewportImpl implements ViewportEngine {
   private applyPalette(): void {
     const p = this.palette;
     this.scene.background = new Color(p.background);
-    this.edgeMaterial.color.set(
-      this.anySketchActive() ? mixHex(p.edge, p.background, 0.65) : p.edge,
-    );
+    this.edgeMaterial.color.set(this.bodyEdgeColor());
     this.grid.setPalette(p);
     this.shadow.setPalette(p);
     this.scene.environmentIntensity = p.envIntensity;
@@ -2474,13 +2613,23 @@ class ViewportImpl implements ViewportEngine {
     return color === DEFAULT_BODY_COLOR_KEY ? this.palette.body : color;
   }
 
+  /** Opacity as drawn: the body's own, or the compare ghost opacity while an overlay is set. */
+  private drawnOpacity(e: BodyEntry): number {
+    return effectiveOpacity(e.display.opacity, this.compare ? this.compare.ghost : null);
+  }
+
+  private bodyBoundsList(): Bounds[] {
+    return [...this.bodies.values()].filter((b) => b.display.visible).map((b) => b.bounds);
+  }
+
   private applyDisplay(e: BodyEntry): void {
     e.group.visible = e.display.visible;
     // While a sketch is being edited the rest of the model recedes toward the background.
     e.material.color.set(this.effectiveBodyColor(e));
-    const translucent = e.display.opacity < 1;
+    const opacity = this.drawnOpacity(e);
+    const translucent = opacity < 1;
     e.material.transparent = translucent;
-    e.material.opacity = e.display.opacity;
+    e.material.opacity = opacity;
     e.material.depthWrite = !translucent;
     e.material.needsUpdate = true;
     this.applyCapState(e);

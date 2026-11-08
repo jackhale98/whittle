@@ -71,3 +71,5 @@
 ### M2.5 — Connections, sync & version control
 
 - Sync: structural three-way merge keyed by stable ids (`docMerger`, with conflicts and `resolve`), one-line feature diffs (`docDiffer`), snapshot history in `.whittle-history/` and git history on isomorphic-git (`createSnapshotHistory`, `createGitHistory`); a seeded 1,000-pair concurrent-edit fuzz test never loses an edit.
+
+- Viewport (M2.5): `setCompare` overlay for geometric compare: added material green, removed red (translucent fills, solid vs dashed edges, colour-vision-safe palette, light and dark), live bodies fade to `ghostOpacity` and restore exactly on `null`; clipped by section views, never pickable; `fitAll(animate, { includeOverlay })` frames it (ADR-pending).

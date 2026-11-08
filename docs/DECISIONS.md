@@ -993,3 +993,14 @@ The 1,000-pair fuzz test made the gaps concrete.
    pushed, so a GitHub history only shows the versions people named.
 7. **Tests use LightningFS on fake-indexeddb** (the production fs, in memory) and a real
    `git http-backend`, as Mycelium's tests do.
+
+## ADR-028 — Viewport compare overlay (M2.5)
+
+- **Palette.** Added `#00a878` / removed `#c2410c` on light; `#3ddc97` / `#ff6a2e` on dark (bluish green and vermillion-leaning red, Okabe-Ito family). The pair differs by > 0.08 relative luminance in both themes (unit-tested), so protan/deutan viewers still separate them; edge style is a second, colour-free cue (added = solid edges, removed = dashed). Fills are 45 % (added) and 38 % (removed) opaque. Values live in `packages/viewport/src/compare.ts` (`COMPARE_COLORS`), because the `compare.added`/`compare.removed` tokens named in the contract do not exist in `@whittle/ui` yet; proposal: the UI package adopts these values and the viewport test asserts parity like it does for `OVERLAY_COLORS`.
+- **Depth.** Ghosted bodies are transparent and write no depth, so the added fill is simply depth-tested (reads as solid, edges stay crisp) and the removed fill and dashed edges are drawn with the depth test off: removed material lies inside the old body and must show even if a caller sets `ghostOpacity: 1` (an opaque body would hide it). Cost: removed regions show through the added block, acceptable for a diff view.
+- **Ghosting is derived, not stored.** `display.opacity` is never mutated; the drawn opacity is `min(own, ghost)` while an overlay is set, so `null` restores opacity, `transparent`, `depthWrite` and colour exactly. Body edges fade toward the background while comparing. Only a first set, a ghost change and `null` touch body materials; `show` toggles flip group visibility and a re-set with the same mesh arrays (identity) reuses GPU buffers.
+- **Materials.** Fills and lines go through `sharedMaterial` (no shader work on toggling or re-setting); geometry is disposed on replace and remove.
+- **Picking and clipping.** The overlay lives in the clipped body root but not in the ID scene or body map, so it is never picked and section planes clip it. Section caps are not drawn for overlay meshes.
+- **Fit.** `fitAll` stays bodies-only; the engine adds `fitAll(animate, { includeOverlay: true })`. Proposal for the contract: add the optional second parameter to `Viewport.fitAll`, or have the app call it after `setCompare`.
+- **Reduced motion.** There is no animation: ghosting and toggles are instant.
+- **Perf on software GL.** Once the studio environment exists, any camera or state change costs 150-400 ms wall time on SwiftShader (also for a plain camera move), so the perf probe gates handler time (<= 16 ms p95) and reports render CPU time, gated with `WHITTLE_PERF_ASSERT=1`.

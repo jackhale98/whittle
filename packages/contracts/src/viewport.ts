@@ -103,7 +103,8 @@ export interface Viewport {
   removeBody(id: string): void;
   setDisplay(id: string, display: BodyDisplay): void;
   /** Frame all visible geometry. `animate` is ignored when reducedMotion is on. */
-  fitAll(animate?: boolean): void;
+  /** Fits the bodies; `includeOverlay` also fits the M2.5 compare overlay's bounds. */
+  fitAll(animate?: boolean, options?: { includeOverlay?: boolean }): void;
   setView(view: StandardView, animate?: boolean): void;
   setTheme(theme: 'light' | 'dark'): void;
   /** Must be called when the canvas' CSS size changes (the engine also observes it). */
