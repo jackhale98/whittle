@@ -26,6 +26,8 @@ import type { ShellProps } from './types';
 /** Handle (28) + header (40). */
 const PEEK = 68;
 const TABS = ['history', 'params', 'inspector'] as const;
+/** The bottom-right chips' top edge above the stage bottom (84 + 32 px chip + 8 px gap). */
+const CHIPS_TOP = 124;
 
 /**
  * Tablet shell (PLAN 9.1, Shapr3D-class): a full-bleed viewport, a slim tool rail with four groups,
@@ -57,9 +59,9 @@ export function TabletShell(props: ShellProps) {
           viewport={viewport}
           // Space taken by the floating chrome (top bar, tool rail, sheet), for app panels in the
           // overlay: `--chrome-left` / `--chrome-top` clear the rail and the top bar,
-          // `--chrome-bottom` is the sheet's visible height at rest.
-          className="h-full w-full [--chrome-left:4.75rem] [--chrome-top:4.75rem]"
-          style={{ '--chrome-bottom': `${sheetPx}px` } as CSSProperties}
+          // `--chrome-bottom` is the sheet's visible height at rest, at least up to the chips.
+          className="h-full w-full [--chrome-left:5.25rem] [--chrome-top:4.75rem]"
+          style={{ '--chrome-bottom': `${Math.max(sheetPx, CHIPS_TOP)}px` } as CSSProperties}
           overlay={
             <>
               {/* Top-left: document + history + actions. Top-right stays free for the view cube. */}

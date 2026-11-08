@@ -58,6 +58,7 @@ export {
 export { ToolRail, type ToolRailProps } from './components/ToolRail';
 export {
   COMING_SOON,
+  commandBarTools,
   type ToolDef,
   type ToolGroupDef,
   type ToolGroupId,

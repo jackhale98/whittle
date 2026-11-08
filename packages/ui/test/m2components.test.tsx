@@ -157,7 +157,7 @@ describe('ToolRail', () => {
     expect(screen.getByRole('button', { name: 'Sketch' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Solid tools' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Modify tools' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Inspect: Measure' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Inspect tools' })).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: 'Sketch' }));
     expect(onTool).toHaveBeenLastCalledWith('sketch');

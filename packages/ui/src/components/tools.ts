@@ -9,6 +9,7 @@ import {
   Rotate3d,
   Ruler,
   ScanSearch,
+  Scissors,
   SquareDashed,
   SquareRoundCorner,
 } from 'lucide-react';
@@ -25,7 +26,8 @@ export type ToolId =
   | 'shell'
   | 'pattern'
   | 'hole'
-  | 'measure';
+  | 'measure'
+  | 'section';
 
 export interface ToolDef {
   id: ToolId;
@@ -47,7 +49,18 @@ export const tools: readonly ToolDef[] = [
   { id: 'pattern', label: 'Pattern', Icon: Grid3x3 },
   { id: 'hole', label: 'Hole', Icon: CircleDot },
   { id: 'measure', label: 'Measure', shortcut: 'M', Icon: Ruler },
+  { id: 'section', label: 'Section', Icon: Scissors },
 ];
+
+/**
+ * Tools that live only in their group (tablet rail flyouts, the palette, context actions), never
+ * as a flat button on the desktop command bar: the bar keeps PLAN 9.1's set until it becomes
+ * grouped flyouts too. `toolGroups` stays the single source of truth for where a tool lives.
+ */
+const GROUPED_ONLY: ReadonlySet<ToolId> = new Set<ToolId>(['pushPull', 'section']);
+
+/** The desktop command bar's flat tools. */
+export const commandBarTools: readonly ToolDef[] = tools.filter((t) => !GROUPED_ONLY.has(t.id));
 
 export const COMING_SOON = 'Coming in M1';
 
@@ -65,5 +78,5 @@ export const toolGroups: readonly ToolGroupDef[] = [
   { id: 'sketch', label: 'Sketch', Icon: PenLine, tools: ['sketch'] },
   { id: 'solid', label: 'Solid', Icon: Box, tools: ['extrude', 'pushPull', 'revolve', 'hole'] },
   { id: 'modify', label: 'Modify', Icon: Hammer, tools: ['fillet', 'chamfer', 'shell', 'pattern'] },
-  { id: 'inspect', label: 'Inspect', Icon: ScanSearch, tools: ['measure'] },
+  { id: 'inspect', label: 'Inspect', Icon: ScanSearch, tools: ['measure', 'section'] },
 ];

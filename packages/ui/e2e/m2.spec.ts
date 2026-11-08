@@ -175,7 +175,7 @@ test.describe('tablet tool rail', () => {
     test.skip(isPhone(p));
     await open(page, p);
     const rail = page.getByRole('toolbar', { name: 'Modeling tools' });
-    for (const name of ['Sketch', 'Solid tools', 'Modify tools', 'Inspect: Measure', 'More']) {
+    for (const name of ['Sketch', 'Solid tools', 'Modify tools', 'Inspect tools', 'More']) {
       await expect(rail.getByRole('button', { name })).toBeVisible();
     }
     await expectTouchTargets(rail);
