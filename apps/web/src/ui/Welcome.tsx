@@ -1,11 +1,20 @@
 /**
  * In-app welcome (first launch, the library's empty state, ⌘K "Welcome / samples"): a calm,
- * non-modal card — the one-line pitch, Open the demo bracket, New part, Install app, and links to
- * the source and the licence. The app keeps working behind it.
+ * non-modal card — the one-line pitch, Open the demo bracket, the 60-second tour, New part,
+ * Install app, and links to the source and the licence. The app keeps working behind it.
  */
 
 import { BirdMark, Button, cn, IconButton } from '@whittle/ui';
-import { Download, ExternalLink, FolderOpen, Plus, Share, Sparkles, X } from 'lucide-react';
+import {
+  Download,
+  ExternalLink,
+  FolderOpen,
+  GraduationCap,
+  Plus,
+  Share,
+  Sparkles,
+  X,
+} from 'lucide-react';
 import type { Workbench } from '../app/workbench';
 import { promptInstall, useInstallState } from '../platform/install';
 
@@ -31,6 +40,14 @@ export function WelcomeContent({ wb, compact }: { wb: Workbench; compact?: boole
           data-testid="open-demo"
         >
           Open the demo bracket
+        </Button>
+        <Button
+          variant="secondary"
+          icon={<GraduationCap className="size-4" />}
+          onClick={() => wb.requestTour()}
+          data-testid="take-tour"
+        >
+          Take the 60-second tour
         </Button>
         <Button
           variant="secondary"

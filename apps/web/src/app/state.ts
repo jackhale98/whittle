@@ -4,15 +4,20 @@ import type {
   EntityRef,
   Id,
   KernelStatus,
+  Measurement,
   MeshQuality,
   PickHit,
   RegenResult,
   SketchSolveResult,
+  Vec2,
+  Vec3,
   WhittleDoc,
 } from '@whittle/contracts';
-import type { SketchToolId } from '@whittle/ui';
+import type { SheetSnap, SheetTabId, SketchToolId } from '@whittle/ui';
 import type { ModelTool } from '../features/factories';
+import type { SectionAxis } from '../model/faces';
 import type { PlaneFrame } from '../model/frames';
+import type { MeasurePick } from '../model/measure';
 import type { DrawState } from '../sketch/draw';
 
 export interface SelectionItem {
@@ -44,6 +49,17 @@ export interface SketchUi {
   conflictsDismissed: boolean;
   /** Whether the sketch existed before this edit session (Finish removes new empty sketches). */
   isNew: boolean;
+  /** A Pencil stroke in progress: its samples (sketch mm) and what it is recognised as so far. */
+  stroke: StrokeUi | null;
+  /** The last Pencil stroke's recognised shape (tests, the status line). */
+  lastStroke: { shape: string; confidence: number } | null;
+}
+
+export interface StrokeUi {
+  points: Vec2[];
+  /** Recognised shape kind so far (`line`, `rectangle`, `circle`, ...), null while unsure. */
+  shape: string | null;
+  confidence: number;
 }
 
 export interface Chooser {
@@ -72,6 +88,52 @@ export interface Toast {
   tone: 'info' | 'error';
 }
 
+/** Push/pull on planar faces of one body (PLAN §9.2), from tool start to release / typed value. */
+export interface PushPullUi {
+  bodyId: string;
+  faces: Array<{ index: number; normal: Vec3; ref: EntityRef | null }>;
+  /** Arrow base at distance 0 (mm) and its direction (the first face's normal). */
+  origin: Vec3;
+  normal: Vec3;
+  /** Current distance (mm) and its expression (a typed value keeps its text, e.g. `2 * t`). */
+  distance: number;
+  expr: string;
+  dragging: boolean;
+}
+
+/** Measure (desktop/tablet Inspect tool, phone Measure tab). */
+export interface MeasureUi {
+  /** Viewport picks go to measure (tool on / phone tab open). */
+  active: boolean;
+  picks: MeasurePick[];
+  /** The result for `picks` (null while measuring or after an error). */
+  current: Measurement | null;
+  /** Every result this session, oldest first (the panel's history). */
+  results: Measurement[];
+  busy: boolean;
+  error: string | null;
+}
+
+export interface SectionUi {
+  enabled: boolean;
+  axis: SectionAxis;
+  offset: number;
+  flipped: boolean;
+  face: { origin: Vec3; normal: Vec3; label: string } | null;
+  /** The next viewport pick sets the face. */
+  picking: boolean;
+  /** The section panel is shown (desktop/tablet inspector). */
+  open: boolean;
+}
+
+/** A context bubble opened by long-press: where (mm), and view actions on empty space. */
+export interface BubbleRequest {
+  at: Vec3 | null;
+  /** Client px for an empty-space press (no world point). */
+  screen: { x: number; y: number } | null;
+  view: boolean;
+}
+
 export interface UiState {
   /** The initial document is resolved (library or new). */
   ready: boolean;
@@ -93,7 +155,24 @@ export interface UiState {
   toast: Toast | null;
   /** The last tool, for Space = repeat last. */
   lastTool: ModelTool | null;
+  pushPull: PushPullUi | null;
+  measure: MeasureUi | null;
+  section: SectionUi;
+  /** Tablet / phone bottom sheet (controlled). */
+  sheetSnap: SheetSnap;
+  sheetTab: SheetTabId | null;
+  bubble: BubbleRequest | null;
 }
+
+export const initialSection: SectionUi = {
+  enabled: false,
+  axis: 'z',
+  offset: 0,
+  flipped: false,
+  face: null,
+  picking: false,
+  open: false,
+};
 
 export const initialUi: UiState = {
   ready: false,
@@ -110,6 +189,12 @@ export const initialUi: UiState = {
   exporting: false,
   toast: null,
   lastTool: null,
+  pushPull: null,
+  measure: null,
+  section: initialSection,
+  sheetSnap: 'peek',
+  sheetTab: null,
+  bubble: null,
 };
 
 export interface RegenView {

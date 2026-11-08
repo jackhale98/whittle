@@ -1,5 +1,5 @@
 import { expect, type Page } from '@playwright/test';
-import type { WhittleDoc, WhittleTestHooks } from '@whittle/contracts';
+import type { Measurement, WhittleDoc, WhittleTestHooks } from '@whittle/contracts';
 
 /** App-level E2E hooks (`window.__whittleApp`, see src/app/workbench.ts `testHooks`). */
 export interface AppHooks {
@@ -34,7 +34,27 @@ export interface AppHooks {
       editDimension: string | null;
       selected: string[];
       highlight: readonly string[] | null;
+      stroke: { shape: string | null; points: number } | null;
+      lastStroke: { shape: string; confidence: number } | null;
     } | null;
+    selection: string[];
+    hover: string | null;
+    choices: number;
+    prompt: string | null;
+    pushPull: { faces: number; distance: number; expr: string; dragging: boolean } | null;
+    measure: {
+      active: boolean;
+      picks: string[];
+      results: Measurement[];
+      busy: boolean;
+      error: string | null;
+    } | null;
+    section: { enabled: boolean; axis: string; offset: number; flipped: boolean; picking: boolean };
+    bubble: boolean;
+    chooser: string[] | null;
+    sheet: { snap: string; tab: string | null };
+    kernel: { started: boolean; ready: boolean };
+    camera: { moving: boolean; rest: number };
   };
   load(doc: WhittleDoc): void;
   projectFiles(): {
@@ -47,6 +67,8 @@ export interface AppHooks {
   attentionMarkers(): string[];
   pendingHeals(): Record<string, { path: string; name: string }[]>;
   library(): Promise<{ id: string; name: string }[]>;
+  /** Extra file paths stored with a library entry. */
+  libraryFiles(id: string): Promise<string[]>;
   cacheSaved(): Promise<boolean>;
 }
 
@@ -81,7 +103,119 @@ export const app = (page: Page) => ({
   pendingHeals: () => page.evaluate(() => (window as unknown as W).__whittleApp.pendingHeals()),
   library: () => page.evaluate(() => (window as unknown as W).__whittleApp.library()),
   cacheSaved: () => page.evaluate(() => (window as unknown as W).__whittleApp.cacheSaved()),
+  libraryFiles: (id: string) =>
+    page.evaluate((x) => (window as unknown as W).__whittleApp.libraryFiles(x), id),
 });
+
+/** The viewport's test surface (`window.__whittleViewport`, packages/viewport ViewportEngine). */
+export interface ViewportProbe {
+  getCameraState(): { position: number[]; target: number[]; distance: number };
+  isCameraMoving(): boolean;
+  getTouchStats(): {
+    prismBuilds: number;
+    lastPreviewPresentedAt: number;
+    sectionActive: boolean;
+    handleHover: string | null;
+  };
+  getRenderCount(): number;
+  getHandleScreenLength(id: string): number | null;
+  worldToScreen(p: [number, number, number]): { x: number; y: number; visible: boolean };
+}
+
+type V = { __whittleViewport: ViewportProbe };
+
+export const touchStats = (page: Page) =>
+  page.evaluate(() => (window as unknown as V).__whittleViewport.getTouchStats());
+export const cameraState = (page: Page) =>
+  page.evaluate(() => (window as unknown as V).__whittleViewport.getCameraState());
+
+/** Raw touch input through CDP (Playwright's touchscreen only taps with one finger). */
+export async function touch(page: Page) {
+  const cdp = await page.context().newCDPSession(page);
+  type TouchType = 'touchStart' | 'touchEnd' | 'touchMove';
+  const send = (type: TouchType, pts: Array<{ x: number; y: number }>, timestamp?: number) =>
+    cdp.send('Input.dispatchTouchEvent', {
+      type,
+      touchPoints: pts.map((p, i) => ({ x: p.x, y: p.y, id: i + 1 })),
+      ...(timestamp !== undefined ? { timestamp } : {}),
+    });
+  return {
+    /**
+     * A double-tap with event times 40 / 120 / 160 ms after the first touch. The gesture
+     * recognizer reads event timestamps, so a renderer busy with the first tap (software GL on
+     * CI) doesn't turn it into two single taps.
+     */
+    doubleTap: async (p: { x: number; y: number }) => {
+      const t0 = Date.now() / 1000;
+      await send('touchStart', [p], t0);
+      await send('touchEnd', [], t0 + 0.04);
+      await send('touchStart', [p], t0 + 0.12);
+      await send('touchEnd', [], t0 + 0.16);
+    },
+    down: (pts: Array<{ x: number; y: number }>) => send('touchStart', pts),
+    move: (pts: Array<{ x: number; y: number }>) => send('touchMove', pts),
+    up: () => send('touchEnd', []),
+    /** A tap with `pts.length` fingers (lifted 50 ms later in event time). */
+    tap: async (pts: Array<{ x: number; y: number }>) => {
+      const t0 = Date.now() / 1000;
+      await send('touchStart', pts, t0);
+      await send('touchEnd', [], t0 + 0.05);
+    },
+    /** A one-finger drag in `steps` moves. */
+    drag: async (from: { x: number; y: number }, to: { x: number; y: number }, steps = 12) => {
+      await send('touchStart', [from]);
+      for (let k = 1; k <= steps; k++)
+        await send('touchMove', [
+          { x: from.x + ((to.x - from.x) * k) / steps, y: from.y + ((to.y - from.y) * k) / steps },
+        ]);
+      await send('touchEnd', []);
+    },
+    /** Apple Pencil: pen pointer events (CDP mouse events with pointerType `pen`). */
+    pen: {
+      hover: (p: { x: number; y: number }) =>
+        cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...p, pointerType: 'pen' }),
+      down: (p: { x: number; y: number }) =>
+        cdp.send('Input.dispatchMouseEvent', {
+          type: 'mousePressed',
+          ...p,
+          button: 'left',
+          buttons: 1,
+          clickCount: 1,
+          pointerType: 'pen',
+          force: 0.5,
+        }),
+      move: (p: { x: number; y: number }) =>
+        cdp.send('Input.dispatchMouseEvent', {
+          type: 'mouseMoved',
+          ...p,
+          button: 'left',
+          buttons: 1,
+          pointerType: 'pen',
+          force: 0.5,
+        }),
+      up: (p: { x: number; y: number }) =>
+        cdp.send('Input.dispatchMouseEvent', {
+          type: 'mouseReleased',
+          ...p,
+          button: 'left',
+          buttons: 0,
+          clickCount: 1,
+          pointerType: 'pen',
+        }),
+    },
+  };
+}
+
+/** Page point of the middle of the bounding box's top face (+Z) of the first body. */
+export async function topCenter(page: Page): Promise<{ x: number; y: number }> {
+  const b = (await app(page).regen())?.bodies[0]?.bbox;
+  if (!b) throw new Error('no body');
+  return toPage(page, [
+    ((b.min[0] ?? 0) + (b.max[0] ?? 0)) / 2,
+    ((b.min[1] ?? 0) + (b.max[1] ?? 0)) / 2,
+    b.max[2] ?? 0,
+  ]);
+}
 
 /** Runs a ⌘K palette command by its label. */
 export async function palette(page: Page, label: string): Promise<void> {

@@ -37,12 +37,22 @@ import type { SketchSession } from '../app/sketch-session';
 import type { SketchUi } from '../app/state';
 import type { Workbench } from '../app/workbench';
 import { ORIGIN_FRAMES, type OriginPlane } from '../model/frames';
+import { measureLabel } from '../model/measure';
 import { acceptsFor } from '../selection/pick';
 import { labelAnchor } from '../sketch/dimension';
 import { entityAnchor } from '../sketch/overlay';
 import { describeRef, useDoc } from './Inspector';
 
 const LibraryPanel = lazy(() => import('./LibraryPanel'));
+
+/*
+ * Placement against the shells' floating chrome: tablet and phone stages expose `--chrome-top` /
+ * `--chrome-left` (top bar, tool rail) and `--chrome-bottom` (the sheet's visible height); the
+ * desktop stage has none, so the fallbacks keep the desktop layout (above the command bar).
+ */
+const TOP_LEFT = { top: 'var(--chrome-top, 3.5rem)', left: 'var(--chrome-left, 0.75rem)' };
+const ABOVE_BOTTOM = { bottom: 'calc(var(--chrome-bottom, 80px) + 12px)' };
+const TOAST_BOTTOM = { bottom: 'calc(var(--chrome-bottom, 68px) + 12px)' };
 const Welcome = lazy(() => import('./Welcome'));
 
 function useCameraTick(session: SketchSession | null): number {
@@ -339,9 +349,16 @@ function SketchLayer({
 function KernelLoading({ wb, hasGeometry }: { wb: Workbench; hasGeometry: boolean }) {
   const engine = useObservable(wb.engine);
   const regen = useObservable(wb.regen);
-  if (engine.ready || engine.error || !hasGeometry || (regen?.result.bodies.length ?? 0) > 0)
-    return null;
   const s = engine.status;
+  // Only while actually waiting: a phone that has not started the kernel is not waiting for it.
+  if (
+    engine.ready ||
+    engine.error ||
+    s.state === 'idle' ||
+    !hasGeometry ||
+    (regen?.result.bodies.length ?? 0) > 0
+  )
+    return null;
   const pct = s.state === 'downloading' && s.total ? Math.round((100 * s.loaded) / s.total) : null;
   return (
     <div
@@ -360,6 +377,53 @@ function KernelLoading({ wb, hasGeometry }: { wb: Workbench; hasGeometry: boolea
   );
 }
 
+/** The measure result's label in the view, following the camera every frame. */
+function MeasureLabel({ wb }: { wb: Workbench }) {
+  const ui = useObservable(wb.ui);
+  useObservable(wb.cameraTick);
+  const m = ui.measure;
+  const label = m ? measureLabel(m.picks, m.current) : null;
+  const p = label ? wb.project(label.at) : null;
+  if (!label || !p) return null;
+  return (
+    <output
+      data-testid="measure-label"
+      className="w-panel tnum pointer-events-none absolute -translate-x-1/2 -translate-y-[calc(100%+10px)] rounded-full px-3 py-1 text-ui font-semibold whitespace-nowrap text-accent-text"
+      style={{ left: p.x, top: p.y }}
+    >
+      {label.text}
+    </output>
+  );
+}
+
+const SHAPE_NAMES: Record<string, string> = {
+  line: 'Line',
+  polyline: 'Polyline',
+  rectangle: 'Rectangle',
+  circle: 'Circle',
+  arc: 'Arc',
+  scribble: 'Erase',
+};
+
+/** Live Pencil feedback: what the stroke is recognised as, next to the pen. */
+function StrokeChip({ wb, session, ui }: { wb: Workbench; session: SketchSession; ui: SketchUi }) {
+  const st = ui.stroke;
+  const last = st?.points[st.points.length - 1];
+  const w = last ? session.world(last) : null;
+  const p = w ? wb.project(w) : null;
+  if (!st || !p) return null;
+  return (
+    <output
+      data-testid="stroke-shape"
+      data-shape={st.shape ?? ''}
+      className="w-panel pointer-events-none absolute rounded-full px-2.5 py-0.5 text-2xs font-semibold text-fg"
+      style={{ left: p.x + 16, top: p.y - 30 }}
+    >
+      {st.shape ? (SHAPE_NAMES[st.shape] ?? st.shape) : 'Drawing…'}
+    </output>
+  );
+}
+
 export function ViewportOverlays({ wb, touch }: { wb: Workbench; touch: boolean }) {
   const ui = useObservable(wb.ui);
   const doc = useDoc(wb);
@@ -369,7 +433,14 @@ export function ViewportOverlays({ wb, touch }: { wb: Workbench; touch: boolean 
 
   const editing = ui.featureId ? part?.features.find((f) => f.id === ui.featureId) : undefined;
   const picking = ui.picking ? acceptsFor(ui.picking.path) : null;
-  const promptText = ui.prompt?.text ?? (picking ? `Select ${picking.noun}` : null);
+  const verb = touch ? 'Tap' : 'Click';
+  const promptText = ui.section.picking
+    ? `${verb} a flat face for the section plane`
+    : ui.pushPull
+      ? `Drag the arrow, or ${verb.toLowerCase()} the value to type it`
+      : ui.measure?.active && !ui.measure.picks.length
+        ? `${verb} faces, edges or points to measure`
+        : (ui.prompt?.text ?? (picking ? `Select ${picking.noun}` : null));
   const pickedCount =
     ui.picking && editing
       ? (() => {
@@ -391,7 +462,7 @@ export function ViewportOverlays({ wb, touch }: { wb: Workbench; touch: boolean 
       data-testid="viewport-overlays"
     >
       {sk && session ? (
-        <div className="absolute bottom-[92px] left-1/2 -translate-x-1/2">
+        <div className="absolute left-1/2 -translate-x-1/2" style={ABOVE_BOTTOM}>
           <SketchToolbar
             activeTool={sk.tool}
             variants={sk.variants}
@@ -410,7 +481,11 @@ export function ViewportOverlays({ wb, touch }: { wb: Workbench; touch: boolean 
       ) : null}
       {/* Above the command bar, where the tool was chosen: act-first prompt + plane chooser. */}
       {!sk && promptText ? (
-        <div className="absolute bottom-[92px] left-1/2 flex -translate-x-1/2 flex-col items-center gap-2">
+        <div
+          className="absolute left-1/2 flex -translate-x-1/2 flex-col items-center gap-2"
+          style={ABOVE_BOTTOM}
+          data-testid="prompt"
+        >
           {ui.prompt?.tool === 'sketch' ? <PlaneChooser wb={wb} doc={doc} /> : null}
           <PromptChip {...(pickedCount ? { count: pickedCount } : {})} onCancel={() => wb.cancel()}>
             {promptText}
@@ -421,7 +496,8 @@ export function ViewportOverlays({ wb, touch }: { wb: Workbench; touch: boolean 
       {sk && session ? (
         <>
           <SketchLayer wb={wb} session={session} ui={sk} doc={doc} />
-          <div className="absolute top-14 left-3">
+          <StrokeChip wb={wb} session={session} ui={sk} />
+          <div className="absolute" style={TOP_LEFT}>
             {sk.solve ? (
               <SketchStatusChip
                 status={sk.solve.status}
@@ -472,6 +548,7 @@ export function ViewportOverlays({ wb, touch }: { wb: Workbench; touch: boolean 
       ) : null}
 
       {!sk && editing?.type === 'extrude' ? <ExtrudeDepth wb={wb} f={editing} /> : null}
+      {!sk && ui.measure ? <MeasureLabel wb={wb} /> : null}
 
       {ui.chooser ? (
         <WhichOneChooser
@@ -498,7 +575,7 @@ export function ViewportOverlays({ wb, touch }: { wb: Workbench; touch: boolean 
 
       {/* Hidden while the library is open: the panel has its own close button and would cover it. */}
       {!sk && !ui.library ? (
-        <div className="absolute top-14 left-3">
+        <div className="absolute" style={TOP_LEFT}>
           <button
             type="button"
             onClick={() => wb.toggleLibrary()}
@@ -525,7 +602,7 @@ export function ViewportOverlays({ wb, touch }: { wb: Workbench; touch: boolean 
       )}
 
       {ui.toast ? (
-        <div className="absolute bottom-20 left-1/2 -translate-x-1/2">
+        <div className="absolute left-1/2 -translate-x-1/2" style={TOAST_BOTTOM}>
           <output
             key={ui.toast.id}
             data-testid="toast"

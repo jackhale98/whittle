@@ -16,6 +16,7 @@ import type {
   PickKind,
   PlaneFeature,
   PrimitiveFeature,
+  PushPullFeature,
   RevolveFeature,
   SketchFeature,
 } from '@whittle/contracts';
@@ -32,6 +33,7 @@ const BASE_NAMES: Record<string, string> = {
   box: 'Box',
   cylinder: 'Cylinder',
   sphere: 'Sphere',
+  pushPull: 'Push/pull',
 };
 
 /** "Extrude 3": one more than the highest existing number for that base name. */
@@ -98,6 +100,26 @@ export function newRevolve(
   };
 }
 
+/** A hole-style cut: the profile through everything, away from the sketch's normal. */
+export function newCut(part: Pick<Part, 'features'>, profile: EntityRef[]): ExtrudeFeature {
+  return {
+    ...base(part, 'extrude'),
+    type: 'extrude',
+    profile,
+    direction: 'reverse',
+    end: { kind: 'throughAll' },
+    op: 'cut',
+  };
+}
+
+export function newPushPull(
+  part: Pick<Part, 'features'>,
+  faces: EntityRef[],
+  distance: string,
+): PushPullFeature {
+  return { ...base(part, 'pushPull'), type: 'pushPull', faces, distance };
+}
+
 export function newFillet(part: Pick<Part, 'features'>, edges: EntityRef[]): FilletFeature {
   return { ...base(part, 'fillet'), type: 'fillet', edges, radius: '2 mm' };
 }
@@ -150,7 +172,7 @@ export function newCylinder(part: Pick<Part, 'features'>): PrimitiveFeature {
   };
 }
 
-export type ModelTool = 'sketch' | 'extrude' | 'revolve' | 'fillet' | 'chamfer';
+export type ModelTool = 'sketch' | 'extrude' | 'revolve' | 'fillet' | 'chamfer' | 'pushPull';
 
 /** What each command-bar tool needs selected, and where those picks go in the new feature. */
 export const TOOL_NEEDS: Record<ModelTool, { kinds: PickKind[]; prompt: string; path: string }> = {
@@ -159,6 +181,7 @@ export const TOOL_NEEDS: Record<ModelTool, { kinds: PickKind[]; prompt: string; 
   revolve: { kinds: ['region'], prompt: 'Select a sketch region to revolve', path: '/profile' },
   fillet: { kinds: ['edge'], prompt: 'Select edges to fillet', path: '/edges' },
   chamfer: { kinds: ['edge'], prompt: 'Select edges to chamfer', path: '/edges' },
+  pushPull: { kinds: ['face'], prompt: 'Select a flat face to push or pull', path: '/faces' },
 };
 
 /** Context tools for the current selection (select-first-act-second). */
@@ -167,7 +190,7 @@ export function contextTools(kinds: readonly PickKind[]): ModelTool[] {
   const all = (k: PickKind) => kinds.every((x) => x === k);
   if (all('region')) return ['extrude', 'revolve'];
   if (all('edge')) return ['fillet', 'chamfer'];
-  if (all('face') && kinds.length === 1) return ['sketch'];
+  if (all('face')) return kinds.length === 1 ? ['sketch', 'pushPull'] : ['pushPull'];
   return [];
 }
 

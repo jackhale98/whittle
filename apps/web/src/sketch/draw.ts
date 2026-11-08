@@ -179,6 +179,20 @@ export function move(
   return { ...state, cursor: at, hover, candidates, glyphs: glyphs.slice(0, 2) };
 }
 
+/**
+ * End-point inference for a point placed at `at` without a cursor (Pencil strokes): an existing
+ * point within `tolerance` merges (coincident), else a curve or midpoint it lies on (pointOn /
+ * midpoint). `at` stays where it is, so `anchorConstraints` finds the fragment point there.
+ */
+export function pointAnchor(sketch: SketchData, at: Vec2, tolerance: number): Anchor {
+  const point = infer(solveInput(sketch), at, null, tolerance).find((c) =>
+    POINT_KINDS.has(c.constraint.kind),
+  );
+  if (!point) return { at };
+  const c = point.constraint;
+  return c.kind === 'coincident' ? { at, pointId: c.b } : { at, snap: c };
+}
+
 export interface SketchEdit {
   entities: SketchEntity[];
   constraints: SketchConstraint[];
@@ -191,7 +205,10 @@ function bind(c: GeometricConstraintDraft, ids: { cursorPoint?: Id; drawingEntit
 }
 
 /** Point constraints for the fragment points that were placed at snapped anchors. */
-function anchorConstraints(frag: SketchFragment, anchors: readonly Anchor[]): SketchConstraint[] {
+export function anchorConstraints(
+  frag: SketchFragment,
+  anchors: readonly Anchor[],
+): SketchConstraint[] {
   const out: SketchConstraint[] = [];
   for (const a of anchors) {
     const p = frag.entities.find(

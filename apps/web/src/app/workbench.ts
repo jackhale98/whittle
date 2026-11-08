@@ -6,14 +6,15 @@
  */
 
 import type {
+  CameraChange,
   Command,
+  DeviceTier,
   EntityRef,
   EvalResult,
   Expr,
   Feature,
   HighlightItem,
   Id,
-  InteractiveViewport,
   Material,
   MeshBuffers,
   NamedDimension,
@@ -23,6 +24,9 @@ import type {
   ProjectFiles,
   RegenResult,
   SketchFeature,
+  TouchViewport,
+  Vec3,
+  ViewportGesture,
   WhittleDoc,
 } from '@whittle/contracts';
 import {
@@ -34,7 +38,7 @@ import {
   scopeOf,
   ulid,
 } from '@whittle/document';
-import type { ExportRequest, ToolId } from '@whittle/ui';
+import type { ExportRequest, SheetSnap, SheetTabId, ToolId } from '@whittle/ui';
 import { type Autosaver, createAutosaver } from '../doc/autosave';
 import type { DocLibrary, OpenedFile, ProjectBundle } from '../doc/library';
 import {
@@ -50,6 +54,7 @@ import {
   type ModelTool,
   newBox,
   newChamfer,
+  newCut,
   newCylinder,
   newExtrude,
   newFillet,
@@ -58,12 +63,23 @@ import {
   newSketch,
   TOOL_NEEDS,
 } from '../features/factories';
-import { attentionItems, locateName, markerMesh, partDiagonal } from '../model/attention';
+import { pruneAttachments, savedExtra } from '../model/attachments';
+import { attentionItems, attentionMarkers, locateName, partDiagonal } from '../model/attention';
 import { bootEngine, type EngineBoot } from '../model/engine';
+import {
+  type FaceInfo,
+  faceInfo,
+  type SectionSettings,
+  sectionPlane,
+  sectionRange,
+  unionBounds,
+} from '../model/faces';
 import { isOriginPlane, ORIGIN_FRAMES, type PlaneFrame, toPlaneFrame } from '../model/frames';
 import { foldHeals, type Heal, healsFrom } from '../model/heal';
 import { IMPORT_EXTENSIONS, importFeature, importFormat } from '../model/import';
 import { type Attachment, createRegenLoop, type Modeling, type RegenLoop } from '../model/modeling';
+import { getDiagnostics } from '../platform/diagnostics';
+import { policyFor, type TierPolicy } from '../platform/tier-policy';
 import {
   acceptsFor,
   applyPick,
@@ -73,12 +89,17 @@ import {
   toHighlight,
   toleranceFor,
 } from '../selection/pick';
+import { type BubbleActionId, gestureAction } from './gestures';
+import { MeasureTool } from './measure-tool';
 import { type Observable, observable } from './observable';
+import { PushPullTool } from './push-pull';
 import type { SketchSession } from './sketch-session';
 import {
   type EngineState,
+  initialSection,
   initialUi,
   type RegenView,
+  type SectionUi,
   type SelectionItem,
   type UiState,
 } from './state';
@@ -139,9 +160,22 @@ export class Workbench {
   /** Library contents for the library panel (refreshed on demand). */
   readonly libraryEntries = observable<import('@whittle/contracts').LibraryEntry[] | null>(null);
 
-  viewport: InteractiveViewport | null = null;
+  viewport: TouchViewport | null = null;
   canvas: HTMLCanvasElement | null = null;
   modeling: Modeling | null = null;
+  /** Device tier and what it means (PLAN §8.4): regen budget, mesh quality, kernel boot. */
+  readonly tier: DeviceTier;
+  readonly policy: TierPolicy;
+  /** The camera moved / came to rest (`onCamera`): `rest` counts the stops. */
+  readonly camera = observable({ moving: false, rest: 0 });
+  /** Every camera change (one per frame while moving), for HTML labels that follow geometry. */
+  readonly cameraTick = observable(0);
+  /** Successful exports (the tutorial's last step). */
+  readonly exports = observable(0);
+  /** "Take the tour" requests (welcome card, ⌘K); the app runs the tutorial on a new part. */
+  readonly tourRequests = observable(0);
+  readonly pushPull: PushPullTool;
+  readonly measure: MeasureTool;
   private loop: RegenLoop | null = null;
   private boot: EngineBoot | null = null;
   private libraryPromise: Promise<DocLibrary | null> | null = null;
@@ -150,6 +184,8 @@ export class Workbench {
   private shownSketches = new Set<string>();
   private ghosts = new Set<string>();
   private markers = new Set<string>();
+  /** Faces looked at for bubbles, push/pull and sections, per mesh (meshes are immutable). */
+  private faceCache = new WeakMap<MeshBuffers, Map<number, FaceInfo | null>>();
   /** Project files outside the document model (attachments, previews/, releases/). */
   private extra: ProjectFiles = new Map();
   /** `.whittle/` cache of the open project (mesh cache, other regenerable files). */
@@ -178,6 +214,10 @@ export class Workbench {
   private sketchModule: Promise<typeof import('./sketch-session')> | null = null;
 
   constructor() {
+    this.tier = getDiagnostics().tier;
+    this.policy = policyFor(this.tier);
+    this.pushPull = new PushPullTool(this);
+    this.measure = new MeasureTool(this);
     // Coalescing groups are closed explicitly (pointer up, Enter, blur); the idle window only
     // guards against a forgotten commit, so it is long enough that a drag or a typed value on a
     // busy main thread (software GL, long regens) never splits into several undo steps.
@@ -201,8 +241,26 @@ export class Workbench {
       }),
       this.listen(window, 'pagehide', () => void this.flushSave()),
     );
-    this.bootKernel();
+    this.bootKernelIfEager();
     void this.resolveInitialDocument();
+  }
+
+  /**
+   * Boots the kernel now unless the tier loads it lazily (phone: a viewer of cached meshes until
+   * the first edit or measurement, or a document that has no cached meshes).
+   */
+  bootKernelIfEager(): void {
+    if (this.policy.kernelBoot === 'eager') this.bootKernel();
+  }
+
+  /** The kernel is needed now (an edit, a measurement, a document with nothing cached). */
+  ensureKernel(): void {
+    this.bootKernel();
+  }
+
+  /** Whether the kernel worker has been started (phone: lazily). */
+  get kernelStarted(): boolean {
+    return this.boot !== null;
   }
 
   /**
@@ -312,6 +370,8 @@ export class Workbench {
     }
     this.ui.set((u) => ({ ...u, ready: true }));
     this.loop?.request();
+    this.kernelIfNothingCached();
+    this.markViewerShown();
     void import('../doc/library').then(({ onLaunchFiles }) =>
       onLaunchFiles((files) => {
         const f = files[0];
@@ -322,11 +382,54 @@ export class Workbench {
     );
   }
 
+  /** A document with features but no cached meshes can only be shown by the kernel: boot it. */
+  private kernelIfNothingCached(): void {
+    if (this.boot || (this.part?.features.length ?? 0) === 0) return;
+    const view = this.regen.get();
+    if (view?.source === 'cache' && view.result.partId === this.part?.id) return;
+    this.ensureKernel();
+  }
+
+  /**
+   * Lazy tiers show the document without the kernel (cached meshes, or nothing to show): that
+   * first frame is the "first body" for the boot timing marks.
+   */
+  private markViewerShown(): void {
+    const v = this.viewport;
+    if (this.boot || this.firstRendered || !v || !this.ui.get().ready) return;
+    this.firstRendered = true;
+    void v.nextFrame().then(() => mark('firstBodyMs'));
+  }
+
+  /**
+   * Resolves once the kernel is up and the latest live regen is of the current document (booting
+   * the kernel on lazy tiers). False when the kernel failed to start.
+   */
+  async whenLive(): Promise<boolean> {
+    this.ensureKernel();
+    const modeling = await this.boot?.modeling.catch(() => null);
+    if (!modeling) return false;
+    for (let i = 0; i < 400; i++) {
+      await this.loop?.whenIdle();
+      const r = this.regen.get();
+      if (r?.source === 'live' && r.doc === this.viewDoc()) return true;
+      if (!this.loop) return false;
+      this.loop.request();
+      await new Promise((res) => setTimeout(res, 25));
+    }
+    return false;
+  }
+
   private onEngineReady(modeling: Modeling): void {
     this.modeling = modeling;
     this.engine.set((s) => ({ ...s, ready: true }));
+    // The tier's regen cache budget (also sent before init by createKernelClient).
+    const spare = this.policy.regenMaxSpareResults;
+    if (spare !== undefined) void modeling.port.configureRegen?.({ maxSpareResults: spare });
     this.loop = createRegenLoop({
       port: modeling.port,
+      // Phones settle at coarse meshes (viewer-first, memory); others refine on idle.
+      fine: this.policy.meshQuality === 'fine',
       getDoc: () => this.viewDoc(),
       onResult: (o) => this.onRegen({ ...o, source: 'live' }),
       onError: (e) => this.toast(e.message, 'error'),
@@ -401,6 +504,7 @@ export class Workbench {
   }
 
   apply(command: Command, label?: string, coalesceKey?: string): boolean {
+    this.ensureKernel(); // phones boot the kernel on the first edit
     // Stale reference names the engine rebound ride along with this edit (ADR-008).
     // Heals from a regen of another version (before an undo/redo/load) would rename references
     // that version had: drop them; the next regen of this version computes its own.
@@ -461,9 +565,12 @@ export class Workbench {
       this.firstRendered = true;
       void this.viewport.nextFrame().then(() => mark('firstBodyMs'));
     }
-    if (outcome.quality === 'fine') {
-      if (current) this.updateMeshCache(outcome);
-    }
+    // The cache holds the tier's settled quality (phones: coarse; the fine pass never runs there).
+    if (current && (outcome.quality === 'fine' || outcome.quality === this.policy.meshQuality))
+      this.updateMeshCache(outcome);
+    this.pushPull.onRegen();
+    this.measure.onRegen();
+    this.syncSection();
   }
 
   /**
@@ -571,7 +678,7 @@ export class Workbench {
     this.patchUi({ selection, hover: null });
   }
 
-  attachViewport(viewport: InteractiveViewport, canvas: HTMLCanvasElement): void {
+  attachViewport(viewport: TouchViewport, canvas: HTMLCanvasElement): void {
     markOnce('viewportReadyMs');
     this.viewport = viewport;
     this.canvas = canvas;
@@ -580,12 +687,20 @@ export class Workbench {
       this.listen(host, 'pointermove', (e) => this.onPointerMove(e as PointerEvent)),
       this.listen(host, 'pointerdown', (e) => this.onPointerDown(e as PointerEvent), true),
       this.listen(host, 'pointerup', (e) => this.onPointerUp(e as PointerEvent), true),
+      this.listen(host, 'pointercancel', (e) => this.onPointerCancel(e as PointerEvent), true),
       this.listen(host, 'pointerleave', () => this.setHover(null)),
       this.listen(host, 'dblclick', (e) => this.sketch?.onDoubleClick(e as MouseEvent), true),
       this.listen(host, 'dragover', (e) => this.onDragOver(e as DragEvent)),
       this.listen(host, 'drop', (e) => void this.onDrop(e as DragEvent)),
+      // The app decides what discrete gestures mean (PLAN §9.3); the viewport keeps navigation.
+      viewport.onGesture((g) => this.onGesture(g)),
+      viewport.onCamera((c) => this.onCamera(c)),
     );
+    // Touch tiers: the Pencil draws or selects and never orbits; fingers keep navigating, and
+    // touch taps right after a pen contact are palm rejected.
+    if (this.tier !== 'desktop') viewport.setInputPolicy({ penDraws: true });
     this.syncViewport();
+    this.syncSection();
     const view = this.regen.get();
     if (view) this.keepInView(view);
     if (view?.source === 'live' && !this.firstRendered) {
@@ -593,6 +708,33 @@ export class Workbench {
       void viewport.nextFrame().then(() => mark('firstBodyMs'));
     }
     this.markCachedFrame();
+    this.markViewerShown();
+  }
+
+  private onCamera(c: CameraChange): void {
+    this.cameraTick.set((n) => n + 1);
+    const cur = this.camera.get();
+    if (c.moving !== cur.moving)
+      this.camera.set({ moving: c.moving, rest: c.moving ? cur.rest : cur.rest + 1 });
+  }
+
+  /** Projects a world point to stage px (canvas-relative), or null when off screen. */
+  project(p: Vec3): { x: number; y: number } | null {
+    const s = this.viewport?.worldToScreen(p);
+    return s?.visible ? { x: s.x, y: s.y } : null;
+  }
+
+  /** Face geometry (centroid, normal, planar) of a body face in the current regen; cached. */
+  face(bodyId: string, index: number): FaceInfo | null {
+    const mesh = this.regen.get()?.result.bodies.find((b) => b.id === bodyId)?.mesh;
+    if (!mesh) return null;
+    let m = this.faceCache.get(mesh);
+    if (!m) {
+      m = new Map();
+      this.faceCache.set(mesh, m);
+    }
+    if (!m.has(index)) m.set(index, faceInfo(mesh, index));
+    return m.get(index) ?? null;
   }
 
   private onDragOver(e: DragEvent): void {
@@ -629,9 +771,10 @@ export class Workbench {
     if (!v || !view) return;
     const { result } = view;
     const color = this.bodyColor();
+    const visible = this.partVisible(result.partId);
     const next = new Set<string>();
     for (const b of result.bodies) {
-      v.setBody(b.id, b.mesh, color ? { color } : {});
+      v.setBody(b.id, b.mesh, { ...(color ? { color } : {}), visible });
       next.add(b.id);
     }
     for (const id of this.shownBodies) if (!next.has(id)) v.removeBody(id);
@@ -657,7 +800,7 @@ export class Workbench {
   }
 
   /**
-   * The old location of every unresolved reference, ghosted (PLAN §7.3 rule 4): a dashed proxy at
+   * The old location of every unresolved reference (PLAN §7.3 rule 4): dashed warning markers at
    * the stored fingerprint, until the user re-picks it.
    */
   private syncAttentionMarkers(): void {
@@ -665,18 +808,18 @@ export class Workbench {
     if (!v) return;
     const items = attentionItems(this.treeStatuses.get());
     const size = Math.max(partDiagonal(this.regen.get()?.result) * 0.05, 0.5);
-    const next = new Map<string, MeshBuffers>();
+    const next = new Map<string, ReturnType<typeof attentionMarkers>>();
     for (const it of items) {
       // The stored fingerprint, else the engine's last known location of the reference.
       const { ref, lastKnown } = it.unresolved;
-      const mesh = markerMesh(
+      const markers = attentionMarkers(
         ref.fingerprint || !lastKnown ? ref : { ...ref, fingerprint: lastKnown },
         size,
       );
-      if (mesh) next.set(`attention:${it.featureId}:${it.unresolved.path}`, mesh);
+      if (markers) next.set(`attention:${it.featureId}:${it.unresolved.path}`, markers);
     }
-    for (const id of this.markers) if (!next.has(id)) v.setGhost(id, null);
-    for (const [id, mesh] of next) v.setGhost(id, mesh);
+    for (const id of this.markers) if (!next.has(id)) v.setMarkers(id, null);
+    for (const [id, markers] of next) v.setMarkers(id, markers);
     this.markers = new Set(next.keys());
   }
 
@@ -732,6 +875,10 @@ export class Workbench {
       return i >= 0 ? { ...h, index: i } : h;
     };
     const selected = u.selection.map((s) => fix(toHighlight(s.hit)));
+    // Measure picks are highlighted like a selection.
+    for (const p of u.measure?.picks ?? [])
+      if ('bodyId' in p.target)
+        selected.push({ bodyId: p.target.bodyId, kind: p.target.kind, index: p.target.index });
     // Refs of the feature being edited show as selected too.
     const editing = u.featureId ? this.part?.features.find((f) => f.id === u.featureId) : null;
     if (editing && view) selected.push(...this.highlightsForRefs(editing, view.result));
@@ -773,17 +920,23 @@ export class Workbench {
   /** Kinds selectable right now (model mode). */
   private pickKinds(): PickKind[] {
     const u = this.ui.get();
+    if (u.section.picking) return ['face'];
+    if (u.measure?.active) return ['face', 'edge', 'vertex'];
     if (u.picking) return acceptsFor(u.picking.path).kinds;
     if (u.prompt) return TOOL_NEEDS[u.prompt.tool].kinds;
     return ['face', 'edge', 'vertex', 'region'];
   }
 
   private pick(e: PointerEvent | MouseEvent, kinds: PickKind[], all = true): PickHit[] {
+    const { x, y } = this.local(e);
+    return this.pickAt(x, y, 'pointerType' in e ? e.pointerType : 'mouse', kinds, all);
+  }
+
+  /** Viewport pick at canvas px with the pointer type's tolerance. */
+  pickAt(x: number, y: number, pointerType: string, kinds: PickKind[], all = true): PickHit[] {
     const v = this.viewport;
     if (!v) return [];
-    const { x, y } = this.local(e);
-    const type = 'pointerType' in e ? e.pointerType : 'mouse';
-    const hits = v.pick(x, y, { kinds, tolerancePx: toleranceFor(type), all });
+    const hits = v.pick(x, y, { kinds, tolerancePx: toleranceFor(pointerType), all });
     // Sketch regions are all "0 px away": of stacked ones (a sketch on a face above another
     // sketch's region) the one nearest the camera is the one under the cursor.
     const cam = (
@@ -801,13 +954,18 @@ export class Workbench {
     return e.target === this.canvas;
   }
 
+  /** Time of the last pen contact (sketch mode: fingers never draw while the Pencil is in use). */
+  lastPenAt = Number.NEGATIVE_INFINITY;
+
   private onPointerMove(e: PointerEvent): void {
+    if (this.pushPull.onPointerMove(e)) return;
     if (!this.onCanvas(e)) return;
     if (this.ui.get().sketch) {
       this.sketch?.onPointerMove(e);
       return;
     }
     if (e.buttons !== 0) return; // orbiting
+    // Mouse and Pencil hover (where supported) preselect.
     const { best } = resolvePick(this.pick(e, this.pickKinds()), {
       pointerType: 'pointerType' in e ? e.pointerType : 'mouse',
     });
@@ -832,32 +990,118 @@ export class Workbench {
       this.down = null;
       return;
     }
+    if (e.pointerType === 'pen') this.lastPenAt = performance.now();
     this.down = { x: e.clientX, y: e.clientY, id: e.pointerId, type: e.pointerType };
-    if (this.ui.get().sketch) this.sketch?.onPointerDown(e);
+    if (this.ui.get().sketch) {
+      this.sketch?.onPointerDown(e);
+      return;
+    }
+    // A press on the push/pull arrow drags it (the viewport keeps the camera still).
+    if (this.pushPull.onPointerDown(e)) this.down = null;
   }
 
   private onPointerUp(e: PointerEvent): void {
     const d = this.down;
     this.down = null;
+    if (e.pointerType === 'pen') this.lastPenAt = performance.now();
+    if (this.pushPull.onPointerUp(e)) return;
     if (this.ui.get().sketch) {
       this.sketch?.onPointerUp(e, d);
       return;
     }
     if (!d || d.id !== e.pointerId || e.button !== 0) return;
+    // One path per input: touch taps select through `onGesture` (with palm rejection and
+    // double-tap handling); mouse and Pencil clicks come through here.
+    if (d.type === 'touch') return;
     if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > 5) return; // it was an orbit drag
     this.onClick(e);
   }
 
+  private onPointerCancel(e: PointerEvent): void {
+    this.down = null;
+    this.pushPull.onPointerCancel(e);
+    this.sketch?.onPointerCancel(e);
+  }
+
   private onClick(e: PointerEvent): void {
-    const additive = e.shiftKey || e.metaKey || e.ctrlKey;
-    const { best, ties } = resolvePick(this.pick(e, this.pickKinds()), {
-      pointerType: 'pointerType' in e ? e.pointerType : 'mouse',
+    const { x, y } = this.local(e);
+    this.tapAt(x, y, e.pointerType, e.shiftKey || e.metaKey || e.ctrlKey);
+  }
+
+  /** A tap or click at canvas px: the best hit, or the "Which one?" chooser for near-ties. */
+  private tapAt(x: number, y: number, pointerType: string, additive: boolean): void {
+    if (this.ui.get().bubble) this.patchUi({ bubble: null });
+    const { best, ties } = resolvePick(this.pickAt(x, y, pointerType, this.pickKinds()), {
+      pointerType,
     });
     if (ties.length > 1) {
-      this.patchUi({ chooser: { x: e.clientX, y: e.clientY, hits: ties, additive } });
+      const r = this.canvas?.getBoundingClientRect();
+      const at = { x: x + (r?.left ?? 0), y: y + (r?.top ?? 0) };
+      this.patchUi({ chooser: { ...at, hits: ties, additive } });
       return;
     }
     void this.choose(best, additive);
+  }
+
+  /** Discrete viewport gestures (PLAN §9.3): see `gestureAction` for the mapping. */
+  private onGesture(g: ViewportGesture): void {
+    const u = this.ui.get();
+    const draw = u.sketch?.draw;
+    const probe = g.kind === 'doubleTap' || g.kind === 'longPress';
+    const best = probe
+      ? resolvePick(this.pickAt(g.x, g.y, g.pointerType, this.pickKinds()), {
+          pointerType: g.pointerType,
+        }).best
+      : null;
+    const action = gestureAction(g, {
+      sketch: u.sketch !== null,
+      drawing: !!draw && (draw.anchors.length > 0 || draw.chainFrom !== null),
+      onGeometry: best !== null,
+    });
+    switch (action) {
+      case 'select':
+        this.tapAt(g.x, g.y, g.pointerType, false);
+        break;
+      case 'zoomTo':
+        if (best) this.zoomToHit(best);
+        break;
+      case 'fit':
+        this.viewport?.fitAll(true);
+        break;
+      case 'menu':
+        void this.track(this.openBubbleAt(g, best));
+        break;
+      case 'undo':
+        this.undo();
+        break;
+      case 'redo':
+        this.redo();
+        break;
+      case null:
+        break;
+    }
+  }
+
+  /** Double-tap on geometry: centre it and fill about half the view with it. */
+  private zoomToHit(hit: PickHit): void {
+    const v = this.viewport;
+    if (!v) return;
+    // `zoomTo`'s radius fills about half the view: half the face's radius makes it fill the view.
+    const f = hit.kind === 'face' ? this.face(hit.bodyId, hit.index) : null;
+    const diag = partDiagonal(this.regen.get()?.result);
+    if (f) v.zoomTo(f.centroid, Math.max(f.radius / 2, diag * 0.02), true);
+    else v.zoomTo(hit.point, Math.max(diag * 0.06, 0.5), true);
+  }
+
+  /** Long-press: the context bubble for what is under the finger, or view actions on empty space. */
+  private async openBubbleAt(g: ViewportGesture, hit: PickHit | null): Promise<void> {
+    if (!hit) {
+      this.patchUi({ bubble: { at: null, screen: { x: g.x, y: g.y }, view: true } });
+      return;
+    }
+    await this.applyChoice(hit, false);
+    if (this.ui.get().selection.length)
+      this.patchUi({ bubble: { at: hit.point, screen: null, view: false } });
   }
 
   /** A hit was chosen (click or "Which one?"). */
@@ -866,11 +1110,28 @@ export class Workbench {
     return this.track(this.applyChoice(hit, additive));
   }
 
+  /** Picks applied (tests: one tap = one pick, whichever input path delivered it). */
+  private choices = 0;
+
   private async applyChoice(hit: PickHit | null, additive: boolean): Promise<void> {
+    this.choices++;
     this.patchUi({ chooser: null });
     const u = this.ui.get();
     const part = this.part;
     if (!part) return;
+    if (u.section.picking) {
+      if (hit?.kind === 'face') this.sectionFromFace(hit);
+      return;
+    }
+    if (u.measure?.active) {
+      if (hit) await this.measure.pick(hit);
+      return;
+    }
+    if (u.pushPull) {
+      // Another flat face moves the arrow there; anything else ends push/pull.
+      if (hit?.kind === 'face' && this.pushPull.start([hit], true)) return;
+      this.pushPull.cancel();
+    }
     if (u.picking) {
       if (!hit) return;
       const f = part.features.find((x) => x.id === u.picking?.featureId);
@@ -900,7 +1161,7 @@ export class Workbench {
     await this.selectHit(hit, additive);
   }
 
-  private async refFor(hit: PickHit, as?: EntityRef['kind']): Promise<EntityRef | null> {
+  async refFor(hit: PickHit, as?: EntityRef['kind']): Promise<EntityRef | null> {
     const part = this.part;
     const modeling = this.modeling;
     if (!part) return null;
@@ -938,20 +1199,40 @@ export class Workbench {
     if (this.ui.get().sketch) return;
     const part = this.part;
     if (!part) return;
+    if (tool === 'section') {
+      if (this.ui.get().section.open) this.closeSection();
+      else this.openSection();
+      return;
+    }
+    if (tool === 'measure') {
+      if (this.ui.get().measure?.active) this.measure.stop();
+      else await this.measure.start(this.ui.get().selection.map((s) => s.hit));
+      return;
+    }
     if (
       tool !== 'sketch' &&
       tool !== 'extrude' &&
       tool !== 'revolve' &&
       tool !== 'fillet' &&
-      tool !== 'chamfer'
+      tool !== 'chamfer' &&
+      tool !== 'pushPull'
     )
       return;
     const u = this.ui.get();
     if (u.welcome) this.patchUi({ welcome: false });
+    if (u.measure?.active) this.measure.stop();
     const need = TOOL_NEEDS[tool];
     const picked = u.selection.filter((s) => need.kinds.includes(s.hit.kind));
-    if (picked.length === 0 || picked.length !== u.selection.length) {
+    if (tool === 'pushPull' && picked.length > 0 && picked.length === u.selection.length) {
+      // Select first: the arrow appears on the selected face(s).
+      if (this.pushPull.start(picked.map((s) => s.hit))) {
+        this.patchUi({ prompt: null, lastTool: tool, featureId: null, picking: null });
+        return;
+      }
+    }
+    if (picked.length === 0 || picked.length !== u.selection.length || tool === 'pushPull') {
       // Act first, select second.
+      this.pushPull.cancel();
       this.patchUi({
         prompt: { tool, text: need.prompt },
         selection: [],
@@ -996,6 +1277,176 @@ export class Workbench {
     this.addFeature(feature, need.path);
   }
 
+  /** Bubble "Cut": the selected regions cut through everything (holes); more can be tapped. */
+  cutSelection(): Promise<void> {
+    return this.track(
+      (async () => {
+        const part = this.part;
+        const regions = this.ui.get().selection.filter((s) => s.hit.kind === 'region');
+        if (!part || regions.length === 0) return;
+        const refs: EntityRef[] = [];
+        for (const s of regions) {
+          const ref = s.ref ?? (await this.refFor(s.hit));
+          if (ref) refs.push(ref);
+        }
+        if (refs.length) this.addFeature(newCut(part, refs), '/profile');
+      })(),
+    );
+  }
+
+  /** A context bubble action (tablet / phone, select first, act second). */
+  bubbleAction(id: BubbleActionId): void {
+    const hits = this.ui.get().selection.map((s) => s.hit);
+    this.patchUi({ bubble: null });
+    switch (id) {
+      case 'sketch':
+        this.sketchTool();
+        break;
+      case 'cut':
+        void this.cutSelection();
+        break;
+      case 'measure':
+        void this.track(this.measure.start(hits));
+        break;
+      case 'section': {
+        const face = hits.find((h) => h.kind === 'face');
+        if (face) this.sectionFromFace(face);
+        this.openSheet(this.tier === 'phone' ? 'section' : 'inspector');
+        break;
+      }
+      case 'fit':
+        this.viewport?.fitAll(true);
+        break;
+      case 'undo':
+        this.undo();
+        break;
+      case 'redo':
+        this.redo();
+        break;
+      default:
+        void this.track(this.runTool(id));
+    }
+  }
+
+  // ------------------------------------------------------------------ sheet (tablet, phone)
+
+  setSheet(patch: { snap?: SheetSnap; tab?: SheetTabId }): void {
+    const u = this.ui.get();
+    if (patch.snap === 'full' || (patch.snap === 'peek' && u.sheetSnap !== 'peek'))
+      this.sheetOpenedForUser = false; // the user moved it: it is theirs now
+    const tab = patch.tab ?? u.sheetTab;
+    this.patchUi({ sheetSnap: patch.snap ?? u.sheetSnap, sheetTab: tab });
+    // The phone's Measure tab is the measure tool: open = picking, closed = done.
+    if (this.tier === 'phone' && patch.tab !== undefined && patch.tab !== u.sheetTab) {
+      if (patch.tab === 'measure') {
+        if (!u.measure?.active) void this.track(this.measure.start([]));
+      } else if (u.sheetTab === 'measure') this.measure.stop();
+    }
+  }
+
+  /** Shows a sheet section at least half open (touch tiers). */
+  openSheet(tab: SheetTabId, auto = false): void {
+    const snap = this.ui.get().sheetSnap;
+    // Opened for the user (a new feature, a measurement): Done puts it back.
+    if (auto && snap === 'peek') this.sheetOpenedForUser = true;
+    this.setSheet({ tab, snap: snap === 'peek' ? 'half' : snap });
+  }
+
+  private sheetOpenedForUser = false;
+
+  /** Collapses a sheet the app opened by itself (Done in the inspector, Measure off). */
+  restoreSheet(): void {
+    if (!this.sheetOpenedForUser) return;
+    this.sheetOpenedForUser = false;
+    if (this.ui.get().sheetSnap === 'half') this.setSheet({ snap: 'peek' });
+  }
+
+  // ------------------------------------------------------------------ section view
+
+  private lastSection = '';
+
+  /** Section settings → the viewport plane (caps on); a new axis or face starts mid-part. */
+  setSection(patch: Partial<SectionUi>): void {
+    const cur = this.ui.get().section;
+    const next: SectionUi = { ...cur, ...patch };
+    const restart =
+      (patch.axis !== undefined && patch.axis !== cur.axis) ||
+      patch.face !== undefined ||
+      (patch.enabled === true && !cur.enabled);
+    if (restart && patch.offset === undefined) {
+      const r = sectionRange(next, this.bounds());
+      // A face plane starts halfway into the part (behind the face), an axis mid-part.
+      next.offset = next.axis === 'face' ? (r.min + Math.min(r.max, 0)) / 2 : (r.min + r.max) / 2;
+    }
+    this.patchUi({ section: next });
+    this.syncSection();
+  }
+
+  /** ⌘K "Section view": the section panel (inspector on desktop/tablet, sheet tab on phones). */
+  openSection(): void {
+    this.patchUi({ section: { ...this.ui.get().section, open: true }, featureId: null });
+    if (this.tier !== 'desktop') this.openSheet(this.tier === 'phone' ? 'section' : 'inspector');
+  }
+
+  closeSection(): void {
+    this.patchUi({ section: { ...this.ui.get().section, open: false, picking: false } });
+  }
+
+  /** The slider range for the current section axis (the part's extent). */
+  sectionRange(): { min: number; max: number } {
+    return sectionRange(this.sectionSettings(), this.bounds());
+  }
+
+  private sectionSettings(): SectionSettings {
+    const s = this.ui.get().section;
+    return { enabled: s.enabled, axis: s.axis, offset: s.offset, flipped: s.flipped, face: s.face };
+  }
+
+  private bounds() {
+    return unionBounds((this.regen.get()?.result.bodies ?? []).map((b) => b.mesh.bbox));
+  }
+
+  private syncSection(): void {
+    const v = this.viewport;
+    if (!v) return;
+    const plane = sectionPlane(this.sectionSettings());
+    const key = JSON.stringify(plane);
+    if (key === this.lastSection) return;
+    this.lastSection = key;
+    v.setSection(plane);
+  }
+
+  /** Section along a picked face's plane. */
+  sectionFromFace(hit: PickHit): void {
+    const f = hit.kind === 'face' ? this.face(hit.bodyId, hit.index) : null;
+    if (!f) return;
+    if (!f.planar) {
+      this.toast('Pick a flat face for the section plane.', 'info');
+      return;
+    }
+    const label = this.selectionLabel(hit) ?? 'Face';
+    this.setSection({
+      enabled: true,
+      axis: 'face',
+      face: { origin: f.centroid, normal: f.normal, label },
+      picking: false,
+    });
+  }
+
+  /** "Face of Extrude 1": the hit's kind and the feature its mesh name comes from. */
+  selectionLabel(hit: PickHit): string | null {
+    const mesh = this.regen.get()?.result.bodies.find((b) => b.id === hit.bodyId)?.mesh;
+    const name =
+      hit.kind === 'face'
+        ? mesh?.faceNames[hit.index]
+        : hit.kind === 'edge'
+          ? mesh?.edgeNames[hit.index]
+          : undefined;
+    const noun = hit.kind[0]?.toUpperCase() + hit.kind.slice(1);
+    const owner = name ? this.part?.features.findLast((f) => name.includes(f.id)) : undefined;
+    return owner ? `${noun} of ${owner.name}` : noun;
+  }
+
   /** Adds a feature and opens its inspector, keeping its main pick field live. */
   addFeature(feature: Feature, pickPath?: string): void {
     const part = this.part;
@@ -1008,6 +1459,8 @@ export class Workbench {
       selection: [],
       prompt: null,
     });
+    // Tablet: the new feature's values are in the sheet's inspector (PLAN §9.1).
+    if (this.tier === 'tablet') this.openSheet('inspector', true);
     this.refreshSketchVisibility();
     this.pushHighlights();
   }
@@ -1043,10 +1496,17 @@ export class Workbench {
   cancel(): boolean {
     const u = this.ui.get();
     if (u.chooser) this.patchUi({ chooser: null });
+    else if (u.bubble) this.patchUi({ bubble: null });
+    else if (u.pushPull) this.pushPull.cancel();
+    else if (u.section.picking) this.setSection({ picking: false });
+    else if (u.measure?.active) this.measure.stop();
     else if (u.picking) this.patchUi({ picking: null });
     else if (u.prompt) this.patchUi({ prompt: null });
     else if (u.selection.length) this.clearSelection();
-    else if (u.featureId) this.patchUi({ featureId: null });
+    else if (u.featureId) {
+      this.patchUi({ featureId: null });
+      this.restoreSheet();
+    } else if (u.section.open) this.closeSection();
     else if (u.library) this.patchUi({ library: false });
     else if (u.welcome) this.patchUi({ welcome: false });
     else return false;
@@ -1059,6 +1519,7 @@ export class Workbench {
 
   selectFeature(id: Id | null): void {
     this.patchUi({ featureId: id, picking: null, selection: [], prompt: null });
+    if (id === null) this.restoreSheet();
     this.refreshSketchVisibility();
     this.pushHighlights();
   }
@@ -1223,9 +1684,13 @@ export class Workbench {
       r: 'revolve',
       f: 'fillet',
       c: 'chamfer',
+      p: 'pushPull',
     };
     const tool = tools[k];
-    if (tool) {
+    if (k === 'm') {
+      e.preventDefault();
+      void this.runTool('measure');
+    } else if (tool) {
       e.preventDefault();
       if (tool === 'sketch') this.sketchTool();
       else void this.runTool(tool);
@@ -1279,9 +1744,12 @@ export class Workbench {
       : this.retired.get(doc.meta.id ?? '');
     if (!files) return; // nothing known about that document's files: never guess them
     const thumbnail = current ? await this.thumbnail() : undefined;
+    // Orphaned import attachments are never written; in memory they live on while the history
+    // could bring their feature back (model/attachments.ts, ADR-015).
+    if (current) this.pruneAttachments();
     await lib.save(doc, {
       ...(thumbnail ? { thumbnail } : {}),
-      extra: files.extra,
+      extra: savedExtra(files.extra, doc),
       cache: files.cache,
     });
     if (current && doc.meta.id === this.doc.meta.id) {
@@ -1381,7 +1849,46 @@ export class Workbench {
       void this.modeling?.closePart(old);
     }
     this.showCached(this.doc);
+    this.kernelIfNothingCached();
+    this.pushPull.cancel();
+    this.measure.stop();
+    this.setSection(initialSection);
     return true;
+  }
+
+  /** Starts the bracket tutorial on a fresh part (App owns the tutorial state). */
+  requestTour(): void {
+    this.tourRequests.set((n) => n + 1);
+  }
+
+  // ------------------------------------------------------------------ parts (phone sheet)
+
+  private hiddenParts = new Set<Id>();
+
+  partVisible(id: Id): boolean {
+    return !this.hiddenParts.has(id);
+  }
+
+  setPartVisible(id: Id, visible: boolean): void {
+    if (visible) this.hiddenParts.delete(id);
+    else this.hiddenParts.add(id);
+    this.syncViewport();
+    this.ui.set((u) => ({ ...u })); // re-render the parts list
+  }
+
+  /** Frames a part (Parts tab tap). */
+  focusPart(id: Id): void {
+    const view = this.regen.get();
+    if (!view || view.result.partId !== id) return;
+    const b = this.bounds();
+    if (!b) return;
+    const c: Vec3 = [
+      (b.min[0] + b.max[0]) / 2,
+      (b.min[1] + b.max[1]) / 2,
+      (b.min[2] + b.max[2]) / 2,
+    ];
+    const r = Math.hypot(b.max[0] - b.min[0], b.max[1] - b.min[1], b.max[2] - b.min[2]) / 2;
+    this.viewport?.zoomTo(c, Math.max(r, 1), true);
   }
 
   async newDocument(): Promise<void> {
@@ -1532,10 +2039,16 @@ export class Workbench {
     this.patchUi({ library: false, welcome: false, selection: [], featureId: null });
   }
 
+  /** Drops orphaned attachments that no undo or redo can restore any more. */
+  private pruneAttachments(): void {
+    pruneAttachments(this.extra, this.doc, (paths) => this.store.historyMentions(paths));
+  }
+
   async exportWhittle(): Promise<void> {
     const { toWhittleBytes, saveFile, MIME } = await import('../doc/library');
+    this.pruneAttachments();
     await saveFile(
-      toWhittleBytes(this.doc, this.extra, this.cache),
+      toWhittleBytes(this.doc, savedExtra(this.extra, this.doc), this.cache),
       `${fileBase(this.doc.meta.name)}.whittle`,
       MIME.whittle,
     );
@@ -1567,15 +2080,18 @@ export class Workbench {
             ? meshExporters.to3mf(items, 'millimeter')
             : meshExporters.toGlb(items);
         await lib.saveFile(bytes, `${base}.${request.target}`, lib.MIME[request.target]);
+        this.exports.set((n) => n + 1);
         return;
       }
+      // Exact formats need the kernel (phones boot it now).
+      const live = view?.source === 'live' || (await this.whenLive());
       const modeling = this.modeling;
-      if (!modeling || view?.source !== 'live')
-        return this.toast('The geometry kernel is still loading.', 'info');
+      if (!modeling || !live) return this.toast('The geometry kernel is still loading.', 'info');
       const r = await modeling.exportPart(part.id, request.target, request.options);
       if (!r.ok) return this.toast(r.error.message, 'error');
       const ext = request.target === 'step' ? 'step' : request.target;
       await lib.saveFile(r.bytes, `${base}.${ext}`, lib.MIME[request.target]);
+      this.exports.set((n) => n + 1);
     } finally {
       this.patchUi({ exporting: false });
     }
@@ -1616,7 +2132,8 @@ export class Workbench {
   /** UI actions still in flight (they await the engine before editing the document). */
   private actions = new Set<Promise<unknown>>();
 
-  private track<T>(p: Promise<T>): Promise<T> {
+  /** Registers an in-flight UI action so `idle()` waits for it. */
+  track<T>(p: Promise<T>): Promise<T> {
     this.actions.add(p);
     const done = () => this.actions.delete(p);
     p.then(done, done);
@@ -1734,7 +2251,9 @@ export class Workbench {
       idle: async () => {
         await this.sketch?.whenSettled();
         await this.boot?.modeling;
-        for (let i = 0; i < 50 && !this.loop; i++) await new Promise((r) => setTimeout(r, 20));
+        // (Phones may not have started the kernel at all: then there is nothing to wait for.)
+        for (let i = 0; i < 50 && this.boot && !this.loop; i++)
+          await new Promise((r) => setTimeout(r, 20));
         // Settled = no UI action in flight, the regen loop idle, and the last live result is of
         // the document as displayed now (not of the version before the last edit).
         for (let i = 0; i < 200; i++) {
@@ -1770,8 +2289,45 @@ export class Workbench {
                 frame: u.sketch.frame !== null,
                 highlight: u.sketch.highlightConstraints,
                 selected: u.sketch.selected,
+                stroke: u.sketch.stroke
+                  ? { shape: u.sketch.stroke.shape, points: u.sketch.stroke.points.length }
+                  : null,
+                lastStroke: u.sketch.lastStroke,
               }
             : null,
+          selection: u.selection.map((x) => x.hit.kind),
+          hover: u.hover?.kind ?? null,
+          choices: this.choices,
+          prompt: u.prompt?.tool ?? null,
+          pushPull: u.pushPull
+            ? {
+                faces: u.pushPull.faces.length,
+                distance: u.pushPull.distance,
+                expr: u.pushPull.expr,
+                dragging: u.pushPull.dragging,
+              }
+            : null,
+          measure: u.measure
+            ? {
+                active: u.measure.active,
+                picks: u.measure.picks.map((p) => p.kind),
+                results: u.measure.results,
+                busy: u.measure.busy,
+                error: u.measure.error,
+              }
+            : null,
+          section: {
+            enabled: u.section.enabled,
+            axis: u.section.axis,
+            offset: u.section.offset,
+            flipped: u.section.flipped,
+            picking: u.section.picking,
+          },
+          bubble: u.bubble !== null,
+          chooser: u.chooser?.hits.map((h) => h.kind) ?? null,
+          sheet: { snap: u.sheetSnap, tab: u.sheetTab },
+          kernel: { started: this.boot !== null, ready: this.engine.get().ready },
+          camera: this.camera.get(),
         };
       },
       /** Replaces the document (fixtures for E2E scenarios), saved to the library. */
@@ -1791,6 +2347,11 @@ export class Workbench {
       library: async () => {
         const lib = await this.library();
         return (await lib?.list())?.map((e) => ({ id: e.id, name: e.name })) ?? [];
+      },
+      libraryFiles: async (id: string) => {
+        const lib = await this.library();
+        const b = await lib?.open(id);
+        return [...(b?.extra?.keys() ?? [])].sort();
       },
       /** Waits until the mesh cache of the current document has reached the library. */
       cacheSaved: async () => {

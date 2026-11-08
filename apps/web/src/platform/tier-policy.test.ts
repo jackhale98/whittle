@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { spareResultsFor } from '../model/modeling';
 import {
   kernelBootFor,
   meshQualityFor,
@@ -13,11 +12,6 @@ describe('tier policy (PLAN §8.4)', () => {
     expect(regenBudgetFor('desktop')).toBeUndefined();
     expect(regenBudgetFor('tablet')).toBe(4);
     expect(regenBudgetFor('phone')).toBe(2);
-  });
-
-  it('agrees with the model layer helper currently applied at boot', () => {
-    for (const tier of ['desktop', 'tablet', 'phone'] as const)
-      expect(regenBudgetFor(tier)).toBe(spareResultsFor(tier));
   });
 
   it('mesh quality: phones coarse, others fine', () => {
