@@ -781,7 +781,7 @@ folder (`ProjectFiles`, docs/FILE_FORMAT.md) already exists. The contracts are i
 - **platform-engineer:** the Worker port, `connect-src` and COEP for provider hosts, and the
   configuration plumbing.
 
-## ADR-pending — Platform plumbing for sync: Worker, config, service worker rules
+## ADR-021 — Platform plumbing for sync: Worker, config, service worker rules
 
 1. **Worker is a pnpm workspace package** (`@whittle/sync-worker`). Typecheck and `vitest` run under
    `pnpm -r` with the root toolchain and no extra dependencies. Wrangler is not installed: the
@@ -806,3 +806,8 @@ folder (`ProjectFiles`, docs/FILE_FORMAT.md) already exists. The contracts are i
    or `error` and is not yet isolated, `initServiceWorker` skips the one-time isolation reload so
    the app can consume the code in this document; that session runs in fallback mode and the next
    load is isolated. Only the very first visit ever (no SW yet) is affected.
+
+**Licence note (lead, 2026-11-08).** Mycelium's `worker/` is Apache-2.0, unlike the rest of
+Mycelium, which is GPL-3.0. The port keeps Apache's licence text (`worker/LICENSE-APACHE-2.0`) and
+attribution in the file headers. Whittle's modifications and the combined worker are
+GPL-3.0-or-later. Apache-2.0 code can be included in a GPL-3.0 work.

@@ -1,8 +1,10 @@
 # Whittle sync worker
 
 A Cloudflare Worker that lets the Whittle web app talk to git hosts and WebDAV servers, and sign in
-to git providers. Ported from Mycelium's sync worker (GPL-3.0-or-later); reminders and push are
-removed. Stateless, logging disabled, no storage.
+to git providers. Ported from Mycelium's sync worker, which is Apache-2.0 (its licence text is kept
+in [LICENSE-APACHE-2.0](LICENSE-APACHE-2.0)); modified for Whittle, with reminders and push
+removed. The modifications and the combined worker are GPL-3.0-or-later ([LICENSE](LICENSE)),
+like the rest of Whittle (ADR-003); Apache-2.0 code may be included in GPL-3.0 works. Stateless, logging disabled, no storage.
 
 - **Git proxy:** `/<host>/<owner>/<repo>.git/...`. Only the three git smart-HTTP endpoints, only
   `github.com`, `gitlab.com`, `bitbucket.org` and hosts in `EXTRA_GIT_HOSTS`, only for origins in

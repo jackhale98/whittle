@@ -1,4 +1,6 @@
-// Ported from Mycelium's sync worker tests (jackhale98/mycelium-web, GPL-3.0-or-later); push tests removed.
+// Ported from Mycelium's sync worker tests (jackhale98/mycelium-web, Apache-2.0; see
+// ../LICENSE-APACHE-2.0), modified: push tests removed. Combined work GPL-3.0-or-later.
+// SPDX-License-Identifier: GPL-3.0-or-later AND Apache-2.0
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import worker, { type Env, isGitRequest, isPublicHost } from './index';
 

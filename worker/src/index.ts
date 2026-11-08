@@ -1,4 +1,7 @@
-// Ported from Mycelium's sync worker (jackhale98/mycelium-web, GPL-3.0-or-later); reminders and push removed.
+// Ported from Mycelium's sync worker (jackhale98/mycelium-web worker/src/index.ts, Apache-2.0; see
+// ../LICENSE-APACHE-2.0), modified for Whittle: reminders and push removed. Modifications and the
+// combined work: GPL-3.0-or-later (../LICENSE).
+// SPDX-License-Identifier: GPL-3.0-or-later AND Apache-2.0
 /// Whittle sync worker: no logging, no storage; stateless.
 ///
 /// 1. Git proxy: browsers cannot call git hosts' smart-HTTP endpoints (no
