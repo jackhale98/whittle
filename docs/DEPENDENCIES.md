@@ -3,6 +3,8 @@
 Every runtime dependency, with license, approximate shipped size, and why. Dev-only tooling is listed
 separately. Versions are pinned exactly in `package.json` (`save-exact=true`). Whittle is
 GPL-3.0-or-later (ADR-003): every dependency must be GPL-3.0-compatible (no GPL-2.0-only).
+Notices: `pnpm build` writes `THIRD_PARTY_NOTICES.txt` into the site (`scripts/third-party-notices.mjs`) with every
+bundled package's licence text plus OCCT's LGPL-2.1 + exception (texts in `licenses/`).
 
 ## Runtime
 
@@ -23,7 +25,7 @@ GPL-3.0-or-later (ADR-003): every dependency must be GPL-3.0-compatible (no GPL-
 | `ulid` | 3.0.2 | MIT | < 1 KB | sketch | |
 | `fflate` | 0.8.3 | MIT | ≈ 8 KB | io (and document) | Zip for 3MF and `.whittle` |
 | `idb` | 8.0.4 | ISC | ≈ 1.2 KB | io (browser) | IndexedDB wrapper for the local library |
-| Kernel artefacts `whittle-kernel{,-st}.{js,wasm}` | OCCT 8.0.1 | LGPL-2.1-only WITH Open-CASCADE-Exception-1.0 | ≈ 1.3 MB brotli each (lazy, runtime-cached) | kernel | Built reproducibly from `packages/kernel` |
+| Kernel artefacts `whittle-kernel{,-st}.{js,wasm}` | OCCT 8.0.1 | LGPL-2.1-only WITH Open-CASCADE-Exception-1.0 | ≈ 3.7 MB brotli / 5.3 MB gzip each since M1 (STEP/XCAF); lazy, runtime-cached | kernel | Built reproducibly from `packages/kernel` |
 
 ## Kernel toolchain (build-time, Docker)
 

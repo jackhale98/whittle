@@ -14,7 +14,7 @@ import type {
   Result,
 } from '@whittle/contracts';
 import { type Remote, releaseProxy, wrap } from 'comlink';
-import type { ModelingWorkerApi } from './modeling-api';
+import type { ModelingWorkerApi, RegenWorkerOptions } from './modeling-api';
 import { isStatusMessage, STATUS_MESSAGE_TAG } from './protocol';
 
 export interface KernelClientOptions extends KernelInitOptions {
@@ -22,6 +22,11 @@ export interface KernelClientOptions extends KernelInitOptions {
   autoInit?: boolean;
   /** Override worker creation (tests, custom bundling). */
   createWorker?: () => Worker;
+  /**
+   * Regen engine budget in the worker. `maxSpareResults`: cache entries kept beyond those the
+   * latest regen uses (default 128; tablet ~32, phone ~16 — PLAN §8.4 memory tiers).
+   */
+  regen?: RegenWorkerOptions;
 }
 
 export interface KernelStatusStream {
@@ -56,7 +61,7 @@ function spawnKernelWorker(): Worker {
 }
 
 export function createKernelClient(options: KernelClientOptions = {}): KernelClient {
-  const { autoInit = true, createWorker, ...initOptions } = options;
+  const { autoInit = true, createWorker, regen, ...initOptions } = options;
   const worker = createWorker ? createWorker() : spawnKernelWorker();
 
   let current: KernelStatus = { state: 'idle' };
@@ -86,6 +91,8 @@ export function createKernelClient(options: KernelClientOptions = {}): KernelCli
   worker.addEventListener('messageerror', onMessageError);
 
   const api = wrap<ModelingWorkerApi>(worker);
+  // Sent before init(): Comlink delivers calls in order, so no regen runs with the default budget.
+  if (regen !== undefined) void api.configureRegen(regen).catch(() => undefined);
   let disposed = false;
   let initResult: Promise<Result<KernelInfo>> | null = null;
 

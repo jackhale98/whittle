@@ -17,7 +17,7 @@ only ever holds shape ids and transferred render buffers.
 ```ts
 import { createKernelClient } from '@whittle/kernel-client';
 
-const kernel = createKernelClient();                  // spawns the worker, loads Wasm in background
+const kernel = createKernelClient({ regen: { maxSpareResults: 32 } }); // tablet tier; default 128
 await kernel.ready();
 let doc = bracketDoc;                                 // a WhittleDoc from the document store
 const partId = doc.parts[0].id;
@@ -30,10 +30,26 @@ if (r.revision >= shownRevision) viewport.setBodies(r.bodies);       // drop sta
 ```
 
 `r.features[i]` gives each feature's state (`ok`, `error`, `needsAttention` with `unresolved`,
-`suppressed`, `rolledBack`, `blocked`), `cached` and `ms`. Shapes in `r.bodies` belong to the
+`suppressed`, `rolledBack`, `blocked`), `cached`, `ms`, `warnings` and `rebound` (below). Shapes in `r.bodies` belong to the
 engine: never `release()` them (the worker ignores such calls). `refFor(partId, {bodyId, kind,
 index})` turns a pick (mesh face/edge ordinal = TopExp index) into an `EntityRef` with a
 fingerprint to store in the document; `exportPart` / `importFile` / `closePart` complete the API.
+`kernel.api.configureRegen({ maxSpareResults })` changes the cache budget at runtime (applies from
+the next regen; `createKernelClient({ regen })` sends it before `init()`).
+
+**Healing stored refs.** `FeatureStatus.rebound` lists every ref that resolved by fingerprint /
+name-family evidence rather than by its exact stored name — `{path, name, fingerprint}` with the
+**current** name and fingerprint — whenever the name changed or the stored fingerprint is out of
+date. The app should write both back into the document (one undoable "heal" command), which keeps
+later resolutions exact and the tolerance windows small. For an unresolved ref, the old location to
+ghost is `unresolved[i].ref.fingerprint` (the stored ref, passed through unchanged); when the stored
+ref has none, `unresolved[i].lastKnown` is where it resolved in the previous regen of this worker.
+
+**Imports** (`ImportFeature`): pass the file bytes once in `RegenRequest.attachments[source.path]`;
+the engine verifies their SHA-256 against `source.sha256` and caches the parsed file per part by
+sha, so later regens (and placement edits) need no attachment. Without bytes or cache → `error`
+"The imported file is missing from this project" (not cached, so the next request with the bytes
+just works).
 
 ## Regeneration (`src/regen/engine.ts`)
 
@@ -83,22 +99,69 @@ are cached per handle. Results carry fresh copies of cached meshes, transferred 
 Viewport meshing (`MESH_QUALITY`, relative to each shape's bbox): coarse 0.4 % / 0.5 rad, fine
 0.06 % / 0.25 rad.
 
+## Imports (`src/regen/imports.ts`, `planImport` in the engine)
+
+- **STEP / BREP** → `kernel.importShapes` (one shape per solid). IGES → `UNSUPPORTED_FEATURE`
+  ("export it as STEP"): the kernel has no IGES reader. The raw shapes are cached per part by
+  sha256 (attachments used by the latest regen plus 8 spare, LRU); `closePart` releases them.
+- **Placement** (`frame`, mm; default identity): the frame becomes a rigid 3×4 matrix (x is
+  orthogonalised against z; degenerate frames are an `error`). The kernel has no transform call, so
+  the shapes are written as BREP, the matrix is appended to the file's `Locations` table and the root
+  shape pointed at it (`placeBrep`), and the text is read back — exact, no re-meshing.
+- **Naming**: the kernel names topology only during operations, so the engine runs a no-op
+  `intersect` of the solids with an enclosing box under the feature tag `<id>:face`. Every imported
+  face then gets the kernel's history-less fallback `F<id>:face:unnamed#k` (k = geometric key:
+  centroid x, then y, then z, rounded 1e-6 mm) and edges/vertices are derived from adjacent faces by
+  the kernel; the engine translates `:face:unnamed` → `:face` in **every** kernel name it receives
+  (`translateName`, stateless). Result: `F<id>:face#k`, `edge(F<id>:face#i|F<id>:face#j)`,
+  `vertex(…)` — and because the kernel's shape records carry these names, downstream fillets,
+  chamfers and booleans keep naming by history (`F<fillet>:fillet(edge(F<id>:face#i|…))`). The no-op
+  is verified (same volume, face and edge counts); otherwise the solid is used as read, faces named
+  `F<id>:face#k` by the engine, edges/vertices unnamed, with a warning.
+- **Bodies**: one solid → `B<id>`; several → `B<id>#k` ordered by the geometric key of their volume
+  centroids. Faces are numbered per body (as the kernel does for every body).
+- **Ops** `add | cut | intersect` (B-rep only) use the scope rules of other solid features (bbox
+  prefilter for the default scope); the kernel `boolean` with the imported solids as tools, so their
+  faces are boolean tool faces `F<id>:face(F<id>:face#k)` (naming.ts boolean rule). `add` merges into
+  the oldest touched body only (warning when it touches more).
+- **Mesh formats** (STL/OBJ/3MF/GLB) → `@whittle/io` `importMesh`, placed in TS, handed to the kernel
+  as STL: one mesh-only body per object (`B<id>` / `B<id>#k`), one face `F<id>:face`, no edges.
+  Displayed, exported (STL/STEP of a mesh face), with mesh-based mass properties; never part of an
+  implicit scope; explicit scopes, booleans, fillets/chamfers and push/pull on them → `error`
+  "A mesh reference body cannot be …". `op` other than `new` for a mesh file → `error`.
+
 ## Reference resolution (`src/regen/resolve.ts`, PLAN §7.3)
 
-1. **Exact name**, exactly one match → resolved. A `#k` split name is re-checked against its
-   fingerprint when its family has several members; only a clear winner overrides the index.
-2. **Name family** (the name with every `#k` removed, so `edge(F:end#0|…)` and `edge(F:end|…)` are
-   one family) or duplicate exact names → **fingerprint disambiguation**: nearest centroid among
-   members whose normal agrees (dot ≥ 0.95), accepted only within 0.25 × diag and when the winner is
-   at most half the runner-up's distance (and ≥ 1e-3 × diag closer). A lone surviving `X#j` for a
-   ref `X#k` needs strict evidence; a lone unsuffixed `X` (pieces merged) is accepted.
+`diag` is the diagonal of the part's current bounding box (body vertices and face centroids; sketch
+geometry when there are no bodies). The **family** of a name is the name with every `#k` removed
+(`edge(F:end#0|…)` and `edge(F:end|…)` are one family). Final rule:
+
+1. **Exact name**, exactly one match → resolved, except for a `#k` (or imported) name whose family
+   has several members when the ref has a fingerprint: then disambiguation (2) runs first and a
+   clear winner overrides the index. Without a clear winner the exact name stands only if it is
+   still plausibly the same entity: within 0.25 × diag, normal agreeing, **and overlapping** the
+   old location (centroid distance ≤ reach(ref) + reach(candidate) + 1e-3 × diag, reach = √area for
+   faces, length/2 for edges, 0 for vertices). Otherwise unresolved (`ambiguous` with the family) —
+   e.g. when the referenced piece vanished and `#k` now names another piece.
+2. **Name family** (or duplicate exact names) → **fingerprint disambiguation**: the nearest member
+   whose normal agrees (dot ≥ 0.95), within 0.25 × diag, and at most half the distance of **every**
+   other member (≥ 1e-3 × diag closer) — members rejected for a flipped normal count as runners-up,
+   so a nearer opposite-facing member makes it ambiguous instead of picking the other one.
+   A lone surviving `X#j` for a ref `X#k` needs strict evidence (3); a lone unsuffixed `X` (pieces
+   merged) is accepted.
 3. **Fingerprint only**: centroid within 1e-3 × diag (≥ 1e-6 mm), normal dot ≥ 0.9999, area/length
    within 0.1 %; exactly one hit → resolved.
 4. Otherwise **unresolved** (`missing`, or `ambiguous` with the candidate names).
 
-`diag` is the diagonal of the part's current bounding box (body vertices and face centroids; sketch
-geometry when there are no bodies). Plane-like references (sketch planes, offset planes, up-to
-targets) treat coplanar same-normal candidates as one plane, since any of them gives the same frame.
+**Weak names** — any name containing `F<id>:face` of an import feature of the part: the `#k` is
+pure geometric order, no history, so after the file is replaced it is no evidence. With a
+fingerprint, the family is always disambiguated with a tighter radius (0.1 × diag), planar/curved
+must match and the area/length must agree within 25 % (not for plane-like refs); the exact name
+stands only if it is itself the clear nearest normal-compatible member. A lone remaining member
+needs strict evidence. Without a fingerprint the exact name stands.
+
+Plane-like references (sketch planes, offset planes, up-to targets) treat coplanar same-normal
+candidates as one plane, since any of them gives the same frame.
 
 Search spaces: `S<id>:…` names and `region` refs → that sketch; `F<id>:plane` → that plane; other
 face/edge/vertex refs → all current bodies; `body` refs → the body table by id.
@@ -107,7 +170,30 @@ face/edge/vertex refs → all current bodies; `body` refs → the body table by 
 
 `pnpm --filter @whittle/kernel-client test` runs the golden suite in Node against the real kernel
 (`packages/kernel/dist`, skipped when missing) and real planegcs: plate, the M1 bracket with three
-upstream edits, face split/merge/removal, suppress/rollback/reorder, multi-body scopes, errors and
-ghosts, revolve/planes/up-to, the 50-feature cache budget (PLAN §10), handle accounting over 100
-regens, materials, STEP/STL/BREP round trips, `refFor`, and a Comlink round trip with transfer
-checks. Timings are printed as `[regen timing]` lines.
+upstream edits, face split/merge/removal by inserted features (`topology`) and by **dimension
+edits** (`naming`: a notch moved off the part merges two top faces and back, a depth going to 0, an
+internal slot that grows until it splits the top face, a middle piece that vanishes so `#1` moves),
+suppress/rollback/reorder, multi-body scopes, errors and ghosts, revolve/planes/up-to, the
+50-feature cache budget (PLAN §10), handle accounting over 100 regens and runtime
+`configureRegen`, materials, STEP/STL/BREP round trips, `refFor`, a Comlink round trip with
+transfer checks, and `import` (bracket STEP → import → same volume 1e-6, placement, cached/missing/
+corrupt attachments, stable names through a fillet over regens and fresh workers, a 1 %-scaled
+replacement resolved by fingerprint with `rebound`, an unrelated replacement → needs attention,
+multi-solid files, cut/add with the import, mesh reference bodies). `resolve.test.ts` holds the
+adversarial unit cases (near-equidistant, flipped normals, far moves, vanished pieces, weak
+names). Timings are printed as `[regen timing]` lines.
+
+## Kernel gaps and contract proposals (open)
+
+- **Kernel**: no façade call to transform a shape (worked around by BREP location rewriting) and
+  none to name a shape's topology (worked around by the no-op intersect + `translateName`). A
+  kernel `import` feature — `execFeature({type:'import', …}, {shapes:{source}, frames:{placement}})`
+  naming faces `F<id>:face#k` via `finalizeNamed` and applying the op via `applyBodyOp` (so tool
+  faces keep `F<id>:face#k` instead of the nested boolean form) — would replace both. No IGES
+  reader.
+- **Contracts** (`modeling.ts`): `FeatureStatus.rebound[]` gains `fingerprint?: Fingerprint`;
+  `UnresolvedRef` gains `lastKnown?: Fingerprint`; `ModelingApi` gains
+  `configureRegen(options: { maxSpareResults?: number }): Promise<void>` (all already emitted by
+  this package's `RegenFeatureStatus` / `ModelingWorkerApi`). `naming.ts`: document the import
+  names above (per-body `F<id>:face#k`, `B<id>#k`, `F<id>:face(F<id>:face#k)` for import booleans,
+  single-face mesh bodies).

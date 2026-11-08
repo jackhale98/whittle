@@ -116,13 +116,121 @@ describe('resolveRef', () => {
   it('exact split name is overridden only by a clear fingerprint winner', async () => {
     // Pieces swapped order: the name says #0, the geometry clearly says the other piece.
     const { cands, ctx } = world([
-      { name: 'F1:end#0', centroid: [10, 0, 10], normal: up, area: 1 },
-      { name: 'F1:end#1', centroid: [60, 0, 10], normal: up, area: 1 },
+      { name: 'F1:end#0', centroid: [10, 0, 10], normal: up, area: 1000 },
+      { name: 'F1:end#1', centroid: [60, 0, 10], normal: up, area: 1000 },
     ]);
-    const r = await resolveRef(ref('F1:end#0', [58, 0, 10], up), cands, ctx());
+    const r = await resolveRef(ref('F1:end#0', [58, 0, 10], up, 1000), cands, ctx());
     expect(r).toMatchObject({ ok: true, target: { name: 'F1:end#1' } });
-    const unclear = await resolveRef(ref('F1:end#0', [35, 0, 10], up), cands, ctx());
+    // Unclear geometry, but the named piece still overlaps where the ref was: the name stands.
+    const unclear = await resolveRef(ref('F1:end#0', [35, 0, 10], up, 1000), cands, ctx());
     expect(unclear).toMatchObject({ ok: true, target: { name: 'F1:end#0', via: 'name' } });
+  });
+
+  it('adversarial: an index that moved to a piece elsewhere is not trusted', async () => {
+    // Three 20-wide pieces → the middle one vanished; "#1" now names the piece at x 70.
+    const { cands, ctx } = world([
+      { name: 'F1:end#0', centroid: [10, 0, 10], normal: up, area: 100 },
+      { name: 'F1:end#1', centroid: [70, 0, 10], normal: up, area: 100 },
+    ]);
+    const r = await resolveRef(ref('F1:end#1', [40, 0, 10], up, 100), cands, ctx());
+    expect(r).toEqual({ ok: false, reason: 'ambiguous', candidates: ['F1:end#0', 'F1:end#1'] });
+  });
+
+  it('adversarial: nearly equidistant candidates need the 2× margin', async () => {
+    const { cands, ctx } = world([
+      { name: 'F1:end#0', centroid: [0, 0, 10], normal: up, area: 100 },
+      { name: 'F1:end#1', centroid: [30, 0, 10], normal: up, area: 100 },
+    ]);
+    // 10 vs 20: exactly the margin → accepted; 10.1 vs 19.9 → ambiguous.
+    expect(await resolveRef(ref('F1:end', [10, 0, 10], up), cands, ctx())).toMatchObject({
+      ok: true,
+      target: { name: 'F1:end#0' },
+    });
+    expect(await resolveRef(ref('F1:end', [10.1, 0, 10], up), cands, ctx())).toMatchObject({
+      ok: false,
+      reason: 'ambiguous',
+    });
+    // Coincident centroids (e.g. coaxial faces): never a pick.
+    const coax = world([
+      { name: 'F1:side#0', centroid: [5, 5, 5], area: 30 },
+      { name: 'F1:side#1', centroid: [5, 5, 5], area: 60 },
+    ]);
+    expect(await resolveRef(ref('F1:side', [5, 5, 5]), coax.cands, coax.ctx())).toMatchObject({
+      ok: false,
+      reason: 'ambiguous',
+    });
+  });
+
+  it('adversarial: flipped normals are rejected and a nearer flipped member makes it ambiguous', async () => {
+    const down: Vec3 = [0, 0, -1];
+    const { cands, ctx } = world([
+      { name: 'F1:end#0', centroid: [10, 0, 10], normal: down, area: 100 },
+      { name: 'F1:end#1', centroid: [18, 0, 10], normal: up, area: 100 },
+    ]);
+    // The nearest member faces the other way: contradictory evidence, not a pick of the other.
+    expect(await resolveRef(ref('F1:end', [10, 0, 10], up), cands, ctx())).toMatchObject({
+      ok: false,
+      reason: 'ambiguous',
+    });
+    // With the same-facing member clearly nearest, it wins; the flipped one never does.
+    expect(await resolveRef(ref('F1:end', [18, 0, 10], up), cands, ctx())).toMatchObject({
+      ok: true,
+      target: { name: 'F1:end#1' },
+    });
+    const flippedOnly = world([
+      { name: 'F1:end#0', centroid: [10, 0, 10], normal: down, area: 100 },
+      { name: 'F1:end#1', centroid: [60, 0, 10], normal: down, area: 100 },
+    ]);
+    expect(
+      (await resolveRef(ref('F1:end', [10, 0, 10], up), flippedOnly.cands, flippedOnly.ctx())).ok,
+    ).toBe(false);
+    // Fingerprint-only never matches a flipped normal either.
+    expect(
+      (await resolveRef(ref('F7:gone', [10, 0, 10], up, 100), flippedOnly.cands, flippedOnly.ctx()))
+        .ok,
+    ).toBe(false);
+  });
+
+  it('adversarial: a member that moved far is not followed', async () => {
+    const { cands, ctx } = world([
+      { name: 'F1:end#0', centroid: [10, 0, 10], normal: up, area: 100 },
+      { name: 'F1:end#1', centroid: [90, 0, 10], normal: up, area: 100 },
+    ]);
+    // Nearest is 26 away (> 0.25 × diag 100): ambiguous, even though it is clearly the nearest.
+    expect(await resolveRef(ref('F1:end', [36, 0, 10], up), cands, ctx())).toMatchObject({
+      ok: false,
+      reason: 'ambiguous',
+    });
+    // An exact `#k` whose piece moved far away (no overlap with the old place) is not kept.
+    const moved = await resolveRef(ref('F1:end#0', [50, 40, 10], up, 100), cands, ctx());
+    expect(moved.ok).toBe(false);
+  });
+
+  it('weak (imported) names: the index is no evidence once the geometry differs', async () => {
+    const { cands, ctx: base } = world([
+      { name: 'F1:face#0', centroid: [0, 25, 5], normal: [-1, 0, 0], area: 500 },
+      { name: 'F1:face#1', centroid: [40, 25, 0], normal: [0, 0, -1], area: 4000 },
+      { name: 'F1:face#2', centroid: [40, 25, 10], normal: up, area: 4000 },
+      { name: 'F1:face#3', centroid: [80, 25, 5], normal: [1, 0, 0], area: 500 },
+    ]);
+    const ctx = () => ({ ...base(), weak: (n: string) => n.startsWith('F1:face') });
+    // Unchanged geometry: exact.
+    expect(await resolveRef(ref('F1:face#2', [40, 25, 10], up, 4000), cands, ctx())).toMatchObject({
+      ok: true,
+      target: { name: 'F1:face#2' },
+    });
+    // File replaced, indices shuffled: the fingerprint finds the right face.
+    expect(
+      await resolveRef(ref('F1:face#1', [40.4, 25.2, 10.1], up, 4040), cands, ctx()),
+    ).toMatchObject({ ok: true, target: { name: 'F1:face#2', via: 'name+fingerprint' } });
+    // Same index, but nothing like the stored face (area off by 4×, far away): unresolved.
+    const r = await resolveRef(ref('F1:face#3', [60, 25, 30], [1, 0, 0], 2000), cands, ctx());
+    expect(r.ok).toBe(false);
+    // Without a fingerprint the name is all there is: it stands.
+    expect(await resolveRef(ref('F1:face#3'), cands, ctx())).toMatchObject({
+      ok: true,
+      target: { name: 'F1:face#3', via: 'name' },
+    });
   });
 
   it('fingerprint-only: strict tolerance on centroid, normal and area; unique or nothing', async () => {

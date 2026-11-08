@@ -34,7 +34,12 @@ import {
 export type ModelingWorkerApi = Omit<ModelingApi, 'regenerate'> &
   KernelLowLevelApi & {
     regenerate(request: RegenRequest): Promise<RegenOutput>;
+    /** Changes the regen engine's cache budget (device tier); applies from the next regen. */
+    configureRegen(options: RegenWorkerOptions): Promise<void>;
   };
+
+/** Runtime-configurable regen engine options (structured-clonable). */
+export type RegenWorkerOptions = Pick<RegenEngineOptions, 'maxSpareResults'>;
 
 export interface ModelingApiDeps extends KernelApiDeps {
   /** Bundler-resolved URL of `planegcs.wasm` (browser). Omit in Node. */
@@ -94,5 +99,6 @@ export function createModelingApi(deps: ModelingApiDeps): ModelingApiImpl {
       return r.ok ? transfer(r, meshListTransferables(r.bodies.map((b) => b.mesh))) : r;
     },
     closePart: (partId) => engine.closePart(partId),
+    configureRegen: (options) => engine.configure(options),
   };
 }

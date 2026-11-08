@@ -18,9 +18,11 @@ export type {
   KernelLowLevelApi,
   KernelWorkerApi,
 } from './kernel-api';
-export type { ModelingWorkerApi } from './modeling-api';
+export type { ModelingWorkerApi, RegenWorkerOptions } from './modeling-api';
 export { isStatusMessage, STATUS_MESSAGE_TAG, type StatusMessage } from './protocol';
 export type {
+  ReboundRef,
   RegenFeatureStatus,
   RegenOutput,
+  RegenUnresolvedRef,
 } from './regen/engine';
