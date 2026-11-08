@@ -25,7 +25,22 @@ export default defineConfig({
   },
   projects: [
     { name: 'chromium', testMatch: /.*\.spec\.ts/, use: { ...devices['Desktop Chrome'] } },
-    { name: 'firefox', testMatch: /.*\.spec\.ts/, use: { ...devices['Desktop Firefox'] } },
+    {
+      name: 'firefox',
+      testMatch: /.*\.spec\.ts/,
+      use: {
+        ...devices['Desktop Firefox'],
+        // GPU-less CI runners: headless Firefox refuses WebGL unless software GL is allowed
+        // ("this.gl is null" in the viewport). Real Firefox with a GPU needs none of this.
+        launchOptions: {
+          firefoxUserPrefs: {
+            'webgl.force-enabled': true,
+            'webgl.disabled': false,
+            'webgl.enable-webgl2': true,
+          },
+        },
+      },
+    },
     { name: 'webkit', testMatch: /.*\.spec\.ts/, use: { ...devices['Desktop Safari'] } },
     {
       name: 'perf',
