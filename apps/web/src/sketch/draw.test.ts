@@ -1,6 +1,15 @@
 import type { SketchConstraint, SketchEntity, Vec2 } from '@whittle/contracts';
 import { describe, expect, it } from 'vitest';
-import { cancel, click, type DrawState, move, preview, type SketchData, startDraw } from './draw';
+import {
+  cancel,
+  click,
+  type DrawState,
+  move,
+  preview,
+  type SketchData,
+  startDraw,
+  withPending,
+} from './draw';
 
 function run(state: DrawState, sketch: SketchData, clicks: Vec2[], tol = 1) {
   let s = state;
@@ -21,6 +30,42 @@ const kinds = (cs: readonly SketchConstraint[]) => cs.map((c) => c.kind).sort();
 const lines = (es: readonly SketchEntity[]) => es.filter((e) => e.kind === 'line');
 
 describe('sketch drawing', () => {
+  it('fast clicks: a rectangle still closes on its start point while every edit is unsolved', () => {
+    // The document never catches up during the gesture (a busy solver): drawing must infer
+    // against the document plus the pending clicks, or the closing click adds a free point.
+    const doc: SketchData = { entities: [], constraints: [] };
+    const pending: SketchData[] = [];
+    let s = startDraw('line');
+    for (const p of [
+      [0, 0],
+      [40, 0.4],
+      [40.3, 30],
+      [0.2, 30.2],
+      [0.3, 0.2],
+    ] as Vec2[]) {
+      const base = withPending(doc, pending);
+      s = move(s, base, p, 1);
+      const r = click(s, base);
+      s = r.state;
+      if (r.edit) pending.push({ entities: r.edit.entities, constraints: r.edit.constraints });
+    }
+    const all = withPending(doc, pending);
+    expect(all.entities.filter((e) => e.kind === 'point')).toHaveLength(4);
+    expect(kinds(all.constraints)).toEqual(['horizontal', 'horizontal', 'vertical', 'vertical']);
+    // Without the pending edits the closing click would not have found the start point.
+    const stale = move(startDraw('line'), doc, [0.3, 0.2], 1);
+    expect(stale.hover?.pointId).toBeUndefined();
+  });
+
+  it('withPending: document entities win over their pending copies', () => {
+    const solved: SketchEntity = { id: 'p', kind: 'point', construction: false, x: 1, y: 2 };
+    const raw: SketchEntity = { ...solved, x: 1.01 } as SketchEntity;
+    const merged = withPending({ entities: [solved], constraints: [] }, [
+      { entities: [raw], constraints: [] },
+    ]);
+    expect(merged.entities).toEqual([solved]);
+  });
+
   it('line tool: a closed rectangle chains shared points with H/V inferred and closes on the start', () => {
     const { state, data } = run(startDraw('line'), { entities: [], constraints: [] }, [
       [0, 0],

@@ -400,3 +400,22 @@ export function cancel(state: DrawState): DrawState | null {
 
 /** The cursor placeholder ids, re-exported for hosts that render candidate glyphs. */
 export const PLACEHOLDERS = { cursor: INFERENCE_CURSOR, drawing: INFERENCE_DRAWING } as const;
+
+/**
+ * The sketch as drawing sees it: the document's sketch plus edits that were clicked but whose
+ * solve hasn't landed yet. Drawing must infer against this, or a fast click (or a busy solver)
+ * misses points it just placed: closing a rectangle on its start point would add a free point.
+ * Entities already in the document win (they carry solved positions).
+ */
+export function withPending(sketch: SketchData, pending: readonly SketchData[]): SketchData {
+  if (pending.length === 0) return sketch;
+  const have = new Set<Id>(sketch.entities.map((e) => e.id));
+  const haveC = new Set<Id>(sketch.constraints.map((c) => c.id));
+  const entities = [...sketch.entities];
+  const constraints = [...sketch.constraints];
+  for (const p of pending) {
+    for (const e of p.entities) if (!have.has(e.id)) entities.push(e);
+    for (const c of p.constraints) if (!haveC.has(c.id)) constraints.push(c);
+  }
+  return { entities, constraints };
+}

@@ -42,6 +42,7 @@ import {
   preview,
   type SketchData,
   startDraw,
+  withPending,
 } from '../sketch/draw';
 import { sketchCurves } from '../sketch/overlay';
 import { observable } from './observable';
@@ -301,6 +302,14 @@ export class SketchSession {
   }
 
   // ------------------------------------------------------------------ solving
+
+  /** Drawing clicks whose edit is queued behind a solve (not yet in the document). */
+  private unsettled: SketchData[] = [];
+
+  /** What drawing infers against: the document sketch plus clicks still being solved. */
+  private drawData(): SketchData {
+    return withPending(this.data(), this.unsettled);
+  }
 
   private data(): SketchData {
     const f = this.feature();
@@ -634,7 +643,7 @@ export class SketchSession {
     }
     if (e.buttons !== 0 && !u.draw) return; // orbiting
     if (u.draw && at) {
-      const draw = drawMove(u.draw, this.data(), at, this.toleranceMm(e, at));
+      const draw = drawMove(u.draw, this.drawData(), at, this.toleranceMm(e, at));
       this.patch({ draw, cursor: draw.cursor });
       this.scheduleOverlay();
       return;
@@ -756,18 +765,23 @@ export class SketchSession {
       if (moved && down.type === 'mouse') return;
       const at = this.toSketch(e);
       if (!at) return;
-      const state = drawMove(u.draw, this.data(), at, this.toleranceMm(e, at));
-      const r = drawClick(state, this.data());
+      const base = this.drawData();
+      const state = drawMove(u.draw, base, at, this.toleranceMm(e, at));
+      const r = drawClick(state, base);
       this.patch({ draw: r.state, cursor: r.state.cursor });
       const edit = r.edit;
       if (edit) {
+        const pending: SketchData = { entities: edit.entities, constraints: edit.constraints };
+        this.unsettled.push(pending);
         void this.commitEdit(
           (cur) => ({
             entities: [...cur.entities, ...edit.entities],
             constraints: [...cur.constraints, ...edit.constraints],
           }),
           `Draw ${u.tool ?? 'geometry'}`,
-        );
+        ).finally(() => {
+          this.unsettled = this.unsettled.filter((x) => x !== pending);
+        });
       }
       this.scheduleOverlay();
       return;
