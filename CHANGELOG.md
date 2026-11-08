@@ -27,3 +27,4 @@
 - Published JSON Schemas at `/whittle/schema/`; the fake engine is dev/test only.
 - Acceptance: the PLAN §12 bracket built through the UI on the real engine, three parameter edits, STEP export and re-import (volume within 1e-6; holes checked to move).
 - Fixes: fast clicks close a sketch loop on its start point; several-group expressions convert Ø ↔ R correctly; CI E2E runs on one worker with real waits.
+- Brand: the perched-bird logo and whittling loader (brand kit in `brand/`): app icons, adaptive favicon, the bird in the top bar and on the welcome card, a boot splash, and the loader while the kernel streams in. Mobile fixes: no zoom on field focus, the page stays put, face-first touch picking, the library fits phones.

@@ -28,6 +28,7 @@ import {
   SketchStatusChip,
   SketchToolbar,
   WhichOneChooser,
+  WhittleLoader,
 } from '@whittle/ui';
 import { Library } from 'lucide-react';
 import { lazy, Suspense, useEffect, useState } from 'react';
@@ -331,6 +332,34 @@ function SketchLayer({
   );
 }
 
+/**
+ * The whittling loader in the middle of the view while the kernel streams in and the document has
+ * geometry that isn't on screen yet (no cached meshes). Gone with the first body.
+ */
+function KernelLoading({ wb, hasGeometry }: { wb: Workbench; hasGeometry: boolean }) {
+  const engine = useObservable(wb.engine);
+  const regen = useObservable(wb.regen);
+  if (engine.ready || engine.error || !hasGeometry || (regen?.result.bodies.length ?? 0) > 0)
+    return null;
+  const s = engine.status;
+  const pct = s.state === 'downloading' && s.total ? Math.round((100 * s.loaded) / s.total) : null;
+  return (
+    <div
+      className="absolute inset-0 flex flex-col items-center justify-center gap-3"
+      role="status"
+      aria-live="polite"
+      data-testid="kernel-loading"
+    >
+      <WhittleLoader className="size-24" label="Loading the modeling kernel" />
+      <p className="tnum text-ui text-fg-muted">
+        {s.state === 'compiling'
+          ? 'Preparing the modeling kernel…'
+          : `Loading the modeling kernel${pct !== null ? ` · ${pct}%` : '…'}`}
+      </p>
+    </div>
+  );
+}
+
 export function ViewportOverlays({ wb, touch }: { wb: Workbench; touch: boolean }) {
   const ui = useObservable(wb.ui);
   const doc = useDoc(wb);
@@ -491,7 +520,9 @@ export function ViewportOverlays({ wb, touch }: { wb: Workbench; touch: boolean 
         <Suspense fallback={null}>
           <Welcome wb={wb} />
         </Suspense>
-      ) : null}
+      ) : (
+        <KernelLoading wb={wb} hasGeometry={(part?.features.length ?? 0) > 0} />
+      )}
 
       {ui.toast ? (
         <div className="absolute bottom-20 left-1/2 -translate-x-1/2">

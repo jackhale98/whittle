@@ -13,6 +13,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { BirdMark } from '../brand/Bird';
 import type { PaletteCommand } from '../components/CommandPalette';
 import { Button, cn, IconButton, TooltipProvider } from '../components/primitives';
 import { COMING_SOON, tools } from '../components/tools';
@@ -227,14 +228,18 @@ export function UndoRedo({
   );
 }
 
-/** Whittle mark: a block with a whittled corner. */
+/** Whittle mark: the perched bird (brand kit), on a soft tile so it reads at chip size. */
 export function Mark({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 24 24" className={cn('size-6', className)} aria-hidden="true">
-      <rect width="24" height="24" rx="7" className="fill-accent" />
-      <path d="M7 7h6.2L17 10.8V17H7z" className="fill-accent-fg" fillOpacity="0.96" />
-      <path d="M13.2 7v3.8H17" fill="none" strokeWidth="1.2" className="stroke-accent" />
-    </svg>
+    <span
+      className={cn(
+        'inline-flex size-6 shrink-0 items-center justify-center rounded-[7px] bg-surface-2',
+        className,
+      )}
+      aria-hidden="true"
+    >
+      <BirdMark className="size-[118%] -translate-x-[4%] -translate-y-[2%]" />
+    </span>
   );
 }
 
