@@ -274,7 +274,7 @@ These are in the plan but not wired in this build. The contract types may exist.
   STEP".
 - **BREP export from the UI.** The kernel and the `ExportFormat` type support BREP. The export menu
   does not offer it.
-- **Shell, pattern, hole and measure tools.** Listed in the command bar as disabled.
+- **Shell, pattern and hole tools.** Listed in the command bar flyouts as disabled ("Coming in M3").
 - **Draft on extrude.** The field exists, but a non-zero draft is rejected by the kernel.
 - **Measure and section in the app.** The kernel measures exactly (`ModelingApi.measure`) and the
   viewport clips with filled caps (`setSection`); the phone and tablet panels exist in

@@ -217,6 +217,43 @@ export async function topCenter(page: Page): Promise<{ x: number; y: number }> {
   ]);
 }
 
+/**
+ * The category each flyout tool lives in (packages/ui `toolGroups`). Sketch and Hole are direct
+ * buttons. The desktop command bar and the tablet rail share this layout.
+ */
+const TOOL_GROUP: Record<string, string> = {
+  extrude: 'solid',
+  revolve: 'solid',
+  pushPull: 'solid',
+  fillet: 'modify',
+  chamfer: 'modify',
+  shell: 'modify',
+  pattern: 'modify',
+  measure: 'inspect',
+  section: 'inspect',
+};
+
+/** A tool's button (`[data-tool]`), whether it is a direct button or inside an open flyout. */
+export const toolButton = (page: Page, id: string) => page.locator(`[data-tool="${id}"]`);
+
+/** A category button of the command bar / rail (`solid`, `modify`, `inspect`, ...). */
+export const toolGroup = (page: Page, group: string) =>
+  page.locator(`[data-tool-group="${group}"]`);
+
+/**
+ * Picks a tool from the command bar (desktop) or rail (tablet): opens its category first when the
+ * tool lives in a flyout, then presses the tool. `how` is `tap` for touch projects.
+ */
+export async function tool(page: Page, id: string, how: 'click' | 'tap' = 'click'): Promise<void> {
+  const group = TOOL_GROUP[id];
+  if (group) {
+    const g = toolGroup(page, group);
+    if ((await g.getAttribute('aria-expanded')) !== 'true') await g[how]();
+    await expect(page.getByTestId('tool-flyout')).toBeVisible();
+  }
+  await toolButton(page, id)[how]();
+}
+
 /** Runs a ⌘K palette command by its label. */
 export async function palette(page: Page, label: string): Promise<void> {
   await page.keyboard.press('ControlOrMeta+k');

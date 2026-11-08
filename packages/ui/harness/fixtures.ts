@@ -287,6 +287,89 @@ export const sampleFeatures: Feature[] = [
   },
 ];
 
+/**
+ * A history with nested sketches (ADR-015): N1 and N3 each feed one feature and nest under it,
+ * N5 feeds two and stays top-level with a badge, N9 is unused. Sketch regions use the `S<id>:` tag.
+ */
+export const nestedFeatures: Feature[] = [
+  {
+    id: 'N1',
+    type: 'sketch',
+    name: 'Base sketch',
+    suppressed: false,
+    on: ref('origin:XY', 'face'),
+    entities: [],
+    constraints: [],
+  },
+  {
+    id: 'N2',
+    type: 'extrude',
+    name: 'Extrude 1',
+    suppressed: false,
+    profile: [ref('SN1:region(e1,e2,e3,e4)', 'region')],
+    direction: 'normal',
+    end: { kind: 'blind', depth: 'height' },
+    op: 'new',
+  },
+  {
+    id: 'N3',
+    type: 'sketch',
+    name: 'Hole sketch',
+    suppressed: false,
+    on: ref('FN2:end', 'face'),
+    entities: [],
+    constraints: [],
+  },
+  {
+    id: 'N4',
+    type: 'extrude',
+    name: 'Cut 1',
+    suppressed: false,
+    profile: [ref('SN3:region(e5)', 'region')],
+    direction: 'normal',
+    end: { kind: 'throughAll' },
+    op: 'cut',
+  },
+  {
+    id: 'N5',
+    type: 'sketch',
+    name: 'Rib sketch',
+    suppressed: false,
+    on: ref('origin:XZ', 'face'),
+    entities: [],
+    constraints: [],
+  },
+  {
+    id: 'N6',
+    type: 'extrude',
+    name: 'Rib',
+    suppressed: false,
+    profile: [ref('SN5:region(e8)', 'region')],
+    direction: 'symmetric',
+    end: { kind: 'blind', depth: '4mm' },
+    op: 'add',
+  },
+  {
+    id: 'N7',
+    type: 'extrude',
+    name: 'Rib 2',
+    suppressed: false,
+    profile: [ref('SN5:region(e8)', 'region')],
+    direction: 'symmetric',
+    end: { kind: 'blind', depth: '2mm' },
+    op: 'add',
+  },
+  {
+    id: 'N8',
+    type: 'sketch',
+    name: 'Spare sketch',
+    suppressed: false,
+    on: ref('origin:YZ', 'face'),
+    entities: [],
+    constraints: [],
+  },
+];
+
 export const sampleStatuses: FeatureStatus[] = [
   { featureId: 'F1', state: 'ok', cached: true, ms: 1 },
   { featureId: 'F2', state: 'ok', cached: true, ms: 12 },

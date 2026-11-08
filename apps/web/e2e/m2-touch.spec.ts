@@ -5,6 +5,7 @@ import {
   boot,
   cameraState,
   cameraStill,
+  tool,
   toPage,
   topCenter,
   touch,
@@ -200,11 +201,7 @@ test('Inspect → Measure on the tablet: taps pick, the sheet shows the reading'
   test.slow();
   await tabletBox(page);
   const a = app(page);
-  await page.getByRole('button', { name: 'Inspect tools' }).tap();
-  await page
-    .getByTestId('tool-flyout')
-    .getByRole('button', { name: /Measure/ })
-    .tap();
+  await tool(page, 'measure', 'tap');
   await expect(page.getByTestId('history-sheet')).toHaveAttribute('data-snap', 'half');
   await expect(page.getByTestId('measure-inspector')).toBeVisible();
   const top = await topCenter(page);

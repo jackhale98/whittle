@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { app, boot, clickAt, palette, sketchOn } from './helpers';
+import { app, boot, clickAt, palette, sketchOn, tool } from './helpers';
 
 /**
  * M1 modeling flow against the production build with the real regen engine (kernel worker,
@@ -106,7 +106,7 @@ test('sketch a rectangle, dimension it, extrude by width/2, edit history, reload
   await expect(page.getByTestId('param-value')).toHaveText('80 mm');
   await page.getByRole('tab', { name: 'Features' }).click();
 
-  await page.getByRole('button', { name: 'Extrude', exact: true }).click();
+  await tool(page, 'extrude');
   await expect(page.getByTestId('prompt-chip')).toContainText('Select a sketch region');
   await a.idle();
   await clickAt(page, 30, 15);
@@ -119,8 +119,13 @@ test('sketch a rectangle, dimension it, extrude by width/2, edit history, reload
   expect(regen?.features.map((f) => f.state)).toEqual(['ok', 'ok']);
   expect(regen?.bodies[0]?.volume ?? 0).toBeCloseTo(60 * 30 * 40, 1);
   const tree = page.getByTestId('feature-tree');
-  await expect(tree.getByRole('treeitem')).toHaveCount(2);
+  // The sketch used only by this extrude nests under it (ADR-015): one row, collapsed.
+  await expect(tree.getByRole('treeitem')).toHaveCount(1);
   await expect(tree).toContainText('Extrude 1');
+  await expect(tree.getByRole('treeitem', { name: /Extrude 1/ })).toHaveAttribute(
+    'aria-expanded',
+    'false',
+  );
 
   // 6. Rename in the tree (Enter on the row).
   await tree.getByRole('treeitem', { name: /Extrude 1/ }).focus();
@@ -130,14 +135,15 @@ test('sketch a rectangle, dimension it, extrude by width/2, edit history, reload
   await rename.press('Enter');
   await expect(tree).toContainText('Base plate');
 
-  // 7. Roll back above the extrude, then forward again.
+  // 7. Roll back above the extrude, then forward again. The bar cannot stop between the extrude
+  // and its nested sketch (ADR-015), so one step up rolls back both.
   const bar = page.getByRole('separator', { name: 'Rollback bar' });
   await bar.focus();
   await page.keyboard.press('ArrowUp');
-  await expect(bar).toHaveAttribute('aria-valuenow', '1');
+  await expect(bar).toHaveAttribute('aria-valuenow', '0');
   await a.idle();
   regen = await a.regen();
-  expect(regen?.features.map((f) => f.state)).toEqual(['ok', 'rolledBack']);
+  expect(regen?.features.map((f) => f.state)).toEqual(['rolledBack', 'rolledBack']);
   expect(regen?.bodies).toHaveLength(0);
   await expect(bar).toBeFocused();
   await page.keyboard.press('ArrowDown');

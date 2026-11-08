@@ -1,6 +1,7 @@
 import type { FeatureStatus, FeatureType, Id } from '@whittle/contracts';
 import {
   Ban,
+  ChevronRight,
   CircleAlert,
   Ellipsis,
   Eye,
@@ -20,12 +21,22 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react';
 import { type FloatingAnchor, Menu, type MenuItem } from '../components/floating';
 import { cn, Tooltip } from '../components/primitives';
 import { useLongPress } from '../logic/longPress';
+import { readStored, writeStored } from '../logic/persist';
+import {
+  allowedRollbacks,
+  computeNesting,
+  type MoveStep,
+  planUnitMove,
+  sharedCount,
+  snapRollback,
+} from '../logic/treeNesting';
 import { useSpring } from '../motion';
 import { EmptyState } from '../shells/shared';
 import { featureMeta } from './featureMeta';
@@ -55,10 +66,47 @@ export interface FeatureTreeProps {
   onMove?(id: Id, toIndex: number): MoveResult | Promise<MoveResult> | undefined;
   onEdit?(id: Id): void;
   onSuppress?(id: Id, suppressed: boolean): void;
-  onDelete?(id: Id): void;
+  /**
+   * Delete. `alsoIds` are the nested sketches the user chose to delete with it ("Delete sketch
+   * too"); without it a nested sketch is kept and pops out to the top level.
+   */
+  onDelete?(id: Id, alsoIds?: readonly Id[]): void;
+  /**
+   * Moves a feature together with its nested sketches (several `moveFeature` steps). Apply them as
+   * one undo step if you can, and refuse as a whole. Without it the steps go through `onMove`.
+   */
+  onReorder?(steps: readonly MoveStep[]): MoveResult | Promise<MoveResult> | undefined;
+  /**
+   * Nest a sketch under the one feature that uses it (ADR-015). Default true; `false` is the flat
+   * serial history. The row menu offers "Show sketches in the history" when `onNestSketchesChange`
+   * is given.
+   */
+  nestSketches?: boolean;
+  onNestSketchesChange?(nest: boolean): void;
   /** `touch` = 44px rows and always-visible handles. */
   density?: 'compact' | 'touch';
   className?: string;
+}
+
+export const NEST_SKETCHES_KEY = 'whittle.nestSketches';
+
+/** The persisted "nest sketches" view setting (per user, localStorage; default on). */
+export function readNestSketches(): boolean {
+  return readStored(NEST_SKETCHES_KEY) !== 'flat';
+}
+export function writeNestSketches(nest: boolean): void {
+  writeStored(NEST_SKETCHES_KEY, nest ? 'nested' : 'flat');
+}
+
+interface VisibleRow {
+  id: Id;
+  /** Document index. */
+  i: number;
+  level: 1 | 2;
+  /** Position among its siblings (1-based) and their count. */
+  pos: number;
+  size: number;
+  parent?: Id;
 }
 
 const clampIdx = (n: number, max: number) => Math.max(0, Math.min(max, n));
@@ -97,8 +145,14 @@ function describeStatus(
  * Feature history (PLAN 2.2, 9.1): type icons, inline rename, failure badges with a one-line
  * explanation, a draggable rollback bar, drag-to-reorder with refusal feedback, context actions.
  *
- * Keyboard: Up/Down/Home/End move; Space selects; Enter/F2 renames; Alt+Up/Down reorders; Delete
- * deletes; Shift+F10 / Menu opens actions. The rollback bar is a separate focusable splitter.
+ * Sketches that exactly one feature uses nest under it (ADR-015): collapsible, collapsed by
+ * default, an ARIA tree with `aria-level` / `aria-expanded`. A shared sketch stays top-level with a
+ * "used by N" badge. A feature moves with its sketches, and the rollback bar skips the gap between
+ * them. This is a view only: the document keeps the flat serial order.
+ *
+ * Keyboard: Up/Down/Home/End move; Right/Left expand, collapse or step in and out of a nested
+ * sketch; Space selects; Enter/F2 renames; Alt+Up/Down reorders; Delete deletes; Shift+F10 / Menu
+ * opens actions. The rollback bar is a separate focusable splitter.
  */
 export function FeatureTree({
   features,
@@ -109,9 +163,12 @@ export function FeatureTree({
   onRename,
   onRollback,
   onMove,
+  onReorder,
   onEdit,
   onSuppress,
   onDelete,
+  nestSketches = true,
+  onNestSketchesChange,
   density = 'compact',
   className,
 }: FeatureTreeProps) {
@@ -125,6 +182,8 @@ export function FeatureTree({
   const [focusId, setFocusId] = useState<Id | null>(null);
   const [renaming, setRenaming] = useState<Id | null>(null);
   const [menu, setMenu] = useState<{ id: Id; anchor: FloatingAnchor } | null>(null);
+  const [expanded, setExpanded] = useState<ReadonlySet<Id>>(new Set());
+  const [confirm, setConfirm] = useState<Id | null>(null);
   // Touch and pen: press and hold a row for its menu (mouse has right-click, keyboards the Menu key).
   const longPress = useLongPress<Id>((id, at) => {
     setFocusId(id);
@@ -132,11 +191,16 @@ export function FeatureTree({
   });
   const [shake, setShake] = useState<{ id: Id; key: number } | null>(null);
   const [notice, setNotice] = useState('');
-  const [boundaries, setBoundaries] = useState<number[]>([]);
+  const [geom, setGeom] = useState<{ top: number[]; bottom: number[]; stop: number[] }>({
+    top: [],
+    bottom: [],
+    stop: [],
+  });
   const [barDrag, setBarDrag] = useState<number | null>(null);
   const [drag, setDrag] = useState<{
     id: Id;
     dy: number;
+    /** Positions among the top-level items. */
     from: number;
     to: number;
     at: number;
@@ -144,32 +208,97 @@ export function FeatureTree({
   const rejectSpring = useSpring('reject');
   const noticeTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
-  const activeFocus = features.some((f) => f.id === focusId)
+  /* ----------------------------------------------------------- nesting */
+  const nesting = useMemo(
+    () => (nestSketches ? computeNesting(features) : computeNesting([])),
+    [features, nestSketches],
+  );
+  const indexOf = useMemo(() => new Map(features.map((f, i) => [f.id, i])), [features]);
+  const allowed = useMemo(() => allowedRollbacks(features, nesting), [features, nesting]);
+  const anyNested = nesting.parentOf.size > 0;
+
+  // Selecting a nested sketch (from the viewport, or while sketching) shows it.
+  useEffect(() => {
+    const parent = selectedId ? nesting.parentOf.get(selectedId) : undefined;
+    if (parent) setExpanded((e) => (e.has(parent) ? e : new Set(e).add(parent)));
+  }, [selectedId, nesting]);
+
+  const toggle = useCallback((id: Id, open?: boolean) => {
+    setExpanded((e) => {
+      const isOpen = e.has(id);
+      if (open === isOpen) return e;
+      const next = new Set(e);
+      if (isOpen) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  /** Rows as shown: top-level items in document order, each followed by its open sketches. */
+  const visible = useMemo<VisibleRow[]>(() => {
+    const out: VisibleRow[] = [];
+    const tops = features.filter((f) => !nesting.parentOf.has(f.id));
+    tops.forEach((f, k) => {
+      out.push({ id: f.id, i: indexOf.get(f.id) ?? 0, level: 1, pos: k + 1, size: tops.length });
+      const kids = nesting.childrenOf.get(f.id) ?? [];
+      if (expanded.has(f.id)) {
+        kids.forEach((c, j) => {
+          out.push({
+            id: c,
+            i: indexOf.get(c) ?? 0,
+            level: 2,
+            pos: j + 1,
+            size: kids.length,
+            parent: f.id,
+          });
+        });
+      }
+    });
+    return out;
+  }, [features, nesting, expanded, indexOf]);
+  const units = useMemo(() => visible.filter((r) => r.level === 1), [visible]);
+
+  const activeFocus = visible.some((r) => r.id === focusId)
     ? focusId
-    : (features.find((f) => f.id === selectedId)?.id ?? features[0]?.id ?? null);
+    : (visible.find((r) => r.id === selectedId)?.id ?? visible[0]?.id ?? null);
 
   /* ----------------------------------------------------------- measuring the rollback bar */
   // biome-ignore lint/correctness/useExhaustiveDependencies: row heights depend on these inputs
   useLayoutEffect(() => {
     const measure = () => {
-      const b: number[] = [];
-      let last = 0;
-      for (const f of features) {
-        const el = rows.current.get(f.id);
+      const top: number[] = [];
+      const bottom: number[] = [];
+      for (const u of units) {
+        const el = rows.current.get(u.id);
         if (!el) continue;
-        b.push(el.offsetTop);
-        last = el.offsetTop + el.offsetHeight;
+        top.push(el.offsetTop);
+        let last = el;
+        for (const r of visible) {
+          if (r.parent === u.id) last = rows.current.get(r.id) ?? last;
+        }
+        bottom.push(last.offsetTop + last.offsetHeight);
       }
-      if (b.length) b.push(last);
-      setBoundaries((prev) =>
-        prev.length === b.length && prev.every((v, i) => v === b[i]) ? prev : b,
+      // y of each rollback position: above the first top-level item at or after it
+      const stop: number[] = [];
+      for (let r = 0; r <= n; r++) {
+        const k = units.findIndex((u) => u.i >= r);
+        stop.push(k >= 0 ? (top[k] ?? 0) : (bottom[bottom.length - 1] ?? 0));
+      }
+      setGeom((prev) =>
+        prev.stop.length === stop.length &&
+        prev.stop.every((v, i) => v === stop[i]) &&
+        prev.top.length === top.length &&
+        prev.top.every((v, i) => v === top[i]) &&
+        prev.bottom.every((v, i) => v === bottom[i])
+          ? prev
+          : { top, bottom, stop },
       );
     };
     measure();
     const ro = new ResizeObserver(measure);
     if (wrap.current) ro.observe(wrap.current);
     return () => ro.disconnect();
-  }, [features, statuses, renaming, density]);
+  }, [features, statuses, renaming, density, expanded, confirm, nestSketches]);
 
   useEffect(() => () => clearTimeout(noticeTimer.current), []);
 
@@ -185,12 +314,57 @@ export function FeatureTree({
     clearTimeout(noticeTimer.current);
     noticeTimer.current = setTimeout(() => setNotice(''), 5000);
   }
-  function requestMove(id: Id, toIndex: number) {
-    if (!onMove || toIndex < 0 || toIndex >= n) return;
-    Promise.resolve(onMove(id, toIndex)).then((r) => {
+  /** Makes top-level item `id` the `to`th top-level item, taking its nested sketches along. */
+  function requestMove(id: Id, to: number) {
+    if (!onMove || to < 0 || to >= units.length) return;
+    const steps = planUnitMove(features, nesting, id, to);
+    if (steps.length === 0) return;
+    const done = (r: MoveResult | undefined) => {
       if (r && !r.ok) reject(id, r.reason);
       else setNotice('');
-    });
+    };
+    const first = steps[0];
+    if (steps.length === 1 && first) {
+      Promise.resolve(onMove(first.id, first.toIndex)).then(done);
+      return;
+    }
+    if (onReorder) {
+      Promise.resolve(onReorder(steps)).then(done);
+      return;
+    }
+    // No batch handler: one step at a time; on a refusal put the earlier steps back.
+    void (async () => {
+      const applied: MoveStep[] = [];
+      for (const st of steps) {
+        const r = await onMove(st.id, st.toIndex);
+        if (r && !r.ok) {
+          for (const back of applied.reverse()) await onMove(back.id, back.from);
+          return done(r);
+        }
+        applied.push(st);
+      }
+      done(undefined);
+    })();
+  }
+
+  /** Asks (inline) before deleting a feature that has nested sketches. */
+  function requestDelete(id: Id): boolean {
+    if (!onDelete) return false;
+    if ((nesting.childrenOf.get(id)?.length ?? 0) > 0) {
+      setConfirm(id);
+      return true;
+    }
+    onDelete(id);
+    return false;
+  }
+  function answerDelete(id: Id, alsoSketches: boolean) {
+    const kids = nesting.childrenOf.get(id) ?? [];
+    const at = visible.findIndex((r) => r.id === id);
+    const next = visible[at + 1 + (expanded.has(id) ? kids.length : 0)] ?? visible[at - 1];
+    setConfirm(null);
+    if (alsoSketches) onDelete?.(id, kids);
+    else onDelete?.(id);
+    if (next && next.id !== id) focusRow(next.id);
   }
 
   /* ----------------------------------------------------------- row drag (grip) */
@@ -203,14 +377,14 @@ export function FeatureTree({
   function gripMove(e: PointerEvent<HTMLElement>) {
     if (!drag) return;
     const dy = e.clientY - drag.at;
-    // Insertion slot among the *other* rows (the dragged row itself moves with the pointer).
+    // Insertion slot among the *other* top-level items (the dragged one moves with the pointer).
     let q = 0;
-    features.forEach((f, j) => {
+    units.forEach((u, j) => {
       if (j === drag.from) return;
-      const r = rows.current.get(f.id)?.getBoundingClientRect();
-      if (r && r.top + r.height / 2 < e.clientY) q++;
+      const r = rows.current.get(u.id)?.getBoundingClientRect();
+      if (r && r.top + Math.min(r.height, touch ? 44 : 32) / 2 < e.clientY) q++;
     });
-    setDrag({ ...drag, dy, to: clampIdx(q, n - 1) });
+    setDrag({ ...drag, dy, to: clampIdx(q, units.length - 1) });
   }
   function gripUp() {
     if (!drag) return;
@@ -223,37 +397,39 @@ export function FeatureTree({
   const rollbackFromY = (clientY: number) => {
     const top = wrap.current?.getBoundingClientRect().top ?? 0;
     const y = clientY - top;
-    let best = 0;
+    let best = allowed[0] ?? 0;
     let bestD = Number.POSITIVE_INFINITY;
-    boundaries.forEach((b, i) => {
-      const d = Math.abs(b - y);
+    for (const r of allowed) {
+      const d = Math.abs((geom.stop[r] ?? 0) - y);
       if (d < bestD) {
         bestD = d;
-        best = i;
+        best = r;
       }
-    });
+    }
     return { index: best, y };
   };
   function barDown(e: PointerEvent<HTMLElement>) {
     e.currentTarget.setPointerCapture(e.pointerId);
-    setBarDrag(boundaries[rollback] ?? 0);
+    setBarDrag(geom.stop[rollback] ?? 0);
   }
   function barMove(e: PointerEvent<HTMLElement>) {
     if (barDrag === null) return;
     const { index, y } = rollbackFromY(e.clientY);
-    const lo = boundaries[0] ?? 0;
-    const hi = boundaries[n] ?? 0;
+    const lo = geom.stop[0] ?? 0;
+    const hi = geom.stop[n] ?? 0;
     setBarDrag(Math.max(lo, Math.min(hi, y)));
     if (index !== rollback) onRollback?.(index);
   }
   function barKey(e: KeyboardEvent<HTMLElement>) {
     let next = rollback;
-    if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') next = rollback - 1;
-    else if (e.key === 'ArrowDown' || e.key === 'ArrowRight') next = rollback + 1;
+    if (e.key === 'ArrowUp' || e.key === 'ArrowLeft')
+      next = snapRollback(rollback - 1, allowed, -1);
+    else if (e.key === 'ArrowDown' || e.key === 'ArrowRight')
+      next = snapRollback(rollback + 1, allowed, 1);
     else if (e.key === 'Home') next = 0;
     else if (e.key === 'End') next = n;
-    else if (e.key === 'PageUp') next = rollback - 5;
-    else if (e.key === 'PageDown') next = rollback + 5;
+    else if (e.key === 'PageUp') next = snapRollback(rollback - 5, allowed, -1);
+    else if (e.key === 'PageDown') next = snapRollback(rollback + 5, allowed, 1);
     else return;
     e.preventDefault();
     next = clampIdx(next, n);
@@ -261,25 +437,44 @@ export function FeatureTree({
   }
 
   /* ----------------------------------------------------------- row keyboard */
-  function rowKey(e: KeyboardEvent<HTMLDivElement>, id: Id, i: number) {
+  function rowKey(e: KeyboardEvent<HTMLDivElement>, row: VisibleRow) {
     if (e.target !== e.currentTarget) return;
+    const { id } = row;
+    const v = visible.findIndex((r) => r.id === id);
     const go = (j: number) => {
-      const f = features[clampIdx(j, n - 1)];
-      if (f) focusRow(f.id);
+      const r = visible[clampIdx(j, visible.length - 1)];
+      if (r) focusRow(r.id);
     };
+    const kids = nesting.childrenOf.get(id);
     if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
       e.preventDefault();
-      requestMove(id, i + (e.key === 'ArrowUp' ? -1 : 1));
+      if (row.level === 1) requestMove(id, row.pos - 1 + (e.key === 'ArrowUp' ? -1 : 1));
       return;
     }
     switch (e.key) {
       case 'ArrowDown':
         e.preventDefault();
-        go(i + 1);
+        go(v + 1);
         break;
       case 'ArrowUp':
         e.preventDefault();
-        go(i - 1);
+        go(v - 1);
+        break;
+      case 'ArrowRight':
+        if (kids?.length) {
+          e.preventDefault();
+          if (!expanded.has(id)) toggle(id, true);
+          else go(v + 1);
+        }
+        break;
+      case 'ArrowLeft':
+        if (row.parent) {
+          e.preventDefault();
+          focusRow(row.parent);
+        } else if (kids?.length && expanded.has(id)) {
+          e.preventDefault();
+          toggle(id, false);
+        }
         break;
       case 'Home':
         e.preventDefault();
@@ -287,7 +482,7 @@ export function FeatureTree({
         break;
       case 'End':
         e.preventDefault();
-        go(n - 1);
+        go(visible.length - 1);
         break;
       case ' ':
         e.preventDefault();
@@ -304,9 +499,8 @@ export function FeatureTree({
       case 'Backspace':
         if (onDelete) {
           e.preventDefault();
-          const nextF = features[i + 1] ?? features[i - 1];
-          onDelete(id);
-          if (nextF) focusRow(nextF.id);
+          const nextR = visible[v + 1] ?? visible[v - 1];
+          if (!requestDelete(id) && nextR) focusRow(nextR.id);
         }
         break;
       case 'ContextMenu':
@@ -353,7 +547,8 @@ export function FeatureTree({
         id: 'rollto',
         label: 'Roll to here',
         icon: <SkipBack className="size-4 rotate-180" />,
-        onSelect: () => onRollback(i + 1),
+        // A nested sketch rolls to after the feature it sits under.
+        onSelect: () => onRollback(snapRollback(i + 1, allowed, 1)),
       });
     if (onDelete)
       items.push({
@@ -363,7 +558,16 @@ export function FeatureTree({
         danger: true,
         separatorBefore: true,
         icon: <Trash2 className="size-4" />,
-        onSelect: () => onDelete(id),
+        onSelect: () => requestDelete(id),
+      });
+    if (onNestSketchesChange)
+      items.push({
+        id: 'flat-history',
+        label: 'Show sketches in the history',
+        checked: !nestSketches,
+        separatorBefore: true,
+        icon: <ListTree className="size-4" />,
+        onSelect: () => onNestSketchesChange(!nestSketches),
       });
     return items;
   }
@@ -376,9 +580,10 @@ export function FeatureTree({
     );
   }
 
-  const barY = barDrag ?? boundaries[rollback];
+  const barY = barDrag ?? geom.stop[rollback];
   const rowH = touch ? 'min-h-11' : 'min-h-8';
   const menuFor = menu ? features.findIndex((f) => f.id === menu.id) : -1;
+  const chevronW = touch ? 'w-7' : 'w-4';
 
   return (
     <div className={cn('flex min-h-0 flex-col', className)}>
@@ -389,14 +594,21 @@ export function FeatureTree({
           aria-orientation="vertical"
           className="m-0 list-none p-0"
         >
-          {features.map((f, i) => {
+          {visible.map((row) => {
+            const f = features[row.i];
+            if (!f) return null;
+            const i = row.i;
+            const nested = row.level === 2;
+            const kids = nesting.childrenOf.get(f.id) ?? [];
+            const open = kids.length > 0 && expanded.has(f.id);
+            const shared = f.type === 'sketch' ? sharedCount(nesting, f.id) : 0;
             const meta = featureMeta[f.type];
             const status = statusById.get(f.id);
             const st = describeStatus(status);
             const rolled = i >= rollback || status?.state === 'rolledBack';
             const suppressed = f.suppressed || status?.state === 'suppressed';
             const selected = selectedId === f.id;
-            const dragging = drag?.id === f.id && Math.abs(drag.dy) > 4;
+            const dragging = !nested && drag?.id === f.id && Math.abs(drag.dy) > 4;
             const stateText = [
               suppressed ? 'suppressed' : '',
               rolled ? 'rolled back' : '',
@@ -406,7 +618,14 @@ export function FeatureTree({
             ]
               .filter(Boolean)
               .join(', ');
-            const hidden = [`${meta.label}${stateText ? `, ${stateText}` : ''}.`, st?.hint]
+            const hidden = [
+              `${meta.label}${stateText ? `, ${stateText}` : ''}.`,
+              kids.length
+                ? `Contains ${kids.length === 1 ? 'a sketch' : `${kids.length} sketches`}.`
+                : '',
+              shared ? `Used by ${shared} features.` : '',
+              st?.hint,
+            ]
               .filter(Boolean)
               .join(' ');
             const isShaking = shake?.id === f.id;
@@ -418,13 +637,15 @@ export function FeatureTree({
                   else rows.current.delete(f.id);
                 }}
                 role="treeitem"
-                aria-level={1}
-                aria-posinset={i + 1}
-                aria-setsize={n}
+                aria-level={row.level}
+                aria-posinset={row.pos}
+                aria-setsize={row.size}
                 aria-selected={selected}
+                aria-expanded={kids.length ? open : undefined}
                 tabIndex={activeFocus === f.id ? 0 : -1}
                 data-feature-id={f.id}
                 data-state={status?.state ?? 'ok'}
+                data-nested={nested || undefined}
                 onFocus={(e) => {
                   if (e.target === e.currentTarget) setFocusId(f.id);
                 }}
@@ -432,7 +653,7 @@ export function FeatureTree({
                   setFocusId(f.id);
                   onSelect?.(f.id);
                 }}
-                onKeyDown={(e) => rowKey(e, f.id, i)}
+                onKeyDown={(e) => rowKey(e, row)}
                 {...longPress(f.id)}
                 onContextMenu={(e) => {
                   e.preventDefault();
@@ -453,6 +674,7 @@ export function FeatureTree({
                   className={cn(
                     'flex items-start gap-2 rounded-[9px] pr-1 pl-1 transition-colors duration-fast',
                     rowH,
+                    nested && (touch ? 'ml-9' : 'ml-6'),
                     'group-focus-visible/row:outline-2 group-focus-visible/row:outline-offset-[-2px] group-focus-visible/row:outline-accent',
                     selected ? 'bg-accent-soft' : 'hover:bg-surface-2',
                     dragging && 'bg-surface shadow-float',
@@ -460,25 +682,55 @@ export function FeatureTree({
                     isShaking && 'bg-danger-soft',
                   )}
                 >
-                  <span
-                    aria-hidden
-                    data-grip
-                    data-no-longpress
-                    onPointerDown={(e) => gripDown(e, f.id, i)}
-                    onPointerMove={gripMove}
-                    onPointerUp={gripUp}
-                    onPointerCancel={() => setDrag(null)}
-                    className={cn(
-                      'mt-[7px] flex shrink-0 touch-none items-center text-fg-subtle',
-                      onMove ? 'cursor-grab active:cursor-grabbing' : 'invisible',
-                      touch ? 'mt-[11px] w-6' : 'w-4',
-                      touch
-                        ? ''
-                        : 'opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100',
-                    )}
-                  >
-                    <GripVertical className="size-4" />
-                  </span>
+                  {nested ? null : (
+                    <span
+                      aria-hidden
+                      data-grip
+                      data-no-longpress
+                      onPointerDown={(e) => gripDown(e, f.id, row.pos - 1)}
+                      onPointerMove={gripMove}
+                      onPointerUp={gripUp}
+                      onPointerCancel={() => setDrag(null)}
+                      className={cn(
+                        'mt-[7px] flex shrink-0 touch-none items-center text-fg-subtle',
+                        onMove ? 'cursor-grab active:cursor-grabbing' : 'invisible',
+                        touch ? 'mt-[11px] w-6' : 'w-4',
+                        touch
+                          ? ''
+                          : 'opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100',
+                      )}
+                    >
+                      <GripVertical className="size-4" />
+                    </span>
+                  )}
+                  {nested || !anyNested ? null : kids.length ? (
+                    <button
+                      type="button"
+                      tabIndex={-1}
+                      aria-hidden
+                      data-testid="nest-toggle"
+                      aria-label={`${open ? 'Collapse' : 'Expand'} ${f.name}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggle(f.id);
+                      }}
+                      className={cn(
+                        'flex shrink-0 items-center justify-center rounded-[6px] text-fg-muted hover:bg-surface-3 hover:text-fg',
+                        chevronW,
+                        touch ? 'h-11' : 'mt-[7px] h-4',
+                      )}
+                    >
+                      <ChevronRight
+                        className={cn(
+                          'size-3.5 transition-transform duration-fast',
+                          open && 'rotate-90',
+                        )}
+                        aria-hidden
+                      />
+                    </button>
+                  ) : (
+                    <span aria-hidden className={cn('shrink-0', chevronW)} />
+                  )}
                   <span
                     className={cn(
                       'flex shrink-0 items-center justify-center',
@@ -563,6 +815,18 @@ export function FeatureTree({
                     ) : null}
                     <span className="sr-only">{hidden}</span>
                   </div>
+                  {shared ? (
+                    <span
+                      aria-hidden
+                      data-testid="used-by"
+                      className={cn(
+                        'shrink-0 rounded-full bg-surface-3 px-1.5 text-2xs leading-4 font-medium whitespace-nowrap text-fg-muted',
+                        touch ? 'mt-[14px]' : 'mt-[8px]',
+                      )}
+                    >
+                      used by {shared}
+                    </span>
+                  ) : null}
                   {suppressed ? (
                     <EyeOff
                       className={cn(
@@ -593,6 +857,18 @@ export function FeatureTree({
                     <Ellipsis className="size-4" aria-hidden />
                   </button>
                 </m.div>
+                {confirm === f.id ? (
+                  <DeletePrompt
+                    name={f.name}
+                    sketches={kids.length}
+                    touch={touch}
+                    onAnswer={(also) => answerDelete(f.id, also)}
+                    onCancel={() => {
+                      setConfirm(null);
+                      requestAnimationFrame(() => rows.current.get(f.id)?.focus());
+                    }}
+                  />
+                ) : null}
               </div>
             );
           })}
@@ -603,10 +879,7 @@ export function FeatureTree({
             aria-hidden
             className="pointer-events-none absolute right-2 left-2 h-0.5 rounded-full bg-accent"
             style={{
-              top:
-                ((drag.to < n - 1
-                  ? boundaries[drag.to < drag.from ? drag.to : drag.to + 1]
-                  : boundaries[drag.from === n - 1 ? n - 1 : n]) ?? 0) - 1,
+              top: ((drag.to < drag.from ? geom.top[drag.to] : geom.bottom[drag.to]) ?? 0) - 1,
             }}
           />
         ) : null}
@@ -683,6 +956,74 @@ export function FeatureTree({
           onDismiss={() => setMenu(null)}
         />
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * The inline, non-modal question under a feature row when it has nested sketches. Escape cancels;
+ * the first button is focused so a keyboard user can answer straight away.
+ */
+function DeletePrompt({
+  name,
+  sketches,
+  touch,
+  onAnswer,
+  onCancel,
+}: {
+  name: string;
+  sketches: number;
+  touch: boolean;
+  onAnswer(alsoSketches: boolean): void;
+  onCancel(): void;
+}) {
+  const plural = sketches > 1;
+  const btn = cn(
+    'rounded-control px-2.5 text-2xs font-medium whitespace-nowrap select-none transition-colors duration-fast',
+    touch ? 'h-11' : 'h-7',
+  );
+  return (
+    // biome-ignore lint/a11y/useSemanticElements: a labelled group of buttons, not a fieldset
+    <div
+      role="group"
+      aria-label={`Delete ${name}?`}
+      data-testid="delete-prompt"
+      onClick={(e) => e.stopPropagation()}
+      onKeyDown={(e) => {
+        e.stopPropagation();
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          onCancel();
+        }
+      }}
+      className="mt-0.5 mb-1 ml-7 flex flex-wrap items-center gap-1.5 rounded-[9px] border border-border bg-surface-2 p-2"
+    >
+      <p className="w-full text-2xs leading-4 text-fg">
+        {plural ? `“${name}” has ${sketches} sketches.` : `“${name}” has a sketch.`} Delete it too?
+      </p>
+      <button
+        type="button"
+        // biome-ignore lint/a11y/noAutofocus: the prompt appears on the user's own delete action
+        autoFocus
+        onClick={() => onAnswer(true)}
+        className={cn(btn, 'bg-danger-soft text-danger-text hover:brightness-95')}
+      >
+        {plural ? 'Delete sketches too' : 'Delete sketch too'}
+      </button>
+      <button
+        type="button"
+        onClick={() => onAnswer(false)}
+        className={cn(btn, 'bg-surface-3 text-fg hover:bg-border')}
+      >
+        {plural ? 'Keep sketches' : 'Keep sketch'}
+      </button>
+      <button
+        type="button"
+        onClick={onCancel}
+        className={cn(btn, 'text-fg-muted hover:bg-surface-3 hover:text-fg')}
+      >
+        Cancel
+      </button>
     </div>
   );
 }
