@@ -1004,3 +1004,41 @@ The 1,000-pair fuzz test made the gaps concrete.
 - **Fit.** `fitAll` stays bodies-only; the engine adds `fitAll(animate, { includeOverlay: true })`. Proposal for the contract: add the optional second parameter to `Viewport.fitAll`, or have the app call it after `setCompare`.
 - **Reduced motion.** There is no animation: ghosting and toggles are instant.
 - **Perf on software GL.** Once the studio environment exists, any camera or state change costs 150-400 ms wall time on SwiftShader (also for a plain camera move), so the perf probe gates handler time (<= 16 ms p95) and reports render CPU time, gated with `WHITTLE_PERF_ASSERT=1`.
+
+## ADR-029 — Local git repo mode (M2.5, owner request 2026-11-08)
+
+**Context.** Desktop users who already keep projects in git want Whittle's versions to be their
+repo's commits, not a parallel `.whittle-history/`. The owner asked for this in M2.5.
+
+**Decision.**
+
+1. **Detection.** A `folder` connection (File System Access, desktop Chromium) whose picked
+   folder contains `.git/` is a local git repo (`Connection.git = true`). The user picks the
+   **repo root**, because File System Access can't walk up from a subfolder. The project is a
+   folder inside it (`ProjectLink.path`, relative to the root, `''` for the root). Several
+   projects can live in one repo.
+2. **Working copy.** The project files on disk *are* the working copy. Whittle saves to them
+   directly (the folder provider and SyncEngine with no remote). No `.whittle-history/` is written
+   in this mode, and `.whittle/` is added to the repo's `.gitignore` if it isn't already ignored
+   (with the user's go-ahead shown inline).
+3. **History.** `GitHistory` runs over a File System Access adapter for isomorphic-git's `fs`,
+   with `dir` = the repo root and versioned paths limited to the project folder.
+   - "Save version" makes a real commit of the project's files only; other changes in the repo
+     are left alone.
+   - Branches are the repo's branches, and releases are tags.
+   - `workingChanges()` shows "Uncommitted changes".
+   - `refresh()` and a re-read on window focus pick up commits, checkouts and repacks made by the
+     user's own git.
+4. **Remotes.** Pushing and pulling can stay with the user's git tools. When the repo has a
+   remote (`remotes()`) and the user signs in to its host, Whittle can also fetch, pull and push
+   through the CORS proxy.
+5. **Safety.**
+   - Before switching branches or fast-forwarding, Whittle refuses if the project has
+     uncommitted changes (`workingChanges()`), and offers "Save version" first. It never
+     force-checks-out over edits.
+   - A repo mid-merge, mid-rebase or with a detached HEAD is shown read-only, with an
+     explanation.
+   - Git LFS pointers are left alone, and hooks don't run when Whittle commits; both are stated
+     in the UI.
+6. **Browsers.** Desktop Chromium only, because Firefox and Safari have no directory picker.
+   Elsewhere, local git mode is hidden with that reason, and hosted git connections still work.

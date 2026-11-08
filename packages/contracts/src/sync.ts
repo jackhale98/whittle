@@ -74,6 +74,13 @@ export type Connection =
       label: string;
       /** The FileSystemDirectoryHandle is kept in IndexedDB under this key (handles can't be JSON). */
       handleKey: string;
+      /**
+       * Local git repo mode (ADR-029): the picked folder is a git working tree (it has `.git/`).
+       * The project is a folder inside it (`ProjectLink.path`, relative to the repo root, `''` for
+       * the root); versions are real commits in that repo (`GitHistory` over the folder handle),
+       * so they show up in the user's own git tools and vice versa.
+       */
+      git?: boolean;
     }
   | { id: Id; kind: 'dropbox' | 'gdrive'; label: string; account?: string }
   | {
@@ -463,6 +470,20 @@ export type GitPushResult =
 /** Git connections (isomorphic-git; Mycelium `GitRepo`). Branches are git branches; releases are tags. */
 export interface GitHistory extends HistoryStore {
   readonly backend: 'git';
+  /**
+   * Project files that differ from the current commit (uncommitted, e.g. saved by Whittle or
+   * edited outside it). Local git repo mode shows them as "Uncommitted changes".
+   */
+  workingChanges(): Promise<
+    StorageResult<{ path: string; status: 'added' | 'modified' | 'deleted' }[]>
+  >;
+  /**
+   * Forgets cached repository reads (another program may have committed, checked out or
+   * repacked). Refs and the working tree are read fresh on every call regardless.
+   */
+  refresh(): void;
+  /** Remotes configured in the repo (`.git/config`); empty in local-only use. */
+  remotes(): Promise<{ name: string; url: string }[]>;
   clone(onProgress?: (p: GitProgress) => void): Promise<StorageResult<ProjectFiles>>;
   fetch(
     onProgress?: (p: GitProgress) => void,
