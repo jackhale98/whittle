@@ -140,8 +140,13 @@ faces, and suppression and rollback (`packages/kernel-client/test/regen/`).
   cursor, in a separate system that is re-solved on every move.
 - **Where it runs.** The sketch worker serves interactive solves. The kernel worker also loads
   planegcs, lazily, to re-solve a sketch when the regen cache misses.
-- **Not built:** the "polish" step proposed for M2 (ADR-008 §9). Two coincident faces from separate
-  sketches can still leave a sliver because of the solver tolerance.
+- **Polish.** After every accepted solve and drag step, a few minimum-norm Newton steps drive every
+  residual to ≤ 1e-11 mm (1e-13 rad), so sketches dimensioned to meet produce exactly coplanar
+  faces instead of slivers. Already-exact geometry is returned bit for bit (ADR-011).
+- **Pencil strokes.** `@whittle/sketch/recognize` (pure TypeScript, no Wasm) turns a freehand
+  stroke into a line, polyline, rectangle, circle or arc with exact snapping, and `strokeFragment`
+  converts it to entities and constraints like any drawing tool (ADR-011). Wired into the app with
+  the M2 integration.
 
 The drag budget is asserted in `packages/sketch/test/drag.test.ts` (median ≤ 4 ms for 200 entities,
 relaxed on CI).
@@ -262,9 +267,9 @@ suites. The Pages deploy runs only on `main`, after all of them pass.
 
 These are in the plan but not wired in this build. The contract types may exist.
 
-- **Push and pull.** The `pushPull` feature type exists in the contract. The regen engine has a
-  planner for it, but the kernel façade has no `pushPull` handler and the UI has no tool. A feature
-  of this type fails with `UNSUPPORTED_FEATURE`.
+- **Push and pull in the app.** The kernel moves planar faces (prism + fuse/cut + seam merge,
+  ADR-013) and the viewport draws a same-frame preview (ADR-014); the app tool arrives with the M2
+  integration.
 - **IGES import.** The import formats include IGES, but the engine rejects it with "export it as
   STEP".
 - **BREP export from the UI.** The kernel and the `ExportFormat` type support BREP. The export menu
@@ -273,8 +278,10 @@ These are in the plan but not wired in this build. The contract types may exist.
   one.
 - **Shell, pattern, hole and measure tools.** Listed in the command bar as disabled.
 - **Draft on extrude.** The field exists, but a non-zero draft is rejected by the kernel.
-- **Phone measure and section.** The phone's Measure and Section tabs are placeholders.
-- **Pencil and tablet gestures.** Planned for M2.
+- **Measure and section in the app.** The kernel measures exactly (`ModelingApi.measure`) and the
+  viewport clips with filled caps (`setSection`); the phone and tablet panels exist in
+  `packages/ui`. They are wired into the app with the M2 integration, together with the tablet and
+  phone shells, gestures, the Pencil and the tutorial (ADR-009 to ADR-014).
 - **Sync, version history, drawings, assemblies.** Planned for M2.5 to M6.
 
 ## 13. Decisions
@@ -287,3 +294,9 @@ These are in the plan but not wired in this build. The contract types may exist.
 - [ADR-006](DECISIONS.md#adr-006--expression-semantics-for-bare-numbers-and-units-2026-11-08): expression semantics.
 - [ADR-007](DECISIONS.md#adr-007--m1-app-integration-decisions-2026-11-08): picking rolls back to the input, the real engine by default, the welcome card, autosave.
 - [ADR-008](DECISIONS.md#adr-008--m1-gate-fixes-in-the-app-2026-11-08): healing, the import and library rules, the mesh cache, and sketch tolerance.
+- [ADR-009](DECISIONS.md#adr-009--m2-touch--tablet-contracts-and-split-2026-11-08): the M2 contracts (gestures, input policy, section, preview, measure, stroke recognition).
+- [ADR-010](DECISIONS.md#adr-010--m2-platform-installed-ipad-pwa-tiers-ci-performance-budgets-2026-11-08): the installed iPad PWA, device tiers and CI performance budgets.
+- [ADR-011](DECISIONS.md#adr-011--m2-sketch-stroke-recognition-and-solver-polish-2026-11-08): Pencil stroke recognition and the solver polish.
+- [ADR-012](DECISIONS.md#adr-012--m2-ui-sheet-keypad-and-tablet-rail-2026-11-08): the bottom sheet, keypad and tablet rail.
+- [ADR-013](DECISIONS.md#adr-013--pushpull-in-the-kernel-prism--boolean--seam-merge-2026-11-08): push/pull in the kernel.
+- [ADR-014](DECISIONS.md#adr-014--m2-viewport-camera-veto-section-caps-gpu-prism-2026-11-08): the viewport's camera veto, section caps and GPU prism.
