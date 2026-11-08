@@ -14,6 +14,74 @@ export interface MeasurePick {
   target: MeasureTarget;
   /** Where it was picked (mm): the marker and the label anchor. */
   at: Vec3;
+  /** Persistent name of a picked face or edge (the mesh's `faceNames`/`edgeNames` entry). */
+  name?: string;
+  /** Position of a picked vertex (meshes carry no vertex names). */
+  vertexAt?: Vec3;
+}
+
+/** The parts of a body's render mesh that `remapPicks` and `pickIdentity` read. */
+export interface PickMesh {
+  faceNames: readonly string[];
+  edgeNames: readonly string[];
+  vertexPositions?: ArrayLike<number>;
+}
+
+function vertexAt(mesh: PickMesh, index: number): Vec3 | undefined {
+  const v = mesh.vertexPositions;
+  const i = index * 3;
+  if (!v || index < 0 || i + 2 >= v.length) return undefined;
+  return [v[i] as number, v[i + 1] as number, v[i + 2] as number];
+}
+
+/**
+ * What identifies a body sub-shape pick across regens: a face's or edge's persistent name, or a
+ * vertex's position. Empty when the mesh has neither (the pick is then dropped by the next regen).
+ */
+export function pickIdentity(
+  target: MeasureTarget,
+  mesh: PickMesh | undefined,
+): Pick<MeasurePick, 'name' | 'vertexAt'> {
+  if (!mesh || !('bodyId' in target)) return {};
+  if (target.kind === 'vertex') {
+    const at = vertexAt(mesh, target.index);
+    return at ? { vertexAt: at } : {};
+  }
+  const names = target.kind === 'face' ? mesh.faceNames : mesh.edgeNames;
+  const name = names[target.index];
+  return name ? { name } : {};
+}
+
+/**
+ * Picks after a regen. Mesh ordinals belong to the geometry they were picked on, so face and edge
+ * picks are found again by persistent name on the new meshes (as the selection is); a pick whose
+ * name no longer resolves, or never had one, is dropped rather than left on whatever now has its
+ * ordinal. Render meshes carry no vertex names: a vertex pick stays only while its ordinal is
+ * still the same point. Point picks always stay.
+ */
+export function remapPicks(
+  picks: readonly MeasurePick[],
+  bodies: ReadonlyArray<{ id: string; mesh: PickMesh }>,
+): MeasurePick[] {
+  return picks.flatMap((p): MeasurePick[] => {
+    const t = p.target;
+    if (!('bodyId' in t)) return [p];
+    const mesh = bodies.find((b) => b.id === t.bodyId)?.mesh;
+    if (!mesh) return [];
+    if (t.kind === 'vertex') {
+      const now = vertexAt(mesh, t.index);
+      const was = p.vertexAt;
+      const same =
+        !!now &&
+        !!was &&
+        [0, 1, 2].every((k) => Math.abs((now[k] as number) - (was[k] as number)) <= 1e-6);
+      return same ? [p] : [];
+    }
+    if (!p.name) return [];
+    const index = (t.kind === 'face' ? mesh.faceNames : mesh.edgeNames).indexOf(p.name);
+    if (index < 0) return [];
+    return index === t.index ? [p] : [{ ...p, target: { ...t, index } }];
+  });
 }
 
 /** A viewport hit as a measure target: sub-shapes of bodies by mesh ordinal, else the point. */
