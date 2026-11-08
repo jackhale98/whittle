@@ -542,6 +542,11 @@ export class Workbench {
     this.cacheKey = key;
     // A save already queued for this document picks the cache up; otherwise save it shortly.
     if (!this.inLibrary || this.autosaver.pending) return;
+    this.scheduleCacheSave();
+  }
+
+  /** Saves the document again shortly so a mesh cache newer than the stored one reaches it. */
+  private scheduleCacheSave(): void {
     clearTimeout(this.cacheTimer);
     this.cacheTimer = setTimeout(() => {
       if (this.cacheKey !== this.savedCacheKey && docKey(this.doc) === this.cacheKey)
@@ -1274,6 +1279,9 @@ export class Workbench {
       this.inLibrary = true;
       this.savedCacheKey = files.key;
       writeLastDoc(doc.meta.id);
+      // Finer meshes that arrived while this save ran (e.g. the first save of a new document,
+      // when updateMeshCache could not schedule one yet) still need to reach the library.
+      if (this.cacheKey !== files.key && !this.autosaver.pending) this.scheduleCacheSave();
     }
     if (this.ui.get().library) void this.refreshLibrary();
   }
