@@ -41,3 +41,51 @@ export const PALETTES: Readonly<Record<'light' | 'dark', Palette>> = {
     keyLight: 0.9,
   },
 };
+
+/**
+ * Selection / sketch / chrome colours. Mirrors the `@whittle/ui` design tokens (kept as a local
+ * copy so the lazy viewport chunk does not pull in the UI package; `test/themes.test.ts` asserts
+ * parity with `colors` from `@whittle/ui`).
+ */
+export interface OverlayColors {
+  accent: string;
+  accentFg: string;
+  underConstrained: string;
+  fullyConstrained: string;
+  danger: string;
+  surface: string;
+  surface2: string;
+  border: string;
+  borderStrong: string;
+  fg: string;
+  fgMuted: string;
+}
+
+export const OVERLAY_COLORS: Readonly<Record<'light' | 'dark', OverlayColors>> = {
+  light: {
+    accent: '#0b5fe8',
+    accentFg: '#ffffff',
+    underConstrained: '#2f6df6',
+    fullyConstrained: '#111827',
+    danger: '#d0281c',
+    surface: '#ffffff',
+    surface2: '#f3f5f9',
+    border: '#d9dfe9',
+    borderStrong: '#76839a',
+    fg: '#0f1729',
+    fgMuted: '#46536b',
+  },
+  dark: {
+    accent: '#5b9bff',
+    accentFg: '#04132e',
+    underConstrained: '#5b8dff',
+    fullyConstrained: '#f4f6fb',
+    danger: '#ff6b5e',
+    surface: '#171b25',
+    surface2: '#1f2430',
+    border: '#2b3243',
+    borderStrong: '#6e7a93',
+    fg: '#e8ecf4',
+    fgMuted: '#a5b0c5',
+  },
+};
