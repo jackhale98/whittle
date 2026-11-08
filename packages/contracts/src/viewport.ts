@@ -257,3 +257,23 @@ export interface TouchViewport extends InteractiveViewport {
   setHandle(id: string, handle: HandleSpec | null): void;
   setMarkers(id: string, markers: Marker[] | null): void;
 }
+
+/**
+ * M2.5 geometric compare overlay (PLAN §8A.3, ADR-020): material version B adds (green) and
+ * removes (red), drawn over the live bodies, which fade to a ghost while the overlay is shown.
+ * Colours come from theme tokens (`compare.added`, `compare.removed`), legible in light and dark.
+ */
+export interface CompareOverlay {
+  added: MeshBuffers[];
+  removed: MeshBuffers[];
+  /** Live bodies' opacity while comparing (default 0.15). */
+  ghostOpacity?: number;
+  /** Show only one side. Default both. */
+  show?: 'both' | 'added' | 'removed';
+}
+
+/** M2.5 surface. */
+export interface CompareViewport extends TouchViewport {
+  /** `null` removes the overlay and restores the bodies. Mesh buffers are transferred in. */
+  setCompare(overlay: CompareOverlay | null): void;
+}
