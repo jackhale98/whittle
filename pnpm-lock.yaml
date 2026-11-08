@@ -221,6 +221,13 @@ importers:
       '@whittle/document':
         specifier: workspace:*
         version: link:../document
+      idb:
+        specifier: 8.0.4
+        version: 8.0.4
+    devDependencies:
+      fake-indexeddb:
+        specifier: 6.2.7
+        version: 6.2.7
 
   packages/test-fixtures:
     dependencies:

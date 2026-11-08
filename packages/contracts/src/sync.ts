@@ -39,6 +39,8 @@ export type StorageErrorCode =
   | 'QUOTA'
   /** The user denied access (folder permission, OAuth consent). */
   | 'PERMISSION'
+  /** This provider or operation isn't available in this build (e.g. a provider without app keys). */
+  | 'UNSUPPORTED'
   /** Anything else, with the HTTP status when there is one. */
   | 'REMOTE';
 
@@ -278,6 +280,11 @@ export interface MergeConflict {
   kind: MergeConflictKind;
   /** JSON pointer in the document; ids, not indices, select array items (`/parts/<id>/features/<id>/radius`). */
   path: JsonPointer;
+  /**
+   * Whole-file conflict (a non-JSON project file, e.g. `imports/bracket.step`, edited on both
+   * sides): its project-relative path. `base`/`ours`/`theirs` then hold the file bytes.
+   */
+  file?: string;
   subject: DiffSubject;
   /** Absent: that side doesn't have it (deleted, or not yet added). */
   base?: unknown;

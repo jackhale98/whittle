@@ -4,7 +4,7 @@
   "private": true,
   "license": "GPL-3.0-or-later",
   "type": "module",
-  "description": "Connections (storage providers), credential vault, background sync, structural merge and diff, snapshot and git history (PLAN §8A).",
+  "description": "Connections and background sync: storage providers (folder, Dropbox, OneDrive/SharePoint, WebDAV, Google Drive), credential vault, OAuth PKCE and the sync engine (PLAN §8A).",
   "exports": {
     ".": "./src/index.ts"
   },
@@ -14,7 +14,10 @@
   },
   "dependencies": {
     "@whittle/contracts": "workspace:*",
-    "@whittle/document": "workspace:*"
+    "@whittle/document": "workspace:*",
+    "idb": "8.0.4"
   },
-  "devDependencies": {}
+  "devDependencies": {
+    "fake-indexeddb": "6.2.7"
+  }
 }

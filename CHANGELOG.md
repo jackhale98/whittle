@@ -57,3 +57,8 @@
 ### M2.5 — Connections, sync & version control
 
 - Regen engine: regen slots (`RegenRequest.slot`: `'main'` or `version:<id>`, each with its own cache, latest state and revision; at most 2 version slots per part, LRU, tunable with `configureRegen({ maxVersionSlots })`; `closePart(partId, slot?)`) and `ModelingApi.compare`: geometric diff B − A / A − B from the existing boolean feature (multi-body sides unioned first), meshed and transferred, with volumes and each side's mass and bounding box; golden tests on the 5 acceptance fixture pairs (volumes to 1e-6).
+
+
+### M2.5 — Connections, sync & version control
+
+- Sync: `@whittle/sync` providers (local folder, Dropbox, OneDrive/SharePoint, WebDAV with the Worker relay; Google Drive sign-in, provider stubbed), encrypted `CredentialVault`, OAuth PKCE by full-page redirect, and a `SyncEngine` that pulls deltas, merges project JSON by stable id, pushes against revisions (never overwrites), debounces, polls, syncs on focus and reconnect and keeps an offline queue; ported from Mycelium.

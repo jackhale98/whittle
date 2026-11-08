@@ -24,7 +24,7 @@ bundled package's licence text plus OCCT's LGPL-2.1 + exception (texts in `licen
 | `@salusoft89/planegcs` | 1.3.0 | LGPL-2.0-or-later | wasm 173 KB gzip + glue 9.5 KB (sketch worker, lazy) | sketch; kernel-client (lazy, for sketch re-solves in the kernel worker) | FreeCAD's PlaneGCS; outputs re-verified by our residual model |
 | `ulid` | 3.0.2 | MIT | < 1 KB | sketch | |
 | `fflate` | 0.8.3 | MIT | ≈ 8 KB | document, io, kernel-client | Zip for 3MF and `.whittle` |
-| `idb` | 8.0.4 | ISC | ≈ 1.2 KB | io (browser) | IndexedDB wrapper for the local library |
+| `idb` | 8.0.4 | ISC | ≈ 1.2 KB | io (browser), sync | IndexedDB wrapper for the local library; sync's credential vault, sync state and merge bases, folder handles |
 | Kernel artefacts `whittle-kernel{,-st}.{js,wasm}` | OCCT 8.0.1 | LGPL-2.1-only WITH Open-CASCADE-Exception-1.0 | ≈ 3.7 MB brotli / 5.3 MB gzip each since M1 (STEP/XCAF); lazy, runtime-cached | kernel | Built reproducibly from `packages/kernel` |
 
 ## Kernel toolchain (build-time, Docker)

@@ -3,7 +3,7 @@
   "extends": "//",
   "overrides": [
     {
-      "includes": ["test/**", "e2e/**", "harness/**"],
+      "includes": ["test/**"],
       "linter": { "rules": { "style": { "noNonNullAssertion": "off" } } }
     }
   ]
