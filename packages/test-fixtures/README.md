@@ -1,0 +1,53 @@
+# @whittle/test-fixtures
+
+Synthetic, structurally correct fixtures for tests. They are hand-built `MeshBuffers` and a
+`SketchResult`, so the viewport and the UI can be tested and benchmarked without the kernel.
+
+They are not golden models. The kernel's golden checks use real geometry from the kernel itself
+(see [`packages/kernel/test`](../kernel/test)). The reference-part set in PLAN §12 (M3) is not in the
+repository yet.
+
+## Exports
+
+The entry is `src/index.ts`, which re-exports `src/meshes.ts` and `src/sketch.ts`.
+
+| Export | What it makes |
+| --- | --- |
+| `boxMesh(dx, dy, dz, options?)` | An axis-aligned box of the given size. The options are `origin` (the minimum corner) and `featureTag` (a prefix for the names). |
+| `denseMesh(targetTriangles, radius?)` | A closed, dense mesh of about the requested number of triangles, around a sphere of the given radius (default 50). Used for frame-time and picking benchmarks. |
+| `sketchFixture(z?, featureId?)` | A `SketchResult` on a horizontal plane: a rectangle, a circle and a few extra entities, with triangulated regions. |
+| `BoxMeshOptions` | The type for `boxMesh`'s options. |
+
+## What the fixtures guarantee
+
+- **`boxMesh`** follows the index-space rules of `MeshBuffers` in
+  [`packages/contracts/src/kernel.ts`](../contracts/src/kernel.ts). It has 24 vertices (four per face,
+  with flat normals), 12 triangles, six face ranges and twelve edge polylines. Face names are
+  `face.<axis>min|max` and edge names are `edge(<roleA>|<roleB>)`, with the roles sorted. Its triangles
+  wind outward, so the signed volume is positive and equals the box volume. Tests check each of these.
+- **`denseMesh`** is structurally valid, and its volume is close to that of a sphere of the given radius.
+- **`sketchFixture`** gives world-space polylines for each entity and triangulated regions. Its
+  `featureId` is used as the prefix of the region names (`<featureId>:region.0`, and so on). These
+  are fixture names, not the kernel's names. The real grammar is in `naming.ts`.
+
+## Tests and scripts
+
+| Command | What it does |
+| --- | --- |
+| `pnpm --filter @whittle/test-fixtures test` | `vitest run` over `test/meshes.test.ts`: box topology, names, winding, normals, edges, origin and feature tags, dense mesh validity |
+| `pnpm --filter @whittle/test-fixtures typecheck` | `tsc -p .` |
+
+## Who uses them
+
+- `packages/viewport`: the unit tests in `test/` (`boxMesh`) and the Vite harness in `harness/`
+  (`boxMesh`, `denseMesh`, `sketchFixture`).
+- `apps/web` declares the package as a dev dependency.
+
+## Dependencies
+
+- `@whittle/contracts` (workspace). It has no third-party dependencies.
+
+## Related
+
+- [`packages/contracts/src/kernel.ts`](../contracts/src/kernel.ts): `MeshBuffers` and its index rules.
+- [`packages/kernel/test`](../kernel/test): the golden tests that use real kernel output.

@@ -183,7 +183,7 @@ multi-solid files, cut/add with the import, mesh reference bodies). `resolve.tes
 adversarial unit cases (near-equidistant, flipped normals, far moves, vanished pieces, weak
 names). Timings are printed as `[regen timing]` lines.
 
-## Kernel gaps and contract proposals (open)
+## Kernel gaps and contract notes
 
 - **Kernel**: no façade call to transform a shape (worked around by BREP location rewriting) and
   none to name a shape's topology (worked around by the no-op intersect + `translateName`). A
@@ -191,9 +191,7 @@ names). Timings are printed as `[regen timing]` lines.
   naming faces `F<id>:face#k` via `finalizeNamed` and applying the op via `applyBodyOp` (so tool
   faces keep `F<id>:face#k` instead of the nested boolean form) — would replace both. No IGES
   reader.
-- **Contracts** (`modeling.ts`): `FeatureStatus.rebound[]` gains `fingerprint?: Fingerprint`;
-  `UnresolvedRef` gains `lastKnown?: Fingerprint`; `ModelingApi` gains
-  `configureRegen(options: { maxSpareResults?: number }): Promise<void>` (all already emitted by
-  this package's `RegenFeatureStatus` / `ModelingWorkerApi`). `naming.ts`: document the import
-  names above (per-body `F<id>:face#k`, `B<id>#k`, `F<id>:face(F<id>:face#k)` for import booleans,
-  single-face mesh bodies).
+- **Contracts** (applied): `FeatureStatus.rebound[]` carries `fingerprint?`, `UnresolvedRef` has
+  `lastKnown?`, `ModelingApi` has `configureRegen`, and `packages/contracts/src/naming.ts` documents
+  the import names (per-body `F<id>:face#k`, `B<id>#k`, `F<id>:face(F<id>:face#k)` for import
+  booleans, single-face mesh bodies). Nothing is pending on the contract side.
