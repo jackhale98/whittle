@@ -11,6 +11,7 @@ import {
   touch,
   touchStats,
 } from './helpers';
+import { expectTouchTarget } from './targets';
 
 /**
  * M2 on the tablet shell with touch and Pencil (PLAN §9.3 gesture map): taps select through the
@@ -73,6 +74,13 @@ async function emptySpot(page: Page): Promise<{ x: number; y: number }> {
   return spot;
 }
 
+type Box = { x: number; y: number; width: number; height: number } | null;
+/** Two page boxes intersect (a missing box never counts as clear). */
+const boxesOverlap = (r: Box, s: Box): boolean =>
+  !r ||
+  !s ||
+  (r.x < s.x + s.width && s.x < r.x + r.width && r.y < s.y + s.height && s.y < r.y + r.height);
+
 test('touch taps select once; bubble; double-tap zoom; long-press; 2/3-finger undo/redo', async ({
   page,
 }) => {
@@ -95,8 +103,10 @@ test('touch taps select once; bubble; double-tap zoom; long-press; 2/3-finger un
     await expect(bubble(page).locator(`[data-action="${id}"]`)).toBeVisible();
   // The bubble stays clear of the top bar and the rail.
   const bb = await bubble(page).boundingBox();
-  const rail = await page.getByRole('toolbar', { name: 'Modeling tools' }).boundingBox();
-  expect((bb?.x ?? 0) >= (rail?.x ?? 0) + (rail?.width ?? 0) || (bb?.y ?? 0) > 0).toBe(true);
+  expect(boxesOverlap(bb, await page.getByTestId('top-bar').boundingBox())).toBe(false);
+  expect(
+    boxesOverlap(bb, await page.getByRole('toolbar', { name: 'Modeling tools' }).boundingBox()),
+  ).toBe(false);
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/ipad-landscape-rail-bubble.png` });
 
   // Double-tap on the face zooms to it; on empty space it fits everything.
@@ -333,4 +343,27 @@ test('portrait: the bubble and overlays stay clear of the rail, top bar and shee
     expect(overlap(library, chrome)).toBe(false);
   }
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/ipad-portrait-rail-bubble.png` });
+});
+
+test('touch targets: welcome actions, Close, Library and the prompt Esc are 44 px', async ({
+  page,
+}) => {
+  await boot(page);
+  const welcome = page.getByTestId('welcome');
+  const actions = welcome.getByRole('button');
+  expect(await actions.count()).toBeGreaterThanOrEqual(5);
+  for (const b of await actions.all()) {
+    await expectTouchTarget(
+      b,
+      (await b.getAttribute('aria-label')) ?? ((await b.textContent()) || 'button'),
+    );
+  }
+  await expectTouchTarget(welcome.getByTestId('take-tour'), 'Take the 60-second tour');
+  await expectTouchTarget(page.getByRole('button', { name: 'Close welcome' }), 'Close welcome');
+  await page.getByRole('button', { name: 'Close welcome' }).tap();
+  await expectTouchTarget(page.getByTestId('library-button'), 'Library');
+  await page.locator('[data-tool-group="sketch"]').tap();
+  const chip = page.getByTestId('prompt-chip');
+  await expect(chip).toContainText('Select a plane');
+  await expectTouchTarget(chip.getByRole('button', { name: /cancel selection/ }), 'Esc');
 });

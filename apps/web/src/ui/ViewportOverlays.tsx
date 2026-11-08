@@ -489,7 +489,11 @@ export function ViewportOverlays({ wb, touch }: { wb: Workbench; touch: boolean 
           data-testid="prompt"
         >
           {ui.prompt?.tool === 'sketch' ? <PlaneChooser wb={wb} doc={doc} /> : null}
-          <PromptChip {...(pickedCount ? { count: pickedCount } : {})} onCancel={() => wb.cancel()}>
+          <PromptChip
+            {...(pickedCount ? { count: pickedCount } : {})}
+            size={touch ? 'touch' : 'md'}
+            onCancel={() => wb.cancel()}
+          >
             {promptText}
           </PromptChip>
         </div>
@@ -583,7 +587,10 @@ export function ViewportOverlays({ wb, touch }: { wb: Workbench; touch: boolean 
             onClick={() => wb.toggleLibrary()}
             aria-pressed={ui.library}
             data-testid="library-button"
-            className="w-panel pointer-events-auto inline-flex h-9 items-center gap-2 rounded-full px-3.5 text-ui font-medium text-fg hover:text-accent-text"
+            className={cn(
+              'w-panel pointer-events-auto inline-flex items-center gap-2 rounded-full px-3.5 text-ui font-medium text-fg hover:text-accent-text',
+              touch ? 'h-11 px-4' : 'h-9',
+            )}
           >
             <Library className="size-3.5" aria-hidden />
             Library

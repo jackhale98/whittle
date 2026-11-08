@@ -6,7 +6,14 @@
  */
 
 import type { PickHit } from '@whittle/contracts';
-import { type MeasurePick, measureMarkers, measureTargetFor, nextPicks } from '../model/measure';
+import {
+  type MeasurePick,
+  measureMarkers,
+  measureTargetFor,
+  nextPicks,
+  pickIdentity,
+  remapPicks,
+} from '../model/measure';
 import type { MeasureUi } from './state';
 import type { Workbench } from './workbench';
 
@@ -71,10 +78,13 @@ export class MeasureTool {
   }
 
   private toPick(hit: PickHit): MeasurePick {
+    const t = measureTargetFor(hit);
+    const mesh = this.wb.regen.get()?.result.bodies.find((b) => b.id === hit.bodyId)?.mesh;
     return {
       id: `m${++this.ids}`,
       label: this.wb.selectionLabel(hit) ?? 'Point',
-      ...measureTargetFor(hit),
+      ...t,
+      ...pickIdentity(t.target, mesh),
     };
   }
 
@@ -138,14 +148,27 @@ export class MeasureTool {
     this.wb.pushHighlights();
   }
 
-  /** Picks name mesh ordinals of the geometry they were made on: an edit invalidates them. */
+  /**
+   * Picks name mesh ordinals of the geometry they were made on. After a regen (an edit, an undo)
+   * they are found again by persistent name, and picks whose name no longer resolves are dropped,
+   * so a measurement never silently moves to another face. A changed pick set is measured again.
+   */
   onRegen(): void {
     const m = this.state();
     if (!m || m.picks.length === 0) return;
-    const bodies = new Set(this.wb.regen.get()?.result.bodies.map((b) => b.id));
-    if (m.picks.some((p) => 'bodyId' in p.target && !bodies.has(p.target.bodyId))) {
-      this.patch({ picks: [], current: null });
-      this.sync();
-    }
+    const picks = remapPicks(m.picks, this.wb.regen.get()?.result.bodies ?? []);
+    const same =
+      picks.length === m.picks.length &&
+      picks.every((p, i) => {
+        const q = m.picks[i];
+        const pi = 'index' in p.target ? p.target.index : -1;
+        const qi = q && 'index' in q.target ? q.target.index : -1;
+        return p.id === q?.id && pi === qi;
+      });
+    if (same) return;
+    this.seq++; // a measurement in flight was for the old ordinals
+    this.patch({ picks, current: null, busy: false });
+    this.sync();
+    if (picks.length > 0) void this.wb.track(this.run());
   }
 }

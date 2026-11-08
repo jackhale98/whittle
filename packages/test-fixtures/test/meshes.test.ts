@@ -130,8 +130,9 @@ describe('boxMesh', () => {
   });
 });
 
+// The 1M-triangle case takes seconds on a loaded runner: explicit timeouts, not the 5 s default.
 describe('denseMesh', () => {
-  it.each([1_000, 50_000, 1_000_000])('approximates %i triangles', (n) => {
+  it.each([1_000, 50_000, 1_000_000])('approximates %i triangles', { timeout: 30_000 }, (n) => {
     const m = denseMesh(n);
     const tris = m.indices.length / 3;
     expect(tris).toBeGreaterThan(n * 0.95);
@@ -140,7 +141,7 @@ describe('denseMesh', () => {
     expect(m.normals.length).toBe(m.positions.length);
   });
 
-  it('is structurally valid and encloses roughly a sphere volume', () => {
+  it('is structurally valid and encloses roughly a sphere volume', { timeout: 30_000 }, () => {
     const m = denseMesh(20_000, 10);
     checkInvariants(m);
     expect(signedVolume(m)).toBeGreaterThan(0.98 * ((4 / 3) * Math.PI * 1000));

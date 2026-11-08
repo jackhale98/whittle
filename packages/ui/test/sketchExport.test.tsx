@@ -395,4 +395,29 @@ describe('export', () => {
     expect(screen.queryByRole('radiogroup', { name: 'Tessellation quality' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Export Whittle project' })).toBeInTheDocument();
   });
+
+  it('reports the chosen target, shows notes without disabling, never checks a disabled one', async () => {
+    const onTargetChange = vi.fn();
+    await open({
+      onTargetChange,
+      notes: { step: 'Loading the geometry kernel… 40%' },
+    });
+    // STEP is the default: reported on open, with its note, and still enabled.
+    expect(onTargetChange).toHaveBeenLastCalledWith('step');
+    expect(screen.getByRole('radio', { name: /^STEP/ })).toBeEnabled();
+    expect(screen.getByTestId('export-note-step')).toHaveTextContent('Loading the geometry');
+    await userEvent.click(screen.getByRole('radio', { name: /^3MF/ }));
+    expect(onTargetChange).toHaveBeenLastCalledWith('3mf');
+    await userEvent.click(screen.getByRole('radio', { name: /^STL/ }));
+    expect(onTargetChange).toHaveBeenLastCalledWith('stl');
+    expect(screen.getByRole('radio', { name: /^STL/ })).toBeChecked();
+  });
+
+  it('a default target that is unavailable falls back to the first available one', async () => {
+    await open({ unavailable: { step: 'Failed', stl: 'Failed' } });
+    expect(screen.getByRole('radio', { name: /^STEP/ })).toBeDisabled();
+    expect(screen.getByRole('radio', { name: /^STEP/ })).not.toBeChecked();
+    expect(screen.getByRole('radio', { name: /^3MF/ })).toBeChecked();
+    expect(screen.getByRole('button', { name: 'Export 3MF' })).toBeEnabled();
+  });
 });

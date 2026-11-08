@@ -184,3 +184,31 @@ export function sampleEntity(
     }
   }
 }
+
+/**
+ * Push/pull (ADR-013 addendum): items grouped by outward normal — equal within `tol` per component
+ * after normalising — with the groups sorted by normal (x, then y, then z, ascending) so the
+ * sequence of per-group steps is deterministic. Items keep their input order inside a group.
+ * Returns null when an item has no normal (a curved face: the kernel reports it).
+ */
+export function groupByNormal<T extends { normal?: Vec3 | undefined }>(
+  items: readonly T[],
+  tol = 1e-6,
+): Array<{ normal: Vec3; items: T[] }> | null {
+  const groups: Array<{ normal: Vec3; items: T[] }> = [];
+  for (const it of items) {
+    if (!it.normal) return null;
+    const n = normalize(it.normal);
+    if (n[0] === 0 && n[1] === 0 && n[2] === 0) return null;
+    const g = groups.find((x) => x.normal.every((v, k) => Math.abs(v - (n[k] as number)) <= tol));
+    if (g) g.items.push(it);
+    else groups.push({ normal: n, items: [it] });
+  }
+  return groups.sort((a, b) => {
+    for (let k = 0; k < 3; k++) {
+      const d = (a.normal[k] as number) - (b.normal[k] as number);
+      if (Math.abs(d) > tol) return d;
+    }
+    return 0;
+  });
+}

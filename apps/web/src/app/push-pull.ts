@@ -11,12 +11,24 @@
 import type { EntityRef, PickHit, Vec3 } from '@whittle/contracts';
 import { newPushPull } from '../features/factories';
 import { partDiagonal } from '../model/attention';
-import { distanceExpr, dragDistance, groupByNormal, snapDistance } from '../model/faces';
+import {
+  type CornerEdge,
+  convexCorners,
+  cornerFillMesh,
+  distanceExpr,
+  dragDistance,
+  groupByNormal,
+  snapDistance,
+} from '../model/faces';
 import { hitKey } from '../selection/pick';
 import type { PushPullUi } from './state';
 import type { Workbench } from './workbench';
 
 const HANDLE = 'pp';
+/** Corner fills where two normal groups meet (ADR-013 addendum). */
+const CORNERS = `${HANDLE}:corners`;
+/** Matches the viewport's prism preview opacity. */
+const PREVIEW_OPACITY = 0.46;
 
 const along = (p: Vec3, n: Vec3, d: number): Vec3 => [
   p[0] + n[0] * d,
@@ -37,6 +49,8 @@ interface Drag {
 export class PushPullTool {
   private drag: Drag | null = null;
   private previewIds: string[] = [];
+  /** Convex edges shared by two of the open push/pull's normal groups (from its body mesh). */
+  private corners: CornerEdge[] = [];
   /** Previews stay up after a commit until the regen that contains the feature lands. */
   private committedAt: unknown = null;
   private raf = 0;
@@ -74,6 +88,15 @@ export class PushPullTool {
     this.startedFor = this.wb.regen.get()?.doc ?? null;
     const f0 = infos[0]?.f;
     if (!f0) return false;
+    const mesh = this.wb.regen.get()?.result.bodies.find((b) => b.id === first.bodyId)?.mesh;
+    this.corners = mesh
+      ? convexCorners(
+          mesh,
+          groupByNormal(
+            infos.map(({ h, f }) => ({ index: h.index, normal: f?.normal ?? f0.normal })),
+          ),
+        )
+      : [];
     const known = new Map(this.wb.ui.get().selection.map((s) => [s.key, s.ref]));
     const pp: PushPullUi = {
       bodyId: first.bodyId,
@@ -130,7 +153,11 @@ export class PushPullTool {
       direction: pp.normal,
     });
     const groups = groupByNormal(pp.faces);
+    // The kernel moves the groups one after the other, so a pull fills the corner between two
+    // perpendicular groups; per-group prisms alone would show a notch there.
+    const fill = cornerFillMesh(this.corners, distance);
     const ids = groups.map((_, k) => `${HANDLE}:${k}`);
+    if (fill) ids.push(CORNERS);
     for (const id of this.previewIds) if (!ids.includes(id)) v.setPreview(id, null);
     this.previewIds = distance === 0 ? [] : ids;
     groups.forEach((g, k) => {
@@ -141,6 +168,7 @@ export class PushPullTool {
           : { kind: 'prism', bodyId: pp.bodyId, faces: g.faces, direction: g.normal, distance },
       );
     });
+    if (fill) v.setPreview(CORNERS, { kind: 'mesh', mesh: fill, opacity: PREVIEW_OPACITY });
   }
 
   private clearPreviews(): void {

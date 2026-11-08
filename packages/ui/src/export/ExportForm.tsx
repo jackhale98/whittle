@@ -1,5 +1,5 @@
 import { Download, Loader2 } from 'lucide-react';
-import { useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Field, Segmented } from '../components/controls';
 import { Button, cn } from '../components/primitives';
 import {
@@ -19,6 +19,10 @@ export interface ExportFormProps {
   defaultTarget?: ExportTarget;
   /** Targets the host cannot produce yet; shown disabled with a reason. */
   unavailable?: Partial<Record<ExportTarget, string>>;
+  /** Status lines shown in place of a target's blurb (e.g. the kernel loading); not disabled. */
+  notes?: Partial<Record<ExportTarget, string>>;
+  /** The chosen target, on mount and on every change (the host may start what it needs). */
+  onTargetChange?(target: ExportTarget): void;
   busy?: boolean;
   size?: 'md' | 'touch';
   className?: string;
@@ -33,11 +37,23 @@ export default function ExportForm({
   bodies = [],
   defaultTarget = 'step',
   unavailable = {},
+  notes = {},
+  onTargetChange,
   busy,
   size = 'md',
   className,
 }: ExportFormProps) {
-  const [target, setTarget] = useState<ExportTarget>(defaultTarget);
+  const [chosen, setTarget] = useState<ExportTarget>(defaultTarget);
+  // A target that became unavailable is never shown checked-but-disabled: the first available
+  // one is used instead (and choosing again is always possible).
+  const target = unavailable[chosen]
+    ? (EXPORT_TARGETS.find((t) => !unavailable[t.id])?.id ?? chosen)
+    : chosen;
+  const targetChange = useRef(onTargetChange);
+  targetChange.current = onTargetChange;
+  useEffect(() => {
+    targetChange.current?.(target);
+  }, [target]);
   const [binary, setBinary] = useState(true);
   const [perBody, setPerBody] = useState(false);
   const [quality, setQuality] = useState<TessellationQuality>('standard');
@@ -82,7 +98,12 @@ export default function ExportForm({
                   <span className="text-ui font-medium">{t.label}</span>
                   <span className="tnum text-2xs text-fg-muted">{t.ext}</span>
                 </span>
-                <span className="block truncate text-2xs text-fg-muted">{reason ?? t.blurb}</span>
+                <span
+                  className="block truncate text-2xs text-fg-muted"
+                  data-testid={notes[t.id] && !reason ? `export-note-${t.id}` : undefined}
+                >
+                  {reason ?? notes[t.id] ?? t.blurb}
+                </span>
               </span>
             </label>
           );

@@ -1,6 +1,8 @@
 import type { MeshBuffers } from '@whittle/contracts';
 import { describe, expect, it } from 'vitest';
 import {
+  convexCorners,
+  cornerFillMesh,
   distanceExpr,
   dragDistance,
   faceInfo,
@@ -111,5 +113,108 @@ describe('section planes', () => {
     expect(sectionPlane(s)?.origin).toEqual([0, 0, 3]);
     expect(sectionRange(s, bounds)).toEqual({ min: -5, max: 25 });
     expect(sectionPlane({ ...s, face: null })).toBeNull();
+  });
+});
+
+type P3 = [number, number, number];
+/** A mesh with one quad per face (CCW seen from outside), vertices duplicated per face. */
+function quads(faces: Array<[P3, P3, P3, P3]>): MeshBuffers {
+  const positions = new Float32Array(faces.flat(2));
+  const indices: number[] = [];
+  const ranges: number[] = [];
+  faces.forEach((_, f) => {
+    const b = f * 4;
+    indices.push(b, b + 1, b + 2, b, b + 2, b + 3);
+    ranges.push(f * 2, 2);
+  });
+  return {
+    positions,
+    normals: new Float32Array(positions.length),
+    indices: new Uint32Array(indices),
+    faceRanges: new Uint32Array(ranges),
+    edgePositions: new Float32Array(),
+    edgeRanges: new Uint32Array(),
+    faceNames: faces.map((_, i) => `f${i}`),
+    edgeNames: [],
+    bbox: { min: [0, 0, 0], max: [80, 50, 10] },
+  };
+}
+
+describe('push/pull corner fills (ADR-013 addendum)', () => {
+  // Part of an 80 × 50 × 10 plate: 0 top (+Z), 1 right (+X), 2 bottom (−Z), 3 front (−Y).
+  const plate = quads([
+    [
+      [0, 0, 10],
+      [80, 0, 10],
+      [80, 50, 10],
+      [0, 50, 10],
+    ],
+    [
+      [80, 0, 0],
+      [80, 50, 0],
+      [80, 50, 10],
+      [80, 0, 10],
+    ],
+    [
+      [0, 0, 0],
+      [0, 50, 0],
+      [80, 50, 0],
+      [80, 0, 0],
+    ],
+    [
+      [0, 0, 0],
+      [80, 0, 0],
+      [80, 0, 10],
+      [0, 0, 10],
+    ],
+  ]);
+  const top = { index: 0, normal: [0, 0, 1] as P3 };
+  const right = { index: 1, normal: [1, 0, 0] as P3 };
+  const bottom = { index: 2, normal: [0, 0, -1] as P3 };
+  const front = { index: 3, normal: [0, -1, 0] as P3 };
+
+  it('top + side: one convex edge; a pull fills the 5 × 5 corner along it', () => {
+    const corners = convexCorners(plate, groupByNormal([top, right]));
+    expect(corners).toHaveLength(1);
+    const fill = cornerFillMesh(corners, 5);
+    expect(fill?.bbox).toEqual({ min: [80, 0, 10], max: [85, 50, 15] });
+    expect(fill?.indices.length).toBe(4 * 6); // two outer faces and two ends
+    expect(fill?.faceRanges).toEqual(new Uint32Array([0, 8]));
+    // A push needs no fill: the cut prisms already overlap at a convex corner.
+    expect(cornerFillMesh(corners, -3)).toBeNull();
+    expect(cornerFillMesh(corners, 0)).toBeNull();
+  });
+
+  it('three faces around a corner: one fill per shared edge', () => {
+    expect(convexCorners(plate, groupByNormal([top, right, front]))).toHaveLength(3);
+  });
+
+  it('opposite or same-normal faces, and concave edges, get no fill', () => {
+    expect(convexCorners(plate, groupByNormal([top, bottom]))).toEqual([]);
+    expect(convexCorners(plate, groupByNormal([top]))).toEqual([]);
+    // A step: the lower top (z = 5, x ≤ 40) meets the riser (x = 40, facing −X) concavely.
+    const step = quads([
+      [
+        [0, 0, 5],
+        [40, 0, 5],
+        [40, 50, 5],
+        [0, 50, 5],
+      ],
+      [
+        [40, 0, 5],
+        [40, 0, 10],
+        [40, 50, 10],
+        [40, 50, 5],
+      ],
+    ]);
+    expect(
+      convexCorners(
+        step,
+        groupByNormal([
+          { index: 0, normal: [0, 0, 1] },
+          { index: 1, normal: [-1, 0, 0] },
+        ]),
+      ),
+    ).toEqual([]);
   });
 });

@@ -1,4 +1,4 @@
-import type { PickHit } from '@whittle/contracts';
+import type { PickHit, Vec3 } from '@whittle/contracts';
 import { describe, expect, it } from 'vitest';
 import {
   labelText,
@@ -7,6 +7,8 @@ import {
   measureMarkers,
   measureTargetFor,
   nextPicks,
+  pickIdentity,
+  remapPicks,
 } from './measure';
 
 const hit = (kind: PickHit['kind'], point: [number, number, number] = [1, 2, 3]): PickHit => ({
@@ -106,5 +108,66 @@ describe('measure display', () => {
     );
     expect(measureLabel(picks, { area: 5 })?.at).toEqual([4, 4, 4]);
     expect(measureLabel(picks, null)).toBeNull();
+  });
+});
+
+describe('measure picks across regens', () => {
+  const mesh = (faces: string[], edges: string[] = [], vertices: number[] = []) => ({
+    faceNames: faces,
+    edgeNames: edges,
+    vertexPositions: new Float32Array(vertices),
+  });
+  const at = (
+    kind: 'face' | 'edge' | 'vertex',
+    index: number,
+    extra: Partial<MeasurePick> = {},
+  ): MeasurePick => ({
+    id: `${kind}${index}`,
+    label: kind,
+    kind,
+    target: { bodyId: 'B1', kind, index },
+    at: [0, 0, 0],
+    ...extra,
+  });
+
+  it('records the persistent name (faces, edges) or the position (vertices) of a pick', () => {
+    const m = mesh(['Ftop', 'Fside'], ['edge(a|b)'], [0, 0, 0, 1, 2, 3]);
+    expect(pickIdentity({ bodyId: 'B1', kind: 'face', index: 1 }, m)).toEqual({ name: 'Fside' });
+    expect(pickIdentity({ bodyId: 'B1', kind: 'edge', index: 0 }, m)).toEqual({
+      name: 'edge(a|b)',
+    });
+    expect(pickIdentity({ bodyId: 'B1', kind: 'vertex', index: 1 }, m)).toEqual({
+      vertexAt: [1, 2, 3],
+    });
+    expect(pickIdentity({ bodyId: 'B1', kind: 'face', index: 9 }, m)).toEqual({});
+    expect(pickIdentity({ point: [0, 0, 0] }, m)).toEqual({});
+  });
+
+  it('re-finds faces and edges by name after an edit, dropping names that are gone', () => {
+    const point: Vec3 = [1, 1, 1];
+    const picks: MeasurePick[] = [
+      at('face', 0, { name: 'Ftop' }),
+      at('edge', 0, { name: 'edge(a|b)' }),
+      at('face', 1, { name: 'Fpocket' }),
+      { id: 'pt', label: 'Point', kind: 'point', target: { point }, at: point },
+    ];
+    // An undo removed the pocket and reordered the faces and edges.
+    const after = mesh(['Fside', 'Fbottom', 'Ftop'], ['x', 'edge(a|b)']);
+    const out = remapPicks(picks, [{ id: 'B1', mesh: after }]);
+    expect(out.map((p) => p.id)).toEqual(['face0', 'edge0', 'pt']);
+    expect(out[0]?.target).toEqual({ bodyId: 'B1', kind: 'face', index: 2 });
+    expect(out[1]?.target).toEqual({ bodyId: 'B1', kind: 'edge', index: 1 });
+    // Unchanged geometry keeps the very same picks.
+    const same = remapPicks(picks.slice(0, 1), [{ id: 'B1', mesh: mesh(['Ftop']) }]);
+    expect(same[0]).toBe(picks[0]);
+  });
+
+  it('never keeps an ordinal it cannot vouch for: unnamed picks, moved vertices, gone bodies', () => {
+    const m = mesh(['Ftop'], [], [5, 5, 5]);
+    expect(remapPicks([at('face', 0)], [{ id: 'B1', mesh: m }])).toEqual([]);
+    const v = at('vertex', 0, { vertexAt: [5, 5, 5] });
+    expect(remapPicks([v], [{ id: 'B1', mesh: m }])).toEqual([v]);
+    expect(remapPicks([v], [{ id: 'B1', mesh: mesh(['Ftop'], [], [6, 5, 5]) }])).toEqual([]);
+    expect(remapPicks([at('face', 0, { name: 'Ftop' })], [])).toEqual([]);
   });
 });

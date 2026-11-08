@@ -25,3 +25,17 @@ export function readSafeInsets(): Insets {
     left: px(cs.paddingLeft),
   };
 }
+
+/**
+ * The nearest ancestor of `el` that scrolls vertically (has overflow and room to scroll): a sheet
+ * or panel. Never the page itself (the app shell does not scroll) and never a container of the
+ * 3D view, whose overlays (sketch dimension fields) must not shift against the canvas.
+ */
+export function scrollParent(el: Element): HTMLElement | null {
+  for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+    if (p.querySelector('canvas')) return null;
+    const oy = getComputedStyle(p).overflowY;
+    if ((oy === 'auto' || oy === 'scroll') && p.scrollHeight > p.clientHeight) return p;
+  }
+  return null;
+}

@@ -139,6 +139,15 @@ export class MeshPreview {
     this.colorU.value.set(color);
   }
 
+  /**
+   * New geometry, same material: an updated mesh preview (e.g. push/pull corner fills during a
+   * drag) never builds a new shader, only small vertex buffers.
+   */
+  setMesh(mesh: MeshBuffers): void {
+    this.mesh.geometry.dispose();
+    this.mesh.geometry = meshBuffersToGeometry(mesh);
+  }
+
   setOpacity(opacity: number): void {
     this.material.opacity = opacity;
   }

@@ -209,7 +209,7 @@ function ParamRow({
               }}
               className={cn(
                 'w-full rounded-[7px] bg-transparent px-1.5 text-2xs text-fg-muted outline-none placeholder:text-fg-subtle focus-visible:bg-surface focus-visible:shadow-[inset_0_0_0_2px_var(--color-accent)]',
-                touch ? 'h-9' : 'h-6',
+                touch ? 'h-11' : 'h-6',
               )}
             />
           ) : (
@@ -218,7 +218,7 @@ function ParamRow({
               onClick={() => setDescribing(true)}
               className={cn(
                 'self-start rounded-[7px] px-1.5 text-2xs font-medium text-fg-subtle hover:text-fg',
-                touch ? 'h-9' : 'h-5',
+                touch ? 'h-11 min-w-11' : 'h-5',
                 !touch &&
                   'opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 group-focus-within/row:opacity-100',
               )}

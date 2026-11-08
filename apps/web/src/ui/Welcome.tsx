@@ -23,6 +23,8 @@ export const LICENSE_URL = 'https://github.com/jackhale98/whittle/blob/main/LICE
 
 export function WelcomeContent({ wb, compact }: { wb: Workbench; compact?: boolean }) {
   const install = useInstallState();
+  // 44 px targets on touch tiers (ADR-012 item 6).
+  const size = wb.tier === 'desktop' ? 'md' : 'touch';
   return (
     <div className={cn('flex flex-col items-center text-center', compact ? 'gap-3' : 'gap-4')}>
       <BirdMark className={compact ? 'size-14' : 'size-20'} />
@@ -34,6 +36,7 @@ export function WelcomeContent({ wb, compact }: { wb: Workbench; compact?: boole
       </div>
       <div className="flex w-full max-w-72 flex-col gap-2">
         <Button
+          size={size}
           variant="primary"
           icon={<Sparkles className="size-4" />}
           onClick={() => void wb.openDemo()}
@@ -42,6 +45,7 @@ export function WelcomeContent({ wb, compact }: { wb: Workbench; compact?: boole
           Open the demo bracket
         </Button>
         <Button
+          size={size}
           variant="secondary"
           icon={<GraduationCap className="size-4" />}
           onClick={() => wb.requestTour()}
@@ -50,6 +54,7 @@ export function WelcomeContent({ wb, compact }: { wb: Workbench; compact?: boole
           Take the 60-second tour
         </Button>
         <Button
+          size={size}
           variant="secondary"
           icon={<Plus className="size-4" />}
           onClick={() => void wb.newDocument()}
@@ -57,6 +62,7 @@ export function WelcomeContent({ wb, compact }: { wb: Workbench; compact?: boole
           New part
         </Button>
         <Button
+          size={size}
           variant="secondary"
           icon={<FolderOpen className="size-4" />}
           onClick={() => void wb.openFromDisk('new')}
@@ -66,6 +72,7 @@ export function WelcomeContent({ wb, compact }: { wb: Workbench; compact?: boole
         </Button>
         {install.kind === 'prompt' ? (
           <Button
+            size={size}
             variant="secondary"
             icon={<Download className="size-4" />}
             onClick={() => void promptInstall()}
@@ -108,9 +115,10 @@ export default function Welcome({ wb }: { wb: Workbench }) {
     >
       <IconButton
         label="Close welcome"
+        size={wb.tier === 'desktop' ? 'md' : 'touch'}
         icon={<X className="size-4" />}
         onClick={() => wb.patchUi({ welcome: false })}
-        className="absolute top-2.5 right-2.5"
+        className={wb.tier === 'desktop' ? 'absolute top-2.5 right-2.5' : 'absolute top-1 right-1'}
       />
       <WelcomeContent wb={wb} />
     </section>

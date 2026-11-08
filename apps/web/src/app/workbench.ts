@@ -537,7 +537,8 @@ export class Workbench {
     const run = () => {
       if (!this.store.undo()) this.toast('Nothing to undo', 'info');
     };
-    if (this.sketch?.busy) void this.sketch.whenSettled().then(run);
+    // Tracked, so `idle()` waits for the deferred undo/redo too.
+    if (this.sketch?.busy) void this.track(this.sketch.whenSettled().then(run));
     else run();
   }
 
@@ -545,7 +546,8 @@ export class Workbench {
     const run = () => {
       if (!this.store.redo()) this.toast('Nothing to redo', 'info');
     };
-    if (this.sketch?.busy) void this.sketch.whenSettled().then(run);
+    // Tracked, so `idle()` waits for the deferred undo/redo too.
+    if (this.sketch?.busy) void this.track(this.sketch.whenSettled().then(run));
     else run();
   }
 
@@ -1605,7 +1607,7 @@ export class Workbench {
 
   /** Sketch tool: plane chooser prompt (or straight in with a selected planar face). */
   sketchTool(): void {
-    void this.runTool('sketch');
+    void this.track(this.runTool('sketch')); // tracked: `idle()` waits for it (bubble, rail, ⌘K)
     void this.loadSketch(); // warm the chunk while the user picks a plane
   }
 
