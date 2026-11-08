@@ -48,7 +48,11 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: packages/kernel/dist
-          key: kernel-${{ env.KERNEL_CACHE_VERSION }}-${{ hashFiles('packages/kernel/src/**', 'packages/kernel/scripts/**', 'packages/kernel/libcascade.config.ts', 'packages/kernel/package.json', 'pnpm-lock.yaml') }}
+          # Only the kernel's own inputs: its sources, build config/scripts and package.json (which
+          # pins @libcascade/toolchain exactly; the toolchain pins the Docker images by digest).
+          # The repo-wide lockfile is deliberately excluded so app/UI dependency changes reuse the
+          # cached kernel instead of rebuilding it in Docker.
+          key: kernel-${{ env.KERNEL_CACHE_VERSION }}-${{ hashFiles('packages/kernel/src/**', 'packages/kernel/scripts/**', 'packages/kernel/libcascade.config.ts', 'packages/kernel/package.json') }}
 
       - name: Free disk space for the toolchain images
         if: steps.kernel-cache.outputs.cache-hit != 'true'
