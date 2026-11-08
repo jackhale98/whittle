@@ -1,0 +1,305 @@
+/*
+ * Whittle brand: the perched bird (logo) and the whittling loader. Geometry and palettes come from
+ * the brand kit (brand/README.md, brand/build.py); here the greys are theme variables so a single
+ * inline SVG follows the app's light/dark theme, and the wing uses the app accent.
+ */
+:root {
+  --whittle-accent: var(--color-accent);
+  /* Ink on paper (light). Tones dark → light. */
+  --wb-0: #16181d;
+  --wb-1: #3a404c;
+  --wb-2: #6a7383;
+  --wb-3: #a9b0bc;
+  --wb-eye: #16181d;
+  --wb-block-front: #6a7383;
+  --wb-block-top: #a9b0bc;
+  --wb-block-side: #3a404c;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --wb-0: #545c6c;
+    --wb-1: #8c93a1;
+    --wb-2: #c3c8d1;
+    --wb-3: #ecedef;
+    --wb-eye: #101217;
+    --wb-block-front: #8c93a1;
+    --wb-block-top: #c3c8d1;
+    --wb-block-side: #545c6c;
+  }
+}
+:root[data-theme="dark"] {
+  --wb-0: #545c6c;
+  --wb-1: #8c93a1;
+  --wb-2: #c3c8d1;
+  --wb-3: #ecedef;
+  --wb-eye: #101217;
+  --wb-block-front: #8c93a1;
+  --wb-block-top: #c3c8d1;
+  --wb-block-side: #545c6c;
+}
+
+/* Loader: block → rough → shaped → finished (chips fly at each cut), seamless 4.4 s loop. */
+.wl-b0,
+.wl-b1,
+.wl-b2,
+.wl-bin {
+  opacity: 0;
+}
+.wl-b3 {
+  opacity: 1;
+}
+.wl-b0 {
+  animation: wl-b0 4.4s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
+.wl-b1 {
+  animation: wl-b1 4.4s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
+.wl-b2 {
+  animation: wl-b2 4.4s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
+.wl-b3 {
+  animation: wl-b3 4.4s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
+.wl-bin {
+  animation: wl-bin 4.4s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
+@keyframes wl-b0 {
+  0%,
+  13% {
+    opacity: 1;
+  }
+  16%,
+  99.9% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+@keyframes wl-b1 {
+  0%,
+  13% {
+    opacity: 0;
+  }
+  16%,
+  29% {
+    opacity: 1;
+  }
+  32%,
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes wl-b2 {
+  0%,
+  29% {
+    opacity: 0;
+  }
+  32%,
+  45% {
+    opacity: 1;
+  }
+  48%,
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes wl-b3 {
+  0%,
+  45% {
+    opacity: 0;
+    transform: translateX(0);
+  }
+  48%,
+  72% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  92%,
+  100% {
+    opacity: 0;
+    transform: translateX(-30px);
+  }
+}
+@keyframes wl-bin {
+  0%,
+  72% {
+    opacity: 0;
+    transform: translateX(30px);
+  }
+  92%,
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+.wl-chip {
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+}
+.wl-c1 {
+  animation: wl-c1 4.4s linear infinite;
+}
+.wl-c2 {
+  animation: wl-c2 4.4s linear infinite;
+}
+.wl-c3 {
+  animation: wl-c3 4.4s linear infinite;
+}
+@keyframes wl-c1 {
+  0%,
+  13.9% {
+    opacity: 0;
+    transform: translate(0px, 0px) rotate(0deg);
+  }
+  14.5% {
+    opacity: 1;
+    transform: translate(0px, 0px) rotate(0deg);
+  }
+  23% {
+    opacity: 0;
+    transform: translate(10px, -14px) rotate(160deg);
+  }
+  23.1%,
+  29.9% {
+    opacity: 0;
+    transform: translate(0px, 0px) rotate(0deg);
+  }
+  30.5% {
+    opacity: 1;
+    transform: translate(0px, 0px) rotate(0deg);
+  }
+  39% {
+    opacity: 0;
+    transform: translate(10px, -14px) rotate(160deg);
+  }
+  39.1%,
+  45.9% {
+    opacity: 0;
+    transform: translate(0px, 0px) rotate(0deg);
+  }
+  46.5% {
+    opacity: 1;
+    transform: translate(0px, 0px) rotate(0deg);
+  }
+  55% {
+    opacity: 0;
+    transform: translate(10px, -14px) rotate(160deg);
+  }
+  55.1%,
+  100% {
+    opacity: 0;
+    transform: translate(0px, 0px) rotate(0deg);
+  }
+}
+@keyframes wl-c2 {
+  0%,
+  13.9% {
+    opacity: 0;
+    transform: translate(0px, 0px) rotate(0deg);
+  }
+  14.5% {
+    opacity: 1;
+    transform: translate(0px, 0px) rotate(0deg);
+  }
+  23% {
+    opacity: 0;
+    transform: translate(-12px, -10px) rotate(-140deg);
+  }
+  23.1%,
+  29.9% {
+    opacity: 0;
+    transform: translate(0px, 0px) rotate(0deg);
+  }
+  30.5% {
+    opacity: 1;
+    transform: translate(0px, 0px) rotate(0deg);
+  }
+  39% {
+    opacity: 0;
+    transform: translate(-12px, -10px) rotate(-140deg);
+  }
+  39.1%,
+  45.9% {
+    opacity: 0;
+    transform: translate(0px, 0px) rotate(0deg);
+  }
+  46.5% {
+    opacity: 1;
+    transform: translate(0px, 0px) rotate(0deg);
+  }
+  55% {
+    opacity: 0;
+    transform: translate(-12px, -10px) rotate(-140deg);
+  }
+  55.1%,
+  100% {
+    opacity: 0;
+    transform: translate(0px, 0px) rotate(0deg);
+  }
+}
+@keyframes wl-c3 {
+  0%,
+  13.9% {
+    opacity: 0;
+    transform: translate(0px, 0px) rotate(0deg);
+  }
+  14.5% {
+    opacity: 1;
+    transform: translate(0px, 0px) rotate(0deg);
+  }
+  23% {
+    opacity: 0;
+    transform: translate(12px, 10px) rotate(200deg);
+  }
+  23.1%,
+  29.9% {
+    opacity: 0;
+    transform: translate(0px, 0px) rotate(0deg);
+  }
+  30.5% {
+    opacity: 1;
+    transform: translate(0px, 0px) rotate(0deg);
+  }
+  39% {
+    opacity: 0;
+    transform: translate(12px, 10px) rotate(200deg);
+  }
+  39.1%,
+  45.9% {
+    opacity: 0;
+    transform: translate(0px, 0px) rotate(0deg);
+  }
+  46.5% {
+    opacity: 1;
+    transform: translate(0px, 0px) rotate(0deg);
+  }
+  55% {
+    opacity: 0;
+    transform: translate(12px, 10px) rotate(200deg);
+  }
+  55.1%,
+  100% {
+    opacity: 0;
+    transform: translate(0px, 0px) rotate(0deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .wl-b0,
+  .wl-b1,
+  .wl-b2,
+  .wl-bin {
+    animation: none;
+    opacity: 0;
+  }
+  .wl-b3 {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+  .wl-chip {
+    animation: none;
+    opacity: 0;
+  }
+}

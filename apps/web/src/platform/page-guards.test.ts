@@ -137,6 +137,25 @@ describe('installed-PWA markup', () => {
     expect(html).not.toMatch(/https?:\/\//);
   });
 
+  it('brand: adaptive favicon, PNG fallback, and the loader splash shown until React renders', () => {
+    expect(html).toContain('href="%BASE_URL%icons/favicon.svg" type="image/svg+xml"');
+    expect(html).toContain('href="%BASE_URL%icons/favicon-32.png"');
+    // The splash lives inside #root (React's first render replaces it) and follows the system theme.
+    expect(html).toMatch(/<div id="root">\s*<div class="boot" role="status"/);
+    expect(html).toContain(
+      'srcset="%BASE_URL%brand/whittle-loader-dark.svg" media="(prefers-color-scheme: dark)"',
+    );
+    expect(html).toContain('src="%BASE_URL%brand/whittle-loader-light.svg"');
+    for (const f of [
+      'brand/whittle-loader-dark.svg',
+      'brand/whittle-loader-light.svg',
+      'icons/favicon.svg',
+    ])
+      expect(readFileSync(resolve(root, 'public', f), 'utf8')).not.toMatch(
+        /<script|https?:\/\/(?!www\.w3\.org)/,
+      );
+  });
+
   it('CSS: touch-action, overscroll, selection, callout, tap highlight, safe-area variables', () => {
     expect(css).toMatch(/html\s*\{[^}]*touch-action:\s*manipulation/);
     expect(css).toMatch(/overscroll-behavior:\s*none/);

@@ -1,6 +1,7 @@
 @import "@fontsource-variable/inter/wght.css";
 @import "tailwindcss";
 @import "./tokens.css";
+@import "../brand/brand.css";
 
 /* Scan the package's own sources for utility classes when consumed from another Vite app. */
 @source "../";

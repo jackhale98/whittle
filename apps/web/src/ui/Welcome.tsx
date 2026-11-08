@@ -4,7 +4,7 @@
  * the source and the licence. The app keeps working behind it.
  */
 
-import { Button, cn, IconButton } from '@whittle/ui';
+import { BirdMark, Button, cn, IconButton } from '@whittle/ui';
 import { Download, ExternalLink, FolderOpen, Plus, Share, Sparkles, X } from 'lucide-react';
 import type { Workbench } from '../app/workbench';
 import { promptInstall, useInstallState } from '../platform/install';
@@ -16,11 +16,7 @@ export function WelcomeContent({ wb, compact }: { wb: Workbench; compact?: boole
   const install = useInstallState();
   return (
     <div className={cn('flex flex-col items-center text-center', compact ? 'gap-3' : 'gap-4')}>
-      <svg viewBox="0 0 24 24" className="size-11" aria-hidden="true">
-        <rect width="24" height="24" rx="7" className="fill-accent" />
-        <path d="M7 7h6.2L17 10.8V17H7z" className="fill-accent-fg" fillOpacity="0.96" />
-        <path d="M13.2 7v3.8H17" fill="none" strokeWidth="1.2" className="stroke-accent" />
-      </svg>
+      <BirdMark className={compact ? 'size-14' : 'size-20'} />
       <div>
         <h2 className="text-lg font-semibold tracking-tight">Welcome to Whittle</h2>
         <p className="mt-1 max-w-[34ch] text-ui text-fg-muted">
