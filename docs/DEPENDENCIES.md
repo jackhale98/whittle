@@ -46,5 +46,7 @@ GPL-3.0-or-later (ADR-003): every dependency must be GPL-3.0-compatible (no GPL-
 | `size-limit`, `@size-limit/file` | 14.3.0 | MIT |
 | `jsdom` | 31.0.0 | MIT |
 | `fake-indexeddb` | 6.2.7 | Apache-2.0 |
+| `ajv` | 8.20.0 | MIT |
+| `ts-json-schema-generator` | 2.9.0 | MIT |
 | `@testing-library/react`, `jest-dom`, `user-event` | 16.3.3, 7.0.1, 14.6.8 | MIT |
 | `@types/three`, `@types/react`, `@types/react-dom` | 0.187.0, 19.3.0, 19.3.0 | MIT |

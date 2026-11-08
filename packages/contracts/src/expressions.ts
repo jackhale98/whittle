@@ -12,19 +12,29 @@
 
 import type { Expr } from './document';
 
-/** Exponents of the base dimensions [length, mass, angle]. */
-export type DimensionVector = readonly [length: number, mass: number, angle: number];
+/** Exponents of the base dimensions [length, mass, angle, time]. Time exists for pressure/stress (MPa, GPa). */
+export type DimensionVector = readonly [length: number, mass: number, angle: number, time: number];
 
-export type NamedDimension = 'scalar' | 'length' | 'angle' | 'area' | 'volume' | 'mass' | 'density';
+export type NamedDimension =
+  | 'scalar'
+  | 'length'
+  | 'angle'
+  | 'area'
+  | 'volume'
+  | 'mass'
+  | 'density'
+  | 'pressure';
 
 export const DIMENSIONS: Record<NamedDimension, DimensionVector> = {
-  scalar: [0, 0, 0],
-  length: [1, 0, 0],
-  angle: [0, 0, 1],
-  area: [2, 0, 0],
-  volume: [3, 0, 0],
-  mass: [0, 1, 0],
-  density: [-3, 1, 0],
+  scalar: [0, 0, 0, 0],
+  length: [1, 0, 0, 0],
+  angle: [0, 0, 1, 0],
+  area: [2, 0, 0, 0],
+  volume: [3, 0, 0, 0],
+  mass: [0, 1, 0, 0],
+  density: [-3, 1, 0, 0],
+  /** Canonical unit: kg/(mm·s²) = 1 kPa. */
+  pressure: [-1, 1, 0, -2],
 };
 
 export interface ExprError {
@@ -48,6 +58,8 @@ export interface EvalScope {
 }
 
 export interface ExpressionEngine {
+  /** Evaluates without an expected dimension (parameters have none). */
+  evaluateAny(expr: Expr, scope: EvalScope): EvalResult;
   /** Evaluates and checks the result against `expected` (e.g. a fillet radius must be a length). */
   evaluate(expr: Expr, expected: NamedDimension, scope: EvalScope): EvalResult;
   /** Formats a canonical value for display in `unit` with sensible precision. */

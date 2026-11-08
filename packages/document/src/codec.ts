@@ -299,12 +299,20 @@ export function unpackFiles(bytes: Uint8Array): { files: ProjectFiles; cache: Pr
   return { files, cache };
 }
 
+const MODEL_PATH = /^(whittle\.project\.json|params\.json|(parts|drawings|assemblies)\/)/;
+
 export const projectCodec: ProjectCodec = {
   toFiles,
   fromFiles,
   toWhittle: (doc, cache) => packFiles(toFiles(doc), cache),
   fromWhittle(bytes) {
     const { files, cache } = unpackFiles(bytes);
-    return { doc: fromFiles(files), cache };
+    // Files outside the document model (previews/, releases/, …) are returned so a round trip
+    // through Whittle never drops them.
+    const extra: ProjectFiles = new Map();
+    for (const [path, data] of files) {
+      if (!MODEL_PATH.test(path)) extra.set(path, data);
+    }
+    return { doc: fromFiles(files), cache, extra };
   },
 };

@@ -467,6 +467,10 @@
           "description": "ISO-8601 timestamps.",
           "type": "string"
         },
+        "id": {
+          "$ref": "#/definitions/Id",
+          "description": "Stable document id (ULID), assigned at creation; survives renames (library identity)."
+        },
         "modified": {
           "type": "string"
         },

@@ -15,7 +15,8 @@ export interface ProjectCodec {
   fromFiles(files: ProjectFiles): WhittleDoc;
   /** `.whittle` = the folder zipped (fflate). Cache (`.whittle/`) entries are optional. */
   toWhittle(doc: WhittleDoc, cache?: ProjectFiles): Uint8Array;
-  fromWhittle(bytes: Uint8Array): { doc: WhittleDoc; cache: ProjectFiles };
+  /** `extra` holds project files outside the document model (previews/, releases/), kept on round trips. */
+  fromWhittle(bytes: Uint8Array): { doc: WhittleDoc; cache: ProjectFiles; extra?: ProjectFiles };
 }
 
 /** Mesh exports computed in TS from regen meshes (no kernel needed). */

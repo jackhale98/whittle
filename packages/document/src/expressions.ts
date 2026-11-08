@@ -393,6 +393,7 @@ const DEFAULT_FORMAT_UNIT: Record<NamedDimension, string> = {
   volume: 'mm^3',
   mass: 'g',
   density: 'g/cm^3',
+  pressure: 'MPa',
 };
 
 export class ExpressionEngineImpl implements ExpressionEngine {

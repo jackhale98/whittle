@@ -107,8 +107,8 @@ export function namedDim(name: NamedDimension): Dim {
 }
 
 /** First three entries, as the contract's `DimensionVector`. */
-export function toContractDim(d: Dim): readonly [number, number, number] {
-  return [d[0], d[1], d[2]];
+export function toContractDim(d: Dim): readonly [number, number, number, number] {
+  return [d[0], d[1], d[2], d[3]];
 }
 
 const DIM_NAMES: [Dim, string][] = [

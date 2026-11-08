@@ -161,6 +161,8 @@ describe('evaluateFeatureValues', () => {
 
   it('works with any ExpressionEngine implementation (contract only)', () => {
     const wrapped = {
+      evaluateAny: (...a: Parameters<ExpressionEngineImpl['evaluateAny']>) =>
+        expressionEngine.evaluateAny(...a),
       evaluate: (...a: Parameters<ExpressionEngineImpl['evaluate']>) =>
         expressionEngine.evaluate(...a),
       format: (...a: Parameters<ExpressionEngineImpl['format']>) => expressionEngine.format(...a),

@@ -154,3 +154,22 @@ inspector shows material and mass. BOMs (M6) list the material.
    Covered by phone-emulation E2E (`apps/web/e2e/touch.spec.ts`).
 6. **CI visual baselines.** UI screenshot baselines were recorded in the dev container. CI runs the UI
    suite with `--ignore-snapshots` until CI-generated baselines are committed.
+
+---
+
+## ADR-006 — Expression semantics for bare numbers and units (2026-11-08)
+
+**Decision.**
+- A bare number takes the default unit of the dimension it is used as: length → the document length
+  unit, angle → the document angle unit, mass → g, density → g/cm³, pressure → MPa.
+- In `+`, `-`, `min`, `max` and `atan2`, a bare number next to a dimensioned operand takes that
+  operand's default unit (`width + 5` in an mm document means 5 mm).
+- `pi` is a plain number: write `sin(pi/2 rad)` in a degree document.
+- A name resolves to a parameter before a unit, except directly after a number (`2 mm` is a unit,
+  `mm` alone can be a parameter named `mm`, which is discouraged).
+- Dimension vectors are `[length, mass, angle, time]`. Time exists only so that pressure and stress
+  (MPa, GPa) in material properties type-check.
+- Renaming a parameter rewrites every reference to it in one undo step.
+
+**Why.** It matches how engineers type values ("5" in an mm document means 5 mm) and keeps unit
+errors explicit. `5'6"` is not parsed as feet plus inches; write `5ft + 6in`.
