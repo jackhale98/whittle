@@ -1,7 +1,15 @@
-import type { HighlightItem, PickHit, RenderBackend, StandardView } from '@whittle/contracts';
+import type {
+  CompareOverlay,
+  HighlightItem,
+  MeshBuffers,
+  PickHit,
+  RenderBackend,
+  StandardView,
+} from '@whittle/contracts';
 import { boxMesh, denseMesh, sketchFixture } from '@whittle/test-fixtures';
 import type { ViewportEngine } from '../src/index';
 import { createViewport, defaultTolerance } from '../src/index';
+import { sharedOverlayMaterialCount } from '../src/overlays';
 
 export interface HarnessApi {
   viewport: ViewportEngine;
@@ -23,6 +31,15 @@ export interface HarnessApi {
   previewBox(id: string, origin: [number, number, number] | null): void;
   /** The synthetic sketch plus `SketchResult.points` entries (id `F03`, z = 20). */
   showSketchPoints(points: Array<{ entity: string; at: [number, number, number] }>): void;
+  /**
+   * Compare fixture on the 40x30x20 box: an added 15x30x8 block on its +X side (x 40-55) and a
+   * removed 12x12 through-hole (x 14-26, y 9-21, full height). `fresh` builds new arrays (forces a
+   * geometry rebuild); otherwise the same arrays are reused (only show/ghost change).
+   */
+  setCompare(opts?: { show?: 'both' | 'added' | 'removed'; ghost?: number; fresh?: boolean }): void;
+  clearCompare(): void;
+  /** Number of distinct shared overlay materials (re-setting must not grow it). */
+  sharedMaterialCount(): number;
   /** Last hover pick result (what the harness is highlighting). */
   lastHover: PickHit[];
 }
@@ -111,8 +128,25 @@ async function main() {
     hideSketch() {
       viewport.setSketch('F02', null);
     },
+    setCompare(opts = {}) {
+      if (!compareFixture || opts.fresh) {
+        compareFixture = {
+          added: [boxMesh(15, 30, 8, { origin: [40, 0, 0] })],
+          removed: [boxMesh(12, 12, 20, { origin: [14, 9, 0] })],
+        };
+      }
+      const overlay: CompareOverlay = { ...compareFixture };
+      if (opts.show) overlay.show = opts.show;
+      if (opts.ghost !== undefined) overlay.ghostOpacity = opts.ghost;
+      viewport.setCompare(overlay);
+    },
+    clearCompare() {
+      viewport.setCompare(null);
+    },
+    sharedMaterialCount: sharedOverlayMaterialCount,
     lastHover: [],
   };
+  let compareFixture: { added: MeshBuffers[]; removed: MeshBuffers[] } | null = null;
   window.__viewport = api;
   if (!empty) loadBox();
 
