@@ -8,7 +8,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./worker": "./src/worker.ts",
-    "./kernel-api": "./src/kernel-api.ts"
+    "./kernel-api": "./src/kernel-api.ts",
+    "./regen": "./src/regen/index.ts"
   },
   "scripts": {
     "test": "vitest run",
@@ -17,6 +18,13 @@
   "dependencies": {
     "@whittle/contracts": "workspace:*",
     "@whittle/kernel": "workspace:*",
-    "comlink": "4.4.2"
+    "comlink": "4.4.2",
+    "@salusoft89/planegcs": "1.3.0",
+    "@whittle/document": "workspace:*",
+    "@whittle/sketch": "workspace:*",
+    "fflate": "0.8.3"
+  },
+  "devDependencies": {
+    "@whittle/io": "workspace:*"
   }
 }
