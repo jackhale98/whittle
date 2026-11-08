@@ -18,6 +18,8 @@ GPL-3.0-or-later (ADR-003): every dependency must be GPL-3.0-compatible (no GPL-
 | `lucide-react` | 1.70.0 | ISC | ≈ 3 KB (tree-shaken) | ui | |
 | `@radix-ui/react-tooltip` / `-toolbar` / `-tabs` / `-separator` / `-dialog` | 1.4.1 / 1.2.1 / 1.2.1 / 1.2.0 / 1.3.1 | MIT | ≈ 20 KB (+ 7.7 KB lazy dialog) | ui | |
 | `@fontsource-variable/inter` | 5.3.0 | OFL-1.1 | latin woff2 48 KB (on demand) | ui | Self-hosted font (font data, separate work) |
+| `@salusoft89/planegcs` | 1.3.0 | LGPL-2.0-or-later | wasm 173 KB gzip + glue 9.5 KB (sketch worker, lazy) | sketch | FreeCAD's PlaneGCS; outputs re-verified by our residual model |
+| `ulid` | 3.0.2 | MIT | < 1 KB | sketch | |
 | `fflate` | 0.8.3 | MIT | ≈ 8 KB | io (and document) | Zip for 3MF and `.whittle` |
 | `idb` | 8.0.4 | ISC | ≈ 1.2 KB | io (browser) | IndexedDB wrapper for the local library |
 | Kernel artefacts `whittle-kernel{,-st}.{js,wasm}` | OCCT 8.0.1 | LGPL-2.1-only WITH Open-CASCADE-Exception-1.0 | ≈ 1.3 MB brotli each (lazy, runtime-cached) | kernel | Built reproducibly from `packages/kernel` |

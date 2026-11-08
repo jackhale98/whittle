@@ -86,6 +86,10 @@ export type GeometricConstraint = ConstraintBase &
   );
 
 /**
+ * Conventions (normative): angles are CCW from `a` to `b`, reference values reported in [0, 2π);
+ * `hDistance`/`vDistance` are signed b − a (with `a === b` = a line: end − start); distances to
+ * circles/arcs measure to the curve; `diameter` solves as radius = value / 2.
+ *
  * Dimensions. `driving: true` constrains the solver with `value`; `driving: false` is a reference
  * (driven) dimension whose value is **measured** after solving (planegcs non-driving constraints
  * are unreliable — PLAN §3). `label` positions the text in sketch space for display.
@@ -105,6 +109,20 @@ export type DimensionConstraint = ConstraintBase & {
   );
 
 export type SketchConstraint = GeometricConstraint | DimensionConstraint;
+
+/** A geometric constraint without its id (distributes over the union, unlike `Omit`). */
+export type GeometricConstraintDraft = GeometricConstraint extends infer C
+  ? C extends GeometricConstraint
+    ? Omit<C, 'id'>
+    : never
+  : never;
+
+/**
+ * Placeholder ids inside inference drafts: `'@cursor'` = the point being placed, `'@drawing'` =
+ * the entity being drawn. The UI replaces them with real ids on commit (`bindCandidate`).
+ */
+export const INFERENCE_CURSOR = '@cursor';
+export const INFERENCE_DRAWING = '@drawing';
 export type SketchConstraintKind = SketchConstraint['kind'];
 
 export function isDimension(c: SketchConstraint): c is DimensionConstraint {
@@ -134,8 +152,12 @@ export interface SuggestedFix {
 }
 
 export interface SketchConflict {
+  /** `unsupported`: a combination the solver can't express (e.g. tangent to an ellipse). */
+  kind?: 'overconstrained' | 'unsupported';
   /** Minimal conflicting set. */
   constraints: Id[];
+  /** Fixed entities that make the set conflict (removing a fix is offered as a fix). */
+  fixed?: Id[];
   /** Human explanation, e.g. "Line 2 can't be both horizontal and at 30° to Line 1". */
   explanation: string;
   fixes: SuggestedFix[];
@@ -143,6 +165,8 @@ export interface SketchConflict {
 
 export interface SketchSolveResult {
   status: 'solved' | 'conflicting' | 'failed';
+  /** Why the solve `failed` (malformed input etc.), human-readable. */
+  error?: string;
   /** Updated entities (same ids/order as the input), positions solved. */
   entities: SketchEntity[];
   /** Remaining degrees of freedom of the whole sketch. */
@@ -161,7 +185,7 @@ export interface SketchSolveResult {
 
 /** Inference while drawing: candidate constraints shown as glyphs and applied on commit. */
 export interface InferenceCandidate {
-  constraint: Omit<GeometricConstraint, 'id'>;
+  constraint: GeometricConstraintDraft;
   /** Snap position the cursor was moved to (mm). */
   snapped: Vec2;
   /** 0–1; the UI shows the best one or two. */

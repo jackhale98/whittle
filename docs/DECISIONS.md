@@ -12,7 +12,7 @@ Newest last. Superseded entries stay, marked **Superseded by ADR-xxx**.
 | Area            | Choice                                                                                                          |
 | --------------- | --------------------------------------------------------------------------------------------------------------- |
 | Kernel          | OCCT 8.0.1 → WebAssembly (see ADR-002 for the toolchain), coarse C++ façade                                     |
-| Sketch solver   | `@salusoft89/planegcs` (MulanPSL-2.0)                                                                           |
+| Sketch solver   | `@salusoft89/planegcs` (LGPL-2.0-or-later)                                                                          |
 | Rendering       | three.js `WebGPURenderer` with automatic WebGL2 fallback, used imperatively                                     |
 | Picking         | GPU ID buffer + `three-mesh-bvh`                                                                                |
 | App             | React 19 + TypeScript (strict) + Vite                                                                           |
@@ -94,7 +94,7 @@ Copyleft also keeps forks of Whittle open.
 - OCCT (LGPL-2.1 WITH Open-CASCADE-Exception-1.0) is GPL-compatible. We still ship it as a separate,
   reproducibly built `.wasm` with public build scripts.
 - Dependencies must be GPL-3.0-compatible: MIT, BSD, ISC, Apache-2.0, MPL-2.0, LGPL, and
-  MulanPSL-2.0 (planegcs) all are. **GPL-2.0-only dependencies are not allowed.** Check this when
+  LGPL-2.0-or-later (planegcs) all are. **GPL-2.0-only dependencies are not allowed.** Check this when
   adding entries to `docs/DEPENDENCIES.md`.
 - Mycelium's GPL-3.0 code: if it is GPL-3.0-only, the combined work is effectively distributed under
   GPL-3.0. That is acceptable.
