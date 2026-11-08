@@ -44,6 +44,8 @@ import { entityAnchor } from '../sketch/overlay';
 import { describeRef, useDoc } from './Inspector';
 
 const LibraryPanel = lazy(() => import('./LibraryPanel'));
+// Versions, connections, compare and merge (with @whittle/sync): fetched when first opened.
+const ProjectPanel = lazy(() => import('../sync/ProjectPanel'));
 
 /*
  * Placement against the shells' floating chrome: tablet and phone stages expose `--chrome-top` /
@@ -609,6 +611,12 @@ export function ViewportOverlays({ wb, touch }: { wb: Workbench; touch: boolean 
       ) : (
         <KernelLoading wb={wb} hasGeometry={(part?.features.length ?? 0) > 0} />
       )}
+
+      {ui.project && !sk ? (
+        <Suspense fallback={null}>
+          <ProjectPanel wb={wb} />
+        </Suspense>
+      ) : null}
 
       {ui.toast ? (
         <div className="absolute left-1/2 -translate-x-1/2" style={TOAST_BOTTOM}>

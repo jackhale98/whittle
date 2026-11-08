@@ -38,6 +38,9 @@ importers:
       '@whittle/sketch':
         specifier: workspace:*
         version: link:../../packages/sketch
+      '@whittle/sync':
+        specifier: workspace:*
+        version: link:../../packages/sync
       '@whittle/ui':
         specifier: workspace:*
         version: link:../../packages/ui

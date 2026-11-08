@@ -15,6 +15,7 @@ import type {
   Feature,
   HighlightItem,
   Id,
+  JsonPatchOp,
   Material,
   MeshBuffers,
   NamedDimension,
@@ -24,6 +25,7 @@ import type {
   ProjectFiles,
   RegenResult,
   SketchFeature,
+  SyncStatus,
   TouchViewport,
   Vec3,
   ViewportGesture,
@@ -91,6 +93,7 @@ import {
   toleranceFor,
   vertexAt,
 } from '../selection/pick';
+import type { SyncController, SyncHost } from '../sync/controller';
 import { type BubbleActionId, gestureAction } from './gestures';
 import { MeasureTool } from './measure-tool';
 import { type Observable, observable } from './observable';
@@ -109,6 +112,25 @@ import {
 import { failBoot, mark, markOnce, marks } from './timing';
 
 const LAST_DOC_KEY = 'whittle:last-document';
+const LINKS_KEY = 'whittle:links';
+const HISTORY_DIR = '.whittle-history/';
+
+/** The page is an OAuth callback (`state` plus `code` or `error`). */
+const isOAuthCallback = () => {
+  const q = new URLSearchParams(globalThis.location?.search ?? '');
+  return q.has('state') && (q.has('code') || q.has('error'));
+};
+
+/** A library project linked to a connection (sync/store.ts); read without loading the sync chunk. */
+function isLinked(id: string | undefined): boolean {
+  if (!id) return false;
+  try {
+    const links = JSON.parse(localStorage.getItem(LINKS_KEY) ?? '{}') as Record<string, unknown>;
+    return !!links[id];
+  } catch {
+    return false;
+  }
+}
 /**
  * Library thumbnails read the WebGL canvas back (≈ 200 ms on software GL), so while editing they
  * are taken at most this often; flushes (page hidden, switching documents, opening the library)
@@ -216,6 +238,24 @@ export class Workbench {
   private readonly downs = new PointerDowns();
   sketch: SketchSession | null = null;
   private sketchModule: Promise<typeof import('./sketch-session')> | null = null;
+  /** Top bar: sync status and branch of the open project (M2.5; `local` until linked). */
+  readonly projectBar = observable<{ status: SyncStatus; branch: string | null }>({
+    status: { state: 'local' },
+    branch: null,
+  });
+  /** Connections, sync and versions (lazy chunk with `@whittle/sync` and isomorphic-git). */
+  private syncCtl: SyncController | null = null;
+  private syncLoad: Promise<SyncController> | null = null;
+  /** Library writes run one at a time (saves and sync's compare-and-swap writes). */
+  private libChain: Promise<unknown> = Promise.resolve();
+  /** The document object last written to the library (sync may replace only that one). */
+  private persistedDoc: WhittleDoc | null = null;
+  /** History files written in memory and not yet saved. */
+  private extraDirty = false;
+  /** A merged result from sync waits for the current sketch or drag to finish. */
+  private syncDeferred = false;
+  /** The store change being applied came from another device: don't autosave it back. */
+  private applyingRemote = false;
 
   constructor() {
     this.tier = getDiagnostics().tier;
@@ -373,6 +413,8 @@ export class Workbench {
       }
     }
     this.ui.set((u) => ({ ...u, ready: true }));
+    if (bundle) this.persistedDoc = this.doc;
+    this.projectOpened();
     this.loop?.request();
     this.kernelIfNothingCached();
     this.markViewerShown();
@@ -469,6 +511,11 @@ export class Workbench {
   readonly treeStatuses = observable<RegenResult['features'] | undefined>(undefined);
 
   private onUiChange(): void {
+    if (this.syncDeferred && !this.midEdit()) {
+      // The sketch or drag that held back a synced change is over: merge it in now.
+      this.syncDeferred = false;
+      void this.syncCtl?.syncNow();
+    }
     const p = this.ui.get().picking;
     const key = p ? `${p.featureId}|${p.path}` : '';
     if (key !== this.lastPickKey) {
@@ -496,7 +543,7 @@ export class Workbench {
   private onDocChange(doc: WhittleDoc, loaded: boolean): void {
     if (!this.ui.get().ready) return;
     this.loop?.request();
-    if (!loaded) this.autosaver.schedule(doc);
+    if (!loaded && !this.applyingRemote) this.autosaver.schedule(doc);
     if (!loaded && this.ui.get().welcome) this.patchUi({ welcome: false });
     const part = this.part;
     const ids = new Set(part?.features.map((f) => f.id));
@@ -1522,6 +1569,7 @@ export class Workbench {
       this.restoreSheet();
     } else if (u.section.open) this.closeSection();
     else if (u.library) this.patchUi({ library: false });
+    else if (u.project) this.openProjectPanel(null);
     else if (u.welcome) this.patchUi({ welcome: false });
     else return false;
     this.refreshSketchVisibility();
@@ -1761,13 +1809,22 @@ export class Workbench {
     // Orphaned import attachments are never written; in memory they live on while the history
     // could bring their feature back (model/attachments.ts, ADR-016).
     if (current) this.pruneAttachments();
-    await lib.save(doc, {
-      ...(thumbnail ? { thumbnail } : {}),
-      extra: savedExtra(files.extra, doc),
-      cache: files.cache,
-    });
+    const extra = savedExtra(files.extra, doc);
+    const wasDirty = current && this.extraDirty;
+    await this.libLocked(() =>
+      lib.save(doc, {
+        ...(thumbnail ? { thumbnail } : {}),
+        extra,
+        cache: files.cache,
+      }),
+    );
+    if (doc.meta.id) this.syncCtl?.onSaved(doc.meta.id, doc, extra);
     if (current && doc.meta.id === this.doc.meta.id) {
+      if (wasDirty) this.extraDirty = false;
+      this.persistedDoc = doc;
+      const first = !this.inLibrary;
       this.inLibrary = true;
+      if (first) void this.syncCtl?.openProject(doc.meta.id);
       this.savedCacheKey = files.key;
       writeLastDoc(doc.meta.id);
       // Finer meshes that arrived while this save ran (e.g. the first save of a new document,
@@ -1867,6 +1924,10 @@ export class Workbench {
     this.pushPull.cancel();
     this.measure.stop();
     this.setSection(initialSection);
+    this.persistedDoc = inLibrary ? this.doc : null;
+    this.extraDirty = false;
+    this.syncDeferred = false;
+    this.projectOpened();
     return true;
   }
 
@@ -2211,6 +2272,148 @@ export class Workbench {
     this.pushHighlights();
   }
 
+  // ------------------------------------------------------------------ connections, sync, versions (M2.5)
+
+  /** Library writes, one at a time (autosave and sync's compare-and-swap never interleave). */
+  private libLocked<T>(fn: () => Promise<T>): Promise<T> {
+    const run = this.libChain.then(fn, fn);
+    this.libChain = run.catch(() => undefined);
+    return run;
+  }
+
+  /** A sketch session, a push/pull drag or a pointer press on the model is in progress. */
+  midEdit(): boolean {
+    const u = this.ui.get();
+    return !!u.sketch || !!u.pushPull?.dragging || this.downs.size > 0;
+  }
+
+  /** The sync chunk, loaded on first use (Connections, Versions, a linked project, OAuth). */
+  syncController(): Promise<SyncController> {
+    this.syncLoad ??= import('../sync/controller').then(async (m) => {
+      const ctl = m.createSyncController(this.syncHost());
+      this.syncCtl = ctl;
+      const place = isOAuthCallback() ? ctl.restorePlace() : null;
+      if (place?.doc && place.doc !== this.doc.meta.id) await this.openFromLibrary(place.doc);
+      await ctl.openProject(this.doc.meta.id);
+      if (isOAuthCallback()) await ctl.completeSignIn();
+      return ctl;
+    });
+    return this.syncLoad;
+  }
+
+  /** A document was opened or replaced: its sync engine and history follow it. */
+  private projectOpened(): void {
+    if (this.syncCtl) {
+      void this.syncCtl.openProject(this.doc.meta.id);
+      return;
+    }
+    this.projectBar.set({ status: { state: 'local' }, branch: null });
+    const hasHistory = [...this.extra.keys()].some((k) => k.startsWith(HISTORY_DIR));
+    if (isLinked(this.doc.meta.id) || hasHistory || isOAuthCallback()) void this.syncController();
+  }
+
+  /** Opens (or with `null` closes) the project panel: versions, connections. */
+  openProjectPanel(tab: 'versions' | 'connections' | null): void {
+    if (tab === null) this.syncCtl?.closeMode();
+    this.patchUi({ project: tab, ...(tab ? { library: false } : {}) });
+    if (tab) void this.flushSave().then(() => this.syncController());
+  }
+
+  /** Sync merged another device's edits into the library entry: show them as one undo step. */
+  private adoptRemote(doc: WhittleDoc, extra: ProjectFiles, ops: JsonPatchOp[]): void {
+    this.extra = new Map(extra);
+    if (ops.length) {
+      this.applyingRemote = true;
+      try {
+        const r = this.store.apply(
+          { kind: 'patch', ops },
+          { label: 'Changes from another device' },
+        );
+        this.store.commit();
+        if (!r.ok) this.store.load(doc); // never leave the screen behind the library
+      } finally {
+        this.applyingRemote = false;
+      }
+    }
+    this.persistedDoc = this.doc;
+    this.loop?.request();
+  }
+
+  /** Restore, branch switch, merge: the project's files as one undoable edit (then saved). */
+  private applyProject(extra: ProjectFiles, label: string, ops: JsonPatchOp[]): boolean {
+    this.extra = new Map(extra);
+    this.extraDirty = true;
+    if (ops.length === 0) {
+      void this.saveToLibrary(this.doc);
+      return true;
+    }
+    const ok = this.apply({ kind: 'patch', ops }, label);
+    this.commit();
+    return ok;
+  }
+
+  private syncHost(): SyncHost {
+    return {
+      currentId: () => this.doc.meta.id,
+      doc: () => this.doc,
+      extra: () => this.extra,
+      lockLibrary: async (fn) => {
+        const lib = await this.library();
+        return lib ? this.libLocked(() => fn(lib)) : null;
+      },
+      canAdoptRemote: () => {
+        if (this.midEdit()) {
+          this.syncDeferred = true;
+          return false;
+        }
+        if (
+          this.autosaver.pending ||
+          this.extraDirty ||
+          this.store.getDoc() !== this.persistedDoc
+        ) {
+          // Save what is on screen first; the engine then merges against it.
+          void this.autosaver.flush().then(() => {
+            if (this.store.getDoc() !== this.persistedDoc || this.extraDirty)
+              return this.saveToLibrary(this.doc);
+          });
+          return false;
+        }
+        return true;
+      },
+      adoptRemote: (doc, extra, ops) => this.adoptRemote(doc, extra, ops),
+      applyFiles: (extra, label, ops) => this.applyProject(extra, label, ops),
+      setExtraFiles: (changes) => {
+        for (const [p, b] of changes) {
+          if (b) this.extra.set(p, b);
+          else this.extra.delete(p);
+        }
+        this.extraDirty = true;
+      },
+      persist: async () => {
+        await this.autosaver.flush();
+        await this.saveToLibrary(this.doc);
+      },
+      flush: () => this.flushSave(),
+      openNewProject: async (doc, extra) => {
+        const lib = await this.library();
+        if (!lib) return false;
+        await this.flushSave();
+        await this.libLocked(() => lib.save(doc, { extra }));
+        if (!this.loadDocument({ doc, extra }, true)) return false;
+        this.patchUi({ library: false, welcome: false });
+        return true;
+      },
+      modeling: async () => ((await this.whenLive()) ? this.modeling : null),
+      viewport: () => this.viewport,
+      attachments: (doc) =>
+        Object.fromEntries(this.attachmentsFor(doc).map((a) => [a.path, a.bytes])),
+      evaluate: (e) => this.evaluate(e),
+      toast: (t, tone) => this.toast(t, tone),
+      setBar: (bar) => this.projectBar.set(bar),
+      openPanel: (tab) => this.patchUi({ project: tab, library: false }),
+    };
+  }
+
   // ------------------------------------------------------------------ misc
 
   patchUi(patch: Partial<UiState>): void {
@@ -2345,6 +2548,26 @@ export class Workbench {
           camera: this.camera.get(),
         };
       },
+      /** Applies a command as one undo step (E2E edits that aren't about the UI path). */
+      apply: (command: Command, label?: string) => {
+        const ok = this.apply(command, label);
+        this.commit();
+        return ok;
+      },
+      /** M2.5: the sync controller's state (loads the sync chunk). */
+      sync: async () => {
+        const c = await this.syncController();
+        await c.idle();
+        return c.testState();
+      },
+      /** M2.5: sync the open project now and wait for it to settle. */
+      syncNow: async () => {
+        const c = await this.syncController();
+        await c.syncNow();
+        await c.idle();
+      },
+      syncLoaded: () => this.syncCtl !== null,
+      projectBar: () => this.projectBar.get(),
       /** Replaces the document (fixtures for E2E scenarios), saved to the library. */
       load: (doc: WhittleDoc) => {
         if (this.loadDocument({ doc }, false)) this.autosaver.schedule(doc);

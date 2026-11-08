@@ -11,7 +11,15 @@ import {
   useTheme,
   writeNestSketches,
 } from '@whittle/ui';
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import { reorderFeatures } from '../model/tree-edits';
 import { getDiagnostics } from '../platform/diagnostics';
 import { getRuntimeState, subscribeRuntimeState } from '../platform/runtime-state';
@@ -30,6 +38,9 @@ import { useObservable } from './observable';
 import type { EngineState } from './state';
 import { ViewportHost } from './ViewportHost';
 import type { Workbench } from './workbench';
+
+// Version menu and sync chip: a small chunk fetched right after first paint (PLAN §10 budget).
+const ProjectBar = lazy(() => import('../ui/ProjectBar').then((m) => ({ default: m.ProjectBar })));
 
 function isolationLabel(isolation: ReturnType<typeof getRuntimeState>['isolation']): string {
   if (isolation === 'pending') return 'checking isolation';
@@ -107,6 +118,18 @@ export function App({ wb }: { wb: Workbench }) {
       { id: 'demo', label: 'Open the demo bracket', hint: 'Sample', run: () => void wb.openDemo() },
       { id: 'new-doc', label: 'New document', run: () => void wb.newDocument() },
       { id: 'library', label: 'Open library', run: () => wb.toggleLibrary(true) },
+      {
+        id: 'versions',
+        label: 'Versions',
+        hint: 'Save, branch, compare, release',
+        run: () => wb.openProjectPanel('versions'),
+      },
+      {
+        id: 'connections',
+        label: 'Connections',
+        hint: 'Sync with a cloud drive, folder or git',
+        run: () => wb.openProjectPanel('connections'),
+      },
       {
         id: 'open-file',
         label: 'Open or import file…',
@@ -224,6 +247,11 @@ export function App({ wb }: { wb: Workbench }) {
         kernelStatus={engine.status}
         diagnostics={{ ...diagnostics, ...runtimeOverrides(runtime) }}
         commands={commands}
+        projectBar={
+          <Suspense fallback={null}>
+            <ProjectBar wb={wb} tier={diagnostics.tier} />
+          </Suspense>
+        }
         theme={theme.setting}
         onThemeChange={theme.setSetting}
         {...(canUndo ? { onUndo: () => wb.undo() } : {})}

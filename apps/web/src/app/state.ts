@@ -149,6 +149,8 @@ export interface UiState {
   candidates: CandidateChooser | null;
   sketch: SketchUi | null;
   library: boolean;
+  /** M2.5 project panel (versions, connections, compare, merge); null when closed. */
+  project: 'versions' | 'connections' | null;
   /** The welcome card (first launch, ⌘K "Welcome / samples"). */
   welcome: boolean;
   exporting: boolean;
@@ -185,6 +187,7 @@ export const initialUi: UiState = {
   candidates: null,
   sketch: null,
   library: false,
+  project: null,
   welcome: false,
   exporting: false,
   toast: null,

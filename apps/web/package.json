@@ -23,6 +23,7 @@
     "@whittle/io": "workspace:*",
     "@whittle/kernel-client": "workspace:*",
     "@whittle/sketch": "workspace:*",
+    "@whittle/sync": "workspace:*",
     "@whittle/ui": "workspace:*",
     "@whittle/viewport": "workspace:*",
     "lucide-react": "1.70.0",
