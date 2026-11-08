@@ -54,4 +54,4 @@
 
 Wordmark: **Inter Tight SemiBold**, lowercase "whittle", letter-spacing −0.025em. Use a self-hosted font file because of cross-origin isolation.
 
-Source of truth for regenerating: `build.py` (SVGs) and `render.js` (PNGs, via Playwright).
+Source of truth for regenerating: `build.py` (SVGs) and `render.cjs` (PNGs, via Playwright).

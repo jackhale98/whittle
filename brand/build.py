@@ -38,12 +38,12 @@ def loader(c,label):
 <polygon class="chip c1" points="58,32 62,31 60,35" fill="var(--whittle-accent,{A})"/><polygon class="chip c2" points="38,56 41,54 41,58" fill="{c['chip']}"/><polygon class="chip c3" points="64,62 68,61 66,65" fill="{c['chip']}"/></svg>
 '''
 def mark(c): return f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="Whittle">{final(c)}</svg>\n'
-FAV=f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><style>.i{{fill:#3A404C}}.b{{fill:#16181D}}@media (prefers-color-scheme:dark){{.i{{fill:#C3C8D1}}.b{{fill:#8C93A1}}}}</style><polygon class="i" points="12,52 56,30 66,24 76,30 88,36 72,42 66,64 44,70 28,62"/><polygon points="30,50 60,42 56,58 40,62" fill="{A}"/><polygon class="b" points="32,74 72,74 68,84 36,84"/></svg>\n'
+FAV=f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><title>Whittle</title><style>.i{{fill:#3A404C}}.b{{fill:#16181D}}@media (prefers-color-scheme:dark){{.i{{fill:#C3C8D1}}.b{{fill:#8C93A1}}}}</style><polygon class="i" points="12,52 56,30 66,24 76,30 88,36 72,42 66,64 44,70 28,62"/><polygon points="30,50 60,42 56,58 40,62" fill="{A}"/><polygon class="b" points="32,74 72,74 68,84 36,84"/></svg>\n'
 def icon(size_pad, bg, c, rounded):
     # full-bleed square icon for PNG export; mark scaled by pad
     s=1-2*size_pad; o=size_pad*100
     rx='22' if rounded else '0'
-    return f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" rx="{rx}" fill="{bg}"/><g transform="translate({o} {o-2}) scale({s})">{final(c)}</g></svg>'
+    return f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><title>Whittle</title><rect width="100" height="100" rx="{rx}" fill="{bg}"/><g transform="translate({o} {o-2}) scale({s})">{final(c)}</g></svg>'
 os.makedirs("svg",exist_ok=True)
 open("svg/whittle-loader-dark.svg","w").write(loader(DARK,"Loading"))
 open("svg/whittle-loader-light.svg","w").write(loader(LIGHT,"Loading"))

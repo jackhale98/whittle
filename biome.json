@@ -9,8 +9,7 @@
       "!**/.libcascade",
       "!**/node_modules",
       "!**/*.d.ts",
-      "!**/*.md",
-      "!brand"
+      "!**/*.md"
     ]
   },
   "formatter": { "enabled": true, "indentStyle": "space", "indentWidth": 2, "lineWidth": 100 },
