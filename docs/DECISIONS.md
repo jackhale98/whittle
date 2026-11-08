@@ -1153,10 +1153,13 @@ git, raised choices ADR-029 leaves open.
    `x-access-token`.
 5. **Local git repo mode uses the same engine.** The project folder on disk syncs with the library
    entry through a `SyncEngine` whose provider is a `FolderProvider` over the picked root (no
-   remote service), so outside edits are pulled on focus like any remote change, and `GitHistory`
-   over a File System Access fs commits it. Until packages/sync ships `fsaGitFs`/`openLocalGitRepo`
-   (`projectPath` scoping), `apps/web/src/sync/local-git.ts` falls back to its own fs adapter and
-   only offers the repo root as the project folder.
+   remote service), so outside edits are pulled on focus like any remote change, and
+   `openLocalGitRepo` (ADR-030) commits it, scoped to the project folder (the root or any folder
+   inside the repo; the folder step can also create one). The repo is opened without network
+   access, and reopened with it only when `origin` is an HTTPS remote on a host the user signed in
+   to in Connections; otherwise the panel says to push with their own git. `READ_ONLY` refusals
+   show the `state()` explanation inline; `CONFLICT` (an outside edit or commit meanwhile) offers
+   **Refresh**, which re-reads the repo and syncs the folder before the user retries.
 6. **"Current" means content, not ancestry.** The versions panel marks a version Current only while
    the working copy's content hash equals it, so the version a user edited away from can be
    compared with what is on screen.
@@ -1174,3 +1177,7 @@ git, raised choices ADR-029 leaves open.
     on every engine start. In this headless Chromium build, reading an OPFS directory handle back
     from IndexedDB takes the browser down (the put is fine), which the local-git E2E would
     otherwise hit; real picker handles are unaffected.
+11. **A callback is ours only if this tab started a sign-in.** Boot completes a sign-in when the
+    URL has `state` plus `code` or `error` *and* sessionStorage holds the pending PKCE record.
+    A stray or bookmarked `?code=` is left as it is (the platform plumbing spec relies on this)
+    and doesn't load the sync chunk.

@@ -118,7 +118,14 @@ const HISTORY_DIR = '.whittle-history/';
 /** The page is an OAuth callback (`state` plus `code` or `error`). */
 const isOAuthCallback = () => {
   const q = new URLSearchParams(globalThis.location?.search ?? '');
-  return q.has('state') && (q.has('code') || q.has('error'));
+  if (!(q.has('state') && (q.has('code') || q.has('error')))) return false;
+  // Only a sign-in this tab started (its PKCE record, packages/sync auth/oauth.ts): a stray or
+  // bookmarked `?code=` is left alone and doesn't load the sync chunk.
+  try {
+    return sessionStorage.getItem('whittle:oauth-pending') !== null;
+  } catch {
+    return false;
+  }
 };
 
 /** A library project linked to a connection (sync/store.ts); read without loading the sync chunk. */

@@ -87,6 +87,38 @@ export default function ProjectPanel({ wb }: { wb: Workbench }) {
   );
 }
 
+/** "Or start a new project folder here" (folders and local git repos, ADR-029 §1). */
+function NewFolder({ ctl, size }: { ctl: SyncController; size: 'touch' | 'md' }) {
+  const [name, setName] = useState('');
+  return (
+    <form
+      className="flex items-end gap-2 px-4 pb-3"
+      data-testid="new-project-folder"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (name.trim()) void ctl.createProjectFolder(name);
+      }}
+    >
+      <label className="flex min-w-0 flex-1 flex-col gap-1 text-xs font-medium text-fg-muted">
+        New project folder here
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="e.g. bracket"
+          autoComplete="off"
+          className={cn(
+            'w-full rounded-control bg-surface-2 px-2.5 text-fg outline-none shadow-[inset_0_0_0_1px_var(--color-border-strong)] focus-visible:shadow-[inset_0_0_0_2px_var(--color-accent)]',
+            size === 'touch' ? 'h-11 text-base' : 'h-8 text-ui',
+          )}
+        />
+      </label>
+      <Button type="submit" size={size} disabled={!name.trim()}>
+        Create and use
+      </Button>
+    </form>
+  );
+}
+
 function Body({
   wb,
   ctl,
@@ -167,6 +199,11 @@ function Body({
           onRemove={(id) => void ctl.removeConnection(id)}
           density={density}
         />
+        {browse &&
+        v.connections.find((x) => x.connection.id === browse.connectionId)?.connection.kind ===
+          'folder' ? (
+          <NewFolder ctl={ctl} size={size} />
+        ) : null}
         <div className="flex flex-col gap-1.5 border-t border-border px-4 py-3">
           <Button
             size={size}
@@ -190,17 +227,7 @@ function Body({
   }
   const p = v.project;
   const h = p.history;
-  const readOnly =
-    h?.repoState && h.repoState !== 'clean'
-      ? {
-          merging:
-            'The repository is in the middle of a merge. Finish it with your git; Whittle won’t commit until then.',
-          rebasing:
-            'The repository is in the middle of a rebase. Finish it with your git; Whittle won’t commit until then.',
-          detached:
-            'The repository has a detached HEAD. Check out a branch with your git to save versions.',
-        }[h.repoState]
-      : null;
+  const readOnly = h?.readOnly ?? null;
   return (
     <div className="flex flex-col">
       <div className="flex flex-col gap-2 px-4 pt-3" data-testid="project-summary">
@@ -223,6 +250,16 @@ function Body({
             className="rounded-control bg-warning-soft p-2.5 text-xs text-warning-text"
           >
             {p.notice}
+            {p.noticeAction === 'refresh' ? (
+              <Button
+                size={size}
+                className="mt-2 flex"
+                data-testid="project-refresh"
+                onClick={() => void ctl.refreshRepo()}
+              >
+                Refresh
+              </Button>
+            ) : null}
           </p>
         ) : null}
         {readOnly ? (

@@ -32,6 +32,7 @@ import type {
   ProjectLink,
   ProviderKind,
   RegenSlot,
+  RemoteFolder,
   StorageProvider,
   StorageResult,
   SyncStatus,
@@ -62,6 +63,7 @@ import {
   gitRemoteHeads,
   type HistoryFiles,
   hashProjectFiles,
+  type LocalGitRepo,
   loadFolderHandle,
   mergeProjectFiles,
   oauthTokenSource,
@@ -94,15 +96,7 @@ import {
   syncConfig,
   syncFetch,
 } from './env';
-import {
-  cacheIgnored,
-  ensureCacheIgnored,
-  isGitRepo,
-  openLocalGit,
-  projectFoldersSupported,
-  type RepoState,
-  repoState,
-} from './local-git';
+import { isGitRepo, openLocalGit } from './local-git';
 import {
   cloneUrl,
   linkOf,
@@ -174,7 +168,8 @@ export interface HistoryView {
   diverged: DivergedNotice | null;
   /** Local git mode. */
   workingChanges?: { path: string; status: 'added' | 'modified' | 'deleted' }[];
-  repoState?: RepoState;
+  /** Why the repo is read-only right now (a merge in progress…), from `state()`; null: it isn't. */
+  readOnly?: string | null;
   cacheIgnored?: boolean;
   /** Git: push and pull are offered (a remote, signed in). */
   canPushPull?: boolean;
@@ -217,6 +212,8 @@ export interface SyncView {
     saving: boolean;
     saveError: string | null;
     notice: string | null;
+    /** `refresh`: the notice is a `CONFLICT` with something changed outside Whittle. */
+    noticeAction: 'refresh' | null;
     busy: string | null;
   };
   mode: CompareMode | MergeMode | null;
@@ -276,7 +273,7 @@ export class SyncController {
   private engine: ProjectSyncEngine | null = null;
   private engineOff: (() => void) | null = null;
   private history: HistoryStore | null = null;
-  private localGitRoot: FileSystemDirectoryHandle | null = null;
+  private localRepo: LocalGitRepo | null = null;
   private projectId: string | null = null;
   private link: ProjectLink | null = null;
   private lastFiles = new Map<string, ProjectFiles>();
@@ -311,6 +308,7 @@ export class SyncController {
         saving: false,
         saveError: null,
         notice: null,
+        noticeAction: null,
         busy: null,
       },
       mode: null,
@@ -588,23 +586,27 @@ export class SyncController {
     const label = c.kind === 'folder' ? c.label : ('account' in c && c.account) || c.label;
     this.patch({ browse: { connectionId, connectionLabel: label, path, folders: null } });
     if (c.kind === 'folder' && c.git) {
+      // A project is the repo root or any folder inside it (ADR-029 §1).
       const root = await this.folderHandle(c.handleKey);
       if (!root) return;
-      const manifest = await (root as unknown as FileSystemDirectoryHandle)
-        .getFileHandle('whittle.project.json')
-        .then(
-          () => true,
-          () => false,
-        );
-      const rootEntry = { name: `${c.label} (repository root)`, path: '/', isProject: manifest };
-      const sub = projectFoldersSupported() && !path ? await this.listFolders(c, path) : null;
+      const top: RemoteFolder[] = [];
+      if (!path) {
+        const manifest = await (root as unknown as FileSystemDirectoryHandle)
+          .getFileHandle('whittle.project.json')
+          .then(
+            () => true,
+            () => false,
+          );
+        top.push({ name: `${c.label} (repository root)`, path: '/', isProject: manifest });
+      }
+      const sub = await this.listFolders(c, path);
       this.patch({
         browse: {
           connectionId,
           connectionLabel: `${c.label} · git`,
-          path: '',
-          folders: [rootEntry, ...(sub?.ok ? sub.value : [])],
-          ...(projectFoldersSupported() ? {} : { error: undefined }),
+          path,
+          folders: [...top, ...(sub.ok ? sub.value : [])],
+          ...(sub.ok ? {} : { error: errText(sub) }),
         },
       });
       return;
@@ -727,9 +729,50 @@ export class SyncController {
     });
   }
 
-  private fail(r: { ok: false; error: { message: string } }): void {
-    this.patchProject({ notice: errText(r) });
-    this.host.toast(errText(r), 'error');
+  /**
+   * A refused operation, inline. `READ_ONLY` (a merge or rebase in progress, a detached HEAD…)
+   * explains itself; `CONFLICT` means something changed outside Whittle meanwhile (a file edited
+   * on disk, another git committing), so it offers "Refresh" to re-read the repo and sync first.
+   */
+  private fail(r: { ok: false; error: { code?: string; message: string } }): void {
+    const conflict = r.error.code === 'CONFLICT';
+    this.patchProject({
+      notice:
+        r.error.code === 'READ_ONLY'
+          ? `Read-only right now: ${errText(r)}`
+          : conflict
+            ? `${errText(r)} Refresh to pick up what changed, then try again.`
+            : errText(r),
+      noticeAction: conflict ? 'refresh' : null,
+    });
+    if (!conflict && r.error.code !== 'READ_ONLY') this.host.toast(errText(r), 'error');
+  }
+
+  /** "Refresh" after a `CONFLICT`: re-read the repo, bring outside edits in, re-list. */
+  async refreshRepo(): Promise<void> {
+    (this.history as { refresh?: () => void } | null)?.refresh?.();
+    if (this.engine) await this.engine.syncNow();
+    this.patchProject({ notice: null, noticeAction: null });
+    await this.refreshHistory();
+  }
+
+  /** A new, empty project folder inside the folder being browsed (then link the project to it). */
+  async createProjectFolder(name: string): Promise<void> {
+    const b = this.view.get().browse;
+    const c = this.connections.find((x) => x.id === b?.connectionId);
+    if (!b || c?.kind !== 'folder') return;
+    const slug = slugify(name.trim(), 'project');
+    let d = (await this.folderHandle(c.handleKey)) as unknown as FileSystemDirectoryHandle | null;
+    if (!d) return;
+    try {
+      for (const s of b.path.split('/').filter(Boolean)) d = await d.getDirectoryHandle(s);
+      await d.getDirectoryHandle(slug, { create: true });
+    } catch (e) {
+      this.patch({ addError: `Couldn’t create ‘${slug}’: ${e instanceof Error ? e.message : e}` });
+      return;
+    }
+    const path = `${b.path.replace(/\/+$/, '')}/${slug}`;
+    await this.pickFolder({ path, name: slug, isProject: false });
   }
 
   // ---------------------------------------------------------------- working copy
@@ -809,7 +852,7 @@ export class SyncController {
     this.closeMode();
     this.stopEngine();
     this.history = null;
-    this.localGitRoot = null;
+    this.localRepo = null;
     this.projectId = id;
     this.link = linkOf(id ?? undefined);
     const c = this.link
@@ -862,16 +905,21 @@ export class SyncController {
         this.patchProject({ notice: `Choose the folder ‘${c.label}’ again to reconnect it.` });
         return;
       }
-      this.localGitRoot = root as unknown as FileSystemDirectoryHandle;
-      provider = new FolderProvider(root);
-      engineLink = { connectionId: c.id, path: link.path ? `/${link.path}` : '' };
-      this.history = openLocalGit({
-        root: this.localGitRoot,
+      const repo = await openLocalGit({
+        root,
         projectPath: link.path,
         author: AUTHOR,
         corsProxy: syncConfig().gitCorsProxy,
-        remote: await this.localRemote(this.localGitRoot),
+        signedIn: (host) => this.signedInTo(host),
       });
+      if (!repo.ok) {
+        this.patchProject({ notice: errText(repo) });
+        return;
+      }
+      this.localRepo = repo.value;
+      this.history = repo.value.history;
+      provider = new FolderProvider(root);
+      engineLink = { connectionId: c.id, path: link.path ? `/${link.path}` : '' };
     } else {
       const p = await this.providerFor(c);
       if (!p.ok) {
@@ -898,21 +946,10 @@ export class SyncController {
     });
   }
 
-  /** The local repo's origin, when the user signed in to its host (ADR-029 §4). */
-  private async localRemote(root: FileSystemDirectoryHandle) {
-    const probe = openLocalGit({ root, projectPath: '', author: AUTHOR });
-    const remotes = await probe.remotes();
-    const origin = remotes.find((r) => r.name === 'origin') ?? remotes[0];
-    if (!origin) return null;
-    let host = '';
-    try {
-      host = new URL(origin.url).host;
-    } catch {
-      return null; // ssh remotes: push with your own git
-    }
+  /** A git connection signed in to `host` (a local repo's origin, ADR-029 §4). */
+  private signedInTo(host: string) {
     const c = this.connections.find((x) => GIT_KINDS.has(x.kind) && 'host' in x && x.host === host);
-    if (!c) return null;
-    return { url: origin.url, host: gitHost(c.kind), credentials: () => this.vault.get(c.id) };
+    return c ? { host: gitHost(c.kind), credentials: () => this.vault.get(c.id) } : null;
   }
 
   /** Autosave reached the library: queue the changed paths, maybe take an automatic snapshot. */
@@ -998,13 +1035,16 @@ export class SyncController {
     } else {
       markCurrent(current?.head ?? versions[0]?.id);
       const g = h as GitHistory;
-      if (kind === 'localGit' && this.localGitRoot) {
+      const repo = this.localRepo;
+      if (kind === 'localGit' && repo) {
         const wc = await g.workingChanges();
         view.workingChanges = wc.ok ? wc.value : [];
-        view.repoState = await repoState(this.localGitRoot);
-        view.cacheIgnored = await cacheIgnored(this.localGitRoot, this.link?.path ?? '');
+        view.readOnly = (await repo.state()).readOnly?.message ?? null;
+        const ignored = await repo.ensureCacheIgnored();
+        view.cacheIgnored = ignored.ok ? ignored.value.ignored : true;
         const remotes = await g.remotes();
-        const signedIn = !!(await this.localRemote(this.localGitRoot));
+        const signedIn =
+          (repo as LocalGitRepo & { remoteSignedIn?: boolean }).remoteSignedIn === true;
         view.canPushPull = remotes.length > 0 && signedIn;
         if (!view.canPushPull)
           view.remoteNote =
@@ -1044,14 +1084,7 @@ export class SyncController {
   }
 
   private readOnlyReason(): string | null {
-    const s = this.view.get().project.history?.repoState;
-    if (s === 'merging')
-      return 'The repository is in the middle of a merge. Finish it with your git, then come back.';
-    if (s === 'rebasing')
-      return 'The repository is in the middle of a rebase. Finish it with your git, then come back.';
-    if (s === 'detached')
-      return 'The repository has a detached HEAD. Check out a branch with your git to save versions.';
-    return null;
+    return this.view.get().project.history?.readOnly ?? null;
   }
 
   async saveVersion(message: string): Promise<void> {
@@ -1184,8 +1217,12 @@ export class SyncController {
   }
 
   async addCacheToGitignore(): Promise<void> {
-    if (!this.localGitRoot) return;
-    await ensureCacheIgnored(this.localGitRoot, this.link?.path ?? '');
+    const repo = this.localRepo;
+    if (!repo) return;
+    const r = await repo.ensureCacheIgnored({ add: true });
+    if (!r.ok) this.fail(r);
+    // The engine brings the edited .gitignore (a project file at the root) into the library.
+    await this.engine?.syncNow();
     await this.refreshHistory();
   }
 
