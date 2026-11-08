@@ -51,7 +51,8 @@ export function TabletShell(props: ShellProps) {
       {(core) => (
         <ViewportStage
           viewport={viewport}
-          className="h-full w-full"
+          // Space taken by the floating chrome (top bar, tool rail), for app panels in the overlay.
+          className="h-full w-full [--chrome-left:4.75rem] [--chrome-top:4.75rem]"
           overlay={
             <>
               {/* Top-left: document + history + actions. Top-right stays free for the view cube. */}

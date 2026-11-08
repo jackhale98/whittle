@@ -129,43 +129,52 @@ export default function LibraryPanel({ wb }: { wb: Workbench }) {
     <section
       aria-label="Library"
       data-testid="library-panel"
-      className="w-card pointer-events-auto absolute top-14 right-3 bottom-[92px] left-3 flex flex-col overflow-hidden rounded-[18px] shadow-float"
+      // Below the top chips (and the status bar / notch), beside the tablet rail (`--chrome-*` from
+      // the shell), above the bottom bar and home indicator.
+      // A container, so the header adapts to the panel's width rather than the window's.
+      className="w-card @container pointer-events-auto absolute top-[calc(var(--safe-top,0px)+var(--chrome-top,4.75rem))] right-[max(var(--safe-right,0px),0.75rem)] bottom-[calc(var(--safe-bottom,0px)+5.75rem)] left-[max(var(--safe-left,0px),var(--chrome-left,0.75rem))] flex flex-col overflow-hidden rounded-[14px] shadow-float"
     >
-      <header className="flex items-center gap-2 border-b border-border px-4 py-3">
-        <h2 className="text-sm font-semibold">Library</h2>
-        <span className="text-2xs text-fg-muted">On this device</span>
+      {/* One row when the panel is wide; on a phone: title + close, then search + actions. */}
+      <header className="flex flex-wrap items-center gap-x-2 gap-y-2.5 border-b border-border px-4 py-3">
+        <h2 className="text-sm font-semibold whitespace-nowrap">Library</h2>
+        <span className="text-2xs whitespace-nowrap text-fg-muted">On this device</span>
         <div className="flex-1" />
-        <label className="flex h-8 w-56 items-center gap-1.5 rounded-[9px] bg-surface-2 px-2.5 text-fg-muted focus-within:shadow-[inset_0_0_0_2px_var(--color-accent)]">
-          <Search className="size-3.5 shrink-0" aria-hidden />
-          <input
-            aria-label="Search documents"
-            placeholder="Search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            className="min-w-0 flex-1 bg-transparent text-ui text-fg outline-none"
-          />
-        </label>
-        <Button
-          variant="secondary"
-          icon={<FolderOpen className="size-4" />}
-          onClick={() => void wb.openFromDisk('new')}
-          data-testid="library-open-file"
-        >
-          Open or import…
-        </Button>
-        <Button
-          variant="primary"
-          icon={<Plus className="size-4" />}
-          onClick={() => void wb.newDocument()}
-          data-testid="library-new"
-        >
-          New
-        </Button>
         <IconButton
           label="Close library"
           icon={<X className="size-4" />}
           onClick={() => wb.toggleLibrary(false)}
+          className="@2xl:order-last"
         />
+        <div className="flex w-full min-w-0 items-center gap-2 @2xl:w-auto">
+          <label className="flex h-9 min-w-0 flex-1 items-center gap-1.5 rounded-[9px] bg-surface-2 px-2.5 text-fg-muted focus-within:shadow-[inset_0_0_0_2px_var(--color-accent)] @2xl:h-8 @2xl:w-56 @2xl:flex-none">
+            <Search className="size-3.5 shrink-0" aria-hidden />
+            <input
+              aria-label="Search documents"
+              placeholder="Search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              className="min-w-0 flex-1 bg-transparent text-ui text-fg outline-none"
+            />
+          </label>
+          <Button
+            variant="secondary"
+            icon={<FolderOpen className="size-4" />}
+            onClick={() => void wb.openFromDisk('new')}
+            data-testid="library-open-file"
+            aria-label="Open or import…"
+            title="Open or import…"
+          >
+            <span className="hidden @lg:inline">Open or import…</span>
+          </Button>
+          <Button
+            variant="primary"
+            icon={<Plus className="size-4" />}
+            onClick={() => void wb.newDocument()}
+            data-testid="library-new"
+          >
+            New
+          </Button>
+        </div>
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
         {entries === null ? (
