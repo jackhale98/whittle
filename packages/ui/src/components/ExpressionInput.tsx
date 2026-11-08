@@ -260,7 +260,11 @@ export function ExpressionInput({
             aria-hidden
             className="pointer-events-none absolute inset-0 flex items-center overflow-hidden"
           >
-            <span ref={mirror} className="tnum text-ui whitespace-pre text-transparent">
+            <span
+              ref={mirror}
+              data-field-mirror
+              className="tnum text-ui whitespace-pre text-transparent"
+            >
               {pre}
               {mid ? (
                 <span className="underline decoration-danger decoration-wavy underline-offset-4">
