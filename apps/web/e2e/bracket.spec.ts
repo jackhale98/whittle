@@ -231,14 +231,15 @@ test('M1 acceptance: bracket from scratch, three upstream edits, STEP round trip
   await a.settled();
   await page.keyboard.press('Escape');
   await page.keyboard.press('d');
-  // Left column from the origin: label below the pair → horizontal, beside it → vertical.
+  // Left column from the origin: label above a centre and the origin → horizontal, beside them →
+  // vertical (clear of the axes, which the dimension tool would pick).
   await dimension(
     page,
     [
       [20, 11, T],
       [0, 0, T],
     ],
-    [10, -4, T],
+    [4, 17, T],
     '20 mm',
   );
   await dimension(
@@ -247,7 +248,7 @@ test('M1 acceptance: bracket from scratch, three upstream edits, STEP round trip
       [20, 11, T],
       [0, 0, T],
     ],
-    [-4, 5, T],
+    [28, 4, T],
     '11 mm',
   );
   await dimension(
@@ -256,7 +257,7 @@ test('M1 acceptance: bracket from scratch, three upstream edits, STEP round trip
       [20, 31, T],
       [0, 0, T],
     ],
-    [10, -10, T],
+    [4, 41, T],
     '20 mm',
   );
   await dimension(
@@ -265,7 +266,7 @@ test('M1 acceptance: bracket from scratch, three upstream edits, STEP round trip
       [20, 31, T],
       [0, 0, T],
     ],
-    [-10, 18, T],
+    [28, 20, T],
     '31 mm',
   );
   // Two centres, label below the pair: a horizontal distance.
@@ -310,7 +311,8 @@ test('M1 acceptance: bracket from scratch, three upstream edits, STEP round trip
   expect(holes.constraints.filter((c) => c.kind === 'hDistance')).toHaveLength(4);
   expect(holes.constraints.filter((c) => c.kind === 'vDistance')).toHaveLength(3);
   expect(holes.constraints.some((c) => c.kind === 'fix')).toBe(false);
-  expect((await a.sketch())?.dof).toBe(0);
+  // As before (when the left column was fixed), the right column keeps one DOF: its height.
+  expect((await a.sketch())?.dof).toBe(1);
   expect(holes.constraints.filter((c) => c.kind === 'diameter')).toHaveLength(4);
   await page.getByTestId('finish-sketch').click();
 

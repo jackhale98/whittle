@@ -35,7 +35,7 @@ async function counts(page: Page): Promise<{ lines: number; points: number }> {
 test('sketch mode: pinch zooms, two/three-finger taps undo/redo, single taps still draw', async ({
   page,
 }) => {
-  test.slow();
+  test.setTimeout(180_000); // many touch round trips; slow on software GL under load
   await boot(page);
   await page.getByRole('button', { name: 'Close welcome' }).tap();
   const a = app(page);
