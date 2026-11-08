@@ -828,7 +828,8 @@ export class SyncController {
         await this.startEngine(id, c, this.link);
       }
     }
-    if (id && !this.history && kind !== 'git') {
+    // Local git mode never writes `.whittle-history/` (ADR-029), even when the folder is gone.
+    if (id && !this.history && kind !== 'git' && kind !== 'localGit') {
       this.history = createSnapshotHistory({
         files: this.historyFiles(),
         ...(loadHistoryState(id) ? { state: loadHistoryState(id) } : {}),
