@@ -21,6 +21,7 @@ import type {
   SketchSolveInput,
 } from '@whittle/contracts';
 import { anglePi, TAU } from './geometry';
+import { encodeOffset, type OffsetContext, offsetMeasure } from './offset-model';
 import {
   constraintRefs,
   isReservedSketchId,
@@ -58,15 +59,27 @@ export class SketchInputError extends Error {
 export interface ModelOptions {
   /** Constraint ids to leave out (conflict search, relaxation). */
   disabled?: ReadonlySet<Id>;
+  /**
+   * Linked (converted) entities to treat as free instead of fixed (conflict search: does the
+   * conflict only exist because linked geometry can't move?). A curve frees its points too.
+   */
+  unlinked?: ReadonlySet<Id>;
 }
 
 export interface SketchModel {
   input: SketchSolveInput;
+  /** The options the model was built with (so a variant can be rebuilt). */
+  options: ModelOptions;
   index: Map<Id, SketchEntity>;
   /** Parameter values taken from the input geometry. */
   x0: Float64Array;
-  /** 1 where a `fix` constraint grounds the parameter. */
+  /** 1 where a `fix` constraint, a linked source or the reference geometry grounds the parameter. */
   grounded: Uint8Array;
+  /**
+   * Linked (converted) entities that are grounded, top level only: curves, and points that no
+   * linked curve uses. Conflict explanations name them ("while Line 1 is linked to the model").
+   */
+  linked: Id[];
   /** Point id → index of its x (y is +1). Includes internal ellipse foci (`<id>#f`). */
   pointIdx: Map<Id, number>;
   radiusIdx: Map<Id, number>;
@@ -425,6 +438,8 @@ export function buildModel(input: SketchSolveInput, options: ModelOptions = {}):
     return null;
   };
 
+  const offsetCtx: OffsetContext = { index, x0, radiusIdx, pointOf, root, gid };
+
   // --- Dimensions are measurable whether driving or not -----------------------------------------
   const measures = new Map<Id, Measure>();
   const invalidMeasure = new Map<Id, string>();
@@ -478,6 +493,24 @@ export function buildModel(input: SketchSolveInput, options: ModelOptions = {}):
     if (c.kind !== 'fix') continue;
     for (const i of entityParams.get(c.entity) ?? []) grounded[i] = 1;
   }
+  // Linked (converted) geometry is fixed for the solver (contracts: `EntityBase.source`).
+  const freed = new Set(options.unlinked ?? []);
+  for (const e of input.entities) {
+    if (!e.source || !freed.has(e.id) || e.kind === 'point') continue;
+    for (const p of entityPoints(e)) freed.add(p);
+  }
+  const linkedCurvePoints = new Set<Id>();
+  for (const e of input.entities) {
+    if (!e.source || e.kind === 'point') continue;
+    for (const p of entityPoints(e)) linkedCurvePoints.add(p);
+  }
+  const linked: Id[] = [];
+  for (const e of input.entities) {
+    if (!e.source) continue;
+    if (e.kind !== 'point' || !linkedCurvePoints.has(e.id)) linked.push(e.id);
+    if (freed.has(e.id)) continue;
+    for (const i of entityParams.get(e.id) ?? []) grounded[i] = 1;
+  }
   for (const p of primitives) {
     if (p.type === 'point') {
       const i = pointIdx.get(p.id.slice(2));
@@ -494,9 +527,11 @@ export function buildModel(input: SketchSolveInput, options: ModelOptions = {}):
 
   return {
     input,
+    options,
     index,
     x0,
     grounded,
+    linked,
     pointIdx,
     radiusIdx,
     ellipseIdx,
@@ -886,6 +921,7 @@ export function buildModel(input: SketchSolveInput, options: ModelOptions = {}):
     if (v === undefined || !Number.isFinite(v)) return `Dimension ${c.id} has no resolved value`;
     const m = measures.get(c.id);
     if (!m) return invalidMeasure.get(c.id) ?? 'Unsupported dimension';
+    if (c.kind === 'offset') return encodeOffset(offsetCtx, c, v, PRIORITY.offset, nextId);
     const out: Row[] = [];
     out.push({
       owner: c.id,
@@ -1117,9 +1153,23 @@ export function buildModel(input: SketchSolveInput, options: ModelOptions = {}):
         };
       }
       case 'offset':
-        // M3 Offset Entities: implemented by the sketch-editing workstream (contracts/sketch.ts).
-        return 'Offset dimensions are not supported yet';
+        return offsetMeasure(offsetCtx, c);
     }
+  }
+}
+
+/** The point ids an entity is built on (its own id for a point). */
+export function entityPoints(e: SketchEntity): Id[] {
+  switch (e.kind) {
+    case 'point':
+      return [e.id];
+    case 'line':
+      return [e.start, e.end];
+    case 'arc':
+      return [e.center, e.start, e.end];
+    case 'circle':
+    case 'ellipse':
+      return [e.center];
   }
 }
 

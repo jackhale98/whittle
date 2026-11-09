@@ -1183,3 +1183,66 @@ git, raised choices ADR-029 leaves open.
     URL has `state` plus `code` or `error` *and* sessionStorage holds the pending PKCE record.
     A stray or bookmarked `?code=` is left as it is (the platform plumbing spec relies on this)
     and doesn't load the sync chunk.
+
+## ADR-pending — Offset dimension: solver rows and sign (sketch editing, M3)
+
+1. **Sign (contracts, lead's convention).** Positive = right of the source's direction (outward
+   of a CCW loop). The value's sign places the *reference pair* (the first pair whose source is a
+   curve) exactly; every other pair keeps its side relative to the reference pair as read from
+   the geometry handed to the solver. One value then drives a chain whose sources run different
+   ways and both sides of a two-sided offset; flipping the sign flips all sides together, so the
+   relative reading is stable from solve to solve. Zero is refused (no side). `offsetEntities`
+   puts a right-hand pair first when there is one and otherwise stores the expression negated
+   (`-5 mm`, `-(wall + 1 mm)`). Reference offsets measure signed.
+2. **Rows.** Lines: both ends at the signed distance; arcs: concentric + radius r ± d; circles the
+   same; join and cap arcs are `point → arc` pairs (centre on the source corner, radius |d|).
+   A free chain end also lies on the source's normal through the matching source end ("square
+   end"), so the offset follows the source's length. Where two targets meet tangentially, "on
+   both" is degenerate (rank-deficient), so the joint keeps one membership plus the square end;
+   lines give theirs up first, an arc at most one (its radius row and arc rule are its two). This
+   keeps DOF exact: an offset adds no DOF and no redundancy (tested on lines, rectangles, slots).
+   planegcs gets matching primitives; its point–line distance is unsigned, so the square end is
+   a signed `l2l_angle_pppp` (±90°).
+3. **Downstream solve.** When nothing but offsets (and the offset arcs' own arc rules) constrains
+   the offset geometry, the sources are solved by planegcs without it and the offset geometry by
+   sparse Gauss–Newton on the offset rows with everything else held. A 202-entity offset chain
+   dragged went from ≈ 130 ms to ≈ 0.6 ms median (planegcs solved the whole chain densely). A user
+   constraint on offset geometry, or dragging it, falls back to one joint solve; a joint solve that
+   fails retries Newton on our signed rows (planegcs can settle on the wrong side).
+4. **Geometry.** Convex corners get an arc around the source corner (`corners: 'sharp'` extends
+   line–line ones); concave corners trim to the nearest carrier intersection. Arcs whose radius
+   would be ≤ 0 and curves the trims turn inside out are left out with a note and their
+   neighbours joined; results that cross themselves are refused; the built geometry must satisfy
+   the solver's rows exactly or the call refuses. A seeded fuzz (400 random chains) checks this.
+
+## ADR-pending — Linked (converted) entities in the solver and editing operations
+
+1. **Fixed.** Entities with `source` are grounded in `buildModel` (all their parameters), like
+   `fix`. Conflict search frees them (new `unlinked` model option) to find the minimal linked set
+   that makes a conflict, lists it in `SketchConflict.fixed` and says "while Line 1 is linked to the
+   model". No fix is offered for them yet (no `unlink` action in `SuggestedFix`).
+2. **Re-projection keys on `ref.name` only.** Missing name → `lost` (entities untouched, still
+   fixed); never matched to another edge. An exact entity keeps its id and, if the edge changed
+   kind, changes kind in place with a note. A line keeps the orientation that moves its ends
+   least. Approximate chains (fitted polylines) keep every entity: vertices move to the same
+   fraction of length along the fresh polyline and arcs re-fit through their ends and middle.
+3. **Arc `start`/`end` in projected curves** accept angles (rad) or points on the circle.
+
+## ADR-pending — Trim, fillet/chamfer and mirror rewiring
+
+1. **Trim** attaches new ends with `coincident` (on another entity's end) or `pointOn`; a middle
+   trim splits, the new piece tied by `pointOn` × 2 (lines) or `equal` with a shared centre
+   (arcs), and tangency moves to the piece that still touches. Dropped and reported: constraints
+   on end points that were trimmed away or moved, a shortened line's `length`, `equal` length,
+   `midpoint` and own h/v extent, and an offset pair whose target was trimmed. A circle becomes an
+   arc with the same id. Nothing to trim to deletes the entity. Linked geometry is refused.
+2. **Fillet/chamfer** keep the old corner as a construction "virtual sharp" (pointOn both curves)
+   when anything refers to it (always for chamfers, whose distances are measured from it): a
+   line's `length` becomes the distance from its far end to the sharp, its h/v extent and
+   `midpoint` are rewritten onto it, so intent survives. Equal length is dropped and reported.
+3. **Mirror** shares points that lie on the mirror line. "Mirror move" (originals removed)
+   carries constraints over: reflection-invariant kinds as is, angles with their lines swapped,
+   h/v distances swapped across a perpendicular axis, h/v constraints only for axis-aligned
+   mirror lines; `fix` and anything mixing moved and unmoved geometry are dropped and reported.
+4. **Entry point.** `@whittle/sketch/edit`, like `./recognize`, so the app's initial route does
+   not load it.

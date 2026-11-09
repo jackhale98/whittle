@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Sketch editing (M3 workstream 1, `@whittle/sketch/edit`): offset entities (one driving signed `offset` dimension, joins, caps, solved downstream of planegcs), convert entities (linked, fixed, re-projected in place, lost sources reported), trim/extend, fillet/chamfer with virtual sharps, mirror tied by symmetric constraints; linked geometry named in conflict explanations.
 - Test fixtures: the M3 reference-part suite (PLAN 12A), 10 original parts with specs, drawings, derived masses, CSWP stages, a spec-to-`WhittleDoc` builder, real-kernel goldens (parts using M3 features are skipped until they merge) and independent FreeCAD checks (all 40 cases within 3e-12 of the analytic volume).
 
 ### M0 — Foundations
