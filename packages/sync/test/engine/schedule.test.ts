@@ -124,7 +124,9 @@ describe('sync engine scheduling (fake timers)', () => {
       if (paramOf(b.doc(), 'height') === '28 mm') seenAt = Date.now();
     }
     expect(seenAt).not.toBeNull();
-    expect(seenAt! - focusedAt).toBeLessThanOrEqual(10_000);
+    // Rechecks at 3, 6 and 9 s: a push landing ~3 s after focus is seen by the 6 s check,
+    // leaving margin under the 10 s acceptance on slow devices.
+    expect(seenAt! - focusedAt).toBeLessThanOrEqual(6_500);
   });
 
   it('polls at the provider’s pace, and stretches while quiet', async () => {

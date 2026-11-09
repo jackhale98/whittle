@@ -84,8 +84,12 @@ export interface SyncEngineOptions {
   debounceMs?: number;
   /** Base poll interval (default `provider.pollMs`). */
   pollMs?: number;
-  /** After a focus sync, check once more after this long (default 8 s; 0: don't). */
-  focusRecheckMs?: number;
+  /**
+   * Extra checks after the window gains focus, ms after focus (default 3, 6 and 9 s): another
+   * device's debounced push (3 s) that lands just after focusing still shows within 10 s
+   * (PLAN §12 M2.5). A number means one check; 0 or [] turns them off.
+   */
+  focusRecheckMs?: number | readonly number[];
   /** Default: the browser's. `null`: no events (tests drive `syncNow` by hand). */
   environment?: SyncEnvironment | null;
   /** Sync once as soon as the engine is created (default true). */
@@ -119,7 +123,10 @@ export function createSyncEngine(options: SyncEngineOptions): ProjectSyncEngine 
   const { provider, store, merger, link } = options;
   const debounceMs = options.debounceMs ?? 3_000;
   const basePoll = options.pollMs ?? provider.pollMs;
-  const focusRecheckMs = options.focusRecheckMs ?? 8_000;
+  const rechecks = ((): number[] => {
+    const v = options.focusRecheckMs ?? [3_000, 6_000, 9_000];
+    return (typeof v === 'number' ? [v] : [...v]).filter((ms) => ms > 0).sort((a, b) => a - b);
+  })();
   const maxRounds = options.maxRounds ?? 4;
   const now = options.now ?? Date.now;
   const env = options.environment === undefined ? browserEnvironment() : options.environment;
@@ -204,13 +211,22 @@ export function createSyncEngine(options: SyncEngineOptions): ProjectSyncEngine 
   const onFocus = () => {
     quiet = 0;
     void syncNow();
-    if (focusRecheckMs > 0) {
-      clear(recheckTimer);
-      recheckTimer = setTimeout(() => {
-        recheckTimer = null;
-        void syncNow();
-      }, focusRecheckMs);
-    }
+    clear(recheckTimer);
+    recheckTimer = null;
+    const focusedAt = now();
+    const next = (i: number) => {
+      const at = rechecks[i];
+      if (at === undefined) return;
+      recheckTimer = setTimeout(
+        () => {
+          recheckTimer = null;
+          void syncNow();
+          next(i + 1);
+        },
+        Math.max(0, at - (now() - focusedAt)),
+      );
+    };
+    next(0);
   };
 
   // ---------------------------------------------------------------- rounds

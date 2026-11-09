@@ -1124,7 +1124,7 @@ git, raised choices ADR-029 leaves open.
     fast-forwards when the repository keeps reflogs (`logs/` exists), so `git reflog` can always
     get back to an earlier state.
 
-## ADR-pending — M2.5 integration in apps/web
+## ADR-031 — M2.5 integration in apps/web
 
 1. **The library entry is the sync working copy.** `SyncLocalStore.readFiles` is the entry's
    canonical document files plus its extra files (never `.whittle/`); `writeFiles` is a
