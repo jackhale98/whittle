@@ -70,7 +70,9 @@ Optional variables:
 
 - `EXTRA_GIT_HOSTS`: comma-separated self-hosted Forgejo/Gitea/GitLab hosts, for example
   `forgejo.example.com`. github.com, gitlab.com and bitbucket.org are always allowed.
-- `DAV_HOSTS`: comma-separated WebDAV host names. When set, the relay serves only these.
+- `DAV_HOSTS`: comma-separated WebDAV host names the relay serves (for example
+  `cloud.example.org`). **Required for the relay:** with it unset the relay is off. Setting
+  `DAV_OPEN_RELAY=true` instead relays to any public HTTPS host, which is not recommended.
 
 Secrets (Worker -> Settings -> Variables and Secrets -> Add -> Secret, or
 `npx wrangler secret put NAME`) are added in the provider sections below.
@@ -206,7 +208,7 @@ Settings -> Security -> Devices and sessions). Most servers send no CORS headers
 
 1. **The Worker relay** (default, needs `VITE_SYNC_WORKER_URL`): the browser calls
    `<worker>/dav/<host>/<path>`. The password passes through the Worker in memory and is not stored
-   or logged. Restrict it to your servers with `DAV_HOSTS`. The server must have a public HTTPS host
+   or logged. List your servers in `DAV_HOSTS` (the relay is off without it). The server must have a public HTTPS host
    name; LAN addresses and `.local` names cannot be relayed.
 2. **Nextcloud `webapppassword` app:** install it from the app store; it adds the CORS headers for
    an origin you list (`https://jackhale98.github.io`) and issues temporary app passwords for web

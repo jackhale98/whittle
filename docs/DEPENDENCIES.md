@@ -66,7 +66,7 @@ bundled package's licence text plus OCCT's LGPL-2.1 + exception (texts in `licen
 
 ## Sync worker (`worker/`, Cloudflare Workers)
 
-No runtime dependencies: the worker uses only Workers' built-in `fetch`, `Request`, `Response` and `ReadableStream`, and ships no bundled third-party code. Ported from Mycelium's sync worker (GPL-3.0-or-later, same author), reminders and push removed. It is tested and typechecked with the root `typescript` and `vitest` above.
+No runtime dependencies: the worker uses only Workers' built-in `fetch`, `Request`, `Response` and `ReadableStream`, and ships no bundled third-party code. Ported from Mycelium's sync worker (Apache-2.0, same author; licence text kept in `worker/LICENSE-APACHE-2.0`), reminders and push removed; the modified, combined worker is GPL-3.0-or-later. It is tested and typechecked with the root `typescript` and `vitest` above.
 
 | Tool | Version | License | Notes |
 |---|---|---|---|

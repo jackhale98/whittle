@@ -8,6 +8,7 @@ const env: Env = {
   ALLOWED_ORIGINS: 'https://app.example, http://localhost:4321',
   GITHUB_CLIENT_ID: 'id',
   GITHUB_CLIENT_SECRET: 'shh',
+  DAV_HOSTS: 'cloud.example.com',
 };
 const ORIGIN = 'https://app.example';
 const call = (path: string, init: RequestInit & { origin?: string | null } = {}) => {
@@ -80,6 +81,8 @@ describe('git proxy', () => {
     const sent = new Headers(init.headers);
     expect(sent.get('authorization')).toBe('Basic abc');
     expect(sent.get('cookie')).toBeNull();
+    // Redirects are never followed with the forwarded Authorization header.
+    expect(init.redirect).toBe('manual');
   });
 });
 
@@ -230,6 +233,32 @@ describe('WebDAV relay', () => {
     );
     expect((await call('/dav/cloud.example.com/x', { method: 'GET' })).status).toBe(401);
     expect((await call('/dav/192.168.1.2/x', { method: 'GET', headers: auth })).status).toBe(403);
+    // Hex and numeric last labels are IPv4 to URL parsers (0x7f.1 → 127.0.0.1).
+    expect(isPublicHost('0x7f.1')).toBe(false);
+    expect(isPublicHost('evil.0x7f')).toBe(false);
+    expect(isPublicHost('cloud.example.com')).toBe(true);
+    // With no DAV_HOSTS the relay is off, unless explicitly opened.
+    const { DAV_HOSTS: _unused, ...noHosts } = env;
+    const off = await worker.fetch(
+      new Request('https://proxy.example/dav/cloud.example.com/x', {
+        method: 'GET',
+        headers: { Origin: ORIGIN, ...auth },
+      }),
+      noHosts,
+    );
+    expect(off.status).toBe(403);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('ok')),
+    );
+    const open = await worker.fetch(
+      new Request('https://proxy.example/dav/cloud.example.com/x', {
+        method: 'GET',
+        headers: { Origin: ORIGIN, ...auth },
+      }),
+      { ...noHosts, DAV_OPEN_RELAY: 'true' },
+    );
+    expect(open.status).toBe(200);
     const pinned = { ...env, DAV_HOSTS: 'mine.example.com' };
     const req = new Request('https://proxy.example/dav/cloud.example.com/x', {
       method: 'GET',

@@ -790,11 +790,13 @@ folder (`ProjectFiles`, docs/FILE_FORMAT.md) already exists. The contracts are i
 2. **Not `@isomorphic-git/cors-proxy`.** PLAN §8A.2 names that package; Mycelium's worker replaces it
    because it also does OAuth exchange and the WebDAV relay and is already tested. Its git proxy is
    stricter: three endpoints only, allow-listed hosts and origins, only git headers forwarded.
-3. **Worker licence.** `worker/LICENSE` is the repository's GPL-3.0 (Mycelium's own `worker/` folder
-   carries Apache-2.0; the port is GPL-3.0-or-later as the owner asked).
-4. **Git proxy default.** `VITE_GIT_CORS_PROXY`, else `VITE_SYNC_WORKER_URL`, else the public
-   `cors.isomorphic-git.org`. Config marks the last as `gitCorsProxyIsPublicDefault` so UI can warn
-   that tokens pass through a third party.
+3. **Worker licence.** `worker/LICENSE` is the repository's GPL-3.0. Mycelium's `worker/` folder is
+   Apache-2.0, so its licence text is kept in `worker/LICENSE-APACHE-2.0` with attribution in the
+   file headers; the modified, combined worker is GPL-3.0-or-later (see the licence note below).
+4. **Git proxy default.** `VITE_GIT_CORS_PROXY`, else `VITE_SYNC_WORKER_URL`, else, in development
+   builds only, the public `cors.isomorphic-git.org` (marked `gitCorsProxyIsPublicDefault` so the UI
+   warns that tokens pass through a third party). Production builds never use the public proxy:
+   without one configured, git hosts are reached directly (M2.5 gate N4).
 5. **OAuth redirect URI is the app base URL** (`https://jackhale98.github.io/whittle/`, with trailing
    slash), via `oauthRedirectUri()`. The service worker already serves the shell for any navigation
    in scope and preserves the URL, so no callback route or Pages 404 trick is needed.

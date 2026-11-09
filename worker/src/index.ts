@@ -14,16 +14,18 @@
 /// 3. WebDAV relay: most WebDAV servers (Nextcloud...) don't allow cross-origin
 ///    requests, so `/dav/<host>/<path>` passes WebDAV file requests through.
 ///    Only WebDAV methods, only HTTPS host names (no IPs, no localhost), only
-///    requests that carry credentials, no redirects followed. Set DAV_HOSTS to
-///    allow only your own servers.
+///    requests that carry credentials, no redirects followed. Serves only the
+///    hosts in DAV_HOSTS (or any public host with DAV_OPEN_RELAY=true).
 
 export interface Env {
   /** Comma-separated origins allowed to use the worker, e.g. `https://jackhale98.github.io`. */
   ALLOWED_ORIGINS: string;
   /** Optional comma-separated extra git hosts (self-hosted Forgejo, Gitea, GitLab...). */
   EXTRA_GIT_HOSTS?: string;
-  /** Optional comma-separated WebDAV hosts; when set, the relay serves only these. */
+  /** Comma-separated WebDAV hosts the relay serves. Unset: the relay is off unless DAV_OPEN_RELAY. */
   DAV_HOSTS?: string;
+  /** `'true'` relays to any public HTTPS host (not recommended; only when DAV_HOSTS is unset). */
+  DAV_OPEN_RELAY?: string;
   GITHUB_CLIENT_ID?: string;
   GITHUB_CLIENT_SECRET?: string;
   GITLAB_CLIENT_ID?: string;
@@ -130,7 +132,8 @@ export default {
       method: request.method,
       headers,
       body: request.method === 'POST' ? request.body : null,
-      redirect: 'follow',
+      // Never follow: a redirect would carry the forwarded Authorization to another host.
+      redirect: 'manual',
     });
     const out = cors(origin);
     for (const name of FORWARD_RESPONSE) {
@@ -219,6 +222,9 @@ export function isPublicHost(host: string): boolean {
   if (!/^[a-z0-9.-]+(:\d+)?$/.test(h)) return false;
   const name = h.replace(/:\d+$/, '');
   if (!name.includes('.') || /^[\d.]+$/.test(name)) return false;
+  // URL parsing treats a numeric or hex last label as IPv4 (`0x7f.1` → 127.0.0.1).
+  const last = name.split('.').pop() ?? '';
+  if (/^(0x[0-9a-f]*|\d+)$/.test(last)) return false;
   return !/(^|\.)(localhost|local|internal|lan|home\.arpa)$/.test(name);
 }
 
@@ -257,6 +263,9 @@ async function dav(request: Request, env: Env, url: URL, origin: string): Promis
   const [, , host, ...rest] = url.pathname.split('/');
   if (!host || !isPublicHost(host)) return deny(403, 'WebDAV host not allowed', origin);
   const allowed = list(env.DAV_HOSTS);
+  // Fail closed (M2.5 gate N2): an open relay needs an explicit opt-in.
+  if (!allowed.length && env.DAV_OPEN_RELAY !== 'true')
+    return deny(403, 'This relay serves no WebDAV hosts yet (set DAV_HOSTS on the worker)', origin);
   if (allowed.length && !allowed.includes(host.toLowerCase()))
     return deny(403, 'WebDAV host not allowed on this relay', origin);
   if (!DAV_METHODS.has(request.method)) return deny(405, 'Only WebDAV file requests', origin);

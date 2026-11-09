@@ -2,7 +2,7 @@
   "name": "@whittle/sync-worker",
   "version": "0.0.0",
   "private": true,
-  "license": "GPL-3.0-or-later",
+  "license": "GPL-3.0-or-later AND Apache-2.0",
   "type": "module",
   "description": "Whittle sync worker: git smart-HTTP proxy, OAuth token exchange and WebDAV relay (Cloudflare Workers).",
   "scripts": {

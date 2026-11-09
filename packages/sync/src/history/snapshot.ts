@@ -550,17 +550,13 @@ class SnapshotHistoryImpl implements SnapshotHistory {
       if (this.local.version) keep.add(this.local.version);
       const drop = new Set(selectPrunable([...g.versions.values()], keep, policy, this.now()));
       if (drop.size === 0) return 0;
-      const stillUsed = new Set(
-        [...g.versions.values()].filter((v) => !drop.has(v.id)).map((v) => v.hash),
-      );
+      // Only version metadata is removed. Snapshots are content-addressed and shared: another
+      // device may, offline, save a version with the same content and skip writing the zip
+      // because it already has it; a deletion synced from here would then win and lose that
+      // version (M2.5 gate B2). Snapshots are tens of KB and never deleted by prune.
       for (const id of drop) {
-        const v = g.versions.get(id) as VersionFile;
         await this.files.remove(this.path('versions', `${id}.json`));
         this.cache.delete(id);
-        if (!stillUsed.has(v.hash)) {
-          await this.files.remove(this.path('snapshots', `${v.hash}.zip`));
-          stillUsed.add(v.hash);
-        }
       }
       return drop.size;
     });

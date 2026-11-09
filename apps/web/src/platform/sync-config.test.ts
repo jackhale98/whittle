@@ -22,6 +22,19 @@ describe('readSyncConfig', () => {
     expect(c.gitCorsProxyIsPublicDefault).toBe(true);
   });
 
+  it('production builds never fall back to the public proxy (gate N4)', () => {
+    const c = readSyncConfig({ PROD: true });
+    expect(c.gitCorsProxy).toBe('');
+    expect(c.gitCorsProxyMissing).toBe(true);
+    expect(c.gitCorsProxyIsPublicDefault).toBe(false);
+    const token = availableProviders(c).find((p) => p.id === 'git-token');
+    expect(token?.warning).toMatch(/No git proxy/);
+    // Configured: the Worker is the proxy, nothing missing.
+    const w = readSyncConfig({ PROD: true, VITE_SYNC_WORKER_URL: 'https://sync.example.dev' });
+    expect(w.gitCorsProxy).toBe('https://sync.example.dev');
+    expect(w.gitCorsProxyMissing).toBe(false);
+  });
+
   it('treats empty and whitespace values (unset repository variables) as missing', () => {
     const c = readSyncConfig({ VITE_DROPBOX_APP_KEY: '', VITE_GDRIVE_CLIENT_ID: '  ' });
     expect(c.dropboxAppKey).toBeUndefined();

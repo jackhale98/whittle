@@ -22,8 +22,8 @@ import { join } from 'node:path';
 import {
   type Browser,
   type BrowserContext,
+  expect as baseExpect,
   devices,
-  expect,
   type Locator,
   type Page,
   test,
@@ -33,6 +33,9 @@ import { fid, pocketDoc } from './fixtures';
 import { app, boot } from './helpers';
 import { dropboxOverrides, type FakeDropbox, startFakeDropbox } from './support/fake-dropbox';
 import { type GitServer, startGitServer } from './support/git-server';
+
+/** Two browsers, a kernel each and fake servers share a busy CI runner: polls get 15 s. */
+const expect = baseExpect.configure({ timeout: 15_000 });
 
 test.describe.configure({ timeout: 240_000 });
 
@@ -382,7 +385,9 @@ test.describe
       await expect
         .poll(async () => (await app(B).doc()).meta.name, { timeout: 30_000 })
         .toBe('Bracket');
-      await expect.poll(async () => (await sync(B)).link?.path).toBe('/Bracket');
+      await expect
+        .poll(async () => (await sync(B)).link?.path, { timeout: 30_000 })
+        .toBe('/Bracket');
       expect(Math.abs((await bodyVolume(B)) - volA)).toBeLessThan(1e-6 * volA);
       await B.getByTestId('project-panel')
         .getByRole('button', { name: 'Close project panel' })

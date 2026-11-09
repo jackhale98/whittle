@@ -30,6 +30,13 @@ export interface SyncConfig {
   gitCorsProxy: string;
   /** True when `gitCorsProxy` is the public development proxy, which sees tokens in transit. */
   gitCorsProxyIsPublicDefault: boolean;
+  /**
+   * Production builds never fall back to the public development proxy (it would see tokens):
+   * without `VITE_GIT_CORS_PROXY` or `VITE_SYNC_WORKER_URL`, git hosts are reached directly
+   * (`gitCorsProxy` is `''`), which only works for servers that allow browser access. Local git
+   * repos need no proxy.
+   */
+  gitCorsProxyMissing: boolean;
   githubClientId?: string;
   gitlabClientId?: string;
   bitbucketClientId?: string;
@@ -84,8 +91,12 @@ export function readSyncConfig(env: SyncEnv = import.meta.env): SyncConfig {
 
   const proxyRaw = text(env, 'VITE_GIT_CORS_PROXY');
   const explicitProxy = proxyRaw ? parseBaseUrl(proxyRaw, true) : undefined;
-  // An explicit proxy wins; otherwise our own Worker (it is a git proxy too); otherwise dev default.
-  const gitCorsProxy = explicitProxy ?? syncWorkerUrl ?? DEFAULT_GIT_CORS_PROXY;
+  // An explicit proxy wins; otherwise our own Worker (it is a git proxy too); otherwise, in
+  // development only, the public proxy. Production fails closed (M2.5 gate N4).
+  const production = env.PROD === true;
+  const configuredProxy = explicitProxy ?? syncWorkerUrl;
+  const gitCorsProxyMissing = production && configuredProxy === undefined;
+  const gitCorsProxy = configuredProxy ?? (production ? '' : DEFAULT_GIT_CORS_PROXY);
 
   return {
     dropboxAppKey: text(env, 'VITE_DROPBOX_APP_KEY'),
@@ -95,6 +106,7 @@ export function readSyncConfig(env: SyncEnv = import.meta.env): SyncConfig {
     syncWorkerUrlProblem,
     gitCorsProxy,
     gitCorsProxyIsPublicDefault: gitCorsProxy === DEFAULT_GIT_CORS_PROXY,
+    gitCorsProxyMissing,
     githubClientId: text(env, 'VITE_GITHUB_CLIENT_ID'),
     gitlabClientId: text(env, 'VITE_GITLAB_CLIENT_ID'),
     bitbucketClientId: text(env, 'VITE_BITBUCKET_CLIENT_ID'),
@@ -159,14 +171,16 @@ export function availableProviders(config: SyncConfig = readSyncConfig()): Provi
     gitOauth('github', 'GitHub', config.githubClientId),
     gitOauth('gitlab', 'GitLab', config.gitlabClientId),
     gitOauth('bitbucket', 'Bitbucket', config.bitbucketClientId),
-    // Access-token sign-in needs no client id, only a CORS proxy, and one is always configured.
+    // Access-token sign-in needs no client id, only a CORS proxy.
     entry(
       'git-token',
       'Git host (access token)',
       undefined,
-      config.gitCorsProxyIsPublicDefault
-        ? 'Uses the public development proxy (cors.isomorphic-git.org), which sees your token. Deploy the Whittle sync Worker for real use.'
-        : undefined,
+      config.gitCorsProxyMissing
+        ? 'No git proxy is configured, so only git servers that allow browser access work (GitHub, GitLab and Bitbucket don’t). Deploy the Whittle sync Worker and set VITE_SYNC_WORKER_URL.'
+        : config.gitCorsProxyIsPublicDefault
+          ? 'Uses the public development proxy (cors.isomorphic-git.org), which sees your token. Deploy the Whittle sync Worker for real use.'
+          : undefined,
     ),
     entry('webdav', 'WebDAV (Nextcloud)', needsWorker('WebDAV')),
   ];

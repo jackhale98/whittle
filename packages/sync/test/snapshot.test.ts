@@ -217,6 +217,42 @@ describe('SnapshotHistory', () => {
     expect((await h.read(autos[autos.length - 1] as string)).ok).toBe(true);
   }, 60_000);
 
+  it('pruning on one device never loses a named version saved offline with the same content (gate B2)', async () => {
+    const { files, clock, make } = setup(Date.parse('2026-05-01T00:00:00Z'));
+    const a = make(files, 'A');
+    const v0 = value(await a.saveVersion(project(), 'First', { author: ann }));
+    // An automatic snapshot of a state both devices will reach again, then one more edit.
+    clock.advance(60_000);
+    const old = value(
+      await a.saveVersion(project(width('43mm')), 'auto', { author: ann, auto: true }),
+    );
+    clock.advance(60_000);
+    value(await a.saveVersion(project(width('44mm')), 'auto', { author: ann, auto: true }));
+    // Device B gets a synced copy, then both go offline.
+    const copy = new MemoryHistoryFiles();
+    for (const [p, b] of files.files) copy.files.set(p, b);
+    const synced = new Map(files.files);
+    const b = createSnapshotHistory({
+      files: copy,
+      state: { branch: 'main', version: v0.id },
+      now: () => new Date(Date.parse('2026-05-20T00:00:00Z')),
+      newId: () => '01JB0000000000000000000009',
+    });
+    // A, weeks later, prunes the old automatic snapshot.
+    clock.advance(20 * 24 * 3_600_000);
+    expect(await a.prune()).toBeGreaterThan(0);
+    expect((await a.read(old.id)).ok).toBe(false);
+    // B names a version whose content equals the pruned snapshot (it already has the zip).
+    const named = value(await b.saveVersion(project(width('43mm')), 'Back to 43', { author: ann }));
+    expect(named.hash).toBe(old.hash);
+    // Sync (deletions win where the other side didn't change the file).
+    MemoryHistoryFiles.syncUnion(files, copy, synced);
+    for (const h of [a, b]) {
+      const r = await h.read(named.id);
+      expect(r.ok, 'the named version must still be readable').toBe(true);
+    }
+  });
+
   it('selectPrunable keeps the newest per bucket', () => {
     const now = new Date('2026-05-10T12:00:00Z');
     const at = (msAgo: number) => new Date(now.getTime() - msAgo).toISOString();

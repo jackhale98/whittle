@@ -72,6 +72,7 @@ import {
   resolveProjectFiles,
   saveFolderHandle,
   stripCallbackQuery,
+  syncable,
   versionedFiles,
 } from '@whittle/sync';
 import type {
@@ -523,7 +524,7 @@ export class SyncController {
       url,
       host: gitHost(form.kind),
       credentials: () => this.vault.get(id),
-      corsProxy: syncConfig().gitCorsProxy,
+      corsProxy: syncConfig().gitCorsProxy || null,
     });
     if (!heads.ok) {
       await this.vault.remove(id);
@@ -706,7 +707,8 @@ export class SyncController {
     for (const e of listing.value.entries) {
       if (e.kind !== 'file') continue;
       const rel = e.path.toLowerCase().startsWith(prefix) ? e.path.slice(prefix.length) : null;
-      if (!rel || rel.startsWith('.whittle/') || rel.startsWith('.git/')) continue;
+      // Same rules as the sync engine: no cache, no .git, no `..` or absolute paths (gate N5).
+      if (!rel || !syncable(rel)) continue;
       const r = await p.value.read(e.path);
       if (!r.ok) return this.fail(r);
       files.set(rel, r.value.bytes);
@@ -724,7 +726,7 @@ export class SyncController {
       url,
       host: gitHost(c.kind),
       credentials: () => this.vault.get(c.id),
-      corsProxy: syncConfig().gitCorsProxy,
+      corsProxy: syncConfig().gitCorsProxy || null,
       author: AUTHOR,
     });
   }
@@ -909,7 +911,7 @@ export class SyncController {
         root,
         projectPath: link.path,
         author: AUTHOR,
-        corsProxy: syncConfig().gitCorsProxy,
+        corsProxy: syncConfig().gitCorsProxy || null,
         signedIn: (host) => this.signedInTo(host),
       });
       if (!repo.ok) {

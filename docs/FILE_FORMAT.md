@@ -427,8 +427,9 @@ Only automatic snapshots are ever removed, according to `PrunePolicy`:
 - then keep the newest one per day.
 
 Buckets are per branch. Named versions are never pruned, and neither is anything a release
-refers to. Pruning deletes the version file, and the snapshot as well unless another remaining
-version has the same hash. A pruned snapshot reads as "not found".
+refers to. Pruning deletes only the version file; snapshots are content-addressed and shared, and
+are never deleted (another device may have saved a version with the same content while offline,
+relying on the snapshot already being there). A pruned version reads as "not found".
 
 ### 9.6 Releases
 
