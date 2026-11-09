@@ -219,7 +219,8 @@ until then: pattern of holes, mirrored boss and shell after fillet edit-upstream
   whose `F<id>:face:unnamed` names the engine translated): `import-naming.test.ts` checks every face,
   edge and vertex name and body id against a golden recorded with the M1 engine.
 - **Open surfaces** (an IGES surface model that does not close, loose faces): a body with a free
-  edge `edge(F<id>:face#k)` gets an `OPERATION_FAILED` warning on `new` (its "volume" means
+  edge `edge(F<id>:face#k)` (degenerate edges such as sphere poles excepted, by their fingerprint)
+  gets an `OPERATION_FAILED` warning on `new` (its "volume" means
   nothing) and is refused as an add/cut/intersect tool (`INVALID_INPUT`), never passed off as a
   solid.
 - **Bodies**: one solid → `B<id>`; several → `B<id>#k` ordered by the geometric key of their volume

@@ -4047,7 +4047,7 @@ export class RegenEngine {
    * `F<id>:face#k` per body by geometric key, edges and vertices from their adjacent faces.
    * Bodies come back ordered by the geometric key of their volume centroids (`shape` first, then
    * `bodies` keyed `body#k`). These are the names the M1 engine gave, so stored references keep
-   * resolving (ADR-pending "kernel import feature"; test/regen/import-naming.test.ts).
+   * resolving (ADR-044; test/regen/import-naming.test.ts).
    */
   private async namedSolids(
     f: ImportFeature,
@@ -4146,9 +4146,13 @@ export class RegenEngine {
     const bodyId = (k: number) => (tools.length === 1 ? `B${f.id}` : `B${f.id}#${k}`);
     // Open surfaces (IGES surface models whose faces do not close, loose faces): never passed
     // off as solids. Their volume and mass mean nothing, and booleans with them are refused.
-    const open = meshOnly
-      ? []
-      : tools.flatMap((t, k) => (hasFreeEdges(t.naming, f.id) ? [bodyId(k)] : []));
+    const open: string[] = [];
+    if (!meshOnly) {
+      for (const [k, t] of tools.entries()) {
+        const fp = await this.fingerprints(t.shape);
+        if (hasFreeEdges(t.naming, f.id, fp)) open.push(bodyId(k));
+      }
+    }
     if (open.length > 0) {
       const what =
         open.length === tools.length ? 'The imported file has' : 'Some imported bodies have';
@@ -4454,12 +4458,21 @@ const MESH_FORMATS: ReadonlySet<ImportFeature['source']['format']> = new Set([
 
 /**
  * Does an imported body have free (boundary) edges? Its edges are named from their adjacent faces
- * (naming.ts): `edge(A|B)` between two faces, `edge(A|A)` on a seam, `edge(A)` on a free edge,
- * which a closed solid never has.
+ * (naming.ts): `edge(A|B)` between two faces, `edge(A|A)` on a seam, `edge(A)` on a free edge.
+ * Degenerate edges (sphere poles, cone apexes, revolves touching the axis) are also named
+ * `edge(A)` in a closed solid, so edges whose fingerprint curve is `degenerate` are not free.
+ * Without fingerprints the body is assumed closed: a false "open" would refuse a valid solid.
  */
-function hasFreeEdges(naming: NamingMap, featureId: Id): boolean {
+function hasFreeEdges(
+  naming: NamingMap,
+  featureId: Id,
+  fp: ShapeFingerprints | null,
+): boolean {
+  if (!fp) return false;
   const free = new RegExp(`^edge\\(F${featureId}:face(#\\d+)?\\)(#\\d+)?$`);
-  return naming.some((n) => n.kind === 'edge' && free.test(n.name));
+  return naming.some(
+    (n) => n.kind === 'edge' && free.test(n.name) && fp.edges[n.index]?.curve !== 'degenerate',
+  );
 }
 
 const IDENTITY_FRAME: Frame = { origin: [0, 0, 0], z: [0, 0, 1], x: [1, 0, 0] };

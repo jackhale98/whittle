@@ -586,6 +586,44 @@ describe.skipIf(!built)(`regen golden: import${skipNote}`, () => {
     relClose(totalVolume(cut.bodies), 8000, 1e-9);
   });
 
+  it('a closed solid with degenerate edges (sphere poles) is not an open surface', async () => {
+    // Sphere poles are degenerate edges named `edge(F<id>:face#k)` like free edges; the
+    // open-surface check must skip them (gate review regression).
+    const sphereDoc = makeDoc(
+      {},
+      [
+        {
+          id: fid('ISPH'),
+          type: 'primitive',
+          name: 'Sphere',
+          suppressed: false,
+          op: 'new',
+          shape: 'sphere',
+          radius: '5',
+          frame: { origin: [20, 15, 2], z: [0, 0, 1], x: [1, 0, 0] },
+        },
+      ],
+      SRC,
+    );
+    const ball = await attachmentOf(sphereDoc, 'imports/ball.step');
+    const vBall = (4 / 3) * PI * 125;
+    const solo = await regen([importFeature(ball, 'step')], [ball]);
+    expect(states(solo), describeFailures(solo)).toEqual(['ok']);
+    expect(solo.features[0]?.warnings ?? []).toEqual([]);
+    relClose(totalVolume(solo.bodies), vBall, 1e-6);
+    const plate = new Sk();
+    plate.rect('p', 'L', 0, 0, 40, 30);
+    for (const id of ['pa', 'pb', 'pc', 'pd']) plate.geo({ kind: 'fix', entity: id });
+    const PS = fid('ISPS');
+    const PE = fid('ISPE');
+    const base: Feature[] = [plate.feature(PS), extrude(PE, [region(PS, 'L1,L2,L3,L4')], '4')];
+    const cut = await regen([...base, importFeature(ball, 'step', { op: 'cut' })], [ball]);
+    expect(states(cut), describeFailures(cut)).toEqual(['ok', 'ok', 'ok']);
+    // Spherical cap of the ball (centre z = 2, r = 5) inside the plate z 0…4: |z - 2| ≤ 2.
+    const inside = PI * (25 * 4 - (2 ** 3 - (-2) ** 3) / 3);
+    relClose(totalVolume(cut.bodies), 40 * 30 * 4 - inside, 1e-6);
+  });
+
   it('mesh files become mesh-only reference bodies: shown and exported, never modified', async () => {
     const stl = await attachmentOf(bracketDoc(), 'imports/bracket.stl', 'stl');
     const r0 = await regen([importFeature(stl, 'stl')], [stl]);

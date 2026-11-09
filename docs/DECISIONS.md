@@ -1617,7 +1617,7 @@ refused IGES (M3 gate blocker B1).
    not IGES is the reader's `INVALID_INPUT`.
 5. **Open surfaces are never passed off as solids.** An IGES surface model that does not close
    comes in as a surface body, and GProp still reports a "volume" for it. A body whose edge names
-   include a free edge `edge(F<id>:face#k)` (naming.ts: a closed solid has none) gets an
+   include a free edge `edge(F<id>:face#k)` (naming.ts; a closed solid has none apart from degenerate edges such as sphere poles and cone apexes, which are recognised by their fingerprint curve `degenerate` and skipped) gets an
    `OPERATION_FAILED` warning on `new` ("open surfaces, not closed solids", with the body ids). As
    the tool of add/cut/intersect it is refused (`INVALID_INPUT`) rather than left to OCCT's
    "boolean failed".

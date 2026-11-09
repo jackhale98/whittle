@@ -93,7 +93,6 @@ jobs:
           VITE_BITBUCKET_CLIENT_ID: ${{ vars.VITE_BITBUCKET_CLIENT_ID }}
       - name: Initial-route JS budget (<= 250 kB gzip)
         run: pnpm --filter @wren-cad/web size
-        env:
       - name: Upload web build
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
