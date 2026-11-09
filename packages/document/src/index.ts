@@ -7,6 +7,7 @@
  *  - Files:                `projectCodec`, `canonicalJson`, `packFiles` / `unpackFiles`
  *  - Materials:            `MATERIALS`, `resolveDensity`
  *  - Factories:            `newDoc`, `newPart`, `ulid`
+ *  - Hole tables (M3):     `ISO_HOLES`, `ANSI_HOLES`, `holeRow`, `resolveHoleSize`
  */
 
 export * from './codec';
@@ -16,6 +17,7 @@ export * from './expressions';
 export * from './factory';
 export * from './features';
 export * from './files';
+export * from './hole-tables';
 export * from './materials';
 export * from './migrations';
 export * from './parser';

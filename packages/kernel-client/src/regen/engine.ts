@@ -23,9 +23,12 @@
  */
 
 import type {
+  AxisFeature,
   BodyResult,
   BodyScope,
   ChamferFeature,
+  CircularPatternFeature,
+  DraftFeature,
   EntityQuery,
   EntityRef,
   ExportFormat,
@@ -38,17 +41,22 @@ import type {
   FilletFeature,
   Fingerprint,
   Frame,
+  HoleFeature,
   Id,
   ImportFeature,
   KernelError,
+  LinearPatternFeature,
+  LoftFeature,
   MassProperties,
   Measurement,
   MeasureTarget,
   MeshBuffers,
   MeshQuality,
+  MirrorFeature,
   NamingMap,
   Part,
   PlaneFeature,
+  PointFeature,
   PrimitiveFeature,
   PushPullFeature,
   RegenRequest,
@@ -59,11 +67,15 @@ import type {
   RevolveFeature,
   ShapeFingerprints,
   ShapeHandle,
+  ShellFeature,
+  SketchConstraint,
   SketchEntity,
   SketchFeature,
   SketchResult,
   SketchSolveInput,
   SketchSolveResult,
+  SweepFeature,
+  ThreadFeature,
   UnresolvedRef,
   Vec2,
   Vec3,
@@ -73,6 +85,8 @@ import {
   evaluateFeatureValues,
   expressionEngine,
   featureReferences,
+  holeRow,
+  resolveHoleSize,
   scopeOf,
   sketchSolveValues,
   tryResolveDensity,
@@ -81,18 +95,51 @@ import { IoError, importMesh, meshToStl } from '@whittle/io';
 import { zipSync } from 'fflate';
 import type { KernelApiInternals, KernelWorkerApi, MeasureSubject } from '../kernel-api';
 import { copyMesh, faceIndex, faceSubMesh } from './buffers';
+import { chainOrder } from './chain';
 import { type CompareOutput, type DiffSide, geometricDiff } from './compare';
 import {
+  anglePlane,
+  edgeCircle,
+  edgeEndpoints,
+  edgeLine,
+  faceAxis,
+  flipFrame,
+  frameLine,
+  type GeoQuery,
+  heightAbove,
+  isGeoError,
+  type Line,
+  lineFrame,
+  lineLineIntersection,
+  linePlaneIntersection,
+  midPlane,
+  normalPlane,
+  planesIntersection,
+  planeThroughPoint,
+  planeThroughPoints,
+  pointFrame,
+  snapFrame,
+  sphereCentre,
+  toLocal,
+} from './datums';
+import {
+  add,
   type Box3,
   boxDiagonal,
   boxesOverlap,
+  cross,
+  dist,
+  dot,
   emptyBox,
   extendBox,
   groupByNormal,
+  normalize,
   ORIGIN_AXES,
   ORIGIN_PLANES,
   planeFrame,
   sampleEntity,
+  scale,
+  sub,
   toWorld,
 } from './geometry';
 import { hashKey } from './hash';
@@ -110,6 +157,19 @@ import {
   translateName,
   translateNaming,
 } from './imports';
+import {
+  flattenProjection,
+  type LinkedCurve,
+  type LinkedSource,
+  type ProjectionApi,
+  projectAxis,
+  projectCircle,
+  projectPlaneTrace,
+  projectPoint,
+  projectSketchEntity,
+  type ReprojectLinked,
+  reprojectLinkedFallback,
+} from './linked';
 import { type Candidate, type ResolvedTarget, resolveRef, type SubKind } from './resolve';
 
 // ---------------------------------------------------------------------------------------------
@@ -142,9 +202,19 @@ export interface RegenEngineOptions {
 }
 
 export interface RegenEngineDeps {
-  kernel: KernelWorkerApi & Partial<KernelApiInternals>;
+  /**
+   * The kernel worker surface. `projectEdges` / `projectFaceOutline` (M3, kernel engineer) are
+   * used for linked sketch entities when present; without them straight edges and circles parallel
+   * to the sketch are projected in TypeScript and other sources are an error.
+   */
+  kernel: KernelWorkerApi & Partial<KernelApiInternals> & Partial<ProjectionApi>;
   /** Lazily loads planegcs (only when a sketch misses the cache). */
   sketchSolver: () => Promise<SketchSolve>;
+  /**
+   * Re-projects linked sketch entities onto their sources' projections (packages/sketch's
+   * `reprojectLinked` once it lands; default `reprojectLinkedFallback`).
+   */
+  reprojectLinked?: ReprojectLinked;
   options?: RegenEngineOptions;
 }
 
@@ -244,6 +314,32 @@ interface PlaneState {
   key: string;
 }
 
+/** A construction axis or point (M3): pure geometry, no kernel shape. */
+interface DatumState {
+  id: Id;
+  kind: 'axis' | 'point';
+  /** Axis: origin on the line, z = direction (`lineFrame`). Point: origin = the point. */
+  frame: Frame;
+  key: string;
+}
+
+/**
+ * How to get the tool solid of a solid feature (extrude, revolve, sweep, loft, primitive, hole)
+ * before its boolean, for mirror / pattern copies (ADR-019 item 4). The tool is built lazily — only
+ * when a copy feature asks for it — and cached as its own entry under `key`, which hashes the
+ * tool's own inputs (definition without op/scope, values, refs as content keys, frames) but not
+ * the bodies it is applied to: editing an unrelated part of the body doesn't rebuild the tool.
+ */
+interface ToolSpec {
+  featureId: Id;
+  key: string;
+  /** values["/ops/<id>"]: 0 add, 1 cut, 2 intersect (`new` copies are added to its body). */
+  op: 0 | 1 | 2;
+  build: () => Promise<Result<FeatureResult>>;
+  /** Bodies the feature produced or changed (set when the feature ran ok). */
+  bodies: string[];
+}
+
 type EntryResult =
   | {
       ok: true;
@@ -253,6 +349,9 @@ type EntryResult =
       touched: string[];
       sketch?: SketchState;
       plane?: PlaneState;
+      datum?: DatumState;
+      /** Tool entries (see `ToolSpec`): the cached tool solid. */
+      tool?: { shape: ShapeHandle; naming: NamingMap };
       warnings: KernelError[];
     }
   | { ok: false; error: KernelError };
@@ -294,6 +393,9 @@ class ModelState {
   bodies = new Map<string, BodyState>();
   sketches = new Map<Id, SketchState>();
   planes = new Map<Id, PlaneState>();
+  datums = new Map<Id, DatumState>();
+  /** Tool solids of the solid features evaluated so far (by feature id), for copies. */
+  tools = new Map<Id, ToolSpec>();
   version = 0;
 
   apply(r: Extract<EntryResult, { ok: true }>): void {
@@ -301,6 +403,7 @@ class ModelState {
     for (const b of r.set) this.bodies.set(b.id, b);
     if (r.sketch) this.sketches.set(r.sketch.id, r.sketch);
     if (r.plane) this.planes.set(r.plane.id, r.plane);
+    if (r.datum) this.datums.set(r.datum.id, r.datum);
     this.version++;
   }
 
@@ -340,6 +443,8 @@ interface Plan {
   involved: string[];
   /** `transient`: the outcome depends on something outside the key (attachments): don't cache it. */
   run: () => Promise<{ result: EntryResult; owned: ShapeHandle[]; transient?: boolean }>;
+  /** Solid features: how to build their tool solid for copies (registered when the feature is ok). */
+  tool?: Omit<ToolSpec, 'bodies'>;
 }
 
 interface Planned {
@@ -349,6 +454,10 @@ interface Planned {
   taint: string[];
   /** An error detected while planning (e.g. a non-planar sketch face). */
   error?: KernelError;
+  /** Needs attention: extra names to highlight (linked sketch entities whose source is lost). */
+  attention?: string[];
+  /** Planning-time warnings (e.g. ignored pattern skips), added to an ok status. */
+  warnings?: KernelError[];
 }
 
 const FIELD_LABELS: Record<string, string> = {
@@ -364,6 +473,25 @@ const FIELD_LABELS: Record<string, string> = {
   '/mode/angle': 'Angle',
   '/distance': 'Distance',
   '/definition/distance': 'Offset',
+  '/definition/angle': 'Angle',
+  '/definition/at/t': 'Position along the curve',
+  '/definition/t': 'Position along the edge',
+  '/definition/x': 'X',
+  '/definition/y': 'Y',
+  '/definition/z': 'Z',
+  '/thickness': 'Thickness',
+  '/count': 'Count',
+  '/spacing': 'Spacing',
+  '/second/count': 'Second direction count',
+  '/second/spacing': 'Second direction spacing',
+  '/diameter': 'Diameter',
+  '/tipAngle': 'Drill point angle',
+  '/counterbore/diameter': 'Counterbore diameter',
+  '/counterbore/depth': 'Counterbore depth',
+  '/countersink/diameter': 'Countersink diameter',
+  '/countersink/angle': 'Countersink angle',
+  '/thread/depth': 'Thread depth',
+  '/length': 'Thread length',
 };
 
 const kerr = (
@@ -374,6 +502,8 @@ const kerr = (
 
 const SKETCH_TAG = /^S([0-9A-Za-z]+):/;
 const PLANE_NAME = /^F([0-9A-Za-z]+):plane$/;
+const AXIS_NAME = /^F([0-9A-Za-z]+):axis$/;
+const POINT_NAME = /^F([0-9A-Za-z]+):point$/;
 
 function definition(f: Feature): unknown {
   return { ...f, name: undefined, suppressed: undefined, annotations: undefined };
@@ -391,6 +521,9 @@ export class RegenEngine {
   private readonly kernel: RegenEngineDeps['kernel'];
   private readonly solverLoader: RegenEngineDeps['sketchSolver'];
   private solver: SketchSolve | null = null;
+  private readonly reproject: ReprojectLinked;
+  /** Per-handle memo of probed geometry (lines, circles, axes, end points); dropped on release. */
+  private readonly geoMemo = new Map<string, unknown>();
   private maxSpare: number;
   private readonly quality: Record<
     MeshQuality,
@@ -413,6 +546,7 @@ export class RegenEngine {
   constructor(deps: RegenEngineDeps) {
     this.kernel = deps.kernel;
     this.solverLoader = deps.sketchSolver;
+    this.reproject = deps.reprojectLinked ?? reprojectLinkedFallback;
     this.maxSpare = validSpare(deps.options?.maxSpareResults) ?? 128;
     this.maxSlots = validSlots(deps.options?.maxVersionSlots) ?? DEFAULT_VERSION_SLOTS;
     this.quality = { ...MESH_QUALITY, ...deps.options?.meshQuality };
@@ -754,6 +888,7 @@ export class RegenEngine {
     for (const k of [...this.mass.keys()]) if (k.startsWith(`${shape}|`)) this.mass.delete(k);
     this.meshes.delete(`${shape}|coarse`);
     this.meshes.delete(`${shape}|fine`);
+    for (const k of [...this.geoMemo.keys()]) if (k.startsWith(`${shape}|`)) this.geoMemo.delete(k);
     await this.kernel.release(shape);
   }
 
@@ -1049,9 +1184,10 @@ export class RegenEngine {
     };
     const allBodies = () => [...ctx.state.bodies.keys()];
 
-    // 1. References into failed features → blocked.
+    // 1. References into failed features (or copies of one) → blocked.
+    const copied = copiedFeatures(f);
     for (const id of ctx.failed) {
-      if (featureReferences(f, id)) {
+      if (featureReferences(f, id) || copied.includes(id)) {
         fail(allBodiesFor(f, allBodies()));
         return status('blocked', {
           error: kerr('UNRESOLVED_REFERENCE', 'An upstream feature this one depends on failed', {
@@ -1107,16 +1243,22 @@ export class RegenEngine {
     if (planned.unresolved.length > 0 || !planned.plan) {
       fail(planned.taint);
       const first = planned.unresolved[0];
+      const linked = planned.attention ?? [];
       return status('needsAttention', {
         unresolved: planned.unresolved,
         error: kerr(
           'UNRESOLVED_REFERENCE',
-          first?.reason === 'ambiguous'
-            ? 'A selection now matches several entities'
-            : 'A selection no longer exists',
+          linked.length > 0
+            ? `${linked.length === 1 ? 'A linked sketch entity has' : `${linked.length} linked sketch entities have`} lost ${linked.length === 1 ? 'its' : 'their'} source`
+            : first?.reason === 'ambiguous'
+              ? 'A selection now matches several entities'
+              : 'A selection no longer exists',
           {
-            hint: 'Re-pick the highlighted selection.',
-            entityRefs: planned.unresolved.map((u) => u.ref.name),
+            hint:
+              linked.length > 0
+                ? 'Re-pick the source of the highlighted entities, or unlink them.'
+                : 'Re-pick the highlighted selection.',
+            entityRefs: [...new Set([...planned.unresolved.map((u) => u.ref.name), ...linked])],
           },
         ),
       });
@@ -1164,8 +1306,12 @@ export class RegenEngine {
       });
     }
     ctx.state.apply(r);
+    if (plan.tool) {
+      ctx.state.tools.set(f.id, { ...plan.tool, bodies: r.set.map((b) => b.id) });
+    }
     const out = status('ok', { cached });
-    if (r.warnings.length > 0) out.warnings = r.warnings;
+    const warnings = [...(planned.warnings ?? []), ...r.warnings];
+    if (warnings.length > 0) out.warnings = warnings;
     return out;
   }
 
@@ -1357,6 +1503,25 @@ export class RegenEngine {
         return this.planPushPull(ctx, f, values);
       case 'import':
         return this.planImport(ctx, f);
+      case 'axis':
+        return this.planAxis(ctx, f, values);
+      case 'point':
+        return this.planPoint(ctx, f, values);
+      case 'shell':
+        return this.planShell(ctx, f, values);
+      case 'draft':
+        return this.planDraft(ctx, f, values);
+      case 'sweep':
+      case 'loft':
+        return this.planSweepLoft(ctx, f, values);
+      case 'mirror':
+      case 'linearPattern':
+      case 'circularPattern':
+        return this.planCopy(ctx, f, values);
+      case 'hole':
+        return this.planHole(ctx, f, values);
+      case 'thread':
+        return this.planThread(ctx, f, values);
       default: {
         const unknown = f as { type: string };
         return Promise.resolve({
@@ -1385,11 +1550,20 @@ export class RegenEngine {
     const involved = owner && ctx.state.bodies.has(owner) ? [owner] : [];
     const solveValues = sketchSolveValues(f, { values, errors: {} }).values;
     const frame = plane.frame;
+    let entities = f.entities;
+    let constraints = f.constraints;
+    if (f.entities.some((e) => e.source)) {
+      const linked = await this.linkedEntities(ctx, f, frame, unresolved, involved);
+      if ('code' in linked) return { unresolved, taint: [], error: linked };
+      if ('attention' in linked) return { unresolved, taint: [], attention: linked.attention };
+      entities = linked.entities;
+      constraints = linked.constraints;
+    }
     const key = hashKey({
       t: 'sketch',
       id: f.id,
-      entities: f.entities,
-      constraints: f.constraints,
+      entities,
+      constraints,
       values: solveValues,
       frame,
     });
@@ -1401,11 +1575,7 @@ export class RegenEngine {
         involved,
         run: async () => {
           this.solver ??= await this.solverLoader();
-          const solved = this.solver.solve({
-            entities: f.entities,
-            constraints: f.constraints,
-            values: solveValues,
-          });
+          const solved = this.solver.solve({ entities, constraints, values: solveValues });
           if (solved.status !== 'solved') {
             const c = solved.conflicts[0];
             const error =
@@ -1512,8 +1682,14 @@ export class RegenEngine {
     }
     if (f.type === 'revolve') {
       const axis = ORIGIN_AXES[f.axis.name];
+      const datum = AXIS_NAME.exec(f.axis.name);
       if (axis) frames.axis = axis;
-      else {
+      else if (datum) {
+        // M3: an axis feature (`F…:axis`) revolves about its frame.
+        const d = ctx.state.datums.get(datum[1] as string);
+        if (d?.kind === 'axis') frames.axis = d.frame;
+        else unresolved.push({ path: '/axis', ref: f.axis, reason: 'missing' });
+      } else {
         const t = await this.resolveSub(ctx, f.axis, '/axis', unresolved);
         if (t) note('/axis', t);
       }
@@ -1549,13 +1725,38 @@ export class RegenEngine {
         key,
         involved: [...involved],
         run: () => this.runSolid(f, inputs, scoped, key),
+        tool: this.solidTool(f, inputs, refKeys),
       },
+    };
+  }
+
+  /** The tool solid of a solid feature: the feature alone (op `new`), keyed without its bodies. */
+  private solidTool(
+    f: ExtrudeFeature | RevolveFeature | PrimitiveFeature | SweepFeature | LoftFeature,
+    inputs: FeatureInputs,
+    refKeys: Record<string, unknown>,
+  ): Omit<ToolSpec, 'bodies'> {
+    const tool = { ...f, op: 'new', scope: undefined } as Feature;
+    const toolInputs: FeatureInputs = { values: inputs.values };
+    if (inputs.refs) toolInputs.refs = inputs.refs;
+    if (inputs.frames) toolInputs.frames = inputs.frames;
+    return {
+      featureId: f.id,
+      key: hashKey({
+        t: 'tool',
+        def: definition(tool),
+        values: inputs.values,
+        refs: refKeys,
+        frames: inputs.frames ?? {},
+      }),
+      op: opCode(f.op),
+      build: () => this.exec(tool, toolInputs),
     };
   }
 
   /** Executes a solid feature with its body op and scope semantics. */
   private async runSolid(
-    f: ExtrudeFeature | RevolveFeature | PrimitiveFeature,
+    f: ExtrudeFeature | RevolveFeature | PrimitiveFeature | SweepFeature | LoftFeature,
     inputs: FeatureInputs,
     scoped: { bodies: BodyState[]; mode: 'default' | 'all' | 'bodies' },
     key: string,
@@ -1798,7 +1999,8 @@ export class RegenEngine {
     const taint = owners.length > 0 ? owners : [...ctx.state.bodies.keys()];
     const key = hashKey({
       t: f.type,
-      def: definition(f),
+      // `propagate` absent means true (ADR-019 item 2): both spellings share one cache entry.
+      def: { ...(definition(f) as object), propagate: f.propagate !== false },
       values,
       refs: refKeys,
       bodies: [...groups.values()].map((g) => [g.body.id, g.body.key]),
@@ -1918,32 +2120,121 @@ export class RegenEngine {
     const unresolved: UnresolvedRef[] = [];
     const frames: Record<string, Frame> = {};
     let fromKey: unknown = null;
-    let involved: string[] = [];
-    if (f.definition.kind === 'offset') {
-      const p = await this.resolvePlane(ctx, f.definition.from, '/definition/from', unresolved);
+    const involved = new Set<string>();
+    const noteOwner = (owner: string | undefined) => {
+      if (owner && ctx.state.bodies.has(owner)) involved.add(owner);
+    };
+    const fail = (e: KernelError): Planned => ({ unresolved, taint: [], error: e });
+    const d = f.definition;
+    /** Frame computed in TypeScript (M3 definitions); the kernel then gets `{ kind: 'frame' }`. */
+    let computed: Frame | null = null;
+    const geoError = (message: string, refs: EntityRef[]) =>
+      fail(
+        kerr('INVALID_INPUT', message, {
+          hint: 'Pick other references for the plane.',
+          entityRefs: refs.map((r) => r.name),
+        }),
+      );
+    if (d.kind === 'offset') {
+      const p = await this.resolvePlane(ctx, d.from, '/definition/from', unresolved);
       if (p === null) return { unresolved, taint: [] };
-      if ('code' in p) return { unresolved, taint: [], error: p };
+      if ('code' in p) return fail(p);
       frames.from = p.frame;
       fromKey = p.shapeKey;
-      const owner = p.target?.owner;
-      if (owner && ctx.state.bodies.has(owner)) involved = [owner];
+      noteOwner(p.target?.owner);
+    } else if (d.kind === 'threePoints') {
+      const pts: Vec3[] = [];
+      for (let i = 0; i < 3; i++) {
+        const p = await this.resolvePoint(
+          ctx,
+          d.points[i] as EntityRef,
+          `/definition/points/${i}`,
+          unresolved,
+        );
+        if (p && 'code' in p) return fail(p);
+        if (p) {
+          pts.push(p.point);
+          noteOwner(p.owner);
+        }
+      }
+      if (unresolved.length > 0) return { unresolved, taint: [] };
+      const g = planeThroughPoints(pts[0] as Vec3, pts[1] as Vec3, pts[2] as Vec3);
+      if (isGeoError(g)) return geoError(g.error, d.points);
+      computed = g;
+    } else if (d.kind === 'angle') {
+      const p = await this.resolvePlane(ctx, d.from, '/definition/from', unresolved);
+      const a = await this.resolveAxis(ctx, d.axis, '/definition/axis', unresolved, false);
+      if (p && 'code' in p) return fail(p);
+      if (a && 'code' in a) return fail(a);
+      if (!p || !a) return { unresolved, taint: [] };
+      noteOwner(p.target?.owner);
+      noteOwner(a.owner);
+      const g = anglePlane(p.frame, a.line, values['/definition/angle'] ?? 0);
+      if (isGeoError(g)) return geoError(g.error, [d.from, d.axis]);
+      computed = g;
+    } else if (d.kind === 'normalToCurve') {
+      const r = await this.normalToCurve(ctx, d, values, unresolved);
+      if (r === null) return { unresolved, taint: [] };
+      if ('code' in r) return fail(r);
+      noteOwner(r.owner);
+      computed = r.frame;
+    } else if (d.kind === 'midplane') {
+      const a = await this.resolvePlane(ctx, d.a, '/definition/a', unresolved);
+      const b = await this.resolvePlane(ctx, d.b, '/definition/b', unresolved);
+      if (a && 'code' in a) return fail(a);
+      if (b && 'code' in b) return fail(b);
+      if (!a || !b) return { unresolved, taint: [] };
+      noteOwner(a.target?.owner);
+      noteOwner(b.target?.owner);
+      const g = midPlane(a.frame, b.frame);
+      if (isGeoError(g)) return geoError(g.error, [d.a, d.b]);
+      computed = g;
+    } else if (d.kind === 'throughPoint') {
+      const p = await this.resolvePlane(ctx, d.from, '/definition/from', unresolved);
+      const q = await this.resolvePoint(ctx, d.point, '/definition/point', unresolved);
+      if (p && 'code' in p) return fail(p);
+      if (q && 'code' in q) return fail(q);
+      if (!p || !q) return { unresolved, taint: [] };
+      noteOwner(p.target?.owner);
+      noteOwner(q.owner);
+      computed = planeThroughPoint(p.frame, q.point);
     }
-    const key = hashKey({ t: 'plane', def: definition(f), values, frames, from: fromKey });
+    if (unresolved.length > 0) return { unresolved, taint: [] };
+    // The kernel never sees `flip`: new definitions reach it as a (flipped) frame; offset planes
+    // run as in M1 and the flip is applied to the resulting frame.
+    if (computed && f.flip) computed = flipFrame(computed);
+    if (!computed && f.flip && d.kind === 'frame') computed = flipFrame(d.frame);
+    const kernelFeature: PlaneFeature = computed
+      ? { ...f, definition: { kind: 'frame', frame: computed } }
+      : { ...f };
+    delete kernelFeature.flip;
+    const flipAfter = !computed && f.flip === true;
+    const key = hashKey({
+      t: 'plane',
+      def: definition(f),
+      values,
+      frames,
+      from: fromKey,
+      computed,
+    });
     return {
       unresolved,
       taint: [],
       plan: {
         key,
-        involved,
+        involved: [...involved],
         run: async () => {
-          const r = await this.exec(f, { values, frames });
+          const r = await this.exec(kernelFeature, computed ? { values: {} } : { values, frames });
           if (!r.ok) return { result: { ok: false, error: r.error }, owned: [] };
+          let frame = computed ??
+            r.value.frame ??
+            frames.from ?? { origin: [0, 0, 0], z: [0, 0, 1], x: [1, 0, 0] };
+          if (flipAfter) frame = flipFrame(frame);
           const plane: PlaneState = {
             id: f.id,
             shape: r.value.shape,
             naming: r.value.naming,
-            frame: r.value.frame ??
-              frames.from ?? { origin: [0, 0, 0], z: [0, 0, 1], x: [1, 0, 0] },
+            frame,
             key: `${key}/P`,
           };
           return {
@@ -1960,6 +2251,52 @@ export class RegenEngine {
         },
       },
     };
+  }
+
+  /** `normalToCurve` planes: at a vertex on the curve or at a 0–1 position along a straight edge. */
+  private async normalToCurve(
+    ctx: WalkContext,
+    d: Extract<PlaneFeature['definition'], { kind: 'normalToCurve' }>,
+    values: Record<string, number>,
+    unresolved: UnresolvedRef[],
+  ): Promise<{ frame: Frame; owner?: string } | KernelError | null> {
+    const t = await this.resolveSub(ctx, d.curve, '/definition/curve', unresolved);
+    let at: Vec3 | null = null;
+    if (!('t' in d.at)) {
+      const p = await this.resolvePoint(ctx, d.at, '/definition/at', unresolved);
+      if (p && 'code' in p) return p;
+      if (p) at = p.point;
+    }
+    if (!t || unresolved.length > 0) return null;
+    const bad = (message: string) =>
+      kerr('INVALID_INPUT', message, {
+        hint: 'Pick a straight or circular edge.',
+        entityRefs: [d.curve.name],
+      });
+    if (t.kind !== 'edge') return bad('A plane normal to a curve needs an edge');
+    const owner = t.owner;
+    const line = await this.lineOfEdge(t);
+    if (line) {
+      const dir = normalize(sub(line.b, line.a));
+      const point = at ?? add(line.a, scale(sub(line.b, line.a), values['/definition/at/t'] ?? 0));
+      return { frame: normalPlane(point, dir), owner };
+    }
+    const circle = await this.circleOfEdge(t);
+    if (circle) {
+      if (!at) {
+        return kerr(
+          'UNSUPPORTED_FEATURE',
+          'A position along a curved edge is not supported yet; pick a vertex on it',
+          { hint: 'Pick a vertex on the edge instead of a position.', entityRefs: [d.curve.name] },
+        );
+      }
+      const radial = sub(at, circle.centre);
+      if (Math.abs(dist(at, circle.centre) - circle.radius) > 1e-6 * (1 + circle.radius)) {
+        return bad('The point is not on the curve');
+      }
+      return { frame: normalPlane(at, cross(circle.normal, radial)), owner };
+    }
+    return bad('Planes normal to this kind of curve are not supported yet');
   }
 
   /**
@@ -2152,6 +2489,1334 @@ export class RegenEngine {
       naming = r.value.naming;
     }
     return { ok: true, value: { shape, naming, warnings } };
+  }
+
+  // -------------------------------------------------------------------------------------------
+  // M3: geometry probes, axes, points (reference geometry)
+  // -------------------------------------------------------------------------------------------
+
+  private geo(): GeoQuery {
+    return {
+      fingerprints: (shape) => this.fingerprints(shape),
+      measure: (a, b) => this.kernel.measureShapes(a, b),
+    };
+  }
+
+  /** Memoised per handle (engine-owned handles keep their geometry; dropped on release). */
+  private async memo<T>(shape: ShapeHandle, what: string, fn: () => Promise<T>): Promise<T> {
+    const k = `${shape}|${what}`;
+    if (this.geoMemo.has(k)) return this.geoMemo.get(k) as T;
+    const v = await fn();
+    this.geoMemo.set(k, v);
+    return v;
+  }
+
+  private lineOfEdge(t: { shape: ShapeHandle; index: number }) {
+    return this.memo(t.shape, `line:${t.index}`, () => edgeLine(this.geo(), t.shape, t.index));
+  }
+
+  private circleOfEdge(t: { shape: ShapeHandle; index: number }) {
+    return this.memo(t.shape, `circle:${t.index}`, () => edgeCircle(this.geo(), t.shape, t.index));
+  }
+
+  private axisOfFace(t: { shape: ShapeHandle; index: number }) {
+    return this.memo(t.shape, `axis:${t.index}`, () => faceAxis(this.geo(), t.shape, t.index));
+  }
+
+  private endpointsOf(t: { shape: ShapeHandle; index: number }, tol: number) {
+    return this.memo(t.shape, `ends:${t.index}:${tol}`, () =>
+      edgeEndpoints(this.geo(), t.shape, t.index, tol),
+    );
+  }
+
+  /**
+   * An axis-like reference → a line: origin axes, axis features (`F…:axis`), straight edges (in
+   * their geometric-key direction), circular edges and cylindrical faces (their axis, canonical
+   * direction). With `planeNormal` (linear pattern directions) planes and flat faces give their
+   * normal, and circular edges are refused (no direction).
+   */
+  private async resolveAxis(
+    ctx: WalkContext,
+    ref: EntityRef,
+    path: string,
+    unresolved: UnresolvedRef[],
+    planeNormal: boolean,
+  ): Promise<{ line: Line; owner?: string } | KernelError | null> {
+    const origin = ORIGIN_AXES[ref.name];
+    if (origin) return { line: frameLine(origin) };
+    const ax = AXIS_NAME.exec(ref.name);
+    if (ax) {
+      const d = ctx.state.datums.get(ax[1] as string);
+      if (d?.kind === 'axis') return { line: frameLine(d.frame) };
+      unresolved.push({ path, ref, reason: 'missing' });
+      return null;
+    }
+    const bad = (message: string) =>
+      kerr('INVALID_INPUT', message, {
+        hint: planeNormal
+          ? 'Pick a straight edge, an axis, a plane or a flat face.'
+          : 'Pick an axis, a straight or circular edge, or a cylindrical face.',
+        entityRefs: [ref.name],
+      });
+    if (ORIGIN_PLANES[ref.name] || PLANE_NAME.test(ref.name)) {
+      if (!planeNormal) return bad('A plane is not an axis');
+      const p = await this.resolvePlane(ctx, ref, path, unresolved);
+      if (!p || 'code' in p) return p;
+      const out: { line: Line; owner?: string } = { line: frameLine(p.frame) };
+      if (p.target?.owner) out.owner = p.target.owner;
+      return out;
+    }
+    const t = await this.resolveSub(ctx, ref, path, unresolved);
+    if (!t) return null;
+    if (t.kind === 'edge') {
+      const l = await this.lineOfEdge(t);
+      if (l) return { line: { origin: l.a, dir: normalize(sub(l.b, l.a)) }, owner: t.owner };
+      const c = await this.circleOfEdge(t);
+      if (c) {
+        if (planeNormal) return bad('A circular edge has no direction; pick a straight edge');
+        return { line: { origin: c.centre, dir: c.normal }, owner: t.owner };
+      }
+      return bad('This edge is neither straight nor circular');
+    }
+    if (t.kind === 'face') {
+      const fp = await this.fingerprints(t.shape);
+      const face = fp?.faces[t.index];
+      if (face?.normal) {
+        if (!planeNormal) return bad('A flat face has no axis');
+        return { line: { origin: face.centroid, dir: normalize(face.normal) }, owner: t.owner };
+      }
+      const a = await this.axisOfFace(t);
+      if (a) return { line: { origin: a.origin, dir: a.dir }, owner: t.owner };
+      return bad('This face has no axis');
+    }
+    return bad('A vertex has no direction');
+  }
+
+  /**
+   * A point-like reference → a world point: `origin:O`, point features (`F…:point`), vertices and
+   * sketch points (`S…:p(id)`), and circular edges (their centre).
+   */
+  private async resolvePoint(
+    ctx: WalkContext,
+    ref: EntityRef,
+    path: string,
+    unresolved: UnresolvedRef[],
+  ): Promise<{ point: Vec3; owner?: string } | KernelError | null> {
+    if (ref.name === 'origin:O') return { point: [0, 0, 0] };
+    const pm = POINT_NAME.exec(ref.name);
+    if (pm) {
+      const d = ctx.state.datums.get(pm[1] as string);
+      if (d?.kind === 'point') return { point: d.frame.origin };
+      unresolved.push({ path, ref, reason: 'missing' });
+      return null;
+    }
+    const t = await this.resolveSub(ctx, ref, path, unresolved);
+    if (!t) return null;
+    if (t.kind === 'vertex') {
+      const fp = await this.fingerprints(t.shape);
+      const v = fp?.vertices[t.index];
+      if (v) return { point: v.point, owner: t.owner };
+    }
+    if (t.kind === 'edge') {
+      const c = await this.circleOfEdge(t);
+      if (c) return { point: c.centre, owner: t.owner };
+    }
+    return kerr('INVALID_INPUT', 'Pick a point, a vertex or a circular edge (its centre)', {
+      entityRefs: [ref.name],
+    });
+  }
+
+  /** A line or a plane (for intersection points). */
+  private async resolveLineOrPlane(
+    ctx: WalkContext,
+    ref: EntityRef,
+    path: string,
+    unresolved: UnresolvedRef[],
+  ): Promise<{ line: Line } | { plane: Frame } | KernelError | null> {
+    if (ORIGIN_PLANES[ref.name] || PLANE_NAME.test(ref.name) || ref.kind === 'face') {
+      const p = await this.resolvePlane(ctx, ref, path, unresolved);
+      if (!p || 'code' in p) return p;
+      return { plane: p.frame };
+    }
+    const a = await this.resolveAxis(ctx, ref, path, unresolved, false);
+    if (!a || 'code' in a) return a;
+    return { line: a.line };
+  }
+
+  private datumPlan(
+    f: AxisFeature | PointFeature,
+    frame: Frame,
+    values: Record<string, number>,
+    involved: Set<string>,
+  ): Planned {
+    const key = hashKey({ t: f.type, def: definition(f), values, frame });
+    const datum: DatumState = { id: f.id, kind: f.type, frame, key: `${key}/D` };
+    return {
+      unresolved: [],
+      taint: [],
+      plan: {
+        key,
+        involved: [...involved],
+        run: async () => ({
+          result: { ok: true, set: [], remove: [], touched: [], datum, warnings: [] },
+          owned: [],
+        }),
+      },
+    };
+  }
+
+  private async planAxis(
+    ctx: WalkContext,
+    f: AxisFeature,
+    values: Record<string, number>,
+  ): Promise<Planned> {
+    const unresolved: UnresolvedRef[] = [];
+    const involved = new Set<string>();
+    const note = (owner: string | undefined) => {
+      if (owner && ctx.state.bodies.has(owner)) involved.add(owner);
+    };
+    const fail = (e: KernelError): Planned => ({ unresolved, taint: [], error: e });
+    const geoError = (message: string, refs: EntityRef[]) =>
+      fail(
+        kerr('INVALID_INPUT', message, {
+          hint: 'Pick other references for the axis.',
+          entityRefs: refs.map((r) => r.name),
+        }),
+      );
+    const d = f.definition;
+    let line: Line | null = null;
+    if (d.kind === 'twoPoints') {
+      const a = await this.resolvePoint(ctx, d.a, '/definition/a', unresolved);
+      const b = await this.resolvePoint(ctx, d.b, '/definition/b', unresolved);
+      if (a && 'code' in a) return fail(a);
+      if (b && 'code' in b) return fail(b);
+      if (a && b) {
+        note(a.owner);
+        note(b.owner);
+        if (dist(a.point, b.point) <= 1e-9) return geoError('The two points coincide', [d.a, d.b]);
+        line = { origin: a.point, dir: normalize(sub(b.point, a.point)) };
+      }
+    } else if (d.kind === 'edge') {
+      const t = await this.resolveSub(ctx, d.edge, '/definition/edge', unresolved);
+      if (t) {
+        note(t.owner);
+        const l = t.kind === 'edge' ? await this.lineOfEdge(t) : null;
+        if (!l) return geoError('Pick a straight edge', [d.edge]);
+        line = { origin: l.a, dir: normalize(sub(l.b, l.a)) };
+      }
+    } else if (d.kind === 'cylinder') {
+      const a = await this.resolveAxis(ctx, d.face, '/definition/face', unresolved, false);
+      if (a && 'code' in a) return fail(a);
+      if (a) {
+        note(a.owner);
+        line = a.line;
+      }
+    } else if (d.kind === 'twoPlanes') {
+      const a = await this.resolvePlane(ctx, d.a, '/definition/a', unresolved);
+      const b = await this.resolvePlane(ctx, d.b, '/definition/b', unresolved);
+      if (a && 'code' in a) return fail(a);
+      if (b && 'code' in b) return fail(b);
+      if (a && b) {
+        note(a.target?.owner);
+        note(b.target?.owner);
+        const g = planesIntersection(a.frame, b.frame);
+        if (isGeoError(g)) return geoError(g.error, [d.a, d.b]);
+        line = g;
+      }
+    } else if (d.kind === 'pointNormal') {
+      const p = await this.resolvePoint(ctx, d.point, '/definition/point', unresolved);
+      const pl = await this.resolvePlane(ctx, d.plane, '/definition/plane', unresolved);
+      if (p && 'code' in p) return fail(p);
+      if (pl && 'code' in pl) return fail(pl);
+      if (p && pl) {
+        note(p.owner);
+        note(pl.target?.owner);
+        line = { origin: p.point, dir: normalize(pl.frame.z) };
+      }
+    }
+    if (unresolved.length > 0 || !line) return { unresolved, taint: [] };
+    return this.datumPlan(f, lineFrame(line), values, involved);
+  }
+
+  private async planPoint(
+    ctx: WalkContext,
+    f: PointFeature,
+    values: Record<string, number>,
+  ): Promise<Planned> {
+    const unresolved: UnresolvedRef[] = [];
+    const involved = new Set<string>();
+    const note = (owner: string | undefined) => {
+      if (owner && ctx.state.bodies.has(owner)) involved.add(owner);
+    };
+    const fail = (e: KernelError): Planned => ({ unresolved, taint: [], error: e });
+    const geoError = (
+      message: string,
+      refs: EntityRef[],
+      code: KernelError['code'] = 'INVALID_INPUT',
+    ) =>
+      fail(
+        kerr(code, message, {
+          hint: 'Pick other references for the point.',
+          entityRefs: refs.map((r) => r.name),
+        }),
+      );
+    const d = f.definition;
+    let point: Vec3 | null = null;
+    if (d.kind === 'coordinates') {
+      point = [
+        values['/definition/x'] ?? 0,
+        values['/definition/y'] ?? 0,
+        values['/definition/z'] ?? 0,
+      ];
+    } else if (d.kind === 'vertex') {
+      const p = await this.resolvePoint(ctx, d.vertex, '/definition/vertex', unresolved);
+      if (p && 'code' in p) return fail(p);
+      if (p) {
+        note(p.owner);
+        point = p.point;
+      }
+    } else if (d.kind === 'center') {
+      const t = await this.resolveSub(ctx, d.of, '/definition/of', unresolved);
+      if (t) {
+        note(t.owner);
+        if (t.kind === 'edge') point = (await this.circleOfEdge(t))?.centre ?? null;
+        else if (t.kind === 'face') {
+          point = await this.memo(t.shape, `sphere:${t.index}`, () =>
+            sphereCentre(this.geo(), t.shape, t.index),
+          );
+        }
+        if (!point) return geoError('Pick a circular edge or a spherical face', [d.of]);
+      }
+    } else if (d.kind === 'alongEdge') {
+      const t = await this.resolveSub(ctx, d.edge, '/definition/edge', unresolved);
+      if (t) {
+        note(t.owner);
+        const l = t.kind === 'edge' ? await this.lineOfEdge(t) : null;
+        if (!l) {
+          return geoError(
+            'A position along a curved edge is not supported yet; pick a straight edge',
+            [d.edge],
+            'UNSUPPORTED_FEATURE',
+          );
+        }
+        point = add(l.a, scale(sub(l.b, l.a), values['/definition/t'] ?? 0));
+      }
+    } else if (d.kind === 'intersection') {
+      const a = await this.resolveLineOrPlane(ctx, d.a, '/definition/a', unresolved);
+      const b = await this.resolveLineOrPlane(ctx, d.b, '/definition/b', unresolved);
+      if (a && 'code' in a) return fail(a);
+      if (b && 'code' in b) return fail(b);
+      if (a && b) {
+        const tol = Math.max(1e-6, 1e-6 * (await this.partDiag(ctx)));
+        const g =
+          'line' in a && 'line' in b
+            ? lineLineIntersection(a.line, b.line, tol)
+            : 'line' in a && 'plane' in b
+              ? linePlaneIntersection(a.line, b.plane)
+              : 'plane' in a && 'line' in b
+                ? linePlaneIntersection(b.line, a.plane)
+                : { error: 'Two planes meet in a line; pick a line and a plane' };
+        if (isGeoError(g)) return geoError(g.error, [d.a, d.b]);
+        point = g;
+      }
+    }
+    if (unresolved.length > 0 || !point) return { unresolved, taint: [] };
+    return this.datumPlan(f, pointFrame(point), values, involved);
+  }
+
+  // -------------------------------------------------------------------------------------------
+  // M3: shell, draft, sweep, loft
+  // -------------------------------------------------------------------------------------------
+
+  /** Resolves face refs that must all lie on one (B-rep) body. */
+  private async facesOfOneBody(
+    ctx: WalkContext,
+    refsIn: readonly EntityRef[],
+    base: string,
+    unresolved: UnresolvedRef[],
+    verb: string,
+  ): Promise<{
+    body?: BodyState;
+    refs: Record<string, ResolvedRef>;
+    refKeys: Record<string, unknown>;
+    error?: KernelError;
+    taint: string[];
+  }> {
+    const refs: Record<string, ResolvedRef> = {};
+    const refKeys: Record<string, unknown> = {};
+    const owners = new Set<string>();
+    const picked: string[] = [];
+    for (let i = 0; i < refsIn.length; i++) {
+      const ref = refsIn[i] as EntityRef;
+      const path = `${base}/${i}`;
+      const t = await this.resolveSub(ctx, ref, path, unresolved);
+      if (!t) continue;
+      if (t.kind !== 'face') {
+        return {
+          refs,
+          refKeys,
+          taint: [],
+          error: kerr('INVALID_INPUT', `Only faces can be ${verb}`, { entityRefs: [ref.name] }),
+        };
+      }
+      refs[path] = { shape: t.shape, kind: t.kind, index: t.index };
+      refKeys[path] = this.refKeyOf(ctx, t);
+      owners.add(t.owner);
+      picked.push(t.name);
+    }
+    const ids = [...owners];
+    const bodies = ids.filter((o) => ctx.state.bodies.has(o));
+    if (ids.length > 1 || (ids.length === 1 && bodies.length === 0)) {
+      return {
+        refs,
+        refKeys,
+        taint: bodies,
+        error: kerr(
+          'INVALID_INPUT',
+          bodies.length === 0
+            ? `Only faces of a body can be ${verb}`
+            : `The faces must all be on one body`,
+          { hint: 'Pick faces of one solid body.', entityRefs: picked },
+        ),
+      };
+    }
+    const body = bodies[0] === undefined ? undefined : ctx.state.bodies.get(bodies[0]);
+    if (body?.meshOnly) {
+      return { refs, refKeys, taint: [body.id], error: meshOnlyError(verb, body.id) };
+    }
+    return body ? { body, refs, refKeys, taint: [body.id] } : { refs, refKeys, taint: [] };
+  }
+
+  /** Runs a feature that changes one body in place (shell, draft, hole). */
+  private async runOnBody(
+    f: Feature,
+    body: BodyState,
+    inputs: FeatureInputs,
+    key: string,
+  ): Promise<{ result: EntryResult; owned: ShapeHandle[] }> {
+    const r = await this.exec(f, { ...inputs, target: body.shape });
+    if (!r.ok) return { result: { ok: false, error: r.error }, owned: [] };
+    for (const extra of r.value.bodies ?? []) {
+      if (extra.shape !== r.value.shape) await this.releaseHandle(extra.shape);
+    }
+    return {
+      result: {
+        ok: true,
+        set: [
+          { id: body.id, shape: r.value.shape, naming: r.value.naming, key: `${key}/${body.id}` },
+        ],
+        remove: [],
+        touched: [body.id],
+        warnings: r.value.warnings,
+      },
+      owned: [r.value.shape],
+    };
+  }
+
+  private async planShell(
+    ctx: WalkContext,
+    f: ShellFeature,
+    values: Record<string, number>,
+  ): Promise<Planned> {
+    const unresolved: UnresolvedRef[] = [];
+    const g = await this.facesOfOneBody(ctx, f.openFaces, '/openFaces', unresolved, 'shelled');
+    if (g.error) return { unresolved, taint: g.taint, error: g.error };
+    let body = g.body;
+    if (f.openFaces.length === 0) {
+      if (!f.body) {
+        return {
+          unresolved,
+          taint: [],
+          error: kerr('INVALID_INPUT', 'Pick the faces to remove, or the body to hollow'),
+        };
+      }
+      body = this.resolveBody(ctx, f.body, '/body', unresolved) ?? undefined;
+      if (body?.meshOnly) {
+        return { unresolved, taint: [body.id], error: meshOnlyError('shelled', body.id) };
+      }
+    } else if (f.body && body && f.body.name !== body.id) {
+      return {
+        unresolved,
+        taint: [body.id],
+        error: kerr('INVALID_INPUT', 'The faces to remove are not on the selected body', {
+          entityRefs: [f.body.name],
+        }),
+      };
+    }
+    if (unresolved.length > 0 || !body) return { unresolved, taint: body ? [body.id] : [] };
+    if (!((values['/thickness'] ?? 0) > 0)) {
+      return {
+        unresolved,
+        taint: [body.id],
+        error: kerr('INVALID_INPUT', 'The shell thickness must be greater than zero', {
+          hint: 'Enter a positive thickness; use the direction to shell outward.',
+        }),
+      };
+    }
+    const target = body;
+    const key = hashKey({
+      t: 'shell',
+      def: definition(f),
+      values,
+      refs: g.refKeys,
+      body: [target.id, target.key],
+    });
+    return {
+      unresolved,
+      taint: [target.id],
+      plan: {
+        key,
+        involved: [target.id],
+        run: () => this.runOnBody(f, target, { values, refs: g.refs }, key),
+      },
+    };
+  }
+
+  private async planDraft(
+    ctx: WalkContext,
+    f: DraftFeature,
+    values: Record<string, number>,
+  ): Promise<Planned> {
+    const unresolved: UnresolvedRef[] = [];
+    const g = await this.facesOfOneBody(ctx, f.faces, '/faces', unresolved, 'drafted');
+    if (g.error) return { unresolved, taint: g.taint, error: g.error };
+    const p = await this.resolvePlane(ctx, f.neutral, '/neutral', unresolved);
+    if (p && 'code' in p) return { unresolved, taint: g.taint, error: p };
+    if (unresolved.length > 0 || !p || !g.body) return { unresolved, taint: g.taint };
+    if (f.faces.length === 0) {
+      return {
+        unresolved,
+        taint: [],
+        error: kerr('INVALID_INPUT', 'Pick the faces to draft'),
+      };
+    }
+    const body = g.body;
+    const refs = { ...g.refs };
+    const refKeys: Record<string, unknown> = { ...g.refKeys, '/neutral': p.shapeKey };
+    // `frames.neutral` always carries the plane; `refs['/neutral']` too when it is a face or a
+    // plane feature's face (origin planes have no shape).
+    if (p.target) {
+      refs['/neutral'] = { shape: p.target.shape, kind: p.target.kind, index: p.target.index };
+      refKeys['/neutral'] = [p.shapeKey, ...this.refKeyOf(ctx, p.target).slice(1)];
+    }
+    const frames = { neutral: p.frame };
+    const key = hashKey({
+      t: 'draft',
+      def: definition(f),
+      values,
+      refs: refKeys,
+      frames,
+      body: [body.id, body.key],
+    });
+    return {
+      unresolved,
+      taint: [body.id],
+      plan: {
+        key,
+        involved: [body.id],
+        run: () => this.runOnBody(f, body, { values, refs, frames }, key),
+      },
+    };
+  }
+
+  private async planSweepLoft(
+    ctx: WalkContext,
+    f: SweepFeature | LoftFeature,
+    values: Record<string, number>,
+  ): Promise<Planned> {
+    const unresolved: UnresolvedRef[] = [];
+    const refs: Record<string, ResolvedRef> = {};
+    const refKeys: Record<string, unknown> = {};
+    const involved = new Set<string>();
+    const note = (path: string, t: ResolvedTarget) => {
+      refs[path] = { shape: t.shape, kind: t.kind, index: t.index };
+      refKeys[path] = this.refKeyOf(ctx, t);
+      if (ctx.state.bodies.has(t.owner)) involved.add(t.owner);
+    };
+    const taintNew = f.op === 'new' ? [`B${f.id}`] : [];
+    const fail = (message: string, names: string[] = []): Planned => ({
+      unresolved,
+      taint: taintNew,
+      error: kerr('INVALID_INPUT', message, { entityRefs: names }),
+    });
+    let feature: SweepFeature | LoftFeature = f;
+    if (f.type === 'sweep') {
+      for (let i = 0; i < f.profile.length; i++) {
+        const t = await this.resolveSub(
+          ctx,
+          f.profile[i] as EntityRef,
+          `/profile/${i}`,
+          unresolved,
+        );
+        if (t) note(`/profile/${i}`, t);
+      }
+      if (f.profile.length === 0) return fail('Select the profile to sweep');
+      const path: (ResolvedTarget | null)[] = [];
+      for (let i = 0; i < f.path.length; i++) {
+        path.push(await this.resolveSub(ctx, f.path[i] as EntityRef, `/path/${i}`, unresolved));
+      }
+      if (unresolved.length === 0) {
+        const tol = Math.max(1e-6, 1e-6 * (await this.partDiag(ctx)));
+        const ends: Vec3[][] = [];
+        for (const t of path as ResolvedTarget[]) {
+          if (t.kind !== 'edge')
+            return fail('The sweep path must be edges or sketch curves', [t.name]);
+          ends.push(await this.endpointsOf(t, tol / 10));
+        }
+        const chain = chainOrder(ends, tol);
+        if (!chain.ok)
+          return fail(
+            chain.message,
+            f.path.map((r) => r.name),
+          );
+        feature = { ...f, path: chain.order.map((i) => f.path[i] as EntityRef) };
+        chain.order.forEach((src, j) => {
+          note(`/path/${j}`, path[src] as ResolvedTarget);
+        });
+      }
+    } else {
+      if (f.sections.length < 2) return fail('A loft needs at least two sections');
+      for (let i = 0; i < f.sections.length; i++) {
+        const ref = f.sections[i] as EntityRef;
+        const t = await this.resolveSub(ctx, ref, `/sections/${i}`, unresolved);
+        if (!t) continue;
+        if (t.kind === 'vertex' && i > 0 && i < f.sections.length - 1) {
+          return fail('Only the first and the last loft section can be a point', [ref.name]);
+        }
+        if (t.kind === 'edge')
+          return fail('Loft sections are regions, faces or points', [ref.name]);
+        note(`/sections/${i}`, t);
+      }
+      for (let i = 0; i < (f.guides ?? []).length; i++) {
+        const t = await this.resolveSub(
+          ctx,
+          (f.guides as EntityRef[])[i] as EntityRef,
+          `/guides/${i}`,
+          unresolved,
+        );
+        if (t) note(`/guides/${i}`, t);
+      }
+    }
+    const scoped =
+      f.op === 'new'
+        ? { bodies: [] as BodyState[], mode: 'bodies' as const }
+        : this.scopeBodies(ctx, f.scope, unresolved);
+    if ('error' in scoped && scoped.error) {
+      return { unresolved, taint: scoped.bodies.map((b) => b.id), error: scoped.error };
+    }
+    const taint = f.op === 'new' ? taintNew : scoped.bodies.map((b) => b.id);
+    if (scoped.mode === 'bodies') for (const b of scoped.bodies) involved.add(b.id);
+    else if (f.op !== 'new') {
+      for (const t of ctx.tainted) if (!ctx.state.bodies.has(t)) involved.add(t);
+    }
+    const key = hashKey({
+      t: f.type,
+      def: definition(f),
+      values,
+      refs: refKeys,
+      scope: scoped.mode,
+      bodies: scoped.bodies.map((b) => [b.id, b.key]),
+    });
+    const inputs: FeatureInputs = { values, refs };
+    return {
+      unresolved,
+      taint,
+      plan: {
+        key,
+        involved: [...involved],
+        run: () => this.runSolid(feature, inputs, scoped, key),
+        tool: this.solidTool(feature, inputs, refKeys),
+      },
+    };
+  }
+
+  // -------------------------------------------------------------------------------------------
+  // M3: mirror and patterns
+  // -------------------------------------------------------------------------------------------
+
+  /** The cached tool solid of a source feature, built on first use (see `ToolSpec`). */
+  private async toolOf(
+    ctx: WalkContext,
+    spec: ToolSpec,
+  ): Promise<Result<{ shape: ShapeHandle; naming: NamingMap }>> {
+    let e = ctx.pc.entries.get(spec.key);
+    if (!e?.result.ok || !e.result.tool) {
+      const r = await spec.build();
+      if (!r.ok) return r;
+      for (const extra of r.value.bodies ?? []) {
+        if (extra.shape !== r.value.shape) await this.releaseHandle(extra.shape);
+      }
+      const tool = { shape: r.value.shape, naming: r.value.naming };
+      e = {
+        key: spec.key,
+        owned: [tool.shape],
+        result: { ok: true, set: [], remove: [], touched: [], tool, warnings: [] },
+        lastUsed: ctx.pc.tick,
+      };
+      this.ownedHandles.add(tool.shape);
+      ctx.pc.entries.set(spec.key, e);
+    }
+    e.lastUsed = ctx.pc.tick;
+    ctx.used.add(spec.key);
+    const tool = (e.result as { tool: { shape: ShapeHandle; naming: NamingMap } }).tool;
+    return { ok: true, value: tool };
+  }
+
+  private async planCopy(
+    ctx: WalkContext,
+    f: MirrorFeature | LinearPatternFeature | CircularPatternFeature,
+    values: Record<string, number>,
+  ): Promise<Planned> {
+    const unresolved: UnresolvedRef[] = [];
+    const frames: Record<string, Frame> = {};
+    const involved = new Set<string>();
+    const warnings: KernelError[] = [];
+    const fail = (e: KernelError, taint: string[] = []): Planned => ({
+      unresolved,
+      taint,
+      error: e,
+    });
+    const noteOwner = (owner: string | undefined) => {
+      if (owner && ctx.state.bodies.has(owner)) involved.add(owner);
+    };
+
+    // 1. Where the copies go.
+    if (f.type === 'mirror') {
+      const p = await this.resolvePlane(ctx, f.plane, '/plane', unresolved);
+      if (p && 'code' in p) return fail(p);
+      if (p) {
+        frames.plane = p.frame;
+        noteOwner(p.target?.owner);
+      }
+    } else if (f.type === 'linearPattern') {
+      const a = await this.resolveAxis(ctx, f.direction, '/direction', unresolved, true);
+      if (a && 'code' in a) return fail(a);
+      if (a) {
+        frames.axis = lineFrame(a.line);
+        noteOwner(a.owner);
+      }
+      if (f.second) {
+        const b = await this.resolveAxis(
+          ctx,
+          f.second.direction,
+          '/second/direction',
+          unresolved,
+          true,
+        );
+        if (b && 'code' in b) return fail(b);
+        if (b) {
+          frames.second = lineFrame(b.line);
+          noteOwner(b.owner);
+        }
+      }
+    } else {
+      const a = await this.resolveAxis(ctx, f.axis, '/axis', unresolved, false);
+      if (a && 'code' in a) return fail(a);
+      if (a) {
+        frames.axis = lineFrame(a.line);
+        noteOwner(a.owner);
+      }
+    }
+
+    // 2. Counts (whole numbers) and skips.
+    let total = f.type === 'mirror' ? 2 : 1;
+    for (const p of ['/count', '/second/count']) {
+      const v = values[p];
+      if (v === undefined) continue;
+      const n = Math.round(v);
+      if (Math.abs(v - n) > 1e-9 || n < 1) {
+        return fail(
+          kerr('INVALID_INPUT', `${FIELD_LABELS[p]} must be a whole number of at least 1`, {
+            hint: 'Enter the number of instances, the original included.',
+            detail: `${p} = ${v}`,
+          }),
+        );
+      }
+      values[p] = n;
+      total *= n;
+    }
+    if (f.type !== 'mirror') {
+      if (total === 1) {
+        warnings.push(kerr('INVALID_INPUT', 'The pattern has one instance, so it makes no copies'));
+      }
+      const bad = (f.skip ?? []).filter((k) => !Number.isInteger(k) || k < 1 || k >= total);
+      if (bad.length > 0) {
+        warnings.push(
+          kerr(
+            'INVALID_INPUT',
+            `Skipped instance${bad.length === 1 ? '' : 's'} ${bad.join(', ')} ${
+              bad.length === 1 ? 'is' : 'are'
+            } not a copy in this pattern and ${bad.length === 1 ? 'is' : 'are'} ignored`,
+            { hint: 'Instance 0 is the original; copies are numbered 1 and up.' },
+          ),
+        );
+      }
+    }
+
+    // 3. What is copied.
+    const specs: ToolSpec[] = [];
+    const refs: Record<string, ResolvedRef> = {};
+    const refKeys: Record<string, unknown> = {};
+    const sources: BodyState[] = [];
+    let target: BodyState | undefined;
+    const src = f.source;
+    if (src.kind === 'features') {
+      if (src.features.length === 0)
+        return fail(kerr('INVALID_INPUT', 'Select the features to copy'));
+      const targets = new Set<string>();
+      for (const [i, id] of src.features.entries()) {
+        const feature = ctx.part.features.find((x) => x.id === id);
+        if (!feature) {
+          unresolved.push({
+            path: `/source/features/${i}`,
+            ref: { name: `F${id}`, kind: 'body' },
+            reason: 'missing',
+          });
+          continue;
+        }
+        const spec = ctx.state.tools.get(id);
+        if (!spec) {
+          const why = !TOOL_TYPES.has(feature.type)
+            ? `‘${feature.name}’ cannot be copied: only extrude, revolve, sweep, loft, hole and primitive features can`
+            : feature.suppressed
+              ? `‘${feature.name}’ is suppressed, so there is nothing to copy`
+              : `‘${feature.name}’ must come before this feature`;
+          return fail(
+            kerr('INVALID_INPUT', why, {
+              hint: 'Copy bodies instead, or reorder the features.',
+              entityRefs: [`F${id}`],
+            }),
+          );
+        }
+        specs.push(spec);
+        values[`/ops/${id}`] = spec.op;
+        for (const b of spec.bodies) targets.add(b);
+      }
+      if (unresolved.length > 0) return { unresolved, taint: [] };
+      const live = [...targets].filter((b) => ctx.state.bodies.has(b));
+      if (live.length === 0) {
+        return fail(
+          kerr('INVALID_INPUT', 'The copied features no longer change any body', {
+            hint: 'Copy bodies instead.',
+          }),
+        );
+      }
+      if (live.length > 1) {
+        return fail(
+          kerr('INVALID_INPUT', 'The copied features change more than one body', {
+            hint: 'Copy the features of one body at a time, or copy bodies instead.',
+            entityRefs: live,
+          }),
+          live,
+        );
+      }
+      target = ctx.state.bodies.get(live[0] as string) as BodyState;
+      if (target.meshOnly) return fail(meshOnlyError('changed', target.id), [target.id]);
+      involved.add(target.id);
+    } else {
+      if (src.bodies.length === 0) return fail(kerr('INVALID_INPUT', 'Select the bodies to copy'));
+      for (const [i, ref] of src.bodies.entries()) {
+        const b = this.resolveBody(ctx, ref, `/source/bodies/${i}`, unresolved);
+        if (!b) continue;
+        if (b.meshOnly) return fail(meshOnlyError('copied', b.id), [b.id]);
+        refs[`/source/bodies/${i}`] = { shape: b.shape, kind: 'body', index: 0 };
+        refKeys[`/source/bodies/${i}`] = [b.id, b.key];
+        involved.add(b.id);
+        sources.push(b);
+      }
+    }
+    const taint = target ? [target.id] : src.kind === 'bodies' && src.merge ? [...involved] : [];
+    if (unresolved.length > 0) return { unresolved, taint };
+    const key = hashKey({
+      t: f.type,
+      def: definition(f),
+      values,
+      frames,
+      tools: specs.map((s) => [s.featureId, s.key, s.op]),
+      target: target ? [target.id, target.key] : null,
+      refs: refKeys,
+    });
+    const inputs: FeatureInputs = { values, frames, refs };
+    const out: Planned = {
+      unresolved,
+      taint,
+      plan: {
+        key,
+        involved: [...involved],
+        run: () => this.runCopy(ctx, f, inputs, specs, target, sources, key),
+      },
+    };
+    if (warnings.length > 0) out.warnings = warnings;
+    return out;
+  }
+
+  /**
+   * Runs a mirror / pattern. Feature copies change the source features' body in place (it keeps
+   * its id). Body copies with `merge` fuse into the first source body (the others are consumed);
+   * without `merge` each copy is a new body: `B<featureId>` for one, else `B<featureId>:<key>`
+   * with the kernel's per-copy key (FeatureResult.bodies).
+   */
+  private async runCopy(
+    ctx: WalkContext,
+    f: MirrorFeature | LinearPatternFeature | CircularPatternFeature,
+    inputs: FeatureInputs,
+    specs: ToolSpec[],
+    target: BodyState | undefined,
+    sources: BodyState[],
+    key: string,
+  ): Promise<{ result: EntryResult; owned: ShapeHandle[] }> {
+    const fail = (error: KernelError) => ({ result: { ok: false as const, error }, owned: [] });
+    const shapes: Record<string, ShapeHandle> = {};
+    for (const spec of specs) {
+      const t = await this.toolOf(ctx, spec);
+      if (!t.ok) return fail(t.error);
+      shapes[`tool:${spec.featureId}`] = t.value.shape;
+    }
+    const all: FeatureInputs = { ...inputs, shapes };
+    if (target) all.target = target.shape;
+    const r = await this.exec(f, all);
+    if (!r.ok) return fail(r.error);
+    const v = r.value;
+    const extras = (v.bodies ?? []).filter((b) => b.shape !== v.shape);
+    if (target || (f.source.kind === 'bodies' && f.source.merge)) {
+      for (const b of extras) await this.releaseHandle(b.shape);
+      const keep = (target ?? sources[0]) as BodyState;
+      const consumed = target ? [] : sources.slice(1).map((b) => b.id);
+      return {
+        result: {
+          ok: true,
+          set: [{ id: keep.id, shape: v.shape, naming: v.naming, key: `${key}/${keep.id}` }],
+          remove: consumed,
+          touched: target ? [target.id] : sources.map((b) => b.id),
+          warnings: v.warnings,
+        },
+        owned: [v.shape],
+      };
+    }
+    const copies =
+      v.bodies && v.bodies.length > 0 ? v.bodies : [{ key: '', shape: v.shape, naming: v.naming }];
+    if (v.bodies && v.bodies.length > 0 && !v.bodies.some((b) => b.shape === v.shape)) {
+      await this.releaseHandle(v.shape);
+    }
+    const set: BodyState[] = copies.map((c) => {
+      const id = copies.length === 1 ? `B${f.id}` : `B${f.id}:${c.key}`;
+      return { id, shape: c.shape, naming: c.naming, key: `${key}/${id}` };
+    });
+    return {
+      result: { ok: true, set, remove: [], touched: [], warnings: v.warnings },
+      owned: [...new Set(copies.map((c) => c.shape))],
+    };
+  }
+
+  // -------------------------------------------------------------------------------------------
+  // M3: holes and cosmetic threads
+  // -------------------------------------------------------------------------------------------
+
+  /**
+   * Hole wizard: one hole per point on a flat face of a body. `frames["hole:i"]` has its origin on
+   * the face (the point projected along the face normal; points off the face plane are an error),
+   * z into the material (−outward normal) and x from `planeFrame`. The diameters and depths come
+   * from the standards table (`resolveHoleSize`) with explicit values overriding it, written to
+   * `values` at the feature's own pointers (`/diameter`, `/counterbore/diameter`, …, angles rad).
+   */
+  private async planHole(
+    ctx: WalkContext,
+    f: HoleFeature,
+    values: Record<string, number>,
+  ): Promise<Planned> {
+    const unresolved: UnresolvedRef[] = [];
+    const fail = (e: KernelError, taint: string[] = []): Planned => ({
+      unresolved,
+      taint,
+      error: e,
+    });
+    if (f.points.length === 0) {
+      return fail(
+        kerr('INVALID_INPUT', 'Place at least one hole point', {
+          hint: 'Sketch points on the face, then pick them.',
+        }),
+      );
+    }
+    const ft = await this.resolveSub(ctx, f.face, '/face', unresolved);
+    const points: (Vec3 | null)[] = [];
+    for (let i = 0; i < f.points.length; i++) {
+      const p = await this.resolvePoint(ctx, f.points[i] as EntityRef, `/points/${i}`, unresolved);
+      if (p && 'code' in p) return fail(p);
+      points.push(p?.point ?? null);
+    }
+    let body: BodyState | undefined;
+    if (ft) {
+      body = ft.kind === 'face' ? ctx.state.bodies.get(ft.owner) : undefined;
+      if (!body) {
+        return fail(
+          kerr('INVALID_INPUT', 'Holes are drilled into a flat face of a body', {
+            entityRefs: [f.face.name],
+          }),
+        );
+      }
+      if (body.meshOnly) return fail(meshOnlyError('drilled', body.id), [body.id]);
+    }
+    const refs: Record<string, ResolvedRef> = {};
+    const refKeys: Record<string, unknown> = {};
+    const frames: Record<string, Frame> = {};
+    if (f.end.kind === 'upTo') {
+      const p = await this.resolvePlane(ctx, f.end.target, '/end/target', unresolved);
+      if (p && 'code' in p) return fail(p, body ? [body.id] : []);
+      if (p?.target) {
+        refs['/end/target'] = { shape: p.target.shape, kind: p.target.kind, index: p.target.index };
+        refKeys['/end/target'] = this.refKeyOf(ctx, p.target);
+      } else if (p) {
+        frames.upTo = p.frame;
+        refKeys['/end/target'] = p.shapeKey;
+      }
+    }
+    if (unresolved.length > 0 || !ft || !body) return { unresolved, taint: body ? [body.id] : [] };
+    const taint = [body.id];
+    const fp = await this.fingerprints(ft.shape);
+    const face = fp?.faces[ft.index];
+    if (!face?.normal) {
+      return fail(
+        kerr('INVALID_INPUT', 'Holes are drilled into flat faces', {
+          hint: 'Pick a planar face.',
+          entityRefs: [f.face.name],
+        }),
+        taint,
+      );
+    }
+    const n = normalize(face.normal);
+    const facePlane: Frame = { origin: face.centroid, z: n, x: planeFrame(face.centroid, n).x };
+    const tol = Math.max(1e-6, 1e-6 * (await this.partDiag(ctx)));
+    const into = scale(n, -1);
+    for (let i = 0; i < points.length; i++) {
+      const p = points[i] as Vec3;
+      const h = heightAbove(facePlane, p);
+      if (Math.abs(h) > tol) {
+        return fail(
+          kerr('INVALID_INPUT', `Hole point ${i + 1} is not on the hole’s face`, {
+            hint: 'Put the hole points in a sketch on that face.',
+            entityRefs: [(f.points[i] as EntityRef).name, f.face.name],
+            detail: `${h} mm off the face plane`,
+          }),
+          taint,
+        );
+      }
+      const origin = sub(p, scale(n, h));
+      frames[`hole:${i}`] = snapFrame({ origin, z: into, x: planeFrame(origin, into).x });
+    }
+    const size = resolveHoleSize({
+      standard: f.standard,
+      kind: f.kind,
+      size: f.size,
+      fit: f.fit,
+      ...(values['/diameter'] === undefined ? {} : { diameter: values['/diameter'] }),
+      counterbore: {
+        ...(values['/counterbore/diameter'] === undefined
+          ? {}
+          : { diameter: values['/counterbore/diameter'] }),
+        ...(values['/counterbore/depth'] === undefined
+          ? {}
+          : { depth: values['/counterbore/depth'] }),
+      },
+      countersink: {
+        ...(values['/countersink/diameter'] === undefined
+          ? {}
+          : { diameter: values['/countersink/diameter'] }),
+        ...(values['/countersink/angle'] === undefined
+          ? {}
+          : { angle: values['/countersink/angle'] }),
+      },
+    });
+    if (!size.ok) {
+      return fail(
+        kerr('INVALID_INPUT', size.message, { hint: size.hint, detail: size.field }),
+        taint,
+      );
+    }
+    if (f.end.kind === 'blind' && !((values['/end/depth'] ?? 0) > 0)) {
+      return fail(kerr('INVALID_INPUT', 'The hole depth must be greater than zero'), taint);
+    }
+    const kv: Record<string, number> = { ...values, '/diameter': size.value.diameter };
+    if (size.value.counterbore) {
+      kv['/counterbore/diameter'] = size.value.counterbore.diameter;
+      kv['/counterbore/depth'] = size.value.counterbore.depth;
+    }
+    if (size.value.countersink) {
+      kv['/countersink/diameter'] = size.value.countersink.diameter;
+      kv['/countersink/angle'] = size.value.countersink.angle;
+    }
+    const key = hashKey({
+      t: 'hole',
+      def: definition(f),
+      values: kv,
+      frames,
+      refs: refKeys,
+      body: [body.id, body.key],
+    });
+    const target = body;
+    const toolInputs: FeatureInputs = { values: kv, frames, refs };
+    return {
+      unresolved,
+      taint,
+      plan: {
+        key,
+        involved: [target.id],
+        run: () => this.runOnBody(f, target, toolInputs, key),
+        tool: {
+          featureId: f.id,
+          key: hashKey({ t: 'tool', def: definition(f), values: kv, frames, refs: refKeys }),
+          op: 1,
+          // Without `target` the kernel returns the drill solids alone (proposed, ADR-pending).
+          build: () => this.exec(f, toolInputs),
+        },
+      },
+    };
+  }
+
+  /** A cosmetic thread: checks the face and the size; no geometry change (M5 carries it to PMI). */
+  private async planThread(
+    ctx: WalkContext,
+    f: ThreadFeature,
+    values: Record<string, number>,
+  ): Promise<Planned> {
+    const unresolved: UnresolvedRef[] = [];
+    const t = await this.resolveSub(ctx, f.face, '/face', unresolved);
+    if (!t) return { unresolved, taint: [] };
+    const fp = await this.fingerprints(t.shape);
+    const surface = t.kind === 'face' ? fp?.faces[t.index]?.surface : undefined;
+    if (surface !== 'cylinder') {
+      return {
+        unresolved,
+        taint: [],
+        error: kerr('INVALID_INPUT', 'A cosmetic thread goes on a cylindrical face', {
+          entityRefs: [f.face.name],
+        }),
+      };
+    }
+    const row = holeRow(f.standard, f.size);
+    if (!row) {
+      return {
+        unresolved,
+        taint: [],
+        error: kerr('INVALID_INPUT', `${f.standard} ${f.size} is not in the thread table`, {
+          hint: 'Pick a thread size from the table.',
+        }),
+      };
+    }
+    const warnings: KernelError[] = [];
+    const m = await this.kernel.measureShapes({ shape: t.shape, kind: 'face', index: t.index });
+    const d = m.ok && m.value.radius !== undefined ? 2 * m.value.radius : undefined;
+    if (d !== undefined) {
+      const near = (x: number) => Math.abs(d - x) <= 0.05 * x;
+      if (!near(row.nominal) && !near(row.tap.drill)) {
+        warnings.push(
+          kerr(
+            'INVALID_INPUT',
+            `The face is ${Math.round(d * 1000) / 1000} mm across, which is neither the ${f.size} major diameter (${row.nominal} mm) nor its tap drill (${Math.round(row.tap.drill * 1000) / 1000} mm)`,
+          ),
+        );
+      }
+    }
+    const owner = ctx.state.bodies.has(t.owner) ? [t.owner] : [];
+    const key = hashKey({ t: 'thread', def: definition(f), values, face: this.refKeyOf(ctx, t) });
+    return {
+      unresolved,
+      taint: [],
+      plan: {
+        key,
+        involved: owner,
+        run: async () => ({
+          result: { ok: true, set: [], remove: [], touched: [], warnings },
+          owned: [],
+        }),
+      },
+    };
+  }
+
+  // -------------------------------------------------------------------------------------------
+  // M3: linked sketch entities (Convert Entities)
+  // -------------------------------------------------------------------------------------------
+
+  /**
+   * Resolves and projects the sources of a sketch's linked entities and re-projects them (see
+   * linked.ts). Returns the entities and constraints to solve, `attention` (entity names) when a
+   * source is lost — the sketch then needs attention and nothing is re-picked — or an error.
+   */
+  private async linkedEntities(
+    ctx: WalkContext,
+    f: SketchFeature,
+    plane: Frame,
+    unresolved: UnresolvedRef[],
+    involved: string[],
+  ): Promise<
+    | { entities: SketchEntity[]; constraints: SketchConstraint[] }
+    | { attention: string[] }
+    | KernelError
+  > {
+    const groups = new Map<string, { ref: EntityRef; ids: Id[]; paths: string[] }>();
+    f.entities.forEach((e, i) => {
+      if (!e.source) return;
+      const k = `${e.source.ref.kind}|${e.source.ref.name}`;
+      let g = groups.get(k);
+      if (!g) {
+        g = { ref: e.source.ref, ids: [], paths: [] };
+        groups.set(k, g);
+      }
+      g.ids.push(e.id);
+      g.paths.push(`/entities/${i}/source/ref`);
+    });
+    const attention: string[] = [];
+    const sources: LinkedSource[] = [];
+    for (const g of groups.values()) {
+      const u: UnresolvedRef[] = [];
+      const before = ctx.current.rebound.length;
+      const p = await this.projectSource(ctx, f, g.ref, g.paths[0] as string, u, plane);
+      if (p && 'code' in p) return p;
+      // Every entity sharing a source shares its outcome and its healing.
+      const healed = ctx.current.rebound.slice(before);
+      for (const path of g.paths.slice(1)) {
+        for (const r of healed) ctx.current.rebound.push({ ...r, path });
+      }
+      if (!p) {
+        const first: UnresolvedRef = u[0] ?? { path: '', ref: g.ref, reason: 'missing' };
+        for (const path of g.paths) unresolved.push({ ...first, path });
+        attention.push(...g.ids.map((id) => entityName(f, id)));
+        continue;
+      }
+      if (p.owner && ctx.state.bodies.has(p.owner) && !involved.includes(p.owner)) {
+        involved.push(p.owner);
+      }
+      const s: LinkedSource = { ref: g.ref, entities: g.ids, curves: p.curves };
+      if (p.curves.some((c) => c.kind === 'polyline')) s.approximate = true;
+      sources.push(s);
+    }
+    if (attention.length > 0) return { attention };
+    const rp = this.reproject(f.entities, sources);
+    for (const l of rp.lost) {
+      const i = f.entities.findIndex((e) => e.id === l.entity);
+      const e = f.entities[i];
+      if (!e?.source) continue;
+      unresolved.push({ path: `/entities/${i}/source/ref`, ref: e.source.ref, reason: 'missing' });
+      attention.push(entityName(f, l.entity));
+    }
+    if (attention.length > 0) return { attention };
+    // Linked entities are fixed for the solver (grounding twice is harmless if it already is).
+    const fixed = new Set<Id>();
+    for (const e of rp.entities) {
+      if (!e.source) continue;
+      fixed.add(e.id);
+      if (e.kind === 'line') fixed.add(e.start).add(e.end);
+      if (e.kind === 'circle' || e.kind === 'ellipse') fixed.add(e.center);
+      if (e.kind === 'arc') fixed.add(e.center).add(e.start).add(e.end);
+    }
+    const fixes = [...fixed].map(
+      (id): SketchConstraint => ({ id: `@linked:${id}`, kind: 'fix', entity: id }),
+    );
+    return { entities: rp.entities, constraints: [...f.constraints, ...fixes] };
+  }
+
+  /** One linked source projected onto the sketch plane; null when it does not resolve. */
+  private async projectSource(
+    ctx: WalkContext,
+    f: SketchFeature,
+    ref: EntityRef,
+    path: string,
+    unresolved: UnresolvedRef[],
+    plane: Frame,
+  ): Promise<{ curves: LinkedCurve[]; owner?: string } | KernelError | null> {
+    const fail = (message: string, code: KernelError['code'] = 'INVALID_INPUT') =>
+      kerr(code, message, {
+        hint: 'Pick another source, or unlink the entity.',
+        entityRefs: [ref.name],
+      });
+    const one = (c: LinkedCurve | { error: string }, owner?: string) =>
+      'error' in c ? fail(c.error) : owner ? { curves: [c], owner } : { curves: [c] };
+    if (ref.name === 'origin:O') return one(projectPoint(plane, [0, 0, 0]));
+    const oa = ORIGIN_AXES[ref.name];
+    if (oa) return one(projectAxis(plane, frameLine(oa)));
+    const op = ORIGIN_PLANES[ref.name];
+    if (op) return one(projectPlaneTrace(plane, op));
+    if (AXIS_NAME.test(ref.name)) {
+      const a = await this.resolveAxis(ctx, ref, path, unresolved, false);
+      if (!a || 'code' in a) return a;
+      return one(projectAxis(plane, a.line));
+    }
+    if (POINT_NAME.test(ref.name)) {
+      const p = await this.resolvePoint(ctx, ref, path, unresolved);
+      if (!p || 'code' in p) return p;
+      return one(projectPoint(plane, p.point));
+    }
+    if (PLANE_NAME.test(ref.name)) {
+      const p = await this.resolvePlane(ctx, ref, path, unresolved);
+      if (!p || 'code' in p) return p;
+      return one(projectPlaneTrace(plane, p.frame));
+    }
+    if (SKETCH_TAG.exec(ref.name)?.[1] === f.id) {
+      return fail('A sketch cannot link to its own geometry');
+    }
+    const t = await this.resolveSub(ctx, ref, path, unresolved);
+    if (!t) return null;
+    if (t.owner.startsWith('sketch:')) {
+      // Another sketch's curve or point: exact, from its solved entities.
+      const s = ctx.state.sketches.get(t.owner.slice('sketch:'.length));
+      const m = /^S[0-9A-Za-z]+:[ep]\((.+)\)$/.exec(t.name);
+      const e = m && s ? s.entities.find((x) => x.id === m[1]) : undefined;
+      if (s && e) {
+        const pts = new Map<Id, Vec2>();
+        for (const x of s.entities) if (x.kind === 'point') pts.set(x.id, [x.x, x.y]);
+        const c = projectSketchEntity(plane, s.frame, e, pts);
+        if (!('error' in c)) return { curves: [c] };
+      }
+    }
+    if (t.kind === 'vertex') {
+      const fp = await this.fingerprints(t.shape);
+      const v = fp?.vertices[t.index];
+      if (v) return one(projectPoint(plane, v.point), t.owner);
+    }
+    if (t.kind === 'edge') {
+      if (this.kernel.projectEdges) {
+        const r = await this.kernel.projectEdges(t.shape, [t.index], plane);
+        if (!r.ok) return r.error;
+        return { curves: r.value.flatMap((x) => x.curves), owner: t.owner };
+      }
+      const l = await this.lineOfEdge(t);
+      if (l) {
+        const c = projectAxis(plane, { origin: l.a, dir: normalize(sub(l.b, l.a)) });
+        if (c.kind === 'point') return one(c, t.owner);
+        return one({ kind: 'line', a: toLocal(plane, l.a), b: toLocal(plane, l.b) }, t.owner);
+      }
+      const circle = await this.circleOfEdge(t);
+      if (circle?.full) return one(projectCircle(plane, circle), t.owner);
+      if (circle) {
+        const tol = Math.max(1e-7, 1e-7 * (await this.partDiag(ctx)));
+        const ends = await this.endpointsOf(t, tol);
+        const fp = await this.fingerprints(t.shape);
+        const mid = fp?.edges[t.index]?.centroid;
+        if (ends.length === 2 && mid) {
+          const [s, e] = ends as [Vec3, Vec3];
+          const ccw = dot(cross(sub(s, circle.centre), sub(mid, circle.centre)), circle.normal) > 0;
+          return one(
+            projectCircle(plane, circle, ccw ? { start: s, end: e } : { start: e, end: s }),
+            t.owner,
+          );
+        }
+      }
+      return fail(
+        'This edge cannot be projected yet (it needs the kernel’s projection call)',
+        'UNSUPPORTED_FEATURE',
+      );
+    }
+    if (t.kind === 'face') {
+      if (this.kernel.projectFaceOutline) {
+        const r = await this.kernel.projectFaceOutline(t.shape, t.index, plane);
+        if (!r.ok) return r.error;
+        return { curves: flattenProjection(r.value), owner: t.owner };
+      }
+      return fail(
+        'Projecting a face outline needs a newer kernel; convert its edges instead',
+        'UNSUPPORTED_FEATURE',
+      );
+    }
+    return fail('This reference cannot be projected into a sketch');
   }
 
   // -------------------------------------------------------------------------------------------
@@ -2653,15 +4318,47 @@ function crossY(f: Frame): Vec3 {
   return y.map((v) => (v === 0 ? 0 : v)) as Vec3; // no -0
 }
 
+/** Feature types whose tool solid can be copied by mirror / patterns. */
+const TOOL_TYPES: ReadonlySet<Feature['type']> = new Set([
+  'extrude',
+  'revolve',
+  'primitive',
+  'sweep',
+  'loft',
+  'hole',
+]);
+
+/** values["/ops/<id>"] of a copied feature: 0 add, 1 cut, 2 intersect (a `new` copy is added). */
+function opCode(op: ExtrudeFeature['op']): 0 | 1 | 2 {
+  return op === 'cut' ? 1 : op === 'intersect' ? 2 : 0;
+}
+
+/** Ids of the features a mirror / pattern copies (they are not EntityRefs). */
+function copiedFeatures(f: Feature): Id[] {
+  if (f.type !== 'mirror' && f.type !== 'linearPattern' && f.type !== 'circularPattern') return [];
+  return f.source.kind === 'features' ? f.source.features : [];
+}
+
+/** Persistent name of a sketch entity (naming.ts): points `S…:p(id)`, curves `S…:e(id)`. */
+function entityName(f: SketchFeature, id: Id): string {
+  const e = f.entities.find((x) => x.id === id);
+  return `S${f.id}:${e?.kind === 'point' ? 'p' : 'e'}(${id})`;
+}
+
 /** Bodies a blocked feature would have acted on (conservative: all for body-modifying features). */
 function allBodiesFor(f: Feature, all: string[]): string[] {
   switch (f.type) {
     case 'sketch':
     case 'plane':
+    case 'axis':
+    case 'point':
+    case 'thread':
       return [];
     case 'extrude':
     case 'revolve':
     case 'primitive':
+    case 'sweep':
+    case 'loft':
       if (f.op === 'new') return [`B${f.id}`];
       if (f.scope?.kind === 'bodies') return f.scope.bodies.map((b) => b.name);
       return all;
