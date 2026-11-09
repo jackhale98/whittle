@@ -1420,7 +1420,7 @@ contracts don't spell out. The regen engine (kernel-client) depends on these.
 8. **Shell joins are sharp** (`GeomAbs_Intersection`, like other CAD); when OCCT cannot intersect
    the offset faces it retries with arc joins and warns. No silent rounding.
 9. **Draft direction** is the neutral plane's normal (a face's outward normal); the body narrows
-   along it; `reverse` flips it. *Superseded by "ADR-pending — Draft pull direction" below: the
+   along it; `reverse` flips it. *Superseded by ADR-041: the
    normal is taken on the drafted faces' side.*
 10. **Loft guides are ignored with a warning** (ThruSections has no guide input) and sections with
     holes are `UNSUPPORTED_FEATURE`.
@@ -1531,7 +1531,7 @@ key, so small body edits reuse the tool. The kernel's through-all rule stays as 
 know its copies' placements); a hole's through-all tool keeps the kernel's 10 m fallback
 (ADR-039 item 3).
 
-## ADR-pending — M3 integration in apps/web
+## ADR-043 — M3 integration in apps/web
 
 1. **Two tool flows.** M1 tools (extrude, revolve, fillet, chamfer, push/pull, and the new
    extruded / revolved cut) keep "prompt, then create on the first pick". M3 tools (sweep, loft,

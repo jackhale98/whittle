@@ -3663,7 +3663,7 @@ export class RegenEngine {
           featureId: f.id,
           key: hashKey({ t: 'tool', def: definition(f), values: kv, frames, refs: refKeys }),
           op: 1,
-          // Without `target` the kernel returns the drill solids alone (proposed, ADR-pending).
+          // Without `target` the kernel returns the drill solids alone (proposed in ADR-036).
           build: () => this.exec(f, toolInputs),
         },
       },

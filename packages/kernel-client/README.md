@@ -165,7 +165,7 @@ Details:
 - Every temporary shape is released, also on failure. The diff meshes are transferred over
   Comlink, never copied.
 
-## M3 features (ADR-019; details in the ADR-pending "M3 regen" entry)
+## M3 features (ADR-019; details in ADR-036)
 
 What the engine passes per type (FeatureInputs, refs keyed by JSON pointer into the feature):
 

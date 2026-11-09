@@ -88,4 +88,4 @@ See [`docs/DEPENDENCIES.md`](../../docs/DEPENDENCIES.md) for licences and sizes.
 the live bodies, which fade to `ghostOpacity` (default 0.15); `setCompare(null)` restores them.
 Test hooks on the engine: `getCompareStats()` (active, show, mesh counts, ghost opacity, geometry
 builds, bounds) and `getBodyMaterialState(id)`. `fitAll(animate, { includeOverlay: true })` frames
-the overlay. Palette and rendering choices: see ADR-pending in docs/DECISIONS.md.
+the overlay. Palette and rendering choices: see ADR-028 in docs/DECISIONS.md.

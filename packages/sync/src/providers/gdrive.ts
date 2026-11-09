@@ -4,7 +4,7 @@
  * the app list the provider and hide it (`GDRIVE_AVAILABLE`), and answers every call with a
  * plain-language error instead of throwing.
  *
- * Open questions before the real adapter (see docs/DECISIONS.md, ADR-pending "Google Drive"):
+ * Open questions before the real adapter (see docs/DECISIONS.md, ADR-024):
  * - Drive v3 has no `If-Match` precondition on media updates, so optimistic concurrency would be
  *   check-then-write on `version`/`headRevisionId` (a race window the other providers don't have).
  * - Google's browser flow (Identity Services token model) issues no refresh tokens; the code
