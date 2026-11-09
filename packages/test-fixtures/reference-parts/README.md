@@ -105,7 +105,7 @@ Type them into the inline field as written. Counts are bare names (`"tap_n"`), a
 | `at` | A world point in mm, at the baseline dimensions, on the picked entity: a point on a face, on an edge, inside a region, on the body. **Click there** (the E2E projects it to the screen). |
 | `name` | The persistent name (PLAN 7.3) with `{stepId}` for the step that made it, for example `F{base}:end` (the extrude's end face) or `edge(F{base}:end\|F{base}:side(S{base_sk}:e(L1)))`. Use it to assert what was picked (the stored reference after the click must equal the name with `{x}` replaced by that step's feature id), and for named references to earlier features. |
 | `sketch`, `curves`, `inner` | For regions, instead of `name`: the sketch step, the outline's curve ids, and inner loops. |
-| `origin:XY`, `origin:Z`... | Origin planes and axes: pick them in the tree. They have no `at`. |
+| `origin:XY`, `origin:Z`... | Origin planes and axes: pick them from the reference chips beside the prompt (plane, axis and point features too; sketch planes from the plane chooser). They have no `at`. |
 
 **Sketches** (`tool: "sketch"`) have `on` (a pick of a plane or face) and `ops`:
 

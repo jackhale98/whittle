@@ -1530,3 +1530,43 @@ through the whole body. The depth is rounded up to a power of two and is part of
 key, so small body edits reuse the tool. The kernel's through-all rule stays as it is (a tool can't
 know its copies' placements); a hole's through-all tool keeps the kernel's 10 m fallback
 (ADR-039 item 3).
+
+## ADR-pending — M3 integration in apps/web
+
+1. **Two tool flows.** M1 tools (extrude, revolve, fillet, chamfer, push/pull, and the new
+   extruded / revolved cut) keep "prompt, then create on the first pick". M3 tools (sweep, loft,
+   shell, draft, hole, thread, mirror, patterns, plane, axis, point) create their feature at once
+   with defaults and empty references, open the inspector, and collect the references field by
+   field (`FEATURE_PICKS` in `features/factories.ts`). A single field moves on after its pick; a
+   list field stays open until Enter or another field (a sweep's profile moves on after one).
+   Reason: these features have several required references and the inspector already shows every
+   field; one prompt per field keeps act-first and select-first both working. While its picks are
+   incomplete the feature shows its error in the tree, as M1's palette Plane did.
+2. **Reference chips.** Origin planes and axes and plane / axis / point features have no pickable
+   shape in the view (`RegenResult` carries no datums, ADR-036 proposal). A field that takes them
+   shows chips beside the prompt (`referenceChoices`), limited to features before the one being
+   edited. The reference-part README's "pick them in the tree" reads as "pick them from the chips".
+3. **Mirror / pattern sources** are features: a tree click while `/source/features` is picked adds
+   the feature instead of opening it, and a model click adds the latest feature named in the
+   clicked face or edge. A feature selected in the tree when the tool starts is the first source.
+4. **`acceptsFor(path, feature)`** decides kinds per path, and per definition kind for
+   `/definition/a|b` (points for a two-point axis, planes for a midplane or two-plane axis).
+5. **Sketch Edit menu.** `app/sketch-edit.ts` drives the packages/ui panels from `SketchUi.edit`
+   and runs each operation through the session's edit queue (`commitEdit`, now with a label
+   computed after the operation and no undo step when it refuses). `@wren-cad/sketch/edit` loads
+   on first use. Convert entities projects in the kernel worker through `projectEdges` /
+   `projectFaceOutline` on the picked body's shape and the sketch frame; refs for a face outline's
+   edges come from `refFor` on the edge ordinals (mesh edge index = kernel ordinal).
+6. **Linked re-projection.** `createModelingApi` defaults `reprojectLinked` to
+   `reprojectLinkedSketch`: one-curve sources go to packages/sketch (what Convert makes); infinite
+   lines (axes, plane traces) and multi-curve sources keep the engine fallback.
+7. **Point tool** in the sketch toolbar (P): hole centres and the specs' `point` op had no way to be
+   drawn. **Hole wizard** gained counterbore and countersink overrides (rp08's spec sets them).
+8. **`propagate: false` refusals** are reworded in the app (`model/explain.ts`): the kernel's
+   UNSUPPORTED_FEATURE `entityRefs` minus the selection are named from their persistent names
+   ("the edge between the end face of Extrude 1 and the side of Arc 1 (Extrude 1)").
+9. **Reference-part E2E** (`e2e/support/reference-ui.ts`): sketches are drawn 4 % oversize about
+   the sketch origin, then dimensioned with the Dimension tool; a dimension the drawn constraints
+   already imply (DOF unchanged) is undone, and every sketch must end fully defined. Camera
+   framing uses `zoomTo` and the view keys only. Stages are the baseline with only that stage's
+   dimensions changed (the README's definition), so the previous stage is reset first.

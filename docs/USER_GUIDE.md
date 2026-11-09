@@ -81,11 +81,35 @@ open its menu with the arrow key or a long press.
 | Arc | A | 3-point, tangent, centre-point |
 | Slot | none | none |
 | Polygon | none | none |
+| Point | P | none |
 | Dimension | D | none |
+
+**Point** places a lone sketch point: a hole centre for the hole wizard, or a reference to
+dimension from. On touch devices every tool has a text label under its icon.
 
 Press **X** to toggle construction geometry. Construction lines guide the sketch but do not make
 regions. While you draw, Wren snaps to horizontal, vertical, parallel, perpendicular and tangent
 directions, and to existing points.
+
+### Editing sketches
+
+The **Edit** button on the sketch toolbar opens the editing tools. Each one is a small panel over
+the view, never a dialog. **Apply** (or Enter) makes the change as one undo step, named after what
+it did, such as "Offset 4 entities by 5 mm". **Esc** first clears the picks, then leaves the tool.
+
+| Tool | Shortcut | How it works |
+| --- | --- | --- |
+| Offset | O | Click the lines and arcs of a chain (or select them first), type the distance (an expression), and choose the side or **Both sides**. The copy stays parallel and follows its source: one driving dimension controls it. |
+| Convert entities | V | Click model edges, or switch to **Face** and click a face for its whole outline. **Convert** projects them into the sketch as linked, fixed curves. |
+| Trim / extend | T / E | Each click trims the part of a curve up to its nearest crossings, or extends a curve's nearest end to the next boundary. |
+| Sketch fillet / chamfer | F / Shift+F | Click corner points, type the radius or distance, then Apply. |
+| Mirror | M | Click the entities, switch to **Mirror line** and click a line or an axis, then Apply. |
+
+**Linked geometry.** Converted curves update when the model changes upstream. Select one to see the
+**Linked geometry** panel: where it comes from, and **Unlink** to keep it as plain sketch geometry.
+If its source edge is gone, the sketch needs attention: the panel shows the old source, a ghost marks
+where it was, and **Re-pick** lets you click the edge it should follow now. Wren never picks another
+edge by itself.
 
 ### Constraints
 
@@ -137,7 +161,19 @@ Wren has two ways to start a feature.
   chip says what to select, such as "Select a sketch region to extrude". Click it. The feature is
   created as soon as the pick is made.
 - **Select first, act second.** Select the geometry, and the tools that fit appear. Selected regions
-  offer Extrude and Revolve. Selected edges offer Fillet and Chamfer. A selected face offers Sketch.
+  offer Extrude, Revolve, Extruded cut, Sweep and Loft. Selected edges offer Fillet and Chamfer. A
+  selected flat face offers Sketch, Push/pull, Hole, Shell and Draft.
+
+The tools added in M3 (sweep, loft, shell, draft, hole, thread, mirror, patterns and reference
+geometry) open their feature at once and then ask for each reference in turn. The prompt chip says
+what to pick next, such as "Select the path curves, in order". A field that takes several picks
+(the faces to taper, the sections of a loft) stays open until you press **Enter** or click the next
+field in the inspector. If you selected something that fits the first field before choosing the
+tool, it is used.
+
+Some references have no shape you can click: the origin planes and axes, and reference planes, axes
+and points. When a field takes one, chips such as **Top (XY)**, **Z axis** or **Plane 1** appear
+beside the prompt. Tap one to pick it.
 
 ### Extrude
 
@@ -164,16 +200,70 @@ Select one or more edges, then press **F** (fillet, default radius 2 mm) or **C*
 1 mm). In the inspector, change the radius, or choose a chamfer by **Distance** or **Distance and
 angle**.
 
+**Propagate along tangent edges** is on by default: the blend carries on along edges that continue
+the selection smoothly, such as the arcs of a slot. If you turn it off, the selection must already
+end where the tangent chain ends. Otherwise the feature turns red and names the tangent edges it
+would have to include ("2 tangent edges continue the selection: the edge between …"). Turn the
+option back on, or add those edges.
+
+### Extruded and revolved cut
+
+**Shift+E** and **Shift+R** (Solid group) are Extrude and Revolve with the operation already set to
+**Cut**. An extruded cut goes into the material (reverse direction) by default.
+
+### Sweep and loft
+
+**Sweep** (W): pick the profile region, then the path curves (sketch curves or model edges) in
+order, and press Enter. **Follow path** turns the profile with the path; **Fixed** keeps its
+orientation. **Loft** (Shift+W): pick the section regions in order and press Enter. **Ruled** gives
+straight faces between sections. Guide curves are stored but not used yet.
+
+### Shell and draft
+
+**Shell** (T): pick the faces to remove and press Enter, then set the wall thickness and whether it
+goes inward or outward. **Draft** (Shift+T): pick the faces to taper, press Enter, then pick the
+neutral plane or face, and type the angle. A positive angle leans the faces inward as they move away
+from the neutral plane, on the side where the faces are, so the part gets narrower, as a moulded
+part needs. **Reverse direction** flips that.
+
+### Hole wizard and threads
+
+**Hole** (O): pick the flat face, then the hole centres (sketch points, or reference points from the
+chips), and press Enter. The default is an ISO M6 clearance hole through everything. Choose the
+standard (ISO or ANSI), the type (simple, counterbore, countersink or tapped), the size and the fit;
+the dimensions come from the standard's table and are shown read-only. Switch on **Override
+diameter**, **Override counterbore** or **Override countersink** to type your own values. A size the
+standard doesn't cover is reported, never guessed. **Thread** (Shift+O) records a cosmetic thread on
+a cylindrical face; it doesn't change the geometry.
+
+### Mirror and patterns
+
+Select the feature to copy in the feature tree, then press **I** (mirror), **N** (linear pattern) or
+**Shift+N** (circular pattern). To copy more features, click **Add** under "Features to copy" and
+click them in the tree or on the model. Then pick the mirror plane, the direction (an edge, an axis or
+a plane) or the axis, often from the chips. Set the count and spacing, or the count and angle. Click an
+instance under **Instances** to skip it; the others keep their numbers.
+
+### Reference geometry
+
+**Plane** (G): an offset plane; pick the plane or face to offset from and type the distance. The
+**Definition** list has the other kinds: through three points, at an angle about a line, normal to a
+curve, midway between two planes, and through a point. **Axis** (Shift+G): along a straight edge by
+default; also through two points, the axis of a cylinder, where two planes meet, or through a point
+normal to a plane. **Point** (Shift+P): by coordinates by default; also at a vertex, the centre of a
+circle or sphere, along an edge, or where two things cross. Sketch on a reference plane from the
+plane chooser; pick axes and points from the chips.
+
 ### Primitives
 
 From the command palette, choose **Box** (40 × 30 × 20 mm by default) or **Cylinder** (radius
 10 mm, height 20 mm). They are created as new bodies, and you can change their dimensions in the
 inspector.
 
-### Plane
+### Plane from the palette
 
-Choose **Plane** from the palette. It creates an offset plane 20 mm from the XY plane. Edit the
-distance in the inspector, or select a face to offset from.
+**Plane** in the palette creates an offset plane 20 mm from the XY plane (see
+[Reference geometry](#reference-geometry) for the Plane tool).
 
 ### Boolean
 
@@ -449,6 +539,16 @@ These are the shortcuts in the code. On a Mac, ⌘ is the Command key. On Window
 | R | Revolve |
 | F | Fillet |
 | C | Chamfer |
+| P | Push/pull |
+| W / Shift+W | Sweep / loft |
+| T / Shift+T | Shell / draft |
+| O / Shift+O | Hole / thread |
+| I | Mirror |
+| N / Shift+N | Linear / circular pattern |
+| G / Shift+G / Shift+P | Plane / axis / point |
+| Shift+E / Shift+R | Extruded / revolved cut |
+| M | Measure |
+| Enter | Done with the field being picked: on to the tool's next one |
 | Space | Repeat the last tool |
 | 0 or 7 | Isometric view |
 | 1 | Front view |
@@ -458,7 +558,7 @@ These are the shortcuts in the code. On a Mac, ⌘ is the Command key. On Window
 | 5 | Top view |
 | 6 | Bottom view |
 
-Shift-letter keys are not used for model tools.
+Shift with a letter gives the second tool of a pair (see above).
 
 ### Sketch
 
@@ -467,7 +567,9 @@ Shift-letter keys are not used for model tools.
 | L | Line |
 | A | Arc |
 | Shift+C | Circle |
+| P | Point |
 | D | Dimension |
+| O, V, T, E, F, Shift+F, M | Edit tools: offset, convert, trim, extend, fillet, chamfer, mirror |
 | X | Toggle construction geometry |
 | Delete or Backspace | Delete the selected sketch entities |
 | Esc | Leave the current tool. With no tool active, Esc finishes the sketch. |
@@ -490,7 +592,7 @@ clears it.
 
 Keys are ignored while you type in a field.
 
-Not in the app yet: the plan's M (Measure) and H (Hide) keys.
+Not in the app yet: the plan's H (Hide) key.
 
 ## Touch and pen
 

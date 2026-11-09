@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- M3 in the app: every M3 tool is wired — extruded and revolved cut, sweep, loft, shell, draft, hole wizard (ISO by default, sizes from the tables, counterbore and countersink overrides), cosmetic thread, mirror, linear and circular patterns (sources from the tree or the model, skip toggles), reference plane, axis and point. Tools ask for each reference in turn with a prompt; reference chips for origin planes and axes and reference features; M3 shortcuts and context actions (inspector and touch bubble).
+- Sketch Edit menu in the app: offset, convert entities (projected in the kernel worker, linked), trim / extend, sketch fillet / chamfer and mirror, each one undo step named after the operation; Linked panel with Unlink and Re-pick for lost sources; a Point tool (P); labelled sketch toolbar on touch.
+- Linked sketch entities follow their edges on regen through packages/sketch's `reprojectLinked` (kernel-client default).
+- Fillet / chamfer with "Propagate along tangent edges" off: the refusal names the tangent edges it would pull in.
+- Draft inspector explains the angle (positive: inward away from the neutral plane, on the faces' side).
+- M3 acceptance E2E: the ten reference parts built entirely through the UI from their spec steps, mass checked within 0.1 % at the baseline and every CSWP stage.
 - Sketch editing (M3 workstream 1, `@wren-cad/sketch/edit`): offset entities (one driving signed `offset` dimension, joins, caps, solved downstream of planegcs), convert entities (linked, fixed, re-projected in place, lost sources reported), trim/extend, fillet/chamfer with virtual sharps, mirror tied by symmetric constraints; linked geometry named in conflict explanations.
 - Test fixtures: the M3 reference-part suite (PLAN 12A), 10 original parts with specs, drawings, derived masses, CSWP stages, a spec-to-`WrenDoc` builder, real-kernel goldens (parts using M3 features are skipped until they merge) and independent FreeCAD checks (all 40 cases within 3e-12 of the analytic volume).
 
