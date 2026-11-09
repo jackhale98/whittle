@@ -1789,3 +1789,77 @@ packages/sketch `src/annotation.ts`, `dimensionAnnotation(entities, constraint, 
 - `dragDimensionLabel` keeps an h/v distance's text clear of its points' span, on the side it was dragged to. The dimension line then never crosses the measured geometry, and the placement still reads as horizontal or vertical.
 - Proposed contract addition, if the type is shared beyond packages/sketch: `DimensionAnnotation` (extensions, lines, arcs, arrows, text, arrowsOutside) in contracts/sketch.ts. For now it is exported from `@wren-cad/sketch`.
 
+## ADR-056 — M3.5 kernel: exact sketch splines and elliptic arcs, knot defaults, knot-aware mass properties, exact projection (2026-11-09)
+
+**Sketch curves are exact OCCT edges.** `ellipticArc` is a `gp_Elips` (major axis at `rotation`;
+`minorRadius > majorRadius` swaps the axes and turns the frame by π/2, like `ellipse`) trimmed with
+`GC_MakeArcOfEllipse(…, Sense = true)`, counter-clockwise from `start` to `end`. `bspline` is a 3D
+`Geom_BSplineCurve` in the sketch plane from the pole points, `weights`, `knots`/`multiplicities`,
+`degree` and `periodic` (a 2D curve mapped onto the plane would be the same curve; the 3D one needs
+no extra conversion and its pcurve on the plane is exact). A clamped spline shares the vertices of
+its end poles with the lines and arcs that end there, so joints are topological, not fuzzy; a
+spline whose last pole is its first (or coincides with it) is one closed edge, and a periodic one
+is a closed edge on its own; both bound a face without another curve. The General Fuse path
+(fuzzy 1e-6 mm) is unchanged: G1 joints (spline tangent to the line at the shared pole) produce
+no extra pieces. A solver-tolerance gap between an end point and its ellipse (≤ 1e-6 · max(1, a))
+widens that vertex's tolerance to fit instead of failing `BRepLib_MakeEdge` (the same for arcs).
+
+**Knot defaults (contract: "omitted = uniform").** Clamped: multiplicity degree + 1 at both ends,
+interior knots `i / (n − degree)` for `i = 1 … n − degree − 1` with multiplicity 1, where `n` is the
+pole count (so knots lie in [0, 1]). Periodic: `n + 1` knots `i / n`, multiplicity 1 (period 1).
+Both are computed with one IEEE division per knot, so JS (`i / spans`) reproduces them bit for
+bit. Explicit knots are OCCT's form: distinct, strictly increasing knots plus multiplicities, given
+together or not at all; as in ADR-048 (which this confirms), an open spline's `knots` without
+`multiplicities` is read as a flat knot vector when it has n + degree + 1 values (equal neighbours
+collapse, exact equality), and anything else without the pair is refused. ADR-048's periodic
+parametrisation is confirmed against the build: `Geom_BSplineCurve(…, periodic = true)` with the
+default knots starts at (P₀ + 4P₁ + P₂)/6 and keeps the pole order (golden), and the modeling
+workstream's four `curves.golden.test.ts` goldens pass against this kernel. Non-periodic splines must be clamped (end multiplicities
+degree + 1: the contract says they start at the first pole and end at the last); interior
+multiplicities ≤ degree. Knot values are only relative ([0, 5, 10] is the curve of [0, 0.5, 1]).
+
+**Validation.** Every OCCT refusal is checked first and reported as `INVALID_INPUT` naming
+`S…:e(<id>)`: degree not an integer in 1 … 25, fewer than degree + 1 poles, a weight ≤ 0 or not one
+per pole, knots/multiplicities of different lengths or without each other, non-increasing knots, an
+unclamped end, an interior multiplicity above the degree, a wrong total ("5 control points of
+degree 3 need 9 knots counting multiplicity (has 10)"; periodic: the multiplicities without the last
+knot sum to `n`), all poles on one point; an elliptic arc whose end is off its ellipse, with no sweep
+or non-positive radii. A `Standard_Failure` from the constructor (not expected) is still caught and
+becomes `INVALID_INPUT`; anything later is caught at the boundary as before.
+
+**Naming and fingerprints.** Unchanged scheme: `S…:e(<id>)`, `F…:side(S…:e(<id>))` (side faces
+are `extrusion` / `revolution` surfaces of the spline), and the `edge(…)` / `vertex(…)` rules.
+Nothing in the naming assumes analytic curves (centroids are GProp's, deterministic). B-spline
+edges report curve `bspline` (rational ones too), elliptic arcs `ellipse`; regenerating gives
+byte-identical naming and fingerprints. Fingerprint edge lengths of free-form curves now come from
+`GCPnts_AbscissaPoint::Length` (adaptive per span, 1e-10): `LinearProperties` was 1.5e-7 off on a
+rational quarter circle.
+
+**Mass properties are knot-aware for spline profiles.** BRepGProp's default integrates each curve
+and surface with one fixed Gauss rule over the whole parameter range (`BRepGProp_Face::
+IntegrationOrder`, `UKnots`), not per knot span, so a piecewise B-spline profile came out 1e-5
+(uniform cubic) to 3e-3 (a C1 rational circle) off, and the adaptive `Eps` variant splits only at
+B-spline *surface* knots, which an extrusion or revolution of a spline curve does not have. For
+shapes with a planar face bounded by a free-form edge or an extrusion/revolution of a free-form
+curve, `massProperties` and `measure` now convert to NURBS (`BRepBuilderAPI_NurbsConvert`, exact)
+and integrate adaptively (relative 1e-12 requested, better than 1e-9 achieved; the run time
+hardly depends on it: 1e-6 and 1e-12 cost the same). That
+is about 3× the default on those shapes (a 14-face filleted spline solid: about 0.5 s against
+0.16 s in a dev `-O1` build); every other shape, including fillet corner patches, lofts and
+imported B-spline surfaces, keeps the M3 path and cost. Fingerprint face areas and the naming
+centroids keep the default everywhere (matching keys, not measurements). If spline parts make
+regen too slow, the alternatives are per-face integration (convert only the swept faces) or
+`VolumePropertiesGK` with `IsUseSpan`, which knows extrusion-of-B-spline spans but not revolutions.
+
+**Exact projection (`exact: true`).** Projection along a plane normal is affine, so it maps a conic
+to a conic and a (rational) B-spline to the B-spline with the projected poles and the same weights
+and knots; no `GeomProjLib` call is needed and nothing is approximated, for any source
+orientation (not just planar edges on a parallel plane). With `exact: true` on `projectEdges` /
+`projectFaceOutline`, circles seen obliquely and ellipses come back as `ellipse` / `ellipticArc`
+(principal axes from the 2 × 2 map of the conjugate semi-diameters; counter-clockwise; still
+`circle` / `arc` when the projection is circular), B-spline and Bezier edges as `bspline` (trimmed
+with `Segment`, which also clamps; a whole periodic curve stays periodic); edge-on projections and
+other curve types are sampled as before. The flag is opt-in so the M3 consumers (kernel-client's
+own `ProjectedCurve`) stay valid until the modeling workstream maps the new kinds onto
+`SketchEllipse` / `SketchEllipticArc` / `SketchBSpline` linked entities; the façade types are
+`ExactProjectedCurve` / `ExactProjectedEdge`.

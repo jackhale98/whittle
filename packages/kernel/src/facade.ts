@@ -57,10 +57,13 @@ export interface WhittleKernelModule {
   measure(queryJson: string): string;
   /**
    * M3 "convert entities": `queryJson` is a `ProjectEdgesQuery`. Returns
-   * `Result<ProjectedEdge[]>` JSON.
+   * `Result<ProjectedEdge[]>` JSON (`Result<ExactProjectedEdge[]>` with `exact: true`, M3.5).
    */
   projectEdges(queryJson: string): string;
-  /** M3: `queryJson` is a `ProjectFaceOutlineQuery`. Returns `Result<ProjectedOutline>` JSON. */
+  /**
+   * M3: `queryJson` is a `ProjectFaceOutlineQuery`. Returns `Result<ProjectedOutline>` JSON (with
+   * `exact: true`, M3.5, its edges are `ExactProjectedEdge`s).
+   */
   projectFaceOutline(queryJson: string): string;
   /** Threaded build: caps OCCT's thread pool. Returns `Result<{threads, max}>` JSON. */
   configureThreads(count: number): string;
@@ -120,13 +123,63 @@ export type PlaneXY = Vec2;
 /**
  * One model curve projected onto a plane (plane-frame local x/y, mm). Arcs run counter-clockwise
  * in plane coordinates. `polyline` is an approximation (ellipses, circles seen obliquely, splines),
- * within about 1 µm of the exact projection.
+ * within about 1 µm of the exact projection. With `exact: true` the result is an
+ * `ExactProjectedCurve` instead.
  */
 export type ProjectedCurve =
   | { kind: 'line'; a: PlaneXY; b: PlaneXY }
   | { kind: 'circle'; c: PlaneXY; r: number }
   | { kind: 'arc'; c: PlaneXY; r: number; start: PlaneXY; end: PlaneXY }
   | { kind: 'polyline'; points: PlaneXY[] };
+
+/**
+ * M3.5, `exact: true`: an ellipse (full) or elliptic arc (counter-clockwise `start` → `end`), as
+ * `SketchEllipse` / `SketchEllipticArc`: `rotation` is the major axis angle in (−π/2, π/2],
+ * `majorRadius` > `minorRadius`. A circle seen obliquely projects to one (a projection that is
+ * still circular comes back as `circle` / `arc`).
+ */
+export type ProjectedConic =
+  | { kind: 'ellipse'; c: PlaneXY; majorRadius: number; minorRadius: number; rotation: number }
+  | {
+      kind: 'ellipticArc';
+      c: PlaneXY;
+      majorRadius: number;
+      minorRadius: number;
+      rotation: number;
+      start: PlaneXY;
+      end: PlaneXY;
+    };
+
+/**
+ * M3.5, `exact: true`: the exact projection of a B-spline or Bezier edge, in any orientation
+ * (parallel projection is affine, so it maps poles to poles): the projected poles with the curve's
+ * own weights (present only when rational), degree and OCCT knots/multiplicities (distinct knots,
+ * not normalised to [0, 1]), in the edge's parameter direction. Trimmed edges and non-periodic
+ * curves come back clamped (`periodic: false`); a whole periodic curve stays periodic. Maps
+ * one-to-one onto `SketchBSpline` (the poles become point entities). Poles that project onto one
+ * line come back as a `line` instead.
+ */
+export interface ProjectedBSpline {
+  kind: 'bspline';
+  poles: PlaneXY[];
+  degree: number;
+  periodic: boolean;
+  weights?: number[];
+  knots: number[];
+  multiplicities: number[];
+}
+
+/**
+ * A curve of an `exact: true` projection: conics and B-splines exactly; other curves (offset
+ * curves, intersection curves without a B-spline form) are still sampled `polyline`s.
+ */
+export type ExactProjectedCurve = ProjectedCurve | ProjectedConic | ProjectedBSpline;
+
+/** A projected edge of an `exact: true` query. */
+export interface ExactProjectedEdge {
+  edge: number;
+  curves: ExactProjectedCurve[];
+}
 
 /** A projected edge: `edge` is its TopExp ordinal; no curves when it projects to a point. */
 export interface ProjectedEdge {
@@ -146,6 +199,11 @@ export interface ProjectEdgesQuery {
   /** TopExp edge ordinals of `shape`. */
   edges: number[];
   plane: Frame;
+  /**
+   * M3.5: return conics and B-splines exactly; the value is then `ExactProjectedEdge[]` (the
+   * default, false, keeps the M3 `ProjectedEdge[]`).
+   */
+  exact?: boolean;
 }
 
 /** `projectFaceOutline()` query. */
@@ -154,6 +212,8 @@ export interface ProjectFaceOutlineQuery {
   /** TopExp face ordinal of `shape`. */
   face: number;
   plane: Frame;
+  /** M3.5: as `ProjectEdgesQuery.exact` (the loops then hold `ExactProjectedEdge`s). */
+  exact?: boolean;
 }
 
 /** Value of `kernelInfo()` on success. */

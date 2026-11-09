@@ -21,7 +21,8 @@ interface EntityBase {
   /**
    * M3 Convert Entities: a **linked** entity whose geometry is the projection of model geometry
    * onto the sketch plane, recomputed by the regen engine every time (points, lines, arcs and
-   * circles; other curves project as an approximating chain of lines marked `approximate`). Linked
+   * circles, and since M3.5 ellipses, elliptic arcs and B-splines through the kernel's exact
+   * projection; anything else projects as an approximating chain of lines marked `approximate`). Linked
    * entities are fixed (no DOF) and can be dimensioned and constrained to. If `ref` no longer
    * resolves, the sketch is "needs attention" (never re-picked silently). Removing `source`
    * unlinks the entity into ordinary geometry.
@@ -85,7 +86,9 @@ export interface SketchEllipticArc extends EntityBase {
  * end at the last, so a line or arc can share an end point with them. `knots` are distinct values
  * and come with `multiplicities` (both or neither). Omitted: clamped knots i/(n−p) with end
  * multiplicity p + 1 (n poles, degree p), or periodic knots i/n all of multiplicity 1, on the
- * domain [0, 1] (ADR-048 has the periodic flat-knot convention). `weights` omitted = all 1
+ * domain [0, 1] (ADR-048 has the periodic flat-knot convention). Explicit knots: end multiplicities
+ * must be degree + 1 when not periodic and interior ones ≤ degree; an open spline may instead give
+ * a flat knot vector of n + p + 1 values (ADR-048, ADR-056). `weights` omitted = all 1
  * (non-rational). A spline drawn **through points** stores the poles that interpolate them, plus the
  * through points as point entities held on the curve by `pointOn` constraints, so moving a through
  * point reshapes the curve (ADR-046).
