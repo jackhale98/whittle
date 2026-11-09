@@ -63,6 +63,8 @@ interface DragTarget {
 interface DragSession {
   input: SketchSolveInput;
   model: SketchModel;
+  /** Offsets solved downstream of planegcs (the planegcs system holds `split.upstream`). */
+  split: OffsetSplit | null;
   gcs: GcsSession;
   targets: DragTarget[];
   grab: Vec2;
@@ -175,6 +177,13 @@ export class SketchSolverCore {
     if (model.rows.length === 0) return { x: Float64Array.from(x0), ok: true };
     const accept = (x: Float64Array) => ({ x: refine ? refined(model, x) : x, ok: true });
     if (isSatisfied(model, x0)) return accept(Float64Array.from(x0));
+    // Offsets follow their sources: solve everything else, then the offset geometry.
+    const split = offsetSplit(model);
+    if (split) {
+      const up = this.solveModel(split.upstream, x0, false);
+      const y = up.ok ? solveTargets(model, up.x, split) : null;
+      if (y) return accept(y);
+    }
     let best: Float64Array | null = null;
     let bestErr = Number.POSITIVE_INFINITY;
     const session = this.gcs;
@@ -191,6 +200,12 @@ export class SketchSolverCore {
         best = x;
       }
     }
+    // planegcs' point–line distances are unsigned and can settle an offset on the wrong side;
+    // our own rows are signed, so Newton on them finds the intended solution.
+    if (split || model.active.some((c) => c.kind === 'offset')) {
+      const y = polish(model, x0, model.rows, undefined, 24);
+      if (isSatisfied(model, y)) return accept(y);
+    }
     return { x: best ?? Float64Array.from(x0), ok: false };
   }
 
@@ -198,9 +213,10 @@ export class SketchSolverCore {
     input: SketchSolveInput,
     all: readonly Id[],
     enabled: ReadonlySet<Id>,
+    unlinked?: ReadonlySet<Id>,
   ): boolean {
     const disabled = new Set(all.filter((id) => !enabled.has(id)));
-    const m = buildModel(input, { disabled });
+    const m = buildModel(input, { disabled, unlinked });
     return this.solveModel(m, m.x0, false).ok;
   }
 
@@ -247,6 +263,16 @@ export class SketchSolverCore {
         if (fixes.length && this.consistent(input, all, new Set(set))) {
           fixed = quickXplain(set, fixes, (s) => this.consistent(input, all, new Set(s)));
         }
+        // Linked (converted) geometry that makes the set contradictory: it can't move either.
+        let linked: Id[] = [];
+        const withFixes = new Set([...fixes, ...set]);
+        if (model.linked.length && this.consistent(input, all, withFixes, new Set(model.linked))) {
+          linked = quickXplain([], model.linked, (keep) => {
+            const kept = new Set(keep);
+            const free = new Set(model.linked.filter((id) => !kept.has(id)));
+            return this.consistent(input, all, withFixes, free);
+          });
+        }
         const blame = set[set.length - 1] as Id;
         blamed.add(blame);
         work.splice(work.indexOf(blame), 1);
@@ -257,6 +283,7 @@ export class SketchSolverCore {
             fixed.map((id) => byId.get(id) as SketchConstraint),
             namer,
             input.values,
+            linked,
           ),
         );
       }
@@ -269,6 +296,7 @@ export class SketchSolverCore {
     fixes: SketchConstraint[],
     namer: Namer,
     values: Record<Id, number>,
+    linked: Id[] = [],
   ): SketchConflict {
     const fixedEntities = fixes.map((f) => (f.kind === 'fix' ? f.entity : f.id));
     const suggestions: SuggestedFix[] = [];
@@ -289,7 +317,8 @@ export class SketchSolverCore {
     }
     return {
       constraints: set.map((c) => c.id),
-      explanation: explainConflict(set, fixedEntities, namer, values),
+      ...(linked.length ? { fixed: [...fixedEntities, ...linked] } : {}),
+      explanation: explainConflict(set, fixedEntities, namer, values, linked),
       fixes: suggestions,
     };
   }
@@ -420,14 +449,16 @@ export class SketchSolverCore {
           break;
       }
     }
+    const split = offsetSplit(model, entity);
     const gcs = new GcsSession(this.mod);
-    gcs.load(model, x, extra);
+    gcs.load(split ? split.upstream : model, x, extra);
     const targets = cursors.map((c) => ({ at: gcs.extraPointIndex(c.id), offset: c.offset }));
     const analysis = analyzeDof(model, x);
     const session = this.nextSession++;
     this.sessions.set(session, {
       input: solvedInput,
       model,
+      split,
       gcs,
       targets,
       grab,
@@ -449,9 +480,12 @@ export class SketchSolverCore {
     let status: SketchSolveResult['status'] = 'solved';
     if (s.targets.length) {
       s.gcs.solve(Algorithm.DogLeg);
-      const x = Float64Array.from(s.x);
+      let x: Float64Array | null = Float64Array.from(s.x);
       s.gcs.read(x);
-      if (finite(x) && isSatisfied(s.model, x)) {
+      if (!finite(x)) x = null;
+      else if (s.split) x = isSatisfied(s.split.upstream, x) ? solveTargets(s.model, x, s.split) : null;
+      else if (!isSatisfied(s.model, x)) x = null;
+      if (x) {
         s.x = refined(s.model, x);
       } else {
         // Keep the last good state; re-seed planegcs from it so the next move starts clean.
@@ -459,7 +493,7 @@ export class SketchSolverCore {
         const extra = s.gcs.wrapper.sketch_index
           .get_primitives()
           .filter((p) => p.id.startsWith('d:'));
-        s.gcs.load(s.model, s.x, extra);
+        s.gcs.load(s.split ? s.split.upstream : s.model, s.x, extra);
         for (const t of s.targets) {
           s.gcs.setFixedParam(t.at, to[0] + t.offset[0]);
           s.gcs.setFixedParam(t.at + 1, to[1] + t.offset[1]);
@@ -503,6 +537,60 @@ export class SketchSolverCore {
 }
 
 // ---------------------------------------------------------------------------------------------
+
+/**
+ * Offsets as a downstream stage: when nothing but offsets (and the offset arcs' own arc rules)
+ * constrains the offset geometry, the sources can be solved without it (`upstream`, a small
+ * planegcs system) and the offset geometry afterwards by Newton on the offset rows with
+ * everything else held (`solveTargets`, sparse). Null when a user constraint touches the offset
+ * geometry (or the drag grabs it): then everything solves together.
+ */
+export interface OffsetSplit {
+  upstream: SketchModel;
+  rows: Row[];
+  /** Grounding for the downstream stage: everything but the offset geometry. */
+  ground: Uint8Array;
+}
+
+export function offsetSplit(model: SketchModel, dragged?: Id): OffsetSplit | null {
+  const offsets = model.active.filter((c) => c.kind === 'offset');
+  if (offsets.length === 0) return null;
+  const target = new Set<number>();
+  const targetEntities = new Set<Id>();
+  for (const c of offsets) {
+    for (const t of c.targets) {
+      targetEntities.add(t);
+      for (const i of model.entityParams.get(t) ?? []) if (!model.grounded[i]) target.add(i);
+    }
+  }
+  for (const c of offsets)
+    for (const src of c.sources) for (const i of model.entityParams.get(src) ?? []) target.delete(i);
+  if (target.size === 0) return null;
+  if (dragged !== undefined && (model.entityParams.get(dragged) ?? []).some((i) => target.has(i)))
+    return null;
+  const offsetIds = new Set(offsets.map((c) => c.id));
+  const rows: Row[] = [];
+  for (const r of model.rows) {
+    if (offsetIds.has(r.owner)) {
+      rows.push(r);
+      continue;
+    }
+    if (!r.params.some((i) => target.has(i))) continue;
+    if (r.internal && targetEntities.has(r.owner)) rows.push(r);
+    else return null;
+  }
+  const ground = new Uint8Array(model.grounded.length).fill(1);
+  for (const i of target) ground[i] = 0;
+  const disabled = new Set([...(model.options.disabled ?? []), ...offsetIds]);
+  const upstream = buildModel(model.input, { ...model.options, disabled });
+  return { upstream, rows, ground };
+}
+
+/** The offset geometry solved from fixed sources (null when the offset rows can't all hold). */
+function solveTargets(model: SketchModel, x: Float64Array, split: OffsetSplit): Float64Array | null {
+  const y = polish({ ...model, grounded: split.ground }, x, split.rows, undefined, 16);
+  return isSatisfied(model, y) ? y : null;
+}
 
 /** Polished `x` when it still passes the solver's own check, else `x` unchanged. */
 function refined(model: SketchModel, x: Float64Array): Float64Array {
