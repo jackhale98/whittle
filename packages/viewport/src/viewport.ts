@@ -89,7 +89,16 @@ import {
   sameGeometry,
   sideVisibility,
 } from './compare';
-import { HANDLE_PICK_PAD_PX, LONG_PRESS_GRACE_MS, LONG_PRESS_JANK_MS } from './constants';
+import {
+  HANDLE_PICK_PAD_PX,
+  LONG_PRESS_GRACE_MS,
+  LONG_PRESS_JANK_MS,
+  PIVOT_DOT_PX,
+  PIVOT_FLASH_MS,
+  PIVOT_RING_PX,
+  ROTATE_SPEED_MAX,
+  ROTATE_SPEED_MIN,
+} from './constants';
 import { edgesToSegments, meshBuffersToGeometry } from './geometry';
 import {
   type GestureOutput,
@@ -111,11 +120,33 @@ import {
   triangleToFace,
 } from './ids';
 import {
+  countIdPixels,
+  type Mods,
+  NavigationMachine,
+  type NavOutput,
+  type NavPointerKind,
+  type NavSample,
+  normalizeRect,
+  orbitTrackball,
+  orbitTurntable,
+  orthonormalize,
+  type PivotSource,
+  type Pose,
+  pointInRect,
+  polylineVsRect,
+  type Rect,
+  resolvePivot,
+  triangleTouchesRect,
+} from './navigation';
+import {
+  applyDepthBias,
   type Dot,
   disposeOverlay,
   makeDot,
   makeFill,
   makeLines,
+  overlayBiasFor,
+  overlayDepthBias,
   polylineSegments,
   sizeDots,
 } from './overlays';
@@ -124,6 +155,7 @@ import {
   closestOnPolyline,
   defaultTolerance,
   distPointSegment2D,
+  KIND_PRIORITY,
   type ProjectFn,
   raycastTriangles,
   sortByDistance,
@@ -159,6 +191,17 @@ const ID_SCALE = 0.5;
 const DEFAULT_TOLERANCE_PX = 6;
 /** Faces above this many triangles are ray-cast through the BVH instead of brute force. */
 const LARGE_FACE_TRIANGLES = 20_000;
+/** Orbit start builds a missing BVH synchronously only below this many visible triangles. */
+const NAV_SYNC_BVH_TRIANGLES = 150_000;
+
+/** Edge occlusion samples, as fractions of the polyline length. */
+const EDGE_SAMPLE_FRACTIONS = [0.5, 0.25, 0.75];
+const sub3 = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const cross3 = (a: Vec3, b: Vec3): Vec3 => [
+  a[1] * b[2] - a[2] * b[1],
+  a[2] * b[0] - a[0] * b[2],
+  a[0] * b[1] - a[1] * b[0],
+];
 
 export interface CameraState {
   position: [number, number, number];
@@ -235,6 +278,8 @@ export interface ViewportEngine extends CompareViewport {
    */
   whenPickReady(): Promise<void>;
   getPickStats(): PickStats;
+  /** M3.5 diagnostics for tests: the orbit in progress and the pivot marker. */
+  getNavigationState(): NavigationState;
   on<K extends keyof ViewportEventMap>(type: K, cb: (e: ViewportEventMap[K]) => void): () => void;
 }
 
@@ -248,6 +293,21 @@ export interface TouchStats {
   environmentReady: boolean;
   handleHover: string | null;
   sectionActive: boolean;
+}
+
+export interface NavigationState {
+  /** A mouse/touch/pen orbit or pan drag is past its threshold. */
+  dragging: 'orbit' | 'pan' | null;
+  /** World pivot of the drag in progress (or the last one); null before any drag. */
+  pivot: Vec3 | null;
+  /** How the pivot was chosen. */
+  pivotSource: PivotSource | null;
+  /** The pivot marker is shown right now. */
+  markerVisible: boolean;
+  /** Screen position (CSS px) of the pivot right now; null when there is none. */
+  pivotScreen: { x: number; y: number } | null;
+  /** Milliseconds the last orbit/pan start spent resolving its pivot (the pick under the cursor). */
+  lastPivotMs: number;
 }
 
 export interface PickStats {
@@ -443,6 +503,28 @@ class ViewportImpl implements ViewportEngine {
   private followSystemMotion = false;
   private previewDirty = false;
 
+  // ---- M3.5 navigation
+  private navigation: NavigationOptions = { ...DEFAULT_NAVIGATION };
+  private readonly navMachine = new NavigationMachine();
+  private nav: {
+    mode: 'orbit' | 'pan';
+    pivot: Vec3;
+    source: PivotSource;
+    /** Orbit distance kept constant so the controls' target stays on the view axis. */
+    dist: number;
+    /** Pan: world units per pixel at the grabbed depth. */
+    wpp: number;
+  } | null = null;
+  private idTotalsCache: { img: object; counts: Uint32Array } | null = null;
+  private lastPivot: { point: Vec3; source: PivotSource } | null = null;
+  /** Pivot set by a middle click (`middleOrbit`), used only for orbits that start on a miss. */
+  private pivotOverride: Vec3 | null = null;
+  private pivotMarker: { group: Group; dots: Dot[] } | null = null;
+  private pivotFlashTimer = 0;
+  private lastPivotMs = 0;
+  /** Button of the press the navigation machine is tracking (for lost-release recovery). */
+  private navButton = 0;
+
   static async create(
     canvas: HTMLCanvasElement,
     options: ViewportEngineOptions,
@@ -504,7 +586,9 @@ class ViewportImpl implements ViewportEngine {
     this.keyLight.position.set(-60, -90, 120);
     this.scene.add(this.keyLight);
 
-    this.edgeMaterial = new Line2NodeMaterial({ color: this.palette.edge, linewidth: 1.6 });
+    this.edgeMaterial = applyDepthBias(
+      new Line2NodeMaterial({ color: this.palette.edge, linewidth: 1.6 }),
+    );
     this.scene.add(this.grid.mesh, this.shadow.mesh, this.bodyRoot);
     this.bodyRoot.add(this.highlightGroup);
     this.bodyRoot.enabled = false;
@@ -665,6 +749,7 @@ class ViewportImpl implements ViewportEngine {
       h.setColors(this.ui.accent, mixHex(this.ui.accent, '#ffffff', 0.45));
     }
     for (const [id, m] of [...this.markerSets]) this.setMarkers(id, m.markers);
+    if (this.pivotMarker) this.buildPivotMarker();
     this.requestRender();
   }
 
@@ -795,7 +880,7 @@ class ViewportImpl implements ViewportEngine {
           distancePx: h.distancePx,
         });
       }
-      if (handleHits.length > 0 && !options.all) return handleHits;
+      if (handleHits.length > 0 && !options.all) return this.withDepth(handleHits);
     }
     const ray = this.rayAt(x, y);
     const project = this.projector();
@@ -898,9 +983,18 @@ class ViewportImpl implements ViewportEngine {
       if (f) out.push(f);
     }
 
-    if (options.all) return [...handleHits, ...sortByDistance(out)];
+    if (options.all) return this.withDepth([...handleHits, ...sortByDistance(out)]);
     const best = bestCandidate(out);
-    return best ? [best] : [];
+    return best ? this.withDepth([best]) : [];
+  }
+
+  /** Stamp hits with their distance from the camera (mm), the chooser's stable tie-break. */
+  private withDepth(hits: PickHit[]): PickHit[] {
+    const o = this.camera.position;
+    for (const h of hits) {
+      h.depth = Math.hypot(h.point[0] - o.x, h.point[1] - o.y, h.point[2] - o.z);
+    }
+    return hits;
   }
 
   setHighlights(highlights: { selected: HighlightItem[]; preselected: HighlightItem[] }): void {
@@ -951,7 +1045,9 @@ class ViewportImpl implements ViewportEngine {
       if (segs.length > 0) {
         const g = new LineSegmentsGeometry();
         g.setPositions(segs);
-        lineMaterial = new Line2NodeMaterial({ color: this.ghostEdgeColor(), linewidth: 1.2 });
+        lineMaterial = applyDepthBias(
+          new Line2NodeMaterial({ color: this.ghostEdgeColor(), linewidth: 1.2 }),
+        );
         const l = new LineSegments2(g, lineMaterial);
         l.frustumCulled = false;
         l.renderOrder = 3;
@@ -1855,18 +1951,22 @@ class ViewportImpl implements ViewportEngine {
   private configureControls(): void {
     const c = this.controls;
     const A = CameraControls.ACTION;
-    c.mouseButtons.left = A.ROTATE;
-    c.mouseButtons.right = A.TRUCK;
-    c.mouseButtons.middle = A.TRUCK;
+    // M3.5 (ADR-046): camera-controls only handles the wheel and two/three-finger touch. Every
+    // mouse button (and one-finger / pen orbit) is driven by NavigationMachine in this file, so
+    // the pivot is picked at the cursor, left drag never navigates and a drag follows the
+    // pointer 1:1.
+    c.mouseButtons.left = A.NONE;
+    c.mouseButtons.right = A.NONE;
+    c.mouseButtons.middle = A.NONE;
     c.mouseButtons.wheel = A.DOLLY;
-    c.touches.one = A.TOUCH_ROTATE;
+    c.touches.one = A.NONE;
     c.touches.two = A.TOUCH_DOLLY_TRUCK;
     c.touches.three = A.TOUCH_TRUCK;
     c.dollyToCursor = true;
+    c.dollySpeed = this.navigation.invertZoom ? -1 : 1;
+    // Programmatic moves (fit, setView, lookAtPlane, wheel) ease; dragging never does.
     c.smoothTime = this.reducedMotion ? 0 : 0.18;
-    c.draggingSmoothTime = this.reducedMotion ? 0 : 0.06;
-    c.azimuthRotateSpeed = 1;
-    c.polarRotateSpeed = 1;
+    c.draggingSmoothTime = 0;
   }
 
   private attachInput(): void {
@@ -2006,6 +2106,20 @@ class ViewportImpl implements ViewportEngine {
         button: e.button,
       };
     };
+    const navSample = (type: NavSample['type'], e: PointerEvent): NavSample => {
+      const r = canvas.getBoundingClientRect();
+      const mods: Mods = { ctrl: e.ctrlKey, shift: e.shiftKey, alt: e.altKey, meta: e.metaKey };
+      return {
+        type,
+        id: e.pointerId,
+        pointerType: kind(e) as NavPointerKind,
+        button: e.button,
+        x: e.clientX - r.left,
+        y: e.clientY - r.top,
+        t: eventTime(e),
+        mods,
+      };
+    };
     let vetoed = false;
     const restore = () => {
       if (!vetoed) return;
@@ -2025,13 +2139,27 @@ class ViewportImpl implements ViewportEngine {
         s.onHandle = true;
         this.setHoveredHandle(handle.id);
       }
-      if (handle || this.recognizer.blocksCamera(s.pointerType)) {
+      const blocked = handle !== null || this.recognizer.blocksCamera(s.pointerType);
+      // Mouse and pen never reach camera-controls (the navigation machine drives them); touch
+      // does, for the two/three-finger gestures.
+      if (blocked || s.pointerType !== 'touch') {
         vetoed = true;
         this.setCameraEnabled(false);
         setTimeout(restore, 0); // in case an app listener stops propagation before the bubble hook
       }
       this.dispatch(this.recognizer.handle(s));
       this.armLongPress();
+      if (!blocked) {
+        this.navButton = e.button;
+        this.dispatchNav(this.navMachine.handle(navSample('down', e)));
+        if (s.pointerType === 'mouse' && this.navMachine.tracking()) {
+          try {
+            canvas.setPointerCapture(e.pointerId);
+          } catch {
+            // synthetic or already-released pointer: the window listeners still see the moves
+          }
+        }
+      }
     };
     const move = (e: PointerEvent) => {
       if (this.disposed) return;
@@ -2041,12 +2169,24 @@ class ViewportImpl implements ViewportEngine {
       }
       this.dispatch(this.recognizer.handle(sample('move', e)));
       this.armLongPress();
+      if (this.navMachine.tracking()) {
+        // A release outside the window without capture never arrives: treat "no buttons" as up.
+        if (e.pointerType === 'mouse' && e.buttons === 0) {
+          this.dispatchNav(
+            this.navMachine.handle({ ...navSample('up', e), button: this.navButton }),
+          );
+        } else {
+          this.dispatchNav(this.navMachine.handle(navSample('move', e)));
+        }
+      }
     };
     const end = (type: 'up' | 'cancel') => (e: PointerEvent) => {
       if (this.disposed) return;
       this.dispatch(this.recognizer.handle(sample(type, e)));
       this.armLongPress();
+      this.dispatchNav(this.navMachine.handle(navSample(type, e)));
     };
+    const blur = () => this.dispatchNav(this.navMachine.abort());
     const up = end('up');
     const cancel = end('cancel');
     const leave = () => this.setHoveredHandle(null);
@@ -2056,7 +2196,18 @@ class ViewportImpl implements ViewportEngine {
     window.addEventListener('pointerup', up, true);
     window.addEventListener('pointercancel', cancel, true);
     canvas.addEventListener('pointerleave', leave);
+    window.addEventListener('blur', blur);
+    // Middle-button auto-scroll would grab the pointer on some platforms.
+    const noMiddle = (e: MouseEvent) => {
+      if (e.button === 1) e.preventDefault();
+    };
+    canvas.addEventListener('mousedown', noMiddle);
+    canvas.addEventListener('auxclick', noMiddle);
     this.cleanup.push(() => {
+      window.removeEventListener('blur', blur);
+      canvas.removeEventListener('mousedown', noMiddle);
+      canvas.removeEventListener('auxclick', noMiddle);
+      clearTimeout(this.pivotFlashTimer);
       window.removeEventListener('pointerdown', down, true);
       window.removeEventListener('pointerdown', restore, false);
       window.removeEventListener('pointermove', move, true);
@@ -2099,7 +2250,10 @@ class ViewportImpl implements ViewportEngine {
     for (const o of outputs) {
       if (o.type === 'gesture') this.emitGesture(o.gesture);
       else if (o.type === 'twist') this.applyRoll(o.delta);
-      else this.controls.cancel(); // a long-press fired: the held finger must not orbit
+      else {
+        this.controls.cancel(); // a long-press fired: the held finger must not orbit
+        this.dispatchNav(this.navMachine.abort());
+      }
     }
   }
 
@@ -2412,19 +2566,703 @@ class ViewportImpl implements ViewportEngine {
 
   // ---------------------------------------------------------------- M3.5: navigation
 
-  // M3.5 placeholders (ADR-046): the viewport workstream implements these.
-  private navigation: NavigationOptions = { ...DEFAULT_NAVIGATION };
-
   setNavigation(options: Partial<NavigationOptions>): void {
-    this.navigation = { ...this.navigation, ...options };
+    const prev = this.navigation;
+    const next: NavigationOptions = { ...prev, ...options };
+    const speed = Number.isFinite(next.rotateSpeed) ? next.rotateSpeed : 1;
+    next.rotateSpeed = Math.min(ROTATE_SPEED_MAX, Math.max(ROTATE_SPEED_MIN, speed));
+    this.navigation = next;
+    this.navMachine.setPreset(next.preset);
+    this.controls.dollySpeed = next.invertZoom ? -1 : 1;
+    if (next.preset !== prev.preset) this.pivotOverride = null;
+    if (!next.showPivot) this.hidePivotMarker();
+    if (next.orbit === 'turntable' && prev.orbit !== 'turntable') {
+      // Back to a level camera. Keep the view (position and target) and only change "up".
+      const pos = this.controls.getPosition(new Vector3());
+      const tgt = this.controls.getTarget(new Vector3());
+      if (this.resetRoll()) {
+        void this.controls.setLookAt(pos.x, pos.y, pos.z, tgt.x, tgt.y, tgt.z, false);
+        this.controls.update(0);
+        this.requestRender();
+      }
+    }
   }
 
   getNavigation(): NavigationOptions {
     return { ...this.navigation };
   }
 
-  pickRect(_rect: ScreenRect, _options: RectPickOptions): PickHit[] {
-    return [];
+  getNavigationState(): NavigationState {
+    const p = this.nav?.pivot ?? this.lastPivot?.point ?? null;
+    const s = p ? this.worldToScreen(p) : null;
+    return {
+      dragging: this.nav?.mode ?? null,
+      pivot: p ? [p[0], p[1], p[2]] : null,
+      pivotSource: this.lastPivot?.source ?? null,
+      markerVisible: this.pivotMarker?.group.visible === true,
+      pivotScreen: s ? { x: s.x, y: s.y } : null,
+      lastPivotMs: this.lastPivotMs,
+    };
+  }
+
+  /** Current (displayed) camera pose from the controls, and the orbit distance. */
+  private readPose(): { pose: Pose; dist: number } {
+    const p = this.controls.getPosition(new Vector3(), false);
+    const t = this.controls.getTarget(new Vector3(), false);
+    const f = t.clone().sub(p);
+    let dist = f.length();
+    if (dist < 1e-9) {
+      dist = Math.max(this.sceneRadius, 1);
+      this.camera.getWorldDirection(f);
+    }
+    f.normalize();
+    const u = this.camera.up;
+    return {
+      pose: orthonormalize({ pos: [p.x, p.y, p.z], fwd: [f.x, f.y, f.z], up: [u.x, u.y, u.z] }),
+      dist,
+    };
+  }
+
+  /** Move the camera to `pose` at once (no smoothing: a drag follows the pointer 1:1). */
+  private writePose(pose: Pose, dist: number, setUp: boolean): void {
+    if (setUp) {
+      this.camera.up.set(pose.up[0], pose.up[1], pose.up[2]);
+      this.controls.updateCameraUp();
+    }
+    const [px, py, pz] = pose.pos;
+    this.cameraAwake = true;
+    void this.controls.setLookAt(
+      px,
+      py,
+      pz,
+      px + pose.fwd[0] * dist,
+      py + pose.fwd[1] * dist,
+      pz + pose.fwd[2] * dist,
+      false,
+    );
+    this.requestRender();
+  }
+
+  /** Surface point under (x, y) for navigation: ID buffer when current, BVH when cheap, else null. */
+  private navSurfaceHit(x: number, y: number): PickHit | null {
+    let tris = 0;
+    let unbuilt = false;
+    for (const e of this.bodies.values()) {
+      if (!e.display.visible) continue;
+      tris += e.triangles;
+      if (!e.bvh) unbuilt = true;
+    }
+    if (tris === 0) return null;
+    this.enablePicking();
+    // Never stall an orbit start on a multi-hundred-ms BVH build: fall back to the centre.
+    if (!this.idFresh() && unbuilt && tris > NAV_SYNC_BVH_TRIANGLES) return null;
+    return this.pickFace(x, y, this.rayAt(x, y));
+  }
+
+  private resolveNavPivot(x: number, y: number): { point: Vec3; source: PivotSource } {
+    this.syncCameraMatrices();
+    const { pose, dist } = this.readPose();
+    const v = new Vector3();
+    const project = (p: Vec3) => {
+      v.set(p[0], p[1], p[2]).applyMatrix4(this.camera.matrixWorldInverse);
+      const depth = -v.z;
+      if (depth <= 0) return { nx: 0, ny: 0, depth };
+      v.applyMatrix4(this.camera.projectionMatrix);
+      return { nx: v.x, ny: v.y, depth };
+    };
+    const anyVisible = this.bodyBoundsList().length > 0;
+    const center = anyVisible ? boundsCenter(this.sceneBounds) : null;
+    const hit = this.navigation.pivot === 'cursor' ? this.navSurfaceHit(x, y) : null;
+    const w = this.canvas.clientWidth || 1;
+    const h = this.canvas.clientHeight || 1;
+    return resolvePivot({
+      mode: this.navigation.pivot,
+      hit: hit ? hit.point : null,
+      override: this.pivotOverride,
+      center,
+      centerHit: () => this.navSurfaceHit(w / 2, h / 2)?.point ?? null,
+      project,
+      cameraPosition: pose.pos,
+      forward: pose.fwd,
+      fallbackDistance: dist,
+    });
+  }
+
+  private beginNav(o: Extract<NavOutput, { type: 'begin' }>): void {
+    if (o.pointerType === 'touch' && this.recognizer.palmRejected(performance.now())) {
+      this.dispatchNav(this.navMachine.abort());
+      return;
+    }
+    const t0 = performance.now();
+    const r = this.resolveNavPivot(o.x, o.y);
+    this.lastPivotMs = performance.now() - t0;
+    const { pose, dist } = this.readPose();
+    let wpp = 0;
+    if (o.mode === 'pan') {
+      const d =
+        (r.point[0] - pose.pos[0]) * pose.fwd[0] +
+        (r.point[1] - pose.pos[1]) * pose.fwd[1] +
+        (r.point[2] - pose.pos[2]) * pose.fwd[2];
+      wpp = worldPerPixel(
+        d,
+        this.camera.projectionMatrix.elements[5] as number,
+        this.canvas.clientHeight || 1,
+      );
+    }
+    this.nav = { mode: o.mode, pivot: r.point, source: r.source, dist, wpp };
+    this.lastPivot = r;
+    this.interacting = true;
+    clearTimeout(this.pivotFlashTimer);
+    if (o.mode === 'orbit' && this.navigation.showPivot) this.showPivotMarker(r.point);
+    this.requestRender();
+  }
+
+  private dragNav(mode: 'orbit' | 'pan', dx: number, dy: number): void {
+    const n = this.nav;
+    if (!n || n.mode !== mode) return;
+    const { pose } = this.readPose();
+    if (mode === 'pan') {
+      const right = cross3(pose.fwd, pose.up);
+      const s = n.wpp;
+      const m: Vec3 = [
+        (-right[0] * dx + pose.up[0] * dy) * s,
+        (-right[1] * dx + pose.up[1] * dy) * s,
+        (-right[2] * dx + pose.up[2] * dy) * s,
+      ];
+      this.pivotOverride = null; // the view moved: a remembered pivot no longer means "here"
+      this.writePose(
+        { ...pose, pos: [pose.pos[0] + m[0], pose.pos[1] + m[1], pose.pos[2] + m[2]] },
+        n.dist,
+        false,
+      );
+      return;
+    }
+    const k = ((2 * Math.PI) / Math.max(this.canvas.clientHeight, 1)) * this.navigation.rotateSpeed;
+    if (this.navigation.orbit === 'trackball') {
+      this.writePose(orbitTrackball(pose, n.pivot, dx, dy, k), n.dist, true);
+    } else {
+      const u = this.camera.up;
+      this.writePose(orbitTurntable(pose, n.pivot, [u.x, u.y, u.z], dx, dy, k), n.dist, false);
+    }
+  }
+
+  private endNav(): void {
+    if (!this.nav) return;
+    this.nav = null;
+    this.interacting = false;
+    this.hidePivotMarker();
+    this.requestRender();
+  }
+
+  /** Apply the state machine's outputs. */
+  private dispatchNav(outputs: NavOutput[]): void {
+    for (const o of outputs) {
+      switch (o.type) {
+        case 'begin':
+          this.beginNav(o);
+          break;
+        case 'drag':
+          this.dragNav(o.mode, o.dx, o.dy);
+          break;
+        case 'end':
+          this.endNav();
+          break;
+        case 'click':
+          if (o.kind === 'contextMenu') {
+            this.emitGesture({
+              kind: 'contextMenu',
+              x: o.x,
+              y: o.y,
+              pointerType: 'mouse',
+              ...(o.repeat ? { repeat: true } : {}),
+            });
+          } else {
+            this.clickSetPivot(o.x, o.y);
+          }
+          break;
+      }
+    }
+  }
+
+  /** Middle click under `middleOrbit`: on geometry it becomes the pivot of the next miss-orbit. */
+  private clickSetPivot(x: number, y: number): void {
+    const hit = this.navSurfaceHit(x, y);
+    if (!hit) return;
+    this.pivotOverride = [hit.point[0], hit.point[1], hit.point[2]];
+    this.lastPivot = { point: this.pivotOverride, source: 'surface' };
+    if (this.navigation.showPivot) {
+      this.showPivotMarker(this.pivotOverride);
+      clearTimeout(this.pivotFlashTimer);
+      this.pivotFlashTimer = window.setTimeout(() => {
+        if (!this.nav) this.hidePivotMarker();
+      }, PIVOT_FLASH_MS);
+    }
+    this.emitGesture({ kind: 'setPivot', x, y, pointerType: 'mouse' });
+  }
+
+  // ---- pivot marker (ring + dot, theme tokens, constant pixel size)
+
+  private buildPivotMarker(): void {
+    const visible = this.pivotMarker?.group.visible === true;
+    const at = this.pivotMarker?.dots[0]?.sprite.position;
+    if (this.pivotMarker) {
+      this.scene.remove(this.pivotMarker.group);
+      disposeOverlay(this.pivotMarker.group);
+    }
+    const group = new Group();
+    // Ring: accent outline around a halo in the viewport background (legible on both themes);
+    // dot: accent core with a background outline.
+    const ring = makeDot(PIVOT_RING_PX, this.palette.background, this.ui.accent, 46, [0, 0, 0]);
+    const dot = makeDot(PIVOT_DOT_PX, this.ui.accent, this.palette.background, 47, [0, 0, 0]);
+    if (at) for (const d of [ring, dot]) d.sprite.position.copy(at);
+    group.add(ring.sprite, dot.sprite);
+    group.visible = visible;
+    this.scene.add(group);
+    this.pivotMarker = { group, dots: [ring, dot] };
+  }
+
+  private showPivotMarker(p: Vec3): void {
+    if (!this.pivotMarker) this.buildPivotMarker();
+    const m = this.pivotMarker as { group: Group; dots: Dot[] };
+    for (const d of m.dots) d.sprite.position.set(p[0], p[1], p[2]);
+    m.group.visible = true;
+    this.requestRender();
+  }
+
+  private hidePivotMarker(): void {
+    clearTimeout(this.pivotFlashTimer);
+    if (!this.pivotMarker?.group.visible) return;
+    this.pivotMarker.group.visible = false;
+    this.requestRender();
+  }
+
+  // ---------------------------------------------------------------- M3.5: box selection
+
+  /**
+   * Everything in a screen rectangle. `window` = entirely inside, `crossing` = touching.
+   * Faces come from the ID buffer (visible pixels; `await whenPickReady()` first for an exact
+   * answer, otherwise a geometric test filtered by sampled rays), edges and vertices from their
+   * projected polylines, occlusion-tested against the BVH when `visibleOnly` (default). Sketch
+   * entities are never occlusion-tested. Default kinds: face, edge, vertex, sketchPoint,
+   * sketchCurve (regions and handles only when asked for). Nearest to the camera first.
+   */
+  pickRect(rectIn: ScreenRect, options: RectPickOptions): PickHit[] {
+    if (this.disposed) return [];
+    const rect = normalizeRect(rectIn);
+    const windowMode = options.mode === 'window';
+    const visibleOnly = options.visibleOnly !== false;
+    const want = (k: PickKind) =>
+      options.kinds ? options.kinds.includes(k) : k !== 'handle' && k !== 'region';
+    this.enablePicking();
+    this.syncCameraMatrices();
+    const project = this.projector();
+    const o = this.camera.position;
+    const origin: Vec3 = [o.x, o.y, o.z];
+    const sectionEq = this.section?.eq ?? null;
+    const cx = (rect.x0 + rect.x1) / 2;
+    const cy = (rect.y0 + rect.y1) / 2;
+    const found: PickHit[] = [];
+    const seen = new Set<string>();
+    const add = (h: PickHit) => {
+      const key = `${h.kind}|${h.bodyId}|${h.index}|${h.entity ?? ''}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      found.push(h);
+    };
+    const tmp = { x: 0, y: 0 };
+    const scratch: number[] = [];
+    /** Project a polyline into `scratch` (NaN = behind the camera). */
+    const projectPoints = (src: ArrayLike<number>, first: number, count: number): void => {
+      scratch.length = 0;
+      for (let i = 0; i < count; i++) {
+        const j = 3 * (first + i);
+        if (project(src[j] as number, src[j + 1] as number, src[j + 2] as number, tmp)) {
+          scratch.push(tmp.x, tmp.y);
+        } else {
+          scratch.push(Number.NaN, Number.NaN);
+        }
+      }
+    };
+    /** Index of the projected point nearest the rect centre (in-rect points preferred). */
+    const nearestIndex = (count: number): number => {
+      let best = -1;
+      let bestD = Number.POSITIVE_INFINITY;
+      for (let i = 0; i < count; i++) {
+        const x = scratch[2 * i] as number;
+        if (Number.isNaN(x)) continue;
+        const y = scratch[2 * i + 1] as number;
+        const d = Math.hypot(x - cx, y - cy) + (pointInRect(x, y, rect) ? 0 : 1e6);
+        if (d < bestD) {
+          bestD = d;
+          best = i;
+        }
+      }
+      return Math.max(best, 0);
+    };
+    const dist2c = (k: number) =>
+      Math.hypot((scratch[2 * k] as number) - cx, (scratch[2 * k + 1] as number) - cy);
+
+    // ---- sketch entities
+    if (want('sketchCurve') || want('sketchPoint') || want('region')) {
+      for (const [featureId, s] of this.sketches) {
+        s.curves.forEach((c, i) => {
+          const kind: PickKind = c.isPoint ? 'sketchPoint' : 'sketchCurve';
+          if (!want(kind)) return;
+          const n = c.points.length / 3;
+          projectPoints(c.points, 0, n);
+          const r = polylineVsRect(scratch, n, rect);
+          if (!(windowMode ? r.inside : r.touches)) return;
+          const k = nearestIndex(n);
+          add({
+            bodyId: featureId,
+            kind,
+            index: i,
+            entity: c.entity,
+            point: [
+              c.points[3 * k] as number,
+              c.points[3 * k + 1] as number,
+              c.points[3 * k + 2] as number,
+            ],
+            distancePx: dist2c(k),
+          });
+        });
+        if (want('region')) {
+          s.regions.forEach((r, i) => {
+            const { positions, indices } = r.mesh;
+            projectPoints(positions, 0, positions.length / 3);
+            let any = false;
+            let all = indices.length > 0;
+            for (let t = 0; t < indices.length; t += 3) {
+              const a = indices[t] as number;
+              const b = indices[t + 1] as number;
+              const d = indices[t + 2] as number;
+              const ax = scratch[2 * a] as number;
+              const bx = scratch[2 * b] as number;
+              const dx = scratch[2 * d] as number;
+              if (Number.isNaN(ax) || Number.isNaN(bx) || Number.isNaN(dx)) {
+                all = false;
+                continue;
+              }
+              const ay = scratch[2 * a + 1] as number;
+              const by = scratch[2 * b + 1] as number;
+              const dy = scratch[2 * d + 1] as number;
+              if (
+                !(
+                  pointInRect(ax, ay, rect) &&
+                  pointInRect(bx, by, rect) &&
+                  pointInRect(dx, dy, rect)
+                )
+              ) {
+                all = false;
+              }
+              if (!any && triangleTouchesRect(ax, ay, bx, by, dx, dy, rect)) any = true;
+            }
+            if (!(windowMode ? all : any)) return;
+            add({
+              bodyId: featureId,
+              kind: 'region',
+              index: i,
+              entity: r.name,
+              point: [positions[0] as number, positions[1] as number, positions[2] as number],
+              distancePx: 0,
+            });
+          });
+        }
+      }
+    }
+
+    // ---- occlusion of a world point by the visible bodies
+    const img = this.idFresh() ? this.idImage : null;
+    const flip = this.backend === 'webgl2';
+    const pointVisible = (p: Vec3): boolean => {
+      if (isClipped(sectionEq, p, 1e-6)) return false;
+      if (!visibleOnly) return true;
+      if (img && project(p[0], p[1], p[2], tmp)) {
+        // Over background (no surface within a pixel or two): nothing can be in front.
+        const px = Math.floor((tmp.x * img.w) / (this.canvas.clientWidth || 1));
+        const py = Math.floor((tmp.y * img.h) / (this.canvas.clientHeight || 1));
+        let covered = false;
+        for (let dy = -2; dy <= 2 && !covered; dy++) {
+          for (let dx = -2; dx <= 2; dx++) {
+            if (idAtPixel(img.data, img.w, img.h, px + dx, py + dy, flip) !== 0) {
+              covered = true;
+              break;
+            }
+          }
+        }
+        if (!covered) return true;
+      }
+      return this.isVisiblePoint(origin, p);
+    };
+
+    // ---- body vertices and edges
+    for (const [id, e] of this.bodies) {
+      if (!e.display.visible) continue;
+      if (want('vertex')) {
+        const v = this.vertexPositions(e);
+        for (let i = 0; i < v.length / 3; i++) {
+          const p: Vec3 = [v[3 * i] as number, v[3 * i + 1] as number, v[3 * i + 2] as number];
+          if (!project(p[0], p[1], p[2], tmp) || !pointInRect(tmp.x, tmp.y, rect)) continue;
+          if (!pointVisible(p)) continue;
+          add({
+            bodyId: id,
+            kind: 'vertex',
+            index: i,
+            point: p,
+            distancePx: Math.hypot(tmp.x - cx, tmp.y - cy),
+          });
+        }
+      }
+      if (want('edge')) {
+        const { edgePositions, edgeRanges } = e.buffers;
+        const pointCount = edgePositions.length / 3;
+        for (let i = 0; i < edgeRanges.length / 2; i++) {
+          const first = edgeRanges[2 * i] as number;
+          const count = Math.min(edgeRanges[2 * i + 1] as number, pointCount - first);
+          if (count < 1) continue;
+          projectPoints(edgePositions, first, count);
+          const r = polylineVsRect(scratch, count, rect);
+          if (!(windowMode ? r.inside : r.touches)) continue;
+          // Visible when any of a few points along the edge (never just its endpoints: a hidden
+          // edge of a box ends on visible vertices) inside the rectangle is unoccluded.
+          const at = (k: number): Vec3 => {
+            const g = 3 * (first + k);
+            return [
+              edgePositions[g] as number,
+              edgePositions[g + 1] as number,
+              edgePositions[g + 2] as number,
+            ];
+          };
+          const near = nearestIndex(count);
+          const samples: Vec3[] = [];
+          let total = 0;
+          for (let k = 1; k < count; k++) total += Math.hypot(...sub3(at(k), at(k - 1)));
+          for (const f of EDGE_SAMPLE_FRACTIONS) {
+            let want = f * total;
+            for (let k = 1; k < count; k++) {
+              const a0 = at(k - 1);
+              const seg = sub3(at(k), a0);
+              const len = Math.hypot(...seg);
+              if (want <= len || k === count - 1) {
+                const t = len > 0 ? Math.min(1, want / len) : 0;
+                const q: Vec3 = [a0[0] + seg[0] * t, a0[1] + seg[1] * t, a0[2] + seg[2] * t];
+                if (project(q[0], q[1], q[2], tmp) && pointInRect(tmp.x, tmp.y, rect))
+                  samples.push(q);
+                break;
+              }
+              want -= len;
+            }
+          }
+          if (samples.length === 0) samples.push(at(near));
+          let visible = false;
+          for (const q of samples) {
+            if (pointVisible(q)) {
+              visible = true;
+              break;
+            }
+          }
+          if (!visible) continue;
+          add({ bodyId: id, kind: 'edge', index: i, point: at(near), distancePx: dist2c(near) });
+        }
+      }
+    }
+
+    // ---- faces
+    if (want('face')) {
+      if (visibleOnly && img) this.rectFacesFromIds(rect, windowMode, img, add);
+      else this.rectFacesGeometric(rect, windowMode, visibleOnly, project, add);
+    }
+
+    // Nearest to the camera first (kind priority breaks ties).
+    const depth = (h: PickHit) =>
+      Math.hypot(h.point[0] - origin[0], h.point[1] - origin[1], h.point[2] - origin[2]);
+    return found
+      .map((h) => ({ h, d: depth(h) }))
+      .sort((a, b) => a.d - b.d || KIND_PRIORITY[a.h.kind] - KIND_PRIORITY[b.h.kind])
+      .map((x) => ({ ...x.h, depth: x.d }));
+  }
+
+  /** Per-id pixel totals of the whole ID image (cached per image). */
+  private idTotals(
+    img: { data: Uint8Array; w: number; h: number },
+    faceTotal: number,
+  ): Uint32Array {
+    if (this.idTotalsCache?.img === img) return this.idTotalsCache.counts;
+    const counts = new Uint32Array(faceTotal + 1);
+    const flip = this.backend === 'webgl2';
+    countIdPixels(img.data, img.w, img.h, flip, 0, 0, img.w - 1, img.h - 1, counts);
+    this.idTotalsCache = { img, counts };
+    return counts;
+  }
+
+  private rectFacesFromIds(
+    rect: Rect,
+    windowMode: boolean,
+    img: { data: Uint8Array; w: number; h: number },
+    add: (h: PickHit) => void,
+  ): void {
+    const last = this.idLayout[this.idLayout.length - 1];
+    if (!last) return;
+    const faceTotal = last.base + last.faces;
+    const sx = img.w / (this.canvas.clientWidth || 1);
+    const sy = img.h / (this.canvas.clientHeight || 1);
+    // A pixel belongs to the rectangle when its centre does.
+    const x0 = Math.ceil(rect.x0 * sx - 0.5);
+    const x1 = Math.floor(rect.x1 * sx - 0.5);
+    const y0 = Math.ceil(rect.y0 * sy - 0.5);
+    const y1 = Math.floor(rect.y1 * sy - 0.5);
+    const inside = new Uint32Array(faceTotal + 1);
+    const firstX = new Int32Array(faceTotal + 1);
+    const firstY = new Int32Array(faceTotal + 1);
+    const flip = this.backend === 'webgl2';
+    countIdPixels(img.data, img.w, img.h, flip, x0, y0, x1, y1, inside, firstX, firstY);
+    const totals = windowMode ? this.idTotals(img, faceTotal) : null;
+    const cx = (rect.x0 + rect.x1) / 2;
+    const cy = (rect.y0 + rect.y1) / 2;
+    for (const slot of this.idLayout) {
+      for (let f = 0; f < slot.faces; f++) {
+        const id = slot.base + f + 1;
+        const n = inside[id] as number;
+        if (n === 0) continue;
+        if (totals && n !== (totals[id] as number)) continue;
+        const px = ((firstX[id] as number) + 0.5) / sx;
+        const py = ((firstY[id] as number) + 0.5) / sy;
+        const ray = this.rayAt(px, py);
+        let hit = this.faceHit(slot.id, slot.entry, f, ray);
+        if (!hit && slot.entry.bvh) {
+          const r = new Ray(
+            new Vector3(ray.origin[0], ray.origin[1], ray.origin[2]),
+            new Vector3(ray.dir[0], ray.dir[1], ray.dir[2]),
+          );
+          const bh = slot.entry.bvh.raycastFirst(r, FrontSide);
+          if (bh) {
+            hit = {
+              bodyId: slot.id,
+              kind: 'face',
+              index: f,
+              point: [bh.point.x, bh.point.y, bh.point.z],
+              normal: [bh.face?.normal.x ?? 0, bh.face?.normal.y ?? 0, bh.face?.normal.z ?? 0],
+              distancePx: 0,
+            };
+          }
+        }
+        if (!hit) {
+          // A huge face without a BVH: approximate with the body's centre depth on the pixel ray.
+          const c = boundsCenter(slot.entry.bounds);
+          const t = Math.max(
+            0,
+            (c[0] - ray.origin[0]) * ray.dir[0] +
+              (c[1] - ray.origin[1]) * ray.dir[1] +
+              (c[2] - ray.origin[2]) * ray.dir[2],
+          );
+          hit = {
+            bodyId: slot.id,
+            kind: 'face',
+            index: f,
+            point: [
+              ray.origin[0] + ray.dir[0] * t,
+              ray.origin[1] + ray.dir[1] * t,
+              ray.origin[2] + ray.dir[2] * t,
+            ],
+            distancePx: 0,
+          };
+        }
+        add({ ...hit, distancePx: Math.hypot(px - cx, py - cy) });
+      }
+    }
+  }
+
+  /**
+   * Faces by projected triangles (no ID buffer): `visibleOnly` keeps those a sampled ray grid
+   * over the rectangle can see (approximate; await `whenPickReady()` for the exact ID path).
+   */
+  private rectFacesGeometric(
+    rect: Rect,
+    windowMode: boolean,
+    visibleOnly: boolean,
+    project: ProjectFn,
+    add: (h: PickHit) => void,
+  ): void {
+    let sampled: Set<string> | null = null;
+    if (visibleOnly) {
+      sampled = new Set();
+      const w = this.canvas.clientWidth || 1;
+      const h = this.canvas.clientHeight || 1;
+      const gx0 = Math.max(0, rect.x0);
+      const gy0 = Math.max(0, rect.y0);
+      const gx1 = Math.min(w, rect.x1);
+      const gy1 = Math.min(h, rect.y1);
+      const n = 32;
+      for (let j = 0; j <= n; j++) {
+        for (let i = 0; i <= n; i++) {
+          const x = gx0 + ((gx1 - gx0) * i) / n;
+          const y = gy0 + ((gy1 - gy0) * j) / n;
+          const f = this.pickFace(x, y, this.rayAt(x, y));
+          if (f) sampled.add(`${f.bodyId}|${f.index}`);
+        }
+      }
+    }
+    const tmp = { x: 0, y: 0 };
+    for (const [id, e] of this.bodies) {
+      if (!e.display.visible) continue;
+      const { positions, indices, faceRanges } = e.buffers;
+      const nv = positions.length / 3;
+      const sp = new Float32Array(nv * 2);
+      for (let i = 0; i < nv; i++) {
+        const ok = project(
+          positions[3 * i] as number,
+          positions[3 * i + 1] as number,
+          positions[3 * i + 2] as number,
+          tmp,
+        );
+        sp[2 * i] = ok ? tmp.x : Number.NaN;
+        sp[2 * i + 1] = ok ? tmp.y : Number.NaN;
+      }
+      const faces = faceRanges.length / 2;
+      for (let f = 0; f < faces; f++) {
+        if (sampled && !sampled.has(`${id}|${f}`)) continue;
+        const first = faceRanges[2 * f] as number;
+        const count = faceRanges[2 * f + 1] as number;
+        let all = count > 0;
+        let any = false;
+        let rep = -1;
+        for (let t = first; t < first + count; t++) {
+          const a = indices[3 * t] as number;
+          const b = indices[3 * t + 1] as number;
+          const c = indices[3 * t + 2] as number;
+          const ax = sp[2 * a] as number;
+          const bx = sp[2 * b] as number;
+          const cx = sp[2 * c] as number;
+          if (Number.isNaN(ax) || Number.isNaN(bx) || Number.isNaN(cx)) {
+            all = false;
+            if (windowMode) break;
+            continue;
+          }
+          const ay = sp[2 * a + 1] as number;
+          const by = sp[2 * b + 1] as number;
+          const cy = sp[2 * c + 1] as number;
+          if (
+            !(pointInRect(ax, ay, rect) && pointInRect(bx, by, rect) && pointInRect(cx, cy, rect))
+          ) {
+            all = false;
+          }
+          if (triangleTouchesRect(ax, ay, bx, by, cx, cy, rect)) {
+            any = true;
+            if (rep < 0) rep = t;
+          }
+          if (windowMode ? !all : any) break;
+        }
+        if (!(windowMode ? all : any)) continue;
+        const a = (indices[3 * (rep >= 0 ? rep : first)] as number) * 3;
+        add({
+          bodyId: id,
+          kind: 'face',
+          index: f,
+          point: [positions[a] as number, positions[a + 1] as number, positions[a + 2] as number],
+          distancePx: 0,
+        });
+      }
+    }
   }
 
   // ---------------------------------------------------------------- M2: markers
@@ -2718,6 +3556,7 @@ class ViewportImpl implements ViewportEngine {
       this.camera.far = far;
       this.camera.updateProjectionMatrix();
     }
+    overlayDepthBias.value = overlayBiasFor(this.controls.distance, this.sceneRadius);
     const p11 = this.camera.projectionMatrix.elements[5] as number;
     const heightCss = this.canvas.clientHeight;
     sizeDots(
@@ -2725,6 +3564,7 @@ class ViewportImpl implements ViewportEngine {
         ...this.highlightDots,
         ...[...this.sketches.values()].flatMap((s) => s.dots),
         ...[...this.markerSets.values()].flatMap((m) => m.dots),
+        ...(this.pivotMarker ? this.pivotMarker.dots : []),
       ],
       p11,
       heightCss,

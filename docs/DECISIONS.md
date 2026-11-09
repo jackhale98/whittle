@@ -1658,6 +1658,20 @@ Scope approved by the owner from the UX research report (`docs/ux-research/repor
 - **`AttentionCause`** on `UnresolvedRef` and `FeatureStatus`: the upstream feature whose change, suppression, deletion, reordering or failure broke the reference or the feature. Reported only when the engine can tell, never guessed (the SolidWorks 2023 Top Ten #1 and #5 requests and the UIST 2024 DeCAD finding).
 - **Placeholders.** So every workstream starts from a green tree, the lead added minimal cases for the new union members (control-polygon sampling, `null` closest points, "cannot be projected yet", no-op gestures, stub `setNavigation` / `pickRect`), each marked "M3.5 placeholder (ADR-046)". The workstreams replace them; the gate checks none remain.
 
+
+## ADR-pending — M3.5 viewport navigation: implementation choices (2026-11-09)
+
+- **Camera-controls only handles the wheel, two/three-finger touch and programmatic moves.** Every mouse button, one-finger touch and non-drawing pen is driven by a pure `NavigationMachine` and applied by writing the camera pose directly (`setLookAt` without a transition). `setOrbitPoint` was rejected: it stores the pivot as a focal offset, which `getCameraState`, `getRoll` and the standard-view maths would all have to understand. Instead the orbit rotates the whole pose rigidly about the pivot (so the pivot keeps its camera-space position, and therefore its screen position) and re-places the controls' target on the view axis at the unchanged orbit distance. `draggingSmoothTime` is 0.
+- **Trackball is ours, not camera-controls'.** Up is carried with the camera (`camera.up` plus `updateCameraUp()`), so the spherical state never reaches a pole. Switching back to turntable levels the camera in place (same position and target, up = +Z).
+- **Turntable axis is `camera.up`**, which is +Z unless the two-finger twist rolled the camera. Rolling is an explicit user act and the existing standard views reset it.
+- **Right drag under `middleOrbit` pans and under `middlePan` orbits.** The contract leaves right drag open; "a drag past the threshold navigates" (ADR-046) needs a verb. Pan suits the middle-orbits family (a right drag has no other use there), orbit suits the middle-pans family (Onshape-like).
+- **`rightOrbitRepeat` timing.** A click released in under 250 ms repeats (`repeat: true`); a longer press opens the menu on release, so the 250-350 ms gap is not a dead zone. The contract says a hold is at least about 350 ms; opening the menu earlier is the friendlier reading.
+- **`setPivot` remembers the point only as the fallback for the next orbit that starts on empty space.** Orbits that start on geometry always re-pick, which is what keeps panning and zooming from leaving a stale pivot. The remembered point is dropped on pan, on a preset change, and when it leaves the screen.
+- **No stall on orbit start.** If the ID image is stale and a visible body has no BVH yet and the scene has more than 150 000 triangles, the pick is skipped and the pivot falls back to the bodies' centre; building a 1M-triangle BVH takes hundreds of ms.
+- **`pickRect` faces come from per-face pixel counts of the half-resolution ID image.** Window mode compares the in-rectangle count with the whole-image count (cached per image). Edges and vertices are projected polylines; occlusion uses a 5 x 5 ID-buffer neighbourhood as a cheap "nothing in front" test, then the BVH ray. A stale ID image falls back to projected triangles filtered by a ray grid. Default kinds exclude `region` and `handle`.
+- **A pen without `penDraws` orbits like a finger** (unchanged), and palm-rejected touches do not start an orbit.
+- **Extra engine API `getNavigationState()`** (not in the contract) exposes the drag mode, pivot, pivot source and marker state for tests and for the integration step.
+
 ## ADR-047 — M3.5 error causes: how the regen engine names the upstream feature (2026-11-09)
 
 Modeling workstream (packages/kernel-client `src/regen/cause.ts`; README "Error causes").

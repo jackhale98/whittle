@@ -27,3 +27,26 @@ export const HANDLE_PICK_PAD_PX = 8;
 export const LONG_PRESS_JANK_MS = 80;
 /** How long to wait for them (once). */
 export const LONG_PRESS_GRACE_MS = 60;
+
+// ---- M3.5 navigation (ADR-046) ---------------------------------------------------------------
+
+/** A mouse press that moves further than this starts navigating (and is no longer a click). */
+export const NAV_DRAG_PX = 4;
+/** `rightOrbitRepeat`: a right click released sooner than this is "repeat last command". */
+export const REPEAT_CLICK_MAX_MS = 250;
+/**
+ * `rightOrbitRepeat`: a right press held at least this long (and not dragged) opens the menu.
+ * Between REPEAT_CLICK_MAX_MS and this the press also opens the menu: a dead zone that does
+ * nothing would feel like a lost click.
+ */
+export const MENU_HOLD_MS = 350;
+/** Turntable orbit stops this far (radians) short of the poles so the view never flips. */
+export const TURNTABLE_POLE_MARGIN = (0.5 * Math.PI) / 180;
+/** Allowed `rotateSpeed` range (contract: 0.25-4). */
+export const ROTATE_SPEED_MIN = 0.25;
+export const ROTATE_SPEED_MAX = 4;
+/** Pivot marker diameters, CSS px. */
+export const PIVOT_RING_PX = 22;
+export const PIVOT_DOT_PX = 8;
+/** How long a `setPivot` click shows the marker without a drag, ms. */
+export const PIVOT_FLASH_MS = 700;

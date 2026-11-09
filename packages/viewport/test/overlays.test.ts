@@ -1,6 +1,12 @@
 import { Group, type Material, type Mesh } from 'three/webgpu';
 import { describe, expect, it } from 'vitest';
-import { disposeOverlay, makeDot, makeLines, sharedOverlayMaterialCount } from '../src/overlays';
+import {
+  disposeOverlay,
+  makeDot,
+  makeLines,
+  overlayBiasFor,
+  sharedOverlayMaterialCount,
+} from '../src/overlays';
 
 const segs = new Float32Array([0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 1, 0]);
 const style = { color: '#336699', width: 2, onTop: true, renderOrder: 3 } as const;
@@ -51,5 +57,17 @@ describe('overlay materials are shared by style', () => {
     });
     disposeOverlay(first);
     expect(disposed).toBe(true);
+  });
+});
+
+describe('coplanar depth bias (replaces polygonOffset, which WebGPU does not honour)', () => {
+  it('scales with the view distance and has a scene-scaled floor', () => {
+    expect(overlayBiasFor(100, 50)).toBeCloseTo(0.2, 6);
+    expect(overlayBiasFor(1000, 50)).toBeCloseTo(2, 6);
+    expect(overlayBiasFor(0, 50)).toBeCloseTo(0.005, 6);
+  });
+  it('coplanar overlay materials no longer rely on polygonOffset', () => {
+    const lines = makeLines(segs, { ...style, onTop: false });
+    expect((lines.material as Material & { polygonOffset: boolean }).polygonOffset).toBe(false);
   });
 });

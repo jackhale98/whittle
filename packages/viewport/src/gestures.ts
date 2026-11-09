@@ -143,7 +143,13 @@ export class GestureRecognizer {
     if (!s.rejected && !this.palmRejected(now)) {
       out.push({
         type: 'gesture',
-        gesture: { kind: 'longPress', x: p.x, y: p.y, pointerType: p.pointerType },
+        gesture: {
+          kind: 'longPress',
+          x: p.x,
+          y: p.y,
+          pointerType: p.pointerType,
+          pointerId: p.id,
+        },
       });
     }
     // The held pointer must not start orbiting afterwards, whether or not the app saw the press.
