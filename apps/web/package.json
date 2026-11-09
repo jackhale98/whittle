@@ -12,7 +12,7 @@
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.test.json && tsc -p tsconfig.sw.json && tsc -p tsconfig.node.json && tsc -p tsconfig.e2e.json",
     "test": "vitest run",
     "size": "size-limit",
-    "e2e": "vite build && playwright test --project=chromium",
+    "e2e": "vite build && playwright test --project=chromium --project=chromium-reference",
     "e2e:all": "vite build && playwright test",
     "perf": "vite build && playwright test --project=perf",
     "perf:run": "playwright test --project=perf"
