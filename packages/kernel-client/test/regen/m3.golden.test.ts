@@ -239,6 +239,93 @@ describe.skipIf(!m3)(`regen golden (M3): edit upstream${note}`, () => {
     relClose(totalVolume(wide.bodies) - totalVolume(f0.bodies), (100 - 80) * 50 * 10, 1e-6);
   }, 120_000);
 
+  it('through-all cuts are patterned (with a skip) and mirrored, through upstream edits', async () => {
+    // Regression (rp10-comb-plate): the tool of a through-all extrude was built as the feature
+    // alone with op `new`, which the kernel refuses ("Through all needs a body to go through"),
+    // so every pattern or mirror of a through-all cut failed.
+    const S5 = fid('MTS5');
+    const E5 = fid('MTE5');
+    const LP = fid('MTLP');
+    const S6 = fid('MTS6');
+    const E6 = fid('MTE6');
+    const PL = fid('MTPL');
+    const M = fid('MTM');
+    // A 4 × 30 slot on Top (the plate's bottom face), cut through all both ways.
+    const slot = new Sk();
+    const q = slot.rect('q', 'Q', 8, 10, 12, 40, '4 mm', '30 mm');
+    slot.dim({ kind: 'hDistance', a: '@origin', b: q.a }, '8 mm');
+    slot.dim({ kind: 'vDistance', a: '@origin', b: q.a }, '10 mm');
+    // A Ø6 hole sketched on the plate's top face, cut through all one way (down).
+    const hole = new Sk();
+    hole.circle('c', 20, 25, 3);
+    hole.dim({ kind: 'hDistance', a: '@origin', b: 'cc' }, '20 mm');
+    hole.dim({ kind: 'vDistance', a: '@origin', b: 'cc' }, '25 mm');
+    hole.dim({ kind: 'radius', curve: 'c' }, '3 mm');
+    const pattern: LinearPatternFeature = {
+      id: LP,
+      type: 'linearPattern',
+      name: 'Slots',
+      suppressed: false,
+      source: { kind: 'features', features: [E5] },
+      direction: edge('origin:X'),
+      reverse: false,
+      count: 'n',
+      spacing: '10 mm',
+      // Instance 1 (x = 18…22) would cut into the hole.
+      skip: [1],
+    };
+    const plane: PlaneFeature = {
+      id: PL,
+      type: 'plane',
+      name: 'Middle',
+      suppressed: false,
+      definition: { kind: 'offset', from: face('origin:YZ'), distance: 'w / 2' },
+    };
+    const mirror: MirrorFeature = {
+      id: M,
+      type: 'mirror',
+      name: 'Mirror',
+      suppressed: false,
+      source: { kind: 'features', features: [E6] },
+      plane: face(`F${PL}:plane`),
+    };
+    const doc = makeDoc({ w: '80 mm', h: '10 mm', n: '4' }, [
+      ...plate('h'),
+      slot.feature(S5, 'origin:XY', 'Slot'),
+      extrude(E5, [region(S5, 'Q1,Q2,Q3,Q4')], 'throughAll', 'cut', 'symmetric'),
+      pattern,
+      hole.feature(S6, face(top), 'Hole'),
+      extrude(E6, [region(S6, 'c')], 'throughAll', 'cut', 'reverse'),
+      plane,
+      mirror,
+    ]);
+    const expected = (w: number, h: number, n: number) =>
+      w * 50 * h - (n - 1) * 4 * 30 * h - 2 * Math.PI * 9 * h;
+    const cases: [Record<string, string>, number, number, number][] = [
+      [{}, 80, 10, 4],
+      // Thicker than the first tools reach: the copies' tools grow with the body.
+      [{ h: '300 mm' }, 80, 300, 4],
+      [{ n: '5' }, 80, 10, 5],
+      [{ w: '120 mm' }, 120, 10, 4],
+    ];
+    for (const [edit, w, h, n] of cases) {
+      const r = await regen(withParams(doc, edit));
+      expect(states(r), `${JSON.stringify(edit)} ${describeFailures(r)}`).toEqual(
+        Array(9).fill('ok'),
+      );
+      const m = only(r).massProperties;
+      relClose(m?.volume ?? Number.NaN, expected(w, h, n), 1e-6);
+      expect(m?.bbox.min[2]).toBeCloseTo(0, 6);
+      expect(m?.bbox.max[2]).toBeCloseTo(h, 6);
+      // The mirrored hole's wall sits at x = w − 20 ± 3, through the full thickness.
+      const wall = only(r).mesh.faceNames.find((x) => x.startsWith(`F${M}:mirror(`));
+      expect(wall, only(r).mesh.faceNames.join(' ')).toBeDefined();
+      const c = await faceCentroid(api, only(r), wall as string);
+      expect(c?.[0]).toBeCloseTo(w - 20, 6);
+      expect(c?.[2]).toBeCloseTo(h / 2, 6);
+    }
+  }, 120_000);
+
   it('a shell after a fillet: analytic volume, inner floor stays referable through edits', async () => {
     const FI = fid('MSF');
     const SH = fid('MSH');

@@ -524,9 +524,6 @@ std::string execDraft(const Json& feature, const Json& inputs, const std::string
     raiseError("UNRESOLVED_REFERENCE", "Select the neutral plane of the draft",
                "Pick a planar face or a plane.");
   }
-  const Json* rev = feature.get("reverse");
-  gp_Dir pull = neutral.Direction();
-  if (rev != nullptr && rev->kind == Json::Kind::Bool && rev->boolean) pull.Reverse();
   const gp_Pln neutralPlane(neutral);
   const Topo& topo = target->topo();
   std::vector<std::string> faceNames;
@@ -538,6 +535,26 @@ std::string execDraft(const Json& feature, const Json& inputs, const std::string
     drafted.push_back(TopoDS::Face(topo.faces(fi)));
     faceNames.push_back(faceNameIn(*target, topo.faces(fi)));
   }
+  // Pull direction (DECISIONS.md, "Draft pull direction"): the neutral plane's normal on the side
+  // the drafted faces are (their area-weighted mean signed distance from the plane), so a positive
+  // angle always makes the body narrower moving away from the neutral plane. A face as the neutral plane gives the same result
+  // as a datum plane through it, whichever way the face itself points. Faces centred on the plane
+  // (a mid-plane neutral) keep the plane's own normal: a face's outward normal, a frame's z.
+  // `reverse` flips the result.
+  gp_Dir pull = neutral.Direction();
+  {
+    double moment = 0;
+    double area = 0;
+    for (const TopoDS_Face& f : drafted) {
+      GProp_GProps props;
+      BRepGProp::SurfaceProperties(f, props);
+      moment += props.Mass() * gp_Vec(neutral.Location(), props.CentreOfMass()).Dot(gp_Vec(pull));
+      area += props.Mass();
+    }
+    if (area > 0 && moment / area < -1e-7) pull.Reverse();
+  }
+  const Json* rev = feature.get("reverse");
+  if (rev != nullptr && rev->kind == Json::Kind::Bool && rev->boolean) pull.Reverse();
   BRepOffsetAPI_DraftAngle draft(target->shape);
   TopoDS_Shape result;
   std::string detail;

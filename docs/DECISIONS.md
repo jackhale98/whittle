@@ -1420,7 +1420,8 @@ contracts don't spell out. The regen engine (kernel-client) depends on these.
 8. **Shell joins are sharp** (`GeomAbs_Intersection`, like other CAD); when OCCT cannot intersect
    the offset faces it retries with arc joins and warns. No silent rounding.
 9. **Draft direction** is the neutral plane's normal (a face's outward normal); the body narrows
-   along it; `reverse` flips it.
+   along it; `reverse` flips it. *Superseded by "ADR-pending — Draft pull direction" below: the
+   normal is taken on the drafted faces' side.*
 10. **Loft guides are ignored with a warning** (ThruSections has no guide input) and sections with
     holes are `UNSUPPORTED_FEATURE`.
 11. **Import feature** placement moves the raw shapes (shared geometry) instead of the M1 BREP
@@ -1479,3 +1480,53 @@ selection", hint "Turn on "Propagate along tangent edges", or select the whole t
 straight top edge of an extruded slot (lines tangent to arcs) is refused with both arcs and the
 other line; selecting the whole loop with `propagate: false` matches the propagated result; a box
 edge with `propagate: false` is a normal fillet.
+
+## ADR-pending — Draft pull direction: toward the drafted faces
+
+**Context.** rp05-moulded-housing drafts a box's four side faces about its own bottom face and
+expects the walls to lean inward going up (the parting line at the bottom, the mould pulled up).
+ADR-039 item 9 took the pull direction from the neutral face's outward normal (-z for a bottom
+face), so the walls leaned outward and every rp05 stage was 4.5–7.7 % too large. The outward
+normal also made a face disagree with a datum plane lying on it (origin XY gave the opposite
+taper), and a boss drafted about the plate face it stands on came out right only because that
+face happens to point at the boss.
+
+**Decision.** Supersedes ADR-039 item 9. The pull direction is the neutral plane's normal on the
+side where the drafted faces are (the sign of their area-weighted mean distance from the plane).
+A positive angle narrows the body along the pull direction, so the drafted faces lean inward
+moving away from the neutral plane, whichever way the picked face or plane points. Faces centred
+on the plane (a mid-plane neutral) use the plane's own normal: a face's outward normal, a frame's
+z. `reverse` flips the result. This is the moulding meaning of a positive draft (SolidWorks-like:
+the part releases along the pull direction). The pull direction comes from where the faces are,
+not from how the face or plane was made. SolidWorks shows a pull arrow the user can flip; we
+choose the side from the faces, and `reverse` is that flip.
+
+**Proposed contract text** (`DraftFeature` in packages/contracts/src/document.ts):
+
+```ts
+/**
+ * Taper `faces` by `angle` about the `neutral` plane. Each face keeps its line on the neutral
+ * plane and turns about it. The pull direction is the neutral plane's normal on the side the
+ * drafted faces are; a positive angle makes the body narrower along it (the faces lean inward
+ * moving away from the neutral plane, as a moulded part needs). Faces centred on the plane use
+ * the plane's own normal (a face's outward normal, a plane's +z). `reverse` flips the pull
+ * direction, so the faces lean outward.
+ */
+```
+
+## ADR-pending — Copies of through-all extrudes use a sized blind tool
+
+**Context.** A mirror or pattern copies a feature's tool solid, built as the feature alone with
+`op: 'new'` (ADR-036 item 1). The kernel refuses a through-all extrude without a body to size it,
+so every copy of a through-all cut failed (rp10-comb-plate: the slot pattern and the mirrored ear
+hole).
+
+**Decision.** The engine builds a through-all extrude's tool as the same extrude made blind, in
+the same direction (normal, reverse, symmetric). Its depth is sized when a copy runs, from the
+copy's target body: `2 · (diagonal of the target and profile boxes + reach) + 1`, where reach is
+how far a profile point can move (linear: the full span of both directions; circular: twice its
+distance from the axis; mirror: twice its distance from the plane). So each copy still cuts
+through the whole body. The depth is rounded up to a power of two and is part of the tool's cache
+key, so small body edits reuse the tool. The kernel's through-all rule stays as it is (a tool can't
+know its copies' placements); a hole's through-all tool keeps the kernel's 10 m fallback
+(ADR-039 item 3).
