@@ -2868,6 +2868,8 @@ export class Workbench {
           camera: this.camera.get(),
         };
       },
+      /** The undo and redo stacks, oldest first (labels of the steps; read only). */
+      history: () => this.store.history(),
       /** Applies a command as one undo step (E2E edits that aren't about the UI path). */
       apply: (command: Command, label?: string) => {
         const ok = this.apply(command, label);
