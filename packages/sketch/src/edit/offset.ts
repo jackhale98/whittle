@@ -45,7 +45,11 @@ export type OffsetSide = 'left' | 'right' | 'both' | 'inside' | 'outside' | { to
 export interface OffsetOptions extends EditOptions {
   /** Offset distance, mm (> 0): the evaluated value of `expr`. */
   distance: number;
-  /** The driving expression stored on the offset dimension (default "<distance> mm"). */
+  /**
+   * The distance expression (default "<distance> mm"). The offset dimension stores it as is when
+   * the offset lies to the right of its (reference) source, as the contract's sign convention
+   * reads, and negated (`-5 mm`, `-(wall + 1 mm)`) when it lies to the left.
+   */
   expr?: Expr;
   /**
    * Side, relative to the chain direction (the first selected curve's own direction: start → end
@@ -109,7 +113,8 @@ export function offsetEntities(
   options: OffsetOptions,
 ): SketchEditResult {
   const d = options.distance;
-  if (!(d > 0) || !Number.isFinite(d)) return refuse('The offset distance must be greater than zero');
+  if (!(d > 0) || !Number.isFinite(d))
+    return refuse('The offset distance must be greater than zero');
   const k = new SketchDraft(sketch, options);
   const selection = [...new Set(ids)];
   const curves: SketchEntity[] = [];
@@ -174,16 +179,27 @@ export function offsetEntities(
     );
   }
 
+  // Contract sign: positive = right of the reference source's direction. Lead with a pair that
+  // is on the right when there is one, so the value reads as typed; else store it negated.
+  const sides = targets.map((t, i) => rightOf(k, sources[i] as Id, t));
+  let lead = sides.indexOf(1);
+  if (lead < 0) lead = sides.findIndex((v) => v !== 0);
+  if (lead > 0) {
+    sources.unshift(...sources.splice(lead, 1));
+    targets.unshift(...targets.splice(lead, 1));
+  }
+  const sign = lead >= 0 && sides[lead] === -1 ? -1 : 1;
+  const expr = options.expr ?? `${d} mm`;
   const offsetId = k.addConstraint({
     kind: 'offset',
     sources,
     targets,
-    value: options.expr ?? `${d} mm`,
+    value: sign > 0 ? expr : negate(expr),
     driving: true,
   });
 
   // The solver must accept the geometry as built (guards the construction against mistakes).
-  const check = checkRows(k, offsetId, d);
+  const check = checkRows(k, offsetId, sign * d);
   if (check) return refuse(check);
 
   const both = side === 'both' ? ' on both sides' : '';
@@ -303,7 +319,8 @@ function elGeom(k: SketchDraft, el: El): ElGeom {
     return { curve: c, a, b, ta: t, tb: t };
   }
   const arc = c as ArcCurve;
-  const tan = (ang: number): Vec2 => (el.rev ? [Math.sin(ang), -Math.cos(ang)] : [-Math.sin(ang), Math.cos(ang)]);
+  const tan = (ang: number): Vec2 =>
+    el.rev ? [Math.sin(ang), -Math.cos(ang)] : [-Math.sin(ang), Math.cos(ang)];
   const s = arcStart(arc);
   const e = arcEnd(arc);
   return el.rev
@@ -321,7 +338,12 @@ function chainArea(k: SketchDraft, chain: Chain): number {
       const n = 16;
       for (let i = 0; i < n; i++) {
         const t = el.rev ? g.curve.sweep * (1 - i / n) : g.curve.sweep * (i / n);
-        pts.push(add(g.curve.c, [Math.cos(g.curve.a0 + t) * g.curve.r, Math.sin(g.curve.a0 + t) * g.curve.r]));
+        pts.push(
+          add(g.curve.c, [
+            Math.cos(g.curve.a0 + t) * g.curve.r,
+            Math.sin(g.curve.a0 + t) * g.curve.r,
+          ]),
+        );
       }
     }
   }
@@ -362,7 +384,7 @@ function chainDeltas(k: SketchDraft, chain: Chain, side: OffsetSide, d: number):
       const r = dist(side.toward, (c as ArcCurve).c);
       dd = Math.abs(r - (c as ArcCurve).r);
       // Left of a counter-clockwise arc is inside.
-      left = (r < (c as ArcCurve).r) !== el.rev;
+      left = r < (c as ArcCurve).r !== el.rev;
     }
     if (dd < best) {
       best = dd;
@@ -429,7 +451,8 @@ function offsetChain(
   let trimmed: { start: Vec2; end: Vec2 }[] = [];
   for (let round = 0; round <= n; round++) {
     if (kept.length === 0) return `A ${formatMm(d)} offset leaves nothing of this chain`;
-    if (chain.closed && kept.length < 2) return `A ${formatMm(d)} offset doesn't fit inside this loop`;
+    if (chain.closed && kept.length < 2)
+      return `A ${formatMm(d)} offset doesn't fit inside this loop`;
     joints = [];
     const m = kept.length;
     const count = chain.closed ? m : m - 1;
@@ -485,8 +508,14 @@ function offsetChain(
     }
   });
   if (!chain.closed) {
-    startPid[0] = k.point((trimmed[0] as { start: Vec2 }).start, construction((kept[0] as OffEl).el));
-    endPid[m - 1] = k.point((trimmed[m - 1] as { end: Vec2 }).end, construction((kept[m - 1] as OffEl).el));
+    startPid[0] = k.point(
+      (trimmed[0] as { start: Vec2 }).start,
+      construction((kept[0] as OffEl).el),
+    );
+    endPid[m - 1] = k.point(
+      (trimmed[m - 1] as { end: Vec2 }).end,
+      construction((kept[m - 1] as OffEl).el),
+    );
   }
 
   // 3. Target curves, in the sources' own orientation.
@@ -622,8 +651,22 @@ function capEnds(
   const first = chain.els[0] as El;
   const last = chain.els[chain.els.length - 1] as El;
   const ends = [
-    { el: first, v: first.sPid, l: left.startPid, r: right.startPid, kept: left.firstKept && right.firstKept, atStart: true },
-    { el: last, v: last.ePid, l: left.endPid, r: right.endPid, kept: left.lastKept && right.lastKept, atStart: false },
+    {
+      el: first,
+      v: first.sPid,
+      l: left.startPid,
+      r: right.startPid,
+      kept: left.firstKept && right.firstKept,
+      atStart: true,
+    },
+    {
+      el: last,
+      v: last.ePid,
+      l: left.endPid,
+      r: right.endPid,
+      kept: left.lastKept && right.lastKept,
+      atStart: false,
+    },
   ];
   for (const e of ends) {
     if (e.l === null || e.r === null) continue;
@@ -641,7 +684,9 @@ function capEnds(
       continue;
     }
     if (options.cap === 'arc') {
-      k.notes.push(`The ${e.atStart ? 'start' : 'end'} was capped with a line: the offset left ${k.name(e.el.id)} out on one side`);
+      k.notes.push(
+        `The ${e.atStart ? 'start' : 'end'} was capped with a line: the offset left ${k.name(e.el.id)} out on one side`,
+      );
     }
     const id = k.line(e.l, e.r, con);
     outCurves.push({ id, curve: { kind: 'line', a: pl, b: pr } });
@@ -649,7 +694,10 @@ function capEnds(
 }
 
 /** Names of two result curves that cross (other than where they join), or null. */
-function selfIntersection(k: SketchDraft, curves: readonly { id: Id; curve: Curve }[]): string | null {
+function selfIntersection(
+  k: SketchDraft,
+  curves: readonly { id: Id; curve: Curve }[],
+): string | null {
   const tol = 1e-6 * k.scale;
   const endsOf = (c: Curve): Vec2[] =>
     c.kind === 'line' ? [c.a, c.b] : c.kind === 'arc' ? [arcStart(c), arcEnd(c)] : [];
@@ -657,7 +705,9 @@ function selfIntersection(k: SketchDraft, curves: readonly { id: Id; curve: Curv
     for (let j = i + 1; j < curves.length; j++) {
       const a = curves[i] as { id: Id; curve: Curve };
       const b = curves[j] as { id: Id; curve: Curve };
-      const shared = endsOf(a.curve).filter((p) => endsOf(b.curve).some((q) => dist(p, q) <= tol * 10));
+      const shared = endsOf(a.curve).filter((p) =>
+        endsOf(b.curve).some((q) => dist(p, q) <= tol * 10),
+      );
       const xs = extentIntersections(a.curve, b.curve, tol).filter(
         (x) => !shared.some((s) => dist(s, x) <= 1e3 * tol),
       );
@@ -665,6 +715,35 @@ function selfIntersection(k: SketchDraft, curves: readonly { id: Id; curve: Curv
     }
   }
   return null;
+}
+
+/** +1 when target `t` lies right of source `s`'s direction (outside for arcs), −1 left, 0 n/a. */
+function rightOf(k: SketchDraft, s: Id, t: Id): number {
+  const se = k.get(s);
+  const te = k.get(t);
+  if (se?.kind === 'line' && te?.kind === 'line') {
+    const a = k.pos(se.start);
+    const b = k.pos(se.end);
+    const p = k.pos(te.start);
+    const left = (b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0]);
+    return left > 0 ? -1 : 1;
+  }
+  const radius = (id: Id): number | null => {
+    const c = k.curve(id);
+    return c && c.kind !== 'line' ? c.r : null;
+  };
+  if ((se?.kind === 'arc' || se?.kind === 'circle') && se.kind === te?.kind) {
+    return (radius(t) as number) > (radius(s) as number) ? 1 : -1;
+  }
+  return 0;
+}
+
+/** `-expr`, kept readable for a plain quantity ("5 mm" → "-5 mm", "-5 mm" → "5 mm"). */
+export function negate(expr: Expr): Expr {
+  const e = expr.trim();
+  const plain = /^-?\s*\d+(\.\d+)?(\s*[a-zA-Zµ]+)?$/;
+  if (plain.test(e)) return e.startsWith('-') ? e.slice(1).trim() : `-${e}`;
+  return `-(${e})`;
 }
 
 const fmt = (p: Vec2) => `(${Math.round(p[0] * 100) / 100}, ${Math.round(p[1] * 100) / 100})`;
@@ -677,7 +756,8 @@ function checkRows(k: SketchDraft, offsetId: Id, d: number): string | null {
     const why = model.invalid.get(offsetId);
     if (why) return why;
     const bad = violatedRows(model, model.x0);
-    if (bad.length) return `A ${formatMm(d)} offset could not be built exactly here; try a smaller distance`;
+    if (bad.length)
+      return `A ${formatMm(d)} offset could not be built exactly here; try a smaller distance`;
   } catch (err) {
     return err instanceof Error ? err.message : String(err);
   }

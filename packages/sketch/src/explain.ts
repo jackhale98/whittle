@@ -153,7 +153,8 @@ function describeOffset(c: OffsetConstraint, subject: Id, namer: Namer, v: numbe
   }
   const targets = c.targets.filter((_, i) => c.sources[i] === subject).map((t) => namer.entity(t));
   if (targets.length > 0) {
-    const shown = targets.length > 2 ? [...targets.slice(0, 2), `${targets.length - 2} more`] : targets;
+    const shown =
+      targets.length > 2 ? [...targets.slice(0, 2), `${targets.length - 2} more`] : targets;
     const dist = v === undefined ? 'a set distance' : formatLength(Math.abs(v));
     return `kept ${dist} from its offset ${joinAnd(shown)}`;
   }
@@ -253,9 +254,12 @@ export function explainConflict(
 ): string {
   const notes: string[] = [];
   const are = (ids: readonly Id[]) => (ids.length === 1 ? 'is' : 'are');
-  if (fixed.length) notes.push(`${joinAnd(fixed.map((id) => namer.entity(id)))} ${are(fixed)} fixed`);
+  if (fixed.length)
+    notes.push(`${joinAnd(fixed.map((id) => namer.entity(id)))} ${are(fixed)} fixed`);
   if (linked.length) {
-    notes.push(`${joinAnd(linked.map((id) => namer.entity(id)))} ${are(linked)} linked to the model`);
+    notes.push(
+      `${joinAnd(linked.map((id) => namer.entity(id)))} ${are(linked)} linked to the model`,
+    );
   }
   const fixedNote = notes.length === 0 ? '' : ` while ${notes.join(' and ')}`;
   if (set.length === 1) {

@@ -90,9 +90,13 @@ function invalidCurve(c: ProjectedCurve): string | null {
       return finite(c.a) && finite(c.b) ? null : 'the projected line is not finite';
     case 'circle':
     case 'arc':
-      return finite(c.c) && c.r >= 0 && Number.isFinite(c.r) ? null : 'the projected circle is not valid';
+      return finite(c.c) && c.r >= 0 && Number.isFinite(c.r)
+        ? null
+        : 'the projected circle is not valid';
     case 'polyline':
-      return c.points.length >= 1 && c.points.every(finite) ? null : 'the projected polyline is empty';
+      return c.points.length >= 1 && c.points.every(finite)
+        ? null
+        : 'the projected polyline is empty';
   }
 }
 
@@ -244,7 +248,10 @@ function fitArc(pts: readonly Vec2[], i: number, j: number, tol: number): Segmen
   for (let q = i; q <= j; q++) {
     if (Math.abs(dist(pts[q] as Vec2, circle.c) - circle.r) > tol) return null;
     if (q + 2 <= j) {
-      const t = cross(sub(pts[q + 1] as Vec2, pts[q] as Vec2), sub(pts[q + 2] as Vec2, pts[q + 1] as Vec2));
+      const t = cross(
+        sub(pts[q + 1] as Vec2, pts[q] as Vec2),
+        sub(pts[q + 2] as Vec2, pts[q + 1] as Vec2),
+      );
       if (t === 0) return null;
       if (turn === 0) turn = Math.sign(t);
       else if (Math.sign(t) !== turn) return null;
@@ -338,7 +345,9 @@ export function relinkEntities(
   }
   const moved = groups(k.entities).get(edge.ref.name) as Group;
   update(k, moved, edge, options.tolerance ?? 0.01);
-  return k.finish(`Re-pick ${g.entities.length === 1 ? k.name(g.entities[0]?.id as Id) : 'linked entities'}`);
+  return k.finish(
+    `Re-pick ${g.entities.length === 1 ? k.name(g.entities[0]?.id as Id) : 'linked entities'}`,
+  );
 }
 
 /**
@@ -355,7 +364,13 @@ export function unlinkEntities(
   if (targets.length === 0) return { ok: false, reason: 'Nothing selected is linked' };
   const unlink = new Set(targets.map((e) => e.id));
   const pointsOf = (e: SketchEntity): Id[] =>
-    e.kind === 'line' ? [e.start, e.end] : e.kind === 'arc' ? [e.center, e.start, e.end] : e.kind === 'point' ? [] : [e.center];
+    e.kind === 'line'
+      ? [e.start, e.end]
+      : e.kind === 'arc'
+        ? [e.center, e.start, e.end]
+        : e.kind === 'point'
+          ? []
+          : [e.center];
   for (const e of targets) for (const p of pointsOf(e)) unlink.add(p);
   // Points another still-linked curve needs stay linked.
   for (const e of k.entities) {
@@ -398,6 +413,7 @@ function updateExact(k: SketchDraft, id: Id, edge: ProjectedEdge, ref: EntityRef
   const e = k.get(id) as SketchEntity;
   const c = edge.curve;
   const src = { ref };
+  k.touch(id);
   const newPoint = (p: Vec2) => {
     const pid = k.point(p, e.construction);
     (k.get(pid) as SketchEntity).source = src;
@@ -426,7 +442,14 @@ function updateExact(k: SketchDraft, id: Id, edge: ProjectedEdge, ref: EntityRef
     }
     const center = e.kind === 'arc' ? e.center : newPoint(c.c);
     k.setPos(center, c.c);
-    k.replace({ id, kind: 'circle', construction: e.construction, source: src, center, radius: c.r });
+    k.replace({
+      id,
+      kind: 'circle',
+      construction: e.construction,
+      source: src,
+      center,
+      radius: c.r,
+    });
     k.notes.push(`${k.name(id)} now follows a full circle`);
     return;
   }
@@ -444,7 +467,15 @@ function updateExact(k: SketchDraft, id: Id, edge: ProjectedEdge, ref: EntityRef
     const center = e.kind === 'circle' ? e.center : newPoint(c.c);
     k.setPos(center, c.c);
     const [s, t] = reuse(k, e, newPoint, [ps, pe]);
-    k.replace({ id, kind: 'arc', construction: e.construction, source: src, center, start: s, end: t });
+    k.replace({
+      id,
+      kind: 'arc',
+      construction: e.construction,
+      source: src,
+      center,
+      start: s,
+      end: t,
+    });
     k.notes.push(`${k.name(id)} now follows an arc`);
   }
 }
@@ -456,12 +487,7 @@ const fullTurn = (c: Extract<ProjectedCurve, { kind: 'arc' }>) => {
 };
 
 /** End points of `e` reused for a new kind (line ends ↔ arc ends), new ones created as needed. */
-function reuse(
-  k: SketchDraft,
-  e: SketchEntity,
-  make: (p: Vec2) => Id,
-  at: [Vec2, Vec2],
-): [Id, Id] {
+function reuse(k: SketchDraft, e: SketchEntity, make: (p: Vec2) => Id, at: [Vec2, Vec2]): [Id, Id] {
   const ends = e.kind === 'line' || e.kind === 'arc' ? [e.start, e.end] : [];
   const one = (i: 0 | 1): Id => {
     const id = ends[i];
@@ -478,7 +504,9 @@ function samplePoints(c: ProjectedCurve): { pts: Vec2[]; closed: boolean } {
     case 'line':
       return { pts: [c.a, c.b], closed: false };
     case 'polyline': {
-      const closed = c.points.length > 2 && dist(c.points[0] as Vec2, c.points[c.points.length - 1] as Vec2) < 1e-9;
+      const closed =
+        c.points.length > 2 &&
+        dist(c.points[0] as Vec2, c.points[c.points.length - 1] as Vec2) < 1e-9;
       return { pts: closed ? c.points.slice(0, -1) : [...c.points], closed };
     }
     case 'circle':
@@ -489,7 +517,8 @@ function samplePoints(c: ProjectedCurve): { pts: Vec2[]; closed: boolean } {
       const closed = c.kind === 'circle' || Math.abs(sweep - TAU) < 1e-12;
       const n = 64;
       const pts: Vec2[] = [];
-      for (let i = 0; i < (closed ? n : n + 1); i++) pts.push(add(c.c, fromAngle(a0 + (sweep * i) / n, c.r)));
+      for (let i = 0; i < (closed ? n : n + 1); i++)
+        pts.push(add(c.c, fromAngle(a0 + (sweep * i) / n, c.r)));
       return { pts, closed };
     }
   }
@@ -513,7 +542,8 @@ function updateChain(k: SketchDraft, g: Group, edge: ProjectedEdge, tol: number)
   const total = lengths.reduce((a, b) => a + b, 0) || 1;
   const fresh = closed ? [...pts, pts[0] as Vec2] : pts;
   const cum: number[] = [0];
-  for (let i = 1; i < fresh.length; i++) cum.push((cum[i - 1] as number) + dist(fresh[i - 1] as Vec2, fresh[i] as Vec2));
+  for (let i = 1; i < fresh.length; i++)
+    cum.push((cum[i - 1] as number) + dist(fresh[i - 1] as Vec2, fresh[i] as Vec2));
   const L = cum[cum.length - 1] as number;
   const at = (f: number): Vec2 => {
     const s = Math.min(1, Math.max(0, f)) * L;
@@ -541,7 +571,14 @@ function updateChain(k: SketchDraft, g: Group, edge: ProjectedEdge, tol: number)
       if (!circle || circle.r > 1e6 * Math.max(dist(p0, p1), tol)) {
         k.setPos(e.start, s);
         k.setPos(e.end, t);
-        k.replace({ id: e.id, kind: 'line', construction: e.construction, source: e.source, start: e.start, end: e.end });
+        k.replace({
+          id: e.id,
+          kind: 'line',
+          construction: e.construction,
+          source: e.source,
+          start: e.start,
+          end: e.end,
+        });
         k.notes.push(`${k.name(e.id)} now follows a straight part of ${g.ref.name}`);
         return;
       }
@@ -559,7 +596,9 @@ function updateChain(k: SketchDraft, g: Group, edge: ProjectedEdge, tol: number)
 
 /** Chain order of a group's curves (by shared points), with traversal direction. */
 function orderChain(g: Group): { id: Id; rev: boolean }[] {
-  const curves = g.entities.filter((e) => e.kind === 'line' || e.kind === 'arc') as (LinkedEntity & {
+  const curves = g.entities.filter(
+    (e) => e.kind === 'line' || e.kind === 'arc',
+  ) as (LinkedEntity & {
     start: Id;
     end: Id;
   })[];
@@ -576,7 +615,12 @@ function orderChain(g: Group): { id: Id; rev: boolean }[] {
   let first = curves[0] as (typeof curves)[number];
   let startAt = first.start;
   for (const c of curves) {
-    const s = (users.get(c.start) ?? []).length === 1 ? c.start : (users.get(c.end) ?? []).length === 1 ? c.end : null;
+    const s =
+      (users.get(c.start) ?? []).length === 1
+        ? c.start
+        : (users.get(c.end) ?? []).length === 1
+          ? c.end
+          : null;
     if (s) {
       first = c;
       startAt = s;

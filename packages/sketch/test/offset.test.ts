@@ -6,9 +6,10 @@
 
 import type { Id, SketchConstraint, SketchEntity, Vec2 } from '@whittle/contracts';
 import { describe, expect, it } from 'vitest';
-import { offsetEntities } from '../src/edit/offset';
+import type { SketchData } from '../src/edit/draft';
+import { negate, offsetEntities } from '../src/edit/offset';
 import { constraintLabel, describeFor, Namer } from '../src/explain';
-import { slotTool, rectangleCornerTool, arcCenterTool, circleCenterTool } from '../src/tools';
+import { arcCenterTool, circleCenterTool, rectangleCornerTool, slotTool } from '../src/tools';
 import {
   arcOf,
   at,
@@ -21,6 +22,7 @@ import {
   polyline,
   sideDist,
   solve,
+  sv,
   unchanged,
 } from './edit-helpers';
 import { core } from './helpers';
@@ -42,7 +44,7 @@ describe('offset geometry', () => {
     const left = ok(offsetEntities(s, ['l1'], { distance: 3, id: ids() }));
     const off = offsetOf(left.sketch);
     expect(off.sources).toEqual(['l1']);
-    expect(off.value).toBe('3 mm');
+    expect(off.value).toBe('-3 mm');
     expect(off.driving).toBe(true);
     const [a, b] = lineEnds(left.sketch, off.targets[0] as Id);
     close(a, [0, 3]);
@@ -54,13 +56,18 @@ describe('offset geometry', () => {
     close(d, [10, -3]);
   });
 
-  it('an expression is stored as given', () => {
+  it('the expression is stored as given on the right, negated on the left (contract sign)', () => {
     const s = polyline([
       [0, 0],
       [10, 0],
     ]);
-    const r = ok(offsetEntities(s, ['l1'], { distance: 4, expr: 'wall + 1 mm', id: ids() }));
-    expect(offsetOf(r.sketch).value).toBe('wall + 1 mm');
+    const right = { distance: 4, expr: 'wall + 1 mm', side: 'right' as const, id: ids() };
+    expect(offsetOf(ok(offsetEntities(s, ['l1'], right)).sketch).value).toBe('wall + 1 mm');
+    const left = { distance: 4, expr: 'wall + 1 mm', side: 'left' as const, id: ids() };
+    expect(offsetOf(ok(offsetEntities(s, ['l1'], left)).sketch).value).toBe('-(wall + 1 mm)');
+    expect(negate('5 mm')).toBe('-5 mm');
+    expect(negate('-5 mm')).toBe('5 mm');
+    expect(negate('2*t')).toBe('-(2*t)');
   });
 
   it('concave corner: trimmed to the intersection; convex corner: an arc of radius d', () => {
@@ -103,7 +110,9 @@ describe('offset geometry', () => {
       [20, 0],
       [20, 10],
     ]);
-    const r = ok(offsetEntities(s, s.lines, { distance: 2, side: 'right', corners: 'sharp', id: ids() }));
+    const r = ok(
+      offsetEntities(s, s.lines, { distance: 2, side: 'right', corners: 'sharp', id: ids() }),
+    );
     const off = offsetOf(r.sketch);
     expect(off.targets).toHaveLength(2);
     close(lineEnds(r.sketch, off.targets[0] as Id)[1], [22, -2]);
@@ -152,11 +161,15 @@ describe('offset geometry', () => {
     const out = ok(offsetEntities(rect, curves, { distance: 5, side: 'outside', id: ids() }));
     const offOut = offsetOf(out.sketch);
     expect(offOut.targets).toHaveLength(8);
-    const arcs = offOut.targets.filter((id) => out.sketch.entities.find((e) => e.id === id)?.kind === 'arc');
+    const arcs = offOut.targets.filter(
+      (id) => out.sketch.entities.find((e) => e.id === id)?.kind === 'arc',
+    );
     expect(arcs).toHaveLength(4);
     for (const id of arcs) expect(arcOf(out.sketch, id).r).toBeCloseTo(5, 9);
     // Same result when the loop's side is given by a picked point.
-    const toward = ok(offsetEntities(rect, curves, { distance: 5, side: { toward: [50, 10] }, id: ids() }));
+    const toward = ok(
+      offsetEntities(rect, curves, { distance: 5, side: { toward: [50, 10] }, id: ids() }),
+    );
     expect(offsetOf(toward.sketch).targets).toHaveLength(8);
   });
 
@@ -181,7 +194,9 @@ describe('offset geometry', () => {
       [0, 0],
       [10, 0],
     ]);
-    const arcCap = ok(offsetEntities(s, ['l1'], { distance: 1, side: 'both', cap: 'arc', id: ids() }));
+    const arcCap = ok(
+      offsetEntities(s, ['l1'], { distance: 1, side: 'both', cap: 'arc', id: ids() }),
+    );
     const off = offsetOf(arcCap.sketch);
     expect(off.sources).toEqual(['l1', 'l1', 'p1', 'p2']);
     const end = arcOf(arcCap.sketch, off.targets[3] as Id);
@@ -191,8 +206,14 @@ describe('offset geometry', () => {
     const start = arcOf(arcCap.sketch, off.targets[2] as Id);
     close(start.start, [0, 1]);
     close(start.end, [0, -1]);
-    const lineCap = ok(offsetEntities(s, ['l1'], { distance: 1, side: 'both', cap: 'line', id: ids() }));
-    expect(lineCap.created.filter((id) => lineCap.sketch.entities.find((e) => e.id === id)?.kind === 'line')).toHaveLength(4);
+    const lineCap = ok(
+      offsetEntities(s, ['l1'], { distance: 1, side: 'both', cap: 'line', id: ids() }),
+    );
+    expect(
+      lineCap.created.filter(
+        (id) => lineCap.sketch.entities.find((e) => e.id === id)?.kind === 'line',
+      ),
+    ).toHaveLength(4);
     expect(lineCap.description).toBe('Offset Line 1 by 1 mm on both sides');
   });
 
@@ -218,7 +239,14 @@ describe('offset geometry', () => {
         pt('t2', [-t * u1[0], t * u1[1]]),
         pt('p2', [10, 20]),
         { id: 'l1', kind: 'line', construction: false, start: 'p1', end: 't1' } as SketchEntity,
-        { id: 'a1', kind: 'arc', construction: false, center: 'c', start: 't1', end: 't2' } as SketchEntity,
+        {
+          id: 'a1',
+          kind: 'arc',
+          construction: false,
+          center: 'c',
+          start: 't1',
+          end: 't2',
+        } as SketchEntity,
         { id: 'l2', kind: 'line', construction: false, start: 't2', end: 'p2' } as SketchEntity,
       ],
       constraints: [],
@@ -253,7 +281,14 @@ describe('offset geometry', () => {
         pt('p3', 2, 0),
         pt('p4', 2, 20),
         { id: 'l1', kind: 'line', construction: false, start: 'p1', end: 'p2' } as SketchEntity,
-        { id: 'a1', kind: 'arc', construction: false, center: 'c', start: 'p2', end: 'p3' } as SketchEntity,
+        {
+          id: 'a1',
+          kind: 'arc',
+          construction: false,
+          center: 'c',
+          start: 'p2',
+          end: 'p3',
+        } as SketchEntity,
         { id: 'l2', kind: 'line', construction: false, start: 'p3', end: 'p4' } as SketchEntity,
       ],
       constraints: [],
@@ -288,7 +323,15 @@ describe('offset geometry', () => {
       {
         entities: [
           { id: 'c', kind: 'point', construction: false, x: 0, y: 0 },
-          { id: 'e', kind: 'ellipse', construction: false, center: 'c', majorRadius: 5, minorRadius: 3, rotation: 0 },
+          {
+            id: 'e',
+            kind: 'ellipse',
+            construction: false,
+            center: 'c',
+            majorRadius: 5,
+            minorRadius: 3,
+            rotation: 0,
+          },
         ],
         constraints: [],
       },
@@ -320,12 +363,12 @@ describe('offset in the solver', () => {
     for (const side of ['inside', 'outside', 'both'] as const) {
       const r = ok(offsetEntities(rect, curvesOf(rect), { distance: 3, side, id: ids() }));
       const off = offsetOf(r.sketch);
-      const res = await solve(r.sketch, { [off.id]: 3 });
+      const res = await solve(r.sketch, { [off.id]: sv(off, 3) });
       expect(res.status, side).toBe('solved');
       expect(res.dof, side).toBe(base.dof);
       expect(res.redundant, side).toEqual([]);
       unchanged(r.sketch, res, 1e-9);
-      const fixed = await solve(fixAll(r.sketch, curvesOf(rect)), { [off.id]: 3 });
+      const fixed = await solve(fixAll(r.sketch, curvesOf(rect)), { [off.id]: sv(off, 3) });
       expect(fixed.dof).toBe(0);
       for (const id of r.created) expect(fixed.entityDof[id], `${side} ${id}`).toBe('fixed');
     }
@@ -342,7 +385,7 @@ describe('offset in the solver', () => {
     const off = offsetOf(r.sketch);
     const fixed = fixAll(r.sketch, s.lines);
     for (const d of [0.5, 2, 3.25, 4]) {
-      const res = await solve(fixed, { [off.id]: d });
+      const res = await solve(fixed, { [off.id]: sv(off, d) });
       expect(res.status, `d=${d}`).toBe('solved');
       off.targets.forEach((t, i) => {
         const src = off.sources[i] as Id;
@@ -376,7 +419,7 @@ describe('offset in the solver', () => {
       p2.x = 20;
       p2.y = 5;
     }
-    const res = await solve(fixAll(moved, ['l1']), { [off.id]: 2 });
+    const res = await solve(fixAll(moved, ['l1']), { [off.id]: sv(off, 2) });
     expect(res.status).toBe('solved');
     const [a, b] = lineEnds(res, off.targets[0] as Id);
     // Square ends: the offset's ends sit on the source's normals through its ends.
@@ -391,7 +434,7 @@ describe('offset in the solver', () => {
     const off = offsetOf(r.sketch);
     const fixed = fixAll(r.sketch, curvesOf(slot));
     for (const d of [1, 3, 4.5]) {
-      const res = await solve(fixed, { [off.id]: d });
+      const res = await solve(fixed, { [off.id]: sv(off, d) });
       expect(res.status, `d=${d}`).toBe('solved');
       const radii = off.targets
         .filter((t) => res.entities.find((e) => e.id === t)?.kind === 'arc')
@@ -411,23 +454,88 @@ describe('offset in the solver', () => {
     const off = offsetOf(r.sketch);
     const driven = {
       ...r.sketch,
-      constraints: r.sketch.constraints.map((c) => (c.id === off.id ? { ...c, driving: false } : c)),
+      constraints: r.sketch.constraints.map((c) =>
+        c.id === off.id ? { ...c, driving: false } : c,
+      ),
     };
     const res = await solve(driven, {});
     expect(res.status).toBe('solved');
-    expect(res.driven[off.id]).toBeCloseTo(2.5, 12);
+    expect(res.driven[off.id]).toBeCloseTo(-2.5, 12);
   });
 
-  it('a non-positive driving value is reported, not solved', async () => {
+  it('sign convention: positive = right of the source direction (outward of a CCW loop)', async () => {
+    // A counter-clockwise loop of linked (fixed) lines, like a converted face outline.
+    const rect = rectangleCornerTool([-40, -30], [40, 30], { id: ids('t') });
+    const loop = curvesOf(rect);
+    const linked = {
+      entities: rect.entities.map((e) => ({
+        ...e,
+        source: { ref: { name: `E:${e.id}`, kind: 'edge' as const } },
+      })),
+      constraints: [],
+    };
+    const inside = ok(offsetEntities(linked, loop, { distance: 15, side: 'inside', id: ids() }));
+    const off = offsetOf(inside.sketch);
+    // Inside a CCW loop is left of every edge: the stored value is negative.
+    expect(off.value).toBe('-15 mm');
+    const outside = ok(offsetEntities(linked, loop, { distance: 15, side: 'outside', id: ids() }));
+    expect(offsetOf(outside.sketch).value).toBe('15 mm');
+    // Solving the inside offset with +15 moves it outside (to the right of each edge).
+    const flipped = await solve(inside.sketch, { [off.id]: 15 });
+    expect(flipped.status).toBe('solved');
+    for (const t of off.targets) {
+      const [a] = lineEnds(flipped, t);
+      expect(Math.max(Math.abs(a[0]) - 40, Math.abs(a[1]) - 30)).toBeCloseTo(15, 8);
+    }
+    // And back to −15: inside again; the measured (reference) value keeps the sign.
+    const back = await solve(
+      {
+        ...inside.sketch,
+        constraints: inside.sketch.constraints.map((c) =>
+          c.id === off.id ? { ...c, driving: false } : c,
+        ),
+      },
+      {},
+    );
+    expect(back.driven[off.id]).toBeCloseTo(-15, 9);
+  });
+
+  it('one value drives sources that run different ways', async () => {
+    // Two parallel lines drawn in opposite directions, offset towards each other's outside.
+    const s: SketchData = {
+      entities: [
+        { id: 'a1', kind: 'point', construction: false, x: 0, y: 0 },
+        { id: 'a2', kind: 'point', construction: false, x: 10, y: 0 },
+        { id: 'b1', kind: 'point', construction: false, x: 10, y: 20 },
+        { id: 'b2', kind: 'point', construction: false, x: 0, y: 20 },
+        { id: 'la', kind: 'line', construction: false, start: 'a1', end: 'a2' },
+        { id: 'lb', kind: 'line', construction: false, start: 'b1', end: 'b2' },
+      ],
+      constraints: [],
+    };
+    const r = ok(offsetEntities(s, ['la', 'lb'], { distance: 2, side: 'right', id: ids() }));
+    const off = offsetOf(r.sketch);
+    for (const d of [2, 3, -3]) {
+      const res = await solve(fixAll(r.sketch, ['la', 'lb']), { [off.id]: sv(off, d) });
+      expect(res.status).toBe('solved');
+      const ya = lineEnds(res, off.targets[0] as Id)[0][1];
+      const yb = lineEnds(res, off.targets[1] as Id)[0][1];
+      // Right of la (+x) is −y; right of lb (−x) is +y: both outside, mirrored.
+      expect(ya).toBeCloseTo(-d, 9);
+      expect(yb).toBeCloseTo(20 + d, 9);
+    }
+  });
+
+  it('a zero driving value is reported, not solved', async () => {
     const s = polyline([
       [0, 0],
       [10, 0],
     ]);
     const r = ok(offsetEntities(s, ['l1'], { distance: 2, id: ids() }));
     const off = offsetOf(r.sketch);
-    const res = await solve(r.sketch, { [off.id]: -1 });
+    const res = await solve(r.sketch, { [off.id]: 0 });
     expect(res.status).toBe('conflicting');
-    expect(res.conflicts[0]?.explanation).toMatch(/greater than zero/);
+    expect(res.conflicts[0]?.explanation).toMatch(/can't be zero/);
   });
 });
 
@@ -438,7 +546,7 @@ describe('offset explanations', () => {
       [0, 0],
       [Math.cos(Math.PI / 6) * 10, Math.sin(Math.PI / 6) * 10],
     ]);
-    const r = ok(offsetEntities(s, ['l1'], { distance: 5, id: ids() }));
+    const r = ok(offsetEntities(s, ['l1'], { distance: 5, side: 'right', id: ids() }));
     const off = offsetOf(r.sketch);
     const target = off.targets[0] as Id;
     const constraints: SketchConstraint[] = [
@@ -451,7 +559,7 @@ describe('offset explanations', () => {
 
   it('"Line 2 can\'t be both horizontal and offset by 5 mm from Line 1"', async () => {
     const { sketch, off } = offsetWithHorizontal();
-    const res = await solve(sketch, { [off.id]: 5 });
+    const res = await solve(sketch, { [off.id]: sv(off, 5) });
     expect(res.status).toBe('conflicting');
     const c = res.conflicts[0];
     expect([...(c?.constraints ?? [])].sort()).toEqual([off.id, 'h'].sort());
@@ -473,11 +581,17 @@ describe('offset explanations', () => {
     const r = ok(offsetEntities(s, s.lines, { distance: 2, side: 'right', id: ids() }));
     const off = offsetOf(r.sketch);
     const namer = new Namer(r.sketch.entities);
-    const values = { [off.id]: 2 };
-    expect(constraintLabel(off, namer, values)).toBe('Offset 2 mm (3 entities from Line 1 and Line 2)');
-    expect(describeFor(off, off.targets[0] as Id, namer, values)).toBe('offset by 2 mm from Line 1');
+    const values = { [off.id]: sv(off, 2) };
+    expect(constraintLabel(off, namer, values)).toBe(
+      'Offset 2 mm (3 entities from Line 1 and Line 2)',
+    );
+    expect(describeFor(off, off.targets[0] as Id, namer, values)).toBe(
+      'offset by 2 mm from Line 1',
+    );
     expect(describeFor(off, 'l1', namer, values)).toBe('kept 2 mm from its offset Line 3');
-    expect(describeFor(off, off.targets[2] as Id, namer, values)).toBe('offset by 2 mm around Point 2');
+    expect(describeFor(off, off.targets[2] as Id, namer, values)).toBe(
+      'offset by 2 mm around Point 2',
+    );
   });
 });
 
@@ -486,7 +600,9 @@ describe('offset performance', () => {
     const pts: Vec2[] = [];
     for (let i = 0; i <= 50; i++) pts.push([i * 4, i % 2 === 0 ? 0 : 3]);
     const s = polyline(pts);
-    const r = ok(offsetEntities(s, s.lines, { distance: 0.5, side: 'left', corners: 'sharp', id: ids() }));
+    const r = ok(
+      offsetEntities(s, s.lines, { distance: 0.5, side: 'left', corners: 'sharp', id: ids() }),
+    );
     const off = offsetOf(r.sketch);
     // Anchor the chain's first point; the rest (and the offset) follow the drag.
     const sketch = fixAll(r.sketch, ['p1']);
@@ -496,7 +612,7 @@ describe('offset performance', () => {
     const input = {
       entities: structuredClone(sketch.entities),
       constraints: structuredClone(sketch.constraints),
-      values: { [off.id]: 0.5 },
+      values: { [off.id]: sv(off, 0.5) },
     };
     const t0 = performance.now();
     expect(solver.solve(input).status).toBe('solved');

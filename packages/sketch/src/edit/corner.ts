@@ -64,7 +64,12 @@ function resolveCorner(k: SketchDraft, pick: CornerPick): Corner | string {
   } else {
     const a = k.get(pick.a);
     const b = k.get(pick.b);
-    if (!a || !b || (a.kind !== 'line' && a.kind !== 'arc') || (b.kind !== 'line' && b.kind !== 'arc')) {
+    if (
+      !a ||
+      !b ||
+      (a.kind !== 'line' && a.kind !== 'arc') ||
+      (b.kind !== 'line' && b.kind !== 'arc')
+    ) {
       return 'A corner is where two lines or arcs meet';
     }
     const shared = [a.start, a.end].find((p) => [b.start, b.end].some((q) => root(q) === root(p)));
@@ -74,13 +79,17 @@ function resolveCorner(k: SketchDraft, pick: CornerPick): Corner | string {
   const armsAt = curves.filter((e) => root(e.start) === key || root(e.end) === key);
   const pids = k.entities.filter((e) => e.kind === 'point' && root(e.id) === key).map((e) => e.id);
   const others = k.entities.filter(
-    (e) => (e.kind === 'circle' || e.kind === 'ellipse' || e.kind === 'arc') && pids.includes(e.center),
+    (e) =>
+      (e.kind === 'circle' || e.kind === 'ellipse' || e.kind === 'arc') && pids.includes(e.center),
   );
   if (armsAt.length !== 2 || others.length > 0) {
     const n = armsAt.length + others.length;
     return `${n} curves meet at this corner; a fillet or chamfer needs exactly two`;
   }
-  if (typeof pick !== 'string' && !(armsAt.some((e) => e.id === pick.a) && armsAt.some((e) => e.id === pick.b))) {
+  if (
+    typeof pick !== 'string' &&
+    !(armsAt.some((e) => e.id === pick.a) && armsAt.some((e) => e.id === pick.b))
+  ) {
     return `${k.name(pick.a)} and ${k.name(pick.b)} don't form a corner of two curves`;
   }
   const arms = armsAt.map((e): Arm | string => {
@@ -104,7 +113,8 @@ function resolveCorner(k: SketchDraft, pick: CornerPick): Corner | string {
   if (a1.id === a2.id) return 'A fillet or chamfer needs two different curves';
   const turn = Math.abs(turnAngle(a1.dir, a2.dir));
   if (turn < 1e-6) return `${k.name(a1.id)} and ${k.name(a2.id)} overlap at this corner`;
-  if (Math.abs(turn - Math.PI) < 1e-6) return `${k.name(a1.id)} and ${k.name(a2.id)} already meet smoothly`;
+  if (Math.abs(turn - Math.PI) < 1e-6)
+    return `${k.name(a1.id)} and ${k.name(a2.id)} already meet smoothly`;
   return { arms: [a1, a2], pids, v: k.pos(a1.pid) };
 }
 
@@ -170,7 +180,9 @@ function virtualSharp(k: SketchDraft, corner: Corner, force: boolean): Id | null
   const lengthy = (c: SketchConstraint) =>
     c.kind === 'length' ||
     (c.kind === 'midpoint' && (c.line === a1.id || c.line === a2.id)) ||
-    ((c.kind === 'hDistance' || c.kind === 'vDistance') && c.a === c.b && (c.a === a1.id || c.a === a2.id));
+    ((c.kind === 'hDistance' || c.kind === 'vDistance') &&
+      c.a === c.b &&
+      (c.a === a1.id || c.a === a2.id));
   const needed =
     force ||
     k.constraintsOn(keep).length > 0 ||
@@ -217,7 +229,11 @@ function rewireArms(k: SketchDraft, corner: Corner, sharp: Id | null, verb: stri
             ...(c.label ? { label: c.label } : {}),
           });
         } else k.dropConstraint(c.id, `${name} was ${verb}`);
-      } else if ((c.kind === 'hDistance' || c.kind === 'vDistance') && c.a === arm.id && c.b === arm.id) {
+      } else if (
+        (c.kind === 'hDistance' || c.kind === 'vDistance') &&
+        c.a === arm.id &&
+        c.b === arm.id
+      ) {
         // Was end − start of the line; keep the sign with the corner in place of its end.
         const [a, b] = arm.end === 'end' ? [arm.far, sharp] : [sharp, arm.far];
         if (a && b) k.updateConstraint({ ...c, a, b });
@@ -264,7 +280,11 @@ export function filletCorner(
         const t1 = foot(k, a1, c);
         const t2 = foot(k, a2, c);
         if (!t1 || !t2 || !inArm(k, a1, t1) || !inArm(k, a2, t2)) continue;
-        if (Math.abs(dist(c, t1) - r) > 1e-7 * k.scale || Math.abs(dist(c, t2) - r) > 1e-7 * k.scale) continue;
+        if (
+          Math.abs(dist(c, t1) - r) > 1e-7 * k.scale ||
+          Math.abs(dist(c, t2) - r) > 1e-7 * k.scale
+        )
+          continue;
         const score = dist(t1, corner.v) + dist(t2, corner.v);
         if (!best || score < best.score) best = { c, t1, t2, score };
       }
@@ -278,7 +298,8 @@ export function filletCorner(
   const p2 = trimArm(k, a2, best.t2);
   const sharp = virtualSharp(k, corner, false);
   rewireArms(k, corner, sharp, 'filleted');
-  const con = (k.get(a1.id) as SketchEntity).construction && (k.get(a2.id) as SketchEntity).construction;
+  const con =
+    (k.get(a1.id) as SketchEntity).construction && (k.get(a2.id) as SketchEntity).construction;
   const center = k.point(best.c, con);
   // The arc that bulges towards the old corner.
   const toV = angle0(Math.atan2(corner.v[1] - best.c[1], corner.v[0] - best.c[0]));
@@ -332,7 +353,8 @@ export function chamferCorner(
   options: ChamferOptions,
 ): SketchEditResult {
   const d1 = options.distance;
-  if (!(d1 > 0) || !Number.isFinite(d1)) return refuse('The chamfer distance must be greater than zero');
+  if (!(d1 > 0) || !Number.isFinite(d1))
+    return refuse('The chamfer distance must be greater than zero');
   const k = new SketchDraft(sketch, options);
   const corner = resolveCorner(k, pick);
   if (typeof corner === 'string') return refuse(corner);
@@ -348,12 +370,15 @@ export function chamferCorner(
   const angleMode = options.angle !== undefined;
   if (options.angle !== undefined) {
     const alpha = options.angle;
-    if (a1.kind !== 'line' || a2.kind !== 'line') return refuse('A distance–angle chamfer needs two lines');
-    if (!(alpha > 0 && alpha < Math.PI)) return refuse('The chamfer angle must be between 0° and 180°');
+    if (a1.kind !== 'line' || a2.kind !== 'line')
+      return refuse('A distance–angle chamfer needs two lines');
+    if (!(alpha > 0 && alpha < Math.PI))
+      return refuse('The chamfer angle must be between 0° and 180°');
     // Triangle corner–P1–P2: angle α at P1, the corner angle φ at the corner.
     const phi = Math.acos(Math.max(-1, Math.min(1, dot(a1.dir, a2.dir))));
     const gamma = Math.PI - alpha - phi;
-    if (!(gamma > 1e-9)) return refuse('That chamfer angle never meets the other side of the corner');
+    if (!(gamma > 1e-9))
+      return refuse('That chamfer angle never meets the other side of the corner');
     d2 = (d1 * Math.sin(alpha)) / Math.sin(gamma);
     p2 = along(k, a2, corner.v, d2);
   } else {
@@ -367,9 +392,16 @@ export function chamferCorner(
   const q2 = trimArm(k, a2, p2);
   const sharp = virtualSharp(k, { ...corner, arms: [a1, a2] }, true) as Id;
   rewireArms(k, { ...corner, arms: [a1, a2] }, sharp, 'chamfered');
-  const con = (k.get(a1.id) as SketchEntity).construction && (k.get(a2.id) as SketchEntity).construction;
+  const con =
+    (k.get(a1.id) as SketchEntity).construction && (k.get(a2.id) as SketchEntity).construction;
   const line = k.line(q1, q2, con);
-  k.addConstraint({ kind: 'distance', a: sharp, b: q1, value: options.expr ?? `${d1} mm`, driving: true });
+  k.addConstraint({
+    kind: 'distance',
+    a: sharp,
+    b: q1,
+    value: options.expr ?? `${d1} mm`,
+    driving: true,
+  });
   if (options.angle !== undefined) {
     const alpha = options.angle;
     // Pick the line order / direction whose CCW angle reads α (contracts: CCW from a to b).
@@ -391,9 +423,18 @@ export function chamferCorner(
       [a, b] = [line, a1.id];
     }
     const deg = Math.round(((alpha * 180) / Math.PI) * 1e6) / 1e6;
-    k.addConstraint({ kind: 'angle', a, b, value: options.angleExpr ?? `${deg} deg`, driving: true });
+    k.addConstraint({
+      kind: 'angle',
+      a,
+      b,
+      value: options.angleExpr ?? `${deg} deg`,
+      driving: true,
+    });
   } else {
-    const expr2 = options.distance2 === undefined ? (options.expr ?? `${d1} mm`) : (options.expr2 ?? `${d2} mm`);
+    const expr2 =
+      options.distance2 === undefined
+        ? (options.expr ?? `${d1} mm`)
+        : (options.expr2 ?? `${d2} mm`);
     k.addConstraint({ kind: 'distance', a: sharp, b: q2, value: expr2, driving: true });
   }
   const deg = (rad: number) => Math.round(((rad * 180) / Math.PI) * 1000) / 1000;

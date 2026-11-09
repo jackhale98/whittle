@@ -6,7 +6,19 @@
  */
 
 import type { Vec2 } from '@whittle/contracts';
-import { add, angle0, anglePi, cross, dist, dot, fromAngle, len, scale, sub, TAU } from '../geometry';
+import {
+  add,
+  angle0,
+  anglePi,
+  cross,
+  dist,
+  dot,
+  fromAngle,
+  len,
+  scale,
+  sub,
+  TAU,
+} from '../geometry';
 
 export type Curve =
   | { kind: 'line'; a: Vec2; b: Vec2 }
@@ -14,7 +26,8 @@ export type Curve =
   /** CCW from angle `a0` through `sweep` (0, 2π]. */
   | { kind: 'arc'; c: Vec2; r: number; a0: number; sweep: number };
 
-export const arcStart = (k: Extract<Curve, { kind: 'arc' }>): Vec2 => add(k.c, fromAngle(k.a0, k.r));
+export const arcStart = (k: Extract<Curve, { kind: 'arc' }>): Vec2 =>
+  add(k.c, fromAngle(k.a0, k.r));
 export const arcEnd = (k: Extract<Curve, { kind: 'arc' }>): Vec2 =>
   add(k.c, fromAngle(k.a0 + k.sweep, k.r));
 

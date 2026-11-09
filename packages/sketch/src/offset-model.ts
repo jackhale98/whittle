@@ -3,10 +3,14 @@
  * from `sources[i]` by one driving distance d.
  *
  * Pairs: line → line (parallel at d), arc → arc and circle → circle (concentric, radius ± d), and
- * point → arc (a join or cap arc of radius d centred on a source corner or chain end). Each
- * target's side is the side it is on in the geometry handed to the solver (like `distance`, which
- * is unsigned, and tangency, whose internal/external choice is read the same way), so one
- * positive value drives both sides of a two-sided offset.
+ * point → arc (a join or cap arc of radius |d| centred on a source corner or chain end).
+ *
+ * Sign (contracts: positive = to the right of the source's direction, outward for a CCW loop):
+ * the value's sign places the *reference pair* (the first pair whose source is a curve) exactly by
+ * the contract. Every other pair keeps its side *relative to the reference pair* as read from the
+ * geometry handed to the solver, so one value drives a chain whose sources run different ways, and
+ * a two-sided offset (whose two sides are opposite). Flipping the sign flips every side together,
+ * which keeps that relative reading stable from solve to solve. Zero is refused (no side).
  *
  * Rows are chosen so the Jacobian stays regular (no redundant rows, no tangent intersections):
  *
@@ -61,6 +65,8 @@ interface LinePair {
   /** Infinite source (an axis): no square ends. */
   infinite: boolean;
 }
+// `sigma` (all pairs): the side as read from the geometry, then (encodeOffset) as solved. Lines:
+// +1 = left of the source direction; arcs and circles: +1 = outward (right of counter-clockwise).
 interface ArcPair {
   kind: 'arc';
   s: Id;
@@ -229,28 +235,43 @@ export function offsetPairs(ctx: OffsetContext, c: OffsetConstraint): Pair[] | s
   return pairs;
 }
 
-/** The offset distance measured on pair `p` (≥ 0 on the side the target is on). */
+/** The offset measured on pair `p`, signed by the contract (positive = right of the source). */
 function pairMeasure(p: Pair): { params: number[]; fn: (x: Float64Array) => number } {
   switch (p.kind) {
     case 'line':
       return {
         params: uniq([...P(p.ss), ...P(p.se), ...P(p.ts), ...P(p.te)]),
-        fn: (x) =>
-          (p.sigma * (signedDist(x, p.ts, p.ss, p.se) + signedDist(x, p.te, p.ss, p.se))) / 2,
+        fn: (x) => -(signedDist(x, p.ts, p.ss, p.se) + signedDist(x, p.te, p.ss, p.se)) / 2,
       };
     case 'arc':
       return {
         params: uniq([...P(p.sc), ...P(p.sStart), ...P(p.tc), ...P(p.ts)]),
-        fn: (x) => p.sigma * (hyp(x, p.ts, p.tc) - hyp(x, p.sStart, p.sc)),
+        fn: (x) => hyp(x, p.ts, p.tc) - hyp(x, p.sStart, p.sc),
       };
     case 'circle':
       return {
         params: [p.sr, p.tr],
-        fn: (x) => p.sigma * (X(x, p.tr) - X(x, p.sr)),
+        fn: (x) => X(x, p.tr) - X(x, p.sr),
       };
     case 'pointArc':
       return { params: uniq([...P(p.tc), ...P(p.ts)]), fn: (x) => hyp(x, p.ts, p.tc) };
   }
+}
+
+/** Side of a pair in contract terms (+1 = right of its source's direction), as read. */
+const rightSide = (p: Pair): number =>
+  p.kind === 'line' ? -p.sigma : p.kind === 'pointArc' ? 1 : p.sigma;
+
+/** The pairs with the sides the value asks for (see the header). */
+function solvedSides(pairs: Pair[], v: number): Pair[] {
+  const ref = pairs.find((p) => p.kind !== 'pointArc');
+  if (!ref) return pairs;
+  const k = Math.sign(v) * rightSide(ref);
+  return pairs.map((p) => {
+    if (p.kind === 'pointArc') return p;
+    const right = k * rightSide(p);
+    return { ...p, sigma: p.kind === 'line' ? -right : right };
+  });
 }
 
 export function offsetMeasure(ctx: OffsetContext, c: OffsetConstraint): Measure | string {
@@ -287,19 +308,21 @@ function memberNormal(m: Member, x: Float64Array): [number, number] | null {
 }
 
 /**
- * Rows and planegcs primitives for a driving offset of value `v` (> 0). Returns a reason string
- * when the offset can't be encoded.
+ * Rows and planegcs primitives for a driving offset of signed `value` (≠ 0; see the header for
+ * the sign). Returns a reason string when the offset can't be encoded.
  */
 export function encodeOffset(
   ctx: OffsetContext,
   c: OffsetConstraint,
-  v: number,
+  value: number,
   priority: number,
   nextId: () => string,
 ): { rows: Row[]; prims: SketchPrimitive[] } | string {
-  if (!(v > 0)) return 'An offset distance must be greater than zero';
-  const pairs = offsetPairs(ctx, c);
-  if (typeof pairs === 'string') return pairs;
+  if (!(Math.abs(value) > 0)) return "An offset distance can't be zero";
+  const read = offsetPairs(ctx, c);
+  if (typeof read === 'string') return read;
+  const pairs = solvedSides(read, value);
+  const v = Math.abs(value);
   const rows: Row[] = [];
   const prims: SketchPrimitive[] = [];
   const gid = ctx.gid;
@@ -352,7 +375,13 @@ export function encodeOffset(
     if (pr.kind !== 'line') return;
     const d = pr.sigma * v;
     row([...P(m.p), ...P(pr.ss), ...P(pr.se)], (x) => signedDist(x, m.p, pr.ss, pr.se) - d);
-    prims.push({ id: nextId(), type: 'p2l_distance', p_id: gid(m.pid), l_id: gid(pr.s), distance: v });
+    prims.push({
+      id: nextId(),
+      type: 'p2l_distance',
+      p_id: gid(m.pid),
+      l_id: gid(pr.s),
+      distance: v,
+    });
   };
   const squareEnd = (m: Member): boolean => {
     const pr = m.pair;

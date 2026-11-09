@@ -102,7 +102,10 @@ export function unchanged(a: SketchData, b: SketchSolveResult, tol = 1e-7) {
 }
 
 /** Builds a sketch with ids p1… / l1… from a polyline (optionally closed). */
-export function polyline(points: Vec2[], closed = false): SketchData & { lines: Id[]; points: Id[] } {
+export function polyline(
+  points: Vec2[],
+  closed = false,
+): SketchData & { lines: Id[]; points: Id[] } {
   const entities: SketchEntity[] = [];
   const pts = points.map((p, i) => {
     const id = `p${i + 1}`;
@@ -133,4 +136,9 @@ export function fixAll(s: SketchData, which: readonly Id[]): SketchData {
       ...which.map((id, i): SketchConstraint => ({ id: `fix${i}`, kind: 'fix', entity: id })),
     ],
   };
+}
+
+/** The driving value for an offset whose expression is `±d` (its stored sign carries the side). */
+export function sv(off: { value: string }, d: number): number {
+  return off.value.trim().startsWith('-') ? -d : d;
 }

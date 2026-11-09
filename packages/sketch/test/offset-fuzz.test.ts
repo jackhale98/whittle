@@ -7,10 +7,10 @@
 
 import type { Id, SketchEntity, Vec2 } from '@whittle/contracts';
 import { describe, expect, it } from 'vitest';
-import { type Curve, extentIntersections, arcFromPoints } from '../src/edit/curves';
-import { offsetEntities, type OffsetOptions } from '../src/edit/offset';
+import { arcFromPoints, type Curve, extentIntersections } from '../src/edit/curves';
+import { type OffsetOptions, offsetEntities } from '../src/edit/offset';
 import { buildModel, violatedRows } from '../src/model';
-import { fixAll, offsetOf, sideDist, solve } from './edit-helpers';
+import { fixAll, offsetOf, sideDist, solve, sv } from './edit-helpers';
 
 function rng(seed: number) {
   let a = seed >>> 0;
@@ -75,7 +75,14 @@ function randomChain(r: () => number) {
       entities.push({ id: cid, kind: 'point', construction: false, x: c[0], y: c[1] });
       // Counter-clockwise from a to b (centre on the left) is the minor arc.
       const ccw = wild ? r() < 0.5 : off > 0;
-      entities.push({ id: `a${i}`, kind: 'arc', construction: false, center: cid, start: ccw ? a : b, end: ccw ? b : a });
+      entities.push({
+        id: `a${i}`,
+        kind: 'arc',
+        construction: false,
+        center: cid,
+        start: ccw ? a : b,
+        end: ccw ? b : a,
+      });
       // Arc ends must be equidistant from the centre: they are (bisector).
       curves.push(`a${i}`);
     } else {
@@ -115,7 +122,9 @@ function crossings(entities: readonly SketchEntity[], ids: readonly Id[], scale:
     for (let j = i + 1; j < ids.length; j++) {
       const a = curveOf(entities, ids[i] as Id) as Curve;
       const b = curveOf(entities, ids[j] as Id) as Curve;
-      const joins = ends(a).filter((p) => ends(b).some((q) => Math.hypot(p[0] - q[0], p[1] - q[1]) < tol));
+      const joins = ends(a).filter((p) =>
+        ends(b).some((q) => Math.hypot(p[0] - q[0], p[1] - q[1]) < tol),
+      );
       const xs = extentIntersections(a, b, tol).filter(
         (x) => !joins.some((s) => Math.hypot(s[0] - x[0], s[1] - x[1]) < 1e3 * tol),
       );
@@ -159,13 +168,14 @@ describe('offset fuzz', () => {
       // Non-degenerate output.
       for (const id of created) {
         const c = curveOf(res.sketch.entities, id) as Curve;
-        if (c.kind === 'line') expect(Math.hypot(c.b[0] - c.a[0], c.b[1] - c.a[1]), label).toBeGreaterThan(1e-7);
+        if (c.kind === 'line')
+          expect(Math.hypot(c.b[0] - c.a[0], c.b[1] - c.a[1]), label).toBeGreaterThan(1e-7);
         else expect(c.r, label).toBeGreaterThan(1e-7);
       }
       // No crossings.
       expect(crossings(res.sketch.entities, created, 100), label).toEqual([]);
       // Exact: every offset row holds on the result.
-      const model = buildModel({ ...res.sketch, values: { [off.id]: d } });
+      const model = buildModel({ ...res.sketch, values: { [off.id]: sv(off, d) } });
       expect(model.invalid.size, label).toBe(0);
       expect(violatedRows(model, model.x0).length, label).toBe(0);
       // Lines are parallel at d from their sources.
@@ -179,9 +189,9 @@ describe('offset fuzz', () => {
       });
       // The solver accepts it as is, and follows a smaller distance.
       const fixed = fixAll(res.sketch, curves);
-      const same = await solve(fixed, { [off.id]: d });
+      const same = await solve(fixed, { [off.id]: sv(off, d) });
       expect(same.status, label).toBe('solved');
-      const smaller = await solve(fixed, { [off.id]: d * 0.95 });
+      const smaller = await solve(fixed, { [off.id]: sv(off, d * 0.95) });
       expect(smaller.status, label).toBe('solved');
     }
     console.info(`[offset fuzz] accepted ${accepted}, refused ${refused}`);

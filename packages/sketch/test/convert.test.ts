@@ -51,10 +51,14 @@ describe('convert', () => {
   });
 
   it('an edge seen end-on is a linked point; converting twice is a no-op', () => {
-    const r = ok(convertEntities(empty, [{ ref: ref('v'), curve: { kind: 'line', a: [3, 4], b: [3, 4] } }]));
+    const r = ok(
+      convertEntities(empty, [{ ref: ref('v'), curve: { kind: 'line', a: [3, 4], b: [3, 4] } }]),
+    );
     expect(r.sketch.entities).toHaveLength(1);
     expect(r.sketch.entities[0]?.kind).toBe('point');
-    const again = convertEntities(r.sketch, [{ ref: ref('v'), curve: { kind: 'line', a: [3, 4], b: [3, 4] } }]);
+    const again = convertEntities(r.sketch, [
+      { ref: ref('v'), curve: { kind: 'line', a: [3, 4], b: [3, 4] } },
+    ]);
     expect(again.ok).toBe(false);
   });
 
@@ -67,7 +71,11 @@ describe('convert', () => {
       pts.push([Math.cos(t) * 10 - 10 + 10, Math.sin(t) * 10]);
     }
     pts.push([10, 10]);
-    const r = ok(convertEntities(empty, [{ ref: ref('spline'), curve: { kind: 'polyline', points: pts } }], { id: ids() }));
+    const r = ok(
+      convertEntities(empty, [{ ref: ref('spline'), curve: { kind: 'polyline', points: pts } }], {
+        id: ids(),
+      }),
+    );
     const kinds = curves(r.sketch).map((e) => e.kind);
     expect(kinds).toContain('arc');
     expect(kinds.filter((k) => k === 'line').length).toBeLessThanOrEqual(3);
@@ -79,7 +87,8 @@ describe('convert', () => {
     // The chain is connected: consecutive curves share points.
     const used = new Map<Id, number>();
     for (const e of curves(r.sketch)) {
-      if (e.kind === 'line' || e.kind === 'arc') for (const p of [e.start, e.end]) used.set(p, (used.get(p) ?? 0) + 1);
+      if (e.kind === 'line' || e.kind === 'arc')
+        for (const p of [e.start, e.end]) used.set(p, (used.get(p) ?? 0) + 1);
     }
     expect([...used.values()].filter((n) => n === 1)).toHaveLength(2);
   });
@@ -99,7 +108,11 @@ describe('convert', () => {
   });
 
   it('linked entities are fixed for the solver and can be constrained to', async () => {
-    const r = ok(convertEntities(empty, [{ ref: ref('e1'), curve: { kind: 'line', a: [0, 0], b: [10, 0] } }], { id: ids('m') }));
+    const r = ok(
+      convertEntities(empty, [{ ref: ref('e1'), curve: { kind: 'line', a: [0, 0], b: [10, 0] } }], {
+        id: ids('m'),
+      }),
+    );
     const sketch: SketchData = {
       entities: [
         ...r.sketch.entities,
@@ -124,14 +137,20 @@ describe('convert', () => {
   });
 
   it('a conflict with linked geometry says so', async () => {
-    const r = ok(convertEntities(empty, [{ ref: ref('e1'), curve: { kind: 'line', a: [0, 0], b: [10, 3] } }], { id: ids('m') }));
+    const r = ok(
+      convertEntities(empty, [{ ref: ref('e1'), curve: { kind: 'line', a: [0, 0], b: [10, 3] } }], {
+        id: ids('m'),
+      }),
+    );
     const sketch: SketchData = {
       entities: r.sketch.entities,
       constraints: [{ id: 'h', kind: 'horizontal', line: 'm3' }],
     };
     const res = await solve(sketch);
     expect(res.status).toBe('conflicting');
-    expect(res.conflicts[0]?.explanation).toBe("Line 1 can't be horizontal while Line 1 is linked to the model");
+    expect(res.conflicts[0]?.explanation).toBe(
+      "Line 1 can't be horizontal while Line 1 is linked to the model",
+    );
     expect(res.conflicts[0]?.fixed).toEqual(['m3']);
   });
 });
@@ -223,7 +242,9 @@ describe('re-projection', () => {
 
   it('re-pick links the lost entities to a new edge, keeping their ids', () => {
     const s = linkedSketch();
-    const r = ok(relinkEntities(s, 'e1', { ref: ref('e9'), curve: { kind: 'line', a: [1, 1], b: [9, 1] } }));
+    const r = ok(
+      relinkEntities(s, 'e1', { ref: ref('e9'), curve: { kind: 'line', a: [1, 1], b: [9, 1] } }),
+    );
     expect(ent(r.sketch, 'm3').source?.ref.name).toBe('e9');
     expect(ent(r.sketch, 'm1').source?.ref.name).toBe('e9');
     expect(lineEnds(r.sketch, 'm3')).toEqual([
@@ -231,13 +252,19 @@ describe('re-projection', () => {
       [9, 1],
     ]);
     expect(r.sketch.constraints).toEqual(s.constraints);
-    expect(relinkEntities(s, 'nope', { ref: ref('x'), curve: { kind: 'line', a: [0, 0], b: [1, 0] } }).ok).toBe(false);
+    expect(
+      relinkEntities(s, 'nope', { ref: ref('x'), curve: { kind: 'line', a: [0, 0], b: [1, 0] } })
+        .ok,
+    ).toBe(false);
   });
 
   it('an edge that changed kind keeps the entity id', () => {
     const s = linkedSketch();
     const r = reprojectLinked(s, [
-      { ref: ref('e1'), curve: { kind: 'arc', c: [5, -5], r: Math.hypot(5, 5), start: [10, 0], end: [0, 0] } },
+      {
+        ref: ref('e1'),
+        curve: { kind: 'arc', c: [5, -5], r: Math.hypot(5, 5), start: [10, 0], end: [0, 0] },
+      },
       { ref: ref('e2'), curve: { kind: 'circle', c: [20, 0], r: 3 } },
     ]);
     const e = ent(r.sketch, 'm3');
@@ -252,13 +279,21 @@ describe('re-projection', () => {
   it('approximate chains keep their entities through re-projection', () => {
     const pts = (k: number): Vec2[] =>
       Array.from({ length: 21 }, (_, i) => [i, k * Math.sin((i / 20) * Math.PI) * 3] as Vec2);
-    const r = ok(convertEntities(empty, [{ ref: ref('s'), curve: { kind: 'polyline', points: pts(1) } }], { id: ids() }));
+    const r = ok(
+      convertEntities(empty, [{ ref: ref('s'), curve: { kind: 'polyline', points: pts(1) } }], {
+        id: ids(),
+      }),
+    );
     const before = r.sketch.entities.map((e) => `${e.id}:${e.kind}`);
-    const again = reprojectLinked(r.sketch, [{ ref: ref('s'), curve: { kind: 'polyline', points: pts(1.5) } }]);
+    const again = reprojectLinked(r.sketch, [
+      { ref: ref('s'), curve: { kind: 'polyline', points: pts(1.5) } },
+    ]);
     expect(again.sketch.entities.map((e) => `${e.id}:${e.kind}`)).toEqual(before);
     expect(again.lost).toEqual([]);
     // The chain still spans the fresh polyline, end to end.
-    const ends = again.sketch.entities.filter((e) => e.kind === 'point').map((e) => at(again.sketch, e.id));
+    const ends = again.sketch.entities
+      .filter((e) => e.kind === 'point')
+      .map((e) => at(again.sketch, e.id));
     expect(ends.some((p) => Math.hypot(p[0], p[1]) < 1e-9)).toBe(true);
     expect(ends.some((p) => Math.hypot(p[0] - 20, p[1]) < 1e-9)).toBe(true);
   });

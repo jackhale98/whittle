@@ -351,8 +351,8 @@ export class SketchSolverCore {
           if (s.ok) value = measureDimension(without, id, s.x);
         }
         if (value === null || !Number.isFinite(value)) continue;
-        if (c.kind !== 'angle' && c.kind !== 'hDistance' && c.kind !== 'vDistance' && value <= 1e-9)
-          continue;
+        const signed = c.kind === 'angle' || c.kind === 'hDistance' || c.kind === 'vDistance';
+        if (c.kind === 'offset' ? Math.abs(value) <= 1e-9 : !signed && value <= 1e-9) continue;
         if (c.kind === 'angle') value = normalizeAngleNear(value, input.values[id] ?? value);
         const action = { kind: 'setValue', constraint: id, value } as const;
         extra.push({
@@ -483,7 +483,8 @@ export class SketchSolverCore {
       let x: Float64Array | null = Float64Array.from(s.x);
       s.gcs.read(x);
       if (!finite(x)) x = null;
-      else if (s.split) x = isSatisfied(s.split.upstream, x) ? solveTargets(s.model, x, s.split) : null;
+      else if (s.split)
+        x = isSatisfied(s.split.upstream, x) ? solveTargets(s.model, x, s.split) : null;
       else if (!isSatisfied(s.model, x)) x = null;
       if (x) {
         s.x = refined(s.model, x);
@@ -564,7 +565,8 @@ export function offsetSplit(model: SketchModel, dragged?: Id): OffsetSplit | nul
     }
   }
   for (const c of offsets)
-    for (const src of c.sources) for (const i of model.entityParams.get(src) ?? []) target.delete(i);
+    for (const src of c.sources)
+      for (const i of model.entityParams.get(src) ?? []) target.delete(i);
   if (target.size === 0) return null;
   if (dragged !== undefined && (model.entityParams.get(dragged) ?? []).some((i) => target.has(i)))
     return null;
@@ -587,7 +589,11 @@ export function offsetSplit(model: SketchModel, dragged?: Id): OffsetSplit | nul
 }
 
 /** The offset geometry solved from fixed sources (null when the offset rows can't all hold). */
-function solveTargets(model: SketchModel, x: Float64Array, split: OffsetSplit): Float64Array | null {
+function solveTargets(
+  model: SketchModel,
+  x: Float64Array,
+  split: OffsetSplit,
+): Float64Array | null {
   const y = polish({ ...model, grounded: split.ground }, x, split.rows, undefined, 16);
   return isSatisfied(model, y) ? y : null;
 }

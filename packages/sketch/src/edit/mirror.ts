@@ -16,6 +16,7 @@
 
 import type { Id, SketchConstraint, SketchEntity, Vec2 } from '@whittle/contracts';
 import { add, dot, normalize, scale, sub } from '../geometry';
+import { entityPoints } from '../model';
 import {
   constraintRefs,
   isSketchReference,
@@ -24,7 +25,13 @@ import {
   SKETCH_X_AXIS,
   SKETCH_Y_AXIS,
 } from '../references';
-import { type EditOptions, refuse, type SketchData, SketchDraft, type SketchEditResult } from './draft';
+import {
+  type EditOptions,
+  refuse,
+  type SketchData,
+  SketchDraft,
+  type SketchEditResult,
+} from './draft';
 
 export interface MirrorOptions extends EditOptions {
   /** Keep the originals (default true) or remove them, carrying their constraints over. */
@@ -113,7 +120,8 @@ export function mirrorEntities(
     }
   }
   for (const [from, to] of pointMap) entityMap.set(from, to);
-  const what = selected.length === 1 ? k.name(selected[0]?.id as Id) : `${selected.length} entities`;
+  const what =
+    selected.length === 1 ? k.name(selected[0]?.id as Id) : `${selected.length} entities`;
   if (keep) return k.finish(`Mirror ${what} about ${axisName}`);
 
   // Mirror move: carry constraints over to the copies, then remove the originals.
@@ -144,15 +152,15 @@ export function mirrorEntities(
   const originals = new Set<Id>();
   for (const e of selected) {
     originals.add(e.id);
-    if (e.kind === 'line') [e.start, e.end].forEach((p) => originals.add(p));
-    if (e.kind === 'arc') [e.center, e.start, e.end].forEach((p) => originals.add(p));
-    if (e.kind === 'circle') originals.add(e.center);
+    for (const p of entityPoints(e)) originals.add(p);
   }
-  for (const id of originals) if (entityMap.get(id) !== id && k.get(id)?.kind !== 'point') k.removeEntity(id);
+  for (const id of originals)
+    if (entityMap.get(id) !== id && k.get(id)?.kind !== 'point') k.removeEntity(id);
   for (const id of originals) {
     if (entityMap.get(id) === id || k.get(id)?.kind !== 'point') continue;
     if (k.pointUsers(id).length === 0) {
-      for (const c of k.constraintsOn(id)) k.dropConstraint(c.id, `it doesn't carry over to the mirrored copy`);
+      for (const c of k.constraintsOn(id))
+        k.dropConstraint(c.id, `it doesn't carry over to the mirrored copy`);
       k.removeEntity(id);
     }
   }
@@ -171,7 +179,8 @@ function carried(
   const remap = (): SketchConstraint => {
     const out: Record<string, unknown> = {};
     for (const [key, v] of Object.entries(c)) {
-      if (key === 'id' || key === 'kind' || key === 'value' || key === 'driving' || key === 'label') out[key] = v;
+      if (key === 'id' || key === 'kind' || key === 'value' || key === 'driving' || key === 'label')
+        out[key] = v;
       else if (typeof v === 'string') out[key] = m(v);
       else if (Array.isArray(v)) out[key] = v.map((x) => (typeof x === 'string' ? m(x) : x));
       else out[key] = v;
@@ -191,8 +200,10 @@ function carried(
       return { ...c, a: m(c.b), b: m(c.a) };
     case 'hDistance':
     case 'vDistance': {
-      const flips = (c.kind === 'hDistance' && verticalAxis) || (c.kind === 'vDistance' && horizontalAxis);
-      const keeps = (c.kind === 'hDistance' && horizontalAxis) || (c.kind === 'vDistance' && verticalAxis);
+      const flips =
+        (c.kind === 'hDistance' && verticalAxis) || (c.kind === 'vDistance' && horizontalAxis);
+      const keeps =
+        (c.kind === 'hDistance' && horizontalAxis) || (c.kind === 'vDistance' && verticalAxis);
       if (keeps) return remap();
       if (!flips) return null;
       if (c.a !== c.b) return { ...c, a: m(c.b), b: m(c.a) };

@@ -13,6 +13,7 @@ answers "can these constraints be satisfied?", and Whittle checks the answer its
 | --- | --- | --- |
 | `@whittle/sketch` (`src/index.ts`) | Main thread | `createSketchSolverClient()` (spawns the worker and wraps it with Comlink), inference, the drawing tools, geometry and explanation helpers. Loads no Wasm. |
 | `@whittle/sketch/worker` (`src/worker.ts`) | Sketch worker | Loads planegcs (the `.wasm` as a hashed asset via `?url`) and exposes `SketchSolverApi` over Comlink. |
+| `@whittle/sketch/edit` (`src/edit/index.ts`) | Main thread or any worker | Sketch editing (M3): `offsetEntities`, `convertEntities` / `reprojectLinked` / `relinkEntities` / `unlinkEntities`, `trimEntity` / `extendEntity`, `filletCorner` / `chamferCorner`, `mirrorEntities`. Pure functions on `SketchData`; each returns the new sketch, a patch summary (`created`, `removed`, `changed`, `addedConstraints`, `removedConstraints`), `notes` and an undo `description`, or `{ ok: false, reason }`. Loads no Wasm. |
 | `@whittle/sketch/core` (`src/core.ts`) | Node, or any worker | `createSketchSolver()`, the solver itself, synchronous once planegcs has loaded. The kernel worker uses it for sketch re-solves. |
 
 Never import `core` on the main thread. Use the client from the package root.
@@ -72,6 +73,16 @@ that doesn't use them builds exactly the same model as before.
 - Inference snaps coincident to the origin and onto the axes (point on), and offers horizontal and
   vertical alignment guides from the origin. They score just below the same snap on the user's own
   geometry, so a real point or curve at the same spot wins.
+
+### Offsets and linked geometry
+
+- **Offset dimension** (`src/offset-model.ts`, DECISIONS "Offset dimension"): lines at the signed
+  distance, arcs and circles concentric at r ± d, join/cap arcs around source corners, free ends
+  square to the source ends. Positive = right of the reference source's direction. When only the
+  offset constrains its geometry, the sources solve in planegcs and the offset afterwards by
+  sparse Newton (`offsetSplit` in `src/solver.ts`), which keeps drags within budget.
+- **Linked entities** (`source` set) are fixed. Conflicts they cause say "while Line 1 is linked
+  to the model" and list them in `SketchConflict.fixed`.
 
 ### Dragging
 

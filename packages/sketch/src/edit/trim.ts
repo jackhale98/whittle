@@ -19,18 +19,24 @@
 
 import type { Id, SketchEntity, Vec2 } from '@whittle/contracts';
 import { dist, TAU } from '../geometry';
-import { coincidenceRoots } from './draft';
 import {
-  type Curve,
   arcEnd,
   arcStart,
+  type Curve,
   carrierIntersections,
   onExtent,
   paramOf,
   paramRange,
   paramTol,
 } from './curves';
-import { type EditOptions, refuse, type SketchData, SketchDraft, type SketchEditResult } from './draft';
+import {
+  coincidenceRoots,
+  type EditOptions,
+  refuse,
+  type SketchData,
+  SketchDraft,
+  type SketchEditResult,
+} from './draft';
 
 interface Hit {
   t: number;
@@ -42,13 +48,13 @@ interface Hit {
 
 type Curved = Extract<SketchEntity, { kind: 'line' | 'arc' | 'circle' }>;
 
-function editable(k: SketchDraft, id: Id, verb: string): Curved | string {
+function editable(k: SketchDraft, id: Id, verb: 'trim' | 'extend'): Curved | string {
   const e = k.get(id);
   if (!e) return `Unknown entity ${id}`;
   if (e.kind !== 'line' && e.kind !== 'arc' && e.kind !== 'circle') {
-    return `Only lines, arcs and circles can be ${verb}`;
+    return `Only lines, arcs and circles can be ${verb === 'trim' ? 'trimmed' : 'extended'}`;
   }
-  if (e.source) return `${k.name(id)} is linked to the model; unlink it to ${verb.replace(/ed$/, '')} it`;
+  if (e.source) return `${k.name(id)} is linked to the model; unlink it to ${verb} it`;
   return e;
 }
 
@@ -59,7 +65,11 @@ function crossings(k: SketchDraft, id: Id, carrier: Curve, own: Curve): Hit[] {
   const hits: Hit[] = [];
   const self = k.get(id) as Curved;
   const ownPoints = new Set<Id>(
-    self.kind === 'circle' ? [self.center] : self.kind === 'arc' ? [self.start, self.end, self.center] : [self.start, self.end],
+    self.kind === 'circle'
+      ? [self.center]
+      : self.kind === 'arc'
+        ? [self.start, self.end, self.center]
+        : [self.start, self.end],
   );
   for (const o of k.entities) {
     if (o.id === id || (o.kind !== 'line' && o.kind !== 'arc' && o.kind !== 'circle')) continue;
@@ -99,7 +109,9 @@ function dropLengthConstraints(k: SketchDraft, lineId: Id, why: string) {
 export function releaseOffsetTarget(k: SketchDraft, id: Id, why: string) {
   for (const c of k.constraintsOn(id)) {
     if (c.kind !== 'offset' || !c.targets.includes(id)) continue;
-    const keep = c.targets.map((t, i) => [c.sources[i] as Id, t] as const).filter(([, t]) => t !== id);
+    const keep = c.targets
+      .map((t, i) => [c.sources[i] as Id, t] as const)
+      .filter(([, t]) => t !== id);
     if (keep.length === 0) {
       k.dropConstraint(c.id, why);
       continue;
@@ -111,7 +123,12 @@ export function releaseOffsetTarget(k: SketchDraft, id: Id, why: string) {
 
 /** Removes an entity, its constraints and its now-unused points. */
 function deleteCurve(k: SketchDraft, e: Curved) {
-  const points = e.kind === 'circle' ? [e.center] : e.kind === 'arc' ? [e.center, e.start, e.end] : [e.start, e.end];
+  const points =
+    e.kind === 'circle'
+      ? [e.center]
+      : e.kind === 'arc'
+        ? [e.center, e.start, e.end]
+        : [e.start, e.end];
   for (const c of k.constraintsOn(e.id)) {
     if (c.kind === 'offset') continue;
     k.dropConstraint(c.id, `${k.name(e.id)} was deleted`);
@@ -140,7 +157,11 @@ function retargetTangents(k: SketchDraft, original: Id, piece: Id, movedEnd: Id)
     const o = k.get(other);
     if (!o || (o.kind !== 'line' && o.kind !== 'arc')) continue;
     if ([o.start, o.end].some((p) => root(p) === root(movedEnd))) {
-      k.updateConstraint({ ...c, a: c.a === original ? piece : c.a, b: c.b === original ? piece : c.b });
+      k.updateConstraint({
+        ...c,
+        a: c.a === original ? piece : c.a,
+        b: c.b === original ? piece : c.b,
+      });
     }
   }
 }
@@ -164,7 +185,7 @@ export function trimEntity(
   options: EditOptions = {},
 ): SketchEditResult {
   const k = new SketchDraft(sketch, options);
-  const e = editable(k, id, 'trimmed');
+  const e = editable(k, id, 'trim');
   if (typeof e === 'string') return refuse(e);
   const name = k.name(id);
   const own = k.curve(id) as Curve;
@@ -174,12 +195,15 @@ export function trimEntity(
 
   if (e.kind === 'circle' && own.kind === 'circle') {
     const angles: Hit[] = [];
-    for (const h of hits) if (!angles.some((a) => Math.abs(a.t - h.t) < eps || Math.abs(a.t - h.t) > TAU - eps)) angles.push(h);
+    for (const h of hits)
+      if (!angles.some((a) => Math.abs(a.t - h.t) < eps || Math.abs(a.t - h.t) > TAU - eps))
+        angles.push(h);
     if (angles.length === 0) {
       deleteCurve(k, e);
       return k.finish(`Delete ${name}`);
     }
-    if (angles.length === 1) return refuse(`${name} crosses only one curve; trimming a circle needs two`);
+    if (angles.length === 1)
+      return refuse(`${name} crosses only one curve; trimming a circle needs two`);
     const tp = paramOf(own, pick);
     // The cut just before the pick (going counter-clockwise) and just after it.
     let before = angles[angles.length - 1] as Hit;
@@ -192,7 +216,14 @@ export function trimEntity(
     }
     const s = k.point(after.p, e.construction);
     const t = k.point(before.p, e.construction);
-    k.replace({ id, kind: 'arc', construction: e.construction, center: e.center, start: s, end: t });
+    k.replace({
+      id,
+      kind: 'arc',
+      construction: e.construction,
+      center: e.center,
+      start: s,
+      end: t,
+    });
     attach(k, s, after);
     attach(k, t, before);
     releaseOffsetTarget(k, id, `${name} is now an arc`);
@@ -203,7 +234,8 @@ export function trimEntity(
   if (e.kind === 'circle' || own.kind === 'circle') return refuse(`${name} can't be trimmed`);
   const range = paramRange(own);
   let tp = paramOf(own, pick);
-  if (own.kind === 'arc' && tp > range) tp = dist(pick, arcStart(own)) < dist(pick, arcEnd(own)) ? 0 : range;
+  if (own.kind === 'arc' && tp > range)
+    tp = dist(pick, arcStart(own)) < dist(pick, arcEnd(own)) ? 0 : range;
   tp = Math.min(range, Math.max(0, tp));
   const { below, above, inner } = bracket(hits, tp, 0, range, eps);
   if (inner.length === 0) {
@@ -220,7 +252,10 @@ export function trimEntity(
     const a = k.point(below.p, e.construction);
     const b = k.point(above.p, e.construction);
     k.replace({ ...e, end: a });
-    const piece = e.kind === 'line' ? k.line(b, farEnd, e.construction) : k.arc(e.center, b, farEnd, e.construction);
+    const piece =
+      e.kind === 'line'
+        ? k.line(b, farEnd, e.construction)
+        : k.arc(e.center, b, farEnd, e.construction);
     attach(k, a, below);
     attach(k, b, above);
     if (e.kind === 'line') {
@@ -259,7 +294,7 @@ export function extendEntity(
   options: EditOptions = {},
 ): SketchEditResult {
   const k = new SketchDraft(sketch, options);
-  const e = editable(k, id, 'extended');
+  const e = editable(k, id, 'extend');
   if (typeof e === 'string') return refuse(e);
   if (e.kind === 'circle') return refuse('A circle has no ends to extend');
   const name = k.name(id);
@@ -270,7 +305,9 @@ export function extendEntity(
   const pid = e[which];
   const others = k.pointUsers(pid, id);
   if (others.length > 0) {
-    return refuse(`That end of ${name} is connected to ${k.name(others[0]?.id as Id)}; extend a free end`);
+    return refuse(
+      `That end of ${name} is connected to ${k.name(others[0]?.id as Id)}; extend a free end`,
+    );
   }
   const carrier: Curve = own.kind === 'arc' ? { kind: 'circle', c: own.c, r: own.r } : own;
   const hits = crossings(k, id, carrier, own);
