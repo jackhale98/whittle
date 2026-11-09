@@ -2754,6 +2754,16 @@ export class Workbench {
           toast: u.toast?.text ?? null,
           sketch: u.sketch
             ? {
+                featureId: u.sketch.featureId,
+                plane: u.sketch.frame,
+                edit: u.sketch.edit
+                  ? {
+                      tool: u.sketch.edit.tool,
+                      picks: u.sketch.edit.picks.length,
+                      model: u.sketch.edit.model.length,
+                      busy: u.sketch.edit.busy,
+                    }
+                  : null,
                 tool: u.sketch.tool,
                 dimPicks: u.sketch.dimPicks,
                 editDimension: u.sketch.editDimension,

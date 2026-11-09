@@ -20,7 +20,13 @@ export interface AppHooks {
   } | null;
   idle(): Promise<void>;
   flushSave(): Promise<void>;
-  sketch(): { status: string; dof: number; busy: boolean } | null;
+  sketch(): {
+    status: string;
+    dof: number;
+    busy: boolean;
+    redundant?: string[];
+    conflicts?: unknown[];
+  } | null;
   sketchSettled(): Promise<void>;
   marks(): Record<string, number>;
   ui(): {
@@ -29,6 +35,10 @@ export interface AppHooks {
     candidates: string[] | null;
     toast: string | null;
     sketch: {
+      featureId: string;
+      /** The sketch plane frame (null until known). */
+      plane: { origin: number[]; x: number[]; y: number[]; z: number[] } | null;
+      edit: { tool: string; picks: number; model: number; busy: boolean } | null;
       tool: string | null;
       dimPicks: string[];
       editDimension: string | null;
