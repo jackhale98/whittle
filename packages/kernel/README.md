@@ -66,10 +66,13 @@ amalgamated file.
 | `*.build-manifest.json`, `*.provenance.json`        | build records: flags, image digest, source SHA-256s           |
 | `size-report.json`                                  | raw, gzip and brotli sizes                                    |
 
-Sizes at M3 (toolchain 3.1.0, `-O3`, wasm-opt `-O4`, SIMD, native Wasm exceptions). The M3
-features (offset/thick solid, draft, pipe shell, ThruSections, the hole profile revolve, BOP self-
-interference check, curve sampling) and the IGES reader added +0.77 MiB brotli per kernel over M2
-(3.76 / 3.73 MiB; M1 3.71 MiB; M0 1.30 MiB). IGES alone (measured with a
+Sizes at M3.5 (toolchain 3.1.0, `-O3`, wasm-opt `-O4`, SIMD, native Wasm exceptions). The M3.5
+sketch curves (B-spline/elliptic-arc edges, exact projection, `BRepBuilderAPI_NurbsConvert` for
+knot-aware mass properties) added +17.0 KiB brotli (+0.37 %), +18.5 KiB gzip, +48.8 KiB raw to the
+single-threaded kernel and +11.6 KiB brotli to the threaded one, measured against the M3 build. At
+M3 the M3 features (offset/thick solid, draft, pipe shell, ThruSections, the hole profile revolve,
+BOP self-interference check, curve sampling) and the IGES reader had added +0.77 MiB brotli per
+kernel over M2 (3.76 / 3.73 MiB; M1 3.71 MiB; M0 1.30 MiB). IGES alone (measured with a
 `WREN_NO_IGES=1` production link of the single-threaded kernel): +265 KiB brotli (5.7 %),
 +394 KiB gzip, +1.84 MiB raw; the other M3 features +525 KiB brotli. Not worth a lazily loaded
 side module yet; if data exchange grows (IGES export, more formats), a separate exchange kernel
@@ -77,8 +80,8 @@ loaded on first import is the way to split it.
 
 | Artefact                 |       raw |     gzip |   brotli |
 | ------------------------ | --------: | -------: | -------: |
-| `whittle-kernel-st.wasm` | 20.75 MiB | 6.51 MiB | 4.53 MiB |
-| `whittle-kernel.wasm`    | 20.09 MiB | 6.48 MiB | 4.51 MiB |
+| `whittle-kernel-st.wasm` | 20.80 MiB | 6.52 MiB | 4.54 MiB |
+| `whittle-kernel.wasm`    | 20.14 MiB | 6.50 MiB | 4.52 MiB |
 | `whittle-kernel-st.js`   |    56 KiB |   21 KiB |   19 KiB |
 | `whittle-kernel.js`      |    63 KiB |   24 KiB |   21 KiB |
 
