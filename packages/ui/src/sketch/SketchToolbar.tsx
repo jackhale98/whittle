@@ -5,18 +5,26 @@ import {
   ChevronDown,
   Circle,
   Construction,
+  FlipHorizontal2,
   Hexagon,
+  Link2,
+  MoveRight,
+  Pencil,
   Pill,
   RectangleHorizontal,
   Ruler,
+  Scissors,
   Slash,
+  SquareRoundCorner,
 } from 'lucide-react';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { Menu, type MenuItem } from '../components/floating';
+import { ChamferIcon } from '../components/icons';
 import { Button, cn, Tooltip } from '../components/primitives';
 import { ConstraintGlyph, constraintLabels, geometricConstraintKinds } from './ConstraintGlyph';
+import type { SketchEditToolId } from './EditChrome';
 
-export type SketchToolId =
+export type SketchDrawToolId =
   | 'line'
   | 'rectangle'
   | 'circle'
@@ -24,11 +32,14 @@ export type SketchToolId =
   | 'slot'
   | 'polygon'
   | 'dimension';
+export type SketchToolId = SketchDrawToolId | SketchEditToolId;
 export type GeometricConstraintKind = GeometricConstraint['kind'];
 
 interface ToolSpec {
   id: SketchToolId;
   label: string;
+  /** Text under the icon in touch density. */
+  short?: string;
   shortcut?: string;
   icon: ReactNode;
   variants?: readonly { id: string; label: string }[];
@@ -96,7 +107,12 @@ export const sketchTools: readonly ToolSpec[] = [
     ],
   },
   { id: 'slot', label: 'Slot', icon: <Pill className={ic} strokeWidth={1.75} /> },
-  { id: 'polygon', label: 'Polygon', icon: <Hexagon className={ic} strokeWidth={1.75} /> },
+  {
+    id: 'polygon',
+    label: 'Polygon',
+    short: 'Polygon',
+    icon: <Hexagon className={ic} strokeWidth={1.75} />,
+  },
   {
     id: 'dimension',
     label: 'Dimension',
@@ -104,6 +120,79 @@ export const sketchTools: readonly ToolSpec[] = [
     icon: <Ruler className={ic} strokeWidth={1.75} />,
   },
 ];
+
+function OffsetIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      aria-hidden
+    >
+      <path d="M4 17h9a5 5 0 0 0 5-5V4" />
+      <path d="M4 21h13a5 5 0 0 0 5-5V4" opacity="0.55" />
+    </svg>
+  );
+}
+
+/**
+ * M3 sketch-editing tools. They live behind one "Edit" menu button so the bar (and the tablet
+ * rail) keep their length; their single-key shortcuts work like the drawing tools'.
+ */
+export const sketchEditTools: readonly (ToolSpec & { id: SketchEditToolId })[] = [
+  { id: 'offset', label: 'Offset', shortcut: 'O', icon: <OffsetIcon className={ic} /> },
+  {
+    id: 'convert',
+    label: 'Convert entities',
+    short: 'Convert',
+    shortcut: 'V',
+    icon: <Link2 className={ic} strokeWidth={1.75} />,
+  },
+  {
+    id: 'trim',
+    label: 'Trim',
+    shortcut: 'T',
+    icon: <Scissors className={ic} strokeWidth={1.75} />,
+  },
+  {
+    id: 'extend',
+    label: 'Extend',
+    shortcut: 'E',
+    icon: <MoveRight className={ic} strokeWidth={1.75} />,
+  },
+  {
+    id: 'sketchFillet',
+    label: 'Sketch fillet',
+    short: 'Fillet',
+    shortcut: 'F',
+    icon: <SquareRoundCorner className={ic} strokeWidth={1.75} />,
+  },
+  {
+    id: 'sketchChamfer',
+    label: 'Sketch chamfer',
+    short: 'Chamfer',
+    shortcut: '⇧F',
+    icon: <ChamferIcon className={ic} />,
+  },
+  {
+    id: 'sketchMirror',
+    label: 'Mirror',
+    shortcut: 'M',
+    icon: <FlipHorizontal2 className={ic} strokeWidth={1.75} />,
+  },
+];
+
+const allSketchTools: readonly ToolSpec[] = [...sketchTools, ...sketchEditTools];
+
+/** `⇧C` -> shift + c; `O` -> o. */
+function matchesShortcut(e: KeyboardEvent, shortcut: string | undefined): boolean {
+  if (!shortcut) return false;
+  const shift = shortcut.startsWith('⇧');
+  return e.shiftKey === shift && e.key.toLowerCase() === shortcut.replace('⇧', '').toLowerCase();
+}
 
 export interface SketchToolbarProps {
   activeTool: SketchToolId | null;
@@ -123,6 +212,8 @@ export interface SketchToolbarProps {
   /** Attach L / A / Shift+C / D / X / Esc listeners on `window` (default true). */
   shortcuts?: boolean;
   layout?: 'bar' | 'rail';
+  /** `touch`: a short text label under every icon (no hover tooltips on touch) and 56 px targets. */
+  density?: 'compact' | 'touch';
   className?: string;
 }
 
@@ -150,6 +241,7 @@ export function SketchToolbar({
   onEscape,
   shortcuts = true,
   layout = 'bar',
+  density = 'compact',
   className,
 }: SketchToolbarProps) {
   const rail = layout === 'rail';
@@ -158,6 +250,7 @@ export function SketchToolbar({
   const [menu, setMenu] = useState<
     | { kind: 'variants'; tool: ToolSpec; anchor: HTMLElement }
     | { kind: 'constraints'; anchor: HTMLElement }
+    | { kind: 'edit'; anchor: HTMLElement }
     | null
   >(null);
   const pressTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -176,7 +269,7 @@ export function SketchToolbar({
       if (e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target) || e.defaultPrevented) return;
       const L = live.current;
       const run = (id: SketchToolId) => {
-        const spec = sketchTools.find((t) => t.id === id);
+        const spec = allSketchTools.find((t) => t.id === id);
         if (!spec) return;
         e.preventDefault();
         const cur = L.chosen[id] ?? spec.variants?.[0]?.id;
@@ -192,13 +285,12 @@ export function SketchToolbar({
           e.preventDefault();
           L.onTool(null);
         } else L.onEscape?.();
-      } else if (!e.shiftKey && e.key.toLowerCase() === 'l') run('line');
-      else if (!e.shiftKey && e.key.toLowerCase() === 'a') run('arc');
-      else if (e.shiftKey && e.key.toLowerCase() === 'c') run('circle');
-      else if (!e.shiftKey && e.key.toLowerCase() === 'd') run('dimension');
-      else if (!e.shiftKey && e.key.toLowerCase() === 'x') {
+      } else if (!e.shiftKey && e.key.toLowerCase() === 'x') {
         e.preventDefault();
         L.onToggleConstruction();
+      } else {
+        const hit = allSketchTools.find((t) => matchesShortcut(e, t.shortcut));
+        if (hit) run(hit.id);
       }
     }
     window.addEventListener('keydown', onKey);
@@ -210,7 +302,16 @@ export function SketchToolbar({
   const enabled = (k: GeometricConstraintKind) =>
     !enabledConstraints || enabledConstraints.includes(k);
   const side = rail ? 'right' : 'top';
-  const size = rail ? 'size-11' : 'size-10';
+  const activeEdit = sketchEditTools.find((t) => t.id === activeTool);
+  const touch = density === 'touch';
+  const size = touch ? 'h-14 w-16 flex-col gap-0.5' : rail ? 'size-11' : 'size-10';
+  const wide = touch ? size : rail ? size : 'h-10 w-12 gap-0.5';
+  const lbl = (t: string) =>
+    touch ? (
+      <span aria-hidden data-testid="tool-label" className="text-2xs leading-3 font-medium">
+        {t}
+      </span>
+    ) : null;
 
   const menuItems: MenuItem[] =
     menu?.kind === 'variants'
@@ -220,13 +321,22 @@ export function SketchToolbar({
           checked: (chosen[menu.tool.id] ?? menu.tool.variants?.[0]?.id) === v.id,
           onSelect: () => pick(menu.tool, v.id),
         }))
-      : geometricConstraintKinds.map((k) => ({
-          id: k,
-          label: constraintLabels[k],
-          disabled: !enabled(k) || !onConstraint,
-          icon: <ConstraintGlyph kind={k} size={18} tone="plain" />,
-          onSelect: () => onConstraint?.(k),
-        }));
+      : menu?.kind === 'edit'
+        ? sketchEditTools.map((t) => ({
+            id: t.id,
+            label: t.label,
+            icon: t.icon,
+            shortcut: t.shortcut,
+            checked: activeTool === t.id,
+            onSelect: () => onTool(t.id),
+          }))
+        : geometricConstraintKinds.map((k) => ({
+            id: k,
+            label: constraintLabels[k],
+            disabled: !enabled(k) || !onConstraint,
+            icon: <ConstraintGlyph kind={k} size={18} tone="plain" />,
+            onSelect: () => onConstraint?.(k),
+          }));
 
   return (
     <>
@@ -235,6 +345,7 @@ export function SketchToolbar({
         orientation={rail ? 'vertical' : 'horizontal'}
         className={cn(
           'w-panel pointer-events-auto flex items-center gap-0.5 rounded-panel p-1.5',
+          touch && !rail && 'max-w-full flex-wrap justify-center',
           rail && 'flex-col',
           className,
         )}
@@ -289,6 +400,7 @@ export function SketchToolbar({
                 className={cn(itemBase, size)}
               >
                 {spec.icon}
+                {lbl(spec.short ?? spec.label)}
                 {spec.variants ? (
                   <span
                     aria-hidden
@@ -299,6 +411,20 @@ export function SketchToolbar({
             </Tooltip>
           );
         })}
+        <Tooltip content="Offset, convert, trim, fillet, mirror" side={side}>
+          <RToolbar.Button
+            aria-label="Edit"
+            aria-haspopup="menu"
+            aria-expanded={menu?.kind === 'edit'}
+            aria-pressed={activeEdit !== undefined}
+            data-tool-group="edit"
+            onClick={(e) => setMenu({ kind: 'edit', anchor: e.currentTarget })}
+            className={cn(itemBase, wide)}
+          >
+            {activeEdit?.icon ?? <Pencil className={ic} strokeWidth={1.75} aria-hidden />}
+            {touch ? lbl('Edit') : <ChevronDown className="size-3" aria-hidden />}
+          </RToolbar.Button>
+        </Tooltip>
         <RToolbar.Separator
           className={cn('shrink-0 bg-border', rail ? 'mx-1.5 my-1 h-px w-auto' : 'mx-1 h-6 w-px')}
         />
@@ -310,6 +436,7 @@ export function SketchToolbar({
             className={cn(itemBase, size)}
           >
             <Construction className={ic} strokeWidth={1.75} aria-hidden />
+            {lbl('Construction')}
           </RToolbar.Button>
         </Tooltip>
         <Tooltip content="Constraints" side={side}>
@@ -318,10 +445,10 @@ export function SketchToolbar({
             aria-haspopup="menu"
             aria-expanded={menu?.kind === 'constraints'}
             onClick={(e) => setMenu({ kind: 'constraints', anchor: e.currentTarget })}
-            className={cn(itemBase, rail ? size : 'h-10 w-12 gap-0.5')}
+            className={cn(itemBase, wide)}
           >
             <ConstraintGlyph kind="parallel" size={20} tone="plain" />
-            <ChevronDown className="size-3" aria-hidden />
+            {touch ? lbl('Constraints') : <ChevronDown className="size-3" aria-hidden />}
           </RToolbar.Button>
         </Tooltip>
         <RToolbar.Separator
@@ -332,7 +459,11 @@ export function SketchToolbar({
             variant="primary"
             icon={<Check className="size-4" aria-hidden />}
             onClick={onFinish}
-            className={cn('h-10 rounded-control px-3.5', rail && 'size-11 px-0')}
+            className={cn(
+              'h-10 rounded-control px-3.5',
+              touch && 'h-14',
+              rail && (touch ? 'h-14 w-16 px-0' : 'size-11 px-0'),
+            )}
             aria-label="Finish sketch"
           >
             {rail ? null : 'Finish'}
@@ -342,7 +473,13 @@ export function SketchToolbar({
       {menu ? (
         <Menu
           anchor={menu.anchor}
-          label={menu.kind === 'variants' ? `${menu.tool.label} options` : 'Constraints'}
+          label={
+            menu.kind === 'variants'
+              ? `${menu.tool.label} options`
+              : menu.kind === 'edit'
+                ? 'Edit tools'
+                : 'Constraints'
+          }
           items={menuItems}
           placement={rail ? 'right-start' : 'top-start'}
           onDismiss={() => setMenu(null)}

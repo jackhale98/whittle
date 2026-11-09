@@ -34,15 +34,15 @@ for (const theme of ['light', 'dark'] as const) {
       test.skip(info.project.name !== 'desktop');
       await shell(page, theme);
       const b = bar(page);
-      await expect(b.getByRole('button')).toHaveCount(6);
+      await expect(b.getByRole('button')).toHaveCount(8);
       const box = await b.boundingBox();
       expect(box?.width ?? 0).toBeLessThanOrEqual(LEGACY_BAR_WIDTH);
-      await expect(page.getByTestId('flyout-indicator')).toHaveCount(3);
+      await expect(page.getByTestId('flyout-indicator')).toHaveCount(5);
       await expect(b).toHaveScreenshot(`cb-desktop-${theme}-collapsed.png`);
       await noSeriousViolations(page);
     });
 
-    for (const group of ['solid', 'modify', 'inspect'] as const) {
+    for (const group of ['solid', 'modify', 'pattern', 'reference', 'inspect'] as const) {
       test(`${group} flyout open`, async ({ page }, info) => {
         test.skip(info.project.name !== 'desktop');
         await shell(page, theme);
@@ -81,7 +81,7 @@ test.describe('command bar behaviour', () => {
     await expect(flyout).toBeVisible();
     await expect(flyout.locator('[data-tool="extrude"]')).toBeFocused();
     await page.keyboard.press('ArrowDown');
-    await expect(flyout.locator('[data-tool="pushPull"]')).toBeFocused();
+    await expect(flyout.locator('[data-tool="extrudeCut"]')).toBeFocused();
     await page.keyboard.press('Escape');
     await expect(flyout).toBeHidden();
     await expect(solid).toBeFocused();
@@ -107,7 +107,7 @@ test.describe('command bar behaviour', () => {
     await page.locator('[data-tool-group="modify"]').click();
     const shellTool = page.locator('[data-tool="shell"]');
     await expect(shellTool).toHaveAttribute('aria-disabled', 'true');
-    await expect(shellTool).toContainText('Coming in M3');
+    await expect(shellTool).toContainText('Not available yet');
     await expect(page.getByText('Coming in M1')).toHaveCount(0);
   });
 

@@ -91,3 +91,7 @@
 ### M3 — Advanced part features (modeling workstream)
 
 - Regen engine: inputs for shell, draft, sweep (path edges chained in order), loft, mirror, linear/circular patterns (cached tool solids of the copied features, `skip` and counts validated), hole (frames on the face into the material, sizes from the new ISO/ANSI hole tables in `@whittle/document`, explicit values override) and cosmetic threads; reference geometry (`axis`, `point`, the new plane definitions and `flip`) computed in TypeScript from fingerprints and exact measurement; linked sketch entities re-projected before each solve, a lost source "needs attention" with the entity id; fillet/chamfer `propagate` passes through; pattern instances never rebind to another instance (ADR-pending).
+
+### M3 — UI
+
+- UI: Extruded cut and Revolved cut tools, count-and-chevron group buttons on the tablet rail, labelled touch sketch toolbar; inspectors for shell, draft, sweep, loft, mirror, patterns (skip toggles), hole wizard (table-resolved, diameter override), thread, axis, point and the new plane definitions; fillet/chamfer propagate switch; Pattern and Reference tool groups; sketch offset/convert/trim/extend/fillet/chamfer/mirror chrome and linked-geometry panel (ADR-pending).

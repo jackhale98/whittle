@@ -57,7 +57,7 @@ describe('shells with data', () => {
     await user.click(screen.getByRole('button', { name: 'Extrude, Solid tools' }));
     const extrude0 = within(screen.getByRole('group', { name: 'Solid tools' })).getByRole(
       'button',
-      { name: /Extrude/ },
+      { name: /^Extrude(?!d)/ },
     );
     expect(extrude0).toHaveAttribute('aria-disabled', 'true');
     await user.click(extrude0);
@@ -76,7 +76,7 @@ describe('shells with data', () => {
     );
     await user.click(screen.getByRole('button', { name: 'Extrude, Solid tools' }));
     const solid = within(screen.getByRole('group', { name: 'Solid tools' }));
-    const extrude = solid.getByRole('button', { name: /Extrude/ });
+    const extrude = solid.getByRole('button', { name: /^Extrude(?!d)/ });
     expect(extrude).not.toHaveAttribute('aria-disabled');
     expect(extrude).toHaveAttribute('aria-pressed', 'true');
     await user.click(extrude);

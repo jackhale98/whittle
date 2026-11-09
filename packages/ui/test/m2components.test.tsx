@@ -168,9 +168,9 @@ describe('ToolRail', () => {
     expect(solid).toHaveAttribute('aria-expanded', 'true');
     const flyout = screen.getByRole('group', { name: 'Solid tools' });
     // not wired -> disabled with a hint and no callback
-    await userEvent.click(within(flyout).getByRole('button', { name: /Revolve/ }));
+    await userEvent.click(within(flyout).getByRole('button', { name: /^Revolve(?!d)/ }));
     expect(onTool).not.toHaveBeenLastCalledWith('revolve');
-    await userEvent.click(within(flyout).getByRole('button', { name: /Extrude/ }));
+    await userEvent.click(within(flyout).getByRole('button', { name: /^Extrude(?!d)/ }));
     expect(onTool).toHaveBeenLastCalledWith('extrude');
     expect(screen.queryByRole('group', { name: 'Solid tools' })).toBeNull();
   });

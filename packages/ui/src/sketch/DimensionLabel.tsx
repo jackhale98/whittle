@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ExpressionInput } from '../components/ExpressionInput';
 import { cn } from '../components/primitives';
 import { defaultFormatValue, type FormatValue } from '../format';
+import { ConstraintGlyph } from './ConstraintGlyph';
 
 type DimKind = Extract<
   SketchConstraintKind,
@@ -196,7 +197,7 @@ export function DimensionLabel({
       style={pos}
       data-kind={kind}
       data-driving={driving}
-      aria-label={`${driving ? 'Dimension' : 'Reference dimension'}: ${prefix[kind] ?? ''}${text}. ${driving ? 'Press Enter to edit.' : 'Measured, not editable.'}`}
+      aria-label={`${kind === 'offset' ? (driving ? 'Offset dimension' : 'Reference offset') : driving ? 'Dimension' : 'Reference dimension'}: ${prefix[kind] ?? ''}${text}. ${driving ? 'Press Enter to edit.' : 'Measured, not editable.'}`}
       aria-pressed={selected}
       onClick={() => (driving ? setEditing(true) : onSelect?.())}
       className={cn(
@@ -214,6 +215,14 @@ export function DimensionLabel({
       )}
     >
       {driving ? null : '('}
+      {kind === 'offset' ? (
+        <ConstraintGlyph
+          kind="offset"
+          size={14}
+          tone="plain"
+          className="mr-1 inline-block align-[-3px]"
+        />
+      ) : null}
       {prefix[kind]}
       {text}
       {driving ? null : ')'}

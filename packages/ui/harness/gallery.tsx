@@ -46,6 +46,7 @@ import {
   sampleParams,
   sampleStatuses,
 } from './fixtures';
+import { M3Gallery } from './m3Gallery';
 import { SyncGallery } from './syncGallery';
 
 type Tier = 'desktop' | 'tablet' | 'phone';
@@ -295,6 +296,7 @@ function SketchSection({ tier }: { tier: Tier }) {
         <div className="flex">
           <SketchToolbar
             layout={tier === 'phone' ? 'rail' : 'bar'}
+            density={tier === 'desktop' ? 'compact' : 'touch'}
             activeTool={tool}
             onTool={(t) => setTool(t)}
             construction={construction}
@@ -573,6 +575,14 @@ export function Gallery({
             />
           </div>
         );
+      case 'm3-features':
+      case 'm3-patterns':
+      case 'm3-reference':
+      case 'm3-hole':
+      case 'm3-sketch':
+      case 'm3-tree':
+      case 'm3-bar':
+        return <M3Gallery section={section} tier={tier} />;
       case 'sync':
       case 'connections':
       case 'versions':

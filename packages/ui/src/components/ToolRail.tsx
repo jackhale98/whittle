@@ -1,5 +1,5 @@
 import * as RToolbar from '@radix-ui/react-toolbar';
-import { Ellipsis } from 'lucide-react';
+import { ChevronRight, Ellipsis } from 'lucide-react';
 import { m } from 'motion/react';
 import { useEffect, useRef, useState } from 'react';
 import { useSpring } from '../motion';
@@ -126,9 +126,11 @@ export function ToolRail({
               {single ? null : (
                 <span
                   aria-hidden
-                  className="absolute right-1.5 bottom-1.5 size-0 border-t-[5px] border-l-[5px] border-t-transparent border-l-current opacity-50"
-                  style={{ transform: 'rotate(90deg)' }}
-                />
+                  data-testid="group-chevron"
+                  className="absolute top-1.5 right-1 flex size-4 items-center justify-center rounded-full bg-surface-3 text-fg-muted"
+                >
+                  <ChevronRight className="size-3" strokeWidth={2.5} />
+                </span>
               )}
             </RToolbar.Button>
           );

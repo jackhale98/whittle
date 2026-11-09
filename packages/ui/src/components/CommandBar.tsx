@@ -23,7 +23,7 @@ import {
 export interface CommandBarProps {
   /** Highlights a tool. */
   activeTool?: ToolId | null;
-  /** Tools that are wired up; every other tool stays disabled with its own hint ("Coming in M3"). */
+  /** Tools that are wired up; every other tool stays disabled with its own hint. */
   enabledTools?: readonly ToolId[];
   onTool?(tool: ToolId): void;
   /** "More" opens the command palette. */
