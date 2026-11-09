@@ -274,3 +274,98 @@ The SPACEMOUSE mark is live; use it only to state compatibility.
   - alternative-vendor devices, such as SpaceControl (an old SPACE MOUSE filer per [Justia](https://trademark.justia.com/owners/space-control-gesellschaft-fur-3d-systeme-mbh-603957)) and current competitors;
   - 3Dconnexion patents on the radial-menu button or on puck mechanics;
   - Onshape's current official mechanism, beyond the community reports above.
+
+## B6. 3D view rotation (orbit): techniques, CAD defaults, patents, and a recommendation for Wren
+
+### Takeaway
+Three findings bear directly on Wren's current setup, which orbits a fixed last-fit-centre target with turntable rotation, left-drag to orbit and 0.18 s smoothing:
+
+- **The pivot is the biggest issue.** Autodesk's Safe 3D Navigation work found that an off-centre or invisible pivot makes orbit feel like zoom or pan and confuses users. Making the pivot visible "eliminated" those confusions in their tests.
+- **Leading CAD tools pick the pivot from what is under the cursor.** Onshape orbits about the geometry under the cursor, or the model centre over empty space. SolidWorks and NX let you middle-click or hold on geometry to set the pivot.
+- **Turntable is defensible.** Fixed-up-vector rotation is a recognised technique (the "Fixed Trackball"). Arcball is mathematically clean but criticised as discontinuous. Usability improves when the fixed axis matches the object's intrinsic up axis.
+
+### Cited Findings
+**Rotation techniques**
+- **Shoemake, ARCBALL (Graphics Interface '92).** A mouse-driven quaternion rotation controller with an optional axis-constraint mode. Shoemake reports users found it easier than the Virtual Sphere, its "nearest rival", and that it is simpler to implement. The arc angle is doubled, so one drag across the ball gives 360°. — [Shoemake GI'92 PDF](https://graphicsinterface.org/wp-content/uploads/gi1992-18.pdf); [Shoemake 1992 mirror](https://krotalias.github.io/cwdc/13-webgl/extras/doc/shoemake92-arcball.pdf)
+- **Henriksen, Sporring & Hornbæk, "Virtual Trackballs Revisited"** (IEEE TVCG 10(2):206–216, 2004, DOI 10.1109/TVCG.2004.1260772). A mathematical analysis rather than a new experiment:
+  - Chen et al.'s 1988 trackball does not rotate along the intended great-circle arc; the paper offers a correction.
+  - Shoemake's Arcball is a special case of Chen's design, and it is inhomogeneous and discontinuous, which affects usability.
+  - The paper also reviews Bell's trackball and summarises earlier usability studies.
+
+  — [Henriksen et al. (CORE)](https://core.ac.uk/download/269088256.pdf); [researchr record](https://researchr.org/publication/HenriksenSH04)
+- **Bade, Ritter & Preim (Smart Graphics 2005, LNCS 3638:138–150).** They set out four principles for "predictable" rotation and compared Arcball, Bell's Virtual Trackball, the Two-Axis Valuator, and the Two-Axis Valuator with a fixed up vector (the "Fixed Trackball", which is turntable rotation). A later paper summarising this work says controllers that do well for orienting a model do not do as well for inspecting it. — [Bade et al. PDF (typeset)](https://typeset.io/pdf/usability-comparison-of-mouse-based-interaction-techniques-93urfv7o3m.pdf); [Rybicki et al. 2016 (UCT)](https://people.cs.uct.ac.za/~Jgain/wp-content/papercite-data/pdf/rybicki2016.pdf)
+- **Visual Computer 2021, on fixed-axis trackballs.** Consistency between the axis the technique fixes and the object's intrinsic axis improves usability. — [Springer, s00371-021-02394-x](https://link.springer.com/article/10.1007/s00371-021-02394-x)
+- **Hinckley, Tullio, Pausch, Proffitt & Kassell, "Usability Analysis of 3D Rotation Techniques" (UIST '97).** In an orientation-matching task, 3D orientation input was up to 36% faster than the mouse-driven Virtual Sphere and Arcball, with no statistically detectable loss of accuracy. The study also documents the problems first-time users hit. — [Microsoft Research](https://www.microsoft.com/en-us/research/?p=151164); [UVA record](https://uva.theopenscholar.com/dennis-proffitt/publications/usability-analysis-3d-rotation-techniques)
+
+**Autodesk Research on navigation**
+- **Fitzmaurice, Matejka, Mordatch, Khan & Kurtenbach, "Safe 3D Navigation"** (I3D 2008, pp. 7–15, DOI 10.1145/1342250.1342252). Read in full text. — [Autodesk Research PDF](https://research.autodesk.com/app/uploads/2023/03/safe-3d-navigation.pdf_recHpo5niNlpDtQQu.pdf); [Autodesk Research page](https://www.research.autodesk.com/publications/safe-3d-navigation/)
+  - *Failure modes of orbit:*
+    - If the pivot is off-screen, orbit "has a similar effect as Zoom".
+    - If the pivot is beyond the object, orbit acts like pan.
+    - If the pivot is in front of the object, the user ends up looking at empty space.
+    - Users said things like "oh, I must have picked zoom by accident".
+  - *Usual default:* the orbit pivot "is generally at the center of the scene or at the center of the currently selected object". Many common operations move it away from there and cause "great confusion".
+  - *Visible pivot:* a labelled green ball, with depth cues for in front of, on, or behind the surface and three "belt lines" that make rotation visible. It "had an immediate positive effect in all of our user tests… confusions between commands… were eliminated". The ball is enlarged and made transparent during operations so it occludes less, and hidden when the command ends.
+  - *Pivot placement:* the Center tool lets users pick a point on the model, which then moves to the centre of the canvas. The pivot is "sticky" to the model; if that part goes off screen, the pivot is re-centred at the same depth. Point zoom zooms at the cursor location.
+  - *Pan:* casts a ray so the clicked geometry stays locked under the cursor, imitating 2D panning.
+  - *Bounds:* zoom limits keep the object visible.
+  - *Orientation:* the ViewCube shows when the scene is upside down. It gives animated transitions to standard views and a Home view, and the authors argue it preserves orientation better than a grid or triad.
+  - *Outcome:* these features shipped in six commercial Autodesk 3D applications.
+  - *SteeringWheels:* the wheels are tracking menus that follow the cursor. Six wheels are described; the novice "View Object" wheel has Center, Zoom, Orbit and Rewind, and there are cursor-sized "mini wheels".
+- **HoverCam (Khan et al., 2005).** Combines tumbling, panning and zooming into one operation for inspecting objects up close, and picks the pivot automatically. — [Autodesk Research: HoverCam](https://www-int.autodesk.com/research/publications/hovercam); [Trindade & Raposo 2014 (PUC-Rio)](https://web.tecgraf.puc-rio.br/~abraposo/pubs/MTAP2014/Versao_Journal_Nov2014.pdf)
+- **ViewCube paper.** Khan et al., I3D 2008. — [Autodesk Research: ViewCube](https://www.research.autodesk.com/publications/viewcube-a-3d-orientation-indicator-and-controller/); [PDF](https://research.autodesk.com/app/uploads/2023/03/viewcube-a-3d-orientation.pdf_recsg8BsEjf1BeIbZ.pdf)
+
+**What major CAD tools do by default**
+- **Onshape.** The default scheme in current help material is right-drag to rotate, middle-drag to pan and scroll to zoom. A forum thread title, "Mouse rotate view moved from the middle mouse button!", indicates the mapping changed at some point. Pivot, per Onshape staff on the forum: over geometry the view rotates about the mouse location; over empty space it rotates about the model centre. Onshape "picks up nearby geometry to rotate around". Users report that Shift+middle-click places an orange pivot ball (unofficial). — [Onshape forum (staff answer)](https://forum.onshape.com/discussion/comment/12178); [Onshape forum: rotate view question](https://forum.onshape.com/discussion/14729/rotate-view-question); [basic navigation guide](https://sites.google.com/spfk12.org/mrshollenback/programs/onshape/basic-navigation)
+- **SolidWorks.** Middle-drag rotates. To rotate about a vertex, edge or face, middle-click the entity and then middle-drag; the entity highlights and a rotate cursor appears. — [SOLIDWORKS help: Rotate View](https://help.solidworks.com/2017/English/solidworks/sldworks/t_rotate_view.htm); [SOLIDWORKS 2014: middle mouse button](https://help.solidworks.com/2014/English/SolidWorks/sldworks/r_Middle_Mouse_Button.htm); [SOLIDWORKS blog: GPS for SOLIDWORKS](https://blogs.solidworks.com/tech/2018/08/gps-for-solidworks-how-to-navigate-around-your-models.html)
+- **Fusion 360.** By default middle-drag pans, not orbits. Users switch the "Pan, Zoom, Orbit Shortcuts" preference to the SolidWorks preset to get middle-drag orbit. Forum users say a single click on the model sets the orbit centre. — [GrabCAD tutorial](https://print.grabcad.com/tutorials/activate-orbit-rotate-feature-via-mouse-in-fusion-360--1); [Autodesk forum](https://forums.autodesk.com/t5/fusion-design-validate-document/rotate-orbit-screen-in-single-plane/m-p/8523499/highlight/true)
+- **Autodesk Inventor.** When the model is outside the view, "the pivot point is the cursor location". — [Inventor What's New](https://help.autodesk.com/cloudhelp/2023/ENU/Inventor-WhatsNew/files/GUID-5DF5F44E-5AFB-42E9-B9B5-704D382A31A7.htm)
+- **Navisworks.** Ctrl+click-and-drag sets the pivot on the model. — [Navisworks Orbit tool](https://help.autodesk.com/cloudhelp/2025/ENU/Navisworks/files/GUID-B3506E68-D2FA-4F5C-A767-7AB11DCAE665.htm)
+- **Siemens NX.** Middle-drag rotates. Pressing and holding the middle button over a point makes it the rotation point; a "Rotation point delay" preference sets how long the hold takes, and can be 0. These sources are forums, not official documentation. — [Eng-Tips: rotating about click point](https://www.eng-tips.com/threads/rotating-about-click-point-nx7-5.343544); [MCAD Central: temporary rotation point](https://www.mcadcentral.com/threads/temporary-rotation-point-in-nx5.26409); [Janus Engineering NX tips](https://blog.janus-engineering.com/en_en/details/article/tips-for-flexible-movement-in-virtual-spaces-in-nx-cam/)
+- **Rhino.** Right-drag rotates (user report). Rotation style is set under Tools > Options > View > Rotate, with these options:
+  - "Rotate around world axes" (turntable-like);
+  - "Rotate relative to view" (trackball-like);
+  - "Rotate around CPlane Z-axis" (added in Rhino 6);
+  - "Classic V2".
+
+  Rhino 8 users report the view orbiting around selected objects, which an advanced setting can turn off. — [Rhino 8 Options: View](https://docs.mcneel.com/rhino/8/help/en-us/options/view.htm); [Rhino 7 Options: View](https://docs.mcneel.com/rhino/7/help/en-us/options/view.htm); [McNeel Discourse](https://discourse.mcneel.com/t/disable-orbit-around-selected-object/218094)
+- **Zoo Design Studio's comparison table** lists middle-drag orbit for SolidWorks and Onshape; for Onshape it also lists Ctrl+right-drag and right-drag. The table has no column headers, so this mapping is my reading of it. — [Zoo docs: modeling settings](https://docs.zoo.dev/docs/zoo-design-studio/features/workspace/settings/user-settings/modeling)
+
+**Patents on pivot and point-of-interest orbit**
+- **US 10,025,454 B2**, "Navigation system for a 3D virtual scene" (Autodesk; inventors Fitzmaurice, Matejka, Kurtenbach and Khan). This is the SteeringWheels patent; its provisional applications are titled "Steering Wheels" (60/975,366, 26 Sep 2007; 61/022,640, 22 Jan 2008).
+  - Dates: priority 26 Sep 2007, filed 28 Aug 2008, granted 17 Jul 2018.
+  - Status: **Active**, with anticipated expiry **3 Mar 2030**.
+  - Scope from the description: the Center tool sets a 3D point on the model, which the orbit tool then uses as its pivot.
+  - Claims were not read.
+
+  — [Google Patents US10025454](https://patents.google.com/patent/US10025454); [USPTO PDF 9280257 (related "Navigation system for a 3D virtual scene")](https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/9280257)
+- **US 7,782,319** (ViewCube) is active until about 2029-03-06, and **US 7,814,436** (orientation indicator) expired on 2025-12-11. Both are covered in section A3. — [Google Patents US7782319](https://patents.google.com/patent/US7782319); [Google Patents US7814436](https://patents.google.com/patent/US7814436)
+
+### Inferences
+**Recommendation for Wren's defaults.** This is a proposal built on the findings above. It is not a measured result.
+
+1. **Pivot.** On pointer-down for an orbit, raycast under the cursor and orbit about the hit point, as Onshape does and as NX, SolidWorks and Navisworks allow on demand. On a miss, use the centre of the visible model's bounding box, not the last fit centre. Draw a small pivot marker during the drag and hide it on release; that marker was the most effective single fix in the Safe 3D Navigation tests. If the pivot leaves the screen, re-centre it at the same depth. An optional "orbit about selection" setting would match Rhino and Safe 3D Navigation.
+2. **Rotation model.** Keep turntable as the default, with the vertical axis locked to the model's up axis (Z for Z-up CAD). The 2021 fixed-axis finding supports matching the locked axis to the object's intrinsic up axis. Replace the hard polar clamp with continuous rotation over the poles, flipping the up vector when the view goes upside down, because users rotating to see the underside hit the clamp as a wall. Offer "free (trackball)" as a setting, as Rhino does with "Rotate relative to view". Rotation speed should not depend on Wren's zoom level; no source was found on gain.
+3. **Buttons.** CAD convention reserves left-drag for selection and box-select, so left-drag orbit is likely a major part of why Wren "feels off". Ship input presets:
+   - Default (Onshape-like): right-drag orbits, middle-drag pans.
+   - SolidWorks/NX: middle-drag orbits, Ctrl+middle pans.
+   - Fusion: Shift+middle orbits, middle pans.
+   - Rhino: right-drag orbits, Shift+right pans.
+
+   The preset names are nominative use (see A2). A right-click without a drag should still open the context or radial menu, using a few-pixel drag threshold to tell the two apart.
+4. **Smoothing.** 0.18 s damping during a drag adds perceived lag to a direct-manipulation task. Track 1:1 while the pointer is down, and use damping or inertia only for programmatic camera moves and transitions such as fit and standard views. This is an engineering inference; no study was found that quantifies orbit smoothing.
+5. **Pan and zoom.** Lock the clicked geometry under the cursor during pan, as Safe 3D Navigation does with its ray cast. Zoom about the point under the cursor.
+6. **IP.** Cursor-pivot orbit is shipped widely by SolidWorks, Onshape, NX, Navisworks and Inventor, which makes it unlikely to be uniquely claimable. US 10,025,454 is active, though, and covers SteeringWheels-style navigation, including a Center tool that sets the orbit pivot. Wren should not clone the wheel UI. A raycast pivot with a plain marker should have its claim scope checked by counsel before release.
+
+### Gaps
+- **Claims not read:** the claims of US 10,025,454 were not read, so I can't say whether a cursor-pivot raycast with a visible marker falls within them.
+- **Older patents not found:** I found no earlier patents specifically on "orbit about point under cursor".
+- **Fusion defaults:** no official Autodesk documentation confirmed Fusion's default orbit pivot. Onshape's Shift+middle-click pivot ball is user-reported only.
+- **Free vs turntable defaults:** I did not confirm whether SolidWorks, Onshape and NX rotate freely (trackball) or turntable by default.
+- **Evidence not found:**
+  - controlled studies of rotation gain (degrees per pixel) or of smoothing and latency for orbit;
+  - studies quantifying disorientation from free rotation and roll, beyond Safe 3D Navigation's qualitative observations.
+- **Not retrieved:**
+  - Bell's trackball as a primary source (it is described through Henriksen et al.);
+  - the numerical results of Bade et al. 2005;
+  - Khan 2007/2008, the ViewCube evaluation.

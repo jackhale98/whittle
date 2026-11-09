@@ -157,7 +157,7 @@ Likely marks or product-specific names:
 - **SolidWorks / Dassault:** SOLIDWORKS, 3DEXPERIENCE, FeatureManager, PropertyManager, CommandManager, ConfigurationManager, Instant3D, DimXpert, eDrawings, Treehouse.
 - **PTC:** Creo, Pro/ENGINEER, Wildfire, Flexible Modeling Extension, Mapkey.
 - **Siemens:** NX, Designcenter, Synchronous Technology, Design Copilot NX, possibly QuickPick.
-- **3Dconnexion:** SpaceMouse, CadMouse.
+- **3Dconnexion:** SpaceMouse, CadMouse, Space Navigator.
 
 Suggested generic names:
 - "feature history tree" / "history list"
@@ -294,3 +294,88 @@ These mechanisms are well documented. Users praise gestures and radial menus whe
 - **Zoom-to-cursor:** no sourced user commentary found for any of the three tools.
 - No sourced user opinions on hover pre-highlight (only documentation), and no data on the 4- vs 8- vs 12-gesture choice or on how many users enable gestures.
 - Found no sourced material on Creo's right-mouse hold behaviour or on Creo gesture equivalents beyond the mini toolbar.
+
+## Q6. How SolidWorks, Creo and NX orbit the view (rotation model, pivot, speed, constraints, keys)
+
+### Takeaway
+All three default to **free (trackball-style) rotation about a pivot**, not a turntable that keeps the world up axis level. Their pivot choices differ:
+- **SolidWorks** pivots about the model centroid when the whole model is in view, and otherwise about nearby visible geometry, shown in magenta. Middle-clicking an entity locks the pivot to that entity.
+- **Creo** pivots about a "Spin Center". It can be shown or hidden, or turned off so that the orientation center follows the pointer. Creo offers several orient types (Dynamic is the default; also Anchored, Delayed, Velocity and Fly Through).
+- **NX** uses a temporary rotation point while MB2 is held over geometry, after a hold delay that is configurable. A persistent rotate point can also be set.
+
+The documented failure mode is **a pivot that lands in empty space**, which makes the model slide or spin off screen (Creo forum, 2015). Freeform-modelling users ask for turntable mode because trackball orbit introduces roll.
+
+### Cited Findings
+
+**SolidWorks**
+- [doc] **Pivot.** Middle-drag rotates the view. With the whole model in view, the centre is the model centroid. Otherwise SolidWorks picks a point on visible geometry and highlights the entity and rotation point in magenta while rotating. — [SolidWorks Help 2021: Middle Mouse Button Functions](https://help.solidworks.com/2021/English/SolidWorks/sldworks/r_Middle_Mouse_Button.htm); [SolidWorks blog (J. Wilkinson, 2009, historical): "How do I manipulate my model view; let me count the ways"](https://blogs.solidworks.com/products/solidworks/how-do-i-manipulate-my-model-view-let-me-count-the-ways/)
+- [doc] **Rotate About Entity.** Single middle-click a vertex, edge, face, plane or sketch entity (it highlights), then middle-drag. Rotation is about that entity until the button is released. Not available while editing a sketch. — [SolidWorks Help 2017: Rotate View](https://help.solidworks.com/2017/English/solidworks/sldworks/t_rotate_view.htm); [SolidWorks blog 2009](https://blogs.solidworks.com/products/solidworks/how-do-i-manipulate-my-model-view-let-me-count-the-ways/)
+- [user] **Gotcha.** Middle-clicking and dragging immediately, without releasing, can switch the cursor to rotate-about-axis, "and that is when things can go haywire". — [SolidWorks forum thread 212048](https://forum.solidworks.com/thread/212048) (via search snippet)
+- [doc] **Roll.** Alt+middle-drag rolls the view parallel to the screen about the centroid. — [SolidWorks blog 2009](https://blogs.solidworks.com/products/solidworks/how-do-i-manipulate-my-model-view-let-me-count-the-ways/)
+- [doc] **Arrow keys.** Arrow keys rotate by a preset increment about the centroid, around the screen's horizontal and vertical axes. This is constrained screen-axis rotation. Shift+Arrow rotates 90°. Alt+Left/Right rolls by the increment.
+  - The increment is set in Tools > Options > System Options > View > View rotation and stored in radians in the API.
+  - A mouse-speed slider there sets rotation sensitivity (left is finer and slower). It applies to Rotate View, Rotate About Entity, Roll View and Turn Camera.
+  — [SolidWorks Help 2017: View Options (View rotation)](https://help.solidworks.com/2017/English/SolidWorks/sldworks/HIDD_OPTIONS_VIEW_ROTATION.htm); [SolidWorks API: swUserPreference View constants](https://help.solidworks.com/2023/English/api/swconst/SO_View.htm); [SolidWorks blog 2009](https://blogs.solidworks.com/products/solidworks/how-do-i-manipulate-my-model-view-let-me-count-the-ways/)
+- [reseller][historical] An older tutorial says the default arrow-key step is 15°. Current help does not state the default. — [Javelin 2013: Keyboard and mouse – controlling the viewport orientation](https://www.javelin-tech.com/blog/2013/11/solidworks-tutorial-keyboard-and-mouse-controlling-the-viewport-orientation/) (via search snippet)
+- [doc] **Reference triad.** Alt+click a triad axis rotates about that axis by the increment, and Ctrl+Alt+click rotates the opposite way. Shift+click rotates 90°, and Ctrl+Shift+click rotates 90° the opposite way. — [SolidWorks blog 2009](https://blogs.solidworks.com/products/solidworks/how-do-i-manipulate-my-model-view-let-me-count-the-ways/)
+- [doc] The only "reverse" option under View is for wheel zoom direction. No reverse-rotation or turntable ("rotate about floor") option was found. — [SolidWorks Help 2017: View Options](https://help.solidworks.com/2017/English/SolidWorks/sldworks/HIDD_OPTIONS_VIEW_ROTATION.htm)
+
+**Creo Parametric**
+- [doc] **Orient types (Creo 9 help).** In Orient Mode the orientation center is shown with an icon specific to each type:
+  - **Dynamic (default):** the view updates live and the model "spins freely about the Orientation Center".
+  - **Anchored:** rotation depends on the direction and distance from the mouse-down point. The icon changes colour at each 90° interval, and returning to the mouse-down point restores the starting view.
+  - **Delayed:** the orientation updates only on MMB release.
+  - **Velocity:** spin speed and direction depend on the pointer's distance from its start.
+  - **Fly Through:** flight-sim style, perspective only.
+  — [PTC Help Creo 9: About Orient Types](https://support.ptc.com/help/creo/creo_pma/r9.0/usascii/fundamentals/fundamentals/about_orient_types.html); [PTC Help Creo 9: About Orient Mode](https://support.ptc.com/help/creo/creo_pma/r9.0/usascii/fundamentals/fundamentals/About_Orient_Mode.html)
+- [doc] **Spin Center.**
+  - The orientation center is locked at the Spin Center. When the Spin Center is disabled, it can be anywhere in the graphics window.
+  - The Orient-mode right-click menu has Show/Hide Spin Center.
+  - The config option `spin_with_orientation_center no` turns off the orientation center during spin, pan and zoom. It cannot be disabled while in Orient mode.
+  — [PTC Help Creo 9: About Disabling the Orientation Center](https://support.ptc.com/help/creo/creo_pma/r9.0/usascii/fundamentals/fundamentals/About_Disabling_Orientation_Center.html); [PTC Help: Spin Center](https://support.ptc.com/help/creo/creo_plus/usascii/simulate/simulate/spin_center_on_off.html)
+- [user][historical, 2015, Creo 2] **The "flies away" complaint.** In "Model Spins Off Screen" (dgschaefer, 21 May 2015): on first opening a model, MMB-spinning on empty screen space makes the model slide off screen. The spin center seems to be "a couple of hundred feet behind my head". A Space Navigator does the same until MMB has been clicked on the model once. The poster had Spin Center turned off.
+  - Replies suggested clicking the model first, toggling the Spin Center on, or setting the spin center via Reorient > Preferences ("Point or vertex" / "Screen center"), plus a mapkey on F4 to set a new spin center.
+  - Another user confirmed: "I've definitely seen it."
+  - Imported models with floating coordinate systems were also suspected, but the poster saw it in "all models".
+  - No fix; the poster said it was "Probably not solvable".
+  — [PTC Community: Model Spins Off Screen](https://community.ptc.com/t5/3D-Part-Assembly-Design/Model-Spins-Off-Screen/m-p/373014)
+- [user] There are more threads on Spin Center behaviour with 3Dconnexion devices, and one user asks why a dynamic spin-center toggle was removed (no definitive answer). — [PTC Community: Spin center with 3Dconnexion mouse](https://community.ptc.com/t5/3D-Part-Assembly-Design/Spin-center-with-3Dconnexion-mouse/m-p/752128); [3Dconnexion forum](https://forum.3dconnexion.com/viewtopic.php?p=73349); [PTC Community: modeling spin center](https://community.ptc.com/t5/Part-Modeling/modeling-spin-center/m-p/197647) (snippets)
+
+**NX**
+- [user][historical, NX5–NX9] **Temporary rotate point.** Place the cursor over an edge, face or vertex and press and hold MB2. A temporary rotate point appears and is used while MB2 is held. In NX5 this needed about a 1 s hold without moving.
+  - An NX9 user complains that the centre resets as soon as the button is released.
+  - A reply points to the Customer Default Visualization > "Rotation point delay" (set to 0 to use the cursor position immediately). This is unconfirmed by Siemens text.
+  — [MCAD Central: temporary rotation point in NX5](https://www.mcadcentral.com/threads/temporary-rotation-point-in-nx5.26409); [Eng-Tips: View rotation centre NX9](https://eng-tips.com/threads/view-rotation-centre-nx9.374425) (snippet; 403 on fetch); [DRWE blog: Rotation point delay](https://www.drwe.de/en/blog/tips-tricks-8/rotation-point-delay-385) (title only)
+- [doc] **Persistent rotate point.** MB3 in the graphics area > "Set Rotate Point". Ctrl+F2 (Set Rotation Reference) is the default shortcut in NX 8.5. Siemens also documents setting the rotation point for a spaceball and creating hotkeys for Set/Clear Rotate Point. — [Siemens support: hotkey for Set/Clear Rotate Point](https://support.sw.siemens.com/en-US/okba/PL8010245/How-to-create-a-hotkey-for-Set-Rotation-Point-or-Clear-Rotate-Point/index.html); [Siemens support: rotation point for a spaceball](https://support.sw.siemens.com/en-US/okba/PL8009918/Setting-the-rotation-point-for-a-spaceball/index.html) (titles and snippets; login-gated)
+- [user] An Eng-Tips thread asks to "fix the rotation point to screen center", so some users want a fixed pivot. — [Eng-Tips](https://www.eng-tips.com/threads/fix-the-rotation-point-to-screen-center.336769) (title only)
+- [user][historical, 2011] **Constrained screen-axis rotation.** With the Rotate tool active, moving the cursor near the left or right edge of the window rotates about the view X axis, and near the top or bottom edge about the Y or Z axis. — [Unigraphics basics blog (2011)](https://unigraphicsbasicsnmaterial.blogspot.com/2011/11/rotating-view-of-model-in-3d-space.html)
+- [doc] Siemens has a KB article "How to rotate horizontally about the screen", which is login-gated, so its steps were not read. — [Siemens support PL8010760](https://support.sw.siemens.com/en-US/okba/PL8010760/How-to-rotate-horizontally-about-the-screen/index.html)
+- [user] F8 snaps to the nearest orthogonal view, and Ctrl+R is cited as a keyboard rotate. — [Eng-Tips: middle mouse button functionality](https://eng-tips.com/threads/middle-mouse-button-functionality.343652) (snippet)
+- [user] One user reports that MB2 shows "two concentric orange circles" (the rotate-point indicator) but does not rotate; no resolution. — [Eng-Tips: MB2 refuses to rotate](https://www.eng-tips.com/threads/middle-mouse-button-refuses-to-rotate-the-model.417215) (snippet)
+
+**Turntable vs trackball (cross-tool user sentiment)**
+- [user][2016–2025] In the Onshape forum thread "Can I change the orbit mode to something like SketchUp":
+  - Lee_Hesketh (2016): "Ideally I would like to see an option to switch between turntable and trackball", complaining that the view "rolls and tilts" and cannot be returned to the desired view.
+  - øyvind_kaurstad (2016): "MCAD"-style orbit is considered superior by some, but he prefers the other main type.
+  - 3dcad (2016): a user with a 3D mouse and MCAD background finds free orbit works well.
+  - Onshape added "Constrained Rotate" (Alt+right-drag), and by January 2025 a preference "Set default rotation behaviour to constrained rotate" (reported by Aydan_Boynton).
+  This is outside the three tools, but it is the clearest user statement of the trade-off. — [Onshape forum discussion 4285](https://forum.onshape.com/discussion/4285/can-i-change-the-orbit-mode-to-something-like-sketchup)
+- [user] Another Onshape thread explains the trackball roll problem: "the farther the mouse is from the center of the viewport, the more it influences the roll angle". It also gives the pivot rule: start on the model to rotate about that point, start on blank background to rotate about the model center. — [Onshape forum comment 19592](https://forum.onshape.com/discussion/comment/19592); [Onshape forum comment 86040](https://forum.onshape.com/discussion/comment/86040) (snippets)
+
+### Inferences
+- **Pivot rules users of these tools expect:**
+  - Orbit about geometry under the cursor when the drag starts on geometry.
+  - Fall back to the model or visible-geometry centroid when it starts on empty space. **Never** fall back to a world-origin or far-off point; the Creo "spin center a couple of hundred feet behind my head" failure is exactly the bug to avoid.
+  - Show the pivot during the drag (SolidWorks magenta highlight, Creo spin-center icon, NX orange circles).
+  - Allow an explicit entity pivot (SolidWorks middle-click entity, NX Set Rotate Point).
+- **Rotation model:** SolidWorks, Creo and NX all default to free (trackball-style) rotation. MCAD switchers will feel a turntable default as "off", and freeform/SketchUp users feel trackball as "off". Offer both: a free-orbit default for MCAD presets, plus a turntable or constrained option. Onshape's later change (2025 preference) shows demand for a toggle, not only a modifier key.
+- **Precise orientation:** provide keyboard arrow-key rotation about screen axes with a configurable step (an older default of 15° is reported for SolidWorks), Shift+Arrow for 90°, and Alt+Left/Right roll. These give constrained screen-axis rotation without a mouse. They map well to on-screen step buttons on iPad and phone.
+- **Sensitivity:** SolidWorks exposes a single speed slider for all rotate modes. Creo's Velocity and Anchored types show that some users prefer non-direct-manipulation modes, but Dynamic is the default. Wren should offer one sensitivity setting and make direct, proportional rotation the default.
+- **Inertia:** no evidence was found that any of the three tools spins on after release by default (see Gaps). MCAD users likely expect none; that is an inference.
+
+### Gaps
+- **Inertia:** found no source documenting whether SolidWorks, Creo or NX apply rotational inertia ("flick to spin") by default, or what users think about it.
+- No sourced numeric defaults for rotation sensitivity in any tool, and only an older, unverified 15° arrow-key default for SolidWorks. No Creo or NX arrow-key rotation step was found.
+- Current (2023+) NX rotation-point preferences and the steps of Siemens KB PL8010760 could not be read: the KB is login-gated and the Eng-Tips threads returned 403.
+- No source compared what SolidWorks, Creo and NX do when the drag starts on empty space while the model is only partly in view, beyond SolidWorks' "nearby visible geometry" rule.
+- Creo's handling of constrained rotation about screen axes (if it has any) was not found.
