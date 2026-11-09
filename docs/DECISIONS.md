@@ -1565,8 +1565,19 @@ know its copies' placements); a hole's through-all tool keeps the kernel's 10 m 
 8. **`propagate: false` refusals** are reworded in the app (`model/explain.ts`): the kernel's
    UNSUPPORTED_FEATURE `entityRefs` minus the selection are named from their persistent names
    ("the edge between the end face of Extrude 1 and the side of Arc 1 (Extrude 1)").
-9. **Reference-part E2E** (`e2e/support/reference-ui.ts`): sketches are drawn 4 % oversize about
+9. **Converted edges share corners.** `convertEntities` gained `join` (the app always passes it):
+   a line or arc end on an existing linked point reuses it, so four converted top edges are one
+   loop that Offset follows (rp07), not four separate lines each offset on its own side.
+10. **Coplanar stacked regions.** All regions pick at 0 px and the nearest to the camera wins; when
+    two are equally near (rp10's slot sketched on the XY plane over the plate's own sketch), the
+    smaller region is the one under the cursor (`orderStackedRegions`), as a hole region over its
+    face. Before, the order was whatever the viewport iterated, so the plate could be cut away.
+11. **Bundle.** The Edit-menu panels and the hole tables load on demand; the initial route is
+    243 kB gzip (budget 250 kB).
+12. **Reference-part E2E** (`e2e/support/reference-ui.ts`): sketches are drawn 4 % oversize about
    the sketch origin, then dimensioned with the Dimension tool; a dimension the drawn constraints
    already imply (DOF unchanged) is undone, and every sketch must end fully defined. Camera
-   framing uses `zoomTo` and the view keys only. Stages are the baseline with only that stage's
+   framing uses `zoomTo`, the view keys and `lookAtPlane` (orbiting to look into a bore). Every
+   pick goes to the point where the app itself (`resolveAt`) picks the named entity without a
+   "Which one?" tie, nudging a few px off seams as a person would. Stages are the baseline with only that stage's
    dimensions changed (the README's definition), so the previous stage is reset first.
