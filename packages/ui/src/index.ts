@@ -107,7 +107,17 @@ export {
   nudgeExpression,
   prettyUnits,
 } from './format';
-export { FeatureInspector, type FeatureInspectorProps } from './inspector/FeatureInspector';
+export {
+  FeatureInspector,
+  type FeatureInspectorProps,
+  HoleWizard,
+} from './inspector/FeatureInspector';
+export {
+  type ResolvedDim,
+  resolveHole,
+  rowOf,
+  tableDiameter,
+} from './inspector/holeResolve';
 export { type MaterialLibraryItem, SWATCHES, toMaterial } from './inspector/materials';
 export {
   defaultMassFormat,
@@ -211,15 +221,35 @@ export {
 } from './sketch/ConstraintGlyph';
 export { DimensionLabel, type DimensionLabelProps } from './sketch/DimensionLabel';
 export {
+  ConvertPanel,
+  type ConvertPanelProps,
+  LinkedEntityPanel,
+  type LinkedEntityPanelProps,
+  type LinkedState,
+  LinkedSwatch,
+  linkedEntityStyle,
+  OffsetPanel,
+  type OffsetPanelProps,
+  SketchCornerPanel,
+  type SketchCornerPanelProps,
+  type SketchEditToolId,
+  SketchMirrorPanel,
+  type SketchMirrorPanelProps,
+  TrimExtendPanel,
+  type TrimExtendPanelProps,
+} from './sketch/EditChrome';
+export {
   describeSketchStatus,
   SketchStatusChip,
   type SketchStatusChipProps,
 } from './sketch/SketchStatusChip';
 export {
   type GeometricConstraintKind,
+  type SketchDrawToolId,
   SketchToolbar,
   type SketchToolbarProps,
   type SketchToolId,
+  sketchEditTools,
   sketchTools,
 } from './sketch/SketchToolbar';
 export {

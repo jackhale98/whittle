@@ -170,7 +170,7 @@ test('Ctrl+K opens the palette, Esc closes it, focus returns', async ({ page }, 
   await expect(page.getByRole('combobox', { name: 'Search commands' })).toBeFocused();
   await page.waitForTimeout(100);
   await expect(page).toHaveScreenshot(`${tier}-light-palette.png`);
-  await page.keyboard.type('ext');
+  await page.keyboard.type('extruded');
   await expect(page.getByRole('option')).toHaveCount(1);
   await page.keyboard.press('Escape');
   await expect(dialog).toBeHidden();

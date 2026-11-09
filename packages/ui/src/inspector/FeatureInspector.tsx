@@ -1,6 +1,4 @@
 import type {
-  BodyOp,
-  BodyScope,
   BooleanFeature,
   ChamferFeature,
   EntityRef,
@@ -10,6 +8,9 @@ import type {
   Feature,
   FeatureStatus,
   FilletFeature,
+  HoleFeature,
+  HoleStandard,
+  HoleTable,
   ImportFeature,
   NamedDimension,
   PlaneFeature,
@@ -17,16 +18,28 @@ import type {
   PushPullFeature,
   RevolveFeature,
   SketchFeature,
-  UnresolvedRef,
 } from '@whittle/contracts';
 import { CircleAlert, PenLine, RefreshCw, TriangleAlert } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Field, Section, Segmented, Switch } from '../components/controls';
-import { ExpressionInput } from '../components/ExpressionInput';
 import { Button, cn } from '../components/primitives';
 import { featureMeta } from '../features/featureMeta';
 import type { FormatValue } from '../format';
-import { PickField } from './PickField';
+import { type Ctx, dirOptions, type Edit, ExprField, Pick, ScopeFields, without } from './fieldKit';
+import { HoleFields } from './HoleWizard';
+import {
+  AxisFields,
+  CircularPatternFields,
+  DraftFields,
+  LinearPatternFields,
+  LoftFields,
+  MirrorFields,
+  PlaneFields,
+  PointFields,
+  ShellFields,
+  SweepFields,
+  ThreadFields,
+} from './m3Fields';
 
 export interface FeatureInspectorProps {
   feature: Feature;
@@ -45,6 +58,10 @@ export interface FeatureInspectorProps {
   /** One-click re-pick of the first unresolved reference (needs-attention banner). */
   onRepick?(): void;
   describeRef?(ref: EntityRef): string;
+  /** Display name for a feature id (mirror / pattern sources). */
+  describeFeature?(id: string): string;
+  /** Hole and thread standards tables (data comes from packages/document). */
+  holeTables?: Partial<Record<HoleStandard, HoleTable>>;
   onEditSketch?(): void;
   /** Closes the inspector back to selection state. */
   onDone?(): void;
@@ -52,178 +69,6 @@ export interface FeatureInspectorProps {
   density?: 'compact' | 'touch';
   className?: string;
 }
-
-/** Everything the per-type field groups share. */
-interface Ctx {
-  evaluate: FeatureInspectorProps['evaluate'];
-  formatValue?: FormatValue;
-  units: { length: string; angle: string };
-  size: 'md' | 'touch';
-  pickingPath: string | null;
-  unresolved: readonly UnresolvedRef[];
-  describeRef?: FeatureInspectorProps['describeRef'];
-  onPick?(path: string): void;
-}
-
-const opOptions = [
-  { value: 'new', label: 'New' },
-  { value: 'add', label: 'Add' },
-  { value: 'cut', label: 'Cut' },
-  { value: 'intersect', label: 'Intersect' },
-] as const satisfies readonly { value: BodyOp; label: string }[];
-
-const dirOptions = [
-  { value: 'normal', label: 'Normal' },
-  { value: 'reverse', label: 'Reverse' },
-  { value: 'symmetric', label: 'Symmetric' },
-] as const;
-
-interface Edit<F extends Feature> {
-  commit(next: F): void;
-  preview(next: F): void;
-}
-
-function ExprField<F extends Feature>({
-  label,
-  value,
-  expected,
-  c,
-  edit,
-  build,
-  allowEmpty,
-  placeholder,
-}: {
-  label: string;
-  value: Expr;
-  expected: NamedDimension;
-  c: Ctx;
-  edit: Edit<F>;
-  build(expr: Expr): F;
-  allowEmpty?: boolean;
-  placeholder?: string;
-}) {
-  const unit =
-    expected === 'length' ? c.units.length : expected === 'angle' ? c.units.angle : undefined;
-  return (
-    <Field label={label}>
-      <ExpressionInput
-        label={label}
-        value={value}
-        evaluate={(e) => c.evaluate(e, expected)}
-        formatValue={c.formatValue}
-        unitHint={unit}
-        step={expected === 'angle' ? 5 : 1}
-        size={c.size}
-        allowEmpty={allowEmpty}
-        placeholder={placeholder}
-        onPreview={(e) => edit.preview(build(e))}
-        onCommit={(e) => edit.commit(build(e))}
-      />
-    </Field>
-  );
-}
-
-function Pick({
-  label,
-  path,
-  refs,
-  accepts,
-  multi,
-  c,
-  onRemove,
-}: {
-  label: string;
-  path: string;
-  refs: readonly EntityRef[];
-  accepts: string;
-  multi?: boolean;
-  c: Ctx;
-  onRemove?(i: number): void;
-}) {
-  const here = (p: string) => p === path || p.startsWith(`${path}/`);
-  return (
-    <Field label={label}>
-      <PickField
-        label={label}
-        path={path}
-        refs={refs}
-        accepts={accepts}
-        multi={multi}
-        picking={c.pickingPath !== null && here(c.pickingPath)}
-        unresolved={c.unresolved.filter((u) => here(u.path))}
-        describeRef={c.describeRef}
-        onPick={c.onPick}
-        onRemove={onRemove}
-      />
-    </Field>
-  );
-}
-
-function ScopeFields<F extends Feature & { op: BodyOp; scope?: BodyScope }>({
-  f,
-  c,
-  edit,
-}: {
-  f: F;
-  c: Ctx;
-  edit: Edit<F>;
-}) {
-  return (
-    <>
-      <Field label="Operation">
-        <Segmented
-          label="Operation"
-          size={c.size}
-          value={f.op}
-          options={opOptions}
-          onChange={(op) => edit.commit({ ...f, op })}
-        />
-      </Field>
-      {f.op !== 'new' ? (
-        <>
-          <Field label="Applies to">
-            <Segmented
-              label="Applies to"
-              size={c.size}
-              value={f.scope?.kind === 'bodies' ? 'bodies' : 'all'}
-              options={[
-                { value: 'all', label: 'All bodies' },
-                { value: 'bodies', label: 'Choose bodies' },
-              ]}
-              onChange={(k) =>
-                edit.commit({
-                  ...f,
-                  scope: k === 'all' ? { kind: 'all' } : { kind: 'bodies', bodies: [] },
-                })
-              }
-            />
-          </Field>
-          {f.scope?.kind === 'bodies' ? (
-            <Pick
-              label="Bodies"
-              path="/scope/bodies"
-              refs={f.scope.bodies}
-              accepts="body"
-              multi
-              c={c}
-              onRemove={(i) =>
-                edit.commit({
-                  ...f,
-                  scope: {
-                    kind: 'bodies',
-                    bodies: (f.scope as { bodies: EntityRef[] }).bodies.filter((_, j) => j !== i),
-                  },
-                })
-              }
-            />
-          ) : null}
-        </>
-      ) : null}
-    </>
-  );
-}
-
-const without = <T,>(xs: readonly T[], i: number): T[] => xs.filter((_, j) => j !== i);
 
 /* ------------------------------------------------------------------------- per type */
 
@@ -365,6 +210,22 @@ function RevolveFields({ f, c, edit }: { f: RevolveFeature; c: Ctx; edit: Edit<R
   );
 }
 
+function PropagateSwitch<F extends FilletFeature | ChamferFeature>({
+  f,
+  edit,
+}: {
+  f: F;
+  edit: Edit<F>;
+}) {
+  return (
+    <Switch
+      label="Propagate along tangent edges"
+      checked={f.propagate !== false}
+      onChange={(propagate) => edit.commit({ ...f, propagate })}
+    />
+  );
+}
+
 function FilletFields({ f, c, edit }: { f: FilletFeature; c: Ctx; edit: Edit<FilletFeature> }) {
   return (
     <Section title="Fillet">
@@ -385,6 +246,7 @@ function FilletFields({ f, c, edit }: { f: FilletFeature; c: Ctx; edit: Edit<Fil
         edit={edit}
         build={(radius) => ({ ...f, radius })}
       />
+      <PropagateSwitch f={f} edit={edit} />
     </Section>
   );
 }
@@ -447,6 +309,7 @@ function ChamferFields({ f, c, edit }: { f: ChamferFeature; c: Ctx; edit: Edit<C
           })}
         />
       ) : null}
+      <PropagateSwitch f={f} edit={edit} />
     </Section>
   );
 }
@@ -488,35 +351,6 @@ function BooleanFields({ f, c, edit }: { f: BooleanFeature; c: Ctx; edit: Edit<B
         checked={f.keepTools}
         onChange={(keepTools) => edit.commit({ ...f, keepTools })}
       />
-    </Section>
-  );
-}
-
-function PlaneFields({ f, c, edit }: { f: PlaneFeature; c: Ctx; edit: Edit<PlaneFeature> }) {
-  const d = f.definition;
-  return (
-    <Section title="Plane">
-      {d.kind === 'offset' ? (
-        <>
-          <Pick
-            label="Offset from"
-            path="/definition/from"
-            refs={d.from.name ? [d.from] : []}
-            accepts="face or plane"
-            c={c}
-          />
-          <ExprField
-            label="Distance"
-            value={d.distance}
-            expected="length"
-            c={c}
-            edit={edit}
-            build={(distance) => ({ ...f, definition: { ...d, distance } })}
-          />
-        </>
-      ) : (
-        <p className="text-ui text-fg-muted">Custom frame: positioned by origin and normal.</p>
-      )}
     </Section>
   );
 }
@@ -719,6 +553,8 @@ export function FeatureInspector({
   pickingPath = null,
   onRepick,
   describeRef,
+  describeFeature,
+  holeTables,
   onEditSketch,
   onDone,
   units = { length: 'mm', angle: 'deg' },
@@ -734,6 +570,8 @@ export function FeatureInspector({
     pickingPath,
     unresolved: status?.unresolved ?? [],
     describeRef,
+    describeFeature,
+    holeTables,
     onPick,
   };
   const edit = {
@@ -775,6 +613,39 @@ export function FeatureInspector({
     case 'import':
       body = <ImportFields f={feature} c={c} edit={e as Edit<ImportFeature>} />;
       break;
+    case 'shell':
+      body = <ShellFields f={feature} c={c} edit={e as Edit<typeof feature>} />;
+      break;
+    case 'draft':
+      body = <DraftFields f={feature} c={c} edit={e as Edit<typeof feature>} />;
+      break;
+    case 'sweep':
+      body = <SweepFields f={feature} c={c} edit={e as Edit<typeof feature>} />;
+      break;
+    case 'loft':
+      body = <LoftFields f={feature} c={c} edit={e as Edit<typeof feature>} />;
+      break;
+    case 'mirror':
+      body = <MirrorFields f={feature} c={c} edit={e as Edit<typeof feature>} />;
+      break;
+    case 'linearPattern':
+      body = <LinearPatternFields f={feature} c={c} edit={e as Edit<typeof feature>} />;
+      break;
+    case 'circularPattern':
+      body = <CircularPatternFields f={feature} c={c} edit={e as Edit<typeof feature>} />;
+      break;
+    case 'hole':
+      body = <HoleFields f={feature} c={c} edit={e as Edit<typeof feature>} />;
+      break;
+    case 'thread':
+      body = <ThreadFields f={feature} c={c} edit={e as Edit<typeof feature>} />;
+      break;
+    case 'axis':
+      body = <AxisFields f={feature} c={c} edit={e as Edit<typeof feature>} />;
+      break;
+    case 'point':
+      body = <PointFields f={feature} c={c} edit={e as Edit<typeof feature>} />;
+      break;
   }
 
   return (
@@ -800,4 +671,22 @@ export function FeatureInspector({
       {body}
     </div>
   );
+}
+
+/**
+ * The hole wizard as a stand-alone inspector: resolves the feature's size against `tables`
+ * (a `HoleTable` per standard) and shows the dimensions read-only. Same callbacks as
+ * `FeatureInspector`; this is the component the app mounts for a hole.
+ */
+export function HoleWizard({
+  tables,
+  feature,
+  ...rest
+}: Omit<FeatureInspectorProps, 'feature' | 'holeTables'> & {
+  feature: HoleFeature;
+  tables: readonly HoleTable[];
+}) {
+  const byStd: Partial<Record<HoleStandard, HoleTable>> = {};
+  for (const t of tables) byStd[t.standard] = t;
+  return <FeatureInspector {...rest} feature={feature} holeTables={byStd} />;
 }

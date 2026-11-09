@@ -189,7 +189,7 @@ test.describe('tablet tool rail', () => {
     await expect(page).toHaveScreenshot(`m2-${p}-rail-flyout.png`);
     await noSeriousViolations(page);
 
-    await flyout.getByRole('button', { name: /Extrude/ }).tap();
+    await flyout.getByRole('button', { name: /^Extrude(?!d)/ }).tap();
     await expect(flyout).toBeHidden();
     await expect(rail.getByRole('button', { name: 'Solid tools' })).toHaveAttribute('data-active');
     // an outside tap closes a flyout

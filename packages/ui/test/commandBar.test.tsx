@@ -1,8 +1,9 @@
 import { act, fireEvent, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { CommandBar, type ToolId, toolGroups, toolHint, tools } from '../src';
+import { CommandBar, type ToolId, ToolRail, toolGroups, toolHint, tools } from '../src';
 import { LAST_TOOLS_KEY } from '../src/components/CommandBar';
+import { reservedKeys } from '../src/components/tools';
 import { renderUI } from './helpers';
 
 const ALL: readonly ToolId[] = tools.map((t) => t.id);
@@ -41,7 +42,7 @@ describe('CommandBar (grouped)', () => {
     await userEvent.click(solid);
     expect(solid).toHaveAttribute('aria-expanded', 'true');
     const flyout = within(screen.getByRole('group', { name: 'Solid tools' }));
-    await userEvent.click(flyout.getByRole('button', { name: /Revolve/ }));
+    await userEvent.click(flyout.getByRole('button', { name: /^Revolve(?!d)/ }));
     expect(onTool).toHaveBeenCalledExactlyOnceWith('revolve');
     expect(screen.queryByRole('group', { name: 'Solid tools' })).toBeNull();
     // the category now shows the last-used tool
@@ -104,8 +105,8 @@ describe('CommandBar (grouped)', () => {
     const flyout = within(screen.getByRole('group', { name: 'Modify tools' }));
     const shell = flyout.getByRole('button', { name: /Shell/ });
     expect(shell).toHaveAttribute('aria-disabled', 'true');
-    expect(shell).toHaveTextContent('Coming in M3');
-    expect(toolHint('hole')).toBe('Coming in M3');
+    expect(shell).toHaveTextContent('Not available yet');
+    expect(toolHint('hole')).toBe('Not available yet');
     expect(toolHint('chamfer')).toBe('Not available yet');
     expect(toolHint('chamfer')).not.toMatch(/M1/);
     expect(screen.getByRole('button', { name: 'Hole' })).toHaveAttribute('aria-disabled', 'true');
@@ -130,12 +131,12 @@ describe('CommandBar (grouped)', () => {
       await userEvent.keyboard('{ArrowUp}');
       const flyout = screen.getByRole('group', { name: 'Solid tools' });
       await vi.waitFor(() =>
-        expect(within(flyout).getByRole('button', { name: /Extrude/ })).toHaveFocus(),
+        expect(within(flyout).getByRole('button', { name: /^Extrude(?!d)/ })).toHaveFocus(),
       );
       await userEvent.keyboard('{ArrowDown}');
-      expect(within(flyout).getByRole('button', { name: /Push\/pull/ })).toHaveFocus();
+      expect(within(flyout).getByRole('button', { name: /Extruded cut/ })).toHaveFocus();
       await userEvent.keyboard('{ArrowUp}{ArrowUp}'); // wraps to the last
-      expect(within(flyout).getByRole('button', { name: /Revolve/ })).toHaveFocus();
+      expect(within(flyout).getByRole('button', { name: /Loft/ })).toHaveFocus();
       await userEvent.keyboard('{Escape}');
       expect(screen.queryByRole('group', { name: 'Solid tools' })).toBeNull();
       expect(solid).toHaveFocus();
@@ -146,13 +147,13 @@ describe('CommandBar (grouped)', () => {
       await vi.waitFor(() =>
         expect(
           within(screen.getByRole('group', { name: 'Solid tools' })).getByRole('button', {
-            name: /Extrude/,
+            name: /^Extrude(?!d)/,
           }),
         ).toHaveFocus(),
       );
       await userEvent.keyboard('{ArrowDown}{Enter}');
-      expect(onTool).toHaveBeenCalledExactlyOnceWith('pushPull');
-      expect(screen.getByRole('button', { name: 'Push/pull, Solid tools' })).toHaveFocus();
+      expect(onTool).toHaveBeenCalledExactlyOnceWith('extrudeCut');
+      expect(screen.getByRole('button', { name: 'Extruded cut, Solid tools' })).toHaveFocus();
     });
 
     it('disabled tools stay focusable but do not run', async () => {
@@ -216,7 +217,7 @@ describe('CommandBar (grouped)', () => {
         pointerId: 1,
       });
       const flyout = screen.getByTestId('tool-flyout');
-      const target = within(flyout).getByRole('button', { name: /Revolve/ });
+      const target = within(flyout).getByRole('button', { name: /^Revolve(?!d)/ });
       const original = document.elementFromPoint;
       document.elementFromPoint = () => target;
       try {
@@ -244,5 +245,95 @@ describe('CommandBar (grouped)', () => {
     renderUI(<CommandBar enabledTools={ALL} onMore={onMore} />);
     await userEvent.click(screen.getByRole('button', { name: 'More' }));
     expect(onMore).toHaveBeenCalled();
+  });
+});
+
+describe('M3 tool groups', () => {
+  const ids = (g: string) => toolGroups.find((x) => x.id === g)?.tools;
+
+  it('puts the M3 tools in their categories', () => {
+    expect(ids('solid')).toEqual([
+      'extrude',
+      'extrudeCut',
+      'revolve',
+      'revolveCut',
+      'pushPull',
+      'sweep',
+      'loft',
+    ]);
+    expect(ids('modify')).toEqual(['fillet', 'chamfer', 'shell', 'draft', 'thread']);
+    expect(ids('hole')).toEqual(['hole']);
+    expect(ids('pattern')).toEqual(['mirror', 'linearPattern', 'circularPattern']);
+    expect(ids('reference')).toEqual(['plane', 'axis', 'point']);
+  });
+
+  it('has no coming-in hints left, and no legacy catch-all pattern tool', () => {
+    expect(tools.some((t) => t.comingIn)).toBe(false);
+    expect(tools.some((t) => (t.id as string) === 'pattern')).toBe(false);
+  });
+
+  it('shortcuts are unique and clear of the reserved keys', () => {
+    const keys = tools.flatMap((t) => (t.shortcut ? [t.shortcut] : []));
+    expect(new Set(keys).size).toBe(keys.length);
+    for (const k of keys) expect(reservedKeys).not.toContain(k);
+    // the PLAN 9.4 keys keep their tools
+    expect(Object.fromEntries(tools.map((t) => [t.id, t.shortcut]))).toMatchObject({
+      sketch: 'S',
+      extrude: 'E',
+      revolve: 'R',
+      fillet: 'F',
+      chamfer: 'C',
+      measure: 'M',
+    });
+  });
+
+  it('the Reference flyout lists plane, axis and point and runs them', async () => {
+    const onTool = vi.fn();
+    renderUI(<CommandBar enabledTools={ALL} onTool={onTool} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Plane, Reference tools' }));
+    const fly = within(screen.getByRole('group', { name: 'Reference tools' }));
+    expect(fly.getAllByRole('button').map((b) => b.getAttribute('data-tool'))).toEqual([
+      'plane',
+      'axis',
+      'point',
+    ]);
+    await userEvent.click(fly.getByRole('button', { name: /Axis/ }));
+    expect(onTool).toHaveBeenCalledExactlyOnceWith('axis');
+  });
+
+  it('the Pattern flyout lists mirror, linear and circular', async () => {
+    renderUI(<CommandBar enabledTools={ALL} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Mirror, Pattern tools' }));
+    const fly = within(screen.getByRole('group', { name: 'Pattern tools' }));
+    for (const n of [/Mirror/, /Linear pattern/, /Circular pattern/])
+      expect(fly.getByRole('button', { name: n })).toBeInTheDocument();
+  });
+
+  it('the tablet rail renders the same groups, including Reference and Pattern', () => {
+    renderUI(<ToolRail enabledTools={ALL} />);
+    const rail = screen.getByRole('toolbar', { name: 'Modeling tools' });
+    for (const g of toolGroups)
+      expect(rail.querySelector(`[data-tool-group="${g.id}"]`)).not.toBeNull();
+  });
+
+  it('cut tools sit next to extrude and revolve with their own labels and shortcuts', () => {
+    const t = (id: string) => tools.find((x) => x.id === id);
+    expect(t('extrudeCut')).toMatchObject({ label: 'Extruded cut', shortcut: '⇧E' });
+    expect(t('revolveCut')).toMatchObject({ label: 'Revolved cut', shortcut: '⇧R' });
+    expect(t('extrudeCut')?.Icon).not.toBe(t('extrude')?.Icon);
+    expect(t('revolveCut')?.Icon).not.toBe(t('revolve')?.Icon);
+  });
+
+  it('the rail shows a chevron on every multi-tool group, and labels in the flyout', async () => {
+    renderUI(<ToolRail enabledTools={ALL} />);
+    const solid = screen.getByRole('button', { name: 'Solid tools' });
+    expect(within(solid).getByTestId('group-chevron')).toBeInTheDocument();
+    await userEvent.click(solid);
+    const fly = within(screen.getByTestId('tool-flyout'));
+    expect(fly.getByText('Revolved cut')).toBeInTheDocument();
+    expect(fly.getByText('Revolve')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Sketch' }).querySelector('[data-testid="group-chevron"]'),
+    ).toBeNull();
   });
 });

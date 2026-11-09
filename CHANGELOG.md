@@ -84,3 +84,7 @@
 - Local git repo mode (ADR-029, desktop Chromium): "Open a local git repo…"; the project folder on disk is the working copy, versions are commits, branches and tags are the repo's, uncommitted changes listed, refresh on focus, read-only banners for merges/rebases/detached HEAD, inline `.gitignore` offer, branch switches refused over uncommitted changes.
 - Compare: "Compare with current" regenerates the version in a `version:<id>` slot and shows the feature diff, mass/size deltas and the viewport overlay with Both/Added/Removed bound to the panel; the slot is released on exit. The compare legend swatches are now the viewport's exact fills (`compare-*-swatch` tokens, parity-tested); removed-text tokens moved to the same vermillion family.
 - E2E `m25.spec.ts` (acceptance a–g) with a fake Dropbox, a real git smart-HTTP server and an OPFS repo; `gitRemoteHeads` in `@whittle/sync`.
+
+### M3 — UI
+
+- UI: Extruded cut and Revolved cut tools, count-and-chevron group buttons on the tablet rail, labelled touch sketch toolbar; inspectors for shell, draft, sweep, loft, mirror, patterns (skip toggles), hole wizard (table-resolved, diameter override), thread, axis, point and the new plane definitions; fillet/chamfer propagate switch; Pattern and Reference tool groups; sketch offset/convert/trim/extend/fillet/chamfer/mirror chrome and linked-geometry panel (ADR-pending).
