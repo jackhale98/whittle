@@ -1353,15 +1353,18 @@ contracts don't spell out. The regen engine (kernel-client) depends on these.
    the face to the end of the full-diameter wall; the drill point is extra. The tool starts
    `max(1, 2r)` above the face so the cut leaves no coincident skin.
 3. **Tool solids for copies** are what a feature returns with `op: "new"`. `HoleFeature` has no
-   `op`, so the engine sends the hole with an extra `"op": "new"` (and the target, which sizes
-   through-all holes). The kernel ignores unknown fields elsewhere, so this needs no contract
-   change, but `kernel.ts` should say it (proposal 2 below).
+   `op`: a hole without `inputs.target` (as ADR-036 proposes), or with an extra `"op": "new"`,
+   returns its drill solids; through-all tools are sized by the target when there is one, else
+   10 m deep. `kernel.ts` should say it (proposal 2 below).
 4. **Copies of intersect features are refused** (`UNSUPPORTED_FEATURE`): the original's
    intersect already confines the body to its tool, so intersecting with moved copies empties it.
 5. **Instance order and spacing.** Linear `k = row · count + column` (the first direction runs
    along a row). Circular with `equalSpacing`: 360° → `angle / count`; a partial span →
    `angle / (count − 1)` (ends included); without it, `angle` is the step. Body copies without
-   merge come back as `shape` + `bodies` keyed `inst<k>:<i>` / `mirror:<i>`.
+   merge list every copy in `bodies` (keys `inst<k>:<i>` / `mirror:<i>`; the first is also
+   `shape`), as ADR-036's `runCopy` expects. Linear patterns also read `frames.axis` /
+   `frames.second` and drafts `frames.neutral` (ADR-036's keys); `reverse` is applied by the
+   kernel.
 6. **One boolean per copied feature**, all instances as tools of one `BRepAlgoAPI` call (General
    Fuse intersects them together, so hundreds of instances stay a single operation), with the
    inverted-solid check off and parallel mode in the threaded build. A balanced pairwise fuse was
@@ -1383,9 +1386,21 @@ contracts don't spell out. The regen engine (kernel-client) depends on these.
     `plane` a face `F…:plane`, each with `frame`, so the viewport can draw them and the engine can
     keep resolving them like M1 datum planes. `thread` returns the body unchanged with the cylinder
     `frame` and `radius`.
-13. **The perf golden gates CPU time.** The CI and agent machines are routinely oversubscribed
-    (load > 10 on 4 cores during this work), so wall time is logged and the 300 ms gate applies to
-    the call's process CPU time.
+13. **The perf golden gates min(wall, CPU) per run.** Wall time inflates on oversubscribed
+    machines (load > 10 on 4 cores during this work); process CPU time inflates while V8 compiles
+    the 21 MB module to optimised code on background threads (single-threaded runs showed CPU above
+    wall) and, in the threaded build, when the boolean runs in parallel. Each run's cost is the
+    smaller of the two, the gate is the best of five runs after three warm-ups, and both numbers
+    are logged.
+14. **IGES stays in the main kernel.** Measured with a `WHITTLE_NO_IGES=1` production link, the
+    reader costs +265 KiB brotli (5.7 % of 4.53 MiB). A lazily loaded side module (Emscripten
+    dynamic linking alongside embind and native exceptions) isn't worth that; a separate exchange
+    kernel loaded on first import is the plan if data exchange grows.
+15. **Naming keys are computed on demand.** `finalizeNamed` / `deriveEdgeAndVertexNames` used to
+    compute a centroid (surface or curve integral) for every face, edge and vertex; only names
+    shared by several sub-shapes need one, so keys are now computed lazily for those groups. Same
+    keys, same names; it saves ~40 ms on a plate with 100 holes. Holes build one revolved tool
+    per distinct depth and move it to every point.
 
 **Contract proposals** (lead-owned; not applied):
 

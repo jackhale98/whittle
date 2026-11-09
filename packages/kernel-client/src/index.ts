@@ -16,7 +16,12 @@ export type {
   ExportShape,
   ImportedBody,
   KernelLowLevelApi,
+  KernelProjectionApi,
   KernelWorkerApi,
+  ProjectedCurve,
+  ProjectedEdge,
+  ProjectedLoopEdge,
+  ShapeImportFormat,
 } from './kernel-api';
 export type { ModelingWorkerApi, RegenWorkerOptions } from './modeling-api';
 export { isStatusMessage, STATUS_MESSAGE_TAG, type StatusMessage } from './protocol';

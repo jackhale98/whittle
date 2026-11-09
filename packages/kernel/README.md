@@ -60,24 +60,30 @@ amalgamated file.
 | `*.build-manifest.json`, `*.provenance.json`        | build records: flags, image digest, source SHA-256s           |
 | `size-report.json`                                  | raw, gzip and brotli sizes                                    |
 
-Sizes at M2 (toolchain 3.1.0, `-O3`, wasm-opt `-O4`, SIMD, native Wasm exceptions). Push/pull
-(UnifySameDomain, ShapeFix) and measure (BRepExtrema) added +49 KiB / +24 KiB brotli over M1
-(3.71 MiB each); M0 was 3.79 MiB raw / 1.30 MiB brotli:
+Sizes at M3 (toolchain 3.1.0, `-O3`, wasm-opt `-O4`, SIMD, native Wasm exceptions). The M3
+features (offset/thick solid, draft, pipe shell, ThruSections, the hole profile revolve, BOP self-
+interference check, curve sampling) and the IGES reader added +0.77 MiB brotli per kernel over M2
+(3.76 / 3.73 MiB; M1 3.71 MiB; M0 1.30 MiB). IGES alone (measured with a
+`WHITTLE_NO_IGES=1` production link of the single-threaded kernel): +265 KiB brotli (5.7 %),
++394 KiB gzip, +1.84 MiB raw; the other M3 features +525 KiB brotli. Not worth a lazily loaded
+side module yet; if data exchange grows (IGES export, more formats), a separate exchange kernel
+loaded on first import is the way to split it.
 
 | Artefact                 |       raw |     gzip |   brotli |
 | ------------------------ | --------: | -------: | -------: |
-| `whittle-kernel-st.wasm` | 16.12 MiB | 5.36 MiB | 3.76 MiB |
-| `whittle-kernel.wasm`    | 15.66 MiB | 5.35 MiB | 3.73 MiB |
+| `whittle-kernel-st.wasm` | 20.75 MiB | 6.51 MiB | 4.53 MiB |
+| `whittle-kernel.wasm`    | 20.09 MiB | 6.48 MiB | 4.51 MiB |
 | `whittle-kernel-st.js`   |    56 KiB |   21 KiB |   19 KiB |
 | `whittle-kernel.js`      |    63 KiB |   24 KiB |   21 KiB |
 
 Budget: ≤ 15 MB brotli per kernel (PLAN §7.2). A full two-variant build takes about 20 to 30 min
-(M2: 29.7 min on 4 busy cores); most of that is wasm-opt `-O4 --converge` on the 16 MB binaries.
+(M2: 29.7 min on 4 busy cores; M3: 32 min busy, about 25 min idle); most of that is wasm-opt
+`-O4 --converge` on the 20 MB binaries.
 For C++ iteration:
 
 - A syntax-only `em++ -fsyntax-only` of `.libcascade/whittle_facade.cpp` against
   `/opencascade.js/build/occt-includes` in the image takes seconds: `docker run --entrypoint em++`.
-- A dev link without wasm-opt takes under a minute per variant. Use a scratch config at `-O1`,
+- A dev link without wasm-opt takes two to six minutes per variant (M3). Use a scratch config at `-O1`,
   and point `LIBCASCADE_CONTAINER_CMD` at a wrapper that adds `-e OCJS_SKIP_WASM_OPT=1` to
   `docker run`. The toolchain's validator then rejects the `-O1` glue (it reports missing
   exception helpers), but the artefacts left in `.libcascade/out/<variant>/` load and run the
@@ -195,11 +201,11 @@ role keys of `kernel.ts` (`plane`, `axis`, `upTo`, …) accepted as well.
 | Feature                    | Inputs                                                                                                                                                         |
 | -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `shell`                    | `inputs.target` (else the first face's body, or refs `/body`); refs `/openFaces/<n>`; `/thickness`; `direction` inward / outward. No open faces = hollow solid |
-| `draft`                    | `inputs.target`; refs `/faces/<n>`; neutral plane at refs `/neutral` (planar face) or `frames["/neutral"]`; `/angle` rad; `reverse`                             |
+| `draft`                    | `inputs.target`; refs `/faces/<n>`; neutral plane at refs `/neutral` (planar face) or `frames["/neutral"]` / `frames.neutral`; `/angle` rad; `reverse`                             |
 | `sweep`                    | refs `/profile/<n>` (or every region of `shapes.profile`); refs `/path/<n>` edges in chain order; `orientation`; op/scope as extrude                           |
 | `loft`                     | refs `/sections/<n>`: region faces, closed edges, or vertices (first/last only); `ruled`, `closed`; op/scope as extrude. `guides` give a warning (ignored)      |
 | `mirror`                   | plane at refs `/plane` or `frames["/plane"]` / `frames.plane`                                                                                                   |
-| `linearPattern`            | direction at refs `/direction` (straight edge, circular edge or cylinder axis, planar face normal) or `frames["/direction"]` (z); `/count`, `/spacing`; `second`: `/second/direction`, `/second/count`, `/second/spacing` |
+| `linearPattern`            | direction at refs `/direction` (straight edge, circular edge or cylinder axis, planar face normal) or `frames["/direction"]` / `frames.direction` / `frames.axis` (z); second direction also `frames.second`; `/count`, `/spacing`; `second`: `/second/direction`, `/second/count`, `/second/spacing` |
 | `circularPattern`          | axis at refs `/axis` or `frames["/axis"]` / `frames.axis`; `/count`, `/angle`; `equalSpacing`                                                                   |
 | `hole`                     | `inputs.target`; `frames["hole:<i>"]` (origin on the face, z into the material); values below; `end` blind / throughAll / upTo (refs or frames `/end/target`, or `frames.upTo`) |
 | `import`                   | `inputs.shapes["source…"]`: raw handles from `importFile` (key order); `frame`; `op`/scope                                                                    |
@@ -212,11 +218,12 @@ role keys of `kernel.ts` (`plane`, `axis`, `upTo`, …) accepted as well.
 all instances of one feature in **one** `BRepAlgoAPI` boolean with a multi-tool argument (no
 inverted-solid check; parallel in the threaded build). Rigid instances are moved shapes (shared
 geometry); mirrors are rebuilt (`BRepBuilderAPI_Transform`). A feature's tool solid is what it
-returns with `op: "new"`; for `hole`, send the feature with an extra `"op": "new"` (and the target,
-for through-all sizing) to get the hole tools as one shape. Body copies: refs
-`/source/bodies/<i>`; `merge` fuses the originals and every copy into one body (one boolean),
-otherwise the copies come back as separate bodies: `shape` is the first, `bodies` the rest with
-keys `inst<k>:<i>` (`mirror:<i>`), body `i` outer, instance inner.
+returns with `op: "new"`; a `hole` without `inputs.target` (or with an extra `"op": "new"`)
+returns its drill solids as one shape (through-all tools are sized by the target when given, else
+10 m deep). Body copies: refs `/source/bodies/<i>`; `merge` fuses the originals and every copy
+into one body (one boolean), otherwise the copies come back as separate bodies: `bodies` lists
+every copy (the first is also `shape`) with keys `inst<k>:<i>` (`mirror:<i>`), body `i` outer,
+instance inner.
 Instances: linear `k = row · count + column` (row along `second`); circular `k = 1…count−1` at
 `k · step`, where `step = angle / count` for a full 360° with `equalSpacing`, `angle / (count − 1)`
 for a partial span with `equalSpacing`, and `angle` itself otherwise. `skip` removes indices
@@ -293,7 +300,8 @@ mesh reference body (STL) is one face `F<id>:face` and only `op: "new"`.
 
 **Performance** (PLAN §10, 300 ms regen budget): a 10 × 10 pattern of Ø5 through holes on a
 200 × 200 × 10 plate, as a pattern of a hole feature, is one 99-tool cut. The golden gates the
-call's process CPU time (shared CI machines are oversubscribed, so wall time is only logged).
+smaller of each run's wall and process CPU time (wall inflates on oversubscribed CI machines,
+CPU while V8 tiers up the module on background threads), best of five warm runs.
 
 ### Naming (packages/contracts/src/naming.ts)
 

@@ -413,12 +413,14 @@ for (const { variant } of VARIANTS) {
           frames: { '/axis': frameAt([0, 0, 0]) },
         };
         const sep = ss.exec(feature(false), inputs);
-        expect(sep.bodies?.map((b) => b.key)).toEqual(['inst2:0', 'inst3:0']);
+        // Every copy is listed in `bodies` (the first is also `shape`).
+        expect(sep.bodies?.map((b) => b.key)).toEqual(['inst1:0', 'inst2:0', 'inst3:0']);
+        expect(sep.bodies?.[0]?.shape).toBe(sep.shape);
         relClose(ss.mass(sep.shape).volume, 40, REL);
         const c1 = ss.mass(sep.shape).centroid;
         vecClose(c1, [0, 25, 1], 1e-6);
         expect(names(sep, 'face')).toContain(`F${CP}:inst1(${B}:face.xmin)`);
-        const third = sep.bodies?.[1];
+        const third = sep.bodies?.[2];
         vecClose(ss.mass(third?.shape ?? 0).centroid, [0, -25, 1], 1e-6);
         const merged = ss.exec(feature(true), inputs);
         relClose(ss.mass(merged.shape).volume, 160, REL);
@@ -431,7 +433,7 @@ for (const { variant } of VARIANTS) {
             values: { '/count': 3, '/angle': PI / 6 },
           },
         );
-        const c2 = ss.mass(stepped.bodies?.[0]?.shape ?? 0).centroid;
+        const c2 = ss.mass(stepped.bodies?.[1]?.shape ?? 0).centroid;
         vecClose(c2, [25 * Math.cos(PI / 3), 25 * Math.sin(PI / 3), 1], 1e-6);
       });
 
@@ -536,10 +538,11 @@ for (const { variant } of VARIANTS) {
             '/second/spacing': 18,
           },
         };
-        // Budget: PLAN §10 "regen after editing the last feature" ≤ 300 ms. Shared CI machines
-        // are often oversubscribed, so the gate is the process CPU time of the call (all threads;
-        // for the threaded build that over-counts, which only makes the gate stricter); wall time
-        // is logged next to it.
+        // Budget: PLAN §10 "regen after editing the last feature" ≤ 300 ms. Each run's cost is the
+        // smaller of its wall time and its process CPU time: wall time inflates when the machine
+        // is oversubscribed (shared CI), CPU time when V8 is still compiling the 21 MB module to
+        // optimised code on background threads (or, threaded build, the boolean runs in
+        // parallel). The gate is the best of five warm runs.
         const timed = (run: () => RawFeatureResult) => {
           const wall0 = performance.now();
           const cpu0 = process.cpuUsage();
@@ -547,9 +550,10 @@ for (const { variant } of VARIANTS) {
           const cpu = process.cpuUsage(cpu0);
           return { r, cpu: (cpu.user + cpu.system) / 1000, wall: performance.now() - wall0 };
         };
-        ss.exec(feature, inputs); // warm-up (first-use allocations)
+        // Warm-up: first-use allocations and V8's tier-up of the hot boolean code.
+        for (let i = 0; i < 3; i++) ss.exec(feature, inputs);
         const runs = Array.from({ length: 5 }, () => timed(() => ss.exec(feature, inputs)));
-        const best = Math.min(...runs.map((r) => r.cpu));
+        const best = Math.min(...runs.map((r) => Math.min(r.cpu, r.wall)));
         const last = runs[runs.length - 1]?.r;
         // The same 100 holes as one hole feature with 100 points (one multi-tool cut).
         const frames = Array.from({ length: 100 }, (_, i) =>
@@ -566,7 +570,9 @@ for (const { variant } of VARIANTS) {
         );
         const fmt = (xs: { cpu: number; wall: number }[]) =>
           xs.map((x) => `${x.cpu.toFixed(0)} cpu/${x.wall.toFixed(0)} wall`).join(', ');
-        console.log(`[perf] 10×10 hole pattern (${variant}) ms: ${fmt(runs)}`);
+        console.log(
+          `[perf] 10×10 hole pattern (${variant}) ms: ${fmt(runs)}; gate ${best.toFixed(0)}`,
+        );
         console.log(`[perf] 100-point hole feature (${variant}) ms: ${fmt(holes)}`);
         relClose(ss.mass(last?.shape ?? 0).volume, 400000 - 100 * PI * 6.25 * 10, REL);
         expect(ss.mass(last?.shape ?? 0).faceCount).toBe(106);
@@ -578,11 +584,22 @@ for (const { variant } of VARIANTS) {
             linear({
               count: '15',
               spacing: '12',
-              second: { direction: { name: 'origin:Y', kind: 'edge' }, reverse: false, count: '15', spacing: '12' },
+              second: {
+                direction: { name: 'origin:Y', kind: 'edge' },
+                reverse: false,
+                count: '15',
+                spacing: '12',
+              },
             }),
             {
               ...inputs,
-              values: { [`/ops/${H}`]: 1, '/count': 15, '/spacing': 12, '/second/count': 15, '/second/spacing': 12 },
+              values: {
+                [`/ops/${H}`]: 1,
+                '/count': 15,
+                '/spacing': 12,
+                '/second/count': 15,
+                '/second/spacing': 12,
+              },
             },
           ),
         );

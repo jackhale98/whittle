@@ -265,8 +265,8 @@ std::string execCopies(const std::string& type, const Json& feature, const Json&
   std::string extra;
   if (results.size() > 1) {
     extra = ",\"bodies\":[";
-    for (size_t i = 1; i < results.size(); ++i) {
-      if (i > 1) extra.push_back(',');
+    for (size_t i = 0; i < results.size(); ++i) {  // every copy, the first too (= shape)
+      if (i > 0) extra.push_back(',');
       extra += "{\"key\":" + jsonString(copies[i].key) + ",\"shape\":" + std::to_string(guards[i].handle) +
                ",\"naming\":" + namingJson(namingEntries(results[i])) + "}";
     }
@@ -458,7 +458,9 @@ std::string execHole(const Json& feature, const Json& inputs, const std::string&
   const Json* points = feature.get("points");
   const std::string prefix = "F" + tag + ":hole(";
   std::vector<NamedInput> tools;
-  std::vector<NamedShape> toolShapes;
+  // One revolved tool per distinct depth, built in the world frame and moved to every hole
+  // (shared geometry: cheaper to build, and the boolean sees identical tools).
+  std::vector<std::pair<double, NamedShape>> canonical;
   for (size_t i = 0; i < frames.size(); ++i) {
     const gp_Ax2& frame = frames[i].second;
     std::string point;
@@ -483,9 +485,17 @@ std::string execHole(const Json& feature, const Json& inputs, const std::string&
         (spec.csinkRadius - spec.radius) / std::tan(spec.csinkAngle / 2) >= depth - 1e-6) {
       raiseError("INVALID_INPUT", "The countersink is deeper than the hole");
     }
-    toolShapes.push_back(holeTool(spec, frame, depth, through, prefix + point + ")"));
+    size_t ci = canonical.size();
+    for (size_t c = 0; c < canonical.size(); ++c) {
+      if (std::fabs(canonical[c].first - depth) <= 1e-9 * std::max(1.0, depth)) ci = c;
+    }
+    if (ci == canonical.size()) canonical.emplace_back(depth, holeTool(spec, gp_Ax2(), depth, through, ""));
+    gp_Trsf place;
+    place.SetDisplacement(gp_Ax3(), gp_Ax3(frame));
+    const std::string base = prefix + point + ")";
+    tools.push_back(transformedNamed(namedInputOf(canonical[ci].second), place,
+                                     [&base](const std::string& role) { return base + role; }));
   }
-  for (const NamedShape& t : toolShapes) tools.push_back(namedInputOf(t));
   const std::string fallback = "F" + tag + ":unnamed";
   if (op == "new") {
     BRep_Builder builder;
