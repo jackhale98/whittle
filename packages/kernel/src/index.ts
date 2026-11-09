@@ -18,6 +18,8 @@ import type { KernelVariant } from '@wren-cad/contracts';
 import type { KernelModuleOptions, WhittleKernelModule } from './facade';
 
 export type {
+  ExactProjectedCurve,
+  ExactProjectedEdge,
   ExportShape,
   KernelFileSystem,
   KernelModuleOptions,
@@ -26,6 +28,8 @@ export type {
   MeshDataHandle,
   PlaneXY,
   ProjectEdgesQuery,
+  ProjectedBSpline,
+  ProjectedConic,
   ProjectedCurve,
   ProjectedEdge,
   ProjectedOutline,

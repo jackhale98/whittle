@@ -354,7 +354,9 @@ std::string execPoint(const Json& feature, const Json& inputs, const std::string
 // Coordinates are the plane frame's local x/y. Lines stay lines; circles and arcs whose axis is
 // parallel to the plane normal stay circles / counter-clockwise arcs; everything else (circles
 // seen obliquely, ellipses, splines) is a polyline within ~1 µm. Curves that project to a point
-// (edges along the normal) are dropped (no curves).
+// (edges along the normal) are dropped (no curves). With `exact: true` (M3.5) circles seen
+// obliquely and ellipses come back as `ellipse` / `ellipticArc`, B-spline and Bezier curves as
+// `bspline` (any orientation: the projection is affine); other curves are still sampled.
 // ---------------------------------------------------------------------------------------------
 
 gp_XY toPlaneXY(const gp_Ax3& f, const gp_Pnt& p) {
@@ -364,7 +366,157 @@ gp_XY toPlaneXY(const gp_Ax3& f, const gp_Pnt& p) {
 
 std::string vec2Json(const gp_XY& v) { return "[" + jsonNumber(v.X()) + "," + jsonNumber(v.Y()) + "]"; }
 
-std::vector<std::string> projectEdgeCurves(const TopoDS_Edge& edge, const gp_Ax3& plane) {
+std::string jsonNumberArray(const std::vector<double>& values) {
+  std::string out = "[";
+  for (size_t i = 0; i < values.size(); ++i) {
+    if (i > 0) out.push_back(',');
+    out += jsonNumber(values[i]);
+  }
+  return out + "]";
+}
+
+// Exact projection (M3.5, `exact: true`). Projection along the plane normal is an affine map, so
+// it maps a conic to a conic and a (rational) B-spline to the B-spline with the projected poles
+// and the same weights and knots. A circle or ellipse c + X cos t + Y sin t projects to
+// c' + X' cos t + Y' sin t; the principal axes of M = [X' Y'] (its singular vectors) give the
+// projected ellipse. Returns false when the projection is degenerate (seen edge-on) or the curve is
+// not a conic or a B-spline/Bezier; the caller then samples.
+bool projectEdgeExact(const BRepAdaptor_Curve& c, const gp_Ax3& plane, std::vector<std::string>& out) {
+  const double u0 = c.FirstParameter();
+  const double u1 = c.LastParameter();
+  const gp_Vec px(plane.XDirection());
+  const gp_Vec py(plane.YDirection());
+  auto local = [&](const gp_Vec& v) { return gp_XY(v.Dot(px), v.Dot(py)); };
+  const GeomAbs_CurveType type = c.GetType();
+  if (type == GeomAbs_Circle || type == GeomAbs_Ellipse) {
+    gp_Ax2 pos;
+    double a = 0;
+    double b = 0;
+    if (type == GeomAbs_Circle) {
+      const gp_Circ circ = c.Circle();
+      pos = circ.Position();
+      a = b = circ.Radius();
+    } else {
+      const gp_Elips el = c.Ellipse();
+      pos = el.Position();
+      a = el.MajorRadius();
+      b = el.MinorRadius();
+    }
+    const gp_XY ctr = toPlaneXY(plane, pos.Location());
+    const gp_XY X = local(gp_Vec(pos.XDirection()) * a);
+    const gp_XY Y = local(gp_Vec(pos.YDirection()) * b);
+    const double det = X.X() * Y.Y() - X.Y() * Y.X();
+    if (std::fabs(det) < 1e-9 * a * b) return false;  // edge-on: a line segment
+    // A = M Mᵀ = [[p, q], [q, r]]; eigenvalues σ², major axis angle ½ atan2(2q, p − r).
+    const double p = X.X() * X.X() + Y.X() * Y.X();
+    const double q = X.X() * X.Y() + Y.X() * Y.Y();
+    const double r = X.Y() * X.Y() + Y.Y() * Y.Y();
+    const double mean = 0.5 * (p + r);
+    const double dev = std::hypot(0.5 * (p - r), q);
+    const double major = std::sqrt(mean + dev);
+    const double minor = std::sqrt(std::max(0.0, mean - dev));
+    const bool full = u1 - u0 >= 2 * kPi - 1e-9;
+    gp_XY s = toPlaneXY(plane, c.Value(u0));
+    gp_XY e = toPlaneXY(plane, c.Value(u1));
+    if (det < 0) std::swap(s, e);  // keep counter-clockwise in plane coordinates
+    if (major - minor <= 1e-9 * major) {
+      if (full) {
+        out.push_back("{\"kind\":\"circle\",\"c\":" + vec2Json(ctr) + ",\"r\":" + jsonNumber(major) + "}");
+      } else {
+        out.push_back("{\"kind\":\"arc\",\"c\":" + vec2Json(ctr) + ",\"r\":" + jsonNumber(major) +
+                      ",\"start\":" + vec2Json(s) + ",\"end\":" + vec2Json(e) + "}");
+      }
+      return true;
+    }
+    const double rotation = 0.5 * std::atan2(2 * q, p - r);  // (−π/2, π/2]
+    const std::string conic = "\"c\":" + vec2Json(ctr) + ",\"majorRadius\":" + jsonNumber(major) +
+                              ",\"minorRadius\":" + jsonNumber(minor) + ",\"rotation\":" + jsonNumber(rotation);
+    if (full) {
+      out.push_back("{\"kind\":\"ellipse\"," + conic + "}");
+    } else {
+      out.push_back("{\"kind\":\"ellipticArc\"," + conic + ",\"start\":" + vec2Json(s) + ",\"end\":" + vec2Json(e) +
+                    "}");
+    }
+    return true;
+  }
+  if (type != GeomAbs_BSplineCurve && type != GeomAbs_BezierCurve) return false;
+  occ::handle<Geom_BSplineCurve> bs;
+  if (type == GeomAbs_BSplineCurve) {
+    bs = occ::down_cast<Geom_BSplineCurve>(c.BSpline()->Copy());
+  } else {
+    // A Bezier curve is the B-spline with one span on [0, 1] (its parameter range).
+    const occ::handle<Geom_BezierCurve> bz = c.Bezier();
+    const int np = bz->NbPoles();
+    NCollection_Array1<gp_Pnt> P(1, np);
+    NCollection_Array1<double> W(1, np);
+    for (int i = 1; i <= np; ++i) {
+      P(i) = bz->Pole(i);
+      W(i) = bz->Weight(i);
+    }
+    NCollection_Array1<double> K(1, 2);
+    NCollection_Array1<int> M(1, 2);
+    K(1) = 0;
+    K(2) = 1;
+    M(1) = M(2) = bz->Degree() + 1;
+    bs = new Geom_BSplineCurve(P, W, K, M, bz->Degree(), false);
+  }
+  if (bs.IsNull()) return false;
+  const double period = bs->IsPeriodic() ? bs->LastParameter() - bs->FirstParameter() : 0;
+  const bool wholePeriodic = bs->IsPeriodic() && u1 - u0 >= period - Precision::PConfusion();
+  if (!wholePeriodic) {
+    // Trims to the edge and clamps the ends (Segment always leaves a clamped, non-periodic curve).
+    if (bs->IsPeriodic() || u0 > bs->FirstParameter() + Precision::PConfusion() ||
+        u1 < bs->LastParameter() - Precision::PConfusion() || bs->Multiplicity(1) != bs->Degree() + 1 ||
+        bs->Multiplicity(bs->NbKnots()) != bs->Degree() + 1) {
+      bs->Segment(u0, u1);
+    }
+  }
+  std::vector<gp_XY> poles;
+  for (int i = 1; i <= bs->NbPoles(); ++i) poles.push_back(toPlaneXY(plane, bs->Pole(i)));
+  // Poles on one line: the curve projects onto a segment (or a point); the caller samples it.
+  double far = 0;
+  size_t farI = 0;
+  for (size_t i = 1; i < poles.size(); ++i) {
+    const double d = (poles[i] - poles[0]).Modulus();
+    if (d > far) {
+      far = d;
+      farI = i;
+    }
+  }
+  if (far < 1e-9) return false;
+  const gp_XY dir = (poles[farI] - poles[0]) / far;
+  bool flat = true;
+  for (const gp_XY& q : poles) {
+    const gp_XY v = q - poles[0];
+    if (std::fabs(v.X() * dir.Y() - v.Y() * dir.X()) > 1e-9 * std::max(1.0, far)) {
+      flat = false;
+      break;
+    }
+  }
+  if (flat) return false;
+  std::string json = "{\"kind\":\"bspline\",\"poles\":[";
+  for (size_t i = 0; i < poles.size(); ++i) {
+    if (i > 0) json.push_back(',');
+    json += vec2Json(poles[i]);
+  }
+  json += "],\"degree\":" + std::to_string(bs->Degree()) + ",\"periodic\":" + (bs->IsPeriodic() ? "true" : "false");
+  if (bs->IsRational()) {
+    std::vector<double> w;
+    for (int i = 1; i <= bs->NbPoles(); ++i) w.push_back(bs->Weight(i));
+    json += ",\"weights\":" + jsonNumberArray(w);
+  }
+  std::vector<double> knots;
+  std::vector<double> mults;
+  for (int i = 1; i <= bs->NbKnots(); ++i) {
+    knots.push_back(bs->Knot(i));
+    mults.push_back(bs->Multiplicity(i));
+  }
+  json += ",\"knots\":" + jsonNumberArray(knots) + ",\"multiplicities\":" + jsonNumberArray(mults) + "}";
+  out.push_back(json);
+  return true;
+}
+
+std::vector<std::string> projectEdgeCurves(const TopoDS_Edge& edge, const gp_Ax3& plane, bool exact) {
   std::vector<std::string> out;
   if (BRep_Tool::Degenerated(edge) || !BRep_Tool::IsGeometric(edge)) return out;
   BRepAdaptor_Curve c(edge);
@@ -396,6 +548,7 @@ std::vector<std::string> projectEdgeCurves(const TopoDS_Edge& edge, const gp_Ax3
       return out;
     }
   }
+  if (exact && projectEdgeExact(c, plane, out)) return out;
   // Sampled: tangential deflection (0.05 rad, 1 µm), projected, de-duplicated.
   GCPnts_TangentialDeflection sampler(c, 0.05, 1e-3, 8);
   std::vector<gp_XY> pts;
@@ -443,14 +596,23 @@ std::vector<std::string> projectEdgeCurves(const TopoDS_Edge& edge, const gp_Ax3
   return out;
 }
 
-std::string projectedEdgeJson(int ordinal, const TopoDS_Edge& edge, const gp_Ax3& plane) {
+std::string projectedEdgeJson(int ordinal, const TopoDS_Edge& edge, const gp_Ax3& plane, bool exact) {
   std::string json = "{\"edge\":" + std::to_string(ordinal) + ",\"curves\":[";
-  const std::vector<std::string> curves = projectEdgeCurves(edge, plane);
+  const std::vector<std::string> curves = projectEdgeCurves(edge, plane, exact);
   for (size_t i = 0; i < curves.size(); ++i) {
     if (i > 0) json.push_back(',');
     json += curves[i];
   }
   return json + "]}";
+}
+
+// `exact: true` (M3.5): conics and B-splines come back exactly (see projectEdgeExact).
+bool queryExact(const Json& query) {
+  const Json* v = query.get("exact");
+  if (v != nullptr && v->kind != Json::Kind::Bool && v->kind != Json::Kind::Null) {
+    raiseError("INVALID_INPUT", "exact must be true or false");
+  }
+  return v != nullptr && v->kind == Json::Kind::Bool && v->boolean;
 }
 
 gp_Ax3 queryPlane(const Json& query) {
@@ -474,6 +636,7 @@ std::string projectEdgesQuery(const Json& query) {
   if (!query.isObject()) raiseError("INVALID_INPUT", "projectEdges query must be an object");
   const auto record = requireShape(optHandle(query, "shape"));
   const gp_Ax3 plane = queryPlane(query);
+  const bool exact = queryExact(query);
   const Json* edges = query.get("edges");
   if (edges == nullptr || !edges->isArray()) raiseError("INVALID_INPUT", "edges must be an array of edge ordinals");
   const Topo& topo = record->topo();
@@ -481,7 +644,7 @@ std::string projectEdgesQuery(const Json& query) {
   for (size_t i = 0; i < edges->array.size(); ++i) {
     const int e = queryOrdinal(*edges->array[i], topo.edges.Extent(), "Edge");
     if (i > 0) json.push_back(',');
-    json += projectedEdgeJson(e, TopoDS::Edge(topo.edges(e + 1)), plane);
+    json += projectedEdgeJson(e, TopoDS::Edge(topo.edges(e + 1)), plane, exact);
   }
   return json + "]";
 }
@@ -490,6 +653,7 @@ std::string projectFaceOutlineQuery(const Json& query) {
   if (!query.isObject()) raiseError("INVALID_INPUT", "projectFaceOutline query must be an object");
   const auto record = requireShape(optHandle(query, "shape"));
   const gp_Ax3 plane = queryPlane(query);
+  const bool exact = queryExact(query);
   const Json* faceJ = query.get("face");
   if (faceJ == nullptr) raiseError("INVALID_INPUT", "face (a face ordinal) is required");
   const Topo& topo = record->topo();
@@ -504,7 +668,7 @@ std::string projectFaceOutlineQuery(const Json& query) {
       if (ei <= 0) continue;
       if (!first) json.push_back(',');
       first = false;
-      json += projectedEdgeJson(ei - 1, TopoDS::Edge(topo.edges(ei)), plane);
+      json += projectedEdgeJson(ei - 1, TopoDS::Edge(topo.edges(ei)), plane, exact);
     }
     return json + "]";
   };

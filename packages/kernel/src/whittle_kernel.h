@@ -97,15 +97,18 @@ std::string configureThreads(int32_t count);
 std::string measure(const std::string& queryJson);
 
 // M3 "convert entities": projects model edges onto a sketch plane. queryJson:
-// {"shape":int,"edges":[int (TopExp edge ordinals)],"plane":Frame}. Returns
+// {"shape":int,"edges":[int (TopExp edge ordinals)],"plane":Frame[,"exact":bool]}. Returns
 // Result<[{"edge":int,"curves":ProjectedCurve[]}]> in the plane frame's local x/y (mm), where
 // ProjectedCurve = {"kind":"line","a":[x,y],"b":[x,y]} | {"kind":"circle","c":[x,y],"r":number}
 // | {"kind":"arc","c","r","start","end"} (counter-clockwise in plane coordinates)
 // | {"kind":"polyline","points":[[x,y],…]} (approximated: ellipses, circles seen obliquely,
 // splines; within ~1 µm). Edges that project to a point (along the normal) get no curves.
+// M3.5: with "exact":true, conics and B-splines come back exactly (projection is affine):
+// {"kind":"ellipse"|"ellipticArc","c","majorRadius","minorRadius","rotation"[,"start","end"]}
+// and {"kind":"bspline","poles","degree","periodic","weights"?,"knots","multiplicities"}.
 std::string projectEdges(const std::string& queryJson);
 
-// M3: {"shape":int,"face":int (TopExp face ordinal),"plane":Frame} →
+// M3: {"shape":int,"face":int (TopExp face ordinal),"plane":Frame[,"exact":bool]} →
 // Result<{"outer":[{"edge","curves"}…],"inner":[[{"edge","curves"}…]…]}> (loops in wire order).
 std::string projectFaceOutline(const std::string& queryJson);
 

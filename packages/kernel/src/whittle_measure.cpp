@@ -115,7 +115,7 @@ std::string intrinsicJson(const MeasureSubject& s) {
   } else if (s.kind == "face") {
     const TopoDS_Face& f = TopoDS::Face(s.shape);
     GProp_GProps props;
-    BRepGProp::SurfaceProperties(f, props);
+    reportedSurfaceProperties(f, props);
     field("area", jsonNumber(props.Mass()));
     if (BRep_Tool::IsGeometric(f)) {
       BRepAdaptor_Surface surface(f, false);
@@ -127,7 +127,7 @@ std::string intrinsicJson(const MeasureSubject& s) {
     }
   } else {  // body
     GProp_GProps props;
-    BRepGProp::SurfaceProperties(s.shape, props);
+    reportedSurfaceProperties(s.shape, props);
     field("area", jsonNumber(props.Mass()));
   }
   json.push_back('}');
