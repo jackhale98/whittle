@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, type Page, test } from '@playwright/test';
 import type { HarnessApi } from '../harness/main';
+import { settle } from './helpers';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const SHOTS = join(here, '..', 'test-results', 'screenshots'); // untracked output
@@ -101,7 +102,7 @@ test('dark theme renders a dark background', async ({ page }) => {
 });
 
 test.describe('camera', () => {
-  test('mouse: left-drag orbits, wheel zooms, right-drag pans, double-click fits', async ({
+  test('mouse: left-drag never navigates; right-drag orbits, middle-drag pans, wheel zooms, double-click fits', async ({
     page,
   }) => {
     await open(page, '?backend=webgl2&reducedMotion=1');
@@ -111,14 +112,24 @@ test.describe('camera', () => {
     const cx = box.x + box.width / 2;
     const cy = box.y + box.height / 2;
 
+    // Left drag is the app's (pick, box select): the camera does not move.
     await page.mouse.move(cx, cy);
     await page.mouse.down();
     await page.mouse.move(cx + 160, cy + 60, { steps: 12 });
     await page.mouse.up();
     await page.evaluate(() => window.__viewport?.viewport.nextFrame());
+    const left = (await cam())!;
+    expect(dist(left.position, before.position)).toBeLessThan(1e-6);
+    expect(dist(left.target, before.target)).toBeLessThan(1e-6);
+
+    await page.mouse.move(cx, cy);
+    await page.mouse.down({ button: 'right' });
+    await page.mouse.move(cx + 160, cy + 60, { steps: 12 });
+    await page.mouse.up({ button: 'right' });
+    await page.evaluate(() => window.__viewport?.viewport.nextFrame());
     const orbited = (await cam())!;
     expect(dist(orbited.position, before.position)).toBeGreaterThan(5);
-    expect(dist(orbited.target, before.target)).toBeLessThan(1e-3);
+    // Orbit turns about the picked pivot, so the distance is kept (the target slides along the view axis).
     expect(orbited.distance).toBeCloseTo(before.distance, 0);
 
     await page.mouse.wheel(0, -400);
@@ -128,12 +139,13 @@ test.describe('camera', () => {
     expect(zoomed.distance).toBeLessThan(orbited.distance - 1);
 
     await page.mouse.move(cx, cy);
-    await page.mouse.down({ button: 'right' });
+    await page.mouse.down({ button: 'middle' });
     await page.mouse.move(cx + 120, cy + 40, { steps: 10 });
-    await page.mouse.up({ button: 'right' });
+    await page.mouse.up({ button: 'middle' });
     await page.evaluate(() => window.__viewport?.viewport.nextFrame());
     const panned = (await cam())!;
     expect(dist(panned.target, zoomed.target)).toBeGreaterThan(1);
+    expect(panned.distance).toBeCloseTo(zoomed.distance, 3);
 
     await page.mouse.dblclick(cx, cy);
     await page.waitForTimeout(100);
@@ -146,6 +158,7 @@ test.describe('camera', () => {
     page,
   }) => {
     await open(page, '?backend=webgl2&reducedMotion=1');
+    await settle(page);
     const cdp = await page.context().newCDPSession(page);
     const cam = () => page.evaluate(() => window.__viewport?.viewport.getCameraState());
     const box = (await page.locator('canvas').boundingBox())!;
@@ -172,7 +185,7 @@ test.describe('camera', () => {
     // A 144 px drag must turn the view substantially (≈ chord of > 30°), not a token amount:
     // regression for the render loop idling between touch moves.
     expect(dist(orbited.position, before.position)).toBeGreaterThan(0.5 * before.distance);
-    expect(dist(orbited.target, before.target)).toBeLessThan(1e-3);
+    expect(orbited.distance).toBeCloseTo(before.distance, 0);
 
     // Pinch out (fingers apart) -> dolly in.
     await touch('touchStart', [
@@ -286,7 +299,7 @@ test('perf probe: 1M triangles orbiting', async ({ page }) => {
   const cx = box.x + box.width / 2;
   const cy = box.y + box.height / 2;
   await page.mouse.move(cx, cy);
-  await page.mouse.down();
+  await page.mouse.down({ button: 'right' });
 
   // Measure rAF-to-rAF presented frame intervals and per-render CPU time while dragging.
   const N = 40;
@@ -306,7 +319,7 @@ test('perf probe: 1M triangles orbiting', async ({ page }) => {
     await page.mouse.move(cx + Math.sin(i / 4) * 150, cy + Math.cos(i / 4) * 60);
     await page.evaluate(() => window.__viewport?.viewport.nextFrame());
   }
-  await page.mouse.up();
+  await page.mouse.up({ button: 'right' });
   const frames = await page.evaluate(() => (window as unknown as { __frames: number[] }).__frames);
   const after = await page.evaluate(() => window.__viewport?.viewport.stats());
   const mean = frames.reduce((a, b) => a + b, 0) / frames.length;
