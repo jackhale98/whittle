@@ -39,7 +39,8 @@ declare const self: ServiceWorkerGlobalScope & {
 const CACHE_VERSION = 'v1';
 
 setCacheNameDetails({
-  prefix: 'wren',
+  // Cache names keep the pre-rename prefix (ADR-032): one naming scheme for every cache.
+  prefix: 'whittle',
   suffix: CACHE_VERSION,
   precache: 'precache',
   runtime: 'runtime',
@@ -90,7 +91,7 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     (async () => {
       for (const key of await caches.keys()) {
-        if (/^wren-(precache|runtime|kernel)-/.test(key) && !key.endsWith(`-${CACHE_VERSION}`)) {
+        if (/^whittle-(precache|runtime|kernel)-/.test(key) && !key.endsWith(`-${CACHE_VERSION}`)) {
           await caches.delete(key);
         }
       }
