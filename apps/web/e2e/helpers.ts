@@ -68,6 +68,8 @@ export interface AppHooks {
     kernel: { started: boolean; ready: boolean };
     camera: { moving: boolean; rest: number };
   };
+  /** Undo (`past`, oldest first) and redo (`future`) steps with their labels. */
+  history(): { past: { label: string }[]; future: { label: string }[] };
   load(doc: WrenDoc): void;
   projectFiles(): {
     extra: string[];
@@ -105,6 +107,7 @@ export const app = (page: Page) => ({
   settled: () => page.evaluate(() => (window as unknown as W).__wrenApp.sketchSettled()),
   ui: () => page.evaluate(() => (window as unknown as W).__wrenApp.ui()),
   marks: () => page.evaluate(() => (window as unknown as W).__wrenApp.marks()),
+  history: () => page.evaluate(() => (window as unknown as W).__wrenApp.history()),
   load: (doc: WrenDoc) => page.evaluate((d) => (window as unknown as W).__wrenApp.load(d), doc),
   projectFiles: () => page.evaluate(() => (window as unknown as W).__wrenApp.projectFiles()),
   sentAttachments: () => page.evaluate(() => (window as unknown as W).__wrenApp.sentAttachments()),
