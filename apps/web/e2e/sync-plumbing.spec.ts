@@ -163,14 +163,17 @@ test.describe('provider API calls under COOP/COEP', () => {
     page,
   }) => {
     await visitUntilIsolated(page);
-    await page.evaluate(async (origin) => {
-      // A cacheable provider response (max-age); the browser HTTP cache may serve repeats, the
-      // service worker must never store it in Cache Storage.
-      await fetch(`${origin}/files/a`, { headers: { Authorization: 'Bearer tok' } });
-      await fetch(`${origin}/public`);
-      // Same-origin request that carries Authorization (e.g. a misconfigured same-origin Worker).
-      await fetch('/wren-cad/__e2e__/test.wasm', { headers: { Authorization: 'Bearer tok' } });
-    }, providerOrigin);
+    await page.evaluate(
+      async ({ origin, wasm }) => {
+        // A cacheable provider response (max-age); the browser HTTP cache may serve repeats, the
+        // service worker must never store it in Cache Storage.
+        await fetch(`${origin}/files/a`, { headers: { Authorization: 'Bearer tok' } });
+        await fetch(`${origin}/public`);
+        // Same-origin request that carries Authorization (e.g. a misconfigured same-origin Worker).
+        await fetch(wasm, { headers: { Authorization: 'Bearer tok' } });
+      },
+      { origin: providerOrigin, wasm: `${process.env.WREN_BASE ?? '/wren-cad/'}__e2e__/test.wasm` },
+    );
     expect(seen.filter((s) => s.url === '/files/a' && s.method === 'GET')).toHaveLength(1);
     const urls = await cachedUrls(page);
     expect(urls.some((u) => u.startsWith(providerOrigin))).toBe(false);

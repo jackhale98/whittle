@@ -7,7 +7,9 @@ import type { RuntimeDiagnostics, WrenTestHooks } from '@wren-cad/contracts';
  */
 
 const KERNEL_CACHE = 'whittle-kernel-v1';
-const FIXTURE_WASM = '/wren-cad/__e2e__/test.wasm';
+/** Same base as the build and server (playwright.config.ts; CI: `/<repository name>/`). */
+const BASE = process.env.WREN_BASE ?? '/wren-cad/';
+const FIXTURE_WASM = `${BASE}__e2e__/test.wasm`;
 
 function diagnostics(page: Page): Promise<RuntimeDiagnostics> {
   return page.evaluate(() => (window as unknown as { __wren: WrenTestHooks }).__wren.diagnostics());
@@ -152,11 +154,13 @@ test.describe('offline', () => {
     });
 
     // And a wasm that was never fetched online is (correctly) unavailable.
-    const missing = await page.evaluate(() =>
-      fetch('/wren-cad/__e2e__/never-fetched.wasm').then(
-        () => 'resolved',
-        () => 'rejected',
-      ),
+    const missing = await page.evaluate(
+      (url) =>
+        fetch(url).then(
+          () => 'resolved',
+          () => 'rejected',
+        ),
+      `${BASE}__e2e__/never-fetched.wasm`,
     );
     // Playwright's Firefox offline emulation does not cover SW-initiated network fetches.
     if (browserName !== 'firefox') expect(missing).toBe('rejected');
@@ -206,7 +210,7 @@ test.describe('PWA manifest and installability', () => {
   test('manifest is linked and valid', async ({ page, request, baseURL }) => {
     await page.goto('./');
     const href = await page.locator('link[rel="manifest"]').first().getAttribute('href');
-    expect(href).toBe('/wren-cad/manifest.webmanifest');
+    expect(href).toBe(`${BASE}manifest.webmanifest`);
     await expect(page.locator('link[rel="manifest"]')).toHaveCount(1);
 
     const response = await request.get(new URL(href ?? '', baseURL).toString());
@@ -217,8 +221,8 @@ test.describe('PWA manifest and installability', () => {
     expect(manifest.short_name).toBe('Wren');
     expect(manifest.display).toBe('standalone');
     expect(manifest.display_override).toContain('standalone');
-    expect(manifest.start_url).toBe(process.env.WREN_BASE ?? '/wren-cad/');
-    expect(manifest.scope).toBe(process.env.WREN_BASE ?? '/wren-cad/');
+    expect(manifest.start_url).toBe(BASE);
+    expect(manifest.scope).toBe(BASE);
     expect(manifest.theme_color).toMatch(/^#[0-9a-f]{6}$/i);
     expect(manifest.background_color).toMatch(/^#[0-9a-f]{6}$/i);
     expect(manifest.launch_handler.client_mode).toBeTruthy();
