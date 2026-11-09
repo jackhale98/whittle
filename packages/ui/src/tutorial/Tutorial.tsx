@@ -61,15 +61,63 @@ function resolveTarget(step: TutorialStep | undefined): Resolved | null {
 const CHROME =
   '[data-testid="top-bar"], [aria-label="Modeling tools"], [data-testid$="-sheet"], [data-testid="context-bubble"], [data-testid="value-chip"], [data-testid="keypad"]';
 
+/**
+ * Open menus the user is choosing from: always obstacles, even when the step's target is inside
+ * one (the ring still marks it). A card over a tool flyout hid Extrude on the iPad.
+ */
+const MENUS = '[data-testid="tool-flyout"], [role="menu"], [data-radix-popper-content-wrapper]';
+
 function chromeRects(target: Element | null): Box[] {
   const out: Box[] = [];
+  const add = (el: Element) => {
+    const r = el.getBoundingClientRect();
+    if (r.width > 0 && r.height > 0)
+      out.push({ left: r.left, top: r.top, width: r.width, height: r.height });
+  };
   for (const el of document.querySelectorAll(CHROME)) {
     if (target && el.contains(target)) continue;
+    add(el);
+  }
+  out.push(...menuRects());
+  return out;
+}
+
+function menuRects(): Box[] {
+  const out: Box[] = [];
+  for (const el of document.querySelectorAll(MENUS)) {
+    if (el.closest('[data-testid="tutorial"]')) continue;
     const r = el.getBoundingClientRect();
     if (r.width > 0 && r.height > 0)
       out.push({ left: r.left, top: r.top, width: r.width, height: r.height });
   }
   return out;
+}
+
+const overlaps = (a: Box, b: Box) =>
+  a.left < b.left + b.width &&
+  b.left < a.left + a.width &&
+  a.top < b.top + b.height &&
+  b.top < a.top + a.height;
+
+/** Top dock for a card with no (or a low) target: centred, else right or left of the obstacles. */
+function dockTop(
+  size: { w: number; h: number },
+  vw: number,
+  top: number,
+  safe: { left: number; right: number },
+  obstacles: Box[],
+): number {
+  const lefts = [
+    Math.round((vw - size.w) / 2),
+    vw - safe.right - size.w,
+    ...obstacles.map((o) => o.left + o.width + 12),
+  ];
+  for (const left of lefts) {
+    const box = { left, top, width: size.w, height: size.h };
+    const inside = left >= safe.left && left + size.w <= vw - safe.right;
+    if (inside && !obstacles.some((o) => overlaps(box, o))) return left;
+  }
+  return lefts[0] as number;
 }
 
 /**
@@ -143,11 +191,18 @@ export default function Tutorial({
               preferred: t.left < vw * 0.2 ? 'right' : t.top > vh * 0.55 ? 'above' : 'below',
               obstacles,
             });
-            setPlace({ left: p.left, top: p.top, side: p.side });
+            const placed = { left: p.left, top: p.top, width: size.w, height: size.h };
+            if (menuRects().some((m) => overlaps(placed, m))) {
+              // No clear spot beside the target: dock at the top, clear of the open menu.
+              const top = safe.top + 64;
+              setPlace({ left: dockTop(size, vw, top, safe, obstacles), top, side: null });
+            } else {
+              setPlace({ left: p.left, top: p.top, side: p.side });
+            }
           } else {
             // No target (or a low one): float at the top, under the title bar, centred.
             setPlace({
-              left: Math.round((vw - size.w) / 2),
+              left: dockTop(size, vw, safe.top + 64, safe, obstacles),
               top: safe.top + 64,
               side: null,
             });

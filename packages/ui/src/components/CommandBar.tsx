@@ -350,7 +350,7 @@ export function CommandBar({
           data-testid="tool-flyout"
           onKeyDown={flyoutKey}
           style={{ left }}
-          className="w-panel pointer-events-auto absolute bottom-[calc(100%+8px)] flex w-56 flex-col gap-0.5 p-1.5"
+          className="w-panel pointer-events-auto absolute bottom-[calc(100%+8px)] flex w-max max-w-[min(22rem,calc(100vw-2rem))] min-w-56 flex-col gap-0.5 p-1.5"
         >
           {openDef.tools.map((id) => {
             const t = byId.get(id);
@@ -371,7 +371,7 @@ export function CommandBar({
                 )}
               >
                 <t.Icon className="size-[18px] shrink-0" strokeWidth={1.75} aria-hidden />
-                <span className="min-w-0 flex-1 truncate">{t.label}</span>
+                <span className="min-w-0 flex-1 leading-tight">{t.label}</span>
                 {on ? (
                   t.shortcut ? (
                     <span aria-hidden className="text-2xs text-fg-subtle">
