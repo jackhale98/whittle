@@ -1,6 +1,6 @@
-// Import the stylesheet once in the app entry: `import '@whittle/ui/styles.css'`.
+// Import the stylesheet once in the app entry: `import '@wren-cad/ui/styles.css'`.
 
-export { BirdMark, WhittleLoader } from './brand/Bird';
+export { BirdMark, WrenLoader } from './brand/Bird';
 export { CommandBar, type CommandBarProps } from './components/CommandBar';
 export type { PaletteCommand } from './components/CommandPalette';
 export {

@@ -1,11 +1,11 @@
-# Whittle brand assets: perched bird
+# Wren brand assets: perched bird
 
 ## Files
 | File | Use |
 |---|---|
-| `svg/whittle-loader-dark.svg` | Animated loader for dark surfaces (seamless 4.4 s loop) |
-| `svg/whittle-loader-light.svg` | Animated loader for light surfaces |
-| `svg/whittle-mark-dark.svg` / `whittle-mark-light.svg` | Static logo mark |
+| `svg/wren-loader-dark.svg` | Animated loader for dark surfaces (seamless 4.4 s loop) |
+| `svg/wren-loader-light.svg` | Animated loader for light surfaces |
+| `svg/wren-mark-dark.svg` / `wren-mark-light.svg` | Static logo mark |
 | `svg/favicon.svg` | Simplified 16–32 px mark; adapts to the browser's light/dark theme |
 | `svg/app-icon.svg`, `svg/app-icon-maskable.svg` | Sources for the PNG icons |
 | `png/icon-192.png`, `png/icon-512.png` | PWA manifest icons |
@@ -17,15 +17,15 @@
 - One loop: block → rough → shaped → finished (chips fly at each cut) → the finished bird slides out left while a new block slides in. The last frame equals the first, so it runs indefinitely with no visible restart.
 - Pure SVG + CSS. No JavaScript, no external assets, and it's safe under COOP/COEP.
 - Honours `prefers-reduced-motion`: it shows the static finished bird.
-- **Inline the SVG** in the page (not `<img src>`) if you want the accent colour to follow the app theme. The accent is `var(--whittle-accent, #2F5BEA)`. As an `<img>`, it animates but always uses the default blue.
+- **Inline the SVG** in the page (not `<img src>`) if you want the accent colour to follow the app theme. The accent is `var(--wren-accent, #2F5BEA)`. As an `<img>`, it animates but always uses the default blue.
 
 ```html
 <!-- Kernel-loading splash -->
 <div class="boot" role="status" aria-live="polite">
-  <!-- paste svg/whittle-loader-dark.svg here, sized with CSS -->
-  <span class="sr-only">Loading Whittle…</span>
+  <!-- paste svg/wren-loader-dark.svg here, sized with CSS -->
+  <span class="sr-only">Loading Wren…</span>
 </div>
-<style>.boot svg{width:96px;height:96px} :root{--whittle-accent:#2F5BEA}</style>
+<style>.boot svg{width:96px;height:96px} :root{--wren-accent:#2F5BEA}</style>
 ```
 
 ## Web manifest / head
@@ -52,6 +52,6 @@
 | Greys (dark → light) | `#3A404C`, `#545C6C`, `#6A7383`, `#8C93A1`, `#A9B0BC`, `#C3C8D1`, `#ECEDEF` |
 | Paper | `#F5F4F0` |
 
-Wordmark: **Inter Tight SemiBold**, lowercase "whittle", letter-spacing −0.025em. Use a self-hosted font file because of cross-origin isolation.
+Wordmark: **Inter Tight SemiBold**, lowercase "wren", letter-spacing −0.025em. Use a self-hosted font file because of cross-origin isolation.
 
 Source of truth for regenerating: `build.py` (SVGs) and `render.cjs` (PNGs, via Playwright).

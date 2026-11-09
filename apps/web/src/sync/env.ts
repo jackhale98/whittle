@@ -2,14 +2,14 @@
  * What the sync chunk needs from the page: build-time provider config (`sync-config.ts`), the
  * OAuth redirect URI, and one seam for end-to-end tests.
  *
- * Test seam: `globalThis.__whittleSyncOverrides`, set by a Playwright init script before the app
+ * Test seam: `globalThis.__wrenSyncOverrides`, set by a Playwright init script before the app
  * boots. It can (1) rewrite provider origins to local fake servers (Dropbox's three hosts are
- * fixed URLs inside `@whittle/sync`), (2) supply public app keys the CI build doesn't have and
+ * fixed URLs inside `@wren-cad/sync`), (2) supply public app keys the CI build doesn't have and
  * (3) stand in for `showDirectoryPicker`, which can't be automated. Only script already running
  * in this page can set it, and such script could read the vault anyway, so it widens nothing.
  */
 
-import type { OAuthConfig } from '@whittle/sync';
+import type { OAuthConfig } from '@wren-cad/sync';
 import {
   availableProviders,
   type ProviderAvailability,
@@ -27,7 +27,7 @@ export interface SyncOverrides {
 }
 
 export function overrides(): SyncOverrides {
-  const o = (globalThis as { __whittleSyncOverrides?: SyncOverrides }).__whittleSyncOverrides;
+  const o = (globalThis as { __wrenSyncOverrides?: SyncOverrides }).__wrenSyncOverrides;
   return o && typeof o === 'object' ? o : {};
 }
 

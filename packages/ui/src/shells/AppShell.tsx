@@ -1,4 +1,4 @@
-import type { DeviceTier } from '@whittle/contracts';
+import type { DeviceTier } from '@wren-cad/contracts';
 import { DesktopShell } from './DesktopShell';
 import { PhoneShell } from './PhoneShell';
 import { TabletShell } from './TabletShell';

@@ -4,10 +4,10 @@
  *
  * Budgets are stated for real hardware. GitHub's 2-vCPU runners have no GPU (SwiftShader/llvmpipe
  * WebGL) and are 2-4x slower than a mid-range laptop for main-thread work, so CI multiplies the
- * time budgets by `PERF_FACTOR`. Override with WHITTLE_PERF_FACTOR (e.g. 1 on real hardware).
+ * time budgets by `PERF_FACTOR`. Override with WREN_PERF_FACTOR (e.g. 1 on real hardware).
  * Memory is not scaled: a 1 GB peak is a 1 GB peak.
  */
-export const PERF_FACTOR = Number(process.env.WHITTLE_PERF_FACTOR ?? (process.env.CI ? 3 : 1.5));
+export const PERF_FACTOR = Number(process.env.WREN_PERF_FACTOR ?? (process.env.CI ? 3 : 1.5));
 
 export const BUDGETS = {
   /** Time to interactive shell, cold, fast 4G (ms). */

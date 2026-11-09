@@ -17,9 +17,9 @@ import type {
   MergeResolution,
   MergeResult,
   ProjectFiles,
-  WhittleDoc,
-} from '@whittle/contracts';
-import { fromFiles, MANIFEST_FILE, toFiles } from '@whittle/document';
+  WrenDoc,
+} from '@wren-cad/contracts';
+import { fromFiles, MANIFEST_FILE, toFiles } from '@wren-cad/document';
 import { isVersionedPath, sameBytes, sha256Hex } from '../history/hash';
 import { docMerger } from './merge';
 import { escapeSeg } from './tree';
@@ -27,7 +27,7 @@ import { escapeSeg } from './tree';
 /** Pointer prefix of whole-file conflicts (not part of the document). */
 export const FILES_POINTER = '/files';
 
-const MODEL_PATH = /^(whittle\.project\.json|params\.json|(parts|drawings|assemblies)\/)/;
+const MODEL_PATH = /^(wren\.project\.json|params\.json|(parts|drawings|assemblies)\/)/;
 
 export function isModelPath(path: string): boolean {
   return MODEL_PATH.test(path);
@@ -50,7 +50,7 @@ interface Sides {
   theirs: ProjectFiles;
 }
 
-function emptyLike(doc: WhittleDoc): WhittleDoc {
+function emptyLike(doc: WrenDoc): WrenDoc {
   return { ...structuredClone(doc), params: [], parts: [], drawings: [], assemblies: [] };
 }
 

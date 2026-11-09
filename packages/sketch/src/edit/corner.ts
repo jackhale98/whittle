@@ -15,7 +15,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import type { Expr, Id, SketchConstraint, SketchEntity, Vec2 } from '@whittle/contracts';
+import type { Expr, Id, SketchConstraint, SketchEntity, Vec2 } from '@wren-cad/contracts';
 import { add, angle0, cross, dist, dot, fromAngle, normalize, perp, scale, sub } from '../geometry';
 import { type Curve, carrierIntersections, onExtent, paramOf, paramTol, turnAngle } from './curves';
 import {

@@ -160,12 +160,12 @@ describe('installed-PWA markup', () => {
     // The splash lives inside #root (React's first render replaces it) and follows the system theme.
     expect(html).toMatch(/<div id="root">\s*<div class="boot" role="status"/);
     expect(html).toContain(
-      'srcset="%BASE_URL%brand/whittle-loader-dark.svg" media="(prefers-color-scheme: dark)"',
+      'srcset="%BASE_URL%brand/wren-loader-dark.svg" media="(prefers-color-scheme: dark)"',
     );
-    expect(html).toContain('src="%BASE_URL%brand/whittle-loader-light.svg"');
+    expect(html).toContain('src="%BASE_URL%brand/wren-loader-light.svg"');
     for (const f of [
-      'brand/whittle-loader-dark.svg',
-      'brand/whittle-loader-light.svg',
+      'brand/wren-loader-dark.svg',
+      'brand/wren-loader-light.svg',
       'icons/favicon.svg',
     ])
       expect(readFileSync(resolve(root, 'public', f), 'utf8')).not.toMatch(

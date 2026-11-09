@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-import { SCHEMA_VERSION } from '@whittle/contracts';
+import { SCHEMA_VERSION } from '@wren-cad/contracts';
 import { describe, expect, it } from 'vitest';
 import {
   createDocumentStore,
@@ -34,7 +34,7 @@ describe('migration framework', () => {
     const raw = {
       units: { length: 'mm', angle: 'deg' },
       parts: [],
-      meta: { name: 'Old', created: 'x', modified: 'y', app: 'whittle/0.0.1' },
+      meta: { name: 'Old', created: 'x', modified: 'y', app: 'wren/0.0.1' },
     };
     const r = migrateDoc(raw);
     expect(r.ok).toBe(true);

@@ -18,7 +18,7 @@ import type {
   RemoteListing,
   StorageProvider,
   StorageResult,
-} from '@whittle/contracts';
+} from '@wren-cad/contracts';
 import { fail } from './common';
 
 export const GDRIVE_AVAILABLE = false;
@@ -26,7 +26,7 @@ export const GDRIVE_SCOPES = 'https://www.googleapis.com/auth/drive.file';
 
 const unavailable = <T>(): Promise<StorageResult<T>> =>
   Promise.resolve(
-    fail<T>('UNSUPPORTED', 'Google Drive isn’t available in this version of Whittle yet.'),
+    fail<T>('UNSUPPORTED', 'Google Drive isn’t available in this version of Wren yet.'),
   );
 
 export class GoogleDriveProvider implements StorageProvider {

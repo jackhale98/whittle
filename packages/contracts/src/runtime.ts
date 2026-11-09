@@ -22,10 +22,10 @@ export interface RuntimeDiagnostics {
 }
 
 /**
- * Global hook the app exposes for E2E/perf tests (`window.__whittle`). Only test-facing; not an
+ * Global hook the app exposes for E2E/perf tests (`window.__wren`). Only test-facing; not an
  * extension API.
  */
-export interface WhittleTestHooks {
+export interface WrenTestHooks {
   diagnostics(): RuntimeDiagnostics;
   /** Resolves once the first body has been rendered. Includes timing marks (ms since navigationStart). */
   firstBodyRendered(): Promise<{

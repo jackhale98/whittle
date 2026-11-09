@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 /**
- * @whittle/document — the Whittle document model. Worker-safe: no DOM, no Node-only APIs.
+ * @wren-cad/document — the Wren document model. Worker-safe: no DOM, no Node-only APIs.
  *
  *  - Expressions & units:  `expressionEngine`, `evaluateFeatureValues`, `evaluateParams`, `scopeOf`
  *  - Store:                `createDocumentStore` (undo/redo, coalescing, migrations)

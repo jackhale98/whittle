@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import type { SketchConstraint, SketchEntity } from '@whittle/contracts';
+import type { SketchConstraint, SketchEntity } from '@wren-cad/contracts';
 import { describe, expect, it } from 'vitest';
 import type { SketchData } from '../src/edit/draft';
 import { offsetEntities } from '../src/edit/offset';

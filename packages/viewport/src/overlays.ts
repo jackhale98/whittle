@@ -40,7 +40,7 @@ export interface LineStyle {
  * graph and could compile a shader each time (≈ 0.8 s per pen move on software GL). Shared
  * materials are flagged and never disposed with an overlay. The set of styles is small and bounded.
  */
-const SHARED = 'whittleSharedOverlayMaterial';
+const SHARED = 'wrenSharedOverlayMaterial';
 const shared = new Map<string, Material>();
 const MAX_SHARED = 256;
 

@@ -1,6 +1,6 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { ExtrudeFeature, Feature, FilletFeature } from '@whittle/contracts';
+import type { ExtrudeFeature, Feature, FilletFeature } from '@wren-cad/contracts';
 import { describe, expect, it, vi } from 'vitest';
 import {
   extrudeSample,

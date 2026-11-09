@@ -1,7 +1,7 @@
 /**
- * The Whittle reference-part suite (PLAN section 12A): ten original parts, each with a spec
+ * The Wren reference-part suite (PLAN section 12A): ten original parts, each with a spec
  * (JSON + Markdown), a spec drawing (SVG), CSWP-style modification stages, and a builder that
- * turns the spec into a `WhittleDoc`.
+ * turns the spec into a `WrenDoc`.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  */

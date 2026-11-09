@@ -1,6 +1,6 @@
 import { defineConfig } from 'vite';
 
-/** Standalone dev harness for the viewport (not the app). `pnpm --filter @whittle/viewport harness`. */
+/** Standalone dev harness for the viewport (not the app). `pnpm --filter @wren-cad/viewport harness`. */
 const port = Number(process.env.VIEWPORT_PORT ?? 5199);
 
 export default defineConfig({

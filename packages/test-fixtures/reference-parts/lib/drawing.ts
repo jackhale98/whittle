@@ -1,6 +1,6 @@
 /**
  * A small SVG drawing generator for the reference-part spec drawings: orthographic views drawn in
- * model coordinates, driving-dimension annotations, and Whittle's own title block. The sheet is
+ * model coordinates, driving-dimension annotations, and Wren's own title block. The sheet is
  * 420 x 297 (user units are millimetres on the sheet). The look is deliberately plain and does not
  * imitate any published drawing template.
  *
@@ -221,7 +221,7 @@ export class Drawing {
       `<text x="${x + 1.5}" y="${y + h - 2}" font-size="3.6" font-family="sans-serif" fill="#111">${esc(text)}</text>`;
     const block = [
       `<rect x="215" y="257" width="190" height="35" fill="#fff" stroke="#111" stroke-width="0.6"/>`,
-      `<text x="218" y="266" font-size="6" font-family="sans-serif" font-weight="bold" fill="#111">Whittle reference part</text>`,
+      `<text x="218" y="266" font-size="6" font-family="sans-serif" font-weight="bold" fill="#111">Wren reference part</text>`,
       tb(215, 268, 95, 11, 'PART', `${i.id}  ${i.title}`),
       tb(310, 268, 95, 11, 'LEVEL', i.level),
       tb(215, 279, 95, 13, 'MATERIAL', i.material),
@@ -229,12 +229,12 @@ export class Drawing {
     ];
     const note = [
       `<text x="10" y="284" font-size="2.8" font-family="sans-serif" fill="#444">All dimensions in mm unless marked. Third-angle projection.</text>`,
-      `<text x="10" y="288" font-size="2.8" font-family="sans-serif" fill="#444">Original drawing for the Whittle certification-style suite; the named values drive the model.</text>`,
+      `<text x="10" y="288" font-size="2.8" font-family="sans-serif" fill="#444">Original drawing for the Wren certification-style suite; the named values drive the model.</text>`,
     ].join('\n');
     return [
       `<?xml version="1.0" encoding="UTF-8"?>`,
       `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 297" width="420mm" height="297mm" data-part="${esc(i.id)}">`,
-      `<title>${esc(`${i.id} ${i.title} - Whittle reference part`)}</title>`,
+      `<title>${esc(`${i.id} ${i.title} - Wren reference part`)}</title>`,
       `<rect x="5" y="5" width="410" height="287" fill="#fff" stroke="#111" stroke-width="0.8"/>`,
       ...this.views.map((v) => v.svg()),
       ...block,

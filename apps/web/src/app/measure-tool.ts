@@ -5,7 +5,7 @@
  * boots the kernel (it may still be a viewer of cached meshes).
  */
 
-import type { PickHit } from '@whittle/contracts';
+import type { PickHit } from '@wren-cad/contracts';
 import {
   type MeasurePick,
   measureMarkers,

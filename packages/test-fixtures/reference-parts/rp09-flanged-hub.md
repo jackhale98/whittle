@@ -2,7 +2,7 @@
 
 CSWP-like. A cast-iron flanged hub revolved from one profile, with a ring of bolt holes made by a circular pattern about a reference axis taken from the bore, two instances left out.
 
-_Original Whittle reference part. Not derived from any published exam or textbook drawing._
+_Original Wren reference part. Not derived from any published exam or textbook drawing._
 
 Drawing: [rp09-flanged-hub.svg](rp09-flanged-hub.svg). Machine-readable spec: [rp09-flanged-hub.spec.json](rp09-flanged-hub.spec.json).
 
@@ -66,7 +66,7 @@ Method and accuracy: Exact. The solid of revolution is two stacked annular cylin
 
 ## Independent check
 
-Built in FreeCAD 26.3.0 with `freecad/rp09.py` (a different construction than Whittle's).
+Built in FreeCAD 26.3.0 with `freecad/rp09.py` (a different construction than Wren's).
 
 | Stage | Analytic volume (mm^3) | FreeCAD volume (mm^3) | Difference |
 | --- | --- | --- | --- |

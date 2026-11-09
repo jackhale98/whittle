@@ -4,7 +4,7 @@
  * the bottom sheet on tablet and phone, with 44 px targets there. Lazy chunk with the controller.
  */
 
-import type { MergeConflict } from '@whittle/contracts';
+import type { MergeConflict } from '@wren-cad/contracts';
 import {
   Button,
   ComparePanel,
@@ -15,7 +15,7 @@ import {
   MergePanel,
   Segmented,
   VersionsPanel,
-} from '@whittle/ui';
+} from '@wren-cad/ui';
 import { FolderGit2, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useObservable } from '../app/observable';
@@ -277,7 +277,7 @@ function Body({
             className="flex flex-wrap items-center gap-2 rounded-control bg-surface-2 p-2.5 text-xs"
           >
             <span className="min-w-0 flex-1 text-fg-muted">
-              Keep Whittle’s regenerable cache out of git: add <code>.whittle/</code> to .gitignore?
+              Keep Wren’s regenerable cache out of git: add <code>.wren/</code> to .gitignore?
             </span>
             <Button size={size} variant="primary" onClick={() => void ctl.addCacheToGitignore()}>
               Add to .gitignore
@@ -315,7 +315,7 @@ function Body({
         ) : null}
         {p.kind === 'localGit' ? (
           <p className="text-2xs text-fg-subtle">
-            Whittle commits only this project’s files, without running git hooks, and leaves Git LFS
+            Wren commits only this project’s files, without running git hooks, and leaves Git LFS
             files alone.
           </p>
         ) : null}

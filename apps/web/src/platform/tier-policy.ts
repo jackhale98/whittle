@@ -3,7 +3,7 @@
  * the app consults one place: regen cache size, mesh quality, and when the kernel boots.
  */
 
-import type { DeviceTier, MeshQuality } from '@whittle/contracts';
+import type { DeviceTier, MeshQuality } from '@wren-cad/contracts';
 
 /** When the kernel worker should be started. */
 export type KernelBoot = 'eager' | 'onEdit';

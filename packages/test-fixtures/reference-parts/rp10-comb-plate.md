@@ -2,7 +2,7 @@
 
 CSWP-like. An acetal plate with a row of through slots (one instance of the linear pattern skipped) and a drilled mounting ear on each end; the second ear is a mirror of the first.
 
-_Original Whittle reference part. Not derived from any published exam or textbook drawing._
+_Original Wren reference part. Not derived from any published exam or textbook drawing._
 
 Drawing: [rp10-comb-plate.svg](rp10-comb-plate.svg). Machine-readable spec: [rp10-comb-plate.spec.json](rp10-comb-plate.spec.json).
 
@@ -73,7 +73,7 @@ Method and accuracy: Exact. Plate, ears and slots are boxes and the ear holes ar
 
 ## Independent check
 
-Built in FreeCAD 26.3.0 with `freecad/rp10.py` (a different construction than Whittle's).
+Built in FreeCAD 26.3.0 with `freecad/rp10.py` (a different construction than Wren's).
 
 | Stage | Analytic volume (mm^3) | FreeCAD volume (mm^3) | Difference |
 | --- | --- | --- | --- |

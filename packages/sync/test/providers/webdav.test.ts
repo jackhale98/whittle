@@ -91,7 +91,7 @@ describe('WebDAV provider', () => {
     const server = new FakeDav(ROOT);
     server.put('/P/a.json', 'A');
     server.put('/P/parts/d.json', 'D');
-    server.put('/P/.whittle/h.bin', 'H');
+    server.put('/P/.wren/h.bin', 'H');
     const r = must(await dav(server).list({ path: '/P' }));
     expect(r.complete).toBe(true);
     expect(r.entries.map((e) => e.path).sort()).toEqual(['/P/a.json', '/P/parts/d.json']);
@@ -104,7 +104,7 @@ describe('WebDAV provider', () => {
     const server = new FakeDav(ROOT, { infinity: 'answer' });
     server.put('/P/a.json', 'A');
     server.put('/P/parts/d.json', 'D');
-    server.put('/P/.whittle/x.bin', 'X');
+    server.put('/P/.wren/x.bin', 'X');
     const client = dav(server);
     expect(client.pollMs).toBe(300_000);
     const first = must(await client.list({ path: '/P' }));

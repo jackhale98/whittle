@@ -5,7 +5,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import type { BodyResult, Feature, WhittleDoc } from '@whittle/contracts';
+import type { BodyResult, Feature, WrenDoc } from '@wren-cad/contracts';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import {
   type Api,
@@ -77,7 +77,7 @@ describe.skipIf(!built)(`regen golden: tree operations, multi-body, errors${skip
     await api.closePart(PART);
   });
 
-  const regen = (doc: WhittleDoc) =>
+  const regen = (doc: WrenDoc) =>
     api.regenerate({ doc, partId: PART, quality: 'coarse', massProperties: true });
 
   describe('suppress, rollback, reorder', () => {

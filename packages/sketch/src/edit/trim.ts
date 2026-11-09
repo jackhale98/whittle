@@ -17,7 +17,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import type { Id, SketchEntity, Vec2 } from '@whittle/contracts';
+import type { Id, SketchEntity, Vec2 } from '@wren-cad/contracts';
 import { dist, TAU } from '../geometry';
 import {
   arcEnd,

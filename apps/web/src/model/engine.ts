@@ -6,8 +6,8 @@
  * so the dynamic import is dead code and the chunk is never emitted).
  */
 
-import type { KernelStatus } from '@whittle/contracts';
-import type { KernelClient } from '@whittle/kernel-client';
+import type { KernelStatus } from '@wren-cad/contracts';
+import type { KernelClient } from '@wren-cad/kernel-client';
 import { mark } from '../app/timing';
 import { getDiagnostics } from '../platform/diagnostics';
 import { reportKernelVariant, whenIsolationSettled } from '../platform/runtime-state';
@@ -45,7 +45,7 @@ export function bootEngine(onStatus: (status: KernelStatus) => void): EngineBoot
 
   const modeling = (async () => {
     const mode = await whenIsolationSettled();
-    const { createKernelClient } = await import('@whittle/kernel-client');
+    const { createKernelClient } = await import('@wren-cad/kernel-client');
     if (disposed) throw new Error('disposed');
     // Smaller per-part result caches on tablets and phones (memory budget, PLAN §8.4, §10): the
     // tier policy's budget goes to the worker before init (`configureRegen` under the hood).

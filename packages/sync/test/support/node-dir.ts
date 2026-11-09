@@ -1,4 +1,4 @@
-/// A `FileSystemDirectoryHandle` (the subset Whittle uses) over a real directory, for running
+/// A `FileSystemDirectoryHandle` (the subset Wren uses) over a real directory, for running
 /// isomorphic-git through `fsaGitFs` against repositories made and read by the real `git` CLI.
 /// Errors are DOMException-style names, like Chromium's: NotFoundError, TypeMismatchError,
 /// InvalidModificationError (removing a non-empty folder without `recursive`). Writes go to a

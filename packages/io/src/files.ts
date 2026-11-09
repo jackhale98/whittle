@@ -81,7 +81,7 @@ export async function saveFile(
 }
 
 /**
- * Let the user pick one file. `accept` is a list of extensions (e.g. `['.whittle', '.step']`).
+ * Let the user pick one file. `accept` is a list of extensions (e.g. `['.wrencad', '.step']`).
  * Resolves `null` when the user cancels.
  */
 export async function openFile(accept: string[] = []): Promise<OpenedFile | null> {
@@ -130,7 +130,7 @@ export async function openFile(accept: string[] = []): Promise<OpenedFile | null
 }
 
 /**
- * File Handling (PLAN §2.6): files opened from the OS (`.whittle`, `.step`, ...) arrive through
+ * File Handling (PLAN §2.6): files opened from the OS (`.wrencad`, `.step`, ...) arrive through
  * `launchQueue`. Returns false where the API does not exist. Call once at startup.
  */
 export function onLaunchFiles(cb: (files: OpenedFile[]) => void): boolean {

@@ -11,7 +11,7 @@ import {
   SKETCH_Y_AXIS,
   type SketchSolveInput,
   type Vec2,
-} from '@whittle/contracts';
+} from '@wren-cad/contracts';
 import { describe, expect, it } from 'vitest';
 import { infer } from '../src/inference';
 import { buildModel, isSatisfied } from '../src/model';

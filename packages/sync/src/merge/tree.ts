@@ -8,7 +8,7 @@
  * never by index (`['parts', <partId>, 'features', <featureId>, 'radius']`).
  */
 
-import type { EntityKind, JsonPointer } from '@whittle/contracts';
+import type { EntityKind, JsonPointer } from '@wren-cad/contracts';
 
 export type Segs = readonly string[];
 export type Obj = Record<string, unknown>;

@@ -13,7 +13,7 @@
  * Never synced, never logged; nothing here leaves the device.
  */
 
-import type { Credential, CredentialVault, Id } from '@whittle/contracts';
+import type { Credential, CredentialVault, Id } from '@wren-cad/contracts';
 import { type DBSchema, type IDBPDatabase, openDB } from 'idb';
 
 const KEY_ID = 'aes-gcm-v1';

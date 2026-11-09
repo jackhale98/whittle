@@ -5,7 +5,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import type { Vec2 } from '@whittle/contracts';
+import type { Vec2 } from '@wren-cad/contracts';
 import {
   add,
   angle0,

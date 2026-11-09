@@ -6,8 +6,8 @@ import type {
   MergeResult,
   SyncStatus,
   Version,
-  WhittleDoc,
-} from '@whittle/contracts';
+  WrenDoc,
+} from '@wren-cad/contracts';
 import { type ReactNode, useState } from 'react';
 import {
   type CompareOverlay,
@@ -109,7 +109,7 @@ export const folders: FolderBrowse = {
 };
 
 export const merge = (n: number, autoMerged = 0): MergeResult => ({
-  doc: {} as WhittleDoc,
+  doc: {} as WrenDoc,
   autoMerged,
   conflicts: Array.from({ length: n }, (_, i) => conflicts[i]).filter(
     (c): c is NonNullable<typeof c> => !!c,

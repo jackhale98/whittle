@@ -1,7 +1,7 @@
-import type { Feature, SketchFeature, WhittleDoc } from '@whittle/contracts';
-import { newDoc } from '@whittle/document';
-import { rectangleCornerTool } from '@whittle/sketch';
-import { bracketTutorial } from '@whittle/ui';
+import type { Feature, SketchFeature, WrenDoc } from '@wren-cad/contracts';
+import { newDoc } from '@wren-cad/document';
+import { rectangleCornerTool } from '@wren-cad/sketch';
+import { bracketTutorial } from '@wren-cad/ui';
 import { describe, expect, it } from 'vitest';
 import {
   hasClosedLoop,
@@ -11,7 +11,7 @@ import {
   trackParams,
 } from './tutorial';
 
-function doc(features: Feature[], params: WhittleDoc['params'] = []): WhittleDoc {
+function doc(features: Feature[], params: WrenDoc['params'] = []): WrenDoc {
   const d = newDoc({ name: 'T', firstPart: 'P' });
   const part = d.parts[0];
   if (!part) throw new Error('no part');
@@ -29,7 +29,7 @@ const sketch = (over: Partial<SketchFeature> = {}): SketchFeature => ({
   constraints: [],
   ...over,
 });
-const snap = (d: WhittleDoc, over: Partial<TutorialSnapshot> = {}): TutorialSnapshot => ({
+const snap = (d: WrenDoc, over: Partial<TutorialSnapshot> = {}): TutorialSnapshot => ({
   doc: d,
   statuses: undefined,
   editingDimension: null,

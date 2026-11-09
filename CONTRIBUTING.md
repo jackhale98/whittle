@@ -1,6 +1,6 @@
-# Contributing to Whittle
+# Contributing to Wren
 
-Thanks for helping. Whittle is a browser-based CAD app, so most work touches the document model,
+Thanks for helping. Wren is a browser-based CAD app, so most work touches the document model,
 the geometry kernel, or the UI. Before you start, read:
 
 - [`CLAUDE.md`](CLAUDE.md): the project rules (summarised below).
@@ -18,7 +18,7 @@ Prerequisites:
 
 ```sh
 pnpm i                                                 # install (CI uses --frozen-lockfile)
-pnpm --filter @whittle/web exec playwright install chromium   # browsers for E2E tests
+pnpm --filter @wren-cad/web exec playwright install chromium   # browsers for E2E tests
 ```
 
 Dependency versions are pinned exactly (`.npmrc` sets `save-exact=true`).
@@ -63,7 +63,7 @@ These come from `CLAUDE.md`. They apply to every change.
 
 | What you changed | Tests to add or run |
 | --- | --- |
-| Expressions, units, store, codec, materials (`packages/document`) | Unit tests in `packages/document/test`. If you change the schema, regenerate the JSON Schemas with `pnpm --filter @whittle/document schema`. A test fails when the committed schemas are stale. |
+| Expressions, units, store, codec, materials (`packages/document`) | Unit tests in `packages/document/test`. If you change the schema, regenerate the JSON Schemas with `pnpm --filter @wren-cad/document schema`. A test fails when the committed schemas are stale. |
 | Kernel façade or features (`packages/kernel`) | Golden tests in `packages/kernel/test` checking volume, area and face counts. For naming changes, add an "edit upstream, check downstream" case in `packages/kernel-client/test/regen`. |
 | Regeneration, naming, imports (`packages/kernel-client`) | Tests in `packages/kernel-client/test`. These run against the real kernel, so they need `pnpm kernel:build` first. |
 | Sketch solver, constraints, DOF (`packages/sketch`) | Unit tests in `packages/sketch/test`. |
@@ -106,19 +106,19 @@ Changes to the document schema are file-format changes. Update
 
 Some details:
 
-- **Ports.** The E2E web server uses port 4173 by default. Set `WHITTLE_E2E_PORT` to use another port,
-  for example `WHITTLE_E2E_PORT=4174 pnpm e2e`. Outside CI, Playwright reuses a server that is
+- **Ports.** The E2E web server uses port 4173 by default. Set `WREN_E2E_PORT` to use another port,
+  for example `WREN_E2E_PORT=4174 pnpm e2e`. Outside CI, Playwright reuses a server that is
   already running on that port.
 - **CI mode.** `CI=1` matches the CI run: one worker, one retry, `test.only` is forbidden, and the
   GitHub reporter is used (`apps/web/playwright.config.ts`). Set it locally to reproduce a CI failure.
-- **All browsers.** `pnpm --filter @whittle/web e2e:all` runs the Chromium, Firefox and WebKit
+- **All browsers.** `pnpm --filter @wren-cad/web e2e:all` runs the Chromium, Firefox and WebKit
   projects. CI runs Firefox headed under a virtual display (`xvfb-run`), because headless Firefox has
-  no WebGL on CI runners. Locally, set `WHITTLE_HEADED=1` to get the same headed mode.
+  no WebGL on CI runners. Locally, set `WREN_HEADED=1` to get the same headed mode.
 - **One file.** Run one spec with
-  `pnpm --filter @whittle/web exec playwright test e2e/bracket.spec.ts --project=chromium`.
+  `pnpm --filter @wren-cad/web exec playwright test e2e/bracket.spec.ts --project=chromium`.
 - **Traces.** The config sets `trace: 'off'`, and the package scripts pass `--trace off`. To record
   a trace, run Playwright with `--trace on` and open the file with `playwright show-trace`.
-- **Snapshots.** `pnpm --filter @whittle/ui e2e:update` rewrites the UI screenshots. CI runs the
+- **Snapshots.** `pnpm --filter @wren-cad/ui e2e:update` rewrites the UI screenshots. CI runs the
   UI suite with `--ignore-snapshots` until CI-generated baselines are committed (ADR-005 §6).
 - **Browsers in CI.** The workflows install browsers with
   `playwright install --with-deps <browser>` before the tests run. They are not preinstalled on the
@@ -126,7 +126,7 @@ Some details:
 
 ## Kernel build
 
-The kernel is OCCT 8.0.1 compiled to WebAssembly with Whittle's C++ façade. Its details are in
+The kernel is OCCT 8.0.1 compiled to WebAssembly with Wren's C++ façade. Its details are in
 [`packages/kernel/README.md`](packages/kernel/README.md) and ADR-002.
 
 ```sh

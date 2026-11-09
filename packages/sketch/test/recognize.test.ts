@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import type { StrokeRecognition, StrokeSample, Vec2 } from '@whittle/contracts';
+import type { StrokeRecognition, StrokeSample, Vec2 } from '@wren-cad/contracts';
 import { describe, expect, it } from 'vitest';
 import { recognizeStroke, strokeFragment } from '../src/recognize';
 import { core } from './helpers';

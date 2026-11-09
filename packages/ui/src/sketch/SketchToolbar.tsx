@@ -1,5 +1,5 @@
 import * as RToolbar from '@radix-ui/react-toolbar';
-import type { GeometricConstraint } from '@whittle/contracts';
+import type { GeometricConstraint } from '@wren-cad/contracts';
 import {
   Check,
   ChevronDown,

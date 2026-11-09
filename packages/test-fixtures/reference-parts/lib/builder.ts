@@ -1,5 +1,5 @@
 /**
- * Turns a reference part's step list into a `WhittleDoc` (the contract types, built with the
+ * Turns a reference part's step list into a `WrenDoc` (the contract types, built with the
  * packages/document factories). Deterministic: the same part and dimensions give the same document.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
@@ -12,9 +12,9 @@ import type {
   Id,
   SketchConstraint,
   SketchEntity,
-  WhittleDoc,
-} from '@whittle/contracts';
-import { materialFromLibrary, newDoc } from '@whittle/document';
+  WrenDoc,
+} from '@wren-cad/contracts';
+import { materialFromLibrary, newDoc } from '@wren-cad/document';
 import {
   type Dims,
   dimGetter,
@@ -345,7 +345,7 @@ export function paramExpr(value: number, unit: string): string {
 }
 
 /** The document for a part at the given dimensions (default: the baseline). */
-export function buildDoc(part: PartDef, dims: Dims = baselineDims(part)): WhittleDoc {
+export function buildDoc(part: PartDef, dims: Dims = baselineDims(part)): WrenDoc {
   const doc = newDoc({ name: part.title, now: NOW });
   doc.params = Object.entries(part.dims).map(([name, d], i) => ({
     id: stepFid(part.no, 900 + i),
@@ -389,7 +389,7 @@ export function stageDims(part: PartDef, set: Record<string, number>): Dims {
 }
 
 /** The baseline document with only the stage's parameters changed (what a person does in the UI). */
-export function stageDoc(part: PartDef, set: Record<string, number>): WhittleDoc {
+export function stageDoc(part: PartDef, set: Record<string, number>): WrenDoc {
   const doc = buildDoc(part);
   for (const p of doc.params) {
     const v = set[p.name];

@@ -6,7 +6,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import type { Feature, Vec3, WhittleDoc } from '@whittle/contracts';
+import type { Feature, Vec3, WrenDoc } from '@wren-cad/contracts';
 import { edge, edgeName, extrude, fid, fillet, makeDoc, region, Sk, side } from './helpers';
 
 const PI = Math.PI;
@@ -44,8 +44,8 @@ export interface Region {
 
 export interface FixturePair {
   name: string;
-  a: WhittleDoc;
-  b: WhittleDoc;
+  a: WrenDoc;
+  b: WrenDoc;
   added: Region;
   removed: Region;
   /** Volumes of each side (union of its solids). */

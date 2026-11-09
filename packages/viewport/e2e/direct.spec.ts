@@ -2,7 +2,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
-import { boxMesh } from '@whittle/test-fixtures';
+import { boxMesh } from '@wren-cad/test-fixtures';
 import { camera, countColor, dist, frame, open, samplePoints, touchDriver } from './helpers';
 
 const Q = '?backend=webgl2&reducedMotion=1';

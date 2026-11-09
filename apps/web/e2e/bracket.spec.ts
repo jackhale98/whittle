@@ -99,8 +99,8 @@ async function setParam(page: Page, name: string, expr: string): Promise<void> {
 async function selectAt(page: Page, p: V3, kind: 'face' | 'edge', additive = false) {
   await page.evaluate(() =>
     (
-      window as unknown as { __whittleViewport: { whenPickReady(): Promise<void> } }
-    ).__whittleViewport.whenPickReady(),
+      window as unknown as { __wrenViewport: { whenPickReady(): Promise<void> } }
+    ).__wrenViewport.whenPickReady(),
   );
   const s = await toPage(page, p);
   if (additive) await page.keyboard.down('Shift');
@@ -121,18 +121,18 @@ async function view(page: Page, key: string): Promise<void> {
 async function faceAt(page: Page, p: V3): Promise<V3 | null> {
   await page.evaluate(() =>
     (
-      window as unknown as { __whittleViewport: { whenPickReady(): Promise<void> } }
-    ).__whittleViewport.whenPickReady(),
+      window as unknown as { __wrenViewport: { whenPickReady(): Promise<void> } }
+    ).__wrenViewport.whenPickReady(),
   );
   const s = await toPage(page, p);
   return page.evaluate(({ x, y }) => {
     const v = (
       window as unknown as {
-        __whittleViewport: {
+        __wrenViewport: {
           pick(x: number, y: number, o: { kinds: string[] }): { point: V3 }[];
         };
       }
-    ).__whittleViewport;
+    ).__wrenViewport;
     const r = document.querySelector('[data-testid="viewport-canvas"]')?.getBoundingClientRect();
     return v.pick(x - (r?.left ?? 0), y - (r?.top ?? 0), { kinds: ['face'] })[0]?.point ?? null;
   }, s);

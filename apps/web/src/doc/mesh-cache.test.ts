@@ -1,5 +1,5 @@
-import type { MeshBuffers } from '@whittle/contracts';
-import { newDoc, projectCodec } from '@whittle/document';
+import type { MeshBuffers } from '@wren-cad/contracts';
+import { newDoc, projectCodec } from '@wren-cad/document';
 import { describe, expect, it } from 'vitest';
 import {
   decodeCache,
@@ -68,10 +68,10 @@ describe('mesh cache', () => {
     broken.delete('meshes/B01J_0.bin');
     expect(decodeCache(broken, key)).toBeNull();
 
-    // It travels in the .whittle cache and survives the codec.
+    // It travels in the .wrencad cache and survives the codec.
     const other = new Map([['thumbs/x.png', new Uint8Array([1])]]);
-    const zipped = projectCodec.toWhittle(doc, new Map([...other, ...files]));
-    const { cache } = projectCodec.fromWhittle(zipped);
+    const zipped = projectCodec.toWren(doc, new Map([...other, ...files]));
+    const { cache } = projectCodec.fromWren(zipped);
     expect(decodeCache(cache, key)?.bodies).toHaveLength(1);
     expect([...withoutMeshes(cache).keys()]).toEqual(['thumbs/x.png']);
   });

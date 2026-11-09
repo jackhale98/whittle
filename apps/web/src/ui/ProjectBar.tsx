@@ -1,10 +1,10 @@
 /**
  * Top-bar version menu and sync status (PLAN §9.1, M2.5), on every tier. Main bundle: only
- * observable state; the versions and connections panel and `@whittle/sync` load on first use.
+ * observable state; the versions and connections panel and `@wren-cad/sync` load on first use.
  */
 
-import type { DeviceTier } from '@whittle/contracts';
-import { Button, IconButton, SyncStatusChip } from '@whittle/ui';
+import type { DeviceTier } from '@wren-cad/contracts';
+import { Button, IconButton, SyncStatusChip } from '@wren-cad/ui';
 import { GitBranch } from 'lucide-react';
 import { useObservable } from '../app/observable';
 import type { Workbench } from '../app/workbench';

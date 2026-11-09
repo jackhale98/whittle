@@ -1,4 +1,4 @@
-import type { EvalResult, Expr } from '@whittle/contracts';
+import type { EvalResult, Expr } from '@wren-cad/contracts';
 import { m } from 'motion/react';
 import { useRef, useState } from 'react';
 import type { FormatValue } from '../format';

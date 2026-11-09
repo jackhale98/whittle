@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Ported from Mycelium src/lib/sync/remote.ts (`syncable`), with Whittle's project rules.
+// Ported from Mycelium src/lib/sync/remote.ts (`syncable`), with Wren's project rules.
 /**
  * Which files of a project folder sync (PLAN §8A.1): every file under the project folder except
- * the `.whittle/` cache (meshes, BREP, thumbnails: regenerable, never synced). `.whittle-history/`
+ * the `.wren/` cache (meshes, BREP, thumbnails: regenerable, never synced). `.wren-history/`
  * (snapshot history) does sync. Also skipped: `.git/` (git connections use GitHistory, not file
  * sync) and operating-system metadata files that desktop sync clients drop into folders.
  */
 
-import { CACHE_DIR, MANIFEST_FILE, PARAMS_FILE } from '@whittle/document';
+import { CACHE_DIR, MANIFEST_FILE, PARAMS_FILE } from '@wren-cad/document';
 
-export const HISTORY_DIR = '.whittle-history/';
+export const HISTORY_DIR = '.wren-history/';
 
 const OS_JUNK = new Set(['.DS_Store', 'Thumbs.db', 'desktop.ini', 'Icon\r']);
 

@@ -11,9 +11,9 @@ import type {
   SketchSolveResult,
   Vec2,
   Vec3,
-  WhittleDoc,
-} from '@whittle/contracts';
-import type { SheetSnap, SheetTabId, SketchToolId } from '@whittle/ui';
+  WrenDoc,
+} from '@wren-cad/contracts';
+import type { SheetSnap, SheetTabId, SketchToolId } from '@wren-cad/ui';
 import type { ModelTool } from '../features/factories';
 import type { SectionAxis } from '../model/faces';
 import type { PlaneFrame } from '../model/frames';
@@ -203,8 +203,8 @@ export const initialUi: UiState = {
 export interface RegenView {
   result: RegenResult;
   quality: MeshQuality;
-  doc: WhittleDoc;
-  /** `cache`: meshes from the document's `.whittle/` cache, shown before the kernel is ready. */
+  doc: WrenDoc;
+  /** `cache`: meshes from the document's `.wren/` cache, shown before the kernel is ready. */
   source: 'live' | 'cache';
 }
 

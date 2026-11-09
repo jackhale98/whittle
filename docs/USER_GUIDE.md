@@ -1,10 +1,10 @@
-# Whittle user guide
+# Wren user guide
 
 This guide covers the app as it is deployed today (M1). It is task-oriented: find the task you want
 and follow the steps. Shortcuts and gestures are taken from the code, not from the plan. Features
 that are planned but not in the app are marked **Coming in M2** or **Planned**.
 
-Live app: <https://jackhale98.github.io/whittle/>
+Live app: <https://jackhale98.github.io/wren-cad/>
 
 Contents: [Getting started](#getting-started) · [The interface](#the-interface) · [Sketching](#sketching) ·
 [Building features](#building-features) · [Feature tree](#feature-tree-rollback-edit-suppress) ·
@@ -15,7 +15,7 @@ Contents: [Getting started](#getting-started) · [The interface](#the-interface)
 
 ## Getting started
 
-1. Open <https://jackhale98.github.io/whittle/>. The welcome card appears.
+1. Open <https://jackhale98.github.io/wren-cad/>. The welcome card appears.
 2. Choose **Open the demo bracket** to see a finished part. It has a base plate with holes, an
    upright, fillets and a chamfer. Every size is a parameter, and the material is aluminium 6061-T6.
    Try changing `width` in the **Params** tab and watch the part update.
@@ -24,7 +24,7 @@ Contents: [Getting started](#getting-started) · [The interface](#the-interface)
 
 To find things quickly, press **⌘K** (Ctrl+K on Windows and Linux) and type a command. The palette
 has Welcome and samples, the demo bracket, New document, Open library, Open or import file, Save as
-`.whittle`, Box, Cylinder, Plane, Boolean, Undo, Redo, Check for updates and About.
+`.wrencad`, Box, Cylinder, Plane, Boolean, Undo, Redo, Check for updates and About.
 
 ## The interface
 
@@ -84,7 +84,7 @@ open its menu with the arrow key or a long press.
 | Dimension | D | none |
 
 Press **X** to toggle construction geometry. Construction lines guide the sketch but do not make
-regions. While you draw, Whittle snaps to horizontal, vertical, parallel, perpendicular and tangent
+regions. While you draw, Wren snaps to horizontal, vertical, parallel, perpendicular and tangent
 directions, and to existing points.
 
 ### Constraints
@@ -100,7 +100,7 @@ Choose **Dimension** (D), then:
 
 - click a line to dimension its length, a circle for its diameter, or an arc for its radius;
 - click two points for their distance, or two lines for an angle;
-- click a point and a line, or two points, and move the mouse to place the label. Whittle makes a
+- click a point and a line, or two points, and move the mouse to place the label. Wren makes a
   horizontal or vertical distance depending on where you place the label. Hold **Shift** to keep the
   dimension aligned instead.
 
@@ -127,11 +127,11 @@ Each dimension label has small toggles:
 When constraints conflict, a panel appears at the top right. It names the constraints that cannot all
 hold and says why, in plain words, for example "Line 2 can't be both horizontal and at 30 degrees".
 Each conflict has suggested fixes. Click a fix to apply it, or dismiss the panel and fix the sketch
-by hand. Whittle lists a minimal set of conflicting constraints, so you can usually remove just one.
+by hand. Wren lists a minimal set of conflicting constraints, so you can usually remove just one.
 
 ## Building features
 
-Whittle has two ways to start a feature.
+Wren has two ways to start a feature.
 
 - **Act first, select second.** Press a tool's shortcut, or choose it in the command bar. The prompt
   chip says what to select, such as "Select a sketch region to extrude". Click it. The feature is
@@ -202,7 +202,7 @@ The **Features** tab lists your features in order, with an icon and a name for e
 - **Edit.** Choose **Edit** from a feature's actions. For a sketch, this opens the sketch again.
 - **Suppress and unsuppress.** Choose **Suppress** from a feature's actions to leave it out of the
   model without deleting it.
-- **Reorder.** Drag a feature by its grip, or use **Alt+Up** and **Alt+Down**. Whittle refuses a move
+- **Reorder.** Drag a feature by its grip, or use **Alt+Up** and **Alt+Down**. Wren refuses a move
   that would put a feature before something it depends on.
 - **Rename.** Press Enter or F2 on a feature, or double-click its name.
 - **Delete.** Choose **Delete** from a feature's actions, or press Delete or Backspace on a selected
@@ -257,7 +257,7 @@ material, you see the geometry and a prompt to assign one. Inertia is calculated
 ## When a reference needs attention
 
 A feature refers to faces, edges or sketch regions by name. When you change an upstream feature, a
-name might no longer match the geometry it meant. Whittle does not guess. It marks the feature
+name might no longer match the geometry it meant. Wren does not guess. It marks the feature
 **needs attention**.
 
 What you see:
@@ -275,7 +275,7 @@ What to do:
 2. The model rolls back to the feature's input, so you pick geometry that exists before the feature.
 3. Click the new face, edge or region.
 
-If Whittle can match the reference again by its name and location, it updates the reference quietly
+If Wren can match the reference again by its name and location, it updates the reference quietly
 with your next edit, in the same undo step. You do not need to do anything.
 
 ## Import and export
@@ -298,7 +298,7 @@ Use any of these:
 | OBJ | `.obj` | A reference mesh body |
 | 3MF | `.3mf` | A reference mesh body |
 | GLB | `.glb` | A reference mesh body |
-| `.whittle` | `.whittle` | Opens a project |
+| `.wrencad` | `.wrencad` | Opens a project |
 
 Mesh files (STL, OBJ, 3MF, GLB) come in as reference bodies. You can see and export them, but you
 cannot use them in booleans, fillets or chamfers. Mesh files can only be imported as **New**.
@@ -315,7 +315,7 @@ Choose the export control in the top bar (on a phone, in the **Export** tab). Th
 | STL | Binary or ASCII. One merged file, or one file per body. |
 | 3MF | Units in millimetres, with the body colour |
 | GLB | For web and AR viewers |
-| Whittle project (`.whittle`) | The whole document, with its imported files and cache |
+| Wren project (`.wrencad`) | The whole document, with its imported files and cache |
 
 For STL, 3MF and GLB, choose the tessellation quality: **Coarse** (0.1 mm), **Standard** (0.02 mm)
 or **Fine** (0.005 mm). If the part has several bodies, you can choose which ones to export.
@@ -329,7 +329,7 @@ BREP export is not offered in the export menu yet.
 
 ### Autosave
 
-Whittle saves your document to the library on this device about half a second after your last edit,
+Wren saves your document to the library on this device about half a second after your last edit,
 and again when you leave the page. You do not need to save manually.
 
 ### The library
@@ -343,15 +343,15 @@ your documents with thumbnails. You can:
 - delete a document with the trash button, then confirm with **Delete**.
 
 The library lives in your browser's storage on this device. Clearing the site's data removes it. If
-you need a copy, save a `.whittle` file.
+you need a copy, save a `.wrencad` file.
 
-### `.whittle` files
+### `.wrencad` files
 
-- **Save as .whittle file** (⌘S, or Ctrl+S on Windows and Linux) saves the project as a file. It
+- **Save as .wrencad file** (⌘S, or Ctrl+S on Windows and Linux) saves the project as a file. It
   contains the document, the imported files, and the mesh cache.
-- Open a `.whittle` file with ⌘O, or drag it onto the viewport.
-- If the file is the same project as one in your library, Whittle reuses that entry. If it has the
-  same ID but different content, Whittle opens it as a new library entry, named "Name (copy)" when
+- Open a `.wrencad` file with ⌘O, or drag it onto the viewport.
+- If the file is the same project as one in your library, Wren reuses that entry. If it has the
+  same ID but different content, Wren opens it as a new library entry, named "Name (copy)" when
   the name is already taken. Your existing entry is never overwritten.
 
 ## Connections, versions and compare
@@ -364,15 +364,15 @@ dialog.
 
 - **Add connection** → choose a service. Dropbox and OneDrive open their sign-in page and bring you
   back to where you were. WebDAV (Nextcloud) asks for the server, user name and an app password;
-  turn on **Use relay** if the server refuses requests from Whittle (CORS). Git hosts take a
+  turn on **Use relay** if the server refuses requests from Wren (CORS). Git hosts take a
   repository (`owner/name` or its address) and an access token limited to that repository.
-- Then pick a folder. **Open** on a Whittle project folder copies it into your library; **Use** on
+- Then pick a folder. **Open** on a Wren project folder copies it into your library; **Use** on
   any other folder links the open project to it and uploads it.
 - **Open a local git repo…** (Chrome or Edge on a computer): pick the repository's top folder. The
   project's files on disk are the working copy, and versions are real commits your own git tools
-  see. Whittle offers to add `.whittle/` to `.gitignore`, lists uncommitted changes, and won't
+  see. Wren offers to add `.wren/` to `.gitignore`, lists uncommitted changes, and won't
   switch branches while there are any. Push and pull with your own git, or sign in to the
-  repository's host in Connections to push from Whittle.
+  repository's host in Connections to push from Wren.
 - Tokens and passwords are stored encrypted on this device only.
 
 ### Background sync
@@ -394,7 +394,7 @@ Nothing is uploaded until you finish.
 - **Restore** brings an old version back as one undoable step.
 - **Mark as release** freezes a STEP export (AP214) into `releases/<name>/`. Releases are
   read-only. Restore a version first if you want to release an older one.
-- Versions live in the project's `.whittle-history/` folder, so they sync with it. Git projects use
+- Versions live in the project's `.wren-history/` folder, so they sync with it. Git projects use
   the repository's commits, branches and tags instead.
 
 ### Compare
@@ -422,7 +422,7 @@ the app, your library and your documents without a connection. The first visit n
 ### Updates
 
 When a new version is ready, a banner says **Update available · Reload**. If you have not touched the
-page yet, Whittle updates by itself. Whittle checks for updates when you come back to the page and
+page yet, Wren updates by itself. Wren checks for updates when you come back to the page and
 every 30 minutes. To check now, choose **Check for updates** in the palette.
 
 ## Keyboard shortcuts
@@ -437,7 +437,7 @@ These are the shortcuts in the code. On a Mac, ⌘ is the Command key. On Window
 | ⌘Z | Undo |
 | ⇧⌘Z or ⌘Y | Redo |
 | ⌘O | Open or import a file |
-| ⌘S | Save as a `.whittle` file |
+| ⌘S | Save as a `.wrencad` file |
 | Esc | Cancel the innermost thing: a chooser, a pick, a prompt, the selection, the open feature, the library or the welcome card |
 
 ### Model (when no sketch is open and no text field has focus)
@@ -509,7 +509,7 @@ These gestures work today on a touch device.
 Several things are close together? A **Which one?** list appears. Choose the one you mean.
 
 Number fields open an on-screen keypad on touch devices, so you can type expressions with units.
-Whittle also stops page-level pinch zoom and double-tap zoom, so only the model and panels move.
+Wren also stops page-level pinch zoom and double-tap zoom, so only the model and panels move.
 
 **Coming in M2:**
 

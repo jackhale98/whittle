@@ -6,7 +6,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import type { StrokeSample, Vec2 } from '@whittle/contracts';
+import type { StrokeSample, Vec2 } from '@wren-cad/contracts';
 
 export type Rng = () => number;
 

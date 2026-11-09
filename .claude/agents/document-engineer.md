@@ -1,7 +1,7 @@
 ---
 
 name: document-engineer
-description: Document model. Use for packages/document - the store, params and expression evaluation with units, JSON-patch undo/redo, .whittle serialisation and migrations.
+description: Document model. Use for packages/document - the store, params and expression evaluation with units, JSON-patch undo/redo, .wrencad serialisation and migrations.
 tools: Read, Edit, Write, Bash, Grep, Glob
 model: sonnet
 ---

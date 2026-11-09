@@ -13,8 +13,8 @@ import type {
   MeshBuffers,
   PickHit,
   PickKind,
-} from '@whittle/contracts';
-import { deriveVertices } from '@whittle/viewport/ids';
+} from '@wren-cad/contracts';
+import { deriveVertices } from '@wren-cad/viewport/ids';
 
 /** Pick radius in CSS px: mouse 6, pen 10, touch 22 (contract `PickOptions`). */
 export function toleranceFor(pointerType: string): number {

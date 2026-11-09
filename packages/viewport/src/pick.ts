@@ -2,7 +2,7 @@
  * Screen-space pick math (pure; the engine supplies the projection). All distances are CSS px.
  */
 
-import type { PickKind } from '@whittle/contracts';
+import type { PickKind } from '@wren-cad/contracts';
 
 /** Projects a world point to CSS px. Returns false when the point is behind the camera. */
 export type ProjectFn = (x: number, y: number, z: number, out: { x: number; y: number }) => boolean;

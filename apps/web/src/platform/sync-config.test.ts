@@ -123,8 +123,8 @@ describe('availableProviders', () => {
 
 describe('oauthRedirectUri', () => {
   it('is the app base URL with a trailing slash', () => {
-    expect(oauthRedirectUri('https://jackhale98.github.io', '/whittle/')).toBe(
-      'https://jackhale98.github.io/whittle/',
+    expect(oauthRedirectUri('https://jackhale98.github.io', '/wren-cad/')).toBe(
+      'https://jackhale98.github.io/wren-cad/',
     );
     expect(oauthRedirectUri('http://localhost:5173', '/')).toBe('http://localhost:5173/');
     expect(oauthRedirectUri('http://localhost:5173', '/x')).toBe('http://localhost:5173/x/');

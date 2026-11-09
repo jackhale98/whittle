@@ -6,7 +6,7 @@
  * `coalesceKey` and collapse into one undo step.
  */
 
-import type { Expr, Feature, Id, Material, Param, Part, WhittleDoc } from './document';
+import type { Expr, Feature, Id, Material, Param, Part, WrenDoc } from './document';
 
 export type JsonPointer = string;
 
@@ -48,12 +48,12 @@ export interface HistoryEntry {
   at: string;
 }
 
-export type ApplyResult = { ok: true; doc: WhittleDoc } | { ok: false; error: string };
+export type ApplyResult = { ok: true; doc: WrenDoc } | { ok: false; error: string };
 
 export interface DocumentStore {
-  getDoc(): WhittleDoc;
+  getDoc(): WrenDoc;
   /** Listener runs after every change (apply/undo/redo/load). */
-  subscribe(listener: (doc: WhittleDoc, change: { patches: JsonPatchOp[] }) => void): () => void;
+  subscribe(listener: (doc: WrenDoc, change: { patches: JsonPatchOp[] }) => void): () => void;
   apply(command: Command, options?: ApplyOptions): ApplyResult;
   /** Ends the current coalescing group (call on pointerup / blur). */
   commit(): void;

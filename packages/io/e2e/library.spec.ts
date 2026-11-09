@@ -23,7 +23,7 @@ test('library saves, lists, opens and removes through real IndexedDB + OPFS', as
     ).entries()) {
       names.push(name);
     }
-    return names.filter((n) => n.endsWith('.whittle'));
+    return names.filter((n) => n.endsWith('.wrencad'));
   });
   expect(leftover).toEqual([]);
 });

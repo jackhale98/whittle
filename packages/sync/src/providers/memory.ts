@@ -13,8 +13,8 @@ import type {
   RemoteListing,
   StorageProvider,
   StorageResult,
-} from '@whittle/contracts';
-import { MANIFEST_FILE } from '@whittle/document';
+} from '@wren-cad/contracts';
+import { MANIFEST_FILE } from '@wren-cad/document';
 import { baseName, fail, ok, SKIP_FOLDERS } from './common';
 
 interface Stored {

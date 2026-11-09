@@ -8,7 +8,7 @@ import { addBox, app, boot, cameraStill, palette, toPage, topCenter, touchStats 
  * restore them.
  */
 
-const SHOTS = process.env.WHITTLE_SHOTS;
+const SHOTS = process.env.WREN_SHOTS;
 
 async function box(page: Page) {
   await boot(page);
@@ -62,8 +62,8 @@ test('push/pull: arrow on the face, same-frame preview, chip, release records th
   const camera = await page.evaluate(() =>
     JSON.stringify(
       (
-        window as unknown as { __whittleViewport: { getCameraState(): unknown } }
-      ).__whittleViewport.getCameraState(),
+        window as unknown as { __wrenViewport: { getCameraState(): unknown } }
+      ).__wrenViewport.getCameraState(),
     ),
   );
   const to = await alongZ(page, top, 40 + 120);
@@ -84,8 +84,8 @@ test('push/pull: arrow on the face, same-frame preview, chip, release records th
     await page.evaluate(() =>
       JSON.stringify(
         (
-          window as unknown as { __whittleViewport: { getCameraState(): unknown } }
-        ).__whittleViewport.getCameraState(),
+          window as unknown as { __wrenViewport: { getCameraState(): unknown } }
+        ).__wrenViewport.getCameraState(),
       ),
     ),
   ).toBe(camera);
@@ -354,11 +354,11 @@ test('a selected vertex stays selected through a regen that does not move it (D6
     const r = canvas.getBoundingClientRect();
     const v = (
       window as unknown as {
-        __whittleViewport: {
+        __wrenViewport: {
           pick(x: number, y: number, o: object): { kind: string; index: number }[];
         };
       }
-    ).__whittleViewport;
+    ).__wrenViewport;
     return v.pick(x - r.left, y - r.top, { kinds: ['vertex'], tolerancePx: 6 })[0] ?? null;
   }, s);
   expect(hit?.kind).toBe('vertex');

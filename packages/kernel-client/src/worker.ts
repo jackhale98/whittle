@@ -5,7 +5,7 @@
  * worker.
  *
  * Asset wiring is static so bundlers can see it:
- *  - `import('@whittle/kernel/<variant>/init')` pulls in the generated initialiser, which
+ *  - `import('@wren-cad/kernel/<variant>/init')` pulls in the generated initialiser, which
  *    references its Emscripten glue with `new URL('./whittle-kernel*.js', import.meta.url)`.
  *  - `?url` imports emit the `.wasm` files (OCCT variants, planegcs) as hashed assets; the URL is handed to the glue via
  *    `locateFile` and fetched by us for streaming compile + download progress.
@@ -16,8 +16,8 @@
  */
 
 import planegcsWasmUrl from '@salusoft89/planegcs/dist/planegcs_dist/planegcs.wasm?url';
-import threadedWasmUrl from '@whittle/kernel/multi/wasm?url';
-import singleWasmUrl from '@whittle/kernel/single/wasm?url';
+import threadedWasmUrl from '@wren-cad/kernel/multi/wasm?url';
+import singleWasmUrl from '@wren-cad/kernel/single/wasm?url';
 import { expose } from 'comlink';
 import { createModelingApi, type ModelingWorkerApi } from './modeling-api';
 import { statusMessage } from './protocol';
@@ -29,8 +29,8 @@ const scope = self as unknown as {
 const api: ModelingWorkerApi = createModelingApi({
   planegcsWasmUrl,
   variants: {
-    single: { load: () => import('@whittle/kernel/single/init'), wasmUrl: singleWasmUrl },
-    threaded: { load: () => import('@whittle/kernel/multi/init'), wasmUrl: threadedWasmUrl },
+    single: { load: () => import('@wren-cad/kernel/single/init'), wasmUrl: singleWasmUrl },
+    threaded: { load: () => import('@wren-cad/kernel/multi/init'), wasmUrl: threadedWasmUrl },
   },
   onStatus: (status) => scope.postMessage(statusMessage(status)),
 });

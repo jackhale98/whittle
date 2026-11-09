@@ -5,9 +5,9 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import type { KernelStatus } from '@whittle/contracts';
+import type { KernelStatus } from '@wren-cad/contracts';
 
-export const STATUS_MESSAGE_TAG = '__whittleKernelStatus' as const;
+export const STATUS_MESSAGE_TAG = '__wrenKernelStatus' as const;
 
 export interface StatusMessage {
   [STATUS_MESSAGE_TAG]: KernelStatus;

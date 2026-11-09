@@ -1,5 +1,5 @@
 import { devices, expect, type Page, test } from '@playwright/test';
-import type { WhittleTestHooks } from '@whittle/contracts';
+import type { WrenTestHooks } from '@wren-cad/contracts';
 import { app, boot, cameraStill, touch, touchStats } from './helpers';
 import { expectTouchTarget } from './targets';
 
@@ -9,7 +9,7 @@ import { expectTouchTarget } from './targets';
  * viewer bubble on a tapped face.
  */
 
-const SHOTS = process.env.WHITTLE_SHOTS;
+const SHOTS = process.env.WREN_SHOTS;
 
 test.use({
   viewport: { width: 390, height: 844 },
@@ -29,11 +29,11 @@ async function faceAt(page: Page, top: number, bottom: number) {
     ({ top, bottom, w }) => {
       const v = (
         window as unknown as {
-          __whittleViewport: {
+          __wrenViewport: {
             pick(x: number, y: number, o: unknown): Array<{ kind: string; normal?: number[] }>;
           };
         }
-      ).__whittleViewport;
+      ).__wrenViewport;
       // Prefer an upward face (a flat top), else any face.
       let any: { x: number; y: number } | null = null;
       for (let y = top; y < bottom; y += 12)
@@ -74,10 +74,10 @@ test('phone: a cached document is a viewer until the first measurement boots the
   // Reopen: the cached meshes are on screen and the kernel is not started.
   await page.reload();
   await page.waitForFunction(
-    () => !!(window as unknown as { __whittle?: WhittleTestHooks }).__whittle,
+    () => !!(window as unknown as { __wren?: WrenTestHooks }).__wren,
   );
   await page.evaluate(() =>
-    (window as unknown as { __whittle: WhittleTestHooks }).__whittle.firstBodyRendered(),
+    (window as unknown as { __wren: WrenTestHooks }).__wren.firstBodyRendered(),
   );
   expect((await a.regen())?.source).toBe('cache');
   expect((await a.ui()).kernel.started).toBe(false);
@@ -163,10 +163,10 @@ async function reopenCached(page: Page): Promise<void> {
   const a = app(page);
   await page.reload();
   await page.waitForFunction(
-    () => !!(window as unknown as { __whittle?: WhittleTestHooks }).__whittle,
+    () => !!(window as unknown as { __wren?: WrenTestHooks }).__wren,
   );
   await page.evaluate(() =>
-    (window as unknown as { __whittle: WhittleTestHooks }).__whittle.firstBodyRendered(),
+    (window as unknown as { __wren: WrenTestHooks }).__wren.firstBodyRendered(),
   );
   expect((await a.regen())?.source).toBe('cache');
   expect((await a.ui()).kernel.started).toBe(false);

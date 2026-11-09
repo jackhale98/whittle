@@ -13,7 +13,7 @@ import type {
   SketchEntity,
   SketchLine,
   Vec2,
-} from '@whittle/contracts';
+} from '@wren-cad/contracts';
 
 export const TAU = Math.PI * 2;
 

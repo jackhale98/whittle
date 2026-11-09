@@ -1,4 +1,4 @@
-import type { Connection } from '@whittle/contracts';
+import type { Connection } from '@wren-cad/contracts';
 import { describe, expect, it } from 'vitest';
 import { createProvider, serviceLabel } from '../../src/providers/create';
 import { GoogleDriveProvider } from '../../src/providers/gdrive';

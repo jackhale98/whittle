@@ -5,7 +5,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import type { MeshBuffers, NamingMap, RegenResult, Vec3 } from '@whittle/contracts';
+import type { MeshBuffers, NamingMap, RegenResult, Vec3 } from '@wren-cad/contracts';
 
 /** A deep copy whose typed arrays own fresh ArrayBuffers (safe to transfer). */
 export function copyMesh(m: MeshBuffers): MeshBuffers {

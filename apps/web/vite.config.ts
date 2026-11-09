@@ -55,7 +55,7 @@ function spaFallback404(): Plugin {
 
 /**
  * Publishes the document JSON Schemas (packages/document/schema, `$id`
- * `https://jackhale98.github.io/whittle/schema/<file>`) next to the app at `schema/`.
+ * `https://jackhale98.github.io/wren-cad/schema/<file>`) next to the app at `schema/`.
  */
 function publishSchemas(): Plugin {
   let outDir = 'dist';
@@ -79,9 +79,9 @@ function publishSchemas(): Plugin {
 }
 
 export default defineConfig(({ command }) => {
-  // `/whittle/` for the GitHub project site; override with WHITTLE_BASE (e.g. `/` for a custom
+  // `/wren-cad/` for the GitHub project site; override with WREN_BASE (e.g. `/` for a custom
   // domain or Cloudflare Pages). Dev always serves at `/` unless overridden.
-  const base = process.env.WHITTLE_BASE ?? (command === 'build' ? '/whittle/' : '/');
+  const base = process.env.WREN_BASE ?? (command === 'build' ? '/wren-cad/' : '/');
 
   return {
     base,
@@ -115,8 +115,8 @@ export default defineConfig(({ command }) => {
         },
         manifest: {
           id: base,
-          name: 'Whittle',
-          short_name: 'Whittle',
+          name: 'Wren',
+          short_name: 'Wren',
           description: 'Free, open-source, browser-native parametric CAD. Works offline.',
           lang: 'en',
           dir: 'ltr',
@@ -149,7 +149,7 @@ export default defineConfig(({ command }) => {
             {
               action: base,
               accept: {
-                'application/x-whittle': ['.whittle'],
+                'application/x-wren': ['.wrencad'],
                 'model/step': ['.step', '.stp'],
                 'application/step': ['.step', '.stp'],
               },

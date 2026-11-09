@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import type { InferenceCandidate, SketchSolveInput } from '@whittle/contracts';
+import type { InferenceCandidate, SketchSolveInput } from '@wren-cad/contracts';
 import { describe, expect, it } from 'vitest';
 import { bindCandidate, CURSOR_POINT, DRAWING_ENTITY, infer } from '../src/inference';
 import { SketchBuilder } from './helpers';

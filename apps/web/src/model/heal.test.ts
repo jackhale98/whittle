@@ -1,5 +1,5 @@
-import type { FilletFeature, Part } from '@whittle/contracts';
-import { compileCommand, createDocumentStore, newDoc } from '@whittle/document';
+import type { FilletFeature, Part } from '@wren-cad/contracts';
+import { compileCommand, createDocumentStore, newDoc } from '@wren-cad/document';
 import { describe, expect, it } from 'vitest';
 import { foldHeals, healFeature, healOps, healsFrom } from './heal';
 

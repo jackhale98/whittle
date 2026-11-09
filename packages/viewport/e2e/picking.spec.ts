@@ -2,7 +2,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, type Page, test } from '@playwright/test';
-import type { PickHit } from '@whittle/contracts';
+import type { PickHit } from '@wren-cad/contracts';
 import type { HarnessApi } from '../harness/main';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -522,8 +522,8 @@ test('screenshot artefacts (selection look, sketch, dark theme)', async ({ brows
 });
 
 test('perf probe: picking active on a 1M-triangle model', async ({ page }) => {
-  // Minutes on software GL: run with `pnpm --filter @whittle/viewport perf` (WHITTLE_PERF=1).
-  test.skip(!process.env.WHITTLE_PERF, 'perf probe: set WHITTLE_PERF=1');
+  // Minutes on software GL: run with `pnpm --filter @wren-cad/viewport perf` (WREN_PERF=1).
+  test.skip(!process.env.WREN_PERF, 'perf probe: set WREN_PERF=1');
   test.setTimeout(240_000);
   await open(page);
   await page.evaluate(() => window.__viewport?.loadDense(1_000_000));

@@ -24,7 +24,7 @@
  *   until `commitMerge`.
  * - Switching branches and fast-forwarding refuse while the project has uncommitted changes, and
  *   never force a checkout: other files with local edits the checkout would replace refuse it too.
- * - Automatic snapshots are commits under `refs/whittle/auto/…` (never pushed, never checked out);
+ * - Automatic snapshots are commits under `refs/wren/auto/…` (never pushed, never checked out);
  *   pruning deletes those refs.
  * - Every network call goes through the CORS proxy (browsers can't talk to git hosts directly),
  *   except to `localhost`. Tokens come from the `credentials` callback per request.
@@ -46,8 +46,8 @@ import type {
   StorageError,
   StorageResult,
   Version,
-} from '@whittle/contracts';
-import { slugify } from '@whittle/document';
+} from '@wren-cad/contracts';
+import { slugify } from '@wren-cad/document';
 import git, {
   Errors,
   type HttpClient,
@@ -81,8 +81,8 @@ import {
 export const DEFAULT_CORS_PROXY = 'https://cors.isomorphic-git.org';
 
 const REMOTE = 'origin';
-const AUTO_REFS = 'refs/whittle/auto';
-const RELEASE_FILE = 'Whittle-Release-File: ';
+const AUTO_REFS = 'refs/wren/auto';
+const RELEASE_FILE = 'Wren-Release-File: ';
 const OID = /^[0-9a-f]{40}$/;
 
 export interface GitHistoryOptions {
@@ -115,7 +115,7 @@ export interface GitHistoryOptions {
   now?: () => Date;
   /**
    * Start a repository on the first save when there is none (default `true`). Local git repo
-   * mode passes `false`: Whittle never runs `git init` in a user's folder.
+   * mode passes `false`: Wren never runs `git init` in a user's folder.
    */
   init?: boolean;
   /** A bare repository: there is no working tree (`workingChanges` is always empty). */
@@ -220,7 +220,7 @@ export function gitError(e: unknown, secret: string | null, host: string): Stora
   if (fsCode === 'EACCES') {
     return {
       code: 'PERMISSION',
-      message: 'Whittle no longer has access to the folder. Allow it again.',
+      message: 'Wren no longer has access to the folder. Allow it again.',
     };
   }
   if (fsCode === 'ENOSPC') return { code: 'QUOTA', message: 'The disk is full.' };
@@ -259,7 +259,7 @@ function listOf(paths: readonly string[], max = 6): string {
 }
 
 /**
- * Paths Whittle manages in a project (the model, attachments, previews, release exports).
+ * Paths Wren manages in a project (the model, attachments, previews, release exports).
  * Anything else in the project folder is carried along untouched.
  */
 export function ownedPath(path: string): boolean {
@@ -321,7 +321,7 @@ class GitHistoryImpl implements GitHistory {
     this.proxy = corsProxyFor(o.url, o.corsProxy);
     this.merger = o.merger ?? docMerger;
     this.now = o.now ?? (() => new Date());
-    this.defaultAuthor = o.author ?? { name: 'Whittle' };
+    this.defaultAuthor = o.author ?? { name: 'Wren' };
     this.branchName = o.branch ?? null;
     this.scope = new ProjectScope(o.projectPath ?? '');
     let host = 'the git host';
@@ -435,7 +435,7 @@ class GitHistoryImpl implements GitHistory {
 
   /**
    * The project a commit of `files` records: the caller's files, plus every file of `head` in the
-   * project folder Whittle doesn't own (a README, CI config), left exactly as it is. An LFS
+   * project folder Wren doesn't own (a README, CI config), left exactly as it is. An LFS
    * pointer stays the pointer when the content matches it. New files the repository ignores are
    * left out, as `git add` would.
    */
@@ -450,7 +450,7 @@ class GitHistoryImpl implements GitHistory {
         else {
           throw refuse(
             'UNSUPPORTED',
-            `‘${p}’ is stored with Git LFS, which Whittle doesn’t write. Commit that change with your git tools.`,
+            `‘${p}’ is stored with Git LFS, which Wren doesn’t write. Commit that change with your git tools.`,
             p,
           );
         }
@@ -617,7 +617,7 @@ class GitHistoryImpl implements GitHistory {
     const baseTree = head ? await commitTree(a, head) : null;
     const before = await this.leavesAt(head);
     const leaves = new Map<string, LeafEntry>();
-    // Kept as they are: submodules, and committed paths that are never versioned (`.whittle/`).
+    // Kept as they are: submodules, and committed paths that are never versioned (`.wren/`).
     for (const [p, leaf] of before) {
       if (leaf.type === 'commit' || !isVersionedPath(p)) leaves.set(p, leaf);
     }
@@ -684,7 +684,7 @@ class GitHistoryImpl implements GitHistory {
       if (c.after?.type === 'commit' || c.before?.type === 'commit' || c.after?.mode === '120000') {
         throw refuse(
           'UNSUPPORTED',
-          `‘${c.path}’ is a submodule or symbolic link, which Whittle can’t update. Merge with your git tools.`,
+          `‘${c.path}’ is a submodule or symbolic link, which Wren can’t update. Merge with your git tools.`,
           c.path,
         );
       }
@@ -786,7 +786,7 @@ class GitHistoryImpl implements GitHistory {
     if (now !== expected) {
       throw refuse(
         'CONFLICT',
-        'The branch moved while Whittle was saving (another git program committed). Nothing was overwritten; try again.',
+        'The branch moved while Wren was saving (another git program committed). Nothing was overwritten; try again.',
       );
     }
     await git.writeRef({ ...this.local(), ref, value: to, force: true });
@@ -828,7 +828,7 @@ class GitHistoryImpl implements GitHistory {
   /**
    * Whole-file three-way merge of everything outside the project (a multi-project repository):
    * the changes to apply on top of `ours`. Both sides changing one path differently refuses the
-   * merge: such files can't be shown in Whittle's merge panel.
+   * merge: such files can't be shown in Wren's merge panel.
    */
   private async mergeOutside(
     base: string | null,

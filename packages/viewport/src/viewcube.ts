@@ -4,7 +4,7 @@
  * testing is plain math (no DOM picking), so it is unit-testable and cheap.
  */
 
-import type { StandardView } from '@whittle/contracts';
+import type { StandardView } from '@wren-cad/contracts';
 import type { OverlayColors } from './themes';
 import type { Vec3 } from './views';
 

@@ -21,7 +21,7 @@ const cube = `
         stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>`;
 
 const svg = (background) =>
-  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><title>Whittle</title>${background}${cube}</svg>`;
+  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><title>Wren</title>${background}${cube}</svg>`;
 
 const rounded = svg('<rect width="512" height="512" rx="112" fill="#1c2530"/>');
 const bleed = svg('<rect width="512" height="512" fill="#1c2530"/>');

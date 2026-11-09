@@ -1,11 +1,11 @@
 {
-  "$id": "https://jackhale98.github.io/whittle/schema/whittle-assembly.schema.json",
-  "$ref": "#/definitions/Assembly",
+  "$id": "https://jackhale98.github.io/wren-cad/schema/wren-drawing.schema.json",
+  "$ref": "#/definitions/Drawing",
   "$schema": "http://json-schema.org/draft-07/schema#",
   "definitions": {
-    "Assembly": {
+    "Drawing": {
       "additionalProperties": false,
-      "description": "Placeholder until M6; kept so documents are forward compatible.",
+      "description": "Placeholder until M4; kept so documents are forward compatible.",
       "properties": {
         "id": {
           "$ref": "#/definitions/Id"
@@ -25,6 +25,6 @@
       "type": "string"
     }
   },
-  "description": "`assemblies/<slug>.assembly.json`",
-  "title": "AssemblyFile"
+  "description": "`drawings/<slug>.drawing.json`",
+  "title": "DrawingFile"
 }

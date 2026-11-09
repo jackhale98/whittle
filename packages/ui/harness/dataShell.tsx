@@ -1,4 +1,4 @@
-import type { DeviceTier, Expr, Feature, Id, KernelStatus } from '@whittle/contracts';
+import type { DeviceTier, Expr, Feature, Id, KernelStatus } from '@wren-cad/contracts';
 import { ArrowUpFromLine, EyeOff, PenLine, Trash2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import {

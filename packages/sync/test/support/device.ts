@@ -6,9 +6,9 @@ import type {
   ProjectFiles,
   StorageProvider,
   SyncOutcome,
-  WhittleDoc,
-} from '@whittle/contracts';
-import { fromFiles, toFiles } from '@whittle/document';
+  WrenDoc,
+} from '@wren-cad/contracts';
+import { fromFiles, toFiles } from '@wren-cad/document';
 import {
   createSyncEngine,
   type ProjectSyncEngine,
@@ -60,7 +60,7 @@ export class Device {
   }
 
   /** Saves a whole document as the app does (writes changed files, removes dropped ones). */
-  saveDoc(doc: WhittleDoc): void {
+  saveDoc(doc: WrenDoc): void {
     const next = toFiles(doc);
     const changed: string[] = [];
     for (const [p, b] of next) {
@@ -86,7 +86,7 @@ export class Device {
     return out;
   }
 
-  doc(): WhittleDoc {
+  doc(): WrenDoc {
     return fromFiles(this.store.files);
   }
 

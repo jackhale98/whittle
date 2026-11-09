@@ -23,7 +23,7 @@ import {
   type SketchConstraint,
   type SketchEntity,
   type SketchReferenceId,
-} from '@whittle/contracts';
+} from '@wren-cad/contracts';
 
 export { SKETCH_ORIGIN, SKETCH_REFERENCES, SKETCH_X_AXIS, SKETCH_Y_AXIS };
 

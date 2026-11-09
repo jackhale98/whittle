@@ -1,5 +1,5 @@
-import type { SyncStatus } from '@whittle/contracts';
-import { PARAMS_FILE, toFiles } from '@whittle/document';
+import type { SyncStatus } from '@wren-cad/contracts';
+import { PARAMS_FILE, toFiles } from '@wren-cad/document';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   MAX_WAIT,

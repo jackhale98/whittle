@@ -7,7 +7,7 @@ describe('published JSON Schemas', () => {
   it('have their Pages $id', () => {
     for (const id of schemaIds())
       expect(id).toMatch(
-        /^https:\/\/jackhale98\.github\.io\/whittle\/schema\/whittle-[a-z]+\.schema\.json$/,
+        /^https:\/\/jackhale98\.github\.io\/wren\/schema\/wren-[a-z]+\.schema\.json$/,
       );
   });
 

@@ -3,7 +3,7 @@
  * Pure: the workbench feeds the gesture and the current mode in and performs the answer.
  */
 
-import type { DeviceTier, PickKind, ViewportGesture } from '@whittle/contracts';
+import type { DeviceTier, PickKind, ViewportGesture } from '@wren-cad/contracts';
 
 export type GestureAction = 'select' | 'zoomTo' | 'fit' | 'menu' | 'undo' | 'redo' | null;
 

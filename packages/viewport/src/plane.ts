@@ -1,6 +1,6 @@
 /** Sketch-plane math (pure). */
 
-import type { Vec2, Vec3 } from '@whittle/contracts';
+import type { Vec2, Vec3 } from '@wren-cad/contracts';
 
 export interface PlaneFrame {
   origin: Vec3;

@@ -17,7 +17,7 @@ test('welcome → demo bracket → edit width → mass updates', async ({ page }
   await expect(welcome).toContainText('Free, open-source parametric CAD');
   await expect(welcome.getByRole('link', { name: /GitHub/ })).toHaveAttribute(
     'href',
-    'https://github.com/jackhale98/whittle',
+    'https://github.com/jackhale98/wren-cad',
   );
   await page.screenshot({ path: 'test-results/m1-welcome.png' });
 

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-import type { MeshBuffers, Vec3 } from '@whittle/contracts';
+import type { MeshBuffers, Vec3 } from '@wren-cad/contracts';
 
 export interface NamedMesh {
   name: string;

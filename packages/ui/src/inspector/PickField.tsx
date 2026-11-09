@@ -1,4 +1,4 @@
-import type { EntityRef, UnresolvedRef } from '@whittle/contracts';
+import type { EntityRef, UnresolvedRef } from '@wren-cad/contracts';
 import { Crosshair, Plus, RefreshCw, X } from 'lucide-react';
 import { cn } from '../components/primitives';
 

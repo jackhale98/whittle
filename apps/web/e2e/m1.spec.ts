@@ -169,8 +169,8 @@ test('sketch a rectangle, dimension it, extrude by width/2, edit history, reload
   await page.reload();
   await page.evaluate(() =>
     (
-      window as unknown as { __whittle: { firstBodyRendered(): Promise<unknown> } }
-    ).__whittle.firstBodyRendered(),
+      window as unknown as { __wren: { firstBodyRendered(): Promise<unknown> } }
+    ).__wren.firstBodyRendered(),
   );
   await a.idle();
   await expect(page.getByTestId('feature-tree')).toContainText('Base plate');

@@ -1,5 +1,5 @@
 /**
- * @whittle/kernel-client — main-thread entry. Import this from the app; it spawns the kernel
+ * @wren-cad/kernel-client — main-thread entry. Import this from the app; it spawns the kernel
  * worker (./worker.ts) and never loads Wasm on the main thread.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later

@@ -15,7 +15,7 @@ import type {
   SketchConstraint,
   SketchEntity,
   Vec2,
-} from '@whittle/contracts';
+} from '@wren-cad/contracts';
 import { monotonicFactory } from 'ulid';
 import {
   add,

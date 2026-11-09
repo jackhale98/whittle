@@ -1,4 +1,4 @@
-import type { EvalResult, Expr, SketchConstraintKind } from '@whittle/contracts';
+import type { EvalResult, Expr, SketchConstraintKind } from '@wren-cad/contracts';
 import { useEffect, useRef, useState } from 'react';
 import { ExpressionInput } from '../components/ExpressionInput';
 import { cn } from '../components/primitives';

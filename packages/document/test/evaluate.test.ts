@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-import type { Feature, SketchFeature } from '@whittle/contracts';
+import type { Feature, SketchFeature } from '@wren-cad/contracts';
 import { describe, expect, it } from 'vitest';
 import {
   type ExpressionEngineImpl,

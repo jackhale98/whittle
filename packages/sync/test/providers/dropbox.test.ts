@@ -21,8 +21,8 @@ describe('Dropbox provider', () => {
           { '.tag': 'file', path_display: '/P/a.json', path_lower: '/p/a.json', rev: '1', size: 3 },
           {
             '.tag': 'file',
-            path_display: '/P/.whittle/m.bin',
-            path_lower: '/p/.whittle/m.bin',
+            path_display: '/P/.wren/m.bin',
+            path_lower: '/p/.wren/m.bin',
             rev: '9',
           },
         ],
@@ -34,8 +34,8 @@ describe('Dropbox provider', () => {
           { '.tag': 'deleted', path_display: '/P/b.json', path_lower: '/p/b.json' },
           {
             '.tag': 'file',
-            path_display: '/P/.whittle-history/versions/v.json',
-            path_lower: '/p/.whittle-history/versions/v.json',
+            path_display: '/P/.wren-history/versions/v.json',
+            path_lower: '/p/.wren-history/versions/v.json',
             rev: '2',
           },
         ],
@@ -49,7 +49,7 @@ describe('Dropbox provider', () => {
     expect(r.entries).toEqual([
       { kind: 'file', path: '/P/a.json', rev: '1', size: 3 },
       { kind: 'deleted', path: '/P/b.json' },
-      { kind: 'file', path: '/P/.whittle-history/versions/v.json', rev: '2' },
+      { kind: 'file', path: '/P/.wren-history/versions/v.json', rev: '2' },
     ]);
     expect(calls[0]!.url).toMatch(/files\/list_folder$/);
     expect(JSON.parse(calls[0]!.init.body as string)).toMatchObject({

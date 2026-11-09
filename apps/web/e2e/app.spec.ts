@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import type { RuntimeDiagnostics, WhittleTestHooks } from '@whittle/contracts';
+import type { RuntimeDiagnostics, WrenTestHooks } from '@wren-cad/contracts';
 import { addBox } from './helpers';
 
 /**
@@ -19,11 +19,11 @@ interface Timings {
 const hooks = (page: Page) => ({
   diagnostics: () =>
     page.evaluate(() =>
-      (window as unknown as { __whittle: WhittleTestHooks }).__whittle.diagnostics(),
+      (window as unknown as { __wren: WrenTestHooks }).__wren.diagnostics(),
     ) as Promise<RuntimeDiagnostics>,
   firstBody: () =>
     page.evaluate(() =>
-      (window as unknown as { __whittle: WhittleTestHooks }).__whittle.firstBodyRendered(),
+      (window as unknown as { __wren: WrenTestHooks }).__wren.firstBodyRendered(),
     ) as Promise<Timings>,
 });
 
@@ -98,8 +98,8 @@ async function firstVisit(page: Page): Promise<Timings> {
   await addBox(page);
   await page.evaluate(() =>
     (
-      window as unknown as { __whittleApp: { flushSave(): Promise<void> } }
-    ).__whittleApp.flushSave(),
+      window as unknown as { __wrenApp: { flushSave(): Promise<void> } }
+    ).__wrenApp.flushSave(),
   );
   return t;
 }

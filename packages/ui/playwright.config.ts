@@ -1,6 +1,6 @@
 import { defineConfig, devices } from '@playwright/test';
 
-const PORT = Number(process.env.WHITTLE_UI_E2E_PORT ?? 4179);
+const PORT = Number(process.env.WREN_UI_E2E_PORT ?? 4179);
 
 /**
  * Visual regression + a11y smoke for the three shells. Uses the pre-installed Chromium

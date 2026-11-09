@@ -1,9 +1,9 @@
-import type { WhittleDoc } from '@whittle/contracts';
-import { newDoc } from '@whittle/document';
+import type { WrenDoc } from '@wren-cad/contracts';
+import { newDoc } from '@wren-cad/document';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createAutosaver } from './autosave';
 
-const named = (name: string): WhittleDoc => ({ ...newDoc(), meta: { ...newDoc().meta, name } });
+const named = (name: string): WrenDoc => ({ ...newDoc(), meta: { ...newDoc().meta, name } });
 
 describe('autosave', () => {
   beforeEach(() => vi.useFakeTimers());

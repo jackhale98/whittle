@@ -4,7 +4,7 @@ import { COMPARE_COLORS } from '../src/compare';
 import { entityColor, mixHex } from '../src/sketchStyle';
 import { OVERLAY_COLORS } from '../src/themes';
 
-describe('overlay colours mirror @whittle/ui tokens', () => {
+describe('overlay colours mirror @wren-cad/ui tokens', () => {
   for (const theme of ['light', 'dark'] as const) {
     it(`${theme}: every mirrored token is identical`, () => {
       for (const [key, value] of Object.entries(OVERLAY_COLORS[theme])) {
@@ -14,7 +14,7 @@ describe('overlay colours mirror @whittle/ui tokens', () => {
   }
 });
 
-describe('compare colours mirror the @whittle/ui swatch tokens (ADR-028)', () => {
+describe('compare colours mirror the @wren-cad/ui swatch tokens (ADR-028)', () => {
   for (const theme of ['light', 'dark'] as const) {
     it(`${theme}: the compare panel legend shows exactly what the viewport draws`, () => {
       expect(COMPARE_COLORS[theme].added).toBe(colors[theme].compareAddedSwatch);

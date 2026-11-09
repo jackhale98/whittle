@@ -1,18 +1,18 @@
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="brand/svg/whittle-mark-dark.svg">
-  <img src="brand/svg/whittle-mark-light.svg" alt="Whittle logo" width="96">
+  <source media="(prefers-color-scheme: dark)" srcset="brand/svg/wren-mark-dark.svg">
+  <img src="brand/svg/wren-mark-light.svg" alt="Wren logo" width="96">
 </picture>
 
-# Whittle
+# Wren
 
-[![CI](https://github.com/jackhale98/whittle/actions/workflows/ci.yml/badge.svg)](https://github.com/jackhale98/whittle/actions/workflows/ci.yml)
+[![CI](https://github.com/jackhale98/wren-cad/actions/workflows/ci.yml/badge.svg)](https://github.com/jackhale98/wren-cad/actions/workflows/ci.yml)
 
 Free, open-source parametric CAD that runs in your browser. Install it, work offline, and let the
 OpenCASCADE geometry kernel run on your own device.
 
-**Live app:** <https://jackhale98.github.io/whittle/>
+**Live app:** <https://jackhale98.github.io/wren-cad/>
 
-Whittle is early. Part modeling (M1) is built and deployed. Touch and tablet work (M2) is in
+Wren is early. Part modeling (M1) is built and deployed. Touch and tablet work (M2) is in
 progress, and the rest of the roadmap is listed under [Coming next](#coming-next).
 
 ## Principles
@@ -21,9 +21,9 @@ progress, and the rest of the roadmap is listed under [Coming next](#coming-next
 - **Offline.** After the first visit, the app and the geometry kernel are cached. Airplane mode works.
 - **Private.** Nothing leaves your device. There are no accounts, analytics or telemetry, and the
   diagnostics panel is local-only.
-- **Open format.** A project is a folder of plain JSON files, zipped as `.whittle`. The spec is
+- **Open format.** A project is a folder of plain JSON files, zipped as `.wrencad`. The spec is
   CC-BY-4.0 and the JSON Schemas are published.
-- **Free.** Whittle is GPL-3.0-or-later.
+- **Free.** Wren is GPL-3.0-or-later.
 
 ## What you can do today
 
@@ -59,7 +59,7 @@ progress, and the rest of the roadmap is listed under [Coming next](#coming-next
 **Persistent references**
 
 - Edges and faces are named from the model's construction history and checked with fingerprints.
-- When a reference can't be matched with confidence, the feature is marked "needs attention". Whittle
+- When a reference can't be matched with confidence, the feature is marked "needs attention". Wren
   shows the old location as a ghost and asks you to re-pick. It never guesses.
 
 **Import and export**
@@ -67,13 +67,13 @@ progress, and the rest of the roadmap is listed under [Coming next](#coming-next
 - Import STEP (`.step`, `.stp`) and BREP (`.brep`, `.brp`) as solids. Import STL, OBJ, 3MF and GLB
   as reference meshes.
 - Export STEP (AP214), STL (binary or ASCII, one merged file or one per body, three quality
-  presets), 3MF, GLB, and `.whittle` projects.
+  presets), 3MF, GLB, and `.wrencad` projects.
 
 **Library and files**
 
 - A local library with autosave (about half a second after edits settle), thumbnails, search,
   rename and delete.
-- Open and save `.whittle` files. Imported files and other extra files survive round trips.
+- Open and save `.wrencad` files. Imported files and other extra files survive round trips.
 
 **Install and updates**
 
@@ -88,12 +88,12 @@ progress, and the rest of the roadmap is listed under [Coming next](#coming-next
 | Safari 26+ and iPadOS    | Targeted. WebKit end-to-end tests run in CI but don't gate yet, and two offline tests are skipped on WebKit. Testing on a physical iPad is part of M2.                                                  |
 | Firefox                  | Runs. Firefox end-to-end tests run in CI under a virtual display but don't gate yet.                                                                                                                    |
 
-Whittle needs WebAssembly, Web Workers, IndexedDB and either WebGPU or WebGL2. The viewport uses
+Wren needs WebAssembly, Web Workers, IndexedDB and either WebGPU or WebGL2. The viewport uses
 WebGPU when available and falls back to WebGL2.
 
 The kernel's threaded build needs cross-origin isolation. GitHub Pages can't send the required
-headers, so Whittle's service worker adds them. On the first visit the page reloads once. Where
-isolation isn't available (some private windows and in-app browsers), Whittle uses the
+headers, so Wren's service worker adds them. On the first visit the page reloads once. Where
+isolation isn't available (some private windows and in-app browsers), Wren uses the
 single-threaded kernel. The results are the same, but it is slower.
 
 ## Coming next
@@ -114,13 +114,13 @@ The full plan is in [`docs/PLAN.md`](docs/PLAN.md).
 
 ## The open file format
 
-A Whittle project is a folder of deterministic JSON files (`whittle.project.json`, `params.json`,
-`parts/*.part.json`, and so on). A `.whittle` file is that folder zipped. The same document always
+A Wren project is a folder of deterministic JSON files (`wren.project.json`, `params.json`,
+`parts/*.part.json`, and so on). A `.wrencad` file is that folder zipped. The same document always
 produces byte-identical files, so projects diff and merge well in git.
 
 - Specification: [`docs/FILE_FORMAT.md`](docs/FILE_FORMAT.md), licensed CC-BY-4.0.
-- JSON Schemas: <https://jackhale98.github.io/whittle/schema/> (for example
-  `whittle-document.schema.json`).
+- JSON Schemas: <https://jackhale98.github.io/wren-cad/schema/> (for example
+  `wren-document.schema.json`).
 
 ## Develop
 
@@ -145,7 +145,7 @@ Repository layout:
 apps/web/            the app: shells wiring, workbench, service worker, library, samples, E2E tests
 packages/
   contracts/         shared types: document, kernel, sketch, viewport, store, io (lead-owned)
-  document/          expressions and units, document store with undo, .whittle codec, materials
+  document/          expressions and units, document store with undo, .wrencad codec, materials
   kernel/            OCCT 8 Wasm kernel: C++ facade and build configuration
   kernel-client/     kernel worker, Comlink client, regeneration engine
   sketch/            sketch solver worker (planegcs), DOF analysis, conflicts, inference
@@ -170,7 +170,7 @@ scripts/             build helpers (third-party notices)
 
 ## Licence
 
-Whittle is free software under the
+Wren is free software under the
 [GNU General Public License, version 3 or later](LICENSE) (GPL-3.0-or-later; see ADR-003 in
 [`docs/DECISIONS.md`](docs/DECISIONS.md)).
 

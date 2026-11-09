@@ -1,8 +1,8 @@
 /// Provider contract tests (ADR-020 §3): every file provider honours `ifRev`, reports errors as
-/// values, round-trips bytes, lists `.whittle-history/` but never `.whittle/`, and reports changes
+/// values, round-trips bytes, lists `.wren-history/` but never `.wren/`, and reports changes
 /// made elsewhere. Run against each provider's mock service.
 
-import type { StorageProvider } from '@whittle/contracts';
+import type { StorageProvider } from '@wren-cad/contracts';
 import { describe, expect, it } from 'vitest';
 import { FolderProvider } from '../../src/providers/folder';
 import { MemoryProvider } from '../../src/providers/memory';
@@ -133,10 +133,10 @@ describe.each(Object.keys(harnesses))('%s provider contract', (name) => {
 
   it('lists the project, with history but never the cache', async () => {
     const h = make();
-    await h.put('/P/whittle.project.json', '{}');
+    await h.put('/P/wren.project.json', '{}');
     await h.put('/P/parts/a.part.json', '{}');
-    await h.put('/P/.whittle-history/versions/v1.json', '{}');
-    await h.put('/P/.whittle/meshes/a.bin', 'mesh');
+    await h.put('/P/.wren-history/versions/v1.json', '{}');
+    await h.put('/P/.wren/meshes/a.bin', 'mesh');
     await h.put('/Other/x.json', '{}');
     const r = must(await h.provider.list({ path: '/P' }));
     expect(r.complete).toBe(true);
@@ -146,9 +146,9 @@ describe.each(Object.keys(harnesses))('%s provider contract', (name) => {
         .map((e) => e.path)
         .sort(),
     ).toEqual([
-      '/P/.whittle-history/versions/v1.json',
+      '/P/.wren-history/versions/v1.json',
       '/P/parts/a.part.json',
-      '/P/whittle.project.json',
+      '/P/wren.project.json',
     ]);
     for (const e of r.entries) if (e.kind === 'file') expect(e.rev).toBeTruthy();
   });
@@ -172,7 +172,7 @@ describe.each(Object.keys(harnesses))('%s provider contract', (name) => {
 
   it('browses folders and spots projects', async () => {
     const h = make();
-    await h.put('/CAD/bracket/whittle.project.json', '{}');
+    await h.put('/CAD/bracket/wren.project.json', '{}');
     await h.put('/CAD/notes/readme.txt', 'x');
     await h.put('/CAD/.hidden/x.txt', 'x');
     const r = must(await h.provider.browse('/CAD'));

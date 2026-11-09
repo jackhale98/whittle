@@ -1,9 +1,9 @@
 /**
- * Mesh cache in the project's `.whittle/` folder (PLAN §4 "meshes are cached in the .whittle file
+ * Mesh cache in the project's `.wren/` folder (PLAN §4 "meshes are cached in the .wrencad file
  * so a document opens and renders before the kernel has loaded", §10 "open a cached document
  * ≤ 500 ms").
  *
- * Layout (paths relative to `.whittle/`, never synced or committed, always regenerable):
+ * Layout (paths relative to `.wren/`, never synced or committed, always regenerable):
  *   meshes/index.json      { version, key, bodies: [{ id, file }], sketches: [...] }
  *   meshes/<bodyId>.bin    one body's fine `MeshBuffers`, compact binary (below)
  *
@@ -14,8 +14,8 @@
  * back to back in header order (`arrays[].type`, `arrays[].length` elements, little endian).
  */
 
-import type { MeshBuffers, ProjectFiles, SketchResult, Vec3, WhittleDoc } from '@whittle/contracts';
-import { canonicalJson } from '@whittle/document';
+import type { MeshBuffers, ProjectFiles, SketchResult, Vec3, WrenDoc } from '@wren-cad/contracts';
+import { canonicalJson } from '@wren-cad/document';
 
 export const MESH_INDEX = 'meshes/index.json';
 const MAGIC = 0x31424d57; // "WMB1" little endian
@@ -34,7 +34,7 @@ function hash64(text: string): string {
 }
 
 /** Content key of a document's geometry inputs (units, params, parts; not names/timestamps of meta). */
-export function docKey(doc: WhittleDoc): string {
+export function docKey(doc: WrenDoc): string {
   return hash64(
     canonicalJson({
       schemaVersion: doc.schemaVersion,
@@ -103,7 +103,7 @@ export function encodeMesh(mesh: MeshBuffers): Uint8Array {
 export function decodeMesh(bytes: Uint8Array): MeshBuffers {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   if (bytes.byteLength < 8 || view.getUint32(0, true) !== MAGIC)
-    throw new Error('not a Whittle mesh cache file');
+    throw new Error('not a Wren mesh cache file');
   const headerBytes = view.getUint32(4, true);
   const header = JSON.parse(
     new TextDecoder().decode(bytes.subarray(8, 8 + headerBytes)),

@@ -23,7 +23,7 @@ import type {
   ShapeHandle,
   Vec2,
   Vec3,
-} from '@whittle/contracts';
+} from '@wren-cad/contracts';
 import type { MeasureSubject } from '../kernel-api';
 import { add, cross, dist, dot, norm, normalize, planeFrame, scale, sub } from './geometry';
 

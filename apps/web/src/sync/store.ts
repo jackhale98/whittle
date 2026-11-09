@@ -12,7 +12,7 @@
  * chunk is needed at all for the document being opened.
  */
 
-import type { Connection, Id, ProjectLink } from '@whittle/contracts';
+import type { Connection, Id, ProjectLink } from '@wren-cad/contracts';
 
 export interface KeyValue {
   getItem(key: string): string | null;

@@ -1,4 +1,4 @@
-import type { DimensionVector, EvalResult, ExprError } from '@whittle/contracts';
+import type { DimensionVector, EvalResult, ExprError } from '@wren-cad/contracts';
 
 export type EvalOk = Extract<EvalResult, { ok: true }>;
 

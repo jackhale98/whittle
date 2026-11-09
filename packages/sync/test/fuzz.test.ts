@@ -19,9 +19,9 @@ import type {
   Part,
   SketchConstraint,
   SketchFeature,
-  WhittleDoc,
-} from '@whittle/contracts';
-import { canonicalJson } from '@whittle/document';
+  WrenDoc,
+} from '@wren-cad/contracts';
+import { canonicalJson } from '@wren-cad/document';
 import { describe, expect, it } from 'vitest';
 import { docMerger, isCollectionPath, toPointer } from '../src';
 import { barIdOf, idsOf, isEntityRef, isObj } from '../src/merge/tree';
@@ -201,7 +201,7 @@ function newFeature(g: Gen): Feature {
   }
 }
 
-function randomCommand(g: Gen, doc: WhittleDoc): Command | null {
+function randomCommand(g: Gen, doc: WrenDoc): Command | null {
   const hot = g.focus && g.rng() < 0.8;
   const part = hot
     ? (doc.parts.find((p) => p.id === PART) ?? g.pick(doc.parts))
@@ -332,10 +332,10 @@ function randomCommand(g: Gen, doc: WhittleDoc): Command | null {
 
 function edits(
   g: Gen,
-  base: WhittleDoc,
+  base: WrenDoc,
   count: number,
   prefix: Command[] = [],
-): { doc: WhittleDoc; cmds: Command[] } {
+): { doc: WrenDoc; cmds: Command[] } {
   let doc = apply(base, ...prefix);
   const cmds = [...prefix];
   let tries = 0;
@@ -361,7 +361,7 @@ function edits(
 
 const SKIP = new Set(['/meta/modified', '/meta/created', '/meta/app']);
 
-function flatten(doc: WhittleDoc): Map<string, string> {
+function flatten(doc: WrenDoc): Map<string, string> {
   const out = new Map<string, string>();
   const walk = (segs: string[], v: unknown): void => {
     const ptr = toPointer(segs);
@@ -390,17 +390,17 @@ function flatten(doc: WhittleDoc): Map<string, string> {
 const covered = (conflicts: readonly MergeConflict[], ptr: string) =>
   conflicts.some((c) => ptr === c.path || ptr.startsWith(`${c.path}/`));
 
-function collectionAt(doc: WhittleDoc, ptr: string): string[] | undefined {
+function collectionAt(doc: WrenDoc, ptr: string): string[] | undefined {
   const flat = flatten(doc).get(`${ptr}/@order`);
   return flat === undefined ? undefined : (JSON.parse(flat) as string[]);
 }
 
 /** Every change `side` made relative to `base` is in `merged` or covered by a conflict. */
 function lostEdits(
-  base: WhittleDoc,
-  ours: WhittleDoc,
-  theirs: WhittleDoc,
-  side: WhittleDoc,
+  base: WrenDoc,
+  ours: WrenDoc,
+  theirs: WrenDoc,
+  side: WrenDoc,
   r: MergeResult,
 ): string[] {
   const fb = flatten(base);
@@ -441,7 +441,7 @@ function lostEdits(
   return lost;
 }
 
-function invented(ours: WhittleDoc, theirs: WhittleDoc, r: MergeResult): string[] {
+function invented(ours: WrenDoc, theirs: WrenDoc, r: MergeResult): string[] {
   const [fo, ft] = [flatten(ours), flatten(theirs)];
   const out: string[] = [];
   for (const [k, v] of flatten(r.doc)) {

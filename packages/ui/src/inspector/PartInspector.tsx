@@ -1,4 +1,4 @@
-import type { EvalResult, Expr, Material, Vec3 } from '@whittle/contracts';
+import type { EvalResult, Expr, Material, Vec3 } from '@wren-cad/contracts';
 import { ChevronDown, Scale } from 'lucide-react';
 import { lazy, Suspense, useState } from 'react';
 import { Section } from '../components/controls';

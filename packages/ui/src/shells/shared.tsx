@@ -1,4 +1,4 @@
-import type { DeviceTier, RuntimeDiagnostics } from '@whittle/contracts';
+import type { DeviceTier, RuntimeDiagnostics } from '@wren-cad/contracts';
 import { Download, Grid3x3, Moon, Redo2, Sun, Undo2 } from 'lucide-react';
 import { LazyMotion } from 'motion/react';
 import {
@@ -301,7 +301,7 @@ export function UndoRedo({
   );
 }
 
-/** Whittle mark: the perched bird (brand kit), on a soft tile so it reads at chip size. */
+/** Wren mark: the perched bird (brand kit), on a soft tile so it reads at chip size. */
 export function Mark({ className }: { className?: string }) {
   return (
     <span

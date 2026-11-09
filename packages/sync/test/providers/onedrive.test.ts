@@ -29,17 +29,17 @@ describe('Graph paths', () => {
 describe('OneDrive provider', () => {
   it('lists a folder recursively, skipping the cache but not history', async () => {
     const g = new FakeGraph();
-    g.put('/P/whittle.project.json', '{}');
+    g.put('/P/wren.project.json', '{}');
     g.put('/P/parts/a.part.json', '{}');
-    g.put('/P/.whittle/meshes/a.bin', 'X');
-    g.put('/P/.whittle-history/refs/heads/main/v1', '');
+    g.put('/P/.wren/meshes/a.bin', 'X');
+    g.put('/P/.wren-history/refs/heads/main/v1', '');
     g.put('/Other/b.json', 'B');
     const r = must(await drive(g).list({ path: '/P' }));
     expect(r.complete).toBe(true);
     expect(r.entries.map((e) => e.path).sort()).toEqual([
-      '/P/.whittle-history/refs/heads/main/v1',
+      '/P/.wren-history/refs/heads/main/v1',
       '/P/parts/a.part.json',
-      '/P/whittle.project.json',
+      '/P/wren.project.json',
     ]);
   });
 
@@ -50,7 +50,7 @@ describe('OneDrive provider', () => {
     const first = must(await d.list({ path: '/P' }));
     g.put('/P/a.json', 'A2');
     g.put('/Other/b.json', 'B');
-    g.put('/P/.whittle/c.bin', 'C');
+    g.put('/P/.wren/c.bin', 'C');
     const r = must(await d.list({ cursor: first.cursor }));
     expect(r.complete).toBe(false);
     expect(r.entries).toEqual([

@@ -2,7 +2,7 @@
 // Ported from Mycelium src/lib/auth/oauth.ts (cloud sign-in: Dropbox and Microsoft).
 /**
  * Sign in to Dropbox, OneDrive/SharePoint or Google Drive with OAuth 2 authorization code + PKCE, using
- * full-page **redirects, not popups**: Whittle is cross-origin isolated (COOP `same-origin`,
+ * full-page **redirects, not popups**: Wren is cross-origin isolated (COOP `same-origin`,
  * ADR-010), which severs `window.opener`, so a popup could never report back.
  *
  * 1. `beginSignIn` keeps the PKCE verifier and state in `sessionStorage` (this tab only; the
@@ -15,8 +15,8 @@
  *    non-secret result with `takeSignInResult`.
  */
 
-import type { CredentialVault, Id, StorageResult } from '@whittle/contracts';
-import { ulid } from '@whittle/document';
+import type { CredentialVault, Id, StorageResult } from '@wren-cad/contracts';
+import { ulid } from '@wren-cad/document';
 import { defaultFetch, type Fetcher, fail, forward, ok } from '../providers/common';
 import { dropboxAuthorizeUrl, exchangeDropboxCode } from '../providers/dropbox';
 import {
@@ -180,16 +180,16 @@ export async function completeSignIn(
   const store = session(deps);
   const raw = store.getItem(PENDING_KEY);
   store.removeItem(PENDING_KEY);
-  if (!raw) return fail('AUTH', 'This sign-in has expired. Start again from Whittle.');
+  if (!raw) return fail('AUTH', 'This sign-in has expired. Start again from Wren.');
   let pending: PendingSignIn;
   try {
     pending = JSON.parse(raw) as PendingSignIn;
   } catch {
-    return fail('AUTH', 'This sign-in has expired. Start again from Whittle.');
+    return fail('AUTH', 'This sign-in has expired. Start again from Wren.');
   }
   const now = (deps.now ?? Date.now)();
   if (!(now - pending.startedAt <= PENDING_TTL_MS)) {
-    return fail('AUTH', 'This sign-in has expired. Start again from Whittle.');
+    return fail('AUTH', 'This sign-in has expired. Start again from Wren.');
   }
   const error = params.get('error');
   if (error) {
@@ -197,7 +197,7 @@ export async function completeSignIn(
     return fail(error === 'access_denied' ? 'PERMISSION' : 'AUTH', `Sign-in didn’t finish: ${why}`);
   }
   if (params.get('state') !== pending.state) {
-    return fail('AUTH', 'Sign-in state mismatch. Start again from Whittle.');
+    return fail('AUTH', 'Sign-in state mismatch. Start again from Wren.');
   }
   const code = params.get('code');
   if (!code) return fail('AUTH', 'No authorization code came back.');

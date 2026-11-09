@@ -5,7 +5,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import type { Frame, SketchEntity, Vec2, Vec3 } from '@whittle/contracts';
+import type { Frame, SketchEntity, Vec2, Vec3 } from '@wren-cad/contracts';
 
 export const add = (a: Vec3, b: Vec3): Vec3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
 export const sub = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];

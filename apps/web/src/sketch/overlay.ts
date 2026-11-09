@@ -1,7 +1,7 @@
 /** Sketch display data for the viewport overlay, built from document entities in TS. */
 
-import type { Id, SketchEntity, SketchResult, Vec2 } from '@whittle/contracts';
-import { indexEntities, sampleEntity } from '@whittle/sketch';
+import type { Id, SketchEntity, SketchResult, Vec2 } from '@wren-cad/contracts';
+import { indexEntities, sampleEntity } from '@wren-cad/sketch';
 import { type PlaneFrame, toWorld } from '../model/frames';
 
 /**

@@ -1,4 +1,4 @@
-import type { EvalResult, Expr } from '@whittle/contracts';
+import type { EvalResult, Expr } from '@wren-cad/contracts';
 import { Calculator } from 'lucide-react';
 import {
   type ChangeEvent,

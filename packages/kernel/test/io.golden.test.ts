@@ -5,7 +5,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import type { KernelError } from '@whittle/contracts';
+import type { KernelError } from '@wren-cad/contracts';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import type { RawExportResult, RawImportResult, WhittleKernelModule } from '../src/index';
 import {

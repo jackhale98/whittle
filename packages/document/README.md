@@ -1,8 +1,8 @@
-# @whittle/document
+# @wren-cad/document
 
 The document model. It owns the expression engine (values with units), the document store
 (commands, JSON-patch undo and redo), the canonical project codec (the folder of JSON files and the
-`.whittle` zip), the built-in material library, and the generated JSON Schemas.
+`.wrencad` zip), the built-in material library, and the generated JSON Schemas.
 
 It is worker-safe: no DOM and no Node-only APIs at runtime. The regeneration engine and the app both
 use it.
@@ -46,22 +46,22 @@ The entry is `src/index.ts`. The main exports are:
 - **Materials are inline** (ADR-004). A part stores its `Material` in the document, and `libraryId`
   records where it came from. The library has 16 built-in materials, from structural steel to pine.
 - **Schemas.** `scripts/generate-schema.mjs` builds the JSON Schemas (draft-07) from the TypeScript
-  types. They are published with the app at `/whittle/schema/`.
+  types. They are published with the app at `/wren-cad/schema/`.
 
 ## Tests
 
 | Command | What it does |
 | --- | --- |
-| `pnpm --filter @whittle/document test` | `vitest run`, covering the expression engine, units, store, patches, codec, materials, evaluation and schema validation |
-| `pnpm --filter @whittle/document typecheck` | `tsc -p .` |
-| `pnpm --filter @whittle/document schema` | Regenerates the JSON Schemas in `schema/` |
+| `pnpm --filter @wren-cad/document test` | `vitest run`, covering the expression engine, units, store, patches, codec, materials, evaluation and schema validation |
+| `pnpm --filter @wren-cad/document typecheck` | `tsc -p .` |
+| `pnpm --filter @wren-cad/document schema` | Regenerates the JSON Schemas in `schema/` |
 
 A schema test regenerates the schemas in memory and fails if the committed files differ. It also
 validates sample documents with `ajv`.
 
 ## Dependencies
 
-- `fflate`: the zip codec for `.whittle` files.
+- `fflate`: the zip codec for `.wrencad` files.
 - `ajv` and `ts-json-schema-generator` (development only): schema validation and generation.
 
 See [`docs/DEPENDENCIES.md`](../../docs/DEPENDENCIES.md).

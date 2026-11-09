@@ -1,9 +1,9 @@
 {
-  "name": "@whittle/kernel-client",
+  "name": "@wren-cad/kernel-client",
   "version": "0.0.0",
   "private": true,
   "license": "GPL-3.0-or-later",
-  "description": "Kernel worker (Comlink) and main-thread client for the Whittle OCCT kernel.",
+  "description": "Kernel worker (Comlink) and main-thread client for the Wren OCCT kernel.",
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
@@ -16,13 +16,13 @@
     "typecheck": "tsc -p ."
   },
   "dependencies": {
-    "@whittle/contracts": "workspace:*",
-    "@whittle/kernel": "workspace:*",
+    "@wren-cad/contracts": "workspace:*",
+    "@wren-cad/kernel": "workspace:*",
     "comlink": "4.4.2",
     "@salusoft89/planegcs": "1.3.0",
-    "@whittle/document": "workspace:*",
-    "@whittle/sketch": "workspace:*",
+    "@wren-cad/document": "workspace:*",
+    "@wren-cad/sketch": "workspace:*",
     "fflate": "0.8.3",
-    "@whittle/io": "workspace:*"
+    "@wren-cad/io": "workspace:*"
   }
 }

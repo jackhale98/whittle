@@ -1,4 +1,4 @@
-// Whittle kernel build (ADR-002): OCCT 8.0.1 → Wasm via @libcascade/toolchain, with our coarse
+// Wren kernel build (ADR-002): OCCT 8.0.1 → Wasm via @libcascade/toolchain, with our coarse
 // C++ façade as the only JS-visible surface. Run through `pnpm build` (scripts/build.mjs), which
 // first amalgamates the façade into .libcascade/whittle_facade.cpp (see scripts/amalgamate.mjs).
 //

@@ -1,6 +1,6 @@
-import type { SketchEntity, StrokeSample, Vec2 } from '@whittle/contracts';
-import { lineTool } from '@whittle/sketch';
-import { recognizeStroke } from '@whittle/sketch/recognize';
+import type { SketchEntity, StrokeSample, Vec2 } from '@wren-cad/contracts';
+import { lineTool } from '@wren-cad/sketch';
+import { recognizeStroke } from '@wren-cad/sketch/recognize';
 import { describe, expect, it } from 'vitest';
 import type { SketchData } from './draw';
 import { crossedEntities, segmentDistance, simplify, strokeEdit } from './stroke';

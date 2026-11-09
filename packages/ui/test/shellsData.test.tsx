@@ -1,6 +1,6 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { KernelStatus } from '@whittle/contracts';
+import type { KernelStatus } from '@wren-cad/contracts';
 import { describe, expect, it, vi } from 'vitest';
 import { extrudeSample, sampleFeatures, sampleParams, sampleStatuses } from '../harness/fixtures';
 import { AppShell, FeatureInspector, type ToolId } from '../src';

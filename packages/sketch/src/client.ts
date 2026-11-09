@@ -6,7 +6,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import type { SketchSolverApi } from '@whittle/contracts';
+import type { SketchSolverApi } from '@wren-cad/contracts';
 import { type Remote, releaseProxy, wrap } from 'comlink';
 
 export interface SketchSolverClientOptions {
@@ -24,7 +24,7 @@ function spawnSketchWorker(): Worker {
   // Literal `new Worker(new URL(...), { type: 'module' })` so Vite/Rollup bundle the worker.
   return new Worker(new URL('./worker.ts', import.meta.url), {
     type: 'module',
-    name: 'whittle-sketch',
+    name: 'wren-sketch',
   });
 }
 

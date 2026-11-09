@@ -28,7 +28,7 @@
  * the printed standard.
  */
 
-import type { HoleFit, HoleSizeRow, HoleStandard, HoleTable } from '@whittle/contracts';
+import type { HoleFit, HoleSizeRow, HoleStandard, HoleTable } from '@wren-cad/contracts';
 
 const NONE = Number.NaN;
 

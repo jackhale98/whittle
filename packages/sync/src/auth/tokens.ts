@@ -7,7 +7,7 @@
  * anywhere else.
  */
 
-import type { CredentialVault, Id, StorageResult } from '@whittle/contracts';
+import type { CredentialVault, Id, StorageResult } from '@wren-cad/contracts';
 import {
   defaultFetch,
   type Fetcher,

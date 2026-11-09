@@ -2,17 +2,17 @@
  * Reference-part suite, part 1 (no kernel): the committed artefacts are current, every spec is
  * internally consistent (derivations recomputed from the spec's own dimensions match the stated
  * volumes and masses to 1e-9), every drawing names every driving dimension, and every part builds
- * a well-formed `WhittleDoc`.
+ * a well-formed `WrenDoc`.
  *
- * `pnpm --filter @whittle/test-fixtures generate` rewrites the artefacts from the definitions.
+ * `pnpm --filter @wren-cad/test-fixtures generate` rewrites the artefacts from the definitions.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import type { Feature } from '@whittle/contracts';
-import { entityRefs, evaluateFeatureValues, findMaterial } from '@whittle/document';
+import type { Feature } from '@wren-cad/contracts';
+import { entityRefs, evaluateFeatureValues, findMaterial } from '@wren-cad/document';
 import { describe, expect, it } from 'vitest';
 import {
   baselineDims,
@@ -152,7 +152,7 @@ describe.each(PARTS)('reference part $id', (part) => {
   it('has a drawing that names every driving dimension with its value', () => {
     expect(existsSync(svgPath), 'drawing exists').toBe(true);
     const svg = readFileSync(svgPath, 'utf8');
-    expect(svg).toContain('Whittle reference part');
+    expect(svg).toContain('Wren reference part');
     for (const [name, dim] of Object.entries(part.dims)) {
       const m = new RegExp(`data-dim="${name}" data-value="([^"]+)"`).exec(svg);
       expect(m, `drawing does not dimension ${name}`).not.toBeNull();
@@ -191,7 +191,7 @@ describe.each(PARTS)('reference part $id', (part) => {
     for (const s of part.stages) expect(md).toContain(s.name);
   });
 
-  it('builds a well-formed WhittleDoc at the baseline and at every stage', () => {
+  it('builds a well-formed WrenDoc at the baseline and at every stage', () => {
     for (const set of [{}, ...part.stages.map((s) => s.set)]) {
       const doc =
         set === undefined || Object.keys(set).length === 0 ? buildDoc(part) : stageDoc(part, set);

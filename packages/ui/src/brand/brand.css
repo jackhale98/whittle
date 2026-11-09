@@ -1,10 +1,10 @@
 /*
- * Whittle brand: the perched bird (logo) and the whittling loader. Geometry and palettes come from
+ * Wren brand: the perched bird (logo) and the whittling loader. Geometry and palettes come from
  * the brand kit (brand/README.md, brand/build.py); here the greys are theme variables so a single
  * inline SVG follows the app's light/dark theme, and the wing uses the app accent.
  */
 :root {
-  --whittle-accent: var(--color-accent);
+  --wren-accent: var(--color-accent);
   /* Ink on paper (light). Tones dark → light. */
   --wb-0: #16181d;
   --wb-1: #3a404c;

@@ -6,7 +6,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import type { Feature } from '@whittle/contracts';
+import type { Feature } from '@wren-cad/contracts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { bracketDoc } from './bracket';
 import {

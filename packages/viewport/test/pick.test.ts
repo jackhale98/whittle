@@ -1,4 +1,4 @@
-import type { PickKind } from '@whittle/contracts';
+import type { PickKind } from '@wren-cad/contracts';
 import { describe, expect, it } from 'vitest';
 import {
   bestCandidate,

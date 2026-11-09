@@ -1,4 +1,4 @@
-# @whittle/test-fixtures
+# @wren-cad/test-fixtures
 
 Synthetic, structurally correct fixtures for tests. They are hand-built `MeshBuffers` and a
 `SketchResult`, so the viewport and the UI can be tested and benchmarked without the kernel.
@@ -6,7 +6,7 @@ Synthetic, structurally correct fixtures for tests. They are hand-built `MeshBuf
 They are not golden models. The kernel's golden checks use real geometry from the kernel itself
 (see [`packages/kernel/test`](../kernel/test)). The M3 reference parts (PLAN §12 and §12A) are in
 [`reference-parts/`](reference-parts/README.md): ten original parts with specs, drawings, masses, CSWP stages,
-a spec-to-`WhittleDoc` builder, real-kernel goldens and independent FreeCAD checks.
+a spec-to-`WrenDoc` builder, real-kernel goldens and independent FreeCAD checks.
 
 ## Exports
 
@@ -35,9 +35,9 @@ The entry is `src/index.ts`, which re-exports `src/meshes.ts` and `src/sketch.ts
 
 | Command | What it does |
 | --- | --- |
-| `pnpm --filter @whittle/test-fixtures test` | `vitest run` over `test/meshes.test.ts` (box topology, names, winding, normals, edges, origin and feature tags, dense mesh validity) and the reference-part suites (`test/reference-parts*.test.ts`; see [reference-parts/README.md](reference-parts/README.md)) |
-| `pnpm --filter @whittle/test-fixtures generate` | Rewrites the committed reference-part specs, Markdown and drawings from their TypeScript definitions |
-| `pnpm --filter @whittle/test-fixtures typecheck` | `tsc -p .` |
+| `pnpm --filter @wren-cad/test-fixtures test` | `vitest run` over `test/meshes.test.ts` (box topology, names, winding, normals, edges, origin and feature tags, dense mesh validity) and the reference-part suites (`test/reference-parts*.test.ts`; see [reference-parts/README.md](reference-parts/README.md)) |
+| `pnpm --filter @wren-cad/test-fixtures generate` | Rewrites the committed reference-part specs, Markdown and drawings from their TypeScript definitions |
+| `pnpm --filter @wren-cad/test-fixtures typecheck` | `tsc -p .` |
 
 ## Who uses them
 
@@ -47,7 +47,7 @@ The entry is `src/index.ts`, which re-exports `src/meshes.ts` and `src/sketch.ts
 
 ## Dependencies
 
-- `@whittle/contracts` and `@whittle/document` (workspace). Neither has third-party runtime dependencies beyond `fflate`.
+- `@wren-cad/contracts` and `@wren-cad/document` (workspace). Neither has third-party runtime dependencies beyond `fflate`.
 - The kernel goldens import `kernel-client`'s `createModelingApi` by relative path (it is not in that package's exports) and need `packages/kernel/dist`; without it they skip.
 
 ## Related

@@ -22,8 +22,8 @@ import type {
   PlaneFeature,
   ShellFeature,
   SweepFeature,
-  WhittleDoc,
-} from '@whittle/contracts';
+  WrenDoc,
+} from '@wren-cad/contracts';
 import { describe, expect, it } from 'vitest';
 import type { RegenOutput } from '../../src/regen/engine';
 import {
@@ -76,7 +76,7 @@ function only(r: RegenOutput): BodyResult {
 
 describe.skipIf(!m3)(`regen golden (M3): edit upstream${note}`, () => {
   const api = m3 as Api;
-  const regen = (doc: WhittleDoc) =>
+  const regen = (doc: WrenDoc) =>
     api.regenerate({ doc, partId: PART, quality: 'coarse', massProperties: true });
 
   describe('a pattern of holes', () => {

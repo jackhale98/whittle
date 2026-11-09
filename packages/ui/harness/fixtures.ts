@@ -15,8 +15,8 @@ import type {
   NamedDimension,
   Param,
   SketchConflict,
-} from '@whittle/contracts';
-import { DIMENSIONS } from '@whittle/contracts';
+} from '@wren-cad/contracts';
+import { DIMENSIONS } from '@wren-cad/contracts';
 import type { MaterialLibraryItem } from '../src';
 
 type Q = { v: number; d: [number, number, number, number] };

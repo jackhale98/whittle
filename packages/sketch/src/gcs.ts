@@ -13,7 +13,7 @@ import {
   type SketchPrimitive,
   SolveStatus,
 } from '@salusoft89/planegcs';
-import type { Id } from '@whittle/contracts';
+import type { Id } from '@wren-cad/contracts';
 import { gid, type SketchModel } from './model';
 
 export type PlanegcsModule = ModuleStatic;

@@ -1,10 +1,10 @@
-# Whittle sync worker
+# Wren sync worker
 
-A Cloudflare Worker that lets the Whittle web app talk to git hosts and WebDAV servers, and sign in
+A Cloudflare Worker that lets the Wren web app talk to git hosts and WebDAV servers, and sign in
 to git providers. Ported from Mycelium's sync worker, which is Apache-2.0 (its licence text is kept
-in [LICENSE-APACHE-2.0](LICENSE-APACHE-2.0)); modified for Whittle, with reminders and push
+in [LICENSE-APACHE-2.0](LICENSE-APACHE-2.0)); modified for Wren, with reminders and push
 removed. The modifications and the combined worker are GPL-3.0-or-later ([LICENSE](LICENSE)),
-like the rest of Whittle (ADR-003); Apache-2.0 code may be included in GPL-3.0 works. Stateless, logging disabled, no storage.
+like the rest of Wren (ADR-003); Apache-2.0 code may be included in GPL-3.0 works. Stateless, logging disabled, no storage.
 
 - **Git proxy:** `/<host>/<owner>/<repo>.git/...`. Only the three git smart-HTTP endpoints, only
   `github.com`, `gitlab.com`, `bitbucket.org` and hosts in `EXTRA_GIT_HOSTS`, only for origins in
@@ -18,7 +18,7 @@ like the rest of Whittle (ADR-003); Apache-2.0 code may be included in GPL-3.0 w
 Setup (deploy, variables, secrets): [docs/SYNC_SETUP.md](../docs/SYNC_SETUP.md).
 
 ```sh
-pnpm --filter @whittle/sync-worker test        # vitest
-pnpm --filter @whittle/sync-worker typecheck
-pnpm --filter @whittle/sync-worker deploy      # npx wrangler@4.151.3 deploy
+pnpm --filter @wren-cad/sync-worker test        # vitest
+pnpm --filter @wren-cad/sync-worker typecheck
+pnpm --filter @wren-cad/sync-worker deploy      # npx wrangler@4.151.3 deploy
 ```

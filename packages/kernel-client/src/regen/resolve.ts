@@ -39,7 +39,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import type { EntityRef, Fingerprint, ShapeFingerprints, Vec3 } from '@whittle/contracts';
+import type { EntityRef, Fingerprint, ShapeFingerprints, Vec3 } from '@wren-cad/contracts';
 import { dist, dot, normalize } from './geometry';
 
 export type SubKind = 'face' | 'edge' | 'vertex';

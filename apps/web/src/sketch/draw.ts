@@ -14,8 +14,8 @@ import type {
   SketchEntityKind,
   SketchSolveInput,
   Vec2,
-} from '@whittle/contracts';
-import { INFERENCE_CURSOR, INFERENCE_DRAWING } from '@whittle/contracts';
+} from '@wren-cad/contracts';
+import { INFERENCE_CURSOR, INFERENCE_DRAWING } from '@wren-cad/contracts';
 import {
   arc3PointTool,
   arcCenterTool,
@@ -35,7 +35,7 @@ import {
   SKETCH_Y_AXIS,
   type SketchFragment,
   slotTool,
-} from '@whittle/sketch';
+} from '@wren-cad/sketch';
 
 export type DrawToolId = 'line' | 'rectangle' | 'circle' | 'arc' | 'slot' | 'polygon';
 

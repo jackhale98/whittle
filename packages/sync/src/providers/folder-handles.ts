@@ -4,7 +4,7 @@
  * structured-cloneable, not JSON), under `Connection.handleKey`.
  */
 
-import { ulid } from '@whittle/document';
+import { ulid } from '@wren-cad/document';
 import { type DBSchema, openDB } from 'idb';
 import type { FolderHandle } from './folder';
 

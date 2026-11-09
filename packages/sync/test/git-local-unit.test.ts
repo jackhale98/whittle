@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Local git repo mode on the in-memory FakeDir: repository discovery, states, scoping helpers.
-import type { StorageResult } from '@whittle/contracts';
+import type { StorageResult } from '@wren-cad/contracts';
 import git from 'isomorphic-git';
 import { describe, expect, it } from 'vitest';
 import {

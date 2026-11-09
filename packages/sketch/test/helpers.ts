@@ -12,7 +12,7 @@ import type {
   SketchSolveInput,
   SketchSolveResult,
   Vec2,
-} from '@whittle/contracts';
+} from '@wren-cad/contracts';
 import { createSketchSolverCore } from '../src/core';
 import type { SketchSolverCore } from '../src/solver';
 

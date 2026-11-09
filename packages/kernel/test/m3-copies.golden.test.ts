@@ -6,7 +6,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import type { Feature, FeatureInputs, Frame } from '@whittle/contracts';
+import type { Feature, FeatureInputs, Frame } from '@wren-cad/contracts';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import type { RawImportResult, WhittleKernelModule } from '../src/index';
 import {
@@ -712,7 +712,7 @@ for (const { variant } of VARIANTS) {
 
       it('IGES: six bounded planes are sewn into one solid', () => {
         session();
-        const path = '/tmp/whittle-test-box.igs';
+        const path = '/tmp/wren-test-box.igs';
         k.FS.writeFile(path, new TextEncoder().encode(igesBox(10, 20, 30)));
         try {
           const r = ok<RawImportResult>(k.importFile(path, 'iges'));

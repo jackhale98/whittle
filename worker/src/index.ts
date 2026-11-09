@@ -1,8 +1,8 @@
 // Ported from Mycelium's sync worker (jackhale98/mycelium-web worker/src/index.ts, Apache-2.0; see
-// ../LICENSE-APACHE-2.0), modified for Whittle: reminders and push removed. Modifications and the
+// ../LICENSE-APACHE-2.0), modified for Wren: reminders and push removed. Modifications and the
 // combined work: GPL-3.0-or-later (../LICENSE).
 // SPDX-License-Identifier: GPL-3.0-or-later AND Apache-2.0
-/// Whittle sync worker: no logging, no storage; stateless.
+/// Wren sync worker: no logging, no storage; stateless.
 ///
 /// 1. Git proxy: browsers cannot call git hosts' smart-HTTP endpoints (no
 ///    CORS), so isomorphic-git sends them here as `/<host>/<repo path>`. Only
@@ -123,7 +123,7 @@ export default {
     if (path.includes('..') || !isGitRequest(request.method, path, url.searchParams))
       return deny(403, 'Only git smart-HTTP requests are proxied', origin);
 
-    const headers = new Headers({ 'User-Agent': 'git/whittle-proxy' });
+    const headers = new Headers({ 'User-Agent': 'git/wren-proxy' });
     for (const name of FORWARD_REQUEST) {
       const value = request.headers.get(name);
       if (value) headers.set(name, value);
@@ -276,7 +276,7 @@ async function dav(request: Request, env: Env, url: URL, origin: string): Promis
   const path = `/${rest.join('/')}`;
   if (path.split('/').includes('..')) return deny(403, 'Bad path', origin);
 
-  const headers = new Headers({ 'User-Agent': 'whittle-dav-relay' });
+  const headers = new Headers({ 'User-Agent': 'wren-dav-relay' });
   for (const name of DAV_REQUEST) {
     const value = request.headers.get(name);
     if (value) headers.set(name, value);

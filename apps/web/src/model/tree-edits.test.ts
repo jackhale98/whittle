@@ -1,6 +1,6 @@
-import type { EntityRef, ExtrudeFeature, Feature, SketchFeature } from '@whittle/contracts';
-import { DocumentStoreImpl, newDoc } from '@whittle/document';
-import { computeNesting, planUnitMove } from '@whittle/ui';
+import type { EntityRef, ExtrudeFeature, Feature, SketchFeature } from '@wren-cad/contracts';
+import { DocumentStoreImpl, newDoc } from '@wren-cad/document';
+import { computeNesting, planUnitMove } from '@wren-cad/ui';
 import { describe, expect, it } from 'vitest';
 import { reorderFeatures } from './tree-edits';
 

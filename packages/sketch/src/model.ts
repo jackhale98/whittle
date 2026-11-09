@@ -19,7 +19,7 @@ import type {
   SketchConstraint,
   SketchEntity,
   SketchSolveInput,
-} from '@whittle/contracts';
+} from '@wren-cad/contracts';
 import { anglePi, TAU } from './geometry';
 import { encodeOffset, type OffsetContext, offsetMeasure } from './offset-model';
 import {

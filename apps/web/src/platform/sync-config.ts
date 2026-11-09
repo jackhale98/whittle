@@ -115,7 +115,7 @@ export function readSyncConfig(env: SyncEnv = import.meta.env): SyncConfig {
 
 /**
  * The redirect URI to register with every OAuth provider and to use in the authorize request: the
- * app's own base URL (`https://jackhale98.github.io/whittle/`, `http://localhost:5173/`). The
+ * app's own base URL (`https://jackhale98.github.io/wren-cad/`, `http://localhost:5173/`). The
  * service worker serves the shell for any navigation in scope and keeps the query string, so the
  * callback needs no dedicated route.
  */
@@ -129,7 +129,7 @@ export function availableProviders(config: SyncConfig = readSyncConfig()): Provi
   const needsWorker = (what: string): string | undefined =>
     config.syncWorkerUrl
       ? undefined
-      : `${what} needs the Whittle sync Worker. ${
+      : `${what} needs the Wren sync Worker. ${
           config.syncWorkerUrlProblem ?? 'VITE_SYNC_WORKER_URL is not set.'
         }`;
 
@@ -177,9 +177,9 @@ export function availableProviders(config: SyncConfig = readSyncConfig()): Provi
       'Git host (access token)',
       undefined,
       config.gitCorsProxyMissing
-        ? 'No git proxy is configured, so only git servers that allow browser access work (GitHub, GitLab and Bitbucket don’t). Deploy the Whittle sync Worker and set VITE_SYNC_WORKER_URL.'
+        ? 'No git proxy is configured, so only git servers that allow browser access work (GitHub, GitLab and Bitbucket don’t). Deploy the Wren sync Worker and set VITE_SYNC_WORKER_URL.'
         : config.gitCorsProxyIsPublicDefault
-          ? 'Uses the public development proxy (cors.isomorphic-git.org), which sees your token. Deploy the Whittle sync Worker for real use.'
+          ? 'Uses the public development proxy (cors.isomorphic-git.org), which sees your token. Deploy the Wren sync Worker for real use.'
           : undefined,
     ),
     entry('webdav', 'WebDAV (Nextcloud)', needsWorker('WebDAV')),

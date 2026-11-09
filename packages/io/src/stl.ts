@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-import type { MeshBuffers, Vec3 } from '@whittle/contracts';
+import type { MeshBuffers, Vec3 } from '@wren-cad/contracts';
 import { checkSize, checkTriangles, type ImportLimits, IoError, resolveLimits } from './errors';
 import { meshFromSoup, WELD_TOLERANCE } from './mesh';
 
@@ -19,7 +19,7 @@ export function meshToStl(bodies: StlBody[], options: { binary?: boolean } = {})
   if (binary) {
     const out = new Uint8Array(84 + nTris * 50);
     const dv = new DataView(out.buffer);
-    out.set(new TextEncoder().encode('Whittle binary STL'.padEnd(80, ' ')), 0);
+    out.set(new TextEncoder().encode('Wren binary STL'.padEnd(80, ' ')), 0);
     dv.setUint32(80, nTris, true);
     let o = 84;
     for (const b of bodies) {

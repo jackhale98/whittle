@@ -5,7 +5,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import type { Measurement } from '@whittle/contracts';
+import type { Measurement } from '@wren-cad/contracts';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import type { MeasureQuery, MeasureSubject, WhittleKernelModule } from '../src/index';
 import {

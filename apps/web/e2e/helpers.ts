@@ -1,9 +1,9 @@
 import { expect, type Page } from '@playwright/test';
-import type { Measurement, WhittleDoc, WhittleTestHooks } from '@whittle/contracts';
+import type { Measurement, WrenDoc, WrenTestHooks } from '@wren-cad/contracts';
 
-/** App-level E2E hooks (`window.__whittleApp`, see src/app/workbench.ts `testHooks`). */
+/** App-level E2E hooks (`window.__wrenApp`, see src/app/workbench.ts `testHooks`). */
 export interface AppHooks {
-  doc(): WhittleDoc;
+  doc(): WrenDoc;
   regen(): {
     revision: number;
     source: 'live' | 'cache';
@@ -58,7 +58,7 @@ export interface AppHooks {
     kernel: { started: boolean; ready: boolean };
     camera: { moving: boolean; rest: number };
   };
-  load(doc: WhittleDoc): void;
+  load(doc: WrenDoc): void;
   projectFiles(): {
     extra: string[];
     cache: string[];
@@ -74,42 +74,42 @@ export interface AppHooks {
   cacheSaved(): Promise<boolean>;
 }
 
-type W = { __whittle: WhittleTestHooks; __whittleApp: AppHooks };
+type W = { __wren: WrenTestHooks; __wrenApp: AppHooks };
 
 /** Opens the app (real regen engine unless `query` says `engine=fake`) and waits for the first regen to render. */
 export async function boot(page: Page, query = ''): Promise<void> {
   await page.goto(`./?${query}`);
   // The first visit reloads once for isolation: wait for the isolated document's own hooks.
   await page.waitForFunction(
-    () => window.crossOriginIsolated === true && !!(window as unknown as Partial<W>).__whittle,
+    () => window.crossOriginIsolated === true && !!(window as unknown as Partial<W>).__wren,
   );
-  await page.evaluate(() => (window as unknown as W).__whittle.firstBodyRendered());
+  await page.evaluate(() => (window as unknown as W).__wren.firstBodyRendered());
 }
 
 export const app = (page: Page) => ({
-  doc: () => page.evaluate(() => (window as unknown as W).__whittleApp.doc()),
-  regen: () => page.evaluate(() => (window as unknown as W).__whittleApp.regen()),
-  idle: () => page.evaluate(() => (window as unknown as W).__whittleApp.idle()),
-  flushSave: () => page.evaluate(() => (window as unknown as W).__whittleApp.flushSave()),
-  sketch: () => page.evaluate(() => (window as unknown as W).__whittleApp.sketch()),
-  settled: () => page.evaluate(() => (window as unknown as W).__whittleApp.sketchSettled()),
-  ui: () => page.evaluate(() => (window as unknown as W).__whittleApp.ui()),
-  marks: () => page.evaluate(() => (window as unknown as W).__whittleApp.marks()),
-  load: (doc: WhittleDoc) =>
-    page.evaluate((d) => (window as unknown as W).__whittleApp.load(d), doc),
-  projectFiles: () => page.evaluate(() => (window as unknown as W).__whittleApp.projectFiles()),
+  doc: () => page.evaluate(() => (window as unknown as W).__wrenApp.doc()),
+  regen: () => page.evaluate(() => (window as unknown as W).__wrenApp.regen()),
+  idle: () => page.evaluate(() => (window as unknown as W).__wrenApp.idle()),
+  flushSave: () => page.evaluate(() => (window as unknown as W).__wrenApp.flushSave()),
+  sketch: () => page.evaluate(() => (window as unknown as W).__wrenApp.sketch()),
+  settled: () => page.evaluate(() => (window as unknown as W).__wrenApp.sketchSettled()),
+  ui: () => page.evaluate(() => (window as unknown as W).__wrenApp.ui()),
+  marks: () => page.evaluate(() => (window as unknown as W).__wrenApp.marks()),
+  load: (doc: WrenDoc) =>
+    page.evaluate((d) => (window as unknown as W).__wrenApp.load(d), doc),
+  projectFiles: () => page.evaluate(() => (window as unknown as W).__wrenApp.projectFiles()),
   sentAttachments: () =>
-    page.evaluate(() => (window as unknown as W).__whittleApp.sentAttachments()),
+    page.evaluate(() => (window as unknown as W).__wrenApp.sentAttachments()),
   attentionMarkers: () =>
-    page.evaluate(() => (window as unknown as W).__whittleApp.attentionMarkers()),
-  pendingHeals: () => page.evaluate(() => (window as unknown as W).__whittleApp.pendingHeals()),
-  library: () => page.evaluate(() => (window as unknown as W).__whittleApp.library()),
-  cacheSaved: () => page.evaluate(() => (window as unknown as W).__whittleApp.cacheSaved()),
+    page.evaluate(() => (window as unknown as W).__wrenApp.attentionMarkers()),
+  pendingHeals: () => page.evaluate(() => (window as unknown as W).__wrenApp.pendingHeals()),
+  library: () => page.evaluate(() => (window as unknown as W).__wrenApp.library()),
+  cacheSaved: () => page.evaluate(() => (window as unknown as W).__wrenApp.cacheSaved()),
   libraryFiles: (id: string) =>
-    page.evaluate((x) => (window as unknown as W).__whittleApp.libraryFiles(x), id),
+    page.evaluate((x) => (window as unknown as W).__wrenApp.libraryFiles(x), id),
 });
 
-/** The viewport's test surface (`window.__whittleViewport`, packages/viewport ViewportEngine). */
+/** The viewport's test surface (`window.__wrenViewport`, packages/viewport ViewportEngine). */
 export interface ViewportProbe {
   getCameraState(): { position: number[]; target: number[]; distance: number };
   isCameraMoving(): boolean;
@@ -124,12 +124,12 @@ export interface ViewportProbe {
   worldToScreen(p: [number, number, number]): { x: number; y: number; visible: boolean };
 }
 
-type V = { __whittleViewport: ViewportProbe };
+type V = { __wrenViewport: ViewportProbe };
 
 export const touchStats = (page: Page) =>
-  page.evaluate(() => (window as unknown as V).__whittleViewport.getTouchStats());
+  page.evaluate(() => (window as unknown as V).__wrenViewport.getTouchStats());
 export const cameraState = (page: Page) =>
-  page.evaluate(() => (window as unknown as V).__whittleViewport.getCameraState());
+  page.evaluate(() => (window as unknown as V).__wrenViewport.getCameraState());
 
 /** Raw touch input through CDP (Playwright's touchscreen only taps with one finger). */
 export async function touch(page: Page) {
@@ -286,11 +286,11 @@ export async function toPage(
     (q) =>
       (
         window as unknown as {
-          __whittleViewport: {
+          __wrenViewport: {
             worldToScreen(p: [number, number, number]): { x: number; y: number };
           };
         }
-      ).__whittleViewport.worldToScreen(q),
+      ).__wrenViewport.worldToScreen(q),
     p,
   );
   return { x: box.x + s.x, y: box.y + s.y };
@@ -306,9 +306,9 @@ export async function cameraStill(page: Page): Promise<void> {
     const s = await page.evaluate(() => {
       const v = (
         window as unknown as {
-          __whittleViewport: { getCameraState(): unknown; isCameraMoving(): boolean };
+          __wrenViewport: { getCameraState(): unknown; isCameraMoving(): boolean };
         }
-      ).__whittleViewport;
+      ).__wrenViewport;
       return v.isCameraMoving() ? null : JSON.stringify(v.getCameraState());
     });
     if (s !== null && s === last) return;

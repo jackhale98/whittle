@@ -17,8 +17,8 @@ import type {
   RemoteListing,
   StorageProvider,
   StorageResult,
-} from '@whittle/contracts';
-import { MANIFEST_FILE } from '@whittle/document';
+} from '@wren-cad/contracts';
+import { MANIFEST_FILE } from '@wren-cad/document';
 import {
   baseName,
   body,
@@ -42,7 +42,7 @@ export interface WebDavConfig {
   username: string;
   password: string;
   /**
-   * The Worker's origin (e.g. `https://sync.whittle.example`): requests go to
+   * The Worker's origin (e.g. `https://sync.wrencad.example`): requests go to
    * `<relay>/dav/<host>/<path>`. `null` calls the server directly (it must allow CORS).
    */
   relay: string | null;

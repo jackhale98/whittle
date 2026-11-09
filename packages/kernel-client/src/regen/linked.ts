@@ -29,7 +29,7 @@ import type {
   SketchPoint,
   Vec2,
   Vec3,
-} from '@whittle/contracts';
+} from '@wren-cad/contracts';
 import { heightAbove, type Line, toLocal } from './datums';
 import { cross, dot, norm, normalize, sub } from './geometry';
 
@@ -88,7 +88,7 @@ export interface ReprojectResult {
 }
 
 /**
- * packages/sketch's re-projection (expected export `reprojectLinked` from `@whittle/sketch`).
+ * packages/sketch's re-projection (expected export `reprojectLinked` from `@wren-cad/sketch`).
  * Pure; never re-picks a different source.
  */
 export type ReprojectLinked = (

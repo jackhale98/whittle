@@ -8,7 +8,7 @@ import { expect, type Page, test } from '@playwright/test';
  * service worker never caches provider traffic. The "provider" is a real second origin (another
  * port on 127.0.0.1) so the browser applies its real CORS and COEP checks.
  *
- * Run alone on its own port: `WHITTLE_E2E_PORT=4181 pnpm --filter @whittle/web exec playwright test sync-plumbing`.
+ * Run alone on its own port: `WREN_E2E_PORT=4181 pnpm --filter @wren-cad/web exec playwright test sync-plumbing`.
  */
 
 interface Seen {
@@ -125,7 +125,7 @@ test.describe('provider API calls under COOP/COEP', () => {
           headers: { Authorization: 'Basic YTpi', Depth: '1', 'If-Match': '"e0"' },
           body: '<propfind/>',
         }),
-        put: await run('/dav/host/x/a.whittle', {
+        put: await run('/dav/host/x/a.wrencad', {
           method: 'PUT',
           headers: { Authorization: 'Basic YTpi' },
           body: new Uint8Array([1, 2, 3]),
@@ -144,7 +144,7 @@ test.describe('provider API calls under COOP/COEP', () => {
     for (const s of authed) expect(s.headers.authorization).toBeTruthy();
   });
 
-  test('a response without CORS headers is refused by the browser (provider must allow Whittle)', async ({
+  test('a response without CORS headers is refused by the browser (provider must allow Wren)', async ({
     page,
   }) => {
     await visitUntilIsolated(page);
@@ -169,7 +169,7 @@ test.describe('provider API calls under COOP/COEP', () => {
       await fetch(`${origin}/files/a`, { headers: { Authorization: 'Bearer tok' } });
       await fetch(`${origin}/public`);
       // Same-origin request that carries Authorization (e.g. a misconfigured same-origin Worker).
-      await fetch('/whittle/__e2e__/test.wasm', { headers: { Authorization: 'Bearer tok' } });
+      await fetch('/wren-cad/__e2e__/test.wasm', { headers: { Authorization: 'Bearer tok' } });
     }, providerOrigin);
     expect(seen.filter((s) => s.url === '/files/a' && s.method === 'GET')).toHaveLength(1);
     const urls = await cachedUrls(page);

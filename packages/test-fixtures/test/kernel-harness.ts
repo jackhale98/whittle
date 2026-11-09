@@ -12,18 +12,18 @@ import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import type { BodyResult, Id, MassProperties, WhittleDoc } from '@whittle/contracts';
+import type { BodyResult, Id, MassProperties, WrenDoc } from '@wren-cad/contracts';
 import { createModelingApi, type ModelingApiDeps } from '../../kernel-client/src/modeling-api';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
 /**
- * `packages/kernel/dist`: this checkout's, else `$WHITTLE_KERNEL_DIST`, else the main checkout's
+ * `packages/kernel/dist`: this checkout's, else `$WREN_KERNEL_DIST`, else the main checkout's
  * (a git worktree has no build of its own).
  */
 export function findKernelDist(): string | null {
   const candidates: string[] = [];
-  if (process.env.WHITTLE_KERNEL_DIST) candidates.push(process.env.WHITTLE_KERNEL_DIST);
+  if (process.env.WREN_KERNEL_DIST) candidates.push(process.env.WREN_KERNEL_DIST);
   candidates.push(resolve(here, '../../kernel/dist'));
   try {
     const common = execFileSync('git', ['rev-parse', '--git-common-dir'], {
@@ -42,7 +42,7 @@ export const kernelDist = findKernelDist();
 export const kernelBuilt = kernelDist !== null;
 export const kernelSkipNote = kernelBuilt
   ? ''
-  : ' (SKIPPED: packages/kernel/dist missing; run `pnpm --filter @whittle/kernel build`)';
+  : ' (SKIPPED: packages/kernel/dist missing; run `pnpm --filter @wren-cad/kernel build`)';
 
 type Variants = ModelingApiDeps['variants'];
 
@@ -72,7 +72,7 @@ export interface Measured {
   bodies: number;
 }
 
-export async function measure(api: Api, doc: WhittleDoc, partId: Id): Promise<Measured> {
+export async function measure(api: Api, doc: WrenDoc, partId: Id): Promise<Measured> {
   const r = await api.regenerate({ doc, partId, quality: 'coarse', massProperties: true });
   const states = r.features.map((f) => f.state);
   const failures = JSON.stringify(

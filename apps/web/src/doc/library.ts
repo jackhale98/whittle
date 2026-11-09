@@ -1,14 +1,14 @@
 /**
  * Local library + file I/O, loaded lazily (IndexedDB/OPFS, the zip codec and the file pickers are
- * not needed to paint the shell). Wraps `@whittle/io/browser` with the document codec.
+ * not needed to paint the shell). Wraps `@wren-cad/io/browser` with the document codec.
  *
  * A project travels as three parts (contracts io.ts): the document, its `extra` project files
  * (attachments such as `imports/<featureId>.step`, `previews/`, `releases/`) and the regenerable
- * `.whittle/` cache (meshes for instant open). Opening and re-saving never drops any of them.
+ * `.wren/` cache (meshes for instant open). Opening and re-saving never drops any of them.
  */
 
-import type { LibraryEntry, ProjectFiles, WhittleDoc } from '@whittle/contracts';
-import { projectCodec, ulid } from '@whittle/document';
+import type { LibraryEntry, ProjectFiles, WrenDoc } from '@wren-cad/contracts';
+import { projectCodec, ulid } from '@wren-cad/document';
 import {
   canvasToThumbnail,
   type OpenedFile,
@@ -16,11 +16,11 @@ import {
   openFile,
   openLibrary,
   saveFile,
-} from '@whittle/io/browser';
+} from '@wren-cad/io/browser';
 
 export interface ProjectBundle {
-  doc: WhittleDoc;
-  /** `.whittle/` cache files (paths relative to `.whittle/`, e.g. `meshes/index.json`). */
+  doc: WrenDoc;
+  /** `.wren/` cache files (paths relative to `.wren/`, e.g. `meshes/index.json`). */
   cache: ProjectFiles;
   /** Project files outside the document model (attachments, previews/, releases/). */
   extra: ProjectFiles;
@@ -37,7 +37,7 @@ export interface DocLibrary {
   open(id: string): Promise<ProjectBundle>;
   /** The entry with this id, or null (no error) when the library has none. */
   find(id: string): Promise<ProjectBundle | null>;
-  save(doc: WhittleDoc, options?: SaveOptions): Promise<LibraryEntry>;
+  save(doc: WrenDoc, options?: SaveOptions): Promise<LibraryEntry>;
   remove(id: string): Promise<void>;
   rename(id: string, name: string): Promise<void>;
 }
@@ -72,16 +72,16 @@ export async function createDocLibrary(): Promise<DocLibrary> {
   };
 }
 
-/** `.whittle` bytes for a project (document + extra files + cache). */
-export const toWhittleBytes = (
-  doc: WhittleDoc,
+/** `.wrencad` bytes for a project (document + extra files + cache). */
+export const toWrenBytes = (
+  doc: WrenDoc,
   extra?: ProjectFiles,
   cache?: ProjectFiles,
-): Uint8Array => projectCodec.toWhittle(doc, cache, extra);
+): Uint8Array => projectCodec.toWren(doc, cache, extra);
 
-/** Reads a `.whittle` file; documents without a library id get one. */
-export function fromWhittleBytes(bytes: Uint8Array): ProjectBundle {
-  const r = projectCodec.fromWhittle(bytes);
+/** Reads a `.wrencad` file; documents without a library id get one. */
+export function fromWrenBytes(bytes: Uint8Array): ProjectBundle {
+  const r = projectCodec.fromWren(bytes);
   const doc = r.doc.meta.id ? r.doc : { ...r.doc, meta: { ...r.doc.meta, id: ulid() } };
   return { doc, cache: r.cache, extra: r.extra ?? new Map() };
 }
@@ -130,7 +130,7 @@ export function copyName(name: string, taken: ReadonlySet<string>): string {
 export { canvasToThumbnail, type OpenedFile, onLaunchFiles, openFile, saveFile };
 
 export const MIME = {
-  whittle: 'application/x-whittle',
+  wren: 'application/x-wren',
   step: 'model/step',
   stl: 'model/stl',
   brep: 'application/octet-stream',

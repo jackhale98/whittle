@@ -2,7 +2,7 @@
 
 CSWP-like. A nylon block with a round groove swept along a straight-arc-straight path across its top, and a bent rod swept up from the top face.
 
-_Original Whittle reference part. Not derived from any published exam or textbook drawing._
+_Original Wren reference part. Not derived from any published exam or textbook drawing._
 
 Drawing: [rp06-cable-guide.svg](rp06-cable-guide.svg). Machine-readable spec: [rp06-cable-guide.spec.json](rp06-cable-guide.spec.json).
 
@@ -74,7 +74,7 @@ Method and accuracy: Exact by Pappus. A circular profile swept along a path of l
 
 ## Independent check
 
-Built in FreeCAD 26.3.0 with `freecad/rp06.py` (a different construction than Whittle's).
+Built in FreeCAD 26.3.0 with `freecad/rp06.py` (a different construction than Wren's).
 
 | Stage | Analytic volume (mm^3) | FreeCAD volume (mm^3) | Difference |
 | --- | --- | --- | --- |

@@ -1,5 +1,5 @@
 import 'fake-indexeddb/auto';
-import { toFiles } from '@whittle/document';
+import { toFiles } from '@wren-cad/document';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createSyncEngine } from '../../src/engine/engine';
 import { closeSyncDatabases, createIdbSyncStore } from '../../src/engine/idb-store';

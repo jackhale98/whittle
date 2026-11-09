@@ -1,14 +1,14 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { expect, type Page, test } from '@playwright/test';
-import type { WhittleDoc } from '@whittle/contracts';
-import { projectCodec } from '@whittle/document';
+import type { WrenDoc } from '@wren-cad/contracts';
+import { projectCodec } from '@wren-cad/document';
 import { docWith, fid } from './fixtures';
 import { app, boot, palette } from './helpers';
 
 /**
- * Files and the library (M1 gate defects 2, 3, 5, 6): opening a .whittle never overwrites a
+ * Files and the library (M1 gate defects 2, 3, 5, 6): opening a .wrencad never overwrites a
  * different library entry, attachments and other project files travel with the document
- * (library, .whittle, reload), files dropped on the viewport import, and a cached document is on
+ * (library, .wrencad, reload), files dropped on the viewport import, and a cached document is on
  * screen before the kernel is ready.
  */
 
@@ -35,7 +35,7 @@ async function openFile(page: Page, path: string): Promise<void> {
   await (await chooser).setFiles(path);
 }
 
-const widthOf = (doc: WhittleDoc) => doc.params.find((p) => p.name === 'width')?.expr;
+const widthOf = (doc: WrenDoc) => doc.params.find((p) => p.name === 'width')?.expr;
 
 /** A binary STL of an axis-aligned cube (12 triangles), `s` mm. */
 function cubeStl(s: number): Buffer {
@@ -64,7 +64,7 @@ function cubeStl(s: number): Buffer {
   return buf;
 }
 
-test('opening an older .whittle file never overwrites the newer library entry', async ({
+test('opening an older .wrencad file never overwrites the newer library entry', async ({
   page,
 }, info) => {
   test.slow();
@@ -76,7 +76,7 @@ test('opening an older .whittle file never overwrites the newer library entry', 
   const old = await download(
     page,
     () => page.getByRole('button', { name: 'Save file' }).click(),
-    info.outputPath('demo.whittle'),
+    info.outputPath('demo.wrencad'),
   );
 
   // Edit width; autosave writes the newer version under the same library id.
@@ -116,7 +116,7 @@ test('opening an older .whittle file never overwrites the newer library entry', 
   const same = await download(
     page,
     () => page.getByRole('button', { name: 'Save file' }).click(),
-    info.outputPath('same.whittle'),
+    info.outputPath('same.wrencad'),
   );
   await openFile(page, same);
   await a.flushSave();
@@ -146,8 +146,8 @@ test('attachments and other project files travel with the document; drop to impo
     ['previews/extras.stl', new Uint8Array(cubeStl(5))],
     ['releases/rev-A/notes.txt', new TextEncoder().encode('Released for the M1 gate\n')],
   ]);
-  const projectPath = info.outputPath('extras.whittle');
-  writeFileSync(projectPath, projectCodec.toWhittle(doc, undefined, extra));
+  const projectPath = info.outputPath('extras.wrencad');
+  writeFileSync(projectPath, projectCodec.toWren(doc, undefined, extra));
 
   await boot(page);
   const a = app(page);
@@ -190,8 +190,8 @@ test('attachments and other project files travel with the document; drop to impo
   await page.reload();
   await page.evaluate(() =>
     (
-      window as unknown as { __whittle: { firstBodyRendered(): Promise<unknown> } }
-    ).__whittle.firstBodyRendered(),
+      window as unknown as { __wren: { firstBodyRendered(): Promise<unknown> } }
+    ).__wren.firstBodyRendered(),
   );
   await a.idle();
   expect((await a.projectFiles()).extra).toEqual(expected);
@@ -199,13 +199,13 @@ test('attachments and other project files travel with the document; drop to impo
   expect(r?.features.map((f) => f.state)).toEqual(['ok', 'ok']);
   expect(await a.sentAttachments()).toHaveLength(1);
 
-  // .whittle export keeps every file.
+  // .wrencad export keeps every file.
   const out = await download(
     page,
     () => page.getByRole('button', { name: 'Save file' }).click(),
-    info.outputPath('extras-out.whittle'),
+    info.outputPath('extras-out.wrencad'),
   );
-  const back = projectCodec.fromWhittle(new Uint8Array(readFileSync(out)));
+  const back = projectCodec.fromWren(new Uint8Array(readFileSync(out)));
   expect([...(back.extra?.keys() ?? [])].sort()).toEqual(expected);
   expect(new TextDecoder().decode(back.extra?.get('releases/rev-A/notes.txt'))).toBe(
     'Released for the M1 gate\n',
@@ -231,8 +231,8 @@ test('a cached document renders before the kernel is ready (≤ 500 ms), then go
 
   await page.evaluate(() =>
     (
-      window as unknown as { __whittle: { firstBodyRendered(): Promise<unknown> } }
-    ).__whittle.firstBodyRendered(),
+      window as unknown as { __wren: { firstBodyRendered(): Promise<unknown> } }
+    ).__wren.firstBodyRendered(),
   );
   const marks = await a.marks();
   console.log(`cached open: ${JSON.stringify(marks)}`);
@@ -270,8 +270,8 @@ test('an edit still waiting to autosave when another document loads is saved wit
   const extra = new Map<string, Uint8Array>([
     ['releases/rev-A/notes.txt', new TextEncoder().encode('keep me\n')],
   ]);
-  const projectPath = info.outputPath('race.whittle');
-  writeFileSync(projectPath, projectCodec.toWhittle(box('Racer', 'BXA'), undefined, extra));
+  const projectPath = info.outputPath('race.wrencad');
+  writeFileSync(projectPath, projectCodec.toWren(box('Racer', 'BXA'), undefined, extra));
 
   await boot(page);
   const a = app(page);

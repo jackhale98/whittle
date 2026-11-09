@@ -21,7 +21,7 @@ Newest last. Superseded entries stay, marked **Superseded by ADR-xxx**.
 | Worker RPC      | Comlink + transferables                                                                                         |
 | Camera          | `camera-controls` + own gesture recogniser                                                                      |
 | Storage         | IndexedDB (`idb`) + OPFS + File System Access API                                                               |
-| Packaging       | Canonical folder of deterministic JSON; `.whittle` = zipped folder (`fflate`)                                   |
+| Packaging       | Canonical folder of deterministic JSON; `.wrencad` = zipped folder (`fflate`)                                   |
 | Sync / history  | `StorageProvider` adapters (Mycelium port), `HistoryStore` (isomorphic-git / snapshot DAG)                      |
 | PWA             | `vite-plugin-pwa` `injectManifest`, single custom SW that also injects COOP/COEP                                |
 | Tests           | Vitest, Playwright, C++/Node golden tests                                                                       |
@@ -82,12 +82,12 @@ boundary" rule and ships every binding).
 
 ## ADR-003 — License: GPL-3.0-or-later (2026-11-08)
 
-**Decision.** Whittle's own code is licensed **GPL-3.0-or-later** (owner decision, 2026-11-08). This
+**Decision.** Wren's own code is licensed **GPL-3.0-or-later** (owner decision, 2026-11-08). This
 supersedes the Apache-2.0 row of ADR-001.
 
 **Why.** Mycelium's sync layer (same author) is GPL-3.0; matching it lets `packages/sync` port its
 provider adapters, auth flows and conflict handling directly (PLAN §8A) with no relicensing step.
-Copyleft also keeps forks of Whittle open.
+Copyleft also keeps forks of Wren open.
 
 **Consequences.**
 - Every package declares `"license": "GPL-3.0-or-later"`; root `LICENSE` is the GPL-3.0 text.
@@ -110,7 +110,7 @@ hosted-fork gap; may be revisited if share/collab hosting in §13 lands).
 `appearance?`, `properties?`), stored inline in the part file. It is not a free-text name or a
 reference only. Density is an expression with units (`2.70 g/cm^3`, `0.0975 lb/in^3`).
 packages/document resolves it to kg/mm³. `KernelApi.massProperties(shape, density?)` returns mass and
-the inertia tensor when a density is given. Whittle ships a built-in material library (M1); STEP
+the inertia tensor when a density is given. Wren ships a built-in material library (M1); STEP
 export writes material and density through `XCAFDoc_MaterialTool` (M5).
 
 **Why.** Owner request (2026-11-08): users must be able to assign a material and density to parts.
@@ -183,7 +183,7 @@ errors explicit. `5'6"` is not parsed as feet plus inches; write `5ft + 6in`.
    always name input geometry, never geometry the feature itself created (Onshape behaves the same).
 2. **Real regen engine by default.** `?engine=fake` (a main-thread stand-in over the low-level kernel)
    stays for fast UI work only. All E2E runs on the real engine.
-3. **In-app welcome instead of a landing page** (owner decision). The app stays at `/whittle/`, so
+3. **In-app welcome instead of a landing page** (owner decision). The app stays at `/wren-cad/`, so
    installed PWAs keep working. The welcome card offers the demo bracket, a new part, install, and
    the repo and licence links.
 4. **Kernel boot starts before React's first render**, and download-progress updates are throttled
@@ -199,14 +199,14 @@ errors explicit. `5'6"` is not parsed as feet plus inches; write `5ft + 6in`.
    fingerprint) is applied as extra patch ops in front of the user's next command, in the same undo
    step (`apps/web/src/model/heal.ts`). A standalone history entry would make the first undo a
    no-op, and the store has no history-free patch. Until then the engine keeps rebinding.
-2. **Opening a `.whittle` never overwrites a different library entry.** Same `meta.id` with
+2. **Opening a `.wrencad` never overwrites a different library entry.** Same `meta.id` with
    different content (document files or extra files) opens as a new entry: new id, " (copy)" when
    the name is taken, and a non-modal note. Only an identical project reuses its entry.
 3. **Imports.** Open/Import (inspector, ⌘O) and drag-and-drop add an `ImportFeature` to the open
    part; the library's and the welcome card's "Open or import…" start a new document for it (no
    part is being worked on there). Bytes live at `imports/<featureId>.<format>` and are sent to the
    engine once per part and worker (keyed by sha256), again after `closePart`.
-4. **Mesh cache for instant open.** Fine meshes go to `.whittle/meshes/` (FILE_FORMAT.md) with the
+4. **Mesh cache for instant open.** Fine meshes go to `.wren/meshes/` (FILE_FORMAT.md) with the
    document. On launch the last document is read before React renders and the viewport is created
    only after that read (≤ 400 ms): creating the view compiles shaders — a ≈ 0.5 s main-thread task
    on software GL — which otherwise delays the IndexedDB/OPFS read behind it. Cached open went from
@@ -282,8 +282,8 @@ section and export.
    policy (`eager`, phone `onEdit`).
 4. **CI performance gate.** `perf` job in `ci.yml` gates the Pages deploy: shell TTI (cold context,
    fast-4G throttle via CDP, first-document shell visible), peak memory, and the viewport package's
-   `WHITTLE_PERF=1` probes. Time budgets are multiplied by `PERF_FACTOR` (`e2e/perf/budgets.ts`):
-   **3 on CI, 1.5 locally**, override with `WHITTLE_PERF_FACTOR`. Rationale: the 2-vCPU runners have
+   `WREN_PERF=1` probes. Time budgets are multiplied by `PERF_FACTOR` (`e2e/perf/budgets.ts`):
+   **3 on CI, 1.5 locally**, override with `WREN_PERF_FACTOR`. Rationale: the 2-vCPU runners have
    no GPU (SwiftShader) and measured 2-4x slower main-thread work than a mid-range laptop; 3 leaves
    headroom for noisy neighbours without hiding a 2x regression. Memory is not scaled.
 5. **Memory measurement.** `performance.measureUserAgentSpecificMemory()` is preferred but headless
@@ -345,7 +345,7 @@ function; ADR-008 item 9 left driving dimensions up to 1e-7 × sketch size off a
 2. **Stages use `overflow-clip`, not `hidden`.** A hidden box can be scrolled by focus or
    `scrollIntoView`, which dragged a translated sheet's off-screen part into view and shifted the
    whole stage by ~28 px.
-3. **`Measurement` is declared in the UI package** (`measure/types.ts`) because `@whittle/contracts`
+3. **`Measurement` is declared in the UI package** (`measure/types.ts`) because `@wren-cad/contracts`
    has none yet (only `MassProperties`). It is structural: replace it with the contract type when the
    lead adds it (proposed diff in the M2 UI hand-off).
 4. **Tablet rail groups.** Tools are reachable through their group (`[data-tool-group]`); a group
@@ -512,7 +512,7 @@ Implemented in packages/ui (FeatureTree) and apps/web, after the M2 integration 
    inference: a hole's circle centre must not snap onto a nearby edge. Once the Pencil has been
    used in a sketch session, fingers no longer draw there (PLAN §9.3). Fingers can drag-to-draw
    two-click shapes (the press is the first click). Recognition is imported from
-   `@whittle/sketch/recognize` only; the package root no longer re-exports it, since the root is
+   `@wren-cad/sketch/recognize` only; the package root no longer re-exports it, since the root is
    on the initial route and the re-export would pull the recogniser into it.
 6. **Tutorial conditions are document facts** (`app/tutorial.ts`): a sketch; a closed loop of
    ≥ 3 lines; a driving dimension not being edited; an extrude / a cut / a fillet that rebuilt;
@@ -531,7 +531,7 @@ Implemented in packages/ui (FeatureTree) and apps/web, after the M2 integration 
    chip and toasts are placed with them. The app keeps the sheet snap and section (controlled
    props); a sheet the app opened for the user (a new feature's inspector, Measure on a tablet)
    collapses again on Done.
-9. **Import attachments.** Saved files (library, `.whittle`) never carry orphans: only the
+9. **Import attachments.** Saved files (library, `.wrencad`) never carry orphans: only the
    attachments the current document references, plus all non-import extra files. In memory an
    orphan stays while the undo/redo history still mentions its path
    (`DocumentStoreImpl.historyMentions`), so undoing the delete always finds the bytes; once the
@@ -714,7 +714,7 @@ the UI workstream.
 **Context.** M2.5 (PLAN §8A, §12) follows M2. Mycelium (same author, GPL-3.0-or-later, so ADR-003
 lets us port it) already has file-service adapters for Dropbox, OneDrive and WebDAV. It also has
 an isomorphic-git repo wrapper, a two-way sync engine with a three-way merge, and a Cloudflare
-Worker for the git CORS proxy, OAuth token exchange and WebDAV relay. Whittle's canonical project
+Worker for the git CORS proxy, OAuth token exchange and WebDAV relay. Wren's canonical project
 folder (`ProjectFiles`, docs/FILE_FORMAT.md) already exists. The contracts are in
 `packages/contracts/src/sync.ts`; `ModelingApi.compare` and `RegenRequest.slot` are in
 `modeling.ts`.
@@ -734,7 +734,7 @@ folder (`ProjectFiles`, docs/FILE_FORMAT.md) already exists. The contracts are i
 4. **Sync** follows Mycelium's `syncFolder`: pull, then a three-way merge against the base, then
    push against the base's revision. Bases are stored as bytes keyed by SHA-256 hash. Mycelium's
    line merge is replaced by `DocMerger` on parsed documents, and non-JSON files (attachments,
-   releases) conflict as whole files. The `.whittle/` cache never syncs. The offline queue is
+   releases) conflict as whole files. The `.wren/` cache never syncs. The offline queue is
    `SyncState.pending`. Pushes are debounced (3 s); pulls happen on poll, focus and reconnect.
 5. **Structural merge.** Arrays of items with ids merge as maps plus an order. Both sides editing
    the same leaf is a conflict (`bothModified`, `modifiedDeleted`, `bothAdded`), and two different
@@ -742,7 +742,7 @@ folder (`ProjectFiles`, docs/FILE_FORMAT.md) already exists. The contracts are i
    not indices. The merged document is always schema-valid. A reference the merge breaks shows up
    as "needs attention" on regen and is never silently re-picked. `DocDiffer` produces one-line
    feature diffs ("Fillet 3: radius 2 mm → 3 mm") from the same walk.
-6. **Snapshot history** (`.whittle-history/`) is append-only and content-addressed:
+6. **Snapshot history** (`.wren-history/`) is append-only and content-addressed:
    - `versions/<id>.json` holds the metadata;
    - `snapshots/<hash>.zip` holds the packed files;
    - `refs/heads/<branch>/<versionId>` and `refs/releases/<name>` hold one empty file per head.
@@ -760,11 +760,11 @@ folder (`ProjectFiles`, docs/FILE_FORMAT.md) already exists. The contracts are i
    mass and bounding box of each side. Implemented in kernel-client from existing façade
    operations (ADR-022).
 9. **Hosted pieces.**
-   - Dropbox and OneDrive need app registrations whose redirect URIs include Whittle's Pages
+   - Dropbox and OneDrive need app registrations whose redirect URIs include Wren's Pages
      origin.
    - Git over HTTP from a browser always needs a CORS proxy, even with a fine-grained token.
    - Development uses the isomorphic-git public proxy. Production uses Mycelium's Worker, ported
-     and restricted to Whittle's origin.
+     and restricted to Wren's origin.
    - These need the owner's accounts and settings; the app reads them from build-time config, and
      a missing key hides that provider instead of failing.
 
@@ -783,7 +783,7 @@ folder (`ProjectFiles`, docs/FILE_FORMAT.md) already exists. The contracts are i
 
 ## ADR-021 — Platform plumbing for sync: Worker, config, service worker rules
 
-1. **Worker is a pnpm workspace package** (`@whittle/sync-worker`). Typecheck and `vitest` run under
+1. **Worker is a pnpm workspace package** (`@wren-cad/sync-worker`). Typecheck and `vitest` run under
    `pnpm -r` with the root toolchain and no extra dependencies. Wrangler is not installed: the
    scripts and docs use `npx wrangler@4.151.3`, so the lockfile and licence notices do not grow by
    the workerd binaries.
@@ -797,7 +797,7 @@ folder (`ProjectFiles`, docs/FILE_FORMAT.md) already exists. The contracts are i
    builds only, the public `cors.isomorphic-git.org` (marked `gitCorsProxyIsPublicDefault` so the UI
    warns that tokens pass through a third party). Production builds never use the public proxy:
    without one configured, git hosts are reached directly (M2.5 gate N4).
-5. **OAuth redirect URI is the app base URL** (`https://jackhale98.github.io/whittle/`, with trailing
+5. **OAuth redirect URI is the app base URL** (`https://jackhale98.github.io/wren-cad/`, with trailing
    slash), via `oauthRedirectUri()`. The service worker already serves the shell for any navigation
    in scope and preserves the URL, so no callback route or Pages 404 trick is needed.
 6. **Service worker handles same-origin only, and never a request with `Authorization`**
@@ -811,7 +811,7 @@ folder (`ProjectFiles`, docs/FILE_FORMAT.md) already exists. The contracts are i
 
 **Licence note (lead, 2026-11-08).** Mycelium's `worker/` is Apache-2.0, unlike the rest of
 Mycelium, which is GPL-3.0. The port keeps Apache's licence text (`worker/LICENSE-APACHE-2.0`) and
-attribution in the file headers. Whittle's modifications and the combined worker are
+attribution in the file headers. Wren's modifications and the combined worker are
 GPL-3.0-or-later. Apache-2.0 code can be included in a GPL-3.0 work.
 
 ## ADR-022 — Regen slots and geometric compare without façade changes (2026-11-08)
@@ -885,7 +885,7 @@ open. Mycelium (GPL-3.0-or-later) is ported per ADR-003; each ported file carrie
    conflict on one document file stops the rest of the document's push that round. A device that
    lists midway (manifest naming a part not yet uploaded) gets `REMOTE` "isn't a complete project
    yet" and retries without committing.
-7. **Rules for files:** every file syncs except `.whittle/`, `.git/` and OS clutter (`.DS_Store`,
+7. **Rules for files:** every file syncs except `.wren/`, `.git/` and OS clutter (`.DS_Store`,
    `Thumbs.db`, `desktop.ini`, Office `~$` and LibreOffice `.~lock.` files). An edit beats a
    concurrent deletion (nothing is lost; Mycelium's rule). `remove(path, null)` succeeds only if
    the file is absent, matching `ifRev: null` = "only if it doesn't exist".
@@ -986,31 +986,31 @@ The 1,000-pair fuzz test made the gaps concrete.
    - Without a remote, history works fully, and fetch, pull and push return a clear `NOT_FOUND`.
    - Refs, the index and the working tree are read on every call. `refresh()` drops cached
      packfile reads.
-   - Whittle only writes the paths it owns (model, `imports/`, `previews/`, `releases/`), so a
+   - Wren only writes the paths it owns (model, `imports/`, `previews/`, `releases/`), so a
      README or CI config in the repository is never deleted or overwritten by a save.
 5. **Git fetches all refs with tags.** isomorphic-git's `singleBranch` fetch never requests
    annotated tag objects, so releases made on another device would not arrive. Project
    repositories are small.
-6. **Git automatic snapshots are local commits** under `refs/whittle/auto/<oid>`. They are never
+6. **Git automatic snapshots are local commits** under `refs/wren/auto/<oid>`. They are never
    pushed, so a GitHub history only shows the versions people named.
 7. **Tests use LightningFS on fake-indexeddb** (the production fs, in memory) and a real
    `git http-backend`, as Mycelium's tests do.
 
 ## ADR-028 — Viewport compare overlay (M2.5)
 
-- **Palette.** Added `#00a878` / removed `#c2410c` on light; `#3ddc97` / `#ff6a2e` on dark (bluish green and vermillion-leaning red, Okabe-Ito family). The pair differs by > 0.08 relative luminance in both themes (unit-tested), so protan/deutan viewers still separate them; edge style is a second, colour-free cue (added = solid edges, removed = dashed). Fills are 45 % (added) and 38 % (removed) opaque. Values live in `packages/viewport/src/compare.ts` (`COMPARE_COLORS`), because the `compare.added`/`compare.removed` tokens named in the contract do not exist in `@whittle/ui` yet; proposal: the UI package adopts these values and the viewport test asserts parity like it does for `OVERLAY_COLORS`.
+- **Palette.** Added `#00a878` / removed `#c2410c` on light; `#3ddc97` / `#ff6a2e` on dark (bluish green and vermillion-leaning red, Okabe-Ito family). The pair differs by > 0.08 relative luminance in both themes (unit-tested), so protan/deutan viewers still separate them; edge style is a second, colour-free cue (added = solid edges, removed = dashed). Fills are 45 % (added) and 38 % (removed) opaque. Values live in `packages/viewport/src/compare.ts` (`COMPARE_COLORS`), because the `compare.added`/`compare.removed` tokens named in the contract do not exist in `@wren-cad/ui` yet; proposal: the UI package adopts these values and the viewport test asserts parity like it does for `OVERLAY_COLORS`.
 - **Depth.** Ghosted bodies are transparent and write no depth, so the added fill is simply depth-tested (reads as solid, edges stay crisp) and the removed fill and dashed edges are drawn with the depth test off: removed material lies inside the old body and must show even if a caller sets `ghostOpacity: 1` (an opaque body would hide it). Cost: removed regions show through the added block, acceptable for a diff view.
 - **Ghosting is derived, not stored.** `display.opacity` is never mutated; the drawn opacity is `min(own, ghost)` while an overlay is set, so `null` restores opacity, `transparent`, `depthWrite` and colour exactly. Body edges fade toward the background while comparing. Only a first set, a ghost change and `null` touch body materials; `show` toggles flip group visibility and a re-set with the same mesh arrays (identity) reuses GPU buffers.
 - **Materials.** Fills and lines go through `sharedMaterial` (no shader work on toggling or re-setting); geometry is disposed on replace and remove.
 - **Picking and clipping.** The overlay lives in the clipped body root but not in the ID scene or body map, so it is never picked and section planes clip it. Section caps are not drawn for overlay meshes.
 - **Fit.** `fitAll` stays bodies-only; the engine adds `fitAll(animate, { includeOverlay: true })`. Proposal for the contract: add the optional second parameter to `Viewport.fitAll`, or have the app call it after `setCompare`.
 - **Reduced motion.** There is no animation: ghosting and toggles are instant.
-- **Perf on software GL.** Once the studio environment exists, any camera or state change costs 150-400 ms wall time on SwiftShader (also for a plain camera move), so the perf probe gates handler time (<= 16 ms p95) and reports render CPU time, gated with `WHITTLE_PERF_ASSERT=1`.
+- **Perf on software GL.** Once the studio environment exists, any camera or state change costs 150-400 ms wall time on SwiftShader (also for a plain camera move), so the perf probe gates handler time (<= 16 ms p95) and reports render CPU time, gated with `WREN_PERF_ASSERT=1`.
 
 ## ADR-029 — Local git repo mode (M2.5, owner request 2026-11-08)
 
-**Context.** Desktop users who already keep projects in git want Whittle's versions to be their
-repo's commits, not a parallel `.whittle-history/`. The owner asked for this in M2.5.
+**Context.** Desktop users who already keep projects in git want Wren's versions to be their
+repo's commits, not a parallel `.wren-history/`. The owner asked for this in M2.5.
 
 **Decision.**
 
@@ -1019,9 +1019,9 @@ repo's commits, not a parallel `.whittle-history/`. The owner asked for this in 
    **repo root**, because File System Access can't walk up from a subfolder. The project is a
    folder inside it (`ProjectLink.path`, relative to the root, `''` for the root). Several
    projects can live in one repo.
-2. **Working copy.** The project files on disk *are* the working copy. Whittle saves to them
-   directly (the folder provider and SyncEngine with no remote). No `.whittle-history/` is written
-   in this mode, and `.whittle/` is added to the repo's `.gitignore` if it isn't already ignored
+2. **Working copy.** The project files on disk *are* the working copy. Wren saves to them
+   directly (the folder provider and SyncEngine with no remote). No `.wren-history/` is written
+   in this mode, and `.wren/` is added to the repo's `.gitignore` if it isn't already ignored
    (with the user's go-ahead shown inline).
 3. **History.** `GitHistory` runs over a File System Access adapter for isomorphic-git's `fs`,
    with `dir` = the repo root and versioned paths limited to the project folder.
@@ -1032,15 +1032,15 @@ repo's commits, not a parallel `.whittle-history/`. The owner asked for this in 
    - `refresh()` and a re-read on window focus pick up commits, checkouts and repacks made by the
      user's own git.
 4. **Remotes.** Pushing and pulling can stay with the user's git tools. When the repo has a
-   remote (`remotes()`) and the user signs in to its host, Whittle can also fetch, pull and push
+   remote (`remotes()`) and the user signs in to its host, Wren can also fetch, pull and push
    through the CORS proxy.
 5. **Safety.**
-   - Before switching branches or fast-forwarding, Whittle refuses if the project has
+   - Before switching branches or fast-forwarding, Wren refuses if the project has
      uncommitted changes (`workingChanges()`), and offers "Save version" first. It never
      force-checks-out over edits.
    - A repo mid-merge, mid-rebase or with a detached HEAD is shown read-only, with an
      explanation.
-   - Git LFS pointers are left alone, and hooks don't run when Whittle commits; both are stated
+   - Git LFS pointers are left alone, and hooks don't run when Wren commits; both are stated
      in the UI.
 6. **Browsers.** Desktop Chromium only, because Firefox and Safari have no directory picker.
    Elsewhere, local git mode is hidden with that reason, and hosted git connections still work.
@@ -1053,7 +1053,7 @@ git, raised choices ADR-029 leaves open.
 
 **Decision.**
 
-1. **Commits are built from tree objects, not the index.** Whittle writes the project's blobs,
+1. **Commits are built from tree objects, not the index.** Wren writes the project's blobs,
    builds the project folder's tree and splices it into the parent commit's tree, rewriting only
    the trees on the path (one write per tree, nothing left dangling). Whatever else the user has
    staged or edited is neither committed nor touched. Hosted connections use the same path.
@@ -1069,7 +1069,7 @@ git, raised choices ADR-029 leaves open.
      meanwhile);
    - update the index entries of the changed paths, with the files' own stats.
 
-   File System Access has no exclusive create or rename, so Whittle can't take git's
+   File System Access has no exclusive create or rename, so Wren can't take git's
    `index.lock`. It refuses to start while one exists, and the remaining race is the instant
    between the check and the write (as in ADR-023 item 12).
 3. **Never a forced checkout.** `switchBranch` and fast-forward `pull` refuse with `CONFLICT`
@@ -1079,7 +1079,7 @@ git, raised choices ADR-029 leaves open.
    the same on both branches carry over, as in git. A fast-forward checks the tree out before it
    moves the branch. Hosted and local-only histories follow the same rules.
 4. **Automatic snapshots are objects plus a ref.** Their commits go under
-   `refs/whittle/auto[/<project>]/<oid>` and change neither the branch, the index nor the
+   `refs/wren/auto[/<project>]/<oid>` and change neither the branch, the index nor the
    working tree, so they never show as staged changes in the user's git and never block a
    switch.
 5. **Scoping by `projectPath`.**
@@ -1117,19 +1117,19 @@ git, raised choices ADR-029 leaves open.
    dedicated `READ_ONLY` code.
 10. **LFS.** A smudged checkout counts as unchanged when its SHA-256 is the pointer's oid, and a
     commit keeps the pointer blob as it is. A changed LFS file is refused with `UNSUPPORTED`
-    (Whittle runs no clean filter). `read()` returns the pointer bytes.
+    (Wren runs no clean filter). `read()` returns the pointer bytes.
 11. **No symlinks.** `readlink` and `symlink` reject with `ENOENT` or `ENOTSUP`.
     isomorphic-git writes checkout files in parallel and only reports failures at the end, so a
     switch or fast-forward that would create or replace a symlink is refused (`UNSUPPORTED`)
     before anything is written (`symlinks: false`, which local mode sets).
-12. **Reflog.** Whittle appends git-format reflog entries for its commits, branch switches and
+12. **Reflog.** Wren appends git-format reflog entries for its commits, branch switches and
     fast-forwards when the repository keeps reflogs (`logs/` exists), so `git reflog` can always
     get back to an earlier state.
 
 ## ADR-031 — M2.5 integration in apps/web
 
 1. **The library entry is the sync working copy.** `SyncLocalStore.readFiles` is the entry's
-   canonical document files plus its extra files (never `.whittle/`); `writeFiles` is a
+   canonical document files plus its extra files (never `.wren/`); `writeFiles` is a
    compare-and-swap run under the same lock as autosave (`libLocked`). Sync may replace the open
    document only when it is exactly the object last written to the library (no pending or
    in-flight save, no unsaved history files) and the user is not mid-edit (sketch session,
@@ -1167,12 +1167,12 @@ git, raised choices ADR-029 leaves open.
    compared with what is on screen.
 7. **Releases are of the current state only.** A release freezes `exportPart` (main slot) output, so
    it is refused unless the working copy is exactly that version (restore first).
-8. **Test seam.** `globalThis.__whittleSyncOverrides` (set by a Playwright init script) rewrites
+8. **Test seam.** `globalThis.__wrenSyncOverrides` (set by a Playwright init script) rewrites
    provider origins to fakes, supplies public app keys the CI build lacks and replaces
    `showDirectoryPicker` (OPFS in E2E). Only script already in the page can set it; such script
    could read the vault anyway.
 9. **Bundle.** The status chip and version button are a 2.4 KB lazy chunk; the controller chunk
-   (`@whittle/sync`, isomorphic-git, merge, panels' logic) is ≈ 130 KB gzip and the panel chunk
+   (`@wren-cad/sync`, isomorphic-git, merge, panels' logic) is ≈ 130 KB gzip and the panel chunk
    ≈ 15 KB, both loaded on first use. The initial route grew by ≈ 2.6 KB (workbench glue).
 10. **Picked folders are cached in memory for the session.** `saveFolderHandle` still persists them
     for reloads, but the controller reuses the handle it was given instead of reading IndexedDB
@@ -1244,7 +1244,7 @@ git, raised choices ADR-029 leaves open.
    carries constraints over: reflection-invariant kinds as is, angles with their lines swapped,
    h/v distances swapped across a perpendicular axis, h/v constraints only for axis-aligned
    mirror lines; `fix` and anything mixing moved and unmoved geometry are dropped and reported.
-4. **Entry point.** `@whittle/sketch/edit`, like `./recognize`, so the app's initial route does
+4. **Entry point.** `@wren-cad/sketch/edit`, like `./recognize`, so the app's initial route does
    not load it.
 
 ## ADR-036 — M3 regen: copies, reference geometry, linked entities (modeling workstream)
@@ -1392,7 +1392,7 @@ contracts don't spell out. The regen engine (kernel-client) depends on these.
     wall) and, in the threaded build, when the boolean runs in parallel. Each run's cost is the
     smaller of the two, the gate is the best of five runs after three warm-ups, and both numbers
     are logged.
-14. **IGES stays in the main kernel.** Measured with a `WHITTLE_NO_IGES=1` production link, the
+14. **IGES stays in the main kernel.** Measured with a `WREN_NO_IGES=1` production link, the
     reader costs +265 KiB brotli (5.7 % of 4.53 MiB). A lazily loaded side module (Emscripten
     dynamic linking alongside embind and native exceptions) isn't worth that; a separate exchange
     kernel loaded on first import is the plan if data exchange grows.

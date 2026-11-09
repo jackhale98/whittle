@@ -7,7 +7,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import type { BodyResult } from '@whittle/contracts';
+import type { BodyResult } from '@wren-cad/contracts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { B, BRACKET_DIMS, type BracketDims, bracketDoc, bracketVolume } from './bracket';
 import {

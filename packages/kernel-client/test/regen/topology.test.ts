@@ -6,7 +6,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import type { BodyResult, EntityRef, Feature } from '@whittle/contracts';
+import type { BodyResult, EntityRef, Feature } from '@wren-cad/contracts';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import {
   type Api,

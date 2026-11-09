@@ -4,7 +4,7 @@
 // page cross-origin isolated), `cache-control: max-age=600`, and `404.html` (status 404) for
 // unknown paths. Optionally mounts a fixtures directory at `<base>__e2e__/`.
 //
-// Usage: node scripts/static-serve.mjs [--dir dist] [--base /whittle/] [--port 4173]
+// Usage: node scripts/static-serve.mjs [--dir dist] [--base /wren-cad/] [--port 4173]
 //                                      [--fixtures e2e/fixtures]
 import { createReadStream, existsSync, statSync } from 'node:fs';
 import { createServer } from 'node:http';
@@ -14,7 +14,7 @@ import { parseArgs } from 'node:util';
 const { values } = parseArgs({
   options: {
     dir: { type: 'string', default: 'dist' },
-    base: { type: 'string', default: '/whittle/' },
+    base: { type: 'string', default: '/wren-cad/' },
     port: { type: 'string', default: '4173' },
     fixtures: { type: 'string' },
     host: { type: 'string', default: '127.0.0.1' },

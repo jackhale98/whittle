@@ -5,7 +5,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import type { Vec3 } from '@whittle/contracts';
+import type { Vec3 } from '@wren-cad/contracts';
 import { describe, expect, it } from 'vitest';
 import { groupByNormal } from '../../src/regen/geometry';
 

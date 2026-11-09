@@ -14,8 +14,8 @@ import type {
   RemoteListing,
   StorageProvider,
   StorageResult,
-} from '@whittle/contracts';
-import { MANIFEST_FILE } from '@whittle/document';
+} from '@wren-cad/contracts';
+import { MANIFEST_FILE } from '@wren-cad/document';
 import type { OAuthCredential } from '../auth/types';
 import {
   body,

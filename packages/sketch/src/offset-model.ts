@@ -28,7 +28,7 @@
  */
 
 import type { SketchPrimitive } from '@salusoft89/planegcs';
-import type { DimensionConstraint, Id, SketchEntity } from '@whittle/contracts';
+import type { DimensionConstraint, Id, SketchEntity } from '@wren-cad/contracts';
 import type { Measure, Row } from './model';
 import { isSketchReference } from './references';
 

@@ -273,8 +273,8 @@ test('screenshot artefact (box, WebGL2, DPR 2)', async ({ browser }) => {
 });
 
 test('perf probe: 1M triangles orbiting', async ({ page }) => {
-  // Minutes on software GL: run with `pnpm --filter @whittle/viewport perf` (WHITTLE_PERF=1).
-  test.skip(!process.env.WHITTLE_PERF, 'perf probe: set WHITTLE_PERF=1');
+  // Minutes on software GL: run with `pnpm --filter @wren-cad/viewport perf` (WREN_PERF=1).
+  test.skip(!process.env.WREN_PERF, 'perf probe: set WREN_PERF=1');
   test.setTimeout(240_000);
   const backend = await open(page, '?backend=webgl2&reducedMotion=1');
   await page.evaluate(() => window.__viewport?.loadDense(1_000_000));
@@ -320,10 +320,10 @@ test('perf probe: 1M triangles orbiting', async ({ page }) => {
   expect(after?.frameMs).toBeGreaterThan(0);
 
   // PLAN §10: <= 8 ms CPU frame time for 1M triangles on desktop. Advisory by default (software GL
-  // in CI containers); the platform workstream turns it into a gate with WHITTLE_PERF_ASSERT=1
-  // (budget override: WHITTLE_FRAME_BUDGET_MS, e.g. 16 for the iPad tier).
-  if (process.env.WHITTLE_PERF_ASSERT) {
-    const budget = Number(process.env.WHITTLE_FRAME_BUDGET_MS ?? '8');
+  // in CI containers); the platform workstream turns it into a gate with WREN_PERF_ASSERT=1
+  // (budget override: WREN_FRAME_BUDGET_MS, e.g. 16 for the iPad tier).
+  if (process.env.WREN_PERF_ASSERT) {
+    const budget = Number(process.env.WREN_FRAME_BUDGET_MS ?? '8');
     expect(
       after?.frameMs,
       `1M-triangle CPU frame time ${after?.frameMs.toFixed(2)} ms exceeds the ${budget} ms budget`,

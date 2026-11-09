@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-import type { ProjectFiles, WhittleDoc } from '@whittle/contracts';
+import type { ProjectFiles, WrenDoc } from '@wren-cad/contracts';
 import { strFromU8, strToU8, zipSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
 import {
@@ -98,7 +98,7 @@ describe('canonicalJson', () => {
     const reference = canonicalJson(doc);
     const refFiles = toFiles(doc);
     for (let seed = 1; seed <= 60; seed++) {
-      const shuffled = shuffleKeys(doc, lcg(seed)) as WhittleDoc;
+      const shuffled = shuffleKeys(doc, lcg(seed)) as WrenDoc;
       expect(canonicalJson(shuffled)).toBe(reference);
       const files = toFiles(shuffled);
       expect([...files.keys()]).toEqual([...refFiles.keys()]);
@@ -159,10 +159,10 @@ describe('project folder', () => {
     ]);
     const manifest = JSON.parse(text(files, MANIFEST_FILE));
     expect(manifest).toMatchObject({
-      format: 'whittle-project',
+      format: 'wren-project',
       schemaVersion: 1,
       units: { length: 'mm', angle: 'deg' },
-      meta: { name: 'Bracket', app: 'whittle/test' },
+      meta: { name: 'Bracket', app: 'wren/test' },
     });
     // Keyed by id; order is document order.
     expect(manifest.parts).toEqual([
@@ -216,13 +216,13 @@ describe('project folder', () => {
     const missing = new Map(files);
     missing.delete('parts/bracket.part.json');
     expect(() => fromFiles(missing)).toThrow(/missing ‘parts\/bracket.part.json’/);
-    expect(() => fromFiles(new Map())).toThrow(/missing ‘whittle.project.json’/);
+    expect(() => fromFiles(new Map())).toThrow(/missing ‘wren.project.json’/);
     const notJson = new Map(files);
     notJson.set(PARAMS_FILE, strToU8('{nope'));
     expect(() => fromFiles(notJson)).toThrow(ProjectFormatError);
     const wrongFormat = new Map(files);
     wrongFormat.set(MANIFEST_FILE, strToU8('{"format":"other"}'));
-    expect(() => fromFiles(wrongFormat)).toThrow(/not a Whittle project manifest/);
+    expect(() => fromFiles(wrongFormat)).toThrow(/not a Wren project manifest/);
     const mismatch = new Map(files);
     const m = JSON.parse(text(files, MANIFEST_FILE));
     m.parts[0].id = 'someone-else';
@@ -252,12 +252,12 @@ describe('project folder', () => {
   });
 });
 
-describe('.whittle archive', () => {
+describe('.wrencad archive', () => {
   const doc = sampleDoc();
 
   it('round-trips through zip, with and without cache', () => {
-    const bytes = projectCodec.toWhittle(doc);
-    const back = projectCodec.fromWhittle(bytes);
+    const bytes = projectCodec.toWren(doc);
+    const back = projectCodec.fromWren(bytes);
     expect(back.doc).toEqual(doc);
     expect(back.cache.size).toBe(0);
 
@@ -265,27 +265,27 @@ describe('.whittle archive', () => {
       ['meshes/F1.bin', new Uint8Array([1, 2, 3, 4])],
       ['thumb.png', new Uint8Array([9])],
     ]);
-    const withCache = projectCodec.fromWhittle(projectCodec.toWhittle(doc, cache));
+    const withCache = projectCodec.fromWren(projectCodec.toWren(doc, cache));
     expect(withCache.doc).toEqual(doc);
     expect([...withCache.cache.keys()].sort()).toEqual(['meshes/F1.bin', 'thumb.png']);
     expect(withCache.cache.get('meshes/F1.bin')).toEqual(new Uint8Array([1, 2, 3, 4]));
   });
 
   it('is deterministic: same document, same bytes, whatever the clock', () => {
-    const a = projectCodec.toWhittle(doc);
-    const b = projectCodec.toWhittle(structuredClone(doc));
+    const a = projectCodec.toWren(doc);
+    const b = projectCodec.toWren(structuredClone(doc));
     expect(Buffer.from(a).equals(Buffer.from(b))).toBe(true);
-    const shuffled = shuffleKeys(doc, lcg(7)) as WhittleDoc;
-    expect(Buffer.from(projectCodec.toWhittle(shuffled)).equals(Buffer.from(a))).toBe(true);
+    const shuffled = shuffleKeys(doc, lcg(7)) as WrenDoc;
+    expect(Buffer.from(projectCodec.toWren(shuffled)).equals(Buffer.from(a))).toBe(true);
   });
 
   it('is deterministic across time zones', () => {
     const saved = process.env.TZ;
     try {
       process.env.TZ = 'Asia/Tokyo';
-      const tokyo = projectCodec.toWhittle(doc);
+      const tokyo = projectCodec.toWren(doc);
       process.env.TZ = 'America/Los_Angeles';
-      const la = projectCodec.toWhittle(doc);
+      const la = projectCodec.toWren(doc);
       expect(Buffer.from(tokyo).equals(Buffer.from(la))).toBe(true);
     } finally {
       if (saved === undefined) delete process.env.TZ;
@@ -294,9 +294,9 @@ describe('.whittle archive', () => {
   });
 
   it('entries are sorted and carry the fixed 1980 timestamp', () => {
-    const { files } = unpackFiles(projectCodec.toWhittle(doc));
+    const { files } = unpackFiles(projectCodec.toWren(doc));
     expect([...files.keys()]).toEqual([...files.keys()].sort());
-    const zipped = projectCodec.toWhittle(doc);
+    const zipped = projectCodec.toWren(doc);
     const dv = new DataView(zipped.buffer, zipped.byteOffset);
     expect(dv.getUint32(0, true)).toBe(0x04034b50);
     expect(dv.getUint16(10, true)).toBe(0);
@@ -305,13 +305,13 @@ describe('.whittle archive', () => {
 
   it('is actually compressed and small', () => {
     const raw = [...toFiles(doc).values()].reduce((n, b) => n + b.length, 0);
-    expect(projectCodec.toWhittle(doc).length).toBeLessThan(raw);
+    expect(projectCodec.toWren(doc).length).toBeLessThan(raw);
   });
 
   it('reads a project folder zipped by an ordinary tool (single wrapping directory)', () => {
     const wrapped: Record<string, Uint8Array> = {};
     for (const [k, v] of toFiles(doc)) wrapped[`my-bracket/${k}`] = v;
-    expect(projectCodec.fromWhittle(zipSync(wrapped)).doc).toEqual(doc);
+    expect(projectCodec.fromWren(zipSync(wrapped)).doc).toEqual(doc);
   });
 
   it('keeps extra project files (previews, releases) when using pack/unpack directly', () => {
@@ -322,13 +322,13 @@ describe('.whittle archive', () => {
   });
 
   it('rejects garbage, unsafe paths and oversize archives', () => {
-    expect(() => projectCodec.fromWhittle(new Uint8Array([1, 2, 3]))).toThrow(
-      /not a valid .whittle/,
+    expect(() => projectCodec.fromWren(new Uint8Array([1, 2, 3]))).toThrow(
+      /not a valid .wren/,
     );
     const unsafe = zipSync({ '../evil.json': strToU8('{}') });
     expect(() => unpackFiles(unsafe)).toThrow(/unsafe path/);
     const noManifest = zipSync({ 'readme.txt': strToU8('hi') });
-    expect(() => projectCodec.fromWhittle(noManifest)).toThrow(/missing ‘whittle.project.json’/);
+    expect(() => projectCodec.fromWren(noManifest)).toThrow(/missing ‘wren.project.json’/);
   });
 
   it('large documents round-trip (1000 features)', () => {
@@ -341,6 +341,6 @@ describe('.whittle archive', () => {
         rollbackIndex: 1000,
       },
     ];
-    expect(projectCodec.fromWhittle(projectCodec.toWhittle(d)).doc).toEqual(d);
+    expect(projectCodec.fromWren(projectCodec.toWren(d)).doc).toEqual(d);
   });
 });

@@ -2,7 +2,7 @@
 
 CSWA-like. A brass ball with a stem below it and a flat on top. The ball is a revolved semicircle; the flat is cut from a reference plane.
 
-_Original Whittle reference part. Not derived from any published exam or textbook drawing._
+_Original Wren reference part. Not derived from any published exam or textbook drawing._
 
 Drawing: [rp03-ball-knob.svg](rp03-ball-knob.svg). Machine-readable spec: [rp03-ball-knob.spec.json](rp03-ball-knob.spec.json).
 
@@ -65,7 +65,7 @@ Method and accuracy: Exact closed forms: sphere 4/3 pi R^3; spherical cap pi h^2
 
 ## Independent check
 
-Built in FreeCAD 26.3.0 with `freecad/rp03.py` (a different construction than Whittle's).
+Built in FreeCAD 26.3.0 with `freecad/rp03.py` (a different construction than Wren's).
 
 | Stage | Analytic volume (mm^3) | FreeCAD volume (mm^3) | Difference |
 | --- | --- | --- | --- |

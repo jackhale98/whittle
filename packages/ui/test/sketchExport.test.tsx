@@ -1,6 +1,6 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { SketchConstraintKind } from '@whittle/contracts';
+import type { SketchConstraintKind } from '@wren-cad/contracts';
 import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { sampleConflicts, sampleParams } from '../harness/fixtures';
@@ -312,12 +312,12 @@ describe('export', () => {
     });
     expect(
       buildExportRequest({
-        target: 'whittle',
+        target: 'wren',
         stlBinary: true,
         stlPerBody: false,
         quality: 'fine',
       }),
-    ).toEqual({ target: 'whittle', options: {} });
+    ).toEqual({ target: 'wren', options: {} });
     expect(QUALITY_PRESETS.standard.linearDeflection).toBe(0.02);
   });
 
@@ -386,14 +386,14 @@ describe('export', () => {
     });
   });
 
-  it('3MF / GLB offer quality, .whittle offers nothing; unavailable targets are disabled', async () => {
+  it('3MF / GLB offer quality, .wrencad offers nothing; unavailable targets are disabled', async () => {
     await open({ unavailable: { '3mf': 'Coming soon' } });
     expect(screen.getByRole('radio', { name: /3MF/ })).toBeDisabled();
     await userEvent.click(screen.getByRole('radio', { name: /GLB/ }));
     expect(screen.getByRole('radiogroup', { name: 'Tessellation quality' })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('radio', { name: /Whittle project/ }));
+    await userEvent.click(screen.getByRole('radio', { name: /Wren project/ }));
     expect(screen.queryByRole('radiogroup', { name: 'Tessellation quality' })).toBeNull();
-    expect(screen.getByRole('button', { name: 'Export Whittle project' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Export Wren project' })).toBeInTheDocument();
   });
 
   it('reports the chosen target, shows notes without disabling, never checks a disabled one', async () => {

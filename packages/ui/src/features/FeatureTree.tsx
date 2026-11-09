@@ -1,4 +1,4 @@
-import type { FeatureStatus, FeatureType, Id } from '@whittle/contracts';
+import type { FeatureStatus, FeatureType, Id } from '@wren-cad/contracts';
 import {
   Ban,
   ChevronRight,

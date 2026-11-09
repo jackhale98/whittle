@@ -1,6 +1,6 @@
 /** Section-plane maths (pure): clipping tests for picking and the plane in three.js form. */
 
-import type { SectionPlane, Vec3 } from '@whittle/contracts';
+import type { SectionPlane, Vec3 } from '@wren-cad/contracts';
 
 /** Normalised section: geometry with `n·p > offset` (the +normal side) is clipped away. */
 export interface SectionEq {

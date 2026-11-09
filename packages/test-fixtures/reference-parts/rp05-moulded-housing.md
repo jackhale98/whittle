@@ -2,7 +2,7 @@
 
 CSWP-like. An ABS housing: a box whose four walls lean inward by a draft angle, then hollowed to a uniform wall with the top face removed.
 
-_Original Whittle reference part. Not derived from any published exam or textbook drawing._
+_Original Wren reference part. Not derived from any published exam or textbook drawing._
 
 Drawing: [rp05-moulded-housing.svg](rp05-moulded-housing.svg). Machine-readable spec: [rp05-moulded-housing.spec.json](rp05-moulded-housing.spec.json).
 
@@ -58,7 +58,7 @@ Method and accuracy: Exact by integration. The cross-section at height z is a re
 
 ## Independent check
 
-Built in FreeCAD 26.3.0 with `freecad/rp05.py` (a different construction than Whittle's).
+Built in FreeCAD 26.3.0 with `freecad/rp05.py` (a different construction than Wren's).
 
 | Stage | Analytic volume (mm^3) | FreeCAD volume (mm^3) | Difference |
 | --- | --- | --- | --- |

@@ -4,8 +4,8 @@
 /// is the last one written by the only device that changed it, or (both changed it) the one the
 /// resolver chose, and both devices and the remote agree byte for byte.
 
-import type { DocMerger } from '@whittle/contracts';
-import { PARAMS_FILE, toFiles } from '@whittle/document';
+import type { DocMerger } from '@wren-cad/contracts';
+import { PARAMS_FILE, toFiles } from '@wren-cad/document';
 import { afterEach, describe, expect, it } from 'vitest';
 import { docMerger } from '../../src/merge/merge';
 import { MemoryProvider } from '../../src/providers/memory';

@@ -18,7 +18,7 @@ import type {
   RevolveFeature,
   SketchFeature,
   UnresolvedRef,
-} from '@whittle/contracts';
+} from '@wren-cad/contracts';
 import { CircleAlert, PenLine, RefreshCw, TriangleAlert } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Field, Section, Segmented, Switch } from '../components/controls';
@@ -683,8 +683,8 @@ function StatusBanner({ status, onRepick }: { status: FeatureStatus; onRepick?: 
           </p>
           <p className="mt-0.5 text-xs">
             {ambiguous
-              ? 'It now matches more than one entity. Whittle will not guess: choose which one.'
-              : 'Its geometry is gone. Whittle will not guess: its old place is ghosted in the view.'}
+              ? 'It now matches more than one entity. Wren will not guess: choose which one.'
+              : 'Its geometry is gone. Wren will not guess: its old place is ghosted in the view.'}
           </p>
           {onRepick ? (
             <Button

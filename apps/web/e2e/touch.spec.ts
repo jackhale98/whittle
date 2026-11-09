@@ -1,5 +1,5 @@
 import { type CDPSession, expect, type Page, test } from '@playwright/test';
-import type { WhittleTestHooks } from '@whittle/contracts';
+import type { WrenTestHooks } from '@wren-cad/contracts';
 
 /**
  * Touch navigation on phone/tablet emulation (PLAN §9.3). Regression for: one-finger drags
@@ -28,10 +28,10 @@ async function ready(page: Page): Promise<void> {
   await page.waitForFunction(
     () =>
       window.crossOriginIsolated === true &&
-      !!(window as unknown as Partial<{ __whittle: unknown }>).__whittle,
+      !!(window as unknown as Partial<{ __wren: unknown }>).__wren,
   );
   await page.evaluate(() =>
-    (window as unknown as { __whittle: WhittleTestHooks }).__whittle.firstBodyRendered(),
+    (window as unknown as { __wren: WrenTestHooks }).__wren.firstBodyRendered(),
   );
   // First launch shows the (non-modal) welcome card over the view: close it.
   await page.getByRole('button', { name: 'Close welcome' }).click();
@@ -39,8 +39,8 @@ async function ready(page: Page): Promise<void> {
 
 function camera(page: Page): Promise<CameraState> {
   return page.evaluate(() => {
-    const v = (window as unknown as { __whittleViewport: { getCameraState(): CameraState } })
-      .__whittleViewport;
+    const v = (window as unknown as { __wrenViewport: { getCameraState(): CameraState } })
+      .__wrenViewport;
     return v.getCameraState();
   });
 }

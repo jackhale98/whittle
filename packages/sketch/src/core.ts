@@ -7,7 +7,7 @@
  */
 
 import { init_planegcs_module } from '@salusoft89/planegcs';
-import type { SketchSolverApi } from '@whittle/contracts';
+import type { SketchSolverApi } from '@wren-cad/contracts';
 import type { PlanegcsModule } from './gcs';
 import { SketchSolverCore } from './solver';
 

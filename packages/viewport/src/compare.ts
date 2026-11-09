@@ -9,7 +9,7 @@
  * Values are documented in docs/DECISIONS.md.
  */
 
-import type { CompareOverlay, MeshBuffers } from '@whittle/contracts';
+import type { CompareOverlay, MeshBuffers } from '@wren-cad/contracts';
 import { Group } from 'three/webgpu';
 import { edgesToSegments, meshBuffersToGeometry } from './geometry';
 import { makeFill, makeLines } from './overlays';

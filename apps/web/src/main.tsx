@@ -1,6 +1,6 @@
-import '@whittle/ui/styles.css';
+import '@wren-cad/ui/styles.css';
 import './index.css';
-import { initTheme } from '@whittle/ui';
+import { initTheme } from '@wren-cad/ui';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './app/App';
@@ -23,7 +23,7 @@ installTestHooks({ firstBodyRendered });
 workbench.bootKernelIfEager(); // phones: on the first edit or measurement
 workbench.prefetchInitialDocument();
 // App-level test hooks (E2E only; not an extension API).
-(window as unknown as { __whittleApp?: unknown }).__whittleApp = workbench.testHooks();
+(window as unknown as { __wrenApp?: unknown }).__wrenApp = workbench.testHooks();
 void initServiceWorker();
 keepServiceWorkerFresh();
 

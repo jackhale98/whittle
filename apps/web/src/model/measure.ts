@@ -4,7 +4,7 @@
  * (`ModelingApi.measure`); this module only describes where to draw it.
  */
 
-import type { Marker, Measurement, MeasureTarget, PickHit, Vec3 } from '@whittle/contracts';
+import type { Marker, Measurement, MeasureTarget, PickHit, Vec3 } from '@wren-cad/contracts';
 
 export interface MeasurePick {
   id: string;

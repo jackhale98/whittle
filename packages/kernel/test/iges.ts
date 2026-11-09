@@ -117,21 +117,21 @@ export function igesBox(dx: number, dy: number, dz: number): string {
     });
   }
 
-  const out: string[] = [line('Whittle kernel test fixture: box as bounded planes', 'S', 1)];
+  const out: string[] = [line('Wren kernel test fixture: box as bounded planes', 'S', 1)];
   const date = '20261109.000000';
   const global = [
     '1H,',
     '1H;',
-    hollerith('whittle'),
+    hollerith('wren'),
     hollerith('box.igs'),
-    hollerith('whittle'),
+    hollerith('wren'),
     hollerith('test'),
     '32',
     '38',
     '6',
     '308',
     '15',
-    hollerith('whittle'),
+    hollerith('wren'),
     '1.',
     '2',
     '2HMM',
@@ -141,7 +141,7 @@ export function igesBox(dx: number, dy: number, dz: number): string {
     '1.0E-6',
     real(Math.max(dx, dy, dz) * 2),
     hollerith('test'),
-    hollerith('whittle'),
+    hollerith('wren'),
     '11',
     '0',
     hollerith(date),

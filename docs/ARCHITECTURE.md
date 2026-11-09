@@ -6,7 +6,7 @@ The target design, with the full rationale, is in [`PLAN.md`](PLAN.md) §4. Deci
 
 ## 1. The big picture
 
-Whittle is a browser app with three workers. The main thread only holds document state, UI and the
+Wren is a browser app with three workers. The main thread only holds document state, UI and the
 viewport. Everything heavy runs off it: the OCCT kernel and the regeneration engine in the kernel
 worker, the constraint solver in the sketch worker. A service worker serves the app and adds the
 headers that make threads possible.
@@ -86,10 +86,10 @@ The drawing worker shown in PLAN §4 (HLR, lazy-loaded) is not built yet (M4).
 | --- | --- | --- | --- |
 | `apps/web` | Composition root: boot, workbench, shells wiring, library, samples, service worker | `src/main.tsx`, `src/app/workbench.ts`, `src/sw.ts` | Uses all contracts |
 | `packages/contracts` | Shared types and API surfaces (lead-owned) | `src/index.ts` | This package is the contract |
-| `packages/document` | Expression engine with units, store with undo, `.whittle` codec, materials, JSON Schema | `createDocumentStore`, `expressionEngine`, `projectCodec`, `MATERIALS` | `document.ts`, `store.ts`, `expressions.ts`, `io.ts` |
+| `packages/document` | Expression engine with units, store with undo, `.wrencad` codec, materials, JSON Schema | `createDocumentStore`, `expressionEngine`, `projectCodec`, `MATERIALS` | `document.ts`, `store.ts`, `expressions.ts`, `io.ts` |
 | `packages/kernel` | OCCT 8.0.1 Wasm kernel: C++ facade and the libcascade build | `src/whittle_kernel.h`, `src/index.ts` (types only) | `kernel.ts`, `whittle_kernel.h` |
-| `packages/kernel-client` | Kernel worker, Comlink client, regeneration engine | `createKernelClient`, `@whittle/kernel-client/regen` | `kernel.ts` (`KernelApi`), `modeling.ts` (`ModelingApi`) |
-| `packages/sketch` | planegcs sketch solver, DOF, conflicts, inference, drawing tools | `createSketchSolverClient`, `@whittle/sketch/worker` | `sketch.ts` |
+| `packages/kernel-client` | Kernel worker, Comlink client, regeneration engine | `createKernelClient`, `@wren-cad/kernel-client/regen` | `kernel.ts` (`KernelApi`), `modeling.ts` (`ModelingApi`) |
+| `packages/sketch` | planegcs sketch solver, DOF, conflicts, inference, drawing tools | `createSketchSolverClient`, `@wren-cad/sketch/worker` | `sketch.ts` |
 | `packages/viewport` | three.js viewport: camera, picking, overlays, ghosts | `createViewport` | `viewport.ts` (`Viewport`, `CreateViewport`) |
 | `packages/ui` | Design tokens, Radix-based primitives, three shells, feature tree, inspectors | `AppShell`, `FeatureTree`, `SketchToolbar` | Props types only |
 | `packages/io` | STL, OBJ, 3MF, GLB; STL analysis; local library (IndexedDB and OPFS); file pickers | `meshExporters`, `importMesh` (`.`), `openLibrary` (`./browser`) | `io.ts` |
@@ -101,7 +101,7 @@ and `io`).
 
 ## 4. Persistent naming and reference resolution
 
-Whittle never silently guesses which topology a reference points to. The model is in PLAN §7.3 and
+Wren never silently guesses which topology a reference points to. The model is in PLAN §7.3 and
 the rules are implemented in `packages/kernel-client/src/regen/resolve.ts`.
 
 - **Names come from history.** The kernel names results from OCCT's `Generated`, `Modified` and
@@ -127,7 +127,7 @@ faces, and suppression and rollback (`packages/kernel-client/test/regen/`).
 
 `packages/sketch` wraps planegcs (`@salusoft89/planegcs`, LGPL-2.0-or-later). It owns the policy.
 
-- **planegcs solves; Whittle verifies.** planegcs solves the driving constraints. Whittle keeps its
+- **planegcs solves; Wren verifies.** planegcs solves the driving constraints. Wren keeps its
   own residual model (`src/model.ts`) and re-checks every residual. A sketch is only reported as
   `solved` when every residual is within tolerance (1e-7 times the sketch scale for lengths, 1e-7
   for angles). Reference dimensions never reach planegcs; they are measured afterwards.
@@ -143,7 +143,7 @@ faces, and suppression and rollback (`packages/kernel-client/test/regen/`).
 - **Polish.** After every accepted solve and drag step, a few minimum-norm Newton steps drive every
   residual to ≤ 1e-11 mm (1e-13 rad), so sketches dimensioned to meet produce exactly coplanar
   faces instead of slivers. Already-exact geometry is returned bit for bit (ADR-011).
-- **Pencil strokes.** `@whittle/sketch/recognize` (pure TypeScript, no Wasm) turns a freehand
+- **Pencil strokes.** `@wren-cad/sketch/recognize` (pure TypeScript, no Wasm) turns a freehand
   stroke into a line, polyline, rectangle, circle or arc with exact snapping, and `strokeFragment`
   converts it to entities and constraints like any drawing tool (ADR-011). Wired into the app with
   the M2 integration.
@@ -176,12 +176,12 @@ relaxed on CI).
   OPFS when it is usable, with an IndexedDB blob fallback (`packages/io/src/library.ts`).
 - **Autosave.** The open document is saved 500 ms after edits settle, and again when the page is
   hidden (`apps/web/src/doc/autosave.ts`, ADR-007 §5). The last document reopens on launch.
-- **Project folder and `.whittle`.** A project is a folder of canonical JSON (sorted keys, LF,
-  fixed indentation), so equal documents give identical bytes. A `.whittle` file is that folder as a
+- **Project folder and `.wrencad`.** A project is a folder of canonical JSON (sorted keys, LF,
+  fixed indentation), so equal documents give identical bytes. A `.wrencad` file is that folder as a
   deterministic ZIP (`fflate`). The format is specified in [`FILE_FORMAT.md`](FILE_FORMAT.md).
 - **Imports.** The bytes of an imported file are stored as an attachment at
   `imports/<featureId>.<ext>` and identified by SHA-256 (ADR-008 §3).
-- **Mesh cache.** Fine meshes are written to `.whittle/meshes/`, keyed by a hash of the document.
+- **Mesh cache.** Fine meshes are written to `.wren/meshes/`, keyed by a hash of the document.
   A stale cache is ignored. On launch the cached meshes render before the kernel is ready (ADR-008
   §4).
 - **Kernel binaries.** The `.wasm` and glue are cached by the service worker in
@@ -233,7 +233,7 @@ currently boots the kernel on every tier at startup (`Workbench.bootKernel`).
 | Kernel `.wasm` ≤ 15 MB brotli | Asserted by `packages/kernel/scripts/size-report.mjs` during the kernel build |
 | Cached open before the kernel is ready (≤ 500 ms) | Measured (marks in `apps/web/src/app/timing.ts`) and noted in ADR-007 §4 and ADR-008 §4. Not asserted |
 | Kernel ready (cold and warm) | Measured, not asserted |
-| Viewport frame time at 1M triangles | Opt-in probes (`WHITTLE_PERF=1`); they log numbers and do not assert |
+| Viewport frame time at 1M triangles | Opt-in probes (`WREN_PERF=1`); they log numbers and do not assert |
 | Push and pull preview in one frame | Not built (push and pull, §12) |
 | Memory on iPad tier | Not measured |
 

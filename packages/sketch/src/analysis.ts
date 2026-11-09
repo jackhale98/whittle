@@ -18,7 +18,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import type { DofState, Id } from '@whittle/contracts';
+import type { DofState, Id } from '@wren-cad/contracts';
 import type { Row, SketchModel } from './model';
 
 /** A reduced row whose largest entry is below this is dependent (rows start at unit norm). */

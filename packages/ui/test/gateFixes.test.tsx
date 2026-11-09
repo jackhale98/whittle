@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { RuntimeDiagnostics } from '@whittle/contracts';
+import type { RuntimeDiagnostics } from '@wren-cad/contracts';
 import { describe, expect, it, vi } from 'vitest';
 import { sampleParams } from '../harness/fixtures';
 import { AppShell, ChamferIcon, DimensionLabel, featureMeta, tools } from '../src';

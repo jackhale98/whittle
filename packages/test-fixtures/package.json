@@ -1,5 +1,5 @@
 {
-  "name": "@whittle/test-fixtures",
+  "name": "@wren-cad/test-fixtures",
   "version": "0.0.0",
   "private": true,
   "license": "GPL-3.0-or-later",
@@ -15,7 +15,7 @@
     "generate": "UPDATE_REFERENCE_PARTS=1 vitest run test/reference-parts.test.ts"
   },
   "dependencies": {
-    "@whittle/contracts": "workspace:*",
-    "@whittle/document": "workspace:*"
+    "@wren-cad/contracts": "workspace:*",
+    "@wren-cad/document": "workspace:*"
   }
 }

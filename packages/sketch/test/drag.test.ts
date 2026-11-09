@@ -10,7 +10,7 @@ import {
   type SketchSolveInput,
   type SketchSolveResult,
   type Vec2,
-} from '@whittle/contracts';
+} from '@wren-cad/contracts';
 import { describe, expect, it } from 'vitest';
 import { core, pos, rectangle, SketchBuilder } from './helpers';
 

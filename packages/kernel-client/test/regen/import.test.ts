@@ -17,8 +17,8 @@ import type {
   ImportFeature,
   RegenRequest,
   Vec3,
-} from '@whittle/contracts';
-import { analyzeStl, meshExporters } from '@whittle/io';
+} from '@wren-cad/contracts';
+import { analyzeStl, meshExporters } from '@wren-cad/io';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sha256Hex } from '../../src/regen/imports';
 import { BRACKET_DIMS, BRACKET_PARAMS, bracketDoc, bracketVolume } from './bracket';

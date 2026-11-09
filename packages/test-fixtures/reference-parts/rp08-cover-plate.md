@@ -2,7 +2,7 @@
 
 CSWP-like. A stainless plate with an M6 counterbored hole, an M6 countersunk hole placed on a reference point, and a row of blind M8 tapped holes patterned along X with one instance skipped.
 
-_Original Whittle reference part. Not derived from any published exam or textbook drawing._
+_Original Wren reference part. Not derived from any published exam or textbook drawing._
 
 Drawing: [rp08-cover-plate.svg](rp08-cover-plate.svg). Machine-readable spec: [rp08-cover-plate.spec.json](rp08-cover-plate.spec.json).
 
@@ -81,7 +81,7 @@ Standards values used:
 
 ## Independent check
 
-Built in FreeCAD 26.3.0 with `freecad/rp08.py` (a different construction than Whittle's).
+Built in FreeCAD 26.3.0 with `freecad/rp08.py` (a different construction than Wren's).
 
 | Stage | Analytic volume (mm^3) | FreeCAD volume (mm^3) | Difference |
 | --- | --- | --- | --- |

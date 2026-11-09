@@ -17,7 +17,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import type { Expr, Id, SketchConstraint, SketchEntity, Vec2 } from '@whittle/contracts';
+import type { Expr, Id, SketchConstraint, SketchEntity, Vec2 } from '@wren-cad/contracts';
 import { add, dist, lerp, normalize, perp, scale, sub, TAU } from '../geometry';
 import { buildModel, violatedRows } from '../model';
 import { OFFSET_TANGENT_TOL } from '../offset-model';

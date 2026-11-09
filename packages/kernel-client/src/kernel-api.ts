@@ -32,7 +32,7 @@ import type {
   ShapeFingerprints,
   ShapeHandle,
   Vec3,
-} from '@whittle/contracts';
+} from '@wren-cad/contracts';
 import {
   type ExportShape,
   instantiateKernel,
@@ -46,7 +46,7 @@ import {
   type RawImportResult,
   type RawKernelInfo,
   type WhittleKernelModule,
-} from '@whittle/kernel';
+} from '@wren-cad/kernel';
 import { transfer } from 'comlink';
 import type { ProjectionApi } from './regen/linked';
 
@@ -76,7 +76,7 @@ export type {
   ProjectedCurve,
   ProjectedEdge,
   ProjectedOutline,
-} from '@whittle/kernel';
+} from '@wren-cad/kernel';
 
 /**
  * A face-outline edge: a `ProjectedEdge` tagged with its loop (0 = the outer loop, k = the k-th
@@ -593,7 +593,7 @@ export function createKernelApi(
       if (kernel === null) return notReady();
       const k = kernel;
       memfsCounter += 1;
-      const path = `/tmp/whittle-import-${memfsCounter}.${format}`;
+      const path = `/tmp/wren-import-${memfsCounter}.${format}`;
       let written = false;
       try {
         k.FS.writeFile(path, bytes);

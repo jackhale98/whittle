@@ -17,7 +17,7 @@ import {
   type TutorialProps,
   useTutorial,
   type ValueChipProps,
-} from '@whittle/ui';
+} from '@wren-cad/ui';
 import { CircleMinus, Maximize, Redo2, Scissors, Undo2 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { type BubbleActionId, bubbleActions, VIEW_ACTIONS } from '../app/gestures';

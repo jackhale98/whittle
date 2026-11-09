@@ -5,14 +5,14 @@
  * `entities`. Pure helpers so picking priority and overlay geometry are unit-testable.
  */
 
-import type { Id, PickHit, SketchEntity, SketchResult, Vec2 } from '@whittle/contracts';
+import type { Id, PickHit, SketchEntity, SketchResult, Vec2 } from '@wren-cad/contracts';
 import {
   isSketchReference,
   referenceEntities,
   SKETCH_ORIGIN,
   SKETCH_X_AXIS,
   SKETCH_Y_AXIS,
-} from '@whittle/sketch';
+} from '@wren-cad/sketch';
 import { type PlaneFrame, toWorld } from '../model/frames';
 import type { SketchData } from './draw';
 

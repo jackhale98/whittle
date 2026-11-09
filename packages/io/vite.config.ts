@@ -1,6 +1,6 @@
 import { defineConfig } from 'vite';
 
-/** Tiny harness for the browser-only library path. `pnpm --filter @whittle/io harness`. */
+/** Tiny harness for the browser-only library path. `pnpm --filter @wren-cad/io harness`. */
 export default defineConfig({
   root: 'harness',
   server: { port: 5198, strictPort: true, host: '127.0.0.1' },

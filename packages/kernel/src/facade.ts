@@ -8,7 +8,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import type { Frame, Vec2 } from '@whittle/contracts';
+import type { Frame, Vec2 } from '@wren-cad/contracts';
 
 /** Owned render buffers (C++ `whittle::MeshData`). Must be `delete()`d. */
 export interface MeshDataHandle {

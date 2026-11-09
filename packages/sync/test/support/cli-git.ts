@@ -1,5 +1,5 @@
 /// Real repositories made and inspected with the `git` CLI, in temp folders, with a
-/// `NodeDirHandle` over each so Whittle reaches them the way it reaches a picked folder.
+/// `NodeDirHandle` over each so Wren reaches them the way it reaches a picked folder.
 
 import { execFile, execFileSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -57,7 +57,7 @@ export function cliAsync(cwd: string, ...args: string[]): Promise<string> {
   });
 }
 
-export function tempDir(prefix = 'whittle-cli-'): string {
+export function tempDir(prefix = 'wren-cli-'): string {
   return fs.mkdtempSync(join(tmpdir(), prefix));
 }
 

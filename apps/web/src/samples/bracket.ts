@@ -18,9 +18,9 @@ import type {
   SketchConstraint,
   SketchEntity,
   SketchFeature,
-  WhittleDoc,
-} from '@whittle/contracts';
-import { materialFromLibrary, newDoc, ulid } from '@whittle/document';
+  WrenDoc,
+} from '@wren-cad/contracts';
+import { materialFromLibrary, newDoc, ulid } from '@wren-cad/document';
 
 export const BRACKET_PARAMS: Record<string, string> = {
   width: '80 mm',
@@ -233,7 +233,7 @@ export function bracketFeatures(): Feature[] {
 }
 
 /** A fresh, editable copy of the demo bracket. */
-export function demoBracket(): WhittleDoc {
+export function demoBracket(): WrenDoc {
   const doc = newDoc({ name: 'Demo bracket' });
   const features = bracketFeatures();
   const material = materialFromLibrary('whittle:aluminium-6061-t6');

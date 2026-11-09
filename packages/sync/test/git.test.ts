@@ -2,8 +2,8 @@
 // Integration tests against a real git server (`git http-backend` over HTTP), after Mycelium's
 // src/lib/git/repo.test.ts. Repositories live in LightningFS on an in-memory IndexedDB.
 import 'fake-indexeddb/auto';
-import type { Author, Feature, ProjectFiles, StorageResult, WhittleDoc } from '@whittle/contracts';
-import { fromFiles, toFiles } from '@whittle/document';
+import type { Author, Feature, ProjectFiles, StorageResult, WrenDoc } from '@wren-cad/contracts';
+import { fromFiles, toFiles } from '@wren-cad/document';
 import http from 'isomorphic-git/http/node';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
@@ -53,8 +53,8 @@ function device(repo = 'bracket', extra: Partial<GitHistoryOptions> = {}) {
   });
 }
 
-const docOf = (files: ProjectFiles): WhittleDoc => fromFiles(files);
-const withRadius = (doc: WhittleDoc, radius: string) => {
+const docOf = (files: ProjectFiles): WrenDoc => fromFiles(files);
+const withRadius = (doc: WrenDoc, radius: string) => {
   const f = featureOf(doc, FILLET) as Feature;
   return apply(doc, {
     kind: 'updateFeature',
@@ -64,7 +64,7 @@ const withRadius = (doc: WhittleDoc, radius: string) => {
   });
 };
 /** The project with the document replaced (other files kept). */
-const edit = (files: ProjectFiles, change: (d: WhittleDoc) => WhittleDoc): ProjectFiles => {
+const edit = (files: ProjectFiles, change: (d: WrenDoc) => WrenDoc): ProjectFiles => {
   const out = new Map(files);
   for (const [p, b] of toFiles(change(docOf(files)))) out.set(p, b);
   return out;
@@ -158,7 +158,7 @@ describe('GitHistory', () => {
     expect(doc.params[0]?.expr).toBe('50mm');
     expect((featureOf(doc, FILLET) as { radius: string }).radius).toBe('4mm');
     expect(pulled.version.parents).toHaveLength(2);
-    // Files Whittle doesn't own and attachments come through untouched.
+    // Files Wren doesn't own and attachments come through untouched.
     expect(pulled.files.get('README.md')).toEqual(seedFiles().get('README.md'));
     expect(pulled.files.get('imports/bolt.step')).toEqual(seedFiles().get('imports/bolt.step'));
     value(await a.push());
@@ -279,7 +279,7 @@ describe('GitHistory', () => {
     expect((await a.log({ includeAuto: true })).filter((v) => v.auto)).toHaveLength(3);
     value(await a.push());
     expect(server.git('bracket.git', 'for-each-ref', '--format=%(refname)')).not.toContain(
-      'refs/whittle',
+      'refs/wren',
     );
     // A day later, all three fall in one hourly bucket: two are pruned.
     clock += 2 * 24 * 3_600_000;
@@ -325,7 +325,7 @@ describe('GitHistory without a remote (local-only)', () => {
     expect(await h.remotes()).toEqual([]);
     value(await h.saveVersion(seedFiles(), 'First', { author: ann }));
     expect(value(await h.workingChanges())).toEqual([]);
-    // Saved by Whittle (or edited elsewhere) without a commit.
+    // Saved by Wren (or edited elsewhere) without a commit.
     await fs.promises.writeFile('/w/params.json', '{}\n');
     await fs.promises.writeFile('/w/notes.txt', 'new\n');
     await fs.promises.unlink('/w/imports/bolt.step');
@@ -362,7 +362,7 @@ describe('GitHistory without a remote (local-only)', () => {
     expect(await h.currentBranch()).toBe('idea');
   });
 
-  it('a commit into an existing checkout leaves files Whittle does not own alone', async () => {
+  it('a commit into an existing checkout leaves files Wren does not own alone', async () => {
     const fs = browserGitFs(`checkout-${fsN++}`, { wipe: true });
     const h = createGitHistory({ fs, http, dir: '/c', gitdir: '/c/.git', url: null, now: tick });
     value(await h.saveVersion(seedFiles(), 'First', { author: ann }));
@@ -425,8 +425,8 @@ describe('GitHistory auth, errors and proxy', () => {
   it('the CORS proxy is configurable, defaults to the public one and is skipped for localhost', () => {
     expect(DEFAULT_CORS_PROXY).toBe('https://cors.isomorphic-git.org');
     expect(corsProxyFor('https://github.com/a/b.git', undefined)).toBe(DEFAULT_CORS_PROXY);
-    expect(corsProxyFor('https://github.com/a/b.git', 'https://proxy.whittle.app')).toBe(
-      'https://proxy.whittle.app',
+    expect(corsProxyFor('https://github.com/a/b.git', 'https://proxy.wrencad.app')).toBe(
+      'https://proxy.wrencad.app',
     );
     expect(corsProxyFor('https://github.com/a/b.git', null)).toBeUndefined();
     expect(corsProxyFor('http://localhost:8080/a.git', undefined)).toBeUndefined();

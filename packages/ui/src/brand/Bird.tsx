@@ -1,11 +1,11 @@
 /**
- * Whittle brand mark (the perched bird) and the whittling loader, from the brand kit (brand/).
+ * Wren brand mark (the perched bird) and the whittling loader, from the brand kit (brand/).
  * Fills are theme variables from brand.css, so one inline SVG follows light/dark and the wing
  * takes the app accent. Geometry is the kit's 100 × 100 artboard.
  */
 import { cn } from '../components/primitives';
 
-const ACCENT = 'var(--whittle-accent)';
+const ACCENT = 'var(--wren-accent)';
 
 /** The finished bird on its perch (`final()` in brand/build.py). */
 function FinishedBird({ detail = true }: { detail?: boolean }) {
@@ -54,7 +54,7 @@ export function BirdMark({ className, label }: { className?: string; label?: str
       role={label ? 'img' : undefined}
       aria-label={label}
       aria-hidden={label ? undefined : true}
-      data-testid="whittle-mark"
+      data-testid="wren-mark"
     >
       <FinishedBird />
     </svg>
@@ -62,10 +62,10 @@ export function BirdMark({ className, label }: { className?: string; label?: str
 }
 
 /**
- * Animated loader: a block whittled into the bird, chips flying at each cut, then the bird slides
+ * Animated loader: a block wrend into the bird, chips flying at each cut, then the bird slides
  * out as a new block slides in (seamless 4.4 s loop). Static finished bird under reduced motion.
  */
-export function WhittleLoader({
+export function WrenLoader({
   className,
   label = 'Loading',
 }: {
@@ -78,7 +78,7 @@ export function WhittleLoader({
       className={cn('size-24 shrink-0', className)}
       role="img"
       aria-label={label}
-      data-testid="whittle-loader"
+      data-testid="wren-loader"
     >
       <g className="wl-b0">
         <Block />

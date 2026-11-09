@@ -261,8 +261,8 @@ test.describe('compare overlay', () => {
     // Render CPU time per frame (PLAN §10: <= 16 ms interaction). Wall latency to the next frame
     // on SwiftShader is dominated by software rasterisation of the whole lit scene (a plain
     // camera move costs the same), so it is reported, not gated.
-    if (process.env.WHITTLE_PERF_ASSERT) {
-      const budget = Number(process.env.WHITTLE_FRAME_BUDGET_MS ?? '16');
+    if (process.env.WREN_PERF_ASSERT) {
+      const budget = Number(process.env.WREN_FRAME_BUDGET_MS ?? '16');
       expect(summary.toggleCpuMax).toBeLessThanOrEqual(budget);
       expect(summary.resetCpuMax).toBeLessThanOrEqual(budget);
     }

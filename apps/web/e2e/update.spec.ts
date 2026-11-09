@@ -12,13 +12,13 @@ import { expect, test } from '@playwright/test';
  */
 
 const PORT = 4183;
-const BASE = `http://127.0.0.1:${PORT}/whittle/`;
+const BASE = `http://127.0.0.1:${PORT}/wren-cad/`;
 
 let dir = '';
 let server: ChildProcess | null = null;
 
 test.beforeAll(async () => {
-  dir = mkdtempSync(join(tmpdir(), 'whittle-update-'));
+  dir = mkdtempSync(join(tmpdir(), 'wren-update-'));
   cpSync(join(import.meta.dirname, '..', 'dist'), dir, { recursive: true });
   server = spawn(
     process.execPath,
@@ -27,7 +27,7 @@ test.beforeAll(async () => {
       '--dir',
       dir,
       '--base',
-      '/whittle/',
+      '/wren-cad/',
       '--port',
       String(PORT),
     ],

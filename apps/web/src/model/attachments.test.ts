@@ -1,5 +1,5 @@
-import type { Feature, WhittleDoc } from '@whittle/contracts';
-import { createDocumentStore, newDoc } from '@whittle/document';
+import type { Feature, WrenDoc } from '@wren-cad/contracts';
+import { createDocumentStore, newDoc } from '@wren-cad/document';
 import { describe, expect, it } from 'vitest';
 import {
   orphanedAttachments,
@@ -17,7 +17,7 @@ const imp = (id: string): Feature => ({
   source: { path: `imports/${id}.step`, format: 'step', sha256: 'ab', fileName: `${id}.step` },
 });
 
-function doc(features: Feature[]): WhittleDoc {
+function doc(features: Feature[]): WrenDoc {
   const d = newDoc({ name: 'T', firstPart: 'P' });
   const part = d.parts[0];
   if (!part) throw new Error('no part');

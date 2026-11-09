@@ -15,7 +15,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import type { EntityRef, Id, SketchEntity, Vec2 } from '@whittle/contracts';
+import type { EntityRef, Id, SketchEntity, Vec2 } from '@wren-cad/contracts';
 import { add, circumcircle, cross, dist, fromAngle, lerp, sub, TAU } from '../geometry';
 import { type EditOptions, type SketchData, SketchDraft, type SketchEdit } from './draft';
 

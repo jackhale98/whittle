@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-import type { JsonPatchOp } from '@whittle/contracts';
+import type { JsonPatchOp } from '@wren-cad/contracts';
 import { describe, expect, it } from 'vitest';
 import { applyPatch, diff, getAt, jsonEqual, PatchError, parsePointer, pointerOf } from '../src';
 

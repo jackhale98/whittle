@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import type { SketchEntity, SketchSolveResult, Vec2 } from '@whittle/contracts';
+import type { SketchEntity, SketchSolveResult, Vec2 } from '@wren-cad/contracts';
 import { describe, expect, it } from 'vitest';
 import { arcGeom, indexEntities, sampleEntity, sampleSketch, sketchBounds } from '../src/geometry';
 import {

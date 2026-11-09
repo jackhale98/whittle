@@ -1,4 +1,4 @@
-import type { Id, SketchConflict, SuggestedFix } from '@whittle/contracts';
+import type { Id, SketchConflict, SuggestedFix } from '@wren-cad/contracts';
 import { CircleAlert, Wand2, X } from 'lucide-react';
 import { Button, cn, IconButton } from '../components/primitives';
 

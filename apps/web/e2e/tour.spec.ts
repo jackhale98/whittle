@@ -55,8 +55,8 @@ test('plate with a hole, select-first fillet, library grid; screenshots', async 
   // Select first, act second: an edge, then F.
   await page.evaluate(() =>
     (
-      window as unknown as { __whittleViewport: { whenPickReady(): Promise<void> } }
-    ).__whittleViewport.whenPickReady(),
+      window as unknown as { __wrenViewport: { whenPickReady(): Promise<void> } }
+    ).__wrenViewport.whenPickReady(),
   );
   const p = await toPage(page, [0, -20, 10]);
   await page.mouse.move(p.x, p.y, { steps: 3 });

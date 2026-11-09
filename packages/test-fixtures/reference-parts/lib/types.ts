@@ -1,12 +1,12 @@
 /**
  * Types for the reference-part suite (PLAN section 12A). A part is defined once, in TypeScript
  * (`../parts/*.ts`); `lib/spec.ts` turns it into the committed `<part>.spec.json`, `<part>.md` and
- * `<part>.svg`, and `lib/builder.ts` turns its steps into a `WhittleDoc`.
+ * `<part>.svg`, and `lib/builder.ts` turns its steps into a `WrenDoc`.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import type { Vec3 } from '@whittle/contracts';
+import type { Vec3 } from '@wren-cad/contracts';
 import type { Drawing } from './drawing';
 
 export type Unit = 'mm' | 'deg' | '';

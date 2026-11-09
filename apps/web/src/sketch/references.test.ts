@@ -1,5 +1,5 @@
-import type { PickHit, SketchEntity, Vec2 } from '@whittle/contracts';
-import { rectangleCornerTool } from '@whittle/sketch';
+import type { PickHit, SketchEntity, Vec2 } from '@wren-cad/contracts';
+import { rectangleCornerTool } from '@wren-cad/sketch';
 import { describe, expect, it } from 'vitest';
 import { applicableConstraints, constraintFrom } from '../app/sketch-session';
 import { dimensionAt, dimensionFor, labelAnchor, makeDimension, measure } from './dimension';

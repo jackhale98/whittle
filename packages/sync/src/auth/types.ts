@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-import type { Credential, StorageResult } from '@whittle/contracts';
+import type { Credential, StorageResult } from '@wren-cad/contracts';
 
 /** An OAuth sign-in as kept in the `CredentialVault`. */
 export type OAuthCredential = Extract<Credential, { kind: 'oauth' }>;

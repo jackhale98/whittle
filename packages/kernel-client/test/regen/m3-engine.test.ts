@@ -27,8 +27,8 @@ import type {
   SweepFeature,
   ThreadFeature,
   Vec3,
-  WhittleDoc,
-} from '@whittle/contracts';
+  WrenDoc,
+} from '@wren-cad/contracts';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { RegenEngine, type RegenOutput } from '../../src/regen/engine';
 import { FakeKernel, identitySolver } from './fake-kernel';
@@ -792,5 +792,5 @@ describe('M3 linked sketch entities (Convert Entities)', () => {
   });
 });
 
-/** Keeps `WhittleDoc` imported for editors that inline types. */
-export type _Doc = WhittleDoc;
+/** Keeps `WrenDoc` imported for editors that inline types. */
+export type _Doc = WrenDoc;

@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Whittle and the git CLI take turns on one repository (seeded random interleavings): Whittle
+// Wren and the git CLI take turns on one repository (seeded random interleavings): Wren
 // saves versions and switches branches for one project, the CLI commits to both projects,
 // leaves files dirty, makes branches and repacks. After every step both must agree.
-import type { Author, Feature, ProjectFiles, StorageResult, WhittleDoc } from '@whittle/contracts';
-import { fromFiles, toFiles } from '@whittle/document';
+import type { Author, Feature, ProjectFiles, StorageResult, WrenDoc } from '@wren-cad/contracts';
+import { fromFiles, toFiles } from '@wren-cad/document';
 import { afterAll, describe, expect, it } from 'vitest';
 import { hashProjectFiles, openLocalGitRepo } from '../src';
 import { type CliRepo, cliRepo, writeProject } from './support/cli-git';
@@ -33,7 +33,7 @@ const value = <T>(r: StorageResult<T>): T => {
   return r.value;
 };
 
-const docOf = (files: ProjectFiles): WhittleDoc => fromFiles(files);
+const docOf = (files: ProjectFiles): WrenDoc => fromFiles(files);
 function edited(files: ProjectFiles, n: number, which: 'radius' | 'width'): ProjectFiles {
   const doc = docOf(files);
   const next =
@@ -157,7 +157,7 @@ async function run(seed: number, steps: number) {
     const atHead = value(await h.read(head));
     expect(await hashProjectFiles(atHead), where).toBe(await hashProjectFiles(diskProject(r)));
     expect(await hashProjectFiles(atHead), where).toBe(await hashProjectFiles(files));
-    // Whittle's versions are git's history of the project folder.
+    // Wren's versions are git's history of the project folder.
     const gitLog = r.git('log', '--format=%H', '--', BRACKET).split('\n');
     expect(
       (await h.log({ limit: 200 })).map((v) => v.id),
@@ -167,8 +167,8 @@ async function run(seed: number, steps: number) {
   }
 }
 
-describe('local git repo: Whittle and the git CLI interleaved', { timeout: 120_000 }, () => {
-  it.each([1, 2, 3])('seed %i: 30 random steps keep git and Whittle in agreement', async (seed) => {
+describe('local git repo: Wren and the git CLI interleaved', { timeout: 120_000 }, () => {
+  it.each([1, 2, 3])('seed %i: 30 random steps keep git and Wren in agreement', async (seed) => {
     await run(seed, 30);
   });
 });

@@ -11,7 +11,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import type { Frame, MeshBuffers, NamingMap, Vec3 } from '@whittle/contracts';
+import type { Frame, MeshBuffers, NamingMap, Vec3 } from '@wren-cad/contracts';
 import { cross, dot, norm, normalize, scale, sub } from './geometry';
 
 /** Lower-case hex SHA-256 of `bytes` (WebCrypto: available in workers and Node ≥ 18). */

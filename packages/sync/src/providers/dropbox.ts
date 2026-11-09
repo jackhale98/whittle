@@ -13,8 +13,8 @@ import type {
   RemoteListing,
   StorageProvider,
   StorageResult,
-} from '@whittle/contracts';
-import { MANIFEST_FILE } from '@whittle/document';
+} from '@wren-cad/contracts';
+import { MANIFEST_FILE } from '@wren-cad/document';
 import type { OAuthCredential } from '../auth/types';
 import {
   baseName,
@@ -66,7 +66,7 @@ const entry = (e: Raw): RemoteEntry => ({
   ...(typeof e.size === 'number' ? { size: e.size } : {}),
 });
 
-/** Inside a folder providers never sync (`.whittle/`, `.git/`), relative to the listed root? */
+/** Inside a folder providers never sync (`.wren/`, `.git/`), relative to the listed root? */
 const skipped = (path: string): boolean =>
   path.split('/').some((part) => SKIP_FOLDERS.has(part.toLowerCase()));
 

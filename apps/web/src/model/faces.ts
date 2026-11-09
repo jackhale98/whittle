@@ -5,7 +5,7 @@
  * `MeshBuffers` so they are unit-tested without a viewport.
  */
 
-import type { MeshBuffers, SectionPlane, Vec3 } from '@whittle/contracts';
+import type { MeshBuffers, SectionPlane, Vec3 } from '@wren-cad/contracts';
 
 export interface FaceInfo {
   /** Area-weighted centroid (mm). */

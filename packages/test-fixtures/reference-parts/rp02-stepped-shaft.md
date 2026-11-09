@@ -2,7 +2,7 @@
 
 CSWA-like. A three-diameter steel shaft turned from one profile, with a shoulder fillet and an end chamfer.
 
-_Original Whittle reference part. Not derived from any published exam or textbook drawing._
+_Original Wren reference part. Not derived from any published exam or textbook drawing._
 
 Drawing: [rp02-stepped-shaft.svg](rp02-stepped-shaft.svg). Machine-readable spec: [rp02-stepped-shaft.spec.json](rp02-stepped-shaft.spec.json).
 
@@ -65,7 +65,7 @@ Method and accuracy: Exact. The blank is three cylinders. The fillet and the cha
 
 ## Independent check
 
-Built in FreeCAD 26.3.0 with `freecad/rp02.py` (a different construction than Whittle's).
+Built in FreeCAD 26.3.0 with `freecad/rp02.py` (a different construction than Wren's).
 
 | Stage | Analytic volume (mm^3) | FreeCAD volume (mm^3) | Difference |
 | --- | --- | --- | --- |

@@ -1,6 +1,6 @@
 # Setting up sync (owner guide)
 
-Adapted from Mycelium's `setup-git-providers.md` and `setup-cloud-storage.md`. Whittle never holds
+Adapted from Mycelium's `setup-git-providers.md` and `setup-cloud-storage.md`. Wren never holds
 user data or secrets on your side: the Worker swaps one-time sign-in codes for tokens and passes them
 straight back, and it relays git and WebDAV traffic that browsers cannot send directly.
 
@@ -32,10 +32,10 @@ the Worker.
 
 Every OAuth provider below needs these two redirect URIs (note the trailing slash):
 
-- `https://jackhale98.github.io/whittle/`
+- `https://jackhale98.github.io/wren-cad/`
 - `http://localhost:5173/` (development; also `http://localhost:4173/` if you test the built site)
 
-Whittle redirects the whole page to the provider and back to its own base URL. The service worker
+Wren redirects the whole page to the provider and back to its own base URL. The service worker
 serves the app shell for that URL and keeps the `?code=...&state=...` query, so no special callback
 route is needed.
 
@@ -46,10 +46,10 @@ Source: `worker/`. Free Cloudflare plan is plenty (100,000 requests a day).
 ### Cloudflare dashboard (no terminal)
 
 1. Create a free Cloudflare account.
-2. **Workers & Pages -> Create application -> Import a repository**, pick the Whittle repository.
-3. Project name `whittle-sync`, root directory `worker`, deploy command
+2. **Workers & Pages -> Create application -> Import a repository**, pick the Wren repository.
+3. Project name `wren-sync`, root directory `worker`, deploy command
    `npx wrangler@4.151.3 deploy`.
-4. Deploy. Note the URL, for example `https://whittle-sync.<you>.workers.dev`.
+4. Deploy. Note the URL, for example `https://wren-sync.<you>.workers.dev`.
 
 ### Wrangler (terminal)
 
@@ -84,7 +84,7 @@ also uses it as the git CORS proxy unless `VITE_GIT_CORS_PROXY` is set.
 
 ```sh
 curl -i -H 'Origin: https://jackhale98.github.io' \
-  'https://whittle-sync.<you>.workers.dev/github.com/jackhale98/whittle.git/info/refs?service=git-upload-pack'
+  'https://wren-sync.<you>.workers.dev/github.com/jackhale98/wren-cad.git/info/refs?service=git-upload-pack'
 ```
 
 Expect `200` with `Access-Control-Allow-Origin: https://jackhale98.github.io`. Without the `Origin`
@@ -102,7 +102,7 @@ proxy sees git credentials in transit; do not use it with real tokens in product
 
 1. [Dropbox App Console](https://www.dropbox.com/developers/apps) -> **Create app** -> *Scoped
    access* -> access type **App folder** (safer; the type cannot be changed later) or **Full
-   Dropbox**. Name it `Whittle`.
+   Dropbox**. Name it `Wren`.
 2. **Settings -> OAuth 2 -> Redirect URIs:** add the two URIs above. Leave *Allow public clients
    (Implicit Grant & PKCE)* on **Allow**.
 3. **Permissions:** `account_info.read`, `files.metadata.read`, `files.content.read`,
@@ -117,10 +117,10 @@ you need more.
 
 1. [Microsoft Entra admin center](https://entra.microsoft.com) -> **Identity -> Applications -> App
    registrations -> New registration**. A free personal Microsoft account works.
-2. Name `Whittle`; supported account types: *any organizational directory and personal Microsoft
+2. Name `Wren`; supported account types: *any organizational directory and personal Microsoft
    accounts*.
 3. **Redirect URI:** platform **Single-page application (SPA)** (not "Web"), and enter
-   `https://jackhale98.github.io/whittle/`. After registering, open **Authentication** and add
+   `https://jackhale98.github.io/wren-cad/`. After registering, open **Authentication** and add
    `http://localhost:5173/` under the same SPA platform.
 4. **API permissions -> Microsoft Graph -> Delegated:** `User.Read`, `Files.ReadWrite.All`,
    `Sites.Read.All` (SharePoint only), `offline_access`. None need admin consent, but some
@@ -152,15 +152,15 @@ Two ways; the token route needs no registration.
 
 **Fine-grained personal access token (no setup, works today).** The user creates it at GitHub ->
 Settings -> Developer settings -> Fine-grained tokens: one repository, permission *Contents:
-read and write*, short expiry. They paste it into Whittle's "Git host (access token)" sign-in. Git
+read and write*, short expiry. They paste it into Wren's "Git host (access token)" sign-in. Git
 over HTTP still needs the CORS proxy (the Worker, or the development proxy).
 
 **Sign in with GitHub (OAuth).** Preferred: a GitHub App (per-repository install picker, tokens
 expire after 8 hours and refresh).
 
 1. [GitHub -> Settings -> Developer settings -> GitHub Apps -> New](https://github.com/settings/apps/new).
-2. Name `Whittle`; Homepage `https://jackhale98.github.io/whittle/`; Callback URL
-   `https://jackhale98.github.io/whittle/` (add `http://localhost:5173/` as a second callback);
+2. Name `Wren`; Homepage `https://jackhale98.github.io/wren-cad/`; Callback URL
+   `https://jackhale98.github.io/wren-cad/` (add `http://localhost:5173/` as a second callback);
    *Expire user authorization tokens* checked; *Request user authorization during installation*
    checked; Device Flow off; Webhook inactive; permission *Contents: Read and write* (Metadata
    read-only is automatic); installable on any account.
@@ -177,7 +177,7 @@ GitLab supports PKCE without a secret, so create a non-confidential application.
 
 1. GitLab -> Edit profile -> Applications -> **Add new application** (or the group/instance
    equivalent for self-managed).
-2. Name `Whittle`; Redirect URIs `https://jackhale98.github.io/whittle/` and
+2. Name `Wren`; Redirect URIs `https://jackhale98.github.io/wren-cad/` and
    `http://localhost:5173/` (one per line); **Confidential** unchecked; scopes `read_user`,
    `read_api`, `read_repository`, `write_repository`.
 3. Application ID -> repository variable `VITE_GITLAB_CLIENT_ID` and Worker secret
@@ -189,7 +189,7 @@ only; self-hosted instances use access tokens.
 ## 7. Bitbucket
 
 1. Bitbucket -> Workspace settings -> **OAuth consumers -> Add consumer**.
-2. Name `Whittle`; Callback URL `https://jackhale98.github.io/whittle/`; *This is a private
+2. Name `Wren`; Callback URL `https://jackhale98.github.io/wren-cad/`; *This is a private
    consumer* checked; permissions *Account: Read*, *Repositories: Read and Write*.
 3. Key -> repository variable `VITE_BITBUCKET_CLIENT_ID` and Worker secret `BITBUCKET_CLIENT_ID`;
    Secret -> Worker secret `BITBUCKET_CLIENT_SECRET`. Bitbucket has no PKCE and allows a single

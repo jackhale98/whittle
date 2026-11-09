@@ -1,4 +1,4 @@
-import type { EvalResult, Expr, Id, Param } from '@whittle/contracts';
+import type { EvalResult, Expr, Id, Param } from '@wren-cad/contracts';
 import { GripVertical, Plus, Trash2, Variable } from 'lucide-react';
 import { m } from 'motion/react';
 import { type KeyboardEvent, type PointerEvent, useRef, useState } from 'react';

@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-import type { WhittleDoc } from '@whittle/contracts';
+import type { WrenDoc } from '@wren-cad/contracts';
 import { canvasToThumbnail, type LibraryCodec, openLibrary } from '../src/browser';
 
 /** Stand-in for the document package's ProjectCodec: JSON bytes. */
 const codec: LibraryCodec = {
-  toWhittle: (doc) => new TextEncoder().encode(JSON.stringify(doc)),
-  fromWhittle: (bytes) => ({
-    doc: JSON.parse(new TextDecoder().decode(bytes)) as WhittleDoc,
+  toWren: (doc) => new TextEncoder().encode(JSON.stringify(doc)),
+  fromWren: (bytes) => ({
+    doc: JSON.parse(new TextDecoder().decode(bytes)) as WrenDoc,
     cache: new Map(),
   }),
 };
 
-function makeDoc(name: string): WhittleDoc {
+function makeDoc(name: string): WrenDoc {
   return {
     schemaVersion: 1,
     units: { length: 'mm', angle: 'deg' },
@@ -20,7 +20,7 @@ function makeDoc(name: string): WhittleDoc {
     assemblies: [],
     drawings: [],
     meta: { name, created: 'c', modified: 'm', app: 'harness' },
-  } as WhittleDoc;
+  } as WrenDoc;
 }
 
 export async function run(dbName: string) {

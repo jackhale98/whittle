@@ -1,6 +1,6 @@
 /**
  * Small document builders for E2E scenarios that need a specific starting model (loaded through
- * `__whittleApp.load`, then edited through the UI). Ids are fixed and readable.
+ * `__wrenApp.load`, then edited through the UI). Ids are fixed and readable.
  */
 
 import type {
@@ -10,8 +10,8 @@ import type {
   SketchConstraint,
   SketchEntity,
   SketchFeature,
-  WhittleDoc,
-} from '@whittle/contracts';
+  WrenDoc,
+} from '@wren-cad/contracts';
 
 export const fid = (tag: string): string => `01J${tag.toUpperCase()}`.padEnd(26, '0');
 
@@ -114,7 +114,7 @@ export function docWith(
   name: string,
   params: Record<string, string>,
   features: Feature[],
-): WhittleDoc {
+): WrenDoc {
   const now = '2026-11-08T00:00:00.000Z';
   return {
     schemaVersion: 1,
@@ -128,7 +128,7 @@ export function docWith(
       name,
       created: now,
       modified: now,
-      app: 'whittle/e2e',
+      app: 'wren/e2e',
     },
   };
 }
@@ -139,7 +139,7 @@ export function docWith(
  * the referenced edge"). Moving the pocket off the plate (pocket_x = 200) removes the fillet's
  * edge: needs attention.
  */
-export function pocketDoc(): WhittleDoc {
+export function pocketDoc(): WrenDoc {
   const S1 = fid('S1');
   const E1 = fid('E1');
   const PS = fid('PS');
@@ -180,7 +180,7 @@ export function pocketDoc(): WhittleDoc {
  * Plate 80 × 50 × 10 and a 10 mm slot across its top (x 35…45, 3 deep) that splits the front top
  * edge into two equal pieces; the fillet still names the unsplit edge: ambiguous, two candidates.
  */
-export function slotDoc(): WhittleDoc {
+export function slotDoc(): WrenDoc {
   const S1 = fid('S1');
   const E1 = fid('E1');
   const SS = fid('SS');

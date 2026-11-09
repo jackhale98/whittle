@@ -3,7 +3,7 @@
  * following the SketchResult contract (world-space polylines per entity, triangulated regions).
  */
 
-import type { MeshBuffers, SketchResult } from '@whittle/contracts';
+import type { MeshBuffers, SketchResult } from '@wren-cad/contracts';
 
 type V3 = [number, number, number];
 

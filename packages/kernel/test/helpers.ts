@@ -19,7 +19,7 @@ import type {
   ShapeFingerprints,
   SketchEntity,
   Vec3,
-} from '@whittle/contracts';
+} from '@wren-cad/contracts';
 import {
   instantiateKernel,
   KERNEL_ARTEFACT,
@@ -51,7 +51,7 @@ export function variantBuilt(variant: KernelVariant): boolean {
 export function suiteTitle(suite: string, variant: KernelVariant): string {
   return variantBuilt(variant)
     ? `kernel golden: ${suite} (${variant}, ${KERNEL_ARTEFACT[variant]}.wasm)`
-    : `kernel golden: ${suite} (${variant}) — SKIPPED: dist/ missing; run \`pnpm --filter @whittle/kernel build\``;
+    : `kernel golden: ${suite} (${variant}) — SKIPPED: dist/ missing; run \`pnpm --filter @wren-cad/kernel build\``;
 }
 
 export function parse<T>(json: string): Result<T> {

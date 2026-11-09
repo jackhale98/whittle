@@ -1,8 +1,8 @@
-# Whittle — Design & Build Plan
+# Wren — Design & Build Plan
 
-> **Whittle** is a free, open-source, browser-native parametric CAD app. It installs as a PWA, works offline, and runs the geometry kernel entirely on the user's device. Desktop gets the full feature set. Tablets get a Shapr3D-class touch and Pencil experience. Phones get excellent viewing and light editing.
+> **Wren** is a free, open-source, browser-native parametric CAD app. It installs as a PWA, works offline, and runs the geometry kernel entirely on the user's device. Desktop gets the full feature set. Tablets get a Shapr3D-class touch and Pencil experience. Phones get excellent viewing and light editing.
 >
-> This document is the single source of truth for building Whittle with Claude Code and subagents. Read it fully before writing code. When this plan and reality disagree (an API has changed, say), verify against official docs, update this plan in the same PR, and note the change in `docs/DECISIONS.md`.
+> This document is the single source of truth for building Wren with Claude Code and subagents. Read it fully before writing code. When this plan and reality disagree (an API has changed, say), verify against official docs, update this plan in the same PR, and note the change in `docs/DECISIONS.md`.
 
 ---
 
@@ -21,7 +21,7 @@
 
 ## 1. Product vision & principles
 
-**Goal:** Whittle should feel faster and friendlier than Onshape, while being free and open, and still produce manufacturable, standards-compliant output (STEP AP242 with dimensions and tolerances, and fully dimensioned drawings).
+**Goal:** Wren should feel faster and friendlier than Onshape, while being free and open, and still produce manufacturable, standards-compliant output (STEP AP242 with dimensions and tolerances, and fully dimensioned drawings).
 
 **Principles, in priority order:**
 
@@ -29,7 +29,7 @@
 2. **Obvious.** No modal dialogs for modeling. Tools appear in context next to the selection. Every value is editable inline and accepts expressions with units (`25mm + 1/8in`, `width/2`).
 3. **Forgiving.** Unlimited undo and redo. Non-destructive history. Failures are explained in human terms ("Fillet radius is too large for this edge; max ≈ 2.4 mm") and never corrupt the model.
 4. **Precise.** Real B-rep solids (OpenCascade), exact dimensions and units, and output that other CAD systems accept.
-5. **Yours.** Local-first. No account is required. Files are open and documented (`.whittle`). It works offline.
+5. **Yours.** Local-first. No account is required. Files are open and documented (`.wrencad`). It works offline.
 6. **Beautiful.** It has a calm, modern visual language and polished motion. The viewport looks like a product render, not a debug view.
 
 **Non-goals for v1:** real-time multi-user collaboration (prepare for it, don't build it), CAM, FEA, rendering beyond the high-quality viewport, sheet-metal, and surfacing beyond loft/sweep/fill.
@@ -99,13 +99,13 @@ Priority: **P0** = MVP (M1–M2), **P1** = v1.0 (M3–M6), **P2** = after v1.0.
 | IGES, BREP                                                                       | ✓                     | ✓                          | P1                       |
 | STL, 3MF, OBJ, glTF/GLB                                                          | ✓ (as mesh reference) | ✓                          | P0                       |
 | DXF, SVG (2D)                                                                    | ✓ (into sketch)       | ✓ (from sketch or drawing) | P1                       |
-| `.whittle` (native, open, zip + JSON)                                            | ✓                     | ✓                          | P0                       |
+| `.wrencad` (native, open, zip + JSON)                                            | ✓                     | ✓                          | P0                       |
 
 ### 2.6 Platform & UX
 
 | Feature                                                                                                                                                                                  | Pri                        |
 | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- |
-| Installable PWA, offline, file handling ("Open with Whittle" for .whittle/.step on desktop)                                                                                              | P0                         |
+| Installable PWA, offline, file handling ("Open with Wren" for .wren/.step on desktop)                                                                                              | P0                         |
 | Adaptive shells: desktop / tablet / phone (§9)                                                                                                                                           | P0                         |
 | Command palette (⌘K), full keyboard shortcuts, light/dark themes                                                                                                                         | P0                         |
 | Local document library (IndexedDB/OPFS) with thumbnails and search; save to disk (File System Access API)                                                                                | P0                         |
@@ -130,7 +130,7 @@ Priority: **P0** = MVP (M1–M2), **P1** = v1.0 (M3–M6), **P2** = after v1.0.
 | Worker RPC      | **Comlink**, with Transferable `ArrayBuffer`s for meshes                                                                                                                                                                                                                                      | Simple, typed, zero-copy.                                                                                                                                                                                                                                                                                                              |
 | Camera          | **camera-controls** (yomotsu) plus our own gesture recogniser                                                                                                                                                                                                                                 | Smooth damping, touch-friendly, orbit-around-cursor.                                                                                                                                                                                                                                                                                   |
 | Storage         | IndexedDB (`idb`) for metadata, OPFS for blobs, File System Access API for "Save to disk" (fallback: download)                                                                                                                                                                                | Local-first and fast.                                                                                                                                                                                                                                                                                                                  |
-| File packaging  | Canonical form is a **folder of deterministic text files** (§8A.1); `.whittle` is that folder zipped with `fflate` for sharing                                                                                                                                                                | Text-first source makes git-style diff and merge possible.                                                                                                                                                                                                                                                                             |
+| File packaging  | Canonical form is a **folder of deterministic text files** (§8A.1); `.wrencad` is that folder zipped with `fflate` for sharing                                                                                                                                                                | Text-first source makes git-style diff and merge possible.                                                                                                                                                                                                                                                                             |
 | Cloud sync      | One `StorageProvider` interface. Adapters ported from the **Mycelium** app (Dropbox, OneDrive/SharePoint, WebDAV/Nextcloud, GitHub/GitLab/Bitbucket), plus Google Drive and local folders (§8A.2)                                                                                             | The adapters already work in a static PWA.                                                                                                                                                                                                                                                                                             |
 | Version control | `HistoryStore` with two backends: **isomorphic-git** (git hosts) and **snapshot DAG** (cloud drives/local). Feature-level three-way merge; kernel-computed geometric diff (§8A.3)                                                                                                             | No mature open-source "git for CAD" exists; our text format makes one feasible.                                                                                                                                                                                                                                                        |
 | Drawings        | **SVG DOM** editor (crisp, printable), HLR from OCCT (`HLRBRep_PolyAlgo` for fast drafts, `HLRBRep_Algo` for exact final output) in a separate worker; PDF via **jsPDF + svg2pdf.js**; DXF via a DXF writer library (evaluate `@tarikjabiri/dxf`, otherwise write a minimal R12/R2000 writer) |                                                                                                                                                                                                                                                                                                                                        |
@@ -138,7 +138,7 @@ Priority: **P0** = MVP (M1–M2), **P1** = v1.0 (M3–M6), **P2** = after v1.0.
 | Tests           | Vitest (unit, with Wasm in Node), Playwright (E2E plus screenshot diffs), C++ tests for the façade                                                                                                                                                                                            |                                                                                                                                                                                                                                                                                                                                        |
 | Lint/format     | Biome                                                                                                                                                                                                                                                                                         | It's fast, and there's one tool.                                                                                                                                                                                                                                                                                                       |
 | Package manager | pnpm workspaces                                                                                                                                                                                                                                                                               |                                                                                                                                                                                                                                                                                                                                        |
-| License | **GPL-3.0-or-later** for Whittle's code (ADR-003), matching Mycelium so its sync layer can be ported directly. The kernel ships as a separate `.wasm` (OCCT, LGPL-2.1 with exception — GPL-compatible) with public, reproducible build scripts, which satisfies OCCT's LGPL relinking expectation | Alternatives considered: Apache-2.0 (needed a Mycelium relicense) and AGPL-3.0 (also covers SaaS forks). |
+| License | **GPL-3.0-or-later** for Wren's code (ADR-003), matching Mycelium so its sync layer can be ported directly. The kernel ships as a separate `.wasm` (OCCT, LGPL-2.1 with exception — GPL-compatible) with public, reproducible build scripts, which satisfies OCCT's LGPL relinking expectation | Alternatives considered: Apache-2.0 (needed a Mycelium relicense) and AGPL-3.0 (also covers SaaS forks). |
 
 **Explicitly rejected:**
 
@@ -177,7 +177,7 @@ Priority: **P0** = MVP (M1–M2), **P1** = v1.0 (M3–M6), **P2** = after v1.0.
 - The main thread never calls Wasm directly.
 - The kernel worker owns all OCCT shapes. The main thread only holds IDs and render buffers.
 - **Feature-level regeneration:** a feature's output is cached by a hash of its definition plus the hashes of its inputs. Editing feature _k_ recomputes only features _k…n_.
-- **Two meshing levels:** coarse while dragging or orbiting (fast), fine on idle (quality). Meshes are cached in the `.whittle` file so a document opens and renders _before_ the kernel has loaded.
+- **Two meshing levels:** coarse while dragging or orbiting (fast), fine on idle (quality). Meshes are cached in the `.wrencad` file so a document opens and renders _before_ the kernel has loaded.
 - **Kernel boot is non-blocking:** the app shell becomes interactive first, and the kernel streams and compiles in the background (`WebAssembly.instantiateStreaming`). The service worker caches it after the first load.
 - **Two kernel builds:** a threaded build (needs cross-origin isolation, §8.3) and a single-threaded fallback. Pick one at runtime with `crossOriginIsolated`.
 
@@ -186,7 +186,7 @@ Priority: **P0** = MVP (M1–M2), **P1** = v1.0 (M3–M6), **P2** = after v1.0.
 ## 5. Repository layout
 
 ```
-whittle/
+wren/
 ├─ apps/
 │  └─ web/                    # Vite app: shells, routes, PWA, service worker
 ├─ packages/
@@ -197,7 +197,7 @@ whittle/
 │  ├─ sketch/                 # planegcs wrapper, sketch model, inference, DOF analysis
 │  ├─ viewport/               # three.js engine, materials, picking, gestures, camera, overlays
 │  ├─ drawing/                # Drawing model, view generation (HLR), dimensioning, PDF/SVG/DXF export
-│  ├─ io/                     # Format adapters (TS side), .whittle packaging, PMI mapping
+│  ├─ io/                     # Format adapters (TS side), .wrencad packaging, PMI mapping
 │  ├─ sync/                   # StorageProvider adapters, sync engine, auth, HistoryStore, diff/merge
 │  ├─ ui/                     # Design system: tokens, primitives, icons, motion presets
 │  └─ test-fixtures/          # Golden models, STEP samples (incl. NIST PMI cases), expected outputs
@@ -219,7 +219,7 @@ Put this in `packages/contracts`. It must stay plain-JSON serialisable, so it ca
 export type Id = string; // ULID
 export type Expr = string; // e.g. "width/2 + 3mm"
 
-export interface WhittleDoc {
+export interface WrenDoc {
   schemaVersion: number;
   units: { length: 'mm' | 'cm' | 'm' | 'in' | 'ft'; angle: 'deg' | 'rad' };
   params: Param[]; // global variables
@@ -312,9 +312,9 @@ export interface PmiAnnotation {
 }
 ```
 
-Undo/redo works on JSON patches (RFC 6902) of `WhittleDoc`. Coalesce continuous drags into one entry.
+Undo/redo works on JSON patches (RFC 6902) of `WrenDoc`. Coalesce continuous drags into one entry.
 
-On disk, a `WhittleDoc` is split into the canonical project folder (§8A.1): one file per part, drawing and assembly. Serialisation must be deterministic, so the same document always produces byte-identical files. Diffs and merges depend on this.
+On disk, a `WrenDoc` is split into the canonical project folder (§8A.1): one file per part, drawing and assembly. Serialisation must be deterministic, so the same document always produces byte-identical files. Diffs and merges depend on this.
 
 ---
 
@@ -368,7 +368,7 @@ This must be solved deliberately from M1, or downstream features will break when
 
 ### 8.1 GitHub Pages (initial)
 
-- Deploy with `actions/deploy-pages` from CI artefacts. Set Vite `base: '/whittle/'` for a project site, or `/` with a custom domain.
+- Deploy with `actions/deploy-pages` from CI artefacts. Set Vite `base: '/wren-cad/'` for a project site, or `/` with a custom domain.
 - Use hash-based routing, or the `404.html` SPA fallback, because Pages has no rewrites.
 - The service worker caches the kernel `.wasm` after the first visit. Show the kernel download progress in a subtle status chip.
 
@@ -409,19 +409,19 @@ Port its provider adapters, auth flows and conflict handling into `packages/sync
 
 ### 8A.1 Project storage format (text-first, git-friendly)
 
-A project's canonical form is a **folder of deterministic text files**. A `.whittle` file is just this folder zipped, for sharing and emailing.
+A project's canonical form is a **folder of deterministic text files**. A `.wrencad` file is just this folder zipped, for sharing and emailing.
 
 ```
 my-bracket/
-├─ whittle.project.json          # manifest: name, units, schemaVersion, index of parts/drawings, part number
+├─ wren.project.json          # manifest: name, units, schemaVersion, index of parts/drawings, part number
 ├─ params.json                   # global parameters
 ├─ parts/bracket.part.json       # features + sketches, keyed by stable IDs
 ├─ drawings/bracket.drawing.json
 ├─ assemblies/…
 ├─ releases/rev-A/               # frozen exports for a release: bracket.step (AP242+PMI), bracket.pdf
 ├─ previews/bracket.stl          # optional small mesh so git hosts can render 3D previews/diffs
-├─ .whittle-history/             # snapshot history (only for non-git storage, §8A.3)
-└─ .whittle/                     # cache: meshes, BREP, thumbnails; never synced or committed, always regenerable
+├─ .wren-history/             # snapshot history (only for non-git storage, §8A.3)
+└─ .wren/                     # cache: meshes, BREP, thumbnails; never synced or committed, always regenerable
 ```
 
 **Diff/merge-friendly rules:**
@@ -463,20 +463,20 @@ interface StorageProvider {
 | Dropbox                           | OAuth 2 + PKCE                                                                           | Dropbox HTTP API                 | ✓                                                                                 | File `rev` for conflict detection; `list_folder/continue` for deltas                                                                                                |
 | OneDrive / SharePoint             | MSAL.js (auth code + PKCE)                                                               | Microsoft Graph                  | ✓                                                                                 | eTags; `delta` endpoint                                                                                                                                             |
 | Google Drive                      | Google Identity Services                                                                 | Drive API v3, `drive.file` scope | ✓                                                                                 | P1                                                                                                                                                                  |
-| Nextcloud / ownCloud / any WebDAV | Nextcloud Login Flow v2 or app password                                                  | `webdav` npm client              | ⚠ The server must allow CORS for Whittle's origin                                 | Options: the Nextcloud `webapppassword` app (adds WebDAV CORS headers and temporary app passwords for web apps), or reverse-proxy headers. ETags + PROPFIND polling |
+| Nextcloud / ownCloud / any WebDAV | Nextcloud Login Flow v2 or app password                                                  | `webdav` npm client              | ⚠ The server must allow CORS for Wren's origin                                 | Options: the Nextcloud `webapppassword` app (adds WebDAV CORS headers and temporary app passwords for web apps), or reverse-proxy headers. ETags + PROPFIND polling |
 | GitHub                            | Fine-grained token first; OAuth/GitHub App with a per-repo picker once the Worker exists | isomorphic-git + REST            | ⚠ Git's HTTP endpoints and GitHub's OAuth token exchange don't allow browser CORS | Needs the small proxy + token-exchange Worker (§13)                                                                                                                 |
 | GitLab, Forgejo/Gitea, Bitbucket  | OAuth + PKCE where supported, else tokens                                                | isomorphic-git                   | ⚠ Same proxy                                                                      | Self-hosted Forgejo is the fully open-source route                                                                                                                  |
 
 During the M2.5 spike, check each provider's current OAuth and CORS behaviour against Mycelium's working implementation, and record the results in `DECISIONS.md`.
 
-**Git CORS proxy:** the isomorphic-git project runs a free public proxy for cloning and pushing from browsers, which is fine for development. Production self-hosts `@isomorphic-git/cors-proxy` (MIT) as a Cloudflare Worker, restricted to Whittle's origin and to git-shaped requests.
+**Git CORS proxy:** the isomorphic-git project runs a free public proxy for cloning and pushing from browsers, which is fine for development. Production self-hosts `@isomorphic-git/cors-proxy` (MIT) as a Cloudflare Worker, restricted to Wren's origin and to git-shaped requests.
 
 **Security:**
 
 - Tokens never leave the device. They're encrypted at rest with a non-extractable WebCrypto key.
 - Request minimal scopes.
 - Proxy Workers are stateless and never log tokens or content.
-- No project data ever touches Whittle-run storage.
+- No project data ever touches Wren-run storage.
 
 **Sync behaviour:**
 
@@ -493,12 +493,12 @@ During the M2.5 spike, check each provider's current OAuth and CORS behaviour ag
 - Teams today use Git + LFS, SVN, or GUIs like Anchorpoint. These treat CAD files as opaque binaries: you can keep snapshots, but you can't merge meaningfully.
 - Onshape's branching and merging is proprietary.
 
-Whittle can do better because its source format is text-based parametric data (§8A.1).
+Wren can do better because its source format is text-based parametric data (§8A.1).
 
 **`HistoryStore`** has one interface and two backends:
 
 - **GitHistory** (git connections; optional for local projects): isomorphic-git. Versions are commits, branches are git branches, releases are tags. It's fully interoperable with GitHub/GitLab/Forgejo pull requests, reviews and CI.
-- **SnapshotHistory** (cloud drives and local-only projects): named versions are stored as compressed full snapshots in `.whittle-history/`, which syncs with the project. They form a commit DAG (id, parents, message, author, timestamp, content hash). You get the same features without needing git.
+- **SnapshotHistory** (cloud drives and local-only projects): named versions are stored as compressed full snapshots in `.wren-history/`, which syncs with the project. They form a commit DAG (id, parents, message, author, timestamp, content hash). You get the same features without needing git.
 
 **Features:**
 
@@ -681,7 +681,7 @@ Each milestone ends with a reviewer gate. "Done" means every criterion is demons
 - Persistent naming per §7.3, with the golden "edit upstream" suite passing.
 - Open file format: `docs/FILE_FORMAT.md` specification plus a published **JSON Schema** (generated from `packages/contracts`, versioned with `schemaVersion`) that validates every project file in CI; the spec is licensed CC-BY-4.0 so anyone can implement readers and writers.
 - Materials: assign from the built-in library or custom, density as an expression with units (e.g. `g/cm^3`), shown in the inspector with the part's mass.
-- Undo/redo; local library; `.whittle` save and open; STL (binary/ASCII, per body or merged, quality presets), 3MF, GLB and STEP AP214 export; STEP import.
+- Undo/redo; local library; `.wrencad` save and open; STL (binary/ASCII, per body or merged, quality presets), 3MF, GLB and STEP AP214 export; STEP import.
 - E2E: the exported STL of the bracket is watertight (every edge shared by exactly two triangles) and its volume matches the B-rep volume within the chosen deflection.
 - **Accept:** a scripted E2E builds a bracket with holes and fillets. Changing three upstream dimensions regenerates it correctly. Exporting STEP and re-importing it gives the same volume within 1e-6 relative. Performance budgets (§10) are met.
 
@@ -697,7 +697,7 @@ Each milestone ends with a reviewer gate. "Done" means every criterion is demons
 - Provider adapters (§8A.2): local folder, Dropbox, OneDrive/SharePoint, WebDAV/Nextcloud and GitHub (token) first; then Google Drive, GitLab, Forgejo and Bitbucket. GitHub OAuth arrives once the Worker exists.
 - Background sync with deltas, an offline queue and conflict detection.
 - HistoryStore (git + snapshots), the versions panel, branches, compare (feature, geometric and drawing diffs), the merge UI, and releases.
-- Project folder format per §8A.1, with `.whittle` zip import/export.
+- Project folder format per §8A.1, with `.wrencad` zip import/export.
 - **Local git repo mode** (ADR-029, desktop Chromium): open a folder that is a git working tree; the project's files on disk are the working copy, and versions, branches and releases are the repo's own commits, branches and tags, interoperable with the user's git tools.
 - **Accept:**
   - A project edited on desktop (stored in Dropbox) shows the change on an iPad within 10 s of focusing the app.
@@ -706,7 +706,7 @@ Each milestone ends with a reviewer gate. "Done" means every criterion is demons
   - A GitHub project round-trips commit → push → clone on another device → regenerate, with identical results (volume equal within 1e-9 relative).
   - A fuzz test of 1,000 random concurrent edit pairs never loses an edit.
   - Tokens are not readable in plain text from storage.
-  - Local git repo mode: a version saved in Whittle is a commit that `git log` shows with a clean `git status`; a commit made with the git CLI appears in Whittle after refocusing; switching branches with uncommitted project changes is refused, never overwritten.
+  - Local git repo mode: a version saved in Wren is a commit that `git log` shows with a clean `git status`; a commit made with the git CLI appears in Wren after refocusing; switching branches with uncommitted project changes is refused, never overwritten.
 
 ### M3 — Advanced part features
 
@@ -728,7 +728,7 @@ Each milestone ends with a reviewer gate. "Done" means every criterion is demons
   - A drawing of the bracket with three views, a section and full dimensions exports to a vector PDF that prints at 1:1 scale exactly (measured).
   - The DXF opens correctly in LibreCAD and QCAD.
   - Editing the model updates the drawing, and dangling dimensions are flagged.
-  - Certification-style suite (§12A): for every reference part, the E2E recreates its spec drawing with Whittle's drawing tools. The views requested by the spec must be present and every specified dimension must appear with the same value.
+  - Certification-style suite (§12A): for every reference part, the E2E recreates its spec drawing with Wren's drawing tools. The views requested by the spec must be present and every specified dimension must appear with the same value.
 
 ### M5 — STEP AP242 with model dimensions (MBD/PMI)
 
@@ -744,7 +744,7 @@ Each milestone ends with a reviewer gate. "Done" means every criterion is demons
   - Node round-trip tests with `STEPCAFControl_Reader`: dimension and tolerance counts, types, values and referenced faces all match.
   - Import the NIST MBE PMI test models (`test-fixtures/step/nist/`) and display their PMI. Note that OCCT has known gaps reading some third-party tolerance values; document what fails.
   - Manually validate the exports with the NIST _STEP File Analyzer and Viewer_ and at least one third-party CAD tool. Record the results in `docs/PMI_VALIDATION.md`.
-- **Accept:** the bracket exports with ≥ 15 semantic dimensions or tolerances plus presentation. The round-trip is lossless in Whittle. The NIST analyzer reports no structural errors in the PMI entities.
+- **Accept:** the bracket exports with ≥ 15 semantic dimensions or tolerances plus presentation. The round-trip is lossless in Wren. The NIST analyzer reports no structural errors in the PMI entities.
 
 ### M6 — Assemblies
 
@@ -754,20 +754,20 @@ Each milestone ends with a reviewer gate. "Done" means every criterion is demons
 ### M7 — v1.0 hardening & polish
 
 - Accessibility audit, performance pass, crash/fuzz tests (random feature edits, malformed STEP), docs site, sample gallery, and release automation.
-- **Final test: the full certification-style run (§12A).** Every part, modification stage, drawing and assembly in the suite passes in CI. A human run of the real CSWA/CSWP practice exams in Whittle, timed against their limits, is recorded in `docs/CERTIFICATION_RUN.md`: what passed, what was slow, what couldn't be built.
+- **Final test: the full certification-style run (§12A).** Every part, modification stage, drawing and assembly in the suite passes in CI. A human run of the real CSWA/CSWP practice exams in Wren, timed against their limits, is recorded in `docs/CERTIFICATION_RUN.md`: what passed, what was slow, what couldn't be built.
 
 ### 12A. Certification-style test suite (CSWA/CSWP pattern)
 
 A capability check modelled on the SolidWorks CSWA/CSWP exams, which test exactly what users need: build a part from a drawing, set the material, confirm the mass, apply parametric changes, recreate the drawing, and assemble. It grows with the milestones (M3 parts and mass, M4 drawings, M6 assemblies) and is the final test at M7.
 
-- **Original content only.** The real exam and practice drawings are Dassault Systèmes' copyrighted material and are never committed or used in CI. The suite's parts and drawings are written for Whittle in the same style and difficulty. They live in `packages/test-fixtures/reference-parts/`, licensed with the repo.
+- **Original content only.** The real exam and practice drawings are Dassault Systèmes' copyrighted material and are never committed or used in CI. The suite's parts and drawings are written for Wren in the same style and difficulty. They live in `packages/test-fixtures/reference-parts/`, licensed with the repo.
 - **Each case has:** a spec drawing (SVG/PDF, plus the dimensions in JSON); the material and density; the expected mass (and centre of mass), computed independently in FreeCAD with the value and the script recorded; and CSWP-style modification stages (named dimension changes plus the expected new mass).
 - **Pass criteria:**
   - mass within 0.1 % (the exams' own tolerance) at every stage;
   - the part built entirely through the UI by a scripted E2E;
   - from M4, the recreated drawing contains the spec's views and dimensions;
   - from M6, the assembly cases match mass and centre of mass.
-- **Human run.** The real practice exams are run by a person in Whittle, timed, for M7, and the findings are fed back as issues. Nothing from those exams is stored in the repo.
+- **Human run.** The real practice exams are run by a person in Wren, timed, for M7, and the findings are fed back as issues. Nothing from those exams is stored in the repo.
 
 ---
 
@@ -803,7 +803,7 @@ A capability check modelled on the SolidWorks CSWA/CSWP exams, which test exactl
 | Sync data loss or silent overwrites                                                | Optimistic concurrency (`ifRev`), never overwrite on conflict, local history always kept, fuzz-tested merge                                                                                          |
 | Provider API, OAuth or CORS changes; Nextcloud CORS setup friction                 | Adapters behind one interface; reuse Mycelium's proven flows; a clear in-app setup guide for Nextcloud admins; the local-synced-folder option as a universal fallback                                |
 | Token theft                                                                        | Tokens on the device only, encrypted at rest, minimal scopes, stateless Worker, strict CSP                                                                                                           |
-| License conflict when reusing Mycelium code (GPL-3.0)                              | ADR before M2.5: relicense the extracted module (author) or align Whittle's license                                                                                                                  |
+| License conflict when reusing Mycelium code (GPL-3.0)                              | ADR before M2.5: relicense the extracted module (author) or align Wren's license                                                                                                                  |
 
 ---
 

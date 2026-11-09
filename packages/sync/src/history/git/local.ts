@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 /**
  * Local git repo mode (ADR-029): a folder the user picked (desktop Chromium, File System Access)
- * that is a git working tree. Whittle's versions are that repository's commits.
+ * that is a git working tree. Wren's versions are that repository's commits.
  *
  * `openLocalGitRepo(root, { projectPath })` finds the git directory:
  * - `.git/` in the picked folder;
@@ -13,8 +13,8 @@
  * Then `state()` reports what makes the project read-only right now (a merge, rebase,
  * cherry-pick, revert or bisect in progress, a detached HEAD, a bare repository, another git
  * holding `index.lock`, an index format isomorphic-git can't write), and the history refuses
- * saving, switching, pulling and releasing while it lasts. `ensureCacheIgnored()` keeps Whittle's
- * `.whittle/` cache out of the repository.
+ * saving, switching, pulling and releasing while it lasts. `ensureCacheIgnored()` keeps Wren's
+ * `.wren/` cache out of the repository.
  */
 
 import type {
@@ -24,7 +24,7 @@ import type {
   GitHistory,
   StorageError,
   StorageResult,
-} from '@whittle/contracts';
+} from '@wren-cad/contracts';
 import git, { type HttpClient, type PromiseFsClient } from 'isomorphic-git';
 import { type FolderHandle, folderPermission } from '../../providers/folder';
 import { CACHE_PREFIX } from '../hash';
@@ -90,8 +90,8 @@ export interface LocalGitRepo {
   /** Read fresh on every call (the user's git may have started or finished a merge). */
   state(): Promise<LocalRepoState>;
   /**
-   * Whether `.whittle/` (the regenerable cache) is gitignored for this project. With
-   * `{ add: true }`, appends `.whittle/` to the repository's root `.gitignore` when it isn't
+   * Whether `.wren/` (the regenerable cache) is gitignored for this project. With
+   * `{ add: true }`, appends `.wren/` to the repository's root `.gitignore` when it isn't
    * (the UI asks the user first).
    */
   ensureCacheIgnored(options?: {
@@ -271,21 +271,21 @@ async function locate(root: FolderHandle): Promise<StorageResult<Located>> {
 
 const MESSAGES: Record<LocalRepoProblem, string> = {
   merge:
-    'A git merge is in progress in this repository. Finish it (or run git merge --abort) with your git tools; until then Whittle shows the project read-only.',
+    'A git merge is in progress in this repository. Finish it (or run git merge --abort) with your git tools; until then Wren shows the project read-only.',
   rebase:
-    'A git rebase is in progress in this repository. Finish it (or run git rebase --abort) with your git tools; until then Whittle shows the project read-only.',
+    'A git rebase is in progress in this repository. Finish it (or run git rebase --abort) with your git tools; until then Wren shows the project read-only.',
   cherryPick:
-    'A git cherry-pick is in progress in this repository. Finish or abort it with your git tools; until then Whittle shows the project read-only.',
+    'A git cherry-pick is in progress in this repository. Finish or abort it with your git tools; until then Wren shows the project read-only.',
   revert:
-    'A git revert is in progress in this repository. Finish or abort it with your git tools; until then Whittle shows the project read-only.',
+    'A git revert is in progress in this repository. Finish or abort it with your git tools; until then Wren shows the project read-only.',
   bisect:
-    'A git bisect is in progress in this repository. Run git bisect reset when you’re done; until then Whittle shows the project read-only.',
+    'A git bisect is in progress in this repository. Run git bisect reset when you’re done; until then Wren shows the project read-only.',
   detached:
     'HEAD is detached (a commit is checked out, not a branch), so new versions would belong to no branch. Check out a branch with your git tools, or switch to one here; until then the project is read-only.',
-  bare: 'This is a bare repository: it has no working files, so Whittle can only show its history.',
+  bare: 'This is a bare repository: it has no working files, so Wren can only show its history.',
   busy: 'Another git program is working on this repository (.git/index.lock exists). Try again when it has finished; if no git is running, delete that file.',
   indexFormat:
-    'This repository’s index uses a format Whittle can’t write (only version 2). Run git update-index --index-version 2 to change it.',
+    'This repository’s index uses a format Wren can’t write (only version 2). Run git update-index --index-version 2 to change it.',
 };
 
 /** Opens a local git working tree (see the module comment). */
@@ -322,11 +322,11 @@ export async function openLocalGitRepo(
   if (format !== 'sha1') {
     return fail(
       'UNSUPPORTED',
-      `This repository uses ${format} object names, which Whittle can’t read yet.`,
+      `This repository uses ${format} object names, which Wren can’t read yet.`,
     );
   }
   if (Number((await config('core.repositoryformatversion')) ?? 0) > 1) {
-    return fail('UNSUPPORTED', 'This repository uses a newer git format than Whittle can read.');
+    return fail('UNSUPPORTED', 'This repository uses a newer git format than Wren can read.');
   }
   const bare = layout === 'bare' || String(await config('core.bare')) === 'true';
   if (bare) layout = 'bare';
@@ -404,7 +404,7 @@ export async function openLocalGitRepo(
       const sep = before === '' || before.endsWith('\n') ? '' : '\n';
       await fs.promises.writeFile(
         '/.gitignore',
-        `${before}${sep}# Whittle's regenerable cache (meshes, thumbnails)\n${CACHE_PREFIX}\n`,
+        `${before}${sep}# Wren's regenerable cache (meshes, thumbnails)\n${CACHE_PREFIX}\n`,
       );
       return ok({ ignored: await check(), added: true });
     } catch (e) {

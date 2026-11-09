@@ -1,6 +1,6 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { KernelStatus } from '@whittle/contracts';
+import type { KernelStatus } from '@wren-cad/contracts';
 import { describe, expect, it } from 'vitest';
 import { AppShell, describeKernelStatus, resolveTransition, StatusChip, springs } from '../src';
 

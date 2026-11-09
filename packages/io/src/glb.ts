@@ -2,7 +2,7 @@
 import { IoError } from './errors';
 import { type NamedMesh, parseColor } from './mesh';
 
-/** glTF is in metres; Whittle meshes are in mm. Positions are scaled by this on export. */
+/** glTF is in metres; Wren meshes are in mm. Positions are scaled by this on export. */
 export const MM_TO_M = 0.001;
 
 const GLB_MAGIC = 0x46546c67; // 'glTF'
@@ -61,7 +61,7 @@ interface GltfJson {
 export function toGlb(bodies: NamedMesh[]): Uint8Array {
   const live = bodies.filter((b) => b.mesh.indices.length >= 3 && b.mesh.positions.length >= 9);
   const json: GltfJson = {
-    asset: { version: '2.0', generator: 'Whittle' },
+    asset: { version: '2.0', generator: 'Wren' },
     scene: 0,
     scenes: [{ nodes: [] }],
     nodes: [],

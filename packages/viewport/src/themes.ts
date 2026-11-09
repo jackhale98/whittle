@@ -43,9 +43,9 @@ export const PALETTES: Readonly<Record<'light' | 'dark', Palette>> = {
 };
 
 /**
- * Selection / sketch / chrome colours. Mirrors the `@whittle/ui` design tokens (kept as a local
+ * Selection / sketch / chrome colours. Mirrors the `@wren-cad/ui` design tokens (kept as a local
  * copy so the lazy viewport chunk does not pull in the UI package; `test/themes.test.ts` asserts
- * parity with `colors` from `@whittle/ui`).
+ * parity with `colors` from `@wren-cad/ui`).
  */
 export interface OverlayColors {
   accent: string;

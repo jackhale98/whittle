@@ -79,8 +79,8 @@ import type {
   UnresolvedRef,
   Vec2,
   Vec3,
-  WhittleDoc,
-} from '@whittle/contracts';
+  WrenDoc,
+} from '@wren-cad/contracts';
 import {
   evaluateFeatureValues,
   expressionEngine,
@@ -90,8 +90,8 @@ import {
   scopeOf,
   sketchSolveValues,
   tryResolveDensity,
-} from '@whittle/document';
-import { IoError, importMesh, meshToStl } from '@whittle/io';
+} from '@wren-cad/document';
+import { IoError, importMesh, meshToStl } from '@wren-cad/io';
 import { zipSync } from 'fflate';
 import type { KernelApiInternals, KernelWorkerApi, MeasureSubject } from '../kernel-api';
 import { copyMesh, faceIndex, faceSubMesh } from './buffers';
@@ -176,7 +176,7 @@ import { type Candidate, type ResolvedTarget, resolveRef, type SubKind } from '.
 // Public types
 // ---------------------------------------------------------------------------------------------
 
-/** The part of `@whittle/sketch/core`'s `SketchSolverCore` the engine needs. */
+/** The part of `@wren-cad/sketch/core`'s `SketchSolverCore` the engine needs. */
 export interface SketchSolve {
   solve(input: SketchSolveInput): SketchSolveResult;
 }
@@ -417,7 +417,7 @@ class ModelState {
 }
 
 interface WalkContext {
-  doc: WhittleDoc;
+  doc: WrenDoc;
   part: Part;
   pc: PartCache;
   state: ModelState;
@@ -1073,7 +1073,7 @@ export class RegenEngine {
     return result;
   }
 
-  private densityOf(part: Part, doc: WhittleDoc): number | undefined {
+  private densityOf(part: Part, doc: WrenDoc): number | undefined {
     if (!part.material) return undefined;
     const d = tryResolveDensity(part.material, expressionEngine, scopeOf(doc));
     return d.ok ? d.value : undefined;

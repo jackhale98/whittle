@@ -6,7 +6,7 @@
  * version the working copy is on). Buckets are per branch.
  */
 
-import type { PrunePolicy } from '@whittle/contracts';
+import type { PrunePolicy } from '@wren-cad/contracts';
 
 export const HOUR_MS = 3_600_000;
 export const DAY_MS = 24 * HOUR_MS;

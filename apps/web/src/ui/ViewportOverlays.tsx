@@ -13,10 +13,10 @@ import type {
   SketchConstraint,
   SketchFeature,
   Vec3,
-  WhittleDoc,
-} from '@whittle/contracts';
-import { isDimension } from '@whittle/contracts';
-import { constraintLabel, isSketchReference, Namer } from '@whittle/sketch';
+  WrenDoc,
+} from '@wren-cad/contracts';
+import { isDimension } from '@wren-cad/contracts';
+import { constraintLabel, isSketchReference, Namer } from '@wren-cad/sketch';
 import {
   ConflictPanel,
   ConstraintGlyph,
@@ -28,8 +28,8 @@ import {
   SketchStatusChip,
   SketchToolbar,
   WhichOneChooser,
-  WhittleLoader,
-} from '@whittle/ui';
+  WrenLoader,
+} from '@wren-cad/ui';
 import { Library } from 'lucide-react';
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { useObservable } from '../app/observable';
@@ -44,7 +44,7 @@ import { entityAnchor } from '../sketch/overlay';
 import { describeRef, useDoc } from './Inspector';
 
 const LibraryPanel = lazy(() => import('./LibraryPanel'));
-// Versions, connections, compare and merge (with @whittle/sync): fetched when first opened.
+// Versions, connections, compare and merge (with @wren-cad/sync): fetched when first opened.
 const ProjectPanel = lazy(() => import('../sync/ProjectPanel'));
 
 /*
@@ -72,7 +72,7 @@ const PLANES: { id: OriginPlane; label: string; hint: string }[] = [
   { id: 'origin:YZ', label: 'Right', hint: 'YZ' },
 ];
 
-function PlaneChooser({ wb, doc }: { wb: Workbench; doc: WhittleDoc }) {
+function PlaneChooser({ wb, doc }: { wb: Workbench; doc: WrenDoc }) {
   const planes = doc.parts[0]?.features.filter((f) => f.type === 'plane') ?? [];
   return (
     <fieldset
@@ -124,7 +124,7 @@ function PlaneIcon({ id }: { id: OriginPlane }) {
   );
 }
 
-function candidateFor(doc: WhittleDoc, h: PickHit, i: number): PickCandidate {
+function candidateFor(doc: WrenDoc, h: PickHit, i: number): PickCandidate {
   const kind =
     h.kind === 'sketchPoint'
       ? 'vertex'
@@ -144,7 +144,7 @@ function candidateFor(doc: WhittleDoc, h: PickHit, i: number): PickCandidate {
 }
 
 /** A candidate of an ambiguous reference: "Edge of Plate" + where it is (they share a name family). */
-function candidateForName(wb: Workbench, doc: WhittleDoc, name: string): PickCandidate {
+function candidateForName(wb: Workbench, doc: WrenDoc, name: string): PickCandidate {
   const kind = wb.ui.get().candidates?.kind ?? 'edge';
   const label = describeRef(doc, { name, kind });
   const at = wb.locate(name, kind);
@@ -236,7 +236,7 @@ function SketchLayer({
   wb: Workbench;
   session: SketchSession;
   ui: SketchUi;
-  doc: WhittleDoc;
+  doc: WrenDoc;
 }) {
   useCameraTick(session);
   const v = wb.viewport;
@@ -371,7 +371,7 @@ function KernelLoading({ wb, hasGeometry }: { wb: Workbench; hasGeometry: boolea
       aria-live="polite"
       data-testid="kernel-loading"
     >
-      <WhittleLoader className="size-24" label="Loading the modeling kernel" />
+      <WrenLoader className="size-24" label="Loading the modeling kernel" />
       <p className="tnum text-ui text-fg-muted">
         {s.state === 'compiling'
           ? 'Preparing the modeling kernel…'

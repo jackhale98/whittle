@@ -12,7 +12,7 @@
  * - (f) the OAuth redirect round trip: no reload loop, query stripped only after the exchange;
  * - (g) local git repo mode (ADR-029) over an OPFS directory standing in for a picked folder.
  *
- * Run alone: `WHITTLE_E2E_PORT=4391 pnpm --filter @whittle/web exec playwright test m25`.
+ * Run alone: `WREN_E2E_PORT=4391 pnpm --filter @wren-cad/web exec playwright test m25`.
  */
 
 import { execFileSync } from 'node:child_process';
@@ -28,7 +28,7 @@ import {
   type Page,
   test,
 } from '@playwright/test';
-import type { Command, WhittleDoc } from '@whittle/contracts';
+import type { Command, WrenDoc } from '@wren-cad/contracts';
 import { fid, pocketDoc } from './fixtures';
 import { app, boot } from './helpers';
 import { dropboxOverrides, type FakeDropbox, startFakeDropbox } from './support/fake-dropbox';
@@ -54,14 +54,14 @@ interface SyncState {
 }
 
 type Hooks = {
-  __whittleApp: {
+  __wrenApp: {
     apply(c: Command, label?: string): boolean;
     sync(): Promise<SyncState>;
     syncNow(): Promise<void>;
     syncLoaded(): boolean;
     projectBar(): { status: { state: string }; branch: string | null };
   };
-  __whittleViewport: {
+  __wrenViewport: {
     getCompareStats(): {
       active: boolean;
       show: string;
@@ -71,11 +71,11 @@ type Hooks = {
   };
 };
 
-const sync = (page: Page) => page.evaluate(() => (window as unknown as Hooks).__whittleApp.sync());
+const sync = (page: Page) => page.evaluate(() => (window as unknown as Hooks).__wrenApp.sync());
 const syncNow = (page: Page) =>
-  page.evaluate(() => (window as unknown as Hooks).__whittleApp.syncNow());
+  page.evaluate(() => (window as unknown as Hooks).__wrenApp.syncNow());
 const applyCmd = (page: Page, c: Command) =>
-  page.evaluate((x) => (window as unknown as Hooks).__whittleApp.apply(x), c);
+  page.evaluate((x) => (window as unknown as Hooks).__wrenApp.apply(x), c);
 const focus = (page: Page) => page.evaluate(() => window.dispatchEvent(new Event('focus')));
 
 const PART = fid('PART');
@@ -83,9 +83,9 @@ const POCKET = fid('PK');
 const PLATE = fid('E1');
 
 /** Plate 80 × 50 × 10 with a 20 × 20 × 4 pocket (no fillet: the removed volume is exact). */
-function plateDoc(name: string, pocket: boolean): WhittleDoc {
+function plateDoc(name: string, pocket: boolean): WrenDoc {
   const d = pocketDoc();
-  const part = d.parts[0] as WhittleDoc['parts'][number];
+  const part = d.parts[0] as WrenDoc['parts'][number];
   const features = part.features
     .filter((f) => f.type !== 'fillet')
     .map((f) => (f.id === POCKET ? { ...f, suppressed: !pocket } : f));
@@ -101,7 +101,7 @@ function plateDoc(name: string, pocket: boolean): WhittleDoc {
   };
 }
 
-const paramExpr = (doc: WhittleDoc, name: string) => doc.params.find((p) => p.name === name)?.expr;
+const paramExpr = (doc: WrenDoc, name: string) => doc.params.find((p) => p.name === name)?.expr;
 
 type How = 'click' | 'tap';
 const press = (l: Locator, how: How) => (how === 'tap' ? l.tap() : l.click());
@@ -150,7 +150,7 @@ async function newContext(
   );
   if (init !== undefined) {
     await ctx.addInitScript((o) => {
-      (window as unknown as { __whittleSyncOverrides: unknown }).__whittleSyncOverrides = o;
+      (window as unknown as { __wrenSyncOverrides: unknown }).__wrenSyncOverrides = o;
     }, init);
   }
   return ctx;
@@ -164,7 +164,7 @@ test('(c) compare with an earlier version: removed volume of the added pocket, r
   await boot(page);
   await app(page).load(plateDoc('Compare plate', false));
   expect(await bodyVolume(page)).toBeCloseTo(80 * 50 * 10, 6);
-  expect(await page.evaluate(() => (window as unknown as Hooks).__whittleApp.syncLoaded())).toBe(
+  expect(await page.evaluate(() => (window as unknown as Hooks).__wrenApp.syncLoaded())).toBe(
     false,
   );
   await saveVersion(page, 'Plate only');
@@ -193,7 +193,7 @@ test('(c) compare with an earlier version: removed volume of the added pocket, r
   await expect(panel.getByTestId('compare-panel')).toContainText('Pocket');
 
   const stats = () =>
-    page.evaluate(() => (window as unknown as Hooks).__whittleViewport.getCompareStats());
+    page.evaluate(() => (window as unknown as Hooks).__wrenViewport.getCompareStats());
   expect(await stats()).toMatchObject({
     active: true,
     removedMeshes: 1,
@@ -373,7 +373,7 @@ test.describe
         .poll(async () => (await sync(A)).link?.path, { timeout: 30_000 })
         .toBe('/Bracket');
       await syncNow(A);
-      expect(dbx.text('/Bracket/whittle.project.json')).toContain('Bracket');
+      expect(dbx.text('/Bracket/wren.project.json')).toContain('Bracket');
       const volA = await bodyVolume(A);
 
       // iPad (touch only): sign in, open the project from the folder.
@@ -558,7 +558,7 @@ test('(d) git host: commit, push, clone on another device, regenerate with the s
         return ''; // no commits yet
       }
     };
-    await expect.poll(remoteLog, { timeout: 60_000 }).toContain('First version from Whittle');
+    await expect.poll(remoteLog, { timeout: 60_000 }).toContain('First version from Wren');
     expect((await sync(A)).kind).toBe('git');
 
     // An edit, saved as a named version (a commit), then pushed.
@@ -593,7 +593,7 @@ test('(d) git host: commit, push, clone on another device, regenerate with the s
     const sB = await sync(B);
     expect(sB.kind).toBe('git');
     expect(sB.versions.map((v) => v.message)).toEqual(
-      expect.arrayContaining(['Thicker plate', 'First version from Whittle']),
+      expect.arrayContaining(['Thicker plate', 'First version from Wren']),
     );
   } finally {
     await ctxA.close();
@@ -663,7 +663,7 @@ async function readOpfs(page: Page): Promise<{ path: string; b64: string }[]> {
 }
 
 function materialise(files: { path: string; b64: string }[]): string {
-  const dir = fs.mkdtempSync(join(tmpdir(), 'whittle-opfs-'));
+  const dir = fs.mkdtempSync(join(tmpdir(), 'wren-opfs-'));
   for (const f of files) {
     fs.mkdirSync(join(dir, f.path, '..'), { recursive: true });
     fs.writeFileSync(join(dir, f.path), Buffer.from(f.b64, 'base64'));
@@ -676,7 +676,7 @@ test('(g) local git repo: a saved version is a commit git sees; outside edits ar
   baseURL,
 }) => {
   // A real repository made with the git CLI, copied into OPFS (the picked folder's stand-in).
-  const seed = fs.mkdtempSync(join(tmpdir(), 'whittle-seed-'));
+  const seed = fs.mkdtempSync(join(tmpdir(), 'wren-seed-'));
   sh(seed, 'init', '-q', '-b', 'main');
   fs.writeFileSync(join(seed, 'README.md'), '# Parts\n');
   sh(seed, 'add', '.');
@@ -684,9 +684,9 @@ test('(g) local git repo: a saved version is a commit git sees; outside edits ar
   sh(seed, 'branch', 'idea');
   const ctx = await newContext(browser, baseURL ?? '', 'desktop');
   await ctx.addInitScript((name) => {
-    const w = window as unknown as { __whittleSyncOverrides: Record<string, unknown> };
-    w.__whittleSyncOverrides = {
-      ...(w.__whittleSyncOverrides ?? {}),
+    const w = window as unknown as { __wrenSyncOverrides: Record<string, unknown> };
+    w.__wrenSyncOverrides = {
+      ...(w.__wrenSyncOverrides ?? {}),
       pickDirectory: async () =>
         (await navigator.storage.getDirectory()).getDirectoryHandle(name, { create: true }),
     };
@@ -717,16 +717,16 @@ test('(g) local git repo: a saved version is a commit git sees; outside edits ar
       .poll(async () => (await sync(page)).versions.map((v) => v.message))
       .toContain('seed');
     expect((await sync(page)).branches.map((b) => b.name).sort()).toEqual(['idea', 'main']);
-    await saveVersion(page, 'Plate from Whittle');
+    await saveVersion(page, 'Plate from Wren');
 
     // git itself sees the commit, with a clean working tree.
     const repo = materialise(await readOpfs(page));
     dumps.push(repo);
-    expect(sh(repo, 'log', '--format=%s', 'main')).toBe('Plate from Whittle\nseed');
+    expect(sh(repo, 'log', '--format=%s', 'main')).toBe('Plate from Wren\nseed');
     expect(sh(repo, 'status', '--porcelain')).toBe('');
-    expect(sh(repo, 'show', '--stat', '--format=', 'HEAD')).toContain('whittle.project.json');
+    expect(sh(repo, 'show', '--stat', '--format=', 'HEAD')).toContain('wren.project.json');
 
-    // Edited outside Whittle (an editor, a script): the working tree changes on disk.
+    // Edited outside Wren (an editor, a script): the working tree changes on disk.
     await page.evaluate(async (name) => {
       const d = await (await navigator.storage.getDirectory()).getDirectoryHandle(name);
       const fh = await d.getFileHandle('params.json');

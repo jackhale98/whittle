@@ -8,7 +8,7 @@
  * allocates after the first build), and the React chrome (value chip) catches up once per frame.
  */
 
-import type { EntityRef, PickHit, Vec3 } from '@whittle/contracts';
+import type { EntityRef, PickHit, Vec3 } from '@wren-cad/contracts';
 import { newPushPull } from '../features/factories';
 import { partDiagonal } from '../model/attention';
 import {
