@@ -44,7 +44,11 @@ export function HoleFields({ f, c, edit }: { f: HoleFeature; c: Ctx; edit: Edit<
     const o = own[d.key];
     const r = o?.expr ? c.evaluate(o.expr, o.dim) : undefined;
     if (!r?.ok) return d;
-    return { ...d, value: o?.dim === 'angle' ? (r.value * 180) / Math.PI : r.value, overridden: true };
+    return {
+      ...d,
+      value: o?.dim === 'angle' ? (r.value * 180) / Math.PI : r.value,
+      overridden: true,
+    };
   });
   const depth = f.end.kind === 'blind' ? c.evaluate(f.end.depth, 'length') : undefined;
   const cbDepth = row && f.kind === 'counterbore' ? row.counterbore.depth : undefined;

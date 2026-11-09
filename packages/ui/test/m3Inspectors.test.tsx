@@ -111,6 +111,17 @@ describe('draft', () => {
   it('warns for 90 degrees and above', () => {
     setup({ ...feat<'draft'>('M10'), angle: '90deg' });
     expect(notes().join(' ')).toMatch(/less than 90/);
+    expect(screen.queryByTestId('draft-help')).toBeNull();
+  });
+
+  it('explains the angle as DraftFeature defines it (positive = inward, away from neutral)', () => {
+    setup({ ...feat<'draft'>('M10'), angle: '3deg', reverse: false });
+    expect(screen.getByTestId('draft-help')).toHaveTextContent(
+      /lean inward moving away from the neutral plane, on the side where the faces are/,
+    );
+    document.body.innerHTML = '';
+    setup({ ...feat<'draft'>('M10'), angle: '-3deg', reverse: true });
+    expect(screen.getByTestId('draft-help')).toHaveTextContent(/outward.*Reverse is on/);
   });
 
   it('picks the neutral plane', async () => {

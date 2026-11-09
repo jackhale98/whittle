@@ -364,6 +364,16 @@ export function DraftFields({ f, c, edit }: { f: DraftFeature; c: Ctx; edit: Edi
         <Note>Draft angle must be less than 90°.</Note>
       ) : null}
       {a === 0 ? <Note tone="info">A draft angle of 0° changes nothing.</Note> : null}
+      {a !== undefined && a !== 0 && Math.abs(a) < Math.PI / 2 ? (
+        <p className="text-xs leading-4 text-fg-muted" data-testid="draft-help">
+          {a > 0
+            ? 'The faces lean inward moving away from the neutral plane, on the side where the faces are: the body gets narrower, as a moulded part needs.'
+            : 'A negative angle leans the faces outward moving away from the neutral plane: the body gets wider.'}{' '}
+          {f.reverse
+            ? 'Reverse is on: the pull direction is flipped.'
+            : 'Reverse flips the pull direction.'}
+        </p>
+      ) : null}
       {f.faces.length === 0 || !f.neutral.name ? (
         <Note tone="info">Pick the faces to taper and a neutral plane.</Note>
       ) : null}
