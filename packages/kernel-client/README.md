@@ -165,6 +165,42 @@ Details:
 - Every temporary shape is released, also on failure. The diff meshes are transferred over
   Comlink, never copied.
 
+## M3 features (ADR-019; details in the ADR-pending "M3 regen" entry)
+
+What the engine passes per type (FeatureInputs, refs keyed by JSON pointer into the feature):
+
+| Type | Inputs |
+| --- | --- |
+| `shell` | `target` (the open faces' body, or `body`), `refs['/openFaces/i']`, `values['/thickness']` |
+| `draft` | `target`, `refs['/faces/i']`, `frames.neutral` (+ `refs['/neutral']` for faces/plane shapes), `values['/angle']` |
+| `sweep` | `refs['/profile/i']`, `refs['/path/i']` chained in order (the feature's `path` is reordered to match), op/scope as extrude |
+| `loft` | `refs['/sections/i']` (regions/faces; points only first/last), `refs['/guides/i']`, op/scope as extrude |
+| `mirror` / `linearPattern` / `circularPattern` | `shapes['tool:<id>']` + `values['/ops/<id>']` (0 add, 1 cut, 2 intersect) and `target`, or `refs['/source/bodies/i']`; `frames.plane` / `frames.axis` (+ `frames.second`); counts as whole numbers |
+| `hole` | `target`, `frames['hole:i']` (origin on the face, z into the material), table values at `/diameter`, `/counterbore/*`, `/countersink/*` |
+| `thread` | none (checked: cylindrical face, size in the table) |
+| `axis` / `point` | no kernel call: frames in the walk state (`F…:axis`, `F…:point`) |
+| `plane` (new kinds) | `{ kind: 'frame' }` with the TypeScript-computed frame; `flip` applied by the engine |
+
+- **Tool shapes** of copied features are built lazily (the feature alone, op `new`; a hole without
+  `target`) and cached under a key of their own inputs, so pattern edits reuse them.
+- **Reference geometry** comes from fingerprints plus exact `measureShapes` probes (`datums.ts`):
+  edge lines, circles, cylinder axes, sphere centres, in canonical senses.
+- **Linked sketch entities** (`EntityBase.source`): resolved and projected (`linked.ts`; kernel
+  `projectEdges` / `projectFaceOutline` when present), re-projected by `RegenEngineDeps.reprojectLinked`
+  (default `reprojectLinkedFallback` until packages/sketch's lands) and grounded before solving. A
+  lost source makes the sketch `needsAttention` at `/entities/i/source/ref`, entity names in
+  `error.entityRefs`.
+- **Pattern instances** `F…:inst<k>(N)` never resolve by fingerprint onto another instance or onto
+  the original's copies; a removed instance needs attention.
+- **Hole sizes**: `resolveHoleSize` from `@whittle/document` (ISO 273 / 262 / 4762 / 10642, ANSI
+  inch), explicit values override.
+
+Tests: `m3-engine.test.ts` (fake kernel: inputs per type, tool cache, instance naming, linked
+entities), `m3-geometry.test.ts` (probes, frames, chaining, re-projection), `m3-reference.test.ts`
+(real kernel now: convert entities follow and get lost, cylinder-axis revolve, three-point / mid /
+flipped planes), `m3.golden.test.ts` (real kernel with the M3 façade, skipped by a feature check
+until then: pattern of holes, mirrored boss and shell after fillet edit-upstream, sweep and loft).
+
 ## Imports (`src/regen/imports.ts`, `planImport` in the engine)
 
 - **STEP / BREP** → `kernel.importShapes` (one shape per solid). IGES → `UNSUPPORTED_FEATURE`

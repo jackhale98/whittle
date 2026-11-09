@@ -68,6 +68,7 @@ export function polish(
   xIn: Float64Array,
   rows: readonly Row[] = model.rows,
   stats?: PolishStats,
+  maxSteps = MAX_NEWTON,
 ): Float64Array {
   let x = Float64Array.from(xIn);
   const m = rows.length;
@@ -118,7 +119,7 @@ export function polish(
     }
   };
 
-  for (let step = 0; step < MAX_NEWTON; step++) {
+  for (let step = 0; step < maxSteps; step++) {
     // 1. Scaled Jacobian (central differences of our own residuals) and right-hand side.
     let nnz = 0;
     for (let i = 0; i < m; i++) {

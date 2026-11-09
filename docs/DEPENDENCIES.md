@@ -59,6 +59,7 @@ bundled package's licence text plus OCCT's LGPL-2.1 + exception (texts in `licen
 | `ajv` | 8.20.0 | MIT |
 | system `git` (not an npm package; `git http-backend` serves the sync tests' local repositories) | ≥ 2.34 | GPL-2.0-only (run as a separate program, not linked or shipped) |
 | `ts-json-schema-generator` | 2.9.0 | MIT |
+| FreeCAD (not an npm package; `micromamba create -p env -c conda-forge freecad`; optional, run by hand or by CI as a separate program) | 26.3.0 (any release with the `Part` module works) | LGPL-2.0-or-later (run as a separate program, not linked or shipped) | Independent volume check of the reference parts (PLAN 12A): `packages/test-fixtures/reference-parts/freecad/`. Test-only; the Node tests only read its recorded results (`freecad-results.json`). |
 | `@testing-library/react`, `jest-dom`, `user-event` | 16.3.3, 7.0.1, 14.6.8 | MIT |
 | `@types/three`, `@types/react`, `@types/react-dom` | 0.187.0, 19.3.0, 19.3.0 | MIT |
 | `@lhci/cli` (CI only; `npx`, not installed in the workspace) | 0.16.0 | Apache-2.0 |

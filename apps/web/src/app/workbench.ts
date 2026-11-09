@@ -752,6 +752,15 @@ export class Workbench {
     this.cleanup.push(
       this.listen(host, 'pointermove', (e) => this.onPointerMove(e as PointerEvent)),
       this.listen(host, 'pointerdown', (e) => this.onPointerDown(e as PointerEvent), true),
+      // Pencil presses anywhere (tool buttons too) mark the Pencil as in use; never handled here.
+      this.listen(
+        host.ownerDocument,
+        'pointerdown',
+        (e) => {
+          if ((e as PointerEvent).pointerType === 'pen') this.lastPenAt = performance.now();
+        },
+        true,
+      ),
       this.listen(host, 'pointerup', (e) => this.onPointerUp(e as PointerEvent), true),
       this.listen(host, 'pointercancel', (e) => this.onPointerCancel(e as PointerEvent), true),
       this.listen(host, 'pointerleave', () => this.setHover(null)),
@@ -1022,6 +1031,11 @@ export class Workbench {
 
   /** Time of the last pen contact (sketch mode: fingers never draw while the Pencil is in use). */
   lastPenAt = Number.NEGATIVE_INFINITY;
+
+  /** The Apple Pencil was used anywhere in the app in the last 10 minutes. */
+  penRecentlyUsed(): boolean {
+    return performance.now() - this.lastPenAt < 10 * 60_000;
+  }
 
   private onPointerMove(e: PointerEvent): void {
     if (this.pushPull.onPointerMove(e)) return;

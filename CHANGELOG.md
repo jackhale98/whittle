@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Sketch editing (M3 workstream 1, `@whittle/sketch/edit`): offset entities (one driving signed `offset` dimension, joins, caps, solved downstream of planegcs), convert entities (linked, fixed, re-projected in place, lost sources reported), trim/extend, fillet/chamfer with virtual sharps, mirror tied by symmetric constraints; linked geometry named in conflict explanations.
+- Test fixtures: the M3 reference-part suite (PLAN 12A), 10 original parts with specs, drawings, derived masses, CSWP stages, a spec-to-`WhittleDoc` builder, real-kernel goldens (parts using M3 features are skipped until they merge) and independent FreeCAD checks (all 40 cases within 3e-12 of the analytic volume).
+
 ### M0 — Foundations
 
 - Plan, project memory (`CLAUDE.md`), subagent definitions, ADR-001 (stack), ADR-002 (kernel toolchain).
@@ -84,6 +87,10 @@
 - Local git repo mode (ADR-029, desktop Chromium): "Open a local git repo…"; the project folder on disk is the working copy, versions are commits, branches and tags are the repo's, uncommitted changes listed, refresh on focus, read-only banners for merges/rebases/detached HEAD, inline `.gitignore` offer, branch switches refused over uncommitted changes.
 - Compare: "Compare with current" regenerates the version in a `version:<id>` slot and shows the feature diff, mass/size deltas and the viewport overlay with Both/Added/Removed bound to the panel; the slot is released on exit. The compare legend swatches are now the viewport's exact fills (`compare-*-swatch` tokens, parity-tested); removed-text tokens moved to the same vermillion family.
 - E2E `m25.spec.ts` (acceptance a–g) with a fake Dropbox, a real git smart-HTTP server and an OPFS repo; `gitRemoteHeads` in `@whittle/sync`.
+
+### M3 — Advanced part features (modeling workstream)
+
+- Regen engine: inputs for shell, draft, sweep (path edges chained in order), loft, mirror, linear/circular patterns (cached tool solids of the copied features, `skip` and counts validated), hole (frames on the face into the material, sizes from the new ISO/ANSI hole tables in `@whittle/document`, explicit values override) and cosmetic threads; reference geometry (`axis`, `point`, the new plane definitions and `flip`) computed in TypeScript from fingerprints and exact measurement; linked sketch entities re-projected before each solve, a lost source "needs attention" with the entity id; fillet/chamfer `propagate` passes through; pattern instances never rebind to another instance (ADR-pending).
 
 ### M3 — Advanced part features (kernel)
 

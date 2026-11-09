@@ -1184,6 +1184,156 @@ git, raised choices ADR-029 leaves open.
     A stray or bookmarked `?code=` is left as it is (the platform plumbing spec relies on this)
     and doesn't load the sync chunk.
 
+## ADR-033 — Offset dimension: solver rows and sign (sketch editing, M3)
+
+1. **Sign (contracts, lead's convention).** Positive = right of the source's direction (outward
+   of a CCW loop). The value's sign places the *reference pair* (the first pair whose source is a
+   curve) exactly; every other pair keeps its side relative to the reference pair as read from
+   the geometry handed to the solver. One value then drives a chain whose sources run different
+   ways and both sides of a two-sided offset; flipping the sign flips all sides together, so the
+   relative reading is stable from solve to solve. Zero is refused (no side). `offsetEntities`
+   puts a right-hand pair first when there is one and otherwise stores the expression negated
+   (`-5 mm`, `-(wall + 1 mm)`). Reference offsets measure signed.
+2. **Rows.** Lines: both ends at the signed distance; arcs: concentric + radius r ± d; circles the
+   same; join and cap arcs are `point → arc` pairs (centre on the source corner, radius |d|).
+   A free chain end also lies on the source's normal through the matching source end ("square
+   end"), so the offset follows the source's length. Where two targets meet tangentially, "on
+   both" is degenerate (rank-deficient), so the joint keeps one membership plus the square end;
+   lines give theirs up first, an arc at most one (its radius row and arc rule are its two). This
+   keeps DOF exact: an offset adds no DOF and no redundancy (tested on lines, rectangles, slots).
+   planegcs gets matching primitives; its point–line distance is unsigned, so the square end is
+   a signed `l2l_angle_pppp` (±90°).
+3. **Downstream solve.** When nothing but offsets (and the offset arcs' own arc rules) constrains
+   the offset geometry, the sources are solved by planegcs without it and the offset geometry by
+   sparse Gauss–Newton on the offset rows with everything else held. A 202-entity offset chain
+   dragged went from ≈ 130 ms to ≈ 0.6 ms median (planegcs solved the whole chain densely). A user
+   constraint on offset geometry, or dragging it, falls back to one joint solve; a joint solve that
+   fails retries Newton on our signed rows (planegcs can settle on the wrong side).
+4. **Geometry.** Convex corners get an arc around the source corner (`corners: 'sharp'` extends
+   line–line ones); concave corners trim to the nearest carrier intersection. Arcs whose radius
+   would be ≤ 0 and curves the trims turn inside out are left out with a note and their
+   neighbours joined; results that cross themselves are refused; the built geometry must satisfy
+   the solver's rows exactly or the call refuses. A seeded fuzz (400 random chains) checks this.
+
+## ADR-034 — Linked (converted) entities in the solver and editing operations
+
+1. **Fixed.** Entities with `source` are grounded in `buildModel` (all their parameters), like
+   `fix`. Conflict search frees them (new `unlinked` model option) to find the minimal linked set
+   that makes a conflict, lists it in `SketchConflict.fixed` and says "while Line 1 is linked to the
+   model". No fix is offered for them yet (no `unlink` action in `SuggestedFix`).
+2. **Re-projection keys on `ref.name` only.** Missing name → `lost` (entities untouched, still
+   fixed); never matched to another edge. An exact entity keeps its id and, if the edge changed
+   kind, changes kind in place with a note. A line keeps the orientation that moves its ends
+   least. Approximate chains (fitted polylines) keep every entity: vertices move to the same
+   fraction of length along the fresh polyline and arcs re-fit through their ends and middle.
+3. **Arc `start`/`end` in projected curves** accept angles (rad) or points on the circle.
+
+## ADR-035 — Trim, fillet/chamfer and mirror rewiring
+
+1. **Trim** attaches new ends with `coincident` (on another entity's end) or `pointOn`; a middle
+   trim splits, the new piece tied by `pointOn` × 2 (lines) or `equal` with a shared centre
+   (arcs), and tangency moves to the piece that still touches. Dropped and reported: constraints
+   on end points that were trimmed away or moved, a shortened line's `length`, `equal` length,
+   `midpoint` and own h/v extent, and an offset pair whose target was trimmed. A circle becomes an
+   arc with the same id. Nothing to trim to deletes the entity. Linked geometry is refused.
+2. **Fillet/chamfer** keep the old corner as a construction "virtual sharp" (pointOn both curves)
+   when anything refers to it (always for chamfers, whose distances are measured from it): a
+   line's `length` becomes the distance from its far end to the sharp, its h/v extent and
+   `midpoint` are rewritten onto it, so intent survives. Equal length is dropped and reported.
+3. **Mirror** shares points that lie on the mirror line. "Mirror move" (originals removed)
+   carries constraints over: reflection-invariant kinds as is, angles with their lines swapped,
+   h/v distances swapped across a perpendicular axis, h/v constraints only for axis-aligned
+   mirror lines; `fix` and anything mixing moved and unmoved geometry are dropped and reported.
+4. **Entry point.** `@whittle/sketch/edit`, like `./recognize`, so the app's initial route does
+   not load it.
+
+## ADR-036 — M3 regen: copies, reference geometry, linked entities (modeling workstream)
+
+**Context.** ADR-019 fixed the M3 feature types and the FeatureInputs keys. The regen engine
+(packages/kernel-client `src/regen`) has to supply those inputs, keep every copy feature's tool
+solids, resolve reference geometry the façade has no call for, and re-project linked sketch
+entities, without ever guessing a reference.
+
+**Decision.**
+
+1. **Tool-shape cache.** Each solid feature (extrude, revolve, primitive, sweep, loft, hole)
+   registers a `ToolSpec` when it evaluates ok: a key, its op code (`new`/`add` 0, `cut` 1,
+   `intersect` 2) and a thunk that builds the tool (the feature alone, op `new`; a hole without
+   `target`). The tool is built **lazily**, only when a mirror or pattern copies that feature, and
+   stored as its own cache entry. Its key hashes the tool's own inputs (definition without op and
+   scope, values, refs as content keys, frames), not the body it acts on, so editing the pattern
+   or an unrelated part of the body reuses it, and editing the feature or anything it reads
+   rebuilds it. Tool entries use the normal LRU (`maxSpareResults`); a pattern marks them used.
+   Features that were never copied never pay for a tool.
+2. **Copy targets.** Feature copies act on the one body their source features produced or
+   changed (more than one is an error suggesting body copies); a copied feature that failed is
+   `blocked`, one that is suppressed, later, or has no tool (fillet…) is an error, and a deleted
+   one needs attention at `/source/features/i`. Body copies with `merge` keep the first source
+   body's id and consume the others; without `merge` each copy is a new body, `B<featureId>` for
+   one copy and `B<featureId>:<key>` (the kernel's `FeatureResult.bodies[].key`) for several.
+3. **Pattern instances never rebind.** The fingerprint-only step of §7.3 never resolves a ref to
+   `F<p>:inst<k>(N)` onto a sibling `inst<j>`, nor a ref to `N` onto one of its copies
+   (`isOtherCopy`). Lowering a count or skipping an index makes refs to the removed instance
+   "needs attention" even when another instance now sits exactly where it was. Counts must be
+   whole numbers ≥ 1; skips outside `1…total-1` are ignored with a warning.
+4. **Reference geometry in TypeScript.** Axes, points and the new planes are computed by the
+   engine (`datums.ts`) from fingerprints and exact `measureShapes` closest points: straight
+   edges (end points by probing; direction from the smaller geometric key), circles (circumcentre
+   of probe points), cylinder axes (surface normals at probe points), sphere centres. Canonical
+   senses and a 1e-10 snap keep cache keys stable. Axes and points have no kernel shape: they are
+   frames in the walk state, referable as `F…:axis` / `F…:point` (revolve, patterns, holes, planes,
+   sketches); new plane definitions reach the kernel as `{ kind: 'frame' }`, and the kernel never
+   sees `flip` (the engine applies it). A position along a curved edge is `UNSUPPORTED_FEATURE`
+   until the façade can evaluate curves.
+5. **Sweep paths** are chained in the engine and passed in chain order: the feature's `path` is
+   reordered to match, so `refs['/path/i']` stays a JSON pointer into the feature the kernel gets.
+6. **Holes.** `frames['hole:i']`: origin = the point projected onto the face plane (a point more
+   than 1e-6 × diag off it is an error), z = −outward normal, x from `planeFrame`. Table values are
+   written at the feature's own pointers (`/diameter`, `/counterbore/*`, `/countersink/*`,
+   angles rad), so the kernel reads one place whether the value came from the table or the user.
+7. **Linked sketch entities.** Before a sketch solves, each distinct `source.ref` is resolved once
+   (§7.3) and projected onto the sketch plane: the kernel's `projectEdges` / `projectFaceOutline`
+   when present, else in TypeScript for reference geometry, other sketches' curves, straight edges
+   and circles parallel to the sketch (others are `UNSUPPORTED_FEATURE`). The curves go to a
+   `ReprojectLinked` function — packages/sketch's `reprojectLinked` once it lands, wired through
+   `RegenEngineDeps.reprojectLinked`; `reprojectLinkedFallback` until then. Linked entities are
+   grounded with `@linked:<id>` fix constraints (idempotent if the solver grounds them itself).
+   The cache key holds the re-projected geometry, so an upstream edit that doesn't move a source
+   leaves the sketch cached. A source that no longer resolves, or no longer fits its entity, makes
+   the sketch "needs attention": `unresolved[].path = /entities/i/source/ref` and the entity names
+   `S…:e(id)` / `S…:p(id)` in `error.entityRefs`. Nothing is re-picked.
+
+**Proposed for the contracts / kernel engineer.**
+
+- `execFeature(hole, inputs)` **without `target`** returns the drill solids alone (the hole's tool
+  for patterns); copies of `bodies` without `merge` return one `FeatureResult.bodies` entry per
+  copy with a stable `key`.
+- Linear patterns: `frames.axis` is the first direction and `frames.second` the second (geometry
+  only; the kernel applies `reverse`). Draft: `frames.neutral` always carries the neutral plane,
+  with `refs['/neutral']` when it is a face or plane shape (origin planes have none).
+- `UnresolvedRef.entity?: Id` (the linked sketch entity), instead of reading it from the path.
+- `RegenResult.datums?: { featureId, kind: 'axis' | 'point', frame }[]` so the viewport can draw
+  axes and points.
+- `HoleSizeRow.countersink` / `counterbore` optional (see the hole-table ADR); today `NaN` marks a
+  size the standard doesn't cover.
+
+## ADR-037 — Hole and thread tables (M3)
+
+**Decision.** The tables live in packages/document `hole-tables.ts` (`ISO_HOLES`, `ANSI_HOLES`,
+`holeRow`, `resolveHoleSize`), in millimetres (ANSI converted × 25.4). ISO: ISO 273 fine / medium /
+coarse as close / normal / loose for M1.6–M36, ISO 261/262 coarse pitches with DIN 336 / ISO 2306
+tap drills, counterbores for ISO 4762 (Ø from DIN 974-2, depth = head height k = d, flush) and
+countersinks for ISO 10642 at 90° (Ø = theoretical head diameter, flush; M3–M20, no M18). ANSI:
+close-fit / free-fit clearance drills and 75 % UNC tap drills from the standard drill chart, loose
+from ASME B18.2.8, B18.3 counterbores and B18.6.3 82° countersinks.
+
+- A size a standard doesn't cover has `NaN` in that column (`available()`), and the hole then
+  needs an explicit value; the engine never extrapolates a size.
+- Explicit `diameter`, `counterbore.*` and `countersink.*` always override the table.
+- **To check against the printed standards:** the ANSI `loose` column (recalled from ASME
+  B18.2.8; #0, #1, #3 and #12 are ≈ free fit + 1/64 in because the table as recalled has no row for
+  them), and the ISO 4762 counterbore depth convention (flush; some shops add 0.5 mm).
+
 ## ADR-pending — M3 kernel features: inputs, naming and semantics the contracts leave open
 
 **Context.** ADR-019 defines the M3 feature types and `kernel.ts` lists their inputs in one line

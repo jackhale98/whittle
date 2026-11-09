@@ -1,0 +1,451 @@
+{
+  "schema": "whittle-reference-part/1",
+  "id": "rp07-duct-adapter",
+  "no": 7,
+  "title": "Duct adapter",
+  "level": "CSWP-like",
+  "summary": "A PETG adapter: a rectangular flange block, a ruled loft from an inset copy of its top outline to a smaller rectangle higher up, and a round bore straight through.",
+  "units": {
+    "length": "mm",
+    "angle": "deg"
+  },
+  "material": {
+    "libraryId": "whittle:petg",
+    "name": "PETG",
+    "density": "1.27 g/cm^3",
+    "density_g_cm3": 1.27
+  },
+  "dimensions": {
+    "base_l": {
+      "value": 80,
+      "unit": "mm",
+      "description": "Flange block length (X)"
+    },
+    "base_w": {
+      "value": 60,
+      "unit": "mm",
+      "description": "Flange block width (Y)"
+    },
+    "base_t": {
+      "value": 10,
+      "unit": "mm",
+      "description": "Flange block thickness (Z)"
+    },
+    "inset": {
+      "value": 15,
+      "unit": "mm",
+      "description": "Offset of the loft start inside the top outline"
+    },
+    "loft_h": {
+      "value": 40,
+      "unit": "mm",
+      "description": "Loft height above the block"
+    },
+    "top_l": {
+      "value": 30,
+      "unit": "mm",
+      "description": "Length of the loft end rectangle"
+    },
+    "top_w": {
+      "value": 14,
+      "unit": "mm",
+      "description": "Width of the loft end rectangle"
+    },
+    "bore_d": {
+      "value": 8,
+      "unit": "mm",
+      "description": "Through bore diameter"
+    }
+  },
+  "tags": [
+    "extrude",
+    "cut",
+    "plane",
+    "loft",
+    "offset",
+    "convert"
+  ],
+  "standards": [],
+  "method": "Exact. A ruled loft between two parallel rectangles with parallel edges is a prismatoid; the section sides vary linearly, so the area is quadratic in height and Simpson (h/6)(A1 + 4 Am + A2) is exact, with Am the area of the mid-section ((a1+a2)/2 x (b1+b2)/2). The bore lies wholly inside the solid (bore_d is at most top_w), so it removes pi r^2 x total height. Accuracy: floating point (1e-12 relative).",
+  "features": [
+    {
+      "tool": "sketch",
+      "id": "base_sk",
+      "say": "Sketch on Top (XY): a rectangle base_l x base_w centred on the origin.",
+      "on": {
+        "pick": "plane",
+        "name": "origin:XY"
+      },
+      "ops": [
+        {
+          "op": "rect",
+          "id": "L",
+          "x": "-base_l/2",
+          "y": "-base_w/2",
+          "w": "base_l",
+          "h": "base_w"
+        }
+      ]
+    },
+    {
+      "tool": "extrude",
+      "id": "base",
+      "say": "Extrude by base_t as a new body.",
+      "profile": [
+        {
+          "pick": "region",
+          "sketch": "base_sk",
+          "curves": [
+            "L1",
+            "L2",
+            "L3",
+            "L4"
+          ],
+          "at": [
+            30,
+            20,
+            0
+          ]
+        }
+      ],
+      "direction": "normal",
+      "end": {
+        "kind": "blind",
+        "depth": "base_t"
+      },
+      "op": "new"
+    },
+    {
+      "tool": "sketch",
+      "id": "sec_sk",
+      "say": "Sketch on the top face. Convert Entities on the four top edges, then Offset Entities on that loop inwards by inset (the offset dimension is -inset: positive is outward for a counter-clockwise loop).",
+      "on": {
+        "pick": "face",
+        "name": "F{base}:end",
+        "at": [
+          30,
+          20,
+          10
+        ]
+      },
+      "ops": [
+        {
+          "op": "convert",
+          "id": "T1",
+          "source": {
+            "pick": "edge",
+            "name": "edge(F{base}:end|F{base}:side(S{base_sk}:e(L1)))",
+            "at": [
+              0,
+              -30,
+              10
+            ]
+          },
+          "a": [
+            -40,
+            -30
+          ],
+          "b": [
+            40,
+            -30
+          ]
+        },
+        {
+          "op": "convert",
+          "id": "T2",
+          "source": {
+            "pick": "edge",
+            "name": "edge(F{base}:end|F{base}:side(S{base_sk}:e(L2)))",
+            "at": [
+              40,
+              0,
+              10
+            ]
+          },
+          "a": [
+            40,
+            -30
+          ],
+          "b": [
+            40,
+            30
+          ]
+        },
+        {
+          "op": "convert",
+          "id": "T3",
+          "source": {
+            "pick": "edge",
+            "name": "edge(F{base}:end|F{base}:side(S{base_sk}:e(L3)))",
+            "at": [
+              0,
+              30,
+              10
+            ]
+          },
+          "a": [
+            40,
+            30
+          ],
+          "b": [
+            -40,
+            30
+          ]
+        },
+        {
+          "op": "convert",
+          "id": "T4",
+          "source": {
+            "pick": "edge",
+            "name": "edge(F{base}:end|F{base}:side(S{base_sk}:e(L4)))",
+            "at": [
+              -40,
+              0,
+              10
+            ]
+          },
+          "a": [
+            -40,
+            30
+          ],
+          "b": [
+            -40,
+            -30
+          ]
+        },
+        {
+          "op": "offsetRect",
+          "id": "O",
+          "sources": [
+            "T1",
+            "T2",
+            "T3",
+            "T4"
+          ],
+          "distance": "-inset",
+          "bounds": [
+            -40,
+            -30,
+            40,
+            30
+          ]
+        }
+      ]
+    },
+    {
+      "tool": "plane",
+      "id": "top_pl",
+      "say": "Reference plane: offset base_t + loft_h above the Top plane.",
+      "definition": {
+        "kind": "offset",
+        "from": {
+          "pick": "plane",
+          "name": "origin:XY"
+        },
+        "distance": "base_t + loft_h"
+      }
+    },
+    {
+      "tool": "sketch",
+      "id": "top_sk",
+      "say": "Sketch on the new plane: a rectangle top_l x top_w centred on the origin.",
+      "on": {
+        "pick": "plane",
+        "name": "F{top_pl}:plane",
+        "at": [
+          0,
+          0,
+          50
+        ]
+      },
+      "ops": [
+        {
+          "op": "rect",
+          "id": "L",
+          "x": "-top_l/2",
+          "y": "-top_w/2",
+          "w": "top_l",
+          "h": "top_w"
+        }
+      ]
+    },
+    {
+      "tool": "loft",
+      "id": "lo",
+      "say": "Loft (ruled, open) from the offset rectangle to the top rectangle, adding to the block.",
+      "sections": [
+        {
+          "pick": "region",
+          "sketch": "sec_sk",
+          "curves": [
+            "O1",
+            "O2",
+            "O3",
+            "O4"
+          ],
+          "at": [
+            0,
+            0,
+            10
+          ]
+        },
+        {
+          "pick": "region",
+          "sketch": "top_sk",
+          "curves": [
+            "L1",
+            "L2",
+            "L3",
+            "L4"
+          ],
+          "at": [
+            0,
+            0,
+            50
+          ]
+        }
+      ],
+      "ruled": true,
+      "closed": false,
+      "op": "add"
+    },
+    {
+      "tool": "sketch",
+      "id": "bore_sk",
+      "say": "Sketch on the top plane again: a circle of bore_d at the origin.",
+      "on": {
+        "pick": "plane",
+        "name": "F{top_pl}:plane",
+        "at": [
+          0,
+          0,
+          50
+        ]
+      },
+      "ops": [
+        {
+          "op": "circle",
+          "id": "C",
+          "cx": "0",
+          "cy": "0",
+          "d": "bore_d"
+        }
+      ]
+    },
+    {
+      "tool": "extrude",
+      "id": "bore",
+      "say": "Cut-extrude the circle downwards through all.",
+      "profile": [
+        {
+          "pick": "region",
+          "sketch": "bore_sk",
+          "curves": [
+            "C"
+          ],
+          "at": [
+            0,
+            0,
+            50
+          ]
+        }
+      ],
+      "direction": "reverse",
+      "end": {
+        "kind": "throughAll"
+      },
+      "op": "cut"
+    }
+  ],
+  "expected": {
+    "volume_mm3": 81753.3925438,
+    "mass_g": 103.826808531,
+    "bbox": {
+      "min": [
+        -40,
+        -30,
+        0
+      ],
+      "max": [
+        40,
+        30,
+        50
+      ]
+    }
+  },
+  "stages": [
+    {
+      "name": "Stage 2: inset -> 20 mm",
+      "set": {
+        "inset": 20
+      },
+      "expected": {
+        "volume_mm3": 69486.7258771,
+        "mass_g": 88.248141864,
+        "bbox": {
+          "min": [
+            -40,
+            -30,
+            0
+          ],
+          "max": [
+            40,
+            30,
+            50
+          ]
+        }
+      }
+    },
+    {
+      "name": "Stage 3: loft_h -> 55 mm",
+      "set": {
+        "loft_h": 55
+      },
+      "expected": {
+        "volume_mm3": 94599.4103069,
+        "mass_g": 120.14125109,
+        "bbox": {
+          "min": [
+            -40,
+            -30,
+            0
+          ],
+          "max": [
+            40,
+            30,
+            65
+          ]
+        }
+      }
+    },
+    {
+      "name": "Stage 4: top_l -> 24 mm and top_w -> 12 mm",
+      "set": {
+        "top_l": 24,
+        "top_w": 12
+      },
+      "expected": {
+        "volume_mm3": 78126.7258771,
+        "mass_g": 99.220941864,
+        "bbox": {
+          "min": [
+            -40,
+            -30,
+            0
+          ],
+          "max": [
+            40,
+            30,
+            50
+          ]
+        }
+      }
+    }
+  ],
+  "drawing": "rp07-duct-adapter.svg",
+  "independent": {
+    "tool": "FreeCAD",
+    "script": "freecad/rp07.py",
+    "results": "freecad-results.json"
+  }
+}

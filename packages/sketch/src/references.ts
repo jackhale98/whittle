@@ -69,12 +69,16 @@ export function referenceEntities(): SketchEntity[] {
   ];
 }
 
-/** Every entity id a constraint refers to (all string fields except its own id and kind). */
+/**
+ * Every entity id a constraint refers to: all string fields except its own id and kind, plus the
+ * elements of id lists (an offset's `sources` and `targets`).
+ */
 export function constraintRefs(c: SketchConstraint): Id[] {
   const out: Id[] = [];
   for (const [k, v] of Object.entries(c)) {
     if (k === 'id' || k === 'kind' || k === 'value' || k === 'driving' || k === 'label') continue;
     if (typeof v === 'string') out.push(v);
+    else if (Array.isArray(v)) for (const id of v) if (typeof id === 'string') out.push(id);
   }
   return out;
 }

@@ -117,8 +117,10 @@ export type DimensionConstraint = ConstraintBase & {
     | { kind: 'angle'; a: Id; b: Id } // between two lines, measured CCW from a to b
     /**
      * M3 Offset Entities: `targets[i]` stays offset from `sources[i]` by `value` (lines parallel at
-     * that distance, arcs/circles concentric with radius ± value; positive = left of the source
-     * direction, i.e. outward for a CCW loop). Corners of a target chain stay joined by the
+     * that distance, arcs/circles concentric with radius ± value; positive = to the right of the
+     * source's direction, i.e. outward for a CCW loop, inward for a CW one; read on the first
+     * source/target pair, the other pairs keep their side relative to it). Corners of a target
+     * chain stay joined by the
      * chain's own coincident constraints. One dimension drives the whole offset.
      */
     | { kind: 'offset'; sources: Id[]; targets: Id[] }

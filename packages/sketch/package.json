@@ -9,7 +9,8 @@
     ".": "./src/index.ts",
     "./worker": "./src/worker.ts",
     "./core": "./src/core.ts",
-    "./recognize": "./src/recognize.ts"
+    "./recognize": "./src/recognize.ts",
+    "./edit": "./src/edit/index.ts"
   },
   "scripts": {
     "test": "vitest run",

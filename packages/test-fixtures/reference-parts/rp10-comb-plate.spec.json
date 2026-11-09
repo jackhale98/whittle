@@ -1,0 +1,402 @@
+{
+  "schema": "whittle-reference-part/1",
+  "id": "rp10-comb-plate",
+  "no": 10,
+  "title": "Comb plate",
+  "level": "CSWP-like",
+  "summary": "An acetal plate with a row of through slots (one instance of the linear pattern skipped) and a drilled mounting ear on each end; the second ear is a mirror of the first.",
+  "units": {
+    "length": "mm",
+    "angle": "deg"
+  },
+  "material": {
+    "libraryId": "whittle:acetal-pom",
+    "name": "Acetal (POM)",
+    "density": "1.41 g/cm^3",
+    "density_g_cm3": 1.41
+  },
+  "dimensions": {
+    "plate_l": {
+      "value": 120,
+      "unit": "mm",
+      "description": "Plate length (X)"
+    },
+    "plate_w": {
+      "value": 40,
+      "unit": "mm",
+      "description": "Plate width (Y)"
+    },
+    "plate_t": {
+      "value": 8,
+      "unit": "mm",
+      "description": "Thickness of plate and ears (Z)"
+    },
+    "slot_l": {
+      "value": 6,
+      "unit": "mm",
+      "description": "Slot size along X"
+    },
+    "slot_w": {
+      "value": 24,
+      "unit": "mm",
+      "description": "Slot size along Y"
+    },
+    "slot_x0": {
+      "value": -45,
+      "unit": "mm",
+      "description": "X of the first slot centre"
+    },
+    "slot_pitch": {
+      "value": 18,
+      "unit": "mm",
+      "description": "Slot pattern spacing"
+    },
+    "slot_n": {
+      "value": 6,
+      "unit": "",
+      "description": "Slot pattern count (including the original and the skipped one)"
+    },
+    "ear_l": {
+      "value": 20,
+      "unit": "mm",
+      "description": "Ear length beyond the plate end"
+    },
+    "ear_w": {
+      "value": 24,
+      "unit": "mm",
+      "description": "Ear width (Y)"
+    },
+    "ear_hole_d": {
+      "value": 8,
+      "unit": "mm",
+      "description": "Ear hole diameter"
+    }
+  },
+  "tags": [
+    "extrude",
+    "cut",
+    "linearPattern",
+    "skip",
+    "mirror"
+  ],
+  "standards": [],
+  "method": "Exact. Plate, ears and slots are boxes and the ear holes are cylinders. The slot pattern has slot_n instances; instance 3 is skipped, so slot_n - 1 slots are cut. The mirror copies the ear and its hole, so there are two of each. Accuracy: floating point (1e-12 relative). The surface area is the top and bottom faces plus the side walls (outer outline with the ears attached, slot walls, ear hole walls).",
+  "features": [
+    {
+      "tool": "sketch",
+      "id": "base_sk",
+      "say": "Sketch on Top (XY): a rectangle plate_l x plate_w centred on the origin.",
+      "on": {
+        "pick": "plane",
+        "name": "origin:XY"
+      },
+      "ops": [
+        {
+          "op": "rect",
+          "id": "L",
+          "x": "-plate_l/2",
+          "y": "-plate_w/2",
+          "w": "plate_l",
+          "h": "plate_w"
+        }
+      ]
+    },
+    {
+      "tool": "extrude",
+      "id": "base",
+      "say": "Extrude by plate_t as a new body.",
+      "profile": [
+        {
+          "pick": "region",
+          "sketch": "base_sk",
+          "curves": [
+            "L1",
+            "L2",
+            "L3",
+            "L4"
+          ],
+          "at": [
+            50,
+            10,
+            0
+          ]
+        }
+      ],
+      "direction": "normal",
+      "end": {
+        "kind": "blind",
+        "depth": "plate_t"
+      },
+      "op": "new"
+    },
+    {
+      "tool": "sketch",
+      "id": "slot_sk",
+      "say": "Sketch on Top: one slot, slot_l x slot_w, centred on y = 0 with its centre at slot_x0.",
+      "on": {
+        "pick": "plane",
+        "name": "origin:XY"
+      },
+      "ops": [
+        {
+          "op": "rect",
+          "id": "S",
+          "x": "slot_x0 - slot_l/2",
+          "y": "-slot_w/2",
+          "w": "slot_l",
+          "h": "slot_w"
+        }
+      ]
+    },
+    {
+      "tool": "extrude",
+      "id": "slot",
+      "say": "Cut-extrude the slot through all (both ways from the sketch plane).",
+      "profile": [
+        {
+          "pick": "region",
+          "sketch": "slot_sk",
+          "curves": [
+            "S1",
+            "S2",
+            "S3",
+            "S4"
+          ],
+          "at": [
+            -45,
+            0,
+            0
+          ]
+        }
+      ],
+      "direction": "symmetric",
+      "end": {
+        "kind": "throughAll"
+      },
+      "op": "cut"
+    },
+    {
+      "tool": "linearPattern",
+      "id": "slots",
+      "say": "Linear pattern of the slot along X: slot_n instances, spacing slot_pitch, skip instance 3.",
+      "source": {
+        "kind": "features",
+        "features": [
+          "slot"
+        ]
+      },
+      "direction": {
+        "pick": "axis",
+        "name": "origin:X"
+      },
+      "reverse": false,
+      "count": "slot_n",
+      "spacing": "slot_pitch",
+      "skip": [
+        3
+      ]
+    },
+    {
+      "tool": "sketch",
+      "id": "ear_sk",
+      "say": "Sketch on Top: the +X ear, a rectangle ear_l x ear_w against the plate end.",
+      "on": {
+        "pick": "plane",
+        "name": "origin:XY"
+      },
+      "ops": [
+        {
+          "op": "rect",
+          "id": "E",
+          "x": "plate_l/2",
+          "y": "-ear_w/2",
+          "w": "ear_l",
+          "h": "ear_w"
+        }
+      ]
+    },
+    {
+      "tool": "extrude",
+      "id": "ear",
+      "say": "Extrude the ear by plate_t, adding to the plate.",
+      "profile": [
+        {
+          "pick": "region",
+          "sketch": "ear_sk",
+          "curves": [
+            "E1",
+            "E2",
+            "E3",
+            "E4"
+          ],
+          "at": [
+            70,
+            0,
+            0
+          ]
+        }
+      ],
+      "direction": "normal",
+      "end": {
+        "kind": "blind",
+        "depth": "plate_t"
+      },
+      "op": "add"
+    },
+    {
+      "tool": "sketch",
+      "id": "eh_sk",
+      "say": "Sketch on Top: a circle of ear_hole_d at the centre of the ear.",
+      "on": {
+        "pick": "plane",
+        "name": "origin:XY"
+      },
+      "ops": [
+        {
+          "op": "circle",
+          "id": "C",
+          "cx": "plate_l/2 + ear_l/2",
+          "cy": "0",
+          "d": "ear_hole_d"
+        }
+      ]
+    },
+    {
+      "tool": "extrude",
+      "id": "eh",
+      "say": "Cut-extrude the circle through all (both ways).",
+      "profile": [
+        {
+          "pick": "region",
+          "sketch": "eh_sk",
+          "curves": [
+            "C"
+          ],
+          "at": [
+            70,
+            0,
+            0
+          ]
+        }
+      ],
+      "direction": "symmetric",
+      "end": {
+        "kind": "throughAll"
+      },
+      "op": "cut"
+    },
+    {
+      "tool": "mirror",
+      "id": "mir",
+      "say": "Mirror the ear and its hole about the Right plane (YZ).",
+      "source": {
+        "kind": "features",
+        "features": [
+          "ear",
+          "eh"
+        ]
+      },
+      "plane": {
+        "pick": "plane",
+        "name": "origin:YZ"
+      }
+    }
+  ],
+  "expected": {
+    "volume_mm3": 39515.7522807,
+    "mass_g": 55.7172107158,
+    "bbox": {
+      "min": [
+        -80,
+        -20,
+        0
+      ],
+      "max": [
+        80,
+        20,
+        8
+      ]
+    },
+    "area_mm2": 15881.0619298
+  },
+  "stages": [
+    {
+      "name": "Stage 2: slot_n -> 7 and slot_pitch -> 15 mm",
+      "set": {
+        "slot_n": 7,
+        "slot_pitch": 15
+      },
+      "expected": {
+        "volume_mm3": 38363.7522807,
+        "mass_g": 54.0928907158,
+        "bbox": {
+          "min": [
+            -80,
+            -20,
+            0
+          ],
+          "max": [
+            80,
+            20,
+            8
+          ]
+        },
+        "area_mm2": 16073.0619298
+      }
+    },
+    {
+      "name": "Stage 3: ear_l -> 26 mm and ear_hole_d -> 10 mm",
+      "set": {
+        "ear_l": 26,
+        "ear_hole_d": 10
+      },
+      "expected": {
+        "volume_mm3": 41367.3629386,
+        "mass_g": 58.3279817434,
+        "bbox": {
+          "min": [
+            -86,
+            -20,
+            0
+          ],
+          "max": [
+            86,
+            20,
+            8
+          ]
+        },
+        "area_mm2": 16636.4955592
+      }
+    },
+    {
+      "name": "Stage 4: plate_t -> 10 mm and slot_w -> 20 mm",
+      "set": {
+        "plate_t": 10,
+        "slot_w": 20
+      },
+      "expected": {
+        "volume_mm3": 50594.6903509,
+        "mass_g": 71.3385133947,
+        "bbox": {
+          "min": [
+            -80,
+            -20,
+            0
+          ],
+          "max": [
+            80,
+            20,
+            10
+          ]
+        },
+        "area_mm2": 17221.5928947
+      }
+    }
+  ],
+  "drawing": "rp10-comb-plate.svg",
+  "independent": {
+    "tool": "FreeCAD",
+    "script": "freecad/rp10.py",
+    "results": "freecad-results.json"
+  }
+}

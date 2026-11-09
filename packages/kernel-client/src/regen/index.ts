@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+export { chainOrder } from './chain';
 export {
   type CompareOutput,
   DIFF_NOISE,
@@ -11,6 +12,16 @@ export {
   type DiffSide,
   geometricDiff,
 } from './compare';
+export {
+  canonicalDir,
+  edgeCircle,
+  edgeLine,
+  faceAxis,
+  type GeoQuery,
+  type Line,
+  lineFrame,
+  planeThroughPoints,
+} from './datums';
 export {
   type ExportResult,
   type ImportResult,
@@ -35,8 +46,18 @@ export {
   translateName,
 } from './imports';
 export {
+  type LinkedCurve,
+  type LinkedSource,
+  type ProjectedCurve,
+  type ProjectionApi,
+  type ReprojectLinked,
+  type ReprojectResult,
+  reprojectLinkedFallback,
+} from './linked';
+export {
   baseName,
   type Candidate,
+  isOtherCopy,
   type Resolution,
   type ResolveContext,
   type ResolvedTarget,

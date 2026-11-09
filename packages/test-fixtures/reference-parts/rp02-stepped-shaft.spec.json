@@ -1,0 +1,287 @@
+{
+  "schema": "whittle-reference-part/1",
+  "id": "rp02-stepped-shaft",
+  "no": 2,
+  "title": "Stepped shaft",
+  "level": "CSWA-like",
+  "summary": "A three-diameter steel shaft turned from one profile, with a shoulder fillet and an end chamfer.",
+  "units": {
+    "length": "mm",
+    "angle": "deg"
+  },
+  "material": {
+    "libraryId": "whittle:structural-steel",
+    "name": "Structural steel (S235/A36)",
+    "density": "7.85 g/cm^3",
+    "density_g_cm3": 7.85
+  },
+  "dimensions": {
+    "d1": {
+      "value": 40,
+      "unit": "mm",
+      "description": "Diameter of the large (flange) section"
+    },
+    "l1": {
+      "value": 15,
+      "unit": "mm",
+      "description": "Length of the large section"
+    },
+    "d2": {
+      "value": 30,
+      "unit": "mm",
+      "description": "Diameter of the middle section"
+    },
+    "l2": {
+      "value": 40,
+      "unit": "mm",
+      "description": "Length of the middle section"
+    },
+    "d3": {
+      "value": 20,
+      "unit": "mm",
+      "description": "Diameter of the end section"
+    },
+    "l3": {
+      "value": 30,
+      "unit": "mm",
+      "description": "Length of the end section"
+    },
+    "fillet_r": {
+      "value": 3,
+      "unit": "mm",
+      "description": "Fillet radius in the corner between d1 shoulder and d2"
+    },
+    "chamfer_c": {
+      "value": 2,
+      "unit": "mm",
+      "description": "Equal-distance chamfer on the outer edge of the end face"
+    }
+  },
+  "tags": [
+    "revolve",
+    "fillet",
+    "chamfer",
+    "propagate"
+  ],
+  "standards": [],
+  "method": "Exact. The blank is three cylinders. The fillet and the chamfer are corner pieces of a revolved profile, so Pappus gives their volumes: area of the cross-section times 2 pi times the radius of its centroid. The fillet gap area is (1 - pi/4) r^2 with its centroid 0.2234 r from both walls; the chamfer triangle has area c^2/2 and centroid c/3 from both legs. The surface area uses Pappus on each profile segment. Accuracy: floating point (1e-12 relative).",
+  "features": [
+    {
+      "tool": "sketch",
+      "id": "prof_sk",
+      "say": "Sketch on Front (the XZ plane): the half profile of the shaft, from the axis out and back, closed along the axis.",
+      "on": {
+        "pick": "plane",
+        "name": "origin:XZ"
+      },
+      "ops": [
+        {
+          "op": "polygon",
+          "id": "L",
+          "pts": [
+            [
+              "0",
+              "0"
+            ],
+            [
+              "d1/2",
+              "0"
+            ],
+            [
+              "d1/2",
+              "l1"
+            ],
+            [
+              "d2/2",
+              "l1"
+            ],
+            [
+              "d2/2",
+              "l1+l2"
+            ],
+            [
+              "d3/2",
+              "l1+l2"
+            ],
+            [
+              "d3/2",
+              "l1+l2+l3"
+            ],
+            [
+              "0",
+              "l1+l2+l3"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "tool": "revolve",
+      "id": "shaft",
+      "say": "Revolve the profile 360 degrees about the Z axis.",
+      "profile": [
+        {
+          "pick": "region",
+          "sketch": "prof_sk",
+          "curves": [
+            "L1",
+            "L2",
+            "L3",
+            "L4",
+            "L5",
+            "L6",
+            "L7",
+            "L8"
+          ],
+          "at": [
+            5,
+            0,
+            5
+          ]
+        }
+      ],
+      "axis": {
+        "pick": "axis",
+        "name": "origin:Z"
+      },
+      "angle": "360 deg",
+      "direction": "normal",
+      "op": "new"
+    },
+    {
+      "tool": "fillet",
+      "id": "fil",
+      "say": "Fillet the circular corner where the d1 shoulder meets the d2 cylinder, radius fillet_r.",
+      "edges": [
+        {
+          "pick": "edge",
+          "name": "edge(F{shaft}:side(S{prof_sk}:e(L3))|F{shaft}:side(S{prof_sk}:e(L4)))",
+          "at": [
+            15,
+            0,
+            15
+          ]
+        }
+      ],
+      "radius": "fillet_r",
+      "propagate": true
+    },
+    {
+      "tool": "chamfer",
+      "id": "cham",
+      "say": "Chamfer the outer edge of the end face by chamfer_c.",
+      "edges": [
+        {
+          "pick": "edge",
+          "name": "edge(F{shaft}:side(S{prof_sk}:e(L6))|F{shaft}:side(S{prof_sk}:e(L7)))",
+          "at": [
+            10,
+            0,
+            85
+          ]
+        }
+      ],
+      "mode": {
+        "kind": "distance",
+        "distance": "chamfer_c"
+      },
+      "propagate": true
+    }
+  ],
+  "expected": {
+    "volume_mm3": 56621.5453683,
+    "mass_g": 444.479131141,
+    "bbox": {
+      "min": [
+        -20,
+        -20,
+        0
+      ],
+      "max": [
+        20,
+        20,
+        85
+      ]
+    },
+    "area_mm2": 9856.92819395
+  },
+  "stages": [
+    {
+      "name": "Stage 2: d2 -> 32 mm",
+      "set": {
+        "d2": 32
+      },
+      "expected": {
+        "volume_mm3": 60529.2557067,
+        "mass_g": 475.154657297,
+        "bbox": {
+          "min": [
+            -20,
+            -20,
+            0
+          ],
+          "max": [
+            20,
+            20,
+            85
+          ]
+        },
+        "area_mm2": 10100.1653076
+      }
+    },
+    {
+      "name": "Stage 3: l2 -> 55 mm and fillet_r -> 4 mm",
+      "set": {
+        "l2": 55,
+        "fillet_r": 4
+      },
+      "expected": {
+        "volume_mm3": 67377.1446659,
+        "mass_g": 528.910585627,
+        "bbox": {
+          "min": [
+            -20,
+            -20,
+            0
+          ],
+          "max": [
+            20,
+            20,
+            100
+          ]
+        },
+        "area_mm2": 11233.30718
+      }
+    },
+    {
+      "name": "Stage 4: d3 -> 24 mm and chamfer_c -> 3 mm",
+      "set": {
+        "d3": 24,
+        "chamfer_c": 3
+      },
+      "expected": {
+        "volume_mm3": 60574.716124,
+        "mass_g": 475.511521574,
+        "bbox": {
+          "min": [
+            -20,
+            -20,
+            0
+          ],
+          "max": [
+            20,
+            20,
+            85
+          ]
+        },
+        "area_mm2": 10168.5231852
+      }
+    }
+  ],
+  "drawing": "rp02-stepped-shaft.svg",
+  "independent": {
+    "tool": "FreeCAD",
+    "script": "freecad/rp02.py",
+    "results": "freecad-results.json"
+  }
+}
