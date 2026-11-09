@@ -12,6 +12,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { MessageChannel, type MessagePort } from 'node:worker_threads';
 import type {
   FeatureResult,
+  Frame,
   KernelApi,
   KernelStatus,
   KernelVariant,
@@ -264,6 +265,29 @@ describe.skipIf(!built)(`kernel worker low-level M1 API (Node, direct)${skipNote
       expect(api.liveHandleCount()).toBe(0);
     }, 60_000);
   }
+
+  it('M3: projectEdges / projectFaceOutline and IGES go through the worker API', async () => {
+    const api = createKernelApi({ variants });
+    unwrap(await api.init({ variant: 'single' }));
+    const box = unwrap(await api.execFeature(feature, inputs));
+    const plane: Frame = { origin: [0, 0, 0], z: [0, 0, 1], x: [1, 0, 0] };
+    const edges = unwrap(await api.projectEdges(box.shape, [...Array(12).keys()], plane));
+    expect(edges).toHaveLength(12);
+    // The four vertical edges project to points (no curves); the other eight are lines.
+    expect(edges.filter((e) => e.curves.length === 0)).toHaveLength(4);
+    expect(edges.flatMap((e) => e.curves).every((c) => c.kind === 'line')).toBe(true);
+    const fp = unwrap(await api.fingerprints(box.shape));
+    const top = fp.faces.findIndex((f) => Math.abs(f.centroid[2] - 30) < 1e-9);
+    const outline = unwrap(await api.projectFaceOutline(box.shape, top, plane));
+    expect(outline).toHaveLength(4);
+    expect(outline.every((e) => e.loop === 0 && e.curves[0]?.kind === 'line')).toBe(true);
+    const bad = await api.projectEdges(box.shape, [99], plane);
+    expect(bad.ok ? null : bad.error.code).toBe('UNRESOLVED_REFERENCE');
+    const iges = await api.importShapes(new TextEncoder().encode('not iges'), 'iges');
+    expect(iges.ok ? null : iges.error.code).toBe('INVALID_INPUT');
+    await api.release(box.shape);
+    expect(api.liveHandleCount()).toBe(0);
+  }, 60_000);
 
   it('rejects a bad thread count for the threaded kernel', async () => {
     const api = createKernelApi({ variants });

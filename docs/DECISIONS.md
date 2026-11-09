@@ -1377,3 +1377,105 @@ on any branch that predates the rename before that branch is merged.
   renames the repository on GitHub. After the rename, sign-in redirect URIs must change to
   `https://jackhale98.github.io/wren-cad/` (docs/SYNC_SETUP.md), and installed home-screen copies
   need reinstalling from the new address.
+
+## ADR-039 — M3 kernel features: inputs, naming and semantics the contracts leave open
+
+**Context.** ADR-019 defines the M3 feature types and `kernel.ts` lists their inputs in one line
+each. Implementing them in the façade (packages/kernel, M3 kernel workstream) needed decisions the
+contracts don't spell out. The regen engine (kernel-client) depends on these.
+
+**Decision.**
+
+1. **Pointers everywhere.** Every reference of an M3 feature arrives at its JSON pointer: as a
+   sub-shape in `inputs.refs[P]`, or as a frame in `inputs.frames[P]` (origin planes, axes and
+   points, and reference features). The `kernel.ts` role keys (`plane`, `axis`, `upTo`, …) are
+   accepted as fallbacks. A frame reads as a plane, an axis or a point according to the
+   definition; for `point.intersection`, according to the EntityRef `kind` in the feature.
+2. **Hole values** use the feature's own pointers even when the field is absent from the feature
+   (the engine fills them from the tables): `/diameter` (clearance or tap drill), `/end/depth`,
+   `/tipAngle`, `/counterbore/diameter|depth`, `/countersink/diameter|angle`. Blind depth runs from
+   the face to the end of the full-diameter wall; the drill point is extra. The tool starts
+   `max(1, 2r)` above the face so the cut leaves no coincident skin.
+3. **Tool solids for copies** are what a feature returns with `op: "new"`. `HoleFeature` has no
+   `op`: a hole without `inputs.target` (as ADR-036 proposes), or with an extra `"op": "new"`,
+   returns its drill solids; through-all tools are sized by the target when there is one, else
+   10 m deep. `kernel.ts` should say it (proposal 2 below).
+4. **Copies of intersect features are refused** (`UNSUPPORTED_FEATURE`): the original's
+   intersect already confines the body to its tool, so intersecting with moved copies empties it.
+5. **Instance order and spacing.** Linear `k = row · count + column` (the first direction runs
+   along a row). Circular with `equalSpacing`: 360° → `angle / count`; a partial span →
+   `angle / (count − 1)` (ends included); without it, `angle` is the step. Body copies without
+   merge list every copy in `bodies` (keys `inst<k>:<i>` / `mirror:<i>`; the first is also
+   `shape`), as ADR-036's `runCopy` expects. Linear patterns also read `frames.axis` /
+   `frames.second` and drafts `frames.neutral` (ADR-036's keys); `reverse` is applied by the
+   kernel.
+6. **One boolean per copied feature**, all instances as tools of one `BRepAlgoAPI` call (General
+   Fuse intersects them together, so hundreds of instances stay a single operation), with the
+   inverted-solid check off and parallel mode in the threaded build. A balanced pairwise fuse was
+   not needed: the 10 × 10 hole pattern is within budget as one call.
+7. **Shell rims are one face per open face**, named `F…:rim(<open face>)`, not
+   `F…:rim(<open face>|<edge>)` as naming.ts says: OCCT's thick solid builds the rim as the
+   closing face's image (one annular face lying in the open face's plane), so there is no face per
+   edge to name. Proposal 1 below.
+8. **Shell joins are sharp** (`GeomAbs_Intersection`, like other CAD); when OCCT cannot intersect
+   the offset faces it retries with arc joins and warns. No silent rounding.
+9. **Draft direction** is the neutral plane's normal (a face's outward normal); the body narrows
+   along it; `reverse` flips it.
+10. **Loft guides are ignored with a warning** (ThruSections has no guide input) and sections with
+    holes are `UNSUPPORTED_FEATURE`.
+11. **Import feature** placement moves the raw shapes (shared geometry) instead of the M1 BREP
+    location rewrite; inputs are `shapes["source…"]` (raw `importFile` handles). Multi-solid new
+    imports return `bodies` keyed `body#<k>` in geometric-key order.
+12. **Reference geometry returns shapes**: `axis` an edge `F…:axis`, `point` a vertex `F…:point`,
+    `plane` a face `F…:plane`, each with `frame`, so the viewport can draw them and the engine can
+    keep resolving them like M1 datum planes. `thread` returns the body unchanged with the cylinder
+    `frame` and `radius`.
+13. **The perf golden gates min(wall, CPU) per run.** Wall time inflates on oversubscribed
+    machines (load > 10 on 4 cores during this work); process CPU time inflates while V8 compiles
+    the 21 MB module to optimised code on background threads (single-threaded runs showed CPU above
+    wall) and, in the threaded build, when the boolean runs in parallel. Each run's cost is the
+    smaller of the two, the gate is the best of five runs after three warm-ups, and both numbers
+    are logged.
+14. **IGES stays in the main kernel.** Measured with a `WREN_NO_IGES=1` production link, the
+    reader costs +265 KiB brotli (5.7 % of 4.53 MiB). A lazily loaded side module (Emscripten
+    dynamic linking alongside embind and native exceptions) isn't worth that; a separate exchange
+    kernel loaded on first import is the plan if data exchange grows.
+15. **Naming keys are computed on demand.** `finalizeNamed` / `deriveEdgeAndVertexNames` used to
+    compute a centroid (surface or curve integral) for every face, edge and vertex; only names
+    shared by several sub-shapes need one, so keys are now computed lazily for those groups. Same
+    keys, same names; it saves ~40 ms on a plate with 100 holes. Holes build one revolved tool
+    per distinct depth and move it to every point.
+
+**Contract proposals** (lead-owned; not applied):
+
+1. naming.ts M3: `F…:rim(<openFaceName>)` (one rim face per open face) instead of
+   `F…:rim(<openFaceName>|<edge>)`.
+2. kernel.ts `FeatureInputs` M3 doc: hole values at `/diameter`, `/end/depth`, `/tipAngle`,
+   `/counterbore/*`, `/countersink/*`; tool solids for copies via `op: "new"` (hole: extra
+   `"op": "new"`); frames keyed by pointer (`frames["/plane"]`, `frames["/direction"]`,
+   `frames["/definition/a"]`, …); `import`: `shapes["source…"]`; body-copy keys `inst<k>:<i>`.
+3. kernel.ts or modeling.ts: an import format type with `'iges'` (`ExportFormat` has no IGES;
+   kernel-client uses `ShapeImportFormat = ExportFormat | 'iges'` meanwhile).
+4. Optional: a `{ kind: 'ellipse' }` `ProjectedCurve` for circles seen obliquely (now polylines),
+   and moving `ProjectedCurve` into contracts if the sketch package consumes it directly.
+
+## ADR-040 — Fillet/chamfer `propagate: false` refuses instead of faking
+
+**Context.** ADR-019 adds `propagate?: boolean` (default true) to fillet and chamfer.
+
+**Finding.** OCCT 8.0.1 has no way to stop a blend at a tangent edge. Every
+`BRepFilletAPI_MakeFillet::Add` and `BRepFilletAPI_MakeChamfer::Add` reaches
+`ChFi3d_Builder::PerformElement` (`src/ModelingAlgorithms/TKFillet/ChFi3d/ChFi3d_Builder_1.cxx`,
+called from `ChFi3d_FilBuilder.cxx:211` and `ChFi3d_ChBuilder.cxx:215/250/350/462`), whose loop
+"find all mutually tangent edges" appends every neighbour whose faces are tangent to the spine.
+There is no parameter, and `ResetContour`/`Remove` act on whole contours. Ending a blend inside a
+tangent chain also needs an end cap OCCT doesn't build.
+
+**Decision.** With `propagate: false`, after `Add` the façade compares the contours OCCT built
+(`NbContours`, `NbEdges`, `Edge`) with the selection. Same edges → the normal result. More edges →
+`UNSUPPORTED_FEATURE` "The fillet cannot stop at tangent edges: N tangent edges continue the
+selection", hint "Turn on "Propagate along tangent edges", or select the whole tangent chain",
+`entityRefs` = the selection plus the extra edges (so the UI can highlight them). Golden: one
+straight top edge of an extruded slot (lines tangent to arcs) is refused with both arcs and the
+other line; selecting the whole loop with `propagate: false` matches the propagated result; a box
+edge with `propagate: false` is a normal fillet.

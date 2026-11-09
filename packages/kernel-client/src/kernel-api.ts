@@ -16,6 +16,7 @@ import type {
   Feature,
   FeatureInputs,
   FeatureResult,
+  Frame,
   KernelApi,
   KernelError,
   KernelErrorCode,
@@ -38,12 +39,16 @@ import {
   type KernelInitModule,
   type KernelModuleOptions,
   type MeasureSubject,
+  type ProjectedCurve,
+  type ProjectedEdge,
+  type ProjectedOutline,
   type RawExportResult,
   type RawImportResult,
   type RawKernelInfo,
   type WhittleKernelModule,
 } from '@wren-cad/kernel';
 import { transfer } from 'comlink';
+import type { ProjectionApi } from './regen/linked';
 
 /** How to obtain one kernel variant. */
 export interface VariantSource {
@@ -65,13 +70,30 @@ export interface KernelApiDeps {
   canUseThreads?: () => boolean;
 }
 
-export type { ExportShape, MeasureSubject } from '@wren-cad/kernel';
+export type {
+  ExportShape,
+  MeasureSubject,
+  ProjectedCurve,
+  ProjectedEdge,
+  ProjectedOutline,
+} from '@wren-cad/kernel';
+
+/**
+ * A face-outline edge: a `ProjectedEdge` tagged with its loop (0 = the outer loop, k = the k-th
+ * inner loop). A flat array, so it also satisfies the regen engine's `ProjectionApi` seam.
+ */
+export interface ProjectedLoopEdge extends ProjectedEdge {
+  loop: number;
+}
 
 /** One exported file; `bytes` is transferred (never copied) across the worker boundary. */
 export interface ExportedFile {
   name: string;
   bytes: Uint8Array;
 }
+
+/** Formats `importShapes` reads: every export format plus IGES (M3, import only). */
+export type ShapeImportFormat = ExportFormat | 'iges';
 
 /** A body read from an imported file (no mesh yet: call `mesh()`). */
 export interface ImportedBody {
@@ -83,8 +105,12 @@ export interface ImportedBody {
  * Low-level worker surface beyond the contracts' `KernelApi` (M1). The regen engine
  * (`ModelingApi`, packages/kernel-client/src/regen) is built on these. Names avoid
  * `ModelingApi.importFile`/`exportPart`, which work on parts rather than shape handles.
+ *
+ * The M3 projection calls are the regen engine's `ProjectionApi` seam (optional there, so engine
+ * fakes may leave them out); the worker always implements them, with the precise result types
+ * of {@link KernelProjectionApi}.
  */
-export interface KernelLowLevelApi {
+export interface KernelLowLevelApi extends Partial<ProjectionApi> {
   /** Geometric fingerprints of every face/edge/vertex (TopExp order). */
   fingerprints(shape: ShapeHandle): Promise<Result<ShapeFingerprints>>;
   /** Writes STEP/STL/BREP of the given shapes; one file unless STL `stlPerBody`. */
@@ -93,8 +119,11 @@ export interface KernelLowLevelApi {
     format: ExportFormat,
     options?: ExportOptions,
   ): Promise<Result<ExportedFile[]>>;
-  /** Reads STEP/BREP/STL bytes into shapes (one per solid; STEP names kept). */
-  importShapes(bytes: Uint8Array, format: ExportFormat): Promise<Result<ImportedBody[]>>;
+  /**
+   * Reads STEP/IGES/BREP/STL bytes into shapes (one per solid; STEP names kept). IGES (M3): loose
+   * surfaces are sewn, closed shells become solids and open shells stay shell bodies.
+   */
+  importShapes(bytes: Uint8Array, format: ShapeImportFormat): Promise<Result<ImportedBody[]>>;
   /** Threaded build: caps OCCT's thread pool (`init({ threads })` applies it automatically). */
   configureThreads(count: number): Promise<Result<{ threads: number; max: number }>>;
   /**
@@ -102,6 +131,30 @@ export interface KernelLowLevelApi {
    * gives its intrinsic values, two the minimum distance (+ angle). See whittle_kernel.h.
    */
   measureShapes(a: MeasureSubject, b?: MeasureSubject): Promise<Result<Measurement>>;
+}
+
+/** The M3 "convert entities" calls as the kernel worker implements them. */
+export interface KernelProjectionApi {
+  /**
+   * Model edges (TopExp edge ordinals of `shape`) projected onto `plane`, in its local x/y. Lines
+   * stay lines, circles and arcs seen face-on stay circles and counter-clockwise arcs, everything
+   * else is a `polyline` (approximated). An edge along the plane normal projects to a point and
+   * comes back with no curves.
+   */
+  projectEdges(
+    shape: ShapeHandle,
+    edges: number[],
+    plane: Frame,
+  ): Promise<Result<{ edge: number; curves: ProjectedCurve[] }[]>>;
+  /**
+   * A face's outline projected like `projectEdges`: the outer loop's edges (`loop` 0), then each
+   * inner loop's (`loop` 1, 2, …), each loop in wire order.
+   */
+  projectFaceOutline(
+    shape: ShapeHandle,
+    face: number,
+    plane: Frame,
+  ): Promise<Result<ProjectedLoopEdge[]>>;
 }
 
 /** Everything the kernel worker exposes over Comlink. */
@@ -220,7 +273,9 @@ function withProgress(
   });
 }
 
-export function createKernelApi(deps: KernelApiDeps): KernelWorkerApi & KernelApiInternals {
+export function createKernelApi(
+  deps: KernelApiDeps,
+): KernelProjectionApi & KernelWorkerApi & KernelApiInternals {
   const now = deps.now ?? (() => performance.now());
   const emit = (status: KernelStatus) => {
     try {
@@ -378,7 +433,7 @@ export function createKernelApi(deps: KernelApiDeps): KernelWorkerApi & KernelAp
     }
   }
 
-  const api: KernelWorkerApi & KernelApiInternals = {
+  const api: KernelProjectionApi & KernelWorkerApi & KernelApiInternals = {
     init(options: KernelInitOptions = {}): Promise<Result<KernelInfo>> {
       if (kernel !== null && info !== null) {
         const sameVariant = options.variant === undefined || options.variant === info.variant;
@@ -531,7 +586,10 @@ export function createKernelApi(deps: KernelApiDeps): KernelWorkerApi & KernelAp
       }
     },
 
-    async importShapes(bytes: Uint8Array, format: ExportFormat): Promise<Result<ImportedBody[]>> {
+    async importShapes(
+      bytes: Uint8Array,
+      format: ShapeImportFormat,
+    ): Promise<Result<ImportedBody[]>> {
       if (kernel === null) return notReady();
       const k = kernel;
       memfsCounter += 1;
@@ -577,6 +635,44 @@ export function createKernelApi(deps: KernelApiDeps): KernelWorkerApi & KernelAp
         );
       } catch (e) {
         return caught('measure', e);
+      }
+    },
+
+    async projectEdges(
+      shape: ShapeHandle,
+      edges: number[],
+      plane: Frame,
+    ): Promise<Result<ProjectedEdge[]>> {
+      if (kernel === null) return notReady();
+      try {
+        return parseResult<ProjectedEdge[]>(
+          kernel.projectEdges(JSON.stringify({ shape, edges, plane })),
+          'projectEdges',
+        );
+      } catch (e) {
+        return caught('projectEdges', e);
+      }
+    },
+
+    async projectFaceOutline(
+      shape: ShapeHandle,
+      face: number,
+      plane: Frame,
+    ): Promise<Result<ProjectedLoopEdge[]>> {
+      if (kernel === null) return notReady();
+      try {
+        const raw = parseResult<ProjectedOutline>(
+          kernel.projectFaceOutline(JSON.stringify({ shape, face, plane })),
+          'projectFaceOutline',
+        );
+        if (!raw.ok) return raw;
+        const edges: ProjectedLoopEdge[] = raw.value.outer.map((e) => ({ ...e, loop: 0 }));
+        raw.value.inner.forEach((loop, i) => {
+          for (const e of loop) edges.push({ ...e, loop: i + 1 });
+        });
+        return { ok: true, value: edges };
+      } catch (e) {
+        return caught('projectFaceOutline', e);
       }
     },
 

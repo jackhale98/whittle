@@ -5,13 +5,36 @@
 // their *contents* into one translation unit, so relative includes cannot be resolved there.
 // scripts/amalgamate.mjs inlines, in this order:
 //   whittle_kernel.h, whittle_core.cpp, whittle_modeling.cpp, whittle_pushpull.cpp,
-//   whittle_measure.cpp, whittle_io.cpp, whittle_kernel.cpp, whittle_bindings.cpp
+//   whittle_shape_ops.cpp, whittle_copies.cpp, whittle_reference.cpp, whittle_measure.cpp,
+//   whittle_io.cpp, whittle_kernel.cpp, whittle_bindings.cpp
 // into .libcascade/whittle_facade.cpp, which is what libcascade.config.ts points at. The files
 // after this one share its anonymous namespace helpers and are not standalone TUs.
 
 #include "whittle_kernel.h"
 
 #include <BOPAlgo_BuilderFace.hxx>
+#include <BOPAlgo_CheckerSI.hxx>
+#include <BOPDS_DS.hxx>
+#include <BRepBuilderAPI_MakeSolid.hxx>
+#include <BRepBuilderAPI_MakeWire.hxx>
+#include <BRepBuilderAPI_Sewing.hxx>
+#include <BRepBuilderAPI_Transform.hxx>
+#include <BRepFilletAPI_LocalOperation.hxx>
+#include <BRepOffsetAPI_DraftAngle.hxx>
+#include <BRepOffsetAPI_MakePipeShell.hxx>
+#include <BRepOffsetAPI_ThruSections.hxx>
+#include <BRepOffset_MakeOffset.hxx>
+#include <BRepTools_WireExplorer.hxx>
+#include <GCPnts_AbscissaPoint.hxx>
+#include <GCPnts_TangentialDeflection.hxx>
+#include <GeomAPI_ProjectPointOnCurve.hxx>
+#include <Geom_Curve.hxx>
+#if !defined(WHITTLE_NO_IGES)
+#include <IGESControl_Reader.hxx>
+#endif
+#include <TopoDS_Shell.hxx>
+#include <gp_Cone.hxx>
+#include <gp_XY.hxx>
 #include <BOPAlgo_Operation.hxx>
 #include <BRepAdaptor_Curve.hxx>
 #include <BRepAdaptor_Surface.hxx>
@@ -953,17 +976,31 @@ std::string stripSplitSuffix(const std::string& name) {
   return name.substr(0, hash);
 }
 
-std::vector<size_t> sortedByKey(std::vector<size_t> indices, const std::vector<GeoKey>& keys) {
-  std::sort(indices.begin(), indices.end(), [&](size_t a, size_t b) {
-    if (keys[a] < keys[b]) return true;
-    if (keys[b] < keys[a]) return false;
-    return a < b;
+// Geometric key of sub-shape i, computed on demand: only names shared by several sub-shapes
+// need one, so most centroids (surface/curve integrals) are never computed.
+using KeyFn = std::function<GeoKey(size_t)>;
+
+std::vector<size_t> sortedByKey(const std::vector<size_t>& indices, const KeyFn& key) {
+  std::vector<std::pair<GeoKey, size_t>> keyed;
+  keyed.reserve(indices.size());
+  for (size_t i : indices) keyed.emplace_back(key(i), i);
+  std::sort(keyed.begin(), keyed.end(), [](const std::pair<GeoKey, size_t>& a, const std::pair<GeoKey, size_t>& b) {
+    if (a.first < b.first) return true;
+    if (b.first < a.first) return false;
+    return a.second < b.second;
   });
-  return indices;
+  std::vector<size_t> out;
+  out.reserve(keyed.size());
+  for (const auto& k : keyed) out.push_back(k.second);
+  return out;
+}
+
+KeyFn keysOf(const std::vector<GeoKey>& keys) {
+  return [&keys](size_t i) { return keys[i]; };
 }
 
 // Fresh names (edges, vertices): every name shared by several sub-shapes gets "#k".
-void suffixDuplicates(std::vector<std::string>& names, const std::vector<GeoKey>& keys) {
+void suffixDuplicates(std::vector<std::string>& names, const KeyFn& keys) {
   std::map<std::string, std::vector<size_t>> groups;
   for (size_t i = 0; i < names.size(); ++i) {
     if (!names[i].empty()) groups[names[i]].push_back(i);
@@ -980,7 +1017,11 @@ void suffixDuplicates(std::vector<std::string>& names, const std::vector<GeoKey>
 // Inherited face names: names that survive one-to-one are kept verbatim. When an operation splits
 // a face (several faces inherit one name), every face whose name has the same base (suffix
 // stripped) is re-indexed "#0…" by geometric key, so names stay grammatical (one "#k" level).
-void resolveFaceNames(std::vector<std::string>& names, const std::vector<GeoKey>& keys) {
+void suffixDuplicates(std::vector<std::string>& names, const std::vector<GeoKey>& keys) {
+  suffixDuplicates(names, keysOf(keys));
+}
+
+void resolveFaceNames(std::vector<std::string>& names, const KeyFn& keys) {
   std::map<std::string, std::vector<size_t>> byBase;
   for (size_t i = 0; i < names.size(); ++i) byBase[stripSplitSuffix(names[i])].push_back(i);
   for (auto& g : byBase) {
@@ -1022,10 +1063,8 @@ void deriveEdgeAndVertexNames(NamedShape& ns, const Topo& topo) {
   ShapeListMap edgeFaces;
   TopExp::MapShapesAndAncestors(ns.shape, TopAbs_EDGE, TopAbs_FACE, edgeFaces);
   ns.edges.assign(static_cast<size_t>(topo.edges.Extent()), std::string());
-  std::vector<GeoKey> edgeKeys(ns.edges.size());
   for (int i = 1; i <= topo.edges.Extent(); ++i) {
     const TopoDS_Edge& edge = TopoDS::Edge(topo.edges(i));
-    edgeKeys[static_cast<size_t>(i - 1)] = geoKey(edgeCentroid(edge));
     std::vector<int> faceIdx;
     const ShapeList* ancestors = edgeFaces.Seek(edge);
     if (ancestors != nullptr) {
@@ -1051,15 +1090,15 @@ void deriveEdgeAndVertexNames(NamedShape& ns, const Topo& topo) {
     }
     ns.edges[static_cast<size_t>(i - 1)] = "edge(" + role + ")";
   }
-  suffixDuplicates(ns.edges, edgeKeys);
+  suffixDuplicates(ns.edges, [&topo](size_t i) {
+    return geoKey(edgeCentroid(TopoDS::Edge(topo.edges(static_cast<int>(i) + 1))));
+  });
 
   ShapeListMap vertexFaces;
   TopExp::MapShapesAndAncestors(ns.shape, TopAbs_VERTEX, TopAbs_FACE, vertexFaces);
   ns.vertices.assign(static_cast<size_t>(topo.vertices.Extent()), std::string());
-  std::vector<GeoKey> vertexKeys(ns.vertices.size());
   for (int i = 1; i <= topo.vertices.Extent(); ++i) {
     const TopoDS_Vertex& vertex = TopoDS::Vertex(topo.vertices(i));
-    vertexKeys[static_cast<size_t>(i - 1)] = geoKey(BRep_Tool::Pnt(vertex));
     std::vector<std::string> adjacent;
     const ShapeList* ancestors = vertexFaces.Seek(vertex);
     if (ancestors != nullptr) {
@@ -1076,7 +1115,9 @@ void deriveEdgeAndVertexNames(NamedShape& ns, const Topo& topo) {
     if (adjacent.size() > 3) adjacent.resize(3);
     ns.vertices[static_cast<size_t>(i - 1)] = "vertex(" + joinSorted(adjacent, "|") + ")";
   }
-  suffixDuplicates(ns.vertices, vertexKeys);
+  suffixDuplicates(ns.vertices, [&topo](size_t i) {
+    return geoKey(BRep_Tool::Pnt(TopoDS::Vertex(topo.vertices(static_cast<int>(i) + 1))));
+  });
 }
 
 // Completes a shape's naming from inherited/generated base face names (one per TopExp face, ""
@@ -1087,13 +1128,12 @@ NamedShape finalizeNamed(const TopoDS_Shape& shape, std::vector<std::string> fac
   ns.shape = shape;
   const Topo topo(shape);
   faceNames.resize(static_cast<size_t>(topo.faces.Extent()));
-  std::vector<GeoKey> keys(faceNames.size());
-  for (int i = 1; i <= topo.faces.Extent(); ++i) {
-    std::string& n = faceNames[static_cast<size_t>(i - 1)];
+  for (std::string& n : faceNames) {
     if (n.empty()) n = fallback;
-    keys[static_cast<size_t>(i - 1)] = geoKey(faceCentroid(TopoDS::Face(topo.faces(i))));
   }
-  resolveFaceNames(faceNames, keys);
+  resolveFaceNames(faceNames, [&topo](size_t i) {
+    return geoKey(faceCentroid(TopoDS::Face(topo.faces(static_cast<int>(i) + 1))));
+  });
   ns.faces = std::move(faceNames);
   deriveEdgeAndVertexNames(ns, topo);
   return ns;

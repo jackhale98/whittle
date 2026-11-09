@@ -95,3 +95,11 @@
 ### M3 — UI
 
 - UI: Extruded cut and Revolved cut tools, count-and-chevron group buttons on the tablet rail, labelled touch sketch toolbar; inspectors for shell, draft, sweep, loft, mirror, patterns (skip toggles), hole wizard (table-resolved, diameter override), thread, axis, point and the new plane definitions; fillet/chamfer propagate switch; Pattern and Reference tool groups; sketch offset/convert/trim/extend/fillet/chamfer/mirror chrome and linked-geometry panel (ADR-pending).
+
+### M3 — Advanced part features (kernel)
+
+- Kernel: shell (inward/outward, open faces or a closed hollow solid; sharp joins, rounded fallback with a warning), draft about a neutral plane or face, sweep along a chained path (follow path / fixed; new, add, cut, intersect), loft through regions, closed curves and end points (ruled, closed; guides reported as ignored), mirror, linear (two directions, `skip`) and circular (step or equal spacing) patterns of features or bodies, hole wizard (simple, counterbore, countersink, tapped; blind with drill point, through all, up to), cosmetic threads, reference axes, points and the new plane definitions, all with names per naming.ts M3 and golden tests.
+- Kernel: the `import` feature places and names imported shapes in C++ (no BREP round trip); IGES import (bounded surfaces are sewn into solids).
+- Kernel: `projectEdges` / `projectFaceOutline` for "convert entities" (lines, circles, counter-clockwise arcs, polylines for oblique curves and splines); wired through `KernelLowLevelApi`.
+- Kernel: fillet/chamfer `propagate: false` blends exactly the selection, or refuses with the tangent edges OCCT would add (OCCT cannot stop a blend inside a tangent chain; ADR-pending).
+- Kernel: patterns cut or fuse every instance in one multi-tool boolean; a 10 × 10 hole pattern regenerates within the 300 ms budget.

@@ -52,6 +52,7 @@ PROTECT = [
     re.compile(r"whittle-(?:library|folders|save|vault|repo-|precache|srv-|kernel)[A-Za-z0-9_$.{}-]*"),
     re.compile(r"whittle-<kind>"),
     re.compile(r"whittle_[A-Za-z0-9_]+"),                 # kernel C++ identifiers and file names
+    re.compile(r"WHITTLE_(?:BUILD_ID|NO_IGES)\b"),       # C++ macros the kernel sources use
     re.compile(r"whittle::"),
     re.compile(r"WhittleKernel[A-Za-z]*"),
     re.compile(r"ADR-032[^\n]*"),                         # the rename ADR quotes the old names

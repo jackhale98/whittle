@@ -101,6 +101,8 @@ export function createModelingApi(deps: ModelingApiDeps): ModelingApiImpl {
     importShapes: (bytes, format) => kernel.importShapes(bytes, format),
     configureThreads: (count) => kernel.configureThreads(count),
     measureShapes: (a, b) => kernel.measureShapes(a, b),
+    projectEdges: (shape, edges, plane) => kernel.projectEdges(shape, edges, plane),
+    projectFaceOutline: (shape, face, plane) => kernel.projectFaceOutline(shape, face, plane),
     liveHandleCount: () => kernel.liveHandleCount(),
     engine,
 

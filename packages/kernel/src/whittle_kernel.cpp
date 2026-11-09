@@ -402,7 +402,8 @@ std::string importFile(const std::string& path, const std::string& format) {
     if (format == "step") return importStep(path);
     if (format == "brep") return importBrep(path);
     if (format == "stl") return importStl(path);
-    raiseError("INVALID_INPUT", "Unknown import format '" + format + "'", "Use step, stl or brep.");
+    if (format == "iges" || format == "igs") return importIges(path);
+    raiseError("INVALID_INPUT", "Unknown import format '" + format + "'", "Use step, iges, stl or brep.");
   });
 }
 
@@ -410,6 +411,20 @@ std::string measure(const std::string& queryJson) {
   return guarded("measure", [&]() {
     const JsonPtr query = JsonParser(queryJson).parseDocument();
     return okJson(measureQuery(*query));
+  });
+}
+
+std::string projectEdges(const std::string& queryJson) {
+  return guarded("projectEdges", [&]() {
+    const JsonPtr query = JsonParser(queryJson).parseDocument();
+    return okJson(projectEdgesQuery(*query));
+  });
+}
+
+std::string projectFaceOutline(const std::string& queryJson) {
+  return guarded("projectFaceOutline", [&]() {
+    const JsonPtr query = JsonParser(queryJson).parseDocument();
+    return okJson(projectFaceOutlineQuery(*query));
   });
 }
 

@@ -16,6 +16,8 @@
 //   exportShapes(shapesJson: string, format: string, optionsJson: string): string
 //   importFile(path: string, format: string): string
 //   measure(queryJson: string): string
+//   projectEdges(queryJson: string): string
+//   projectFaceOutline(queryJson: string): string
 //   configureThreads(count: number): string
 //   release(shape: number): void
 //   liveHandleCount(): number
@@ -83,6 +85,8 @@ EMSCRIPTEN_BINDINGS(whittle_kernel) {
   emscripten::function("exportShapes", &whittle::exportShapes);
   emscripten::function("importFile", &whittle::importFile);
   emscripten::function("measure", &whittle::measure);
+  emscripten::function("projectEdges", &whittle::projectEdges);
+  emscripten::function("projectFaceOutline", &whittle::projectFaceOutline);
   emscripten::function("configureThreads", &whittle::configureThreads);
   emscripten::function("release", &whittle::release);
   emscripten::function("liveHandleCount", &whittle::liveHandleCount);
