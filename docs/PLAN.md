@@ -732,6 +732,11 @@ Owner-approved 2026-11-09 from the research report `docs/ux-research/reports/CAD
 - **Which one?** Overlapping candidates are listed in a stable order (kind, then depth, then id), highlight on hover, and Tab / Shift+Tab cycles the preselection under a still pointer.
 - **Keyboard:** shortcuts bind `KeyboardEvent.code` (layout-independent), a keymap editor flags conflicts with the browser's own shortcuts, and holding Ctrl/Cmd/Alt for 600 ms shows an overlay of the shortcuts available now.
 - **Errors at their cause:** `needsAttention`, `error` and `blocked` features name the upstream feature whose change broke them (`AttentionCause`), and selecting the message selects that feature. Sketch conflicts highlight the conflicting set on the canvas and in the list and propose removing the most recently added constraint; no bare constraint numbers anywhere.
+- **Owner additions (2026-11-09):**
+  - **Sketch dimensions like other CAD sketchers:** a dimension's label is draggable after placement (mouse, touch, Pencil; a drag moves only the label), and it is drawn with extension lines and a dimension line with arrows (a leader for radius/diameter, an arc for angles) that show what it measures.
+  - **Feature lineage:** selecting a face, edge or vertex shows "Made by <feature>" (the latest feature that created or modified it, and its sketch) with Edit buttons; selecting a feature in the tree shows its parents (what it references) and children (what references it).
+  - **Bug:** a sketch on a part face was invisible after leaving the sketch on desktop Edge (only the centre point showed). Coplanar overlays must stay visible on WebGPU as well as WebGL2.
+  - **Bug fixed now:** the tutorial card covered an open tool flyout; flyouts truncated command names ("Extruded …").
 - **Sketch curves:** B-splines by control points and through points (degree 3 default, open or closed), ellipses and elliptic arcs; tangent constraints between any curves (G1 at shared ends), a curvature-continuous (G2) constraint where the solver can express it (otherwise an `unsupported` conflict, never dropped); the Pencil recognises ovals as ellipses and smooth strokes as splines; offset, trim/extend, mirror and convert work on the new curves where OCCT can (otherwise a clear refusal). The kernel builds exact B-spline and elliptic edges for profiles. Conics beyond ellipses are deferred.
 - **Accept:**
   - E2E: orbiting from a point on a face keeps that point under the cursor within 2 px; panning then orbiting never pivots in empty space; the pivot marker is visible during the drag. Each preset's mapping is exercised (left box-select window and crossing, right/middle orbit and pan, right click opens the radial menu).
@@ -741,6 +746,8 @@ Owner-approved 2026-11-09 from the research report `docs/ux-research/reports/CAD
   - E2E: shortening an extrude so a fillet loses its edge shows "needs attention" naming the extrude; selecting the message selects the extrude. An over-constrained sketch highlights the set and proposes the last-added constraint.
   - Golden tests: a profile bounded by a spline and an elliptic arc extrudes to the volume of a numerically integrated reference (≤ 1e-6 relative); splines survive save → load → regen byte-identically; Pencil recognition tests for ellipses and splines.
   - E2E: a spline through 5 points, closed with a line, extrudes; moving a through point updates the solid.
+  - E2E: a dimension's label drags without changing its value and shows extension and dimension lines; selecting a face shows the feature that made it and Edit opens it; the tree shows a feature's parents and children.
+  - Render test on the WebGPU backend (or the closest available) shows a circle sketched on a face after finishing the sketch.
   - All existing suites, the 10 reference parts and `pnpm perf` stay green; orbit start (pick under cursor) ≤ 2 ms on the 1M-triangle probe.
 
 ### M4 — Drawings

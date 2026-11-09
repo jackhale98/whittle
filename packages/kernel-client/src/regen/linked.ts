@@ -37,12 +37,45 @@ import { cross, dot, norm, normalize, sub } from './geometry';
  * A projected curve as the kernel returns it (kernel engineer, M3 `KernelLowLevelApi`):
  * coordinates in the target plane frame's local (u, v), mm. Arcs run counter-clockwise from
  * `start` to `end` about the plane normal, as `SketchArc`.
+ *
+ * M3.5 (ADR-046): exact ellipses, elliptic arcs (counter-clockwise, as `SketchEllipticArc`) and
+ * B-splines (`SketchBSpline` fields, poles as coordinates; same knot conventions, `curves.ts`).
+ * The engine produces them for other sketches' curves; the kernel's `projectEdges` may return
+ * them for model edges (proposed in the ADR) and the engine passes them on unchanged.
  */
 export type ProjectedCurve =
   | { kind: 'line'; a: Vec2; b: Vec2 }
   | { kind: 'circle'; c: Vec2; r: number }
   | { kind: 'arc'; c: Vec2; r: number; start: Vec2; end: Vec2 }
+  | ProjectedEllipse
+  | ProjectedEllipticArc
+  | ProjectedBSpline
   | { kind: 'polyline'; points: Vec2[] };
+
+export interface ProjectedEllipse {
+  kind: 'ellipse';
+  c: Vec2;
+  majorRadius: number;
+  minorRadius: number;
+  /** Major axis direction in the plane frame, radians. */
+  rotation: number;
+}
+
+export interface ProjectedEllipticArc extends Omit<ProjectedEllipse, 'kind'> {
+  kind: 'ellipticArc';
+  start: Vec2;
+  end: Vec2;
+}
+
+export interface ProjectedBSpline {
+  kind: 'bspline';
+  poles: Vec2[];
+  degree: number;
+  periodic: boolean;
+  weights?: number[];
+  knots?: number[];
+  multiplicities?: number[];
+}
 
 /**
  * What a linked entity is re-projected onto: a kernel curve, a point (vertices, construction
@@ -220,12 +253,76 @@ export function projectSketchEntity(
       );
     }
     case 'ellipse':
-      return { error: 'Ellipses cannot be projected yet' };
-    case 'ellipticArc':
-      return { error: 'Elliptic arcs cannot be projected yet' };
-    case 'bspline':
-      return { error: 'Splines cannot be projected yet' };
+    case 'ellipticArc': {
+      // Exact when the planes are parallel (a rigid map, mirrored when they face each other);
+      // otherwise the caller falls back to the kernel's (approximate) projection.
+      const map = planeMap(plane, srcFrame);
+      if (!map.rigid) return { error: 'This ellipse is not parallel to the sketch' };
+      const centre = map.apply(points.get(e.center) ?? [0, 0]);
+      const d = map.linear([Math.cos(e.rotation), Math.sin(e.rotation)]);
+      const base = {
+        c: centre,
+        majorRadius: e.majorRadius,
+        minorRadius: e.minorRadius,
+        rotation: Math.atan2(d[1], d[0]),
+      };
+      if (e.kind === 'ellipse') return { kind: 'ellipse', ...base };
+      const s = map.apply(points.get(e.start) ?? [0, 0]);
+      const t = map.apply(points.get(e.end) ?? [0, 0]);
+      // Counter-clockwise about the sketch normal: a mirrored view reverses the sense.
+      return map.det > 0
+        ? { kind: 'ellipticArc', ...base, start: s, end: t }
+        : { kind: 'ellipticArc', ...base, start: t, end: s };
+    }
+    case 'bspline': {
+      // Orthographic projection is affine and B-splines (rational ones too) are affine
+      // invariant: the projected poles with the same degree, knots and weights are the exact
+      // projection on any plane that does not see the sketch edge-on.
+      const map = planeMap(plane, srcFrame);
+      if (Math.abs(map.det) <= 1e-9) return { error: 'This spline is seen edge-on' };
+      const out: ProjectedBSpline = {
+        kind: 'bspline',
+        poles: e.poles.map((id) => map.apply(points.get(id) ?? [0, 0])),
+        degree: e.degree,
+        periodic: e.periodic,
+      };
+      if (e.weights) out.weights = [...e.weights];
+      if (e.knots) out.knots = [...e.knots];
+      if (e.multiplicities) out.multiplicities = [...e.multiplicities];
+      return out;
+    }
   }
+}
+
+/**
+ * The affine map from a source sketch frame's (u, v) to this plane's (u, v) under orthographic
+ * projection: `linear` is its 2×2 part, `det` = ±cos of the angle between the planes (negative
+ * when they face each other), `rigid` when the planes are parallel (|det| = 1).
+ */
+export function planeMap(
+  plane: Frame,
+  src: Frame,
+): { apply: (p: Vec2) => Vec2; linear: (v: Vec2) => Vec2; det: number; rigid: boolean } {
+  const x = normalize(plane.x);
+  const y = normalize(cross(plane.z, plane.x));
+  const sx = normalize(src.x);
+  const sy = normalize(cross(src.z, src.x));
+  const m00 = dot(x, sx);
+  const m01 = dot(x, sy);
+  const m10 = dot(y, sx);
+  const m11 = dot(y, sy);
+  const o = toLocal(plane, src.origin);
+  const det = m00 * m11 - m01 * m10;
+  const linear = (v: Vec2): Vec2 => [m00 * v[0] + m01 * v[1], m10 * v[0] + m11 * v[1]];
+  return {
+    apply: (p) => {
+      const l = linear(p);
+      return [o[0] + l[0], o[1] + l[1]];
+    },
+    linear,
+    det,
+    rigid: Math.abs(Math.abs(det) - 1) <= 1e-9,
+  };
 }
 
 /** Is the world point on the sketch plane (within `tol`)? */
@@ -272,6 +369,9 @@ export const reprojectLinkedFallback: ReprojectLinked = (entities, sources) => {
       if (e.kind === 'line') owned.add(e.start).add(e.end);
       if (e.kind === 'circle') owned.add(e.center);
       if (e.kind === 'arc') owned.add(e.center).add(e.start).add(e.end);
+      if (e.kind === 'ellipse') owned.add(e.center);
+      if (e.kind === 'ellipticArc') owned.add(e.center).add(e.start).add(e.end);
+      if (e.kind === 'bspline') for (const id of e.poles) owned.add(id);
     }
     const curvesE = linked.filter((e) => e.kind !== 'point');
     const pointsE = linked.filter((e) => e.kind === 'point' && !owned.has(e.id));
@@ -340,6 +440,34 @@ export const reprojectLinkedFallback: ReprojectLinked = (entities, sources) => {
         setPt(e.center, c.c);
         setPt(e.start, c.start);
         setPt(e.end, c.end);
+      } else if (
+        (e.kind === 'ellipse' && c.kind === 'ellipse') ||
+        (e.kind === 'ellipticArc' && c.kind === 'ellipticArc')
+      ) {
+        setPt(e.center, c.c);
+        e.majorRadius = c.majorRadius;
+        e.minorRadius = c.minorRadius;
+        e.rotation = c.rotation;
+        if (e.kind === 'ellipticArc' && c.kind === 'ellipticArc') {
+          setPt(e.start, c.start);
+          setPt(e.end, c.end);
+        }
+      } else if (e.kind === 'bspline' && c.kind === 'bspline') {
+        // Same ids: a source with another number of control points cannot be followed in place.
+        if (e.poles.length !== c.poles.length || e.periodic !== c.periodic) {
+          ok = false;
+          fail(
+            e.periodic !== c.periodic
+              ? `The source spline is now ${c.periodic ? 'closed' : 'open'}`
+              : `The source spline now has ${c.poles.length} control points, not ${e.poles.length}`,
+          );
+          return;
+        }
+        for (const [k, id] of e.poles.entries()) setPt(id, c.poles[k] as Vec2);
+        e.degree = c.degree;
+        copyOptional(e, c, 'weights');
+        copyOptional(e, c, 'knots');
+        copyOptional(e, c, 'multiplicities');
       } else {
         ok = false;
         fail(`A linked ${e.kind} cannot follow a source that is now ${article(c.kind)}`);
@@ -348,6 +476,16 @@ export const reprojectLinkedFallback: ReprojectLinked = (entities, sources) => {
   }
   return { entities: out, lost };
 };
+
+function copyOptional(
+  e: Extract<SketchEntity, { kind: 'bspline' }>,
+  c: ProjectedBSpline,
+  k: 'weights' | 'knots' | 'multiplicities',
+): void {
+  const v = c[k];
+  if (v === undefined) delete e[k];
+  else e[k] = [...v];
+}
 
 function d2(a: Vec2, b: Vec2): number {
   return (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2;

@@ -2904,7 +2904,7 @@
     },
     "SketchBSpline": {
       "additionalProperties": false,
-      "description": "M3.5. A B-spline curve by its control points (`poles`, point entities, so they can be dragged, dimensioned and constrained). Non-periodic splines are clamped: they start at the first pole and end at the last, so a line or arc can share an end point with them. `knots`/`multiplicities` omitted = uniform clamped (or uniform periodic) knots for `degree`. `weights` omitted = all 1 (non-rational). A spline drawn **through points** stores the poles that interpolate them, plus the through points as point entities held on the curve by `pointOn` constraints, so moving a through point reshapes the curve (ADR-046).",
+      "description": "M3.5. A B-spline curve by its control points (`poles`, point entities, so they can be dragged, dimensioned and constrained). Non-periodic splines are clamped: they start at the first pole and end at the last, so a line or arc can share an end point with them. `knots` are distinct values and come with `multiplicities` (both or neither). Omitted: clamped knots i/(n−p) with end multiplicity p + 1 (n poles, degree p), or periodic knots i/n all of multiplicity 1, on the domain [0, 1] (ADR-048 has the periodic flat-knot convention). `weights` omitted = all 1 (non-rational). A spline drawn **through points** stores the poles that interpolate them, plus the through points as point entities held on the curve by `pointOn` constraints, so moving a through point reshapes the curve (ADR-046).",
       "properties": {
         "construction": {
           "description": "Construction geometry is solved and constrainable but never forms profiles.",
