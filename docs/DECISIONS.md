@@ -1481,7 +1481,7 @@ straight top edge of an extruded slot (lines tangent to arcs) is refused with bo
 other line; selecting the whole loop with `propagate: false` matches the propagated result; a box
 edge with `propagate: false` is a normal fillet.
 
-## ADR-pending — Draft pull direction: toward the drafted faces
+## ADR-041 — Draft pull direction: toward the drafted faces
 
 **Context.** rp05-moulded-housing drafts a box's four side faces about its own bottom face and
 expects the walls to lean inward going up (the parting line at the bottom, the mould pulled up).
@@ -1514,7 +1514,7 @@ choose the side from the faces, and `reverse` is that flip.
  */
 ```
 
-## ADR-pending — Copies of through-all extrudes use a sized blind tool
+## ADR-042 — Copies of through-all extrudes use a sized blind tool
 
 **Context.** A mirror or pattern copies a feature's tool solid, built as the feature alone with
 `op: 'new'` (ADR-036 item 1). The kernel refuses a through-all extrude without a body to size it,
