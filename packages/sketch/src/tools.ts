@@ -17,6 +17,7 @@ import type {
   Vec2,
 } from '@wren-cad/contracts';
 import { monotonicFactory } from 'ulid';
+import { DEFAULT_SPLINE_DEGREE, interpolate } from './bspline';
 import {
   add,
   angle0,
@@ -91,6 +92,19 @@ class Builder {
     const id = this.nextId();
     this.entities.push({ id, kind: 'arc', construction, center, start, end });
     return id;
+  }
+
+  push(e: SketchEntity): Id {
+    this.entities.push(e);
+    return e.id;
+  }
+
+  id(): Id {
+    return this.nextId();
+  }
+
+  get isConstruction(): boolean {
+    return this.construction;
   }
 
   constrain(c: GeometricDraft): Id {
@@ -360,6 +374,211 @@ export function polygonTool(
   for (let i = 1; i < lines.length; i++)
     k.constrain({ kind: 'equal', a: lines[0] as Id, b: lines[i] as Id });
   return k.done();
+}
+
+// ---------------------------------------------------------------------------------------------
+// M3.5: ellipses, elliptic arcs and splines
+// ---------------------------------------------------------------------------------------------
+
+/** Major/minor radii and rotation from a centre, a major-axis point and a minor-radius point. */
+function ellipseAxes(
+  center: Vec2,
+  axisPoint: Vec2,
+  minorPoint: Vec2,
+): { a: number; b: number; rotation: number } | null {
+  const d = sub(axisPoint, center);
+  const r = len(d);
+  if (r < 1e-9) return null;
+  const u = scale(d, 1 / r);
+  // The minor radius is the minor point's distance from the major axis line.
+  const h = Math.abs(dot(sub(minorPoint, center), perp(u)));
+  if (h < 1e-9) return null;
+  let rotation = Math.atan2(u[1], u[0]);
+  let a = r;
+  let b = h;
+  if (b > a) {
+    // The picked "axis" is the minor one: same ellipse, major axis turned by 90°.
+    [a, b] = [b, a];
+    rotation += Math.PI / 2;
+  }
+  // Normalise the direction to (−π/2, π/2] (an axis has no sense).
+  while (rotation > Math.PI / 2) rotation -= Math.PI;
+  while (rotation <= -Math.PI / 2) rotation += Math.PI;
+  return { a, b, rotation };
+}
+
+/**
+ * Ellipse from its centre, a point at the end of an axis and a point fixing the other radius
+ * (its distance from that axis). The larger radius becomes the major one, so the axis point may
+ * sit on either axis. Null when degenerate.
+ */
+export function ellipseTool(
+  center: Vec2,
+  axisPoint: Vec2,
+  minorPoint: Vec2,
+  options?: ToolOptions,
+): SketchFragment | null {
+  const ax = ellipseAxes(center, axisPoint, minorPoint);
+  if (!ax) return null;
+  return ellipseFromRadii(center, ax.a, ax.b, ax.rotation, options);
+}
+
+/** Ellipse from centre, radii (major ≥ minor after sorting) and rotation (major axis direction). */
+export function ellipseFromRadii(
+  center: Vec2,
+  majorRadius: number,
+  minorRadius: number,
+  rotation: number,
+  options?: ToolOptions,
+): SketchFragment | null {
+  if (!(majorRadius > 1e-9) || !(minorRadius > 1e-9)) return null;
+  const swap = minorRadius > majorRadius;
+  const k = new Builder(options);
+  const c = k.point(center);
+  k.push({
+    id: k.id(),
+    kind: 'ellipse',
+    construction: k.isConstruction,
+    center: c,
+    majorRadius: swap ? minorRadius : majorRadius,
+    minorRadius: swap ? majorRadius : minorRadius,
+    rotation: swap ? rotation + Math.PI / 2 : rotation,
+  });
+  return k.done();
+}
+
+/**
+ * Elliptic arc: the ellipse of `ellipseTool`, counter-clockwise (unless `clockwise`) from `start`
+ * to `end`, both projected onto the ellipse along their eccentric angle. Null when degenerate or
+ * when start and end project to the same point.
+ */
+export function ellipticArcTool(
+  center: Vec2,
+  axisPoint: Vec2,
+  minorPoint: Vec2,
+  start: Vec2,
+  end: Vec2,
+  options: ToolOptions & { clockwise?: boolean } = {},
+): SketchFragment | null {
+  const ax = ellipseAxes(center, axisPoint, minorPoint);
+  if (!ax) return null;
+  const u: Vec2 = [Math.cos(ax.rotation), Math.sin(ax.rotation)];
+  const v = perp(u);
+  const onEllipse = (p: Vec2): { at: Vec2; t: number } => {
+    const d = sub(p, center);
+    const t = Math.atan2(dot(d, v) / ax.b, dot(d, u) / ax.a);
+    const x = ax.a * Math.cos(t);
+    const y = ax.b * Math.sin(t);
+    return { at: add(center, add(scale(u, x), scale(v, y))), t };
+  };
+  const s = onEllipse(start);
+  const e = onEllipse(end);
+  if (Math.abs(angle0(e.t - s.t)) < 1e-9 || dist(s.at, e.at) < 1e-9) return null;
+  const k = new Builder(options);
+  const c = k.point(center);
+  const ps = k.point(s.at);
+  const pe = k.point(e.at);
+  const [from, to] = options.clockwise ? [pe, ps] : [ps, pe];
+  k.push({
+    id: k.id(),
+    kind: 'ellipticArc',
+    construction: k.isConstruction,
+    center: c,
+    start: from,
+    end: to,
+    majorRadius: ax.a,
+    minorRadius: ax.b,
+    rotation: ax.rotation,
+  });
+  return k.done();
+}
+
+export interface SplineToolOptions extends ToolOptions {
+  /** Degree (default 3); lowered to fit few points. */
+  degree?: number;
+  /** A closed (periodic) spline. */
+  closed?: boolean;
+}
+
+/**
+ * Spline by control points: the poles are new points (interior ones, and all of a closed spline's,
+ * are construction: they shape the curve, they are not on it). Open splines are clamped, so they
+ * start and end at the first and last picked points. Uniform knots (the defaults). Null for fewer
+ * than 2 points (3 when closed).
+ */
+export function splineControlTool(
+  points: readonly Vec2[],
+  options: SplineToolOptions = {},
+): SketchFragment | null {
+  const closed = options.closed === true;
+  const pts = dedupe(points, closed);
+  if (pts.length < (closed ? 3 : 2)) return null;
+  const degree = Math.max(1, Math.min(options.degree ?? DEFAULT_SPLINE_DEGREE, pts.length - 1));
+  const k = new Builder(options);
+  const poles = pts.map((p, i) => {
+    const end = !closed && (i === 0 || i === pts.length - 1);
+    return k.point(p, end ? k.isConstruction : true);
+  });
+  k.push({
+    id: k.id(),
+    kind: 'bspline',
+    construction: k.isConstruction,
+    poles,
+    degree,
+    periodic: closed,
+  });
+  return k.done();
+}
+
+/**
+ * Spline through points (DECISIONS "Sketch B-splines"): the picked points become the through
+ * points, the poles interpolate them with knots at the points (chord-length parameters), and each
+ * inner through point (every one when closed) is held on the curve by `pointOn` at its knot, so
+ * moving a through point reshapes the curve. An open spline's ends are its first and last poles
+ * (shared with the end through points); the poles next to them are free tangent handles. Natural
+ * ends (zero curvature) initially. Null when degenerate (repeated points, fewer than 2; 3 closed).
+ */
+export function splineThroughTool(
+  points: readonly Vec2[],
+  options: SplineToolOptions = {},
+): SketchFragment | null {
+  const closed = options.closed === true;
+  const pts = dedupe(points, closed);
+  if (pts.length < (closed ? 3 : 2)) return null;
+  const it = interpolate(pts, options.degree ?? DEFAULT_SPLINE_DEGREE, closed);
+  if (!it) return null;
+  const k = new Builder(options);
+  const through = pts.map((p) => k.point(p));
+  const poles = it.poles.map((p, i) => {
+    if (!closed && i === 0) return through[0] as Id;
+    if (!closed && i === it.poles.length - 1) return through[through.length - 1] as Id;
+    return k.point(p, true);
+  });
+  const spline = k.push({
+    id: k.id(),
+    kind: 'bspline',
+    construction: k.isConstruction,
+    poles,
+    degree: it.degree,
+    periodic: closed,
+    knots: it.knots,
+    multiplicities: it.multiplicities,
+  });
+  for (const t of closed ? through : through.slice(1, -1))
+    k.constrain({ kind: 'pointOn', point: t, on: spline });
+  return k.done();
+}
+
+/** Consecutive duplicates removed (and a closing duplicate of the first point). */
+function dedupe(points: readonly Vec2[], closed: boolean): Vec2[] {
+  const out: Vec2[] = [];
+  for (const p of points) {
+    const q = out[out.length - 1];
+    if (!q || dist(p, q) > 1e-9) out.push([p[0], p[1]]);
+  }
+  if (closed && out.length > 1 && dist(out[0] as Vec2, out[out.length - 1] as Vec2) <= 1e-9)
+    out.pop();
+  return out;
 }
 
 /** Sets (or toggles, when `value` is omitted) the construction flag on `ids`. */

@@ -12,6 +12,12 @@
  *    explanation says so and removing the fix is offered.
  *  - Dragging: temporary planegcs constraints pull the grabbed geometry toward fixed cursor points
  *    in a dedicated planegcs system that is re-solved in place on every move.
+ *  - Rows planegcs can't express (G2 curvature) are finished by Newton steps on our own rows after
+ *    planegcs (`Row.gcs === false`); offsets and the derived poles of splines drawn through points
+ *    solve downstream of everything else (`offsetSplit`).
+ *  - Conflicts list the geometry they act on (`entities`); `fixes[0]` removes the most recently
+ *    added constraint of the set (its last by position in the sketch), which is also the one the
+ *    relaxed solution leaves out.
  *  - Polish: every accepted solution (solve and drag) gets minimum-norm Newton steps on our own
  *    residuals until driving dimensions and coincidences hold to ~1e-11 mm (polish.ts), so
  *    sketches dimensioned to meet are exactly coplanar (ADR-008 item 9).
@@ -33,7 +39,14 @@ import type {
   Vec2,
 } from '@wren-cad/contracts';
 import { analyzeDof, type DofAnalysis } from './analysis';
-import { constraintLabel, explainConflict, fixLabel, Namer } from './explain';
+import {
+  constraintLabel,
+  explainConflict,
+  fixLabel,
+  Namer,
+  referencedEntities,
+} from './explain';
+import { closestParam, paramCurve } from './geometry';
 import { Algorithm, GcsSession, type PlanegcsModule } from './gcs';
 import { infer } from './inference';
 import {
@@ -49,6 +62,7 @@ import {
   violatedRows,
 } from './model';
 import { polish } from './polish';
+import { isSketchReference } from './references';
 
 const MAX_CONFLICTS = 8;
 
@@ -77,9 +91,11 @@ function emptyResult(
   input: SketchSolveInput,
   t0: number,
   status: SketchSolveResult['status'],
+  error?: string,
 ): SketchSolveResult {
   return {
     status,
+    ...(error ? { error } : {}),
     entities: input.entities.map((e) => ({ ...e })),
     dof: 0,
     entityDof: {},
@@ -109,7 +125,7 @@ export class SketchSolverCore {
     try {
       model = buildModel(input);
     } catch (err) {
-      if (err instanceof SketchInputError) return emptyResult(input, t0, 'failed');
+      if (err instanceof SketchInputError) return emptyResult(input, t0, 'failed', err.message);
       throw err;
     }
     const namer = new Namer(input.entities);
@@ -201,10 +217,13 @@ export class SketchSolverCore {
       }
     }
     // planegcs' point–line distances are unsigned and can settle an offset on the wrong side;
-    // our own rows are signed, so Newton on them finds the intended solution.
-    if (split || model.active.some((c) => c.kind === 'offset')) {
-      const y = polish(model, x0, model.rows, undefined, 24);
-      if (isSatisfied(model, y)) return accept(y);
+    // our own rows are signed, so Newton on them finds the intended solution. Rows planegcs has no
+    // counterpart for (G2) and spline parameters it left outside a period are finished the same way.
+    if (split || model.tsOnly || model.splineIdx.size || model.active.some((c) => c.kind === 'offset')) {
+      for (const start of best ? [best, x0] : [x0]) {
+        const y = polish(model, start, model.rows, undefined, 30);
+        if (isSatisfied(model, y)) return accept(y);
+      }
     }
     return { x: best ?? Float64Array.from(x0), ok: false };
   }
@@ -273,7 +292,8 @@ export class SketchSolverCore {
             return this.consistent(input, all, withFixes, free);
           });
         }
-        const blame = set[set.length - 1] as Id;
+        // The most recently added member (last by position) is relaxed and suggested for removal.
+        const blame = set.reduce((a, b) => ((order.get(b) ?? 0) > (order.get(a) ?? 0) ? b : a));
         blamed.add(blame);
         work.splice(work.indexOf(blame), 1);
         sets.push(set);
@@ -284,6 +304,7 @@ export class SketchSolverCore {
             namer,
             input.values,
             linked,
+            order,
           ),
         );
       }
@@ -296,12 +317,27 @@ export class SketchSolverCore {
     fixes: SketchConstraint[],
     namer: Namer,
     values: Record<Id, number>,
-    linked: Id[] = [],
+    linked: Id[],
+    order: ReadonlyMap<Id, number>,
   ): SketchConflict {
     const fixedEntities = fixes.map((f) => (f.kind === 'fix' ? f.entity : f.id));
     const suggestions: SuggestedFix[] = [];
-    // Dimensions first (cheapest to change), newest/lowest-priority first.
-    const ordered = [...set].reverse().sort((a, b) => Number('value' in b) - Number('value' in a));
+    const pos = (c: SketchConstraint) => order.get(c.id) ?? 0;
+    const byPosition = [...set].sort((a, b) => pos(a) - pos(b));
+    const newest = byPosition[byPosition.length - 1] as SketchConstraint;
+    // fixes[0]: remove the most recently added constraint (the research's "propose the last-added
+    // constraint"); then the other dimensions (cheapest to change), newest first; then the rest.
+    const newestLabel = constraintLabel(newest, namer, values);
+    const first = { kind: 'removeConstraint', constraint: newest.id } as const;
+    suggestions.push({ label: fixLabel(first, newestLabel, newest), action: first });
+    if ('value' in newest) {
+      const action = { kind: 'makeReference', constraint: newest.id } as const;
+      suggestions.push({ label: fixLabel(action, newestLabel, newest), action });
+    }
+    const ordered = byPosition
+      .slice(0, -1)
+      .reverse()
+      .sort((a, b) => Number('value' in b) - Number('value' in a));
     for (const c of ordered) {
       const label = constraintLabel(c, namer, values);
       if ('value' in c) {
@@ -315,8 +351,17 @@ export class SketchSolverCore {
       const action = { kind: 'removeConstraint', constraint: f.id } as const;
       suggestions.push({ label: fixLabel(action, constraintLabel(f, namer, values), f), action });
     }
+    const entities: Id[] = [];
+    for (const c of [...byPosition, ...fixes]) {
+      for (const id of referencedEntities(c)) {
+        if (!isSketchReference(id) && !entities.includes(id)) entities.push(id);
+      }
+    }
+    for (const id of linked) if (!entities.includes(id)) entities.push(id);
     return {
-      constraints: set.map((c) => c.id),
+      kind: 'overconstrained',
+      constraints: byPosition.map((c) => c.id),
+      entities,
       ...(linked.length ? { fixed: [...fixedEntities, ...linked] } : {}),
       explanation: explainConflict(set, fixedEntities, namer, values, linked),
       fixes: suggestions,
@@ -364,7 +409,8 @@ export class SketchSolverCore {
           action,
         });
       }
-      conflict.fixes.unshift(...extra);
+      // After the suggestion (fixes[0]): a value change keeps every constraint.
+      conflict.fixes.splice(1, 0, ...extra);
     });
   }
 
@@ -376,7 +422,9 @@ export class SketchSolverCore {
     const base = this.solve(input);
     const solvedInput: SketchSolveInput = { ...input, entities: base.entities };
     const blamed = new Set(
-      base.conflicts.map((c) => c.constraints[c.constraints.length - 1] as Id),
+      base.conflicts
+        .filter((c) => c.kind !== 'unsupported')
+        .map((c) => c.constraints[c.constraints.length - 1] as Id),
     );
     const model = buildModel(solvedInput, { disabled: blamed });
     const x = Float64Array.from(model.x0);
@@ -445,8 +493,45 @@ export class SketchSolverCore {
           break;
         }
         case 'ellipse':
-          pointTarget(e.center);
+        case 'ellipticArc': {
+          const el = model.ellipseIdx.get(e.id) as { focus: number; radmin: number };
+          const c = model.pointIdx.get(e.center) as number;
+          const b = Math.abs(x[el.radmin] as number);
+          if (Math.hypot(grab[0] - (x[c] as number), grab[1] - (x[c + 1] as number)) < 0.5 * b) {
+            pointTarget(e.center);
+          } else {
+            const id = 'd:0';
+            cursors.push({ id, offset: [0, 0] });
+            extra.push({ id, type: 'point', x: grab[0], y: grab[1], fixed: true });
+            extra.push({
+              id: `${id}:c`,
+              type: 'point_on_ellipse',
+              p_id: id,
+              e_id: gid(e.id),
+              temporary: true,
+            });
+          }
           break;
+        }
+        case 'bspline': {
+          // The curve point under the cursor follows it (at a fixed curve parameter).
+          const curve = paramCurve(model.index, e);
+          if (!curve) break;
+          const u = closestParam(curve, grab, 32 * e.poles.length);
+          const at = curve.at(u);
+          const id = 'd:0';
+          cursors.push({ id, offset: [at[0] - grab[0], at[1] - grab[1]] });
+          extra.push({ id, type: 'point', x: at[0], y: at[1], fixed: true });
+          extra.push({
+            id: `${id}:c`,
+            type: 'point_on_bspline',
+            p_id: id,
+            b_id: gid(e.id),
+            pointparam: u,
+            temporary: true,
+          });
+          break;
+        }
       }
     }
     const split = offsetSplit(model, entity);
@@ -483,9 +568,15 @@ export class SketchSolverCore {
       let x: Float64Array | null = Float64Array.from(s.x);
       s.gcs.read(x);
       if (!finite(x)) x = null;
-      else if (s.split)
-        x = isSatisfied(s.split.upstream, x) ? solveTargets(s.model, x, s.split) : null;
-      else if (!isSatisfied(s.model, x)) x = null;
+      else if (s.split) {
+        const up = s.split.upstream;
+        if (!isSatisfied(up, x) && finishes(up)) x = polish(up, x, up.rows, undefined, 12);
+        x = isSatisfied(up, x) ? solveTargets(s.model, x, s.split) : null;
+      } else if (!isSatisfied(s.model, x)) {
+        // Rows planegcs can't express: a minimum-norm Newton correction of its answer.
+        const y = finishes(s.model) ? polish(s.model, x, s.model.rows, undefined, 12) : null;
+        x = y && isSatisfied(s.model, y) ? y : null;
+      }
       if (x) {
         s.x = refined(s.model, x);
       } else {
@@ -540,51 +631,83 @@ export class SketchSolverCore {
 // ---------------------------------------------------------------------------------------------
 
 /**
- * Offsets as a downstream stage: when nothing but offsets (and the offset arcs' own arc rules)
- * constrains the offset geometry, the sources can be solved without it (`upstream`, a small
- * planegcs system) and the offset geometry afterwards by Newton on the offset rows with
- * everything else held (`solveTargets`, sparse). Null when a user constraint touches the offset
- * geometry (or the drag grabs it): then everything solves together.
+ * Downstream stages: offsets, and the derived poles of splines drawn through points (their
+ * through points sit at knots, so those poles are a linear function of the through points and the
+ * handle poles; DECISIONS "Sketch B-splines"). When nothing else constrains a stage's geometry, the
+ * rest can be solved without it (`upstream`, a smaller planegcs system) and the stage afterwards by
+ * Newton on its rows with everything else held (`solveTargets`, sparse). So dragging a through
+ * point moves only it and reshapes its spline; the other through points stay put. Null when no
+ * stage qualifies (a user constraint touches its geometry, or the drag grabs it): then everything
+ * solves together.
  */
 export interface OffsetSplit {
   upstream: SketchModel;
   rows: Row[];
-  /** Grounding for the downstream stage: everything but the offset geometry. */
+  /** Grounding for the downstream stage: everything but the stage geometry. */
   ground: Uint8Array;
 }
 
+interface Stage {
+  /** Constraints whose rows are the stage's (disabled upstream). */
+  owners: Set<Id>;
+  target: Set<number>;
+  /** Entities whose internal rows belong to the stage (offset arcs). */
+  internalOf: Set<Id>;
+}
+
 export function offsetSplit(model: SketchModel, dragged?: Id): OffsetSplit | null {
+  const stages: Stage[] = [];
   const offsets = model.active.filter((c) => c.kind === 'offset');
-  if (offsets.length === 0) return null;
-  const target = new Set<number>();
-  const targetEntities = new Set<Id>();
-  for (const c of offsets) {
-    for (const t of c.targets) {
-      targetEntities.add(t);
-      for (const i of model.entityParams.get(t) ?? []) if (!model.grounded[i]) target.add(i);
+  if (offsets.length) {
+    const target = new Set<number>();
+    const targetEntities = new Set<Id>();
+    for (const c of offsets) {
+      for (const t of c.targets) {
+        targetEntities.add(t);
+        for (const i of model.entityParams.get(t) ?? []) if (!model.grounded[i]) target.add(i);
+      }
     }
+    for (const c of offsets)
+      for (const src of c.sources)
+        for (const i of model.entityParams.get(src) ?? []) target.delete(i);
+    if (target.size)
+      stages.push({ owners: new Set(offsets.map((c) => c.id)), target, internalOf: targetEntities });
   }
-  for (const c of offsets)
-    for (const src of c.sources)
-      for (const i of model.entityParams.get(src) ?? []) target.delete(i);
-  if (target.size === 0) return null;
-  if (dragged !== undefined && (model.entityParams.get(dragged) ?? []).some((i) => target.has(i)))
-    return null;
-  const offsetIds = new Set(offsets.map((c) => c.id));
+  for (const g of model.interpolations)
+    stages.push({ owners: new Set(g.constraints), target: new Set(g.derived), internalOf: new Set() });
+  if (stages.length === 0) return null;
+  const draggedParams = new Set(dragged !== undefined ? (model.entityParams.get(dragged) ?? []) : []);
   const rows: Row[] = [];
-  for (const r of model.rows) {
-    if (offsetIds.has(r.owner)) {
-      rows.push(r);
-      continue;
+  const owners = new Set<Id>();
+  const target = new Set<number>();
+  for (const st of stages) {
+    if ([...st.target].some((i) => draggedParams.has(i))) continue;
+    const mine: Row[] = [];
+    let ok = true;
+    for (const r of model.rows) {
+      if (st.owners.has(r.owner)) {
+        mine.push(r);
+        continue;
+      }
+      if (!r.params.some((i) => st.target.has(i))) continue;
+      if (r.internal && st.internalOf.has(r.owner)) mine.push(r);
+      else {
+        ok = false;
+        break;
+      }
     }
-    if (!r.params.some((i) => target.has(i))) continue;
-    if (r.internal && targetEntities.has(r.owner)) rows.push(r);
-    else return null;
+    if (!ok) continue;
+    rows.push(...mine);
+    for (const o of st.owners) owners.add(o);
+    for (const i of st.target) target.add(i);
   }
+  if (target.size === 0) return null;
   const ground = new Uint8Array(model.grounded.length).fill(1);
   for (const i of target) ground[i] = 0;
-  const disabled = new Set([...(model.options.disabled ?? []), ...offsetIds]);
+  const disabled = new Set([...(model.options.disabled ?? []), ...owners]);
   const upstream = buildModel(model.input, { ...model.options, disabled });
+  // Same parameter layout, or the stages can't be handed over.
+  if (upstream.x0.length !== model.x0.length) return null;
   return { upstream, rows, ground };
 }
 
@@ -596,6 +719,11 @@ function solveTargets(
 ): Float64Array | null {
   const y = polish({ ...model, grounded: split.ground }, x, split.rows, undefined, 16);
   return isSatisfied(model, y) ? y : null;
+}
+
+/** Whether Newton should finish planegcs' answer (rows it can't express, spline parameters). */
+function finishes(model: SketchModel): boolean {
+  return model.tsOnly || model.splineIdx.size > 0;
 }
 
 /** Polished `x` when it still passes the solver's own check, else `x` unchanged. */
@@ -644,7 +772,9 @@ function invalidConflict(
   const label = constraintLabel(c, namer, input.values);
   const action = { kind: 'removeConstraint', constraint: id } as const;
   return {
+    kind: 'unsupported',
     constraints: [id],
+    entities: [...new Set(referencedEntities(c))].filter((e) => !isSketchReference(e)),
     explanation: `${label}: ${reason}`,
     fixes: [{ label: fixLabel(action, label, c), action }],
   };

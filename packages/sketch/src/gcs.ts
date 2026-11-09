@@ -41,10 +41,15 @@ export class GcsSession {
     w.clear_data();
     w.set_convergence_threshold(CONVERGENCE);
     w.set_max_iterations(MAX_ITERATIONS);
+    const map = new Int32Array(x.length).fill(-1);
+    // Spline curve parameters first: constraints refer to them by name.
+    for (const g of model.gcsParams) {
+      const at = w.push_sketch_param(g.name, g.idx >= 0 ? (x[g.idx] as number) : g.value, g.idx < 0);
+      if (g.idx >= 0) map[g.idx] = at;
+    }
     for (const p of model.primitives) w.push_primitive(withPositions(p, model, x));
     for (const p of extra) w.push_primitive(p);
 
-    const map = new Int32Array(x.length).fill(-1);
     for (const [id, i] of model.pointIdx) {
       const at = w.p_param_index.get(gid(id));
       if (at === undefined) continue;
@@ -57,7 +62,9 @@ export class GcsSession {
     }
     for (const [id, el] of model.ellipseIdx) {
       const at = w.p_param_index.get(gid(id));
-      if (at !== undefined) map[el.radmin] = at;
+      // planegcs' arc of ellipse stores [start angle, end angle, minor radius].
+      const offset = model.index.get(id)?.kind === 'ellipticArc' ? 2 : 0;
+      if (at !== undefined) map[el.radmin] = at + offset;
     }
     // Grounded scalars (radii) are fixed p-params; grounded points were pushed `fixed`.
     for (let i = 0; i < x.length; i++) {
@@ -122,6 +129,33 @@ function withPositions(p: SketchPrimitive, model: SketchModel, x: Float64Array):
   if (p.type === 'ellipse') {
     const el = model.ellipseIdx.get(p.id.slice(2));
     return el === undefined ? { ...p } : { ...p, radmin: x[el.radmin] as number };
+  }
+  if (p.type === 'arc_of_ellipse') {
+    const id = p.id.slice(2);
+    const el = model.ellipseIdx.get(id);
+    const e = model.index.get(id);
+    if (el === undefined || e?.kind !== 'ellipticArc') return { ...p };
+    const c = model.pointIdx.get(e.center) as number;
+    const cx = x[c] as number;
+    const cy = x[c + 1] as number;
+    const fx = (x[el.focus] as number) - cx;
+    const fy = (x[el.focus + 1] as number) - cy;
+    const fl = Math.hypot(fx, fy);
+    const b = x[el.radmin] as number;
+    const a = Math.hypot(fl, b);
+    const ux = fl > 1e-12 ? fx / fl : Math.cos(e.rotation);
+    const uy = fl > 1e-12 ? fy / fl : Math.sin(e.rotation);
+    // Eccentric angle of a point in the ellipse's frame (minor axis = major turned CCW).
+    const ecc = (pid: Id) => {
+      const i = model.pointIdx.get(pid) as number;
+      const dx = (x[i] as number) - cx;
+      const dy = (x[i + 1] as number) - cy;
+      return Math.atan2((-uy * dx + ux * dy) / b, (ux * dx + uy * dy) / a);
+    };
+    const t0 = ecc(e.start);
+    let t1 = ecc(e.end);
+    while (t1 <= t0) t1 += 2 * Math.PI;
+    return { ...p, start_angle: t0, end_angle: t1, radmin: b };
   }
   if (p.type === 'arc') {
     const e = model.index.get(p.id.slice(2));

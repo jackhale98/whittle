@@ -65,6 +65,60 @@ export class SketchBuilder {
     this.entities.push({ id, kind: 'arc', construction: false, center, start, end });
     return id;
   }
+  ellipse(center: Id, majorRadius: number, minorRadius: number, rotation = 0, id = this.id('e')): Id {
+    this.entities.push({ id, kind: 'ellipse', construction: false, center, majorRadius, minorRadius, rotation });
+    return id;
+  }
+  /** Elliptic arc; `start`/`end` are placed on the ellipse at eccentric angles t0/t1 when numbers. */
+  ellipticArc(
+    center: Id,
+    majorRadius: number,
+    minorRadius: number,
+    rotation: number,
+    start: Id,
+    end: Id,
+    id = this.id('ea'),
+  ): Id {
+    this.entities.push({
+      id,
+      kind: 'ellipticArc',
+      construction: false,
+      center,
+      start,
+      end,
+      majorRadius,
+      minorRadius,
+      rotation,
+    });
+    return id;
+  }
+  bspline(
+    poles: Id[],
+    options: { degree?: number; periodic?: boolean; knots?: number[]; multiplicities?: number[]; weights?: number[] } = {},
+    id = this.id('s'),
+  ): Id {
+    this.entities.push({
+      id,
+      kind: 'bspline',
+      construction: false,
+      poles,
+      degree: options.degree ?? 3,
+      periodic: options.periodic ?? false,
+      ...(options.knots ? { knots: options.knots } : {}),
+      ...(options.multiplicities ? { multiplicities: options.multiplicities } : {}),
+      ...(options.weights ? { weights: options.weights } : {}),
+    });
+    return id;
+  }
+  /** Point on an ellipse (centre c, radii a ≥ b, rotation) at eccentric angle t. */
+  pointOnEllipse(c: Vec2, a: number, b: number, rotation: number, t: number): Id {
+    const x = a * Math.cos(t);
+    const y = b * Math.sin(t);
+    return this.point(
+      c[0] + x * Math.cos(rotation) - y * Math.sin(rotation),
+      c[1] + x * Math.sin(rotation) + y * Math.cos(rotation),
+    );
+  }
   geo(c: GeoDraft, id = this.id('k')): Id {
     this.constraints.push({ ...c, id } as SketchConstraint);
     return id;
@@ -100,6 +154,16 @@ export function radius(result: SketchSolveResult, id: Id): number {
 }
 
 export const deg = (d: number) => (d * Math.PI) / 180;
+
+export function entity<K extends SketchEntity['kind']>(
+  result: { entities: SketchEntity[] },
+  id: Id,
+  kind: K,
+): Extract<SketchEntity, { kind: K }> {
+  const e = result.entities.find((x) => x.id === id);
+  if (e?.kind !== kind) throw new Error(`${id} is not a ${kind}`);
+  return e as Extract<SketchEntity, { kind: K }>;
+}
 
 /** Fixed-corner rectangle with H/V edges, width and height dimensions. */
 export function rectangle(b: SketchBuilder, w = 40, h = 20, at: Vec2 = [0, 0], perturb = 3) {

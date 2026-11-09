@@ -9,11 +9,22 @@
 import type {
   Id,
   SketchArc,
+  SketchBSpline,
   SketchCircle,
+  SketchEllipse,
+  SketchEllipticArc,
   SketchEntity,
   SketchLine,
   Vec2,
 } from '@wren-cad/contracts';
+import {
+  closestSplineParam,
+  type SplineGeom,
+  sampleParams,
+  splineAt,
+  splineBasis,
+  splinePoint,
+} from './bspline';
 
 export const TAU = Math.PI * 2;
 
@@ -122,11 +133,207 @@ export function centerOf(e: SketchEntity): Id | null {
     case 'circle':
     case 'arc':
     case 'ellipse':
+    case 'ellipticArc':
       return e.center;
     default:
       return null;
   }
 }
+
+// ---------------------------------------------------------------------------------------------
+// Ellipses, elliptic arcs and splines
+// ---------------------------------------------------------------------------------------------
+
+export interface EllipseGeom {
+  c: Vec2;
+  /** Major and minor radius (a ≥ b in a valid sketch). */
+  a: number;
+  b: number;
+  /** Major axis direction, radians. */
+  rotation: number;
+  /** Unit major / minor axis directions (minor = major turned CCW by 90°). */
+  u: Vec2;
+  v: Vec2;
+}
+
+export interface EllipticArcGeom extends EllipseGeom {
+  start: Vec2;
+  end: Vec2;
+  /** Eccentric angle of the start in [0, 2π) and the CCW sweep in (0, 2π]. */
+  t0: number;
+  sweep: number;
+}
+
+export function ellipseGeom(index: EntityIndex, e: SketchEllipse | SketchEllipticArc): EllipseGeom {
+  const u: Vec2 = [Math.cos(e.rotation), Math.sin(e.rotation)];
+  return {
+    c: pointPos(index, e.center),
+    a: e.majorRadius,
+    b: e.minorRadius,
+    rotation: e.rotation,
+    u,
+    v: perp(u),
+  };
+}
+
+/** Point at eccentric angle `t`: c + a cos t · u + b sin t · v. */
+export function ellipsePoint(g: EllipseGeom, t: number): Vec2 {
+  const x = g.a * Math.cos(t);
+  const y = g.b * Math.sin(t);
+  return [g.c[0] + x * g.u[0] + y * g.v[0], g.c[1] + x * g.u[1] + y * g.v[1]];
+}
+
+/** Eccentric angle of a point (exact for points on the ellipse), in [0, 2π). */
+export function ellipseParam(g: EllipseGeom, p: Vec2): number {
+  const d = sub(p, g.c);
+  return angle0(Math.atan2(dot(d, g.v) / Math.max(g.b, 1e-300), dot(d, g.u) / Math.max(g.a, 1e-300)));
+}
+
+export function ellipticArcGeom(index: EntityIndex, e: SketchEllipticArc): EllipticArcGeom {
+  const g = ellipseGeom(index, e);
+  const start = pointPos(index, e.start);
+  const end = pointPos(index, e.end);
+  const t0 = ellipseParam(g, start);
+  let sweep = angle0(ellipseParam(g, end) - t0);
+  if (sweep < 1e-12) sweep = TAU;
+  return { ...g, start, end, t0, sweep };
+}
+
+/** A spline entity with its pole positions. */
+export function splineGeom(index: EntityIndex, e: SketchBSpline): SplineGeom {
+  return {
+    poles: e.poles.map((id) => pointPos(index, id)),
+    degree: e.degree,
+    periodic: e.periodic,
+    ...(e.weights ? { weights: e.weights } : {}),
+    ...(e.knots ? { knots: e.knots } : {}),
+    ...(e.multiplicities ? { multiplicities: e.multiplicities } : {}),
+  };
+}
+
+/**
+ * A curve entity as a parametric curve over [t0, t1]: lines t ∈ [0, 1] from start to end;
+ * circles and ellipses the (eccentric) angle over [0, 2π] (closed, CCW); arcs and elliptic arcs
+ * CCW from their start; splines their knot range (closed when periodic). Directions are the ones
+ * planegcs uses for curve normals (ADR-pending "Sketch curves in the solver").
+ */
+export interface ParamCurve {
+  t0: number;
+  t1: number;
+  closed: boolean;
+  at(t: number): Vec2;
+  d1(t: number): Vec2;
+  d2(t: number): Vec2;
+}
+
+export function paramCurve(index: EntityIndex, e: SketchEntity): ParamCurve | null {
+  switch (e.kind) {
+    case 'point':
+      return null;
+    case 'line': {
+      const { a, b } = lineGeom(index, e);
+      const d = sub(b, a);
+      return {
+        t0: 0,
+        t1: 1,
+        closed: false,
+        at: (t) => add(a, scale(d, t)),
+        d1: () => d,
+        d2: () => [0, 0],
+      };
+    }
+    case 'circle':
+    case 'arc': {
+      const g = e.kind === 'circle' ? circleGeom(index, e) : arcGeom(index, e);
+      const a0 = e.kind === 'arc' ? (g as ArcGeom).a0 : 0;
+      const sweep = e.kind === 'arc' ? (g as ArcGeom).sweep : TAU;
+      return {
+        t0: a0,
+        t1: a0 + sweep,
+        closed: e.kind === 'circle',
+        at: (t) => add(g.c, fromAngle(t, g.r)),
+        d1: (t) => [-g.r * Math.sin(t), g.r * Math.cos(t)],
+        d2: (t) => [-g.r * Math.cos(t), -g.r * Math.sin(t)],
+      };
+    }
+    case 'ellipse':
+    case 'ellipticArc': {
+      const g = e.kind === 'ellipse' ? ellipseGeom(index, e) : ellipticArcGeom(index, e);
+      const t0 = e.kind === 'ellipticArc' ? (g as EllipticArcGeom).t0 : 0;
+      const sweep = e.kind === 'ellipticArc' ? (g as EllipticArcGeom).sweep : TAU;
+      const comb = (x: number, y: number): Vec2 => [
+        x * g.u[0] + y * g.v[0],
+        x * g.u[1] + y * g.v[1],
+      ];
+      return {
+        t0,
+        t1: t0 + sweep,
+        closed: e.kind === 'ellipse',
+        at: (t) => ellipsePoint(g, t),
+        d1: (t) => comb(-g.a * Math.sin(t), g.b * Math.cos(t)),
+        d2: (t) => comb(-g.a * Math.cos(t), -g.b * Math.sin(t)),
+      };
+    }
+    case 'bspline': {
+      const g = splineGeom(index, e);
+      const basis = splineBasis(g.poles.length, g);
+      return {
+        t0: basis.lo,
+        t1: basis.hi,
+        closed: g.periodic,
+        at: (t) => splinePoint(g, t),
+        d1: (t) => {
+          const r = splineAt(g, t, 1);
+          return [r[2] as number, r[3] as number];
+        },
+        d2: (t) => {
+          const r = splineAt(g, t, 2);
+          return [r[4] as number, r[5] as number];
+        },
+      };
+    }
+  }
+}
+
+/** Parameter of the point of `curve` nearest `p` (within [t0, t1]; closed curves wrap). */
+export function closestParam(curve: ParamCurve, p: Vec2, samples = 64): number {
+  let best = curve.t0;
+  let bd = Number.POSITIVE_INFINITY;
+  for (let i = 0; i <= samples; i++) {
+    const t = curve.t0 + ((curve.t1 - curve.t0) * i) / samples;
+    const q = curve.at(t);
+    const d = (q[0] - p[0]) ** 2 + (q[1] - p[1]) ** 2;
+    if (d < bd) {
+      bd = d;
+      best = t;
+    }
+  }
+  return refineCurveParam(curve, p, best);
+}
+
+/** Newton on C′(t)·(C(t) − p) = 0 from `t`. */
+export function refineCurveParam(curve: ParamCurve, p: Vec2, tIn: number): number {
+  let t = tIn;
+  const span = curve.t1 - curve.t0;
+  for (let it = 0; it < 16; it++) {
+    const q = sub(curve.at(t), p);
+    const d1 = curve.d1(t);
+    const d2 = curve.d2(t);
+    const f = dot(d1, q);
+    const df = dot(d1, d1) + dot(d2, q);
+    if (!(Math.abs(df) > 1e-300)) break;
+    let next = t - f / df;
+    if (curve.closed) {
+      while (next < curve.t0) next += span;
+      while (next > curve.t1) next -= span;
+    } else next = Math.min(curve.t1, Math.max(curve.t0, next));
+    const done = Math.abs(next - t) <= 1e-14 * Math.max(1, Math.abs(t));
+    t = next;
+    if (done) break;
+  }
+  return t;
+}
+
 
 // ---------------------------------------------------------------------------------------------
 // Sampling (overlays, kernel wires)
@@ -197,10 +404,26 @@ export function sampleEntity(
       out[n] = out[0] as Vec2;
       return out;
     }
-    case 'ellipticArc':
-    case 'bspline':
-      // M3.5 placeholder (ADR-046): the sketch workstream replaces this with exact sampling.
-      return (e.kind === 'bspline' ? e.poles : [e.start, e.end]).map((id) => pointPos(index, id));
+    case 'ellipticArc': {
+      const g = ellipticArcGeom(index, e);
+      const n = segmentsFor(Math.max(g.a, g.b), g.sweep, options);
+      const out: Vec2[] = [g.start];
+      for (let i = 1; i < n; i++) out.push(ellipsePoint(g, g.t0 + (i / n) * g.sweep));
+      out.push(g.end);
+      return out;
+    }
+    case 'bspline': {
+      const g = splineGeom(index, e);
+      const ts = sampleParams(g, options.chordTolerance ?? 0.01, options.maxSegments ?? 2048);
+      const out = ts.map((t) => splinePoint(g, t));
+      // Exact ends: a clamped spline starts and ends at its end poles; a periodic one closes.
+      if (g.periodic) out[out.length - 1] = out[0] as Vec2;
+      else {
+        out[0] = g.poles[0] as Vec2;
+        out[out.length - 1] = g.poles[g.poles.length - 1] as Vec2;
+      }
+      return out;
+    }
   }
 }
 
@@ -242,7 +465,7 @@ export function sketchBounds(entities: readonly SketchEntity[]): { min: Vec2; ma
         const t = (k * Math.PI) / 2;
         if (angleInArc(g, t)) grow(add(g.c, fromAngle(t, g.r)));
       }
-    } else if (e.kind === 'ellipse') {
+    } else if (e.kind === 'ellipse' || e.kind === 'ellipticArc' || e.kind === 'bspline') {
       for (const p of sampleEntity(index, e, { chordTolerance: 1e-4 })) grow(p);
     }
   }
@@ -290,21 +513,24 @@ export function closestOnEntity(index: EntityIndex, e: SketchEntity, p: Vec2): V
       return dist(p, g.start) <= dist(p, g.end) ? g.start : g.end;
     }
     case 'ellipse': {
-      // Coarse: nearest sample. Ellipses are P1.
-      let best: Vec2 | null = null;
-      let bd = Number.POSITIVE_INFINITY;
-      for (const q of sampleEntity(index, e, { minSegments: 256 })) {
-        const d = dist(p, q);
-        if (d < bd) {
-          bd = d;
-          best = q;
-        }
-      }
-      return best;
+      const g = ellipseGeom(index, e);
+      if (!(g.a > 0) || !(g.b > 0)) return g.c;
+      const curve = paramCurve(index, e) as ParamCurve;
+      return curve.at(closestParam(curve, p));
     }
-    case 'ellipticArc':
-    case 'bspline':
-      return null; // M3.5 placeholder (ADR-046): the sketch workstream replaces this.
+    case 'ellipticArc': {
+      const g = ellipticArcGeom(index, e);
+      if (!(g.a > 0) || !(g.b > 0)) return g.start;
+      // Closest on the whole ellipse; outside the arc's sweep, the nearer end.
+      const full: ParamCurve = { ...(paramCurve(index, e) as ParamCurve), t0: 0, t1: TAU, closed: true };
+      const t = closestParam(full, p);
+      if (angle0(t - g.t0) <= g.sweep) return full.at(t);
+      return dist(p, g.start) <= dist(p, g.end) ? g.start : g.end;
+    }
+    case 'bspline': {
+      const g = splineGeom(index, e);
+      return splinePoint(g, closestSplineParam(g, p));
+    }
   }
 }
 
