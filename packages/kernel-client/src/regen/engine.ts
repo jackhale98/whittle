@@ -4463,11 +4463,7 @@ const MESH_FORMATS: ReadonlySet<ImportFeature['source']['format']> = new Set([
  * `edge(A)` in a closed solid, so edges whose fingerprint curve is `degenerate` are not free.
  * Without fingerprints the body is assumed closed: a false "open" would refuse a valid solid.
  */
-function hasFreeEdges(
-  naming: NamingMap,
-  featureId: Id,
-  fp: ShapeFingerprints | null,
-): boolean {
+function hasFreeEdges(naming: NamingMap, featureId: Id, fp: ShapeFingerprints | null): boolean {
   if (!fp) return false;
   const free = new RegExp(`^edge\\(F${featureId}:face(#\\d+)?\\)(#\\d+)?$`);
   return naming.some(
