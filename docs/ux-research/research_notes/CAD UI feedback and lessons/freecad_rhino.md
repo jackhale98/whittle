@@ -331,3 +331,119 @@ Sources for the terms: [Rhino docs: Gestures](https://www.rhino3d.com/docs/guide
 ### Gaps
 - No structured survey of switcher pain points was found; all evidence is anecdotal forum or comment text.
 - DEVELOP3D reviews and YouTube reviewer opinions were not covered in this pass because of the tool-call budget.
+
+## 8. View orbit / rotation behaviour (coordinator emphasis): pivot, orbit style, indicator, inertia, complaints, preferred defaults
+
+### Takeaway
+Both tools' orbit complaints share one cause: users expect the view to pivot around what they are looking at (the point or object under the cursor) and to stay predictable. When the pivot is the window centre, the world origin, or a stale camera target, the part "whips off screen". Both projects changed their defaults over time:
+
+- **FreeCAD:** 1.0 orbited with Trackball around the model point under the cursor. 1.1 changed the shipped defaults to the "Rounded Arcball" orbit style around the window centre. It shows a rotation-centre sphere, and spin-after-release is off by default.
+- **Rhino:** right-drag orbits around the camera target, with world-Z kept vertical by default. Orbiting around the object under the cursor is a buried Advanced setting. A Rhino 5 → 8 switcher described the difference as the object "whips around and go[es] off screen".
+
+Correction to the brief: Rounded Arcball arrived in the 1.1 cycle (merged April 2025), not in 1.0.
+
+### Cited Findings
+
+**FreeCAD: options and defaults, verified in source**
+
+FreeCAD's navigation preferences page (Display → Navigation; source `src/Gui/PreferencePages/DlgSettingsNavigation.ui/.cpp`) has these orbit settings:
+
+- [F] **Orbit style choices** (1.1 and main), with the tooltip wording:
+  - "Rounded Arcball: moving the mouse in the corners of the screen will only roll the part."
+  - "Trackball: moving the mouse horizontally will rotate the part around the Y-axis."
+  - "Trackball Classic: moving the mouse will rotate the part allowing precession."
+  - "Free Turntable: the part will be rotated around the Z-axis."
+  - "Turntable: the part will be rotated around the Z-axis (with constrained axes)."
+  - 1.0 offered only Turntable, Trackball and Free Turntable.
+  - Sources: [DlgSettingsNavigation.ui (main)](https://github.com/FreeCAD/FreeCAD/blob/main/src/Gui/PreferencePages/DlgSettingsNavigation.ui); [same file at tag 1.0.0](https://github.com/FreeCAD/FreeCAD/blob/1.0.0/src/Gui/PreferencePages/DlgSettingsNavigation.ui)
+- [F] **Rotation mode choices:** "Window center", "Drag at cursor", "Object center". The tooltip reads "Rotations in 3D will use current cursor position as center for rotation." In code:
+  - Window center = the camera focal point.
+  - Drag at cursor = ScenePointAtCursor | FocalPointAtCursor: ray-pick the model point under the cursor at button press; if nothing is hit, use the point on the focal plane under the cursor.
+  - Object center = ScenePointAtCursor | BoundingBoxCenter: the picked point, else the scene bounding-box centre.
+  - Sources: [NavigationStyle.h](https://github.com/FreeCAD/FreeCAD/blob/main/src/Gui/Navigation/NavigationStyle.h); [NavigationStyle.cpp](https://github.com/FreeCAD/FreeCAD/blob/main/src/Gui/Navigation/NavigationStyle.cpp) (`saveCursorPosition`)
+- [F] **Default changes across versions** (from the preference-page source at each release tag):
+
+  | Version | Default orbit style | Default rotation mode | Default navigation style |
+  |---|---|---|---|
+  | 0.21.2 | Trackball | 1 = Drag at cursor | CAD |
+  | 1.0.0 | Trackball | 1 = Drag at cursor | CAD |
+  | 1.1.0 and main | Rounded Arcball | 0 = Window center | CAD |
+
+  - Sources: [0.21.2 DlgSettingsNavigation.cpp](https://github.com/FreeCAD/FreeCAD/blob/0.21.2/src/Gui/DlgSettingsNavigation.cpp); [1.0.0](https://github.com/FreeCAD/FreeCAD/blob/1.0.0/src/Gui/PreferencePages/DlgSettingsNavigation.cpp); [1.1.0](https://github.com/FreeCAD/FreeCAD/blob/1.1.0/src/Gui/PreferencePages/DlgSettingsNavigation.cpp)
+  - I did not find the PR or rationale for switching the rotation-mode default to Window center.
+- [F] **CAD style middle click:** a quick middle click (shorter than the OS double-click interval) calls `lookAtPoint`, which re-targets the camera on the picked point. In Window-center mode that point becomes the new orbit pivot. This is the "click to set rotation centre" gesture. — [CADNavigationStyle.cpp](https://github.com/FreeCAD/FreeCAD/blob/main/src/Gui/Navigation/CADNavigationStyle.cpp)
+  - [F] The CAD style's own hint says: rotate = "Press middle+left, middle+right or shift+right mouse button". — same file
+  - [F] A FreeCAD doc summary says "The cursor position when the middle mouse button is pressed determines the center of rotation", and a middle-button double-click sets a new centre. — [FreeCAD wiki Mouse navigation (via search)](https://wiki.freecad.org/Mouse_navigation/en)
+- [F] **Rotation-centre indicator:** a "Rotation Center Indicator" group (checkable; sphere size, colour and transparency). `ShowRotationCenter` defaults to true in both 1.0 and 1.1. The 1.0 release notes say a rotation centre indicator was added and can be disabled. — [DlgSettingsNavigation.ui](https://github.com/FreeCAD/FreeCAD/blob/main/src/Gui/PreferencePages/DlgSettingsNavigation.ui); [Release notes 1.0 fragment (via search)](https://wiki.freecad.org/Translations:Release_notes_1.0/52/en)
+- [F] **Pivot-aware projection:** for the Trackball, Trackball Classic and Rounded Arcball styles, when the pivot is a picked scene point, FreeCAD moves the virtual-trackball sphere to the pivot's screen position and scales its radius and sensitivity. This keeps the rotation coherent when orbiting about an off-centre point. — [NavigationStyle.cpp `spinInternal`](https://github.com/FreeCAD/FreeCAD/blob/main/src/Gui/Navigation/NavigationStyle.cpp)
+- [F] **Inertia/spin:** "Enable spinning animations that are used in some navigation styles after dragging" (`UseSpinningAnimations`) defaults to off. Navigation animations (view transitions) default to on, with a default duration of 500 ms. "Zoom at cursor" defaults to on. — [DlgSettingsNavigation.ui](https://github.com/FreeCAD/FreeCAD/blob/main/src/Gui/PreferencePages/DlgSettingsNavigation.ui); [NavigationStyle.cpp](https://github.com/FreeCAD/FreeCAD/blob/main/src/Gui/Navigation/NavigationStyle.cpp)
+
+**FreeCAD: history of Rounded Arcball and Trackball Classic**
+- [F] PR #20535, "Gui: Added classic trackball orbit style" (Graicc, opened 2025-03-31, merged 2025-04-28):
+  - Added Trackball Classic, which "mimics the default orbit behavior of other CAD applications".
+  - Added Rounded Arcball (pure roll when dragging outside a circle), closing #18070, "Add Rounded Arcball Navigation Style with pure Roll around", which cites CATIA-like behaviour.
+  - [O] The author: "position independence is far more important than path independence".
+  - [O] A design-WG reviewer: "wow, this works great", but "Pure roll outside only seems to work in the corners". The author said the transition onto the sphere "doesn't feel the greatest when FreeCAD is in fullscreen".
+  - Source: [GitHub PR #20535](https://github.com/FreeCAD/FreeCAD/pull/20535)
+- [O] Issue #21403, "Navigation: Improve Rounded Arcball orbit style" (2025-05-16, still open):
+  - The style is "static": "you cannot orbit around the object as pure roll kicks in outside".
+  - The roll zone is a screen-ratio oval, so it is "hard to roll only on the right or left edge".
+  - Proposals: a circle with a margin; roll only while the drag stays outside the circle; show the circle overlay while orbiting.
+  - The issue has slipped from the 1.1 milestone through 26.3/27.1 to no milestone.
+  - Source: [GitHub #21403](https://github.com/FreeCAD/FreeCAD/issues/21403)
+- [F] Background: arcball control was proposed by Ken Shoemake (1992). A comparison of virtual trackballs rates turntable as path-independent but limited to a fixed axis, and trackball as path-independent with arbitrary rotation. — [Virtual Trackballs: An Interactive Taxonomy](https://theshamblog.com/virtual-trackballs-a-taxonomy/)
+- [F] PR #8048 (Dec 2022) added Free Turntable, "a second Turntable orbit style but without primary rotation selection … similar to Blender". In Free Turntable the Z axis stays aligned with screen vertical, unlike Trackball. — [GitHub PR #8048](https://github.com/FreeCAD/FreeCAD/pull/8048)
+
+**FreeCAD: complaints**
+- [O] Tracker #3396 says rotating a part also makes it orbit, "most CAD apps rotate parts about their center without ANY kind of orbiting", and that no style avoids it. [O] A maintainer reply (tracker #3417) blamed zoom habits for the moving pivot, and pointed to the then-new "drag at cursor" option to rotate around a point on the model. — [tracker #3396](https://tracker.freecad.org/view.php?id=3396); [tracker #3417](https://tracker.freecad.org/view.php?id=3417)
+- [F] A 3Dconnexion report says the rotation centre is not updated in perspective view. Fixes in 2026 include #29998, "honor rotation center mode for SpaceMouse" (closed), and #32066, "partially revert … spacemouse zoom pivot behavior" (closed). — [tracker #4654 (via search)](https://tracker.freecad.org/view.php?id=4654); [GitHub search results](https://github.com/FreeCAD/FreeCAD/pulls?q=rotation+center)
+- [F] A "Fusion navigation style" PR (#26359, Dec 2025, based on the Revit style) was tested and approved in Apr 2026. It was then marked draft, and its milestone moved to tbd in Sept 2026. [O] "Would really like this control scheme." — [GitHub PR #26359](https://github.com/FreeCAD/FreeCAD/pull/26359)
+- [F] Version naming: FreeCAD milestones and issue titles now use calendar-style versions (26.3, 27.1; "FreeCAD 26.3rc2", Nov 2026) after 1.1. — [GitHub #21403 milestones](https://github.com/FreeCAD/FreeCAD/issues/21403); [GitHub #34280 title (via API search)](https://github.com/FreeCAD/FreeCAD/issues/34280)
+
+**Rhino: pivot and orbit model**
+- [F] **Mouse mapping:** right-drag rotates the Perspective view (pans parallel views). Ctrl/Cmd+Shift+right-drag rotates around the object under the cursor (in parallel views it rotates the view). — [Rhino docs: Gestures](https://www.rhino3d.com/docs/guides/gestures/); [RotateView docs](https://docs.mcneel.com/rhino/6/help/en-us/commands/rotateview.htm)
+- [F] **Rhino 8 Options → View → Rotate:**
+  - "Rotate around world axes" (default on), with tilt keys to roll.
+  - "Rotate around CPlane Z-axis"; "Rotate relative to view"; "Classic V2 style" (all off).
+  - Keyboard increment 1/60 of a circle (6°).
+  - "Auto adjust camera target after Pan and Zoom … Tries to keep the view rotation target where the objects are" (default on).
+  - "Wrap cursor at viewport borders" (default on).
+  - "Set RotateViewAroundObjectAtMouseCursor=True in Advanced settings to rotate a view around the object under the mouse cursor."
+  - No inertia/spin setting is documented.
+  - Source: [Rhino 8 Options: View](https://docs.mcneel.com/rhino/8/help/en-us/options/view.htm)
+- [F] **Gumball option:** Options → Modeling Aids → Gumball → "Rotate view around Gumball" orbits around the selection. The Advanced setting `RotateViewAroundAutoGumball` controls the auto-gumball variant; one user disabled it to stop orbiting around selected objects. — [McNeel Discourse: Disable orbit around selected object (2026-04)](https://discourse.mcneel.com/t/disable-orbit-around-selected-object/218094); [RotateViewAround ObjectAtMouseCursor does not work (2024)](https://discourse.mcneel.com/t/rotateviewaround-objectatmousecursor-does-not-work/183989)
+- [F] **Re-centring tools:** Zoom Selected ("ZS") resets the target to the selection; `_Zoom _Target` sets a precise target; staff call the latter their favourite. — [McNeel Discourse: Nine wish: set center of rotation (2026-07)](https://discourse.mcneel.com/t/nine-wish-set-center-of-rotation/221234); [Rotate about an item … tumbles it out of view V8 (2025-03)](https://discourse.mcneel.com/t/rotate-about-an-item-in-perspective-tumbles-it-out-of-view-v8/200980)
+
+**Rhino: complaints and preferred defaults**
+- [O] Rhino 5 → 8 switcher (2025): after a right-drag rotate in V8 "it goes off screen", while "in V5 i just zoom in and out all day long … it rotates about what I have zoomed into, no selections needed".
+  - Staff suggested ZS, then the Advanced setting.
+  - The user: "IT SHOULD ROTATE ABOUT CURSOR BY DEFAULT … NO ONE WANTS THE OBJECT TO WHIP AROUND AND GO OFF SCREEN", and said the setting is "buried VERY DEEP in advanced".
+  - [O] Staff (Gijs) could not reproduce a V5 vs V8 difference with a test file.
+  - Source: [McNeel Discourse thread 200980](https://discourse.mcneel.com/t/rotate-about-an-item-in-perspective-tumbles-it-out-of-view-v8/200980)
+- [O] Wish (2022): make Shift+Ctrl+RMB "rotate around pickpoint" the default, or map it to the middle button, "so I don't have to hold down the key combo". Staff logged RH-68058, "Rotate view – always use the mouse location". Others agreed: "very unconfortable to orbit when the center of the axis of rotation is moved … from the center of the object". Rotate-at-cursor does not work on unbaked Grasshopper preview geometry. — [McNeel Discourse: Wish rotate around pickpoint as default](https://discourse.mcneel.com/t/wish-rotate-view-option-for-rotate-around-pickpoint-as-default/140191)
+- [O] 2019: "to rotate the view … is really suffering from the first day … the view rotation center is always … (0,0,0)". The fixes were "Rotate relative to view" or "Rotate view around Gumball". [O] A 2025 reply: "great one, was struggling with a very uncontrollable view rotation on a larger scale file (architectural model)." — [McNeel Discourse thread 87727](https://discourse.mcneel.com/t/how-can-i-set-a-view-rotation-center-in-rhino-now-the-view-rotation-operation-is-suffering/87727)
+- [O] Problems with the cursor-pivot setting:
+  - It did not stick at first (bug RH-74898, fixed in WIP 2023).
+  - It ignores objects on locked layers, making it "appear as though it is not working" (2025).
+  - Users still report it "does not do anything" (2026-01): "really annoying when you are zoomed way into an area … and can not click and rotate."
+  - [O] One user found the cursor pivot lands on "the front corner of the box, which is a bit odd". They prefer SpaceMouse "Object Mode" (rotate around the selection's bounding-box centre).
+  - Sources: [Rotate View Around ObjectAtMouseCursor not stored](https://discourse.mcneel.com/t/rotate-view-around-objectatmousecursor-not-stored/159279); [does not work](https://discourse.mcneel.com/t/rotateviewaround-objectatmousecursor-does-not-work/183989)
+- [O] An NX user wants a quick middle-button press (about 1 s or less) to set the pivot and briefly highlight it, as in NX, Alias and Geomagic Design X, so they can work on a small area and then return. — [McNeel Discourse: Nine wish: set center of rotation](https://discourse.mcneel.com/t/nine-wish-set-center-of-rotation/221234)
+- [O] Rhino inertia: no built-in rotation inertia setting found. A 2014 Mac thread complained that the view "continues moving for two or three seconds after lifting their fingers from the trackpad" (OS trackpad momentum). — [McNeel Discourse: Issue rotating view (Rhino 5 Mac)](https://discourse.mcneel.com/t/issue-rotating-view-perspective-following-most-recent-rhino-5-update/2613) (via search)
+- [O] The same pivot complaints appear in other CAD forums (Fusion "PLEASE fix the orbit pivot point behavior", SketchUp "Orbit pivot point", Revit "3D Orbit and Pivot point"), so this is industry-wide, not specific to FreeCAD or Rhino. — [Autodesk forum](https://forums.autodesk.com/t5/fusion-design-validate-document/please-fix-the-orbit-pivot-point-behavior-sooner-rather-than/m-p/6203677); [SketchUp forum](https://forums.sketchup.com/t/orbit-pivot-point/68455)
+
+### Inferences
+These are inferences for Wren's "rotation feels off" problem; none is tested.
+
+- **Pivot under the cursor.** At pointer-down, ray-pick the B-rep/mesh under the cursor and pivot there. If nothing is hit, fall back to the selection's bounding-box centre, then to the visible-scene centre. Never fall back to the world origin or a stale target. This is FreeCAD's "Drag at cursor" chain with a better fallback, and it is what Rhino users ask for. With this kind of pivot, the object should never leave the screen during an orbit.
+- **Keep world Z up.** Use a turntable (world-Z up) by default, as Rhino does with "Rotate around world axes". Offer trackball/arcball as an option. Roll zones such as Rounded Arcball's corner roll confuse users unless the zone is visualised (#21403). A free trackball with no up-axis is a common reason an orbit "feels off" next to MCAD tools that keep the horizon level.
+- **Show the pivot.** Show a small pivot marker during the drag only, the way FreeCAD shows its sphere and NX briefly highlights the point. Provide a quick gesture to set the pivot: a tap or middle-click on a point, or double-tap on touch.
+- **Sensitivity scales with pivot position.** Adjust sensitivity by how far the pivot is from screen centre, as FreeCAD's `spinInternal` does. Orbiting about an off-centre pivot otherwise feels too fast.
+- **No inertia by default.** Both tools leave it off (FreeCAD) or don't offer it (Rhino), and a Rhino Mac user complained about OS-level coasting. On touch, a very short damped coast could be optional.
+- **Zoom at cursor on.** FreeCAD has it on by default. Rhino's "Auto adjust camera target" keeps the pivot near the objects after a pan or zoom, which is the main source of Rhino's "whips off screen" complaints when it fails.
+
+### Gaps
+- The rationale for FreeCAD 1.1 changing the default rotation mode from "Drag at cursor" to "Window center" was not found. The PR could not be located through API search, and wiki/forum pages are blocked by Anubis. The table above shows that the defaults changed but not why.
+- No user surveys on turntable vs trackball preference in FreeCAD were found. The evidence is the PR/issue discussion only.
+- The status of Rhino RH-68058 ("always use the mouse location") is unknown, and so is whether Rhino 9 changes the orbit default.
+- Rhino 8 Mac trackpad orbit behaviour and gesture mapping were not verified.
