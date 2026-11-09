@@ -327,7 +327,8 @@ CPU while V8 tiers up the module on background threads), best of five warm runs.
   axes, like `ellipse`) trimmed by `GC_MakeArcOfEllipse`, counter-clockwise from `start` to `end`.
   The end points must lie on the ellipse within 1e-6 · max(1, a) mm.
 - **B-spline**: `Geom_BSplineCurve` from the pole points, `weights`, `knots` + `multiplicities`
-  (OCCT form: distinct knots, both or neither), `degree`, `periodic`. Defaults: clamped =
+  (OCCT form: distinct knots, both or neither; an open spline may give a flat vector of
+  n + degree + 1 knots instead, ADR-048), `degree`, `periodic`. Defaults: clamped =
   multiplicity degree + 1 at the ends and interior knots `i / (n − degree)`; periodic = `n + 1` knots
   `i / n`, multiplicity 1. Non-periodic splines must be clamped; their end poles are the shared
   vertices of the lines and arcs that end there. A closed clamped spline (last pole = first) or a
@@ -342,7 +343,7 @@ CPU while V8 tiers up the module on background threads), best of five warm runs.
 **Mass properties of spline profiles.** BRepGProp's default Gauss rule does not split at knots,
 so piecewise B-spline profiles were 1e-5 to 3e-3 off. `massProperties` and `measure` convert shapes
 with a planar face bounded by a free-form edge, or an extrusion/revolution of a free-form curve, to
-NURBS and integrate adaptively (relative 1e-9, ≈ 2e-8 achieved; about 3× the default's time on
+NURBS and integrate adaptively (relative 1e-12, better than 1e-9 achieved; about 3× the default's time on
 those shapes only). Fingerprint areas and naming centroids keep the default; fingerprint lengths of
 free-form edges use `GCPnts_AbscissaPoint` (1e-10).
 

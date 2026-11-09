@@ -502,9 +502,38 @@ occ::handle<Geom_BSplineCurve> sketchBSplineCurve(const Json& e, const std::stri
   const Json* mJ = e.get("multiplicities");
   const bool hasK = kJ != nullptr && kJ->kind != Json::Kind::Null;
   const bool hasM = mJ != nullptr && mJ->kind != Json::Kind::Null;
-  if (hasK != hasM) bad("needs knots and multiplicities together (or neither, for uniform knots)");
+  // ADR-048: an open spline's `knots` without `multiplicities` is a flat (expanded) knot vector
+  // when it has n + degree + 1 entries; equal neighbours collapse into one knot (exact equality,
+  // as the regen engine reads it). Anything else without the pair is refused.
+  const bool flatKnots = hasK && !hasM && !periodic && kJ->isArray() &&
+                         static_cast<int>(kJ->array.size()) == n + degree + 1;
+  if (hasK != hasM && !flatKnots) {
+    bad("needs knots and multiplicities together (or neither, for uniform knots)",
+        "An open spline may also give a flat knot vector of control points + degree + 1 values.");
+  }
   if (!hasK) {
     kv = periodic ? uniformPeriodicKnots(n) : uniformClampedKnots(n, degree);
+  } else if (flatKnots) {
+    for (const JsonPtr& k : kJ->array) {
+      if (!k->isNumber() || !std::isfinite(k->number)) bad("has a knot that is not a finite number");
+      if (!kv.knots.empty() && k->number == kv.knots.back()) {
+        ++kv.mults.back();
+        continue;
+      }
+      if (!kv.knots.empty() && !(k->number - kv.knots.back() > 1e-12 * std::max(1.0, std::fabs(k->number)))) {
+        bad("needs non-decreasing knots");
+      }
+      kv.knots.push_back(k->number);
+      kv.mults.push_back(1);
+    }
+    if (kv.knots.size() < 2) bad("needs at least two distinct knots");
+    for (size_t i = 1; i + 1 < kv.mults.size(); ++i) {
+      if (kv.mults[i] > degree) bad("has an interior knot with multiplicity above the degree");
+    }
+    if (kv.mults.front() != degree + 1 || kv.mults.back() != degree + 1) {
+      bad("is not clamped: its first and last knots need multiplicity degree + 1 = " +
+          std::to_string(degree + 1));
+    }
   } else {
     if (!kJ->isArray() || !mJ->isArray() || kJ->array.size() != mJ->array.size() || kJ->array.size() < 2) {
       bad("needs knots and multiplicities of the same length (at least 2)");

@@ -1258,11 +1258,11 @@ bool hasSweptFreeformFace(const TopoDS_Shape& shape) {
 // value (a 4-span C1 rational circle extruded: 0.3 %). The adaptive variant splits at knots, but
 // only at those of B-spline surfaces (BRepGProp_Face::UKnots): an extrusion or revolution of a
 // B-spline curve is still one span. So shapes with such faces are converted to NURBS first
-// (BRepBuilderAPI_NurbsConvert, exact) and integrated adaptively (relative error 1e-9; the run
+// (BRepBuilderAPI_NurbsConvert, exact) and integrated adaptively (relative error 1e-12; the run
 // time hardly depends on it). That costs about 3× the default on those shapes; every other shape
 // keeps the default, which is exact for analytic faces. Fingerprints and naming centroids keep
 // the default everywhere (they are matching keys, not measurements).
-constexpr double kFreeformGPropEps = 1e-9;
+constexpr double kFreeformGPropEps = 1e-12;
 
 template <typename Integrate, typename Fallback>
 void freeformProperties(const TopoDS_Shape& shape, Integrate&& integrate, Fallback&& fallback) {

@@ -1722,8 +1722,12 @@ interior knots `i / (n − degree)` for `i = 1 … n − degree − 1` with mult
 pole count (so knots lie in [0, 1]). Periodic: `n + 1` knots `i / n`, multiplicity 1 (period 1).
 Both are computed with one IEEE division per knot, so JS (`i / spans`) reproduces them bit for
 bit. Explicit knots are OCCT's form: distinct, strictly increasing knots plus multiplicities, given
-together or not at all (one without the other is refused, not guessed, since a flat knot vector and
-a distinct one have different lengths). Non-periodic splines must be clamped (end multiplicities
+together or not at all; as in ADR-048 (which this confirms), an open spline's `knots` without
+`multiplicities` is read as a flat knot vector when it has n + degree + 1 values (equal neighbours
+collapse, exact equality), and anything else without the pair is refused. ADR-048's periodic
+parametrisation is confirmed against the build: `Geom_BSplineCurve(…, periodic = true)` with the
+default knots starts at (P₀ + 4P₁ + P₂)/6 and keeps the pole order (golden), and the modeling
+workstream's four `curves.golden.test.ts` goldens pass against this kernel. Non-periodic splines must be clamped (end multiplicities
 degree + 1: the contract says they start at the first pole and end at the last); interior
 multiplicities ≤ degree. Knot values are only relative ([0, 5, 10] is the curve of [0, 0.5, 1]).
 
@@ -1751,7 +1755,8 @@ IntegrationOrder`, `UKnots`), not per knot span, so a piecewise B-spline profile
 B-spline *surface* knots, which an extrusion or revolution of a spline curve does not have. For
 shapes with a planar face bounded by a free-form edge or an extrusion/revolution of a free-form
 curve, `massProperties` and `measure` now convert to NURBS (`BRepBuilderAPI_NurbsConvert`, exact)
-and integrate adaptively (relative 1e-9; achieved ≈ 2e-8; the run time hardly depends on it). That
+and integrate adaptively (relative 1e-12 requested, better than 1e-9 achieved; the run time
+hardly depends on it: 1e-6 and 1e-12 cost the same). That
 is about 3× the default on those shapes (a 14-face filleted spline solid: about 0.5 s against
 0.16 s in a dev `-O1` build); every other shape, including fillet corner patches, lofts and
 imported B-spline surfaces, keeps the M3 path and cost. Fingerprint face areas and the naming

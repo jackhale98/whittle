@@ -48,8 +48,8 @@ const DEPTH = 10;
  * lines and circles, ~4e-9 relative on elliptic boundaries); splines use the adaptive path.
  */
 const ELLIPSE_TOL = 2e-8;
-/** The adaptive (knot-aware) mass properties integrate to 1e-9 requested, ~2e-8 achieved. */
-const GPROP_TOL = 1e-7;
+/** The adaptive (knot-aware) mass properties: 1e-12 requested, better than 1e-9 achieved. */
+const GPROP_TOL = 1e-9;
 
 // ---------------------------------------------------------------------------------------------
 // Independent B-spline evaluation (de Boor) and integration
@@ -418,6 +418,8 @@ for (const { variant } of VARIANTS) {
         const v = vol(skewed);
         relClose(v, Math.abs(splineShoelace(skewed)) * DEPTH, 1e-6);
         expect(Math.abs(v - base)).toBeGreaterThan(1);
+        // ADR-048: an open spline may give a flat knot vector (n + p + 1 values) instead.
+        relClose(vol({ ...ARCH, knots: [0, 0, 0, 0, 0.5, 1, 1, 1, 1] }), base, 1e-12);
         // Knot values are only relative: [0, 0.5, 1] scaled to [0, 5, 10] is the same curve.
         relClose(vol({ ...ARCH, knots: [0, 5, 10], multiplicities: [4, 1, 4] }), base, 1e-12);
       });
@@ -484,6 +486,29 @@ for (const { variant } of VARIANTS) {
         expect(mp.faceCount).toBe(3);
         vecClose(mp.centroid, [5, -3, DEPTH / 2], 1e-6);
         expect(names(ex, 'face')).toContain(`${E}:side(${S}:e(B1))`);
+        // ADR-048 parametrisation: the default periodic cubic starts (u = 0, the edge's vertex)
+        // at (P0 + 4 P1 + P2) / 6, and its exact projection keeps the poles in order.
+        const P = hex.poles;
+        const start = [0, 1].map(
+          (c) =>
+            (((P[0] as Vec2)[c] as number) +
+              4 * ((P[1] as Vec2)[c] as number) +
+              ((P[2] as Vec2)[c] as number)) /
+            6,
+        );
+        const fpSk = ss.fingerprints(sk.shape);
+        const edgeVertex = fpSk.vertices.find(
+          (v) => !P.some((q) => Math.hypot(v.point[0] - q[0], v.point[1] - q[1]) < 1e-9),
+        );
+        vecClose(edgeVertex?.point ?? [], [start[0] ?? 0, start[1] ?? 0, 0], 1e-9);
+        const pc = only(project(sk.shape, [indexOf(sk, `${S}:e(B1)`, 'edge')]));
+        expect(pc.kind).toBe('bspline');
+        if (pc.kind === 'bspline') {
+          pc.poles.forEach((q, i) => {
+            vecClose([...q, 0], [...(P[i] as Vec2), 0], 1e-9);
+          });
+          expect(pc.knots).toEqual([0, 1 / 6, 2 / 6, 3 / 6, 4 / 6, 5 / 6, 1]);
+        }
         // Explicit uniform periodic knots (any scale) are the default's curve.
         const explicit = sketchAndExtrude(
           ss,
@@ -909,6 +934,8 @@ for (const { variant } of VARIANTS) {
           /increasing/,
         );
         expectBad(failSpline({ knots: [0, 0.5, 1] }), /knots and multiplicities together/);
+        expectBad(failSpline({ knots: [0, 0, 0, 0.5, 0.5, 1, 1, 1, 1] }), /not clamped/);
+        expectBad(failSpline({ knots: [0, 0, 0, 0, 0.6, 0.5, 1, 1, 1] }), /non-decreasing/);
         expectBad(failSpline({ knots: [0, 0.5, 1], multiplicities: [4, 1] }), /same length/);
         expectBad(
           failSpline({ periodic: true, knots: [0, 0.5, 1], multiplicities: [1, 1, 1] }),
