@@ -3,7 +3,7 @@
  * module is testable in Node.
  */
 
-import type { MeshBuffers } from '@whittle/contracts';
+import type { MeshBuffers } from '@wren-cad/contracts';
 import { BufferAttribute, BufferGeometry, Sphere, Vector3 } from 'three';
 
 export interface FaceRangeInfo {

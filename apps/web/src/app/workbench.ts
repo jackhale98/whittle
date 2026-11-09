@@ -29,8 +29,8 @@ import type {
   TouchViewport,
   Vec3,
   ViewportGesture,
-  WhittleDoc,
-} from '@whittle/contracts';
+  WrenDoc,
+} from '@wren-cad/contracts';
 import {
   compileCommand,
   createDocumentStore,
@@ -39,8 +39,8 @@ import {
   newDoc,
   scopeOf,
   ulid,
-} from '@whittle/document';
-import type { ExportRequest, SheetSnap, SheetTabId, ToolId } from '@whittle/ui';
+} from '@wren-cad/document';
+import type { ExportRequest, SheetSnap, SheetTabId, ToolId } from '@wren-cad/ui';
 import { type Autosaver, createAutosaver } from '../doc/autosave';
 import type { DocLibrary, OpenedFile, ProjectBundle } from '../doc/library';
 import {
@@ -113,7 +113,7 @@ import { failBoot, mark, markOnce, marks } from './timing';
 
 const LAST_DOC_KEY = 'whittle:last-document';
 const LINKS_KEY = 'whittle:links';
-const HISTORY_DIR = '.whittle-history/';
+const HISTORY_DIR = '.wren-history/';
 
 /** The page is an OAuth callback (`state` plus `code` or `error`). */
 const isOAuthCallback = () => {
@@ -161,7 +161,7 @@ function writeLastDoc(id: string | undefined): void {
   }
 }
 
-export function freshDocument(): WhittleDoc {
+export function freshDocument(): WrenDoc {
   const doc = newDoc({ name: 'Untitled part', firstPart: 'Part 1' });
   return { ...doc, meta: { ...doc.meta, id: ulid() } };
 }
@@ -190,7 +190,7 @@ export class Workbench {
     error: null,
   });
   /** Library contents for the library panel (refreshed on demand). */
-  readonly libraryEntries = observable<import('@whittle/contracts').LibraryEntry[] | null>(null);
+  readonly libraryEntries = observable<import('@wren-cad/contracts').LibraryEntry[] | null>(null);
 
   viewport: TouchViewport | null = null;
   canvas: HTMLCanvasElement | null = null;
@@ -220,7 +220,7 @@ export class Workbench {
   private faceCache = new WeakMap<MeshBuffers, Map<number, FaceInfo | null>>();
   /** Project files outside the document model (attachments, previews/, releases/). */
   private extra: ProjectFiles = new Map();
-  /** `.whittle/` cache of the open project (mesh cache, other regenerable files). */
+  /** `.wren/` cache of the open project (mesh cache, other regenerable files). */
   private cache: ProjectFiles = new Map();
   /** Document key of the meshes in `cache` and of the last cache that reached the library. */
   private cacheKey: string | null = null;
@@ -231,7 +231,7 @@ export class Workbench {
   /** Rebound reference names waiting to be folded into the next user edit (ADR-008). */
   private heals = new Map<Id, Heal[]>();
   /** The document the pending heals were computed for: only that exact version may take them. */
-  private healsFor: WhittleDoc | null = null;
+  private healsFor: WrenDoc | null = null;
   /** Auto-fit once per opened document, then leave the camera to the user. */
   private fitPending = true;
   private initialBundle: Promise<ProjectBundle | null> | null = null;
@@ -250,13 +250,13 @@ export class Workbench {
     status: { state: 'local' },
     branch: null,
   });
-  /** Connections, sync and versions (lazy chunk with `@whittle/sync` and isomorphic-git). */
+  /** Connections, sync and versions (lazy chunk with `@wren-cad/sync` and isomorphic-git). */
   private syncCtl: SyncController | null = null;
   private syncLoad: Promise<SyncController> | null = null;
   /** Library writes run one at a time (saves and sync's compare-and-swap writes). */
   private libChain: Promise<unknown> = Promise.resolve();
   /** The document object last written to the library (sync may replace only that one). */
-  private persistedDoc: WhittleDoc | null = null;
+  private persistedDoc: WrenDoc | null = null;
   /** History files written in memory and not yet saved. */
   private extraDirty = false;
   /** A merged result from sync waits for the current sketch or drag to finish. */
@@ -496,7 +496,7 @@ export class Workbench {
    * the model is rolled back to just before that feature (as Onshape does), so picks name the
    * feature's *input* geometry, never its own output.
    */
-  viewDoc(): WhittleDoc {
+  viewDoc(): WrenDoc {
     const doc = this.store.getDoc();
     const p = this.ui.get().picking;
     const part = doc.parts[0];
@@ -512,7 +512,7 @@ export class Workbench {
     return out;
   }
 
-  private viewMemo: { doc: WhittleDoc; index: number; out: WhittleDoc } | null = null;
+  private viewMemo: { doc: WrenDoc; index: number; out: WrenDoc } | null = null;
   private lastPickKey = '';
   /** Feature statuses of the last regen of the real (not rolled-back-for-picking) document. */
   readonly treeStatuses = observable<RegenResult['features'] | undefined>(undefined);
@@ -534,9 +534,9 @@ export class Workbench {
   /** Stable subscribe/snapshot pair for `useSyncExternalStore`. */
   readonly subscribeDoc = (listener: () => void): (() => void) =>
     this.store.subscribe(() => listener());
-  readonly getDoc = (): WhittleDoc => this.store.getDoc();
+  readonly getDoc = (): WrenDoc => this.store.getDoc();
 
-  get doc(): WhittleDoc {
+  get doc(): WrenDoc {
     return this.store.getDoc();
   }
 
@@ -547,7 +547,7 @@ export class Workbench {
   // ------------------------------------------------------------------ document changes
 
   /** `loaded`: the document was replaced (open/new), not edited: nothing to autosave yet. */
-  private onDocChange(doc: WhittleDoc, loaded: boolean): void {
+  private onDocChange(doc: WrenDoc, loaded: boolean): void {
     if (!this.ui.get().ready) return;
     this.loop?.request();
     if (!loaded && !this.applyingRemote) this.autosaver.schedule(doc);
@@ -658,7 +658,7 @@ export class Workbench {
   private fitOnFirstGeometry = false;
 
   /** Shows the document's cached meshes until the live regen replaces them (PLAN §4). */
-  private showCached(doc: WhittleDoc): void {
+  private showCached(doc: WrenDoc): void {
     const geometry = decodeCache(this.cache, docKey(doc));
     if (!geometry) return;
     this.cacheKey = geometry.key;
@@ -696,7 +696,7 @@ export class Workbench {
     });
   }
 
-  /** Keeps the latest fine meshes in the project's `.whittle/` cache (saved with the document). */
+  /** Keeps the latest fine meshes in the project's `.wren/` cache (saved with the document). */
   private updateMeshCache(view: RegenView): void {
     const key = docKey(view.doc);
     if (key === this.cacheKey) return;
@@ -818,7 +818,7 @@ export class Workbench {
     e.dataTransfer.dropEffect = 'copy';
   }
 
-  /** Files dropped on the viewport: a `.whittle` opens, CAD/mesh files import into the part. */
+  /** Files dropped on the viewport: a `.wrencad` opens, CAD/mesh files import into the part. */
   private async onDrop(e: DragEvent): Promise<void> {
     const list = [...(e.dataTransfer?.files ?? [])];
     if (list.length === 0) return;
@@ -826,7 +826,7 @@ export class Workbench {
     const files = await Promise.all(
       list.map(async (f) => ({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) })),
     );
-    const project = files.find((f) => /\.whittle$/i.test(f.name));
+    const project = files.find((f) => /\.(wrencad|whittle)$/i.test(f.name));
     if (project) await this.openBytes(project.name, project.bytes);
     else await this.importFiles(files, 'current');
   }
@@ -1741,7 +1741,7 @@ export class Workbench {
         this.redo();
       } else if (k === 's') {
         e.preventDefault();
-        void this.exportWhittle();
+        void this.exportWren();
       } else if (k === 'o') {
         e.preventDefault();
         void this.openFromDisk();
@@ -1806,7 +1806,7 @@ export class Workbench {
   }
 
   /** Attachment bytes of the document's import features (ImportFeature.source.path). */
-  private attachmentsFor(doc: WhittleDoc): Attachment[] {
+  private attachmentsFor(doc: WrenDoc): Attachment[] {
     const out: Attachment[] = [];
     for (const f of doc.parts[0]?.features ?? []) {
       if (f.type !== 'import') continue;
@@ -1816,7 +1816,7 @@ export class Workbench {
     return out;
   }
 
-  private async saveToLibrary(doc: WhittleDoc): Promise<void> {
+  private async saveToLibrary(doc: WrenDoc): Promise<void> {
     const lib = await this.library();
     if (!lib) return;
     // A save can run after another document was loaded (it was scheduled or queued before the
@@ -1904,7 +1904,7 @@ export class Workbench {
 
   /** Replaces the open document (history cleared). */
   private loadDocument(
-    bundle: { doc: WhittleDoc; extra?: ProjectFiles; cache?: ProjectFiles },
+    bundle: { doc: WrenDoc; extra?: ProjectFiles; cache?: ProjectFiles },
     inLibrary: boolean,
   ): boolean {
     this.sketch?.exit(false);
@@ -2039,13 +2039,14 @@ export class Workbench {
   }
 
   /**
-   * Open… : a `.whittle` project replaces the document; a CAD/mesh file is imported. `into`:
+   * Open… : a `.wrencad` project replaces the document; a CAD/mesh file is imported. `into`:
    * `current` adds the import to the open part (the inspector's Open…, ⌘O, drag and drop), `new`
    * starts a new document for it (library and welcome, where no part is being worked on).
    */
   async openFromDisk(into: 'current' | 'new' = 'current'): Promise<void> {
     const { openFile } = await import('../doc/library');
-    const f = await openFile(['.whittle', ...IMPORT_EXTENSIONS]);
+    // `.whittle`: files saved before the rename (ADR-032) still open.
+    const f = await openFile(['.wrencad', '.whittle', ...IMPORT_EXTENSIONS]);
     if (f) await this.openBytes(f.name, f.bytes, into);
   }
 
@@ -2054,10 +2055,10 @@ export class Workbench {
     bytes: Uint8Array,
     into: 'current' | 'new' = 'current',
   ): Promise<void> {
-    if (/\.whittle$/i.test(name)) {
+    if (/\.(wrencad|whittle)$/i.test(name)) {
       try {
-        const { fromWhittleBytes } = await import('../doc/library');
-        await this.openProject(fromWhittleBytes(bytes));
+        const { fromWrenBytes } = await import('../doc/library');
+        await this.openProject(fromWrenBytes(bytes));
       } catch (e) {
         this.toast(e instanceof Error ? e.message : 'That file could not be read', 'error');
       }
@@ -2103,7 +2104,7 @@ export class Workbench {
     if (usable.length === 0) {
       const names = files.map((f) => f.name).join(', ');
       this.toast(
-        `Whittle can open .whittle projects and import STEP, BREP, STL, OBJ, 3MF and GLB files${names ? ` (not ${names})` : ''}.`,
+        `Wren can open .wrencad projects and import STEP, BREP, STL, OBJ, 3MF and GLB files${names ? ` (not ${names})` : ''}.`,
         'info',
       );
       return;
@@ -2140,13 +2141,13 @@ export class Workbench {
     pruneAttachments(this.extra, this.doc, (paths) => this.store.historyMentions(paths));
   }
 
-  async exportWhittle(): Promise<void> {
-    const { toWhittleBytes, saveFile, MIME } = await import('../doc/library');
+  async exportWren(): Promise<void> {
+    const { toWrenBytes, saveFile, MIME } = await import('../doc/library');
     this.pruneAttachments();
     await saveFile(
-      toWhittleBytes(this.doc, savedExtra(this.extra, this.doc), this.cache),
-      `${fileBase(this.doc.meta.name)}.whittle`,
-      MIME.whittle,
+      toWrenBytes(this.doc, savedExtra(this.extra, this.doc), this.cache),
+      `${fileBase(this.doc.meta.name)}.wrencad`,
+      MIME.wrencad,
     );
   }
 
@@ -2158,13 +2159,13 @@ export class Workbench {
     try {
       const lib = await import('../doc/library');
       const base = fileBase(this.doc.meta.name);
-      if (request.target === 'whittle') return await this.exportWhittle();
+      if (request.target === 'wren') return await this.exportWren();
       if (request.target === '3mf' || request.target === 'glb') {
         const bodies = (view?.result.bodies ?? []).filter(
           (b) => !request.options.bodies || request.options.bodies.includes(b.id),
         );
         if (bodies.length === 0) return this.toast('There is nothing to export yet.', 'info');
-        const { meshExporters } = await import('@whittle/io');
+        const { meshExporters } = await import('@wren-cad/io');
         const color = this.bodyColor();
         const items = bodies.map((b, i) => ({
           name: `Body ${i + 1}`,
@@ -2341,7 +2342,7 @@ export class Workbench {
   }
 
   /** Sync merged another device's edits into the library entry: show them as one undo step. */
-  private adoptRemote(doc: WhittleDoc, extra: ProjectFiles, ops: JsonPatchOp[]): void {
+  private adoptRemote(doc: WrenDoc, extra: ProjectFiles, ops: JsonPatchOp[]): void {
     this.extra = new Map(extra);
     if (ops.length) {
       this.applyingRemote = true;
@@ -2592,7 +2593,7 @@ export class Workbench {
       syncController: () => this.syncController(),
       projectBar: () => this.projectBar.get(),
       /** Replaces the document (fixtures for E2E scenarios), saved to the library. */
-      load: (doc: WhittleDoc) => {
+      load: (doc: WrenDoc) => {
         if (this.loadDocument({ doc }, false)) this.autosaver.schedule(doc);
       },
       projectFiles: () => ({

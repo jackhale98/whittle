@@ -9,7 +9,7 @@ import {
   type MeasurePanelProps,
   SectionPanel,
   type SectionPanelProps,
-} from '@whittle/ui';
+} from '@wren-cad/ui';
 
 function Header({
   title,

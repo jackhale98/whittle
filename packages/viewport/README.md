@@ -1,4 +1,4 @@
-# @whittle/viewport
+# @wren-cad/viewport
 
 The 3D viewport: an imperative three.js engine that draws bodies, ghosts, sketches and markers,
 and handles the camera, picking and the view cube. The app creates one viewport, on the main thread,
@@ -10,10 +10,10 @@ The entry is `src/index.ts`.
 
 | Export | What it is |
 | --- | --- |
-| `createViewport(canvas, options)` | Creates a `ViewportEngine` (implements `InteractiveViewport` from `@whittle/contracts`) |
+| `createViewport(canvas, options)` | Creates a `ViewportEngine` (implements `InteractiveViewport` from `@wren-cad/contracts`) |
 | `ViewportEngine`, `ViewportEngineOptions`, `ViewportEventMap`, `CameraState`, `PickStats` | The engine's extended surface: camera state, render count, pick statistics, context-loss events |
 | `VIEW_DIRECTIONS`, `cameraPositionFor`, `fitDistance`, `clipPlanes`, `unionBounds`, `gridCellSize` | Camera and view maths, unit-testable without a GPU |
-| `meshBuffersToGeometry`, `edgesToSegments` | Converts `MeshBuffers` (from `@whittle/contracts`) into three.js geometry and edge segments |
+| `meshBuffersToGeometry`, `edgesToSegments` | Converts `MeshBuffers` (from `@wren-cad/contracts`) into three.js geometry and edge segments |
 | `closestOnPolyline`, `defaultTolerance`, `distPointSegment2D` | Screen-space picking helpers for edges and vertices |
 | `lookAtPlanePose`, `rayToPlane`, `PlaneFrame` | Plane helpers used by sketch-on-face |
 | `entityColor` | The sketch colour for a DOF state (`free`, `partial`, `fixed`) or a conflict |
@@ -58,14 +58,14 @@ or `'webgl2'`), `maxPixelRatio`, `theme`, `reducedMotion` and `viewCube`.
 
 | Command | What it does |
 | --- | --- |
-| `pnpm --filter @whittle/viewport test` | `vitest run` over `test/` (views, the view cube, geometry and picking maths) |
-| `pnpm --filter @whittle/viewport typecheck` | `tsc -p .` |
-| `pnpm --filter @whittle/viewport harness` | A Vite page that mounts the engine with test meshes, for manual work |
-| `pnpm --filter @whittle/viewport e2e` | Playwright tests in `e2e/` (`viewport.spec.ts`, `picking.spec.ts`): orbit, zoom, fit, pinch, picking tolerances, sketch overlays |
-| `pnpm --filter @whittle/viewport perf` | Opt-in probes that set `WHITTLE_PERF=1`: a 1-million-triangle model orbiting, and picking on the same model. Expect minutes on software GL. They log numbers and assert only that they ran. |
+| `pnpm --filter @wren-cad/viewport test` | `vitest run` over `test/` (views, the view cube, geometry and picking maths) |
+| `pnpm --filter @wren-cad/viewport typecheck` | `tsc -p .` |
+| `pnpm --filter @wren-cad/viewport harness` | A Vite page that mounts the engine with test meshes, for manual work |
+| `pnpm --filter @wren-cad/viewport e2e` | Playwright tests in `e2e/` (`viewport.spec.ts`, `picking.spec.ts`): orbit, zoom, fit, pinch, picking tolerances, sketch overlays |
+| `pnpm --filter @wren-cad/viewport perf` | Opt-in probes that set `WREN_PERF=1`: a 1-million-triangle model orbiting, and picking on the same model. Expect minutes on software GL. They log numbers and assert only that they ran. |
 
 The E2E tests run in CI's package-E2E job (Chromium, software GL). Fixtures come from
-[`@whittle/test-fixtures`](../test-fixtures).
+[`@wren-cad/test-fixtures`](../test-fixtures).
 
 ## Dependencies
 

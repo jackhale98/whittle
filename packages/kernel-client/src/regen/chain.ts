@@ -11,7 +11,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import type { Vec3 } from '@whittle/contracts';
+import type { Vec3 } from '@wren-cad/contracts';
 import { compareKey } from './datums';
 import { dist } from './geometry';
 

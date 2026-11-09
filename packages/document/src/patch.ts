@@ -9,7 +9,7 @@
  * (`~0` = `~`, `~1` = `/`); `-` addresses the end of an array.
  */
 
-import type { JsonPatchOp, JsonPointer } from '@whittle/contracts';
+import type { JsonPatchOp, JsonPointer } from '@wren-cad/contracts';
 
 export class PatchError extends Error {
   constructor(

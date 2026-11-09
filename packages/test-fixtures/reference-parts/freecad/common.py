@@ -1,5 +1,5 @@
 """
-Shared helpers for the independent FreeCAD checks of the Whittle reference parts (PLAN 12A).
+Shared helpers for the independent FreeCAD checks of the Wren reference parts (PLAN 12A).
 
 Each `rpNN.py` defines `PART_ID` and `build(d)`, which receives the driving dimensions (a dict of
 name -> number, in mm and degrees) and returns a FreeCAD `Part.Shape`. It builds the geometry with

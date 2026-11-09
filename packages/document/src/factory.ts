@@ -6,12 +6,12 @@
  * module-level PRNG assumptions, works in workers, and monotonic within a millisecond.
  */
 
-import { type Id, type Part, SCHEMA_VERSION, type WhittleDoc } from '@whittle/contracts';
+import { type Id, type Part, SCHEMA_VERSION, type WrenDoc } from '@wren-cad/contracts';
 
 const ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 const ULID_RE = /^[0-9A-HJKMNP-TV-Z]{26}$/;
 
-export const APP_ID = 'whittle/0.0.0';
+export const APP_ID = 'wren/0.0.0';
 
 export function isUlid(s: unknown): s is Id {
   return typeof s === 'string' && ULID_RE.test(s);
@@ -67,7 +67,7 @@ export function ulid(now: number = Date.now()): Id {
 
 export interface NewDocOptions {
   name?: string;
-  units?: WhittleDoc['units'];
+  units?: WrenDoc['units'];
   /** ISO timestamp for `created`/`modified`; default: now. */
   now?: string;
   app?: string;
@@ -79,7 +79,7 @@ export function newPart(name = 'Part 1', id: Id = ulid()): Part {
   return { id, name, features: [], rollbackIndex: 0 };
 }
 
-export function newDoc(options: NewDocOptions = {}): WhittleDoc {
+export function newDoc(options: NewDocOptions = {}): WrenDoc {
   const now = options.now ?? new Date().toISOString();
   return {
     schemaVersion: SCHEMA_VERSION,

@@ -20,7 +20,7 @@ import { expectTouchTarget } from './targets';
  * Pencil strokes recognised in sketch mode.
  */
 
-const SHOTS = process.env.WHITTLE_SHOTS;
+const SHOTS = process.env.WREN_SHOTS;
 
 test.use({
   viewport: { width: 1180, height: 820 },
@@ -52,9 +52,9 @@ async function emptySpot(page: Page): Promise<{ x: number; y: number }> {
   const spot = await page.evaluate(() => {
     const v = (
       window as unknown as {
-        __whittleViewport: { pick(x: number, y: number, o: object): unknown[] };
+        __wrenViewport: { pick(x: number, y: number, o: object): unknown[] };
       }
-    ).__whittleViewport;
+    ).__wrenViewport;
     const canvas = document.querySelector('[data-testid="viewport-canvas"]') as HTMLElement;
     const r = canvas.getBoundingClientRect();
     for (let fy = 0.25; fy <= 0.85; fy += 0.05) {

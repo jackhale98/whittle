@@ -7,7 +7,7 @@
  * lists the others as extra rows.
  */
 
-import type { Measurement } from '@whittle/contracts';
+import type { Measurement } from '@wren-cad/contracts';
 
 export type { Measurement };
 

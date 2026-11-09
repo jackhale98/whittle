@@ -1,4 +1,4 @@
-import type { KernelStatus, RuntimeDiagnostics } from '@whittle/contracts';
+import type { KernelStatus, RuntimeDiagnostics } from '@wren-cad/contracts';
 import type { ReactNode } from 'react';
 import type { PaletteCommand } from '../components/CommandPalette';
 import type { ContextBubbleProps } from '../components/ContextBubble';

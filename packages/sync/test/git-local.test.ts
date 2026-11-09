@@ -3,8 +3,8 @@
 // fsaGitFs over a FileSystemDirectoryHandle double backed by a real temp folder.
 import fs from 'node:fs';
 import { join } from 'node:path';
-import type { Author, Feature, ProjectFiles, StorageResult, WhittleDoc } from '@whittle/contracts';
-import { fromFiles, toFiles } from '@whittle/document';
+import type { Author, Feature, ProjectFiles, StorageResult, WrenDoc } from '@wren-cad/contracts';
+import { fromFiles, toFiles } from '@wren-cad/document';
 import git from 'isomorphic-git';
 import http from 'isomorphic-git/http/node';
 import { afterAll, describe, expect, it } from 'vitest';
@@ -44,8 +44,8 @@ function project(name = 'Bracket'): ProjectFiles {
   files.set('imports/bolt.step', new Uint8Array([0, 1, 2, 255, 10, 13]));
   return files;
 }
-const docOf = (files: ProjectFiles): WhittleDoc => fromFiles(files);
-const withRadius = (doc: WhittleDoc, radius: string) => {
+const docOf = (files: ProjectFiles): WrenDoc => fromFiles(files);
+const withRadius = (doc: WrenDoc, radius: string) => {
   const f = featureOf(doc, FILLET) as Feature;
   return apply(doc, {
     kind: 'updateFeature',
@@ -54,7 +54,7 @@ const withRadius = (doc: WhittleDoc, radius: string) => {
     feature: { ...f, radius } as Feature,
   });
 };
-const edit = (files: ProjectFiles, change: (d: WhittleDoc) => WhittleDoc): ProjectFiles => {
+const edit = (files: ProjectFiles, change: (d: WrenDoc) => WrenDoc): ProjectFiles => {
   const out = new Map(files);
   for (const [p, b] of toFiles(change(docOf(files)))) out.set(p, b);
   return out;
@@ -93,7 +93,7 @@ function saveToDisk(r: CliRepo, folder: string, files: ProjectFiles) {
 const porcelain = (r: CliRepo) => r.git('status', '--porcelain', '--untracked-files=all');
 
 describe('local git repo: interop with the git CLI', { timeout: 30_000 }, () => {
-  it('Whittle commits; git log and git status see the commit and a clean tree', async () => {
+  it('Wren commits; git log and git status see the commit and a clean tree', async () => {
     const r = twoProjects();
     const repo = await open(r);
     expect(repo.layout).toBe('dotgit');
@@ -120,7 +120,7 @@ describe('local git repo: interop with the git CLI', { timeout: 30_000 }, () => 
       `${BRACKET}/${[...next.keys()].find((p) => p.startsWith('parts/'))}`,
     ]);
     expect(value(await h.workingChanges())).toEqual([]);
-    // git reflog has Whittle's commit.
+    // git reflog has Wren's commit.
     expect(r.git('reflog', '-1', '--format=%gs')).toBe('commit: Round more');
   });
 
@@ -174,7 +174,7 @@ describe('local git repo: interop with the git CLI', { timeout: 30_000 }, () => 
     expect([...lidFiles.keys()].some((p) => p.startsWith('cad/'))).toBe(false);
   });
 
-  it('CLI branches appear in Whittle; switching moves HEAD for git too', async () => {
+  it('CLI branches appear in Wren; switching moves HEAD for git too', async () => {
     const r = twoProjects();
     r.git('branch', 'idea');
     r.git('branch', 'feature/thin-wall');
@@ -205,7 +205,7 @@ describe('local git repo: interop with the git CLI', { timeout: 30_000 }, () => 
     );
   });
 
-  it('Whittle’s release is a real annotated tag in git tag, scoped to the project folder', async () => {
+  it('Wren’s release is a real annotated tag in git tag, scoped to the project folder', async () => {
     const r = twoProjects();
     const h = (await open(r)).history;
     const head = (await h.log())[0]!;
@@ -219,7 +219,7 @@ describe('local git repo: interop with the git CLI', { timeout: 30_000 }, () => 
     expect(r.git('rev-parse', 'cad/bracket/Rev-A^{commit}')).toBe(head.id);
     expect(r.read(`${BRACKET}/releases/rev-a/bracket.step`)).toBe('ISO-10303-21;\n');
     expect(porcelain(r)).toBe('');
-    // The other project has no releases; Whittle reads a CLI tag of its own folder.
+    // The other project has no releases; Wren reads a CLI tag of its own folder.
     const lid = (await open(r, LID)).history;
     expect(await lid.releases()).toEqual([]);
     r.git('tag', '-a', 'cad/lid/Rev-1', '-m', 'Rev 1');
@@ -294,7 +294,7 @@ describe('local git repo: interop with the git CLI', { timeout: 30_000 }, () => 
         Buffer.from(real),
       ),
     ).toBe(true);
-    // Changing an LFS file through Whittle is refused, never committed as content.
+    // Changing an LFS file through Wren is refused, never committed as content.
     const changed = new Map(appFiles);
     changed.set('imports/housing.big', new TextEncoder().encode('different\n'));
     const e = errorOf(await h.saveVersion(changed, 'Bad', { author: ann }));
@@ -436,7 +436,7 @@ describe('local git repo: safety', { timeout: 30_000 }, () => {
     const files = value(await h.read((await h.log())[0]!.id));
     const next = edit(files, (d) => withRadius(d, '3mm'));
     saveToDisk(r, BRACKET, next);
-    // Another git commits between Whittle reading HEAD and moving the branch.
+    // Another git commits between Wren reading HEAD and moving the branch.
     const promises = repo.fs.promises as unknown as {
       writeFile: (...a: unknown[]) => Promise<void>;
     };
@@ -650,23 +650,21 @@ describe('local git repo: read-only states and layouts', { timeout: 30_000 }, ()
     expect(cli(join(wtPath, '.main'), 'status', '--porcelain')).toBe('');
   });
 
-  it('ensureCacheIgnored reports and, when asked, adds .whittle/ to the root .gitignore', async () => {
+  it('ensureCacheIgnored reports and, when asked, adds .wren/ to the root .gitignore', async () => {
     const r = twoProjects();
     r.write('.gitignore', 'node_modules/');
     r.git('add', '.gitignore');
     r.git('commit', '-q', '-m', 'ignore');
     const repo = await open(r);
-    r.write(`${BRACKET}/.whittle/mesh.bin`, 'cache');
+    r.write(`${BRACKET}/.wren/mesh.bin`, 'cache');
     expect(value(await repo.ensureCacheIgnored())).toEqual({ ignored: false, added: false });
     expect(r.read('.gitignore')).toBe('node_modules/');
     expect(value(await repo.ensureCacheIgnored({ add: true }))).toEqual({
       ignored: true,
       added: true,
     });
-    expect(r.read('.gitignore')).toMatch(/^node_modules\/\n# .*\n\.whittle\/\n$/);
-    expect(r.git('check-ignore', `${BRACKET}/.whittle/mesh.bin`)).toBe(
-      `${BRACKET}/.whittle/mesh.bin`,
-    );
+    expect(r.read('.gitignore')).toMatch(/^node_modules\/\n# .*\n\.wren\/\n$/);
+    expect(r.git('check-ignore', `${BRACKET}/.wren/mesh.bin`)).toBe(`${BRACKET}/.wren/mesh.bin`);
     expect(value(await repo.ensureCacheIgnored({ add: true }))).toEqual({
       ignored: true,
       added: false,
@@ -691,7 +689,7 @@ describe('local git repo: a project in a subfolder', { timeout: 30_000 }, () => 
     expect(value(await lid.workingChanges())).toEqual([
       { path: 'params.json', status: 'modified' },
     ]);
-    // Deleting a file Whittle owns removes it from the commit and the disk; a README the user put
+    // Deleting a file Wren owns removes it from the commit and the disk; a README the user put
     // in the project folder is carried along.
     r.write(`${BRACKET}/README.md`, 'about the bracket\n');
     r.git('add', '.');
@@ -702,7 +700,7 @@ describe('local git repo: a project in a subfolder', { timeout: 30_000 }, () => 
     const without = new Map(
       [...now].filter(([p]) => p !== 'imports/bolt.step' && p !== 'README.md'),
     );
-    // Whittle removes the file it no longer has (unchanged on disk), and the folder it leaves empty.
+    // Wren removes the file it no longer has (unchanged on disk), and the folder it leaves empty.
     const v = value(await bracket.saveVersion(without, 'Drop the bolt', { author: ann }));
     const kept = value(await bracket.read(v.id));
     expect(kept.has('imports/bolt.step')).toBe(false);

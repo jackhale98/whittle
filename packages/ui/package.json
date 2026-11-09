@@ -1,10 +1,10 @@
 {
-  "name": "@whittle/ui",
+  "name": "@wren-cad/ui",
   "version": "0.0.0",
   "private": true,
   "license": "GPL-3.0-or-later",
   "type": "module",
-  "description": "Whittle design system: tokens, motion presets, Radix-based primitives and the adaptive app shells.",
+  "description": "Wren design system: tokens, motion presets, Radix-based primitives and the adaptive app shells.",
   "sideEffects": [
     "**/*.css"
   ],
@@ -27,7 +27,7 @@
     "@radix-ui/react-tabs": "1.2.1",
     "@radix-ui/react-toolbar": "1.2.1",
     "@radix-ui/react-tooltip": "1.4.1",
-    "@whittle/contracts": "workspace:*",
+    "@wren-cad/contracts": "workspace:*",
     "lucide-react": "1.70.0",
     "motion": "14.10.1"
   },

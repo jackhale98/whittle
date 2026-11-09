@@ -6,8 +6,8 @@ import type {
   MergeConflict,
   MergeResolution,
   MergeResult,
-  WhittleDoc,
-} from '@whittle/contracts';
+  WrenDoc,
+} from '@wren-cad/contracts';
 
 type Item = { id: string; name: string };
 type Key = 'params' | 'parts';
@@ -65,14 +65,14 @@ function mergeList<T extends Item>(
 
 export class FakeMerger implements DocMerger {
   calls = 0;
-  merge(base: WhittleDoc, ours: WhittleDoc, theirs: WhittleDoc): MergeResult {
+  merge(base: WrenDoc, ours: WrenDoc, theirs: WrenDoc): MergeResult {
     this.calls += 1;
     const conflicts: MergeConflict[] = [];
     const params = mergeList('params', base.params, ours.params, theirs.params, conflicts);
     const parts = mergeList('parts', base.parts, ours.parts, theirs.parts, conflicts);
     // ISO-8601 strings: the later sorts last.
     const modified = [ours.meta.modified, theirs.meta.modified].sort()[1] as string;
-    const doc: WhittleDoc = {
+    const doc: WrenDoc = {
       ...ours,
       params: params.list,
       parts: parts.list,
@@ -81,7 +81,7 @@ export class FakeMerger implements DocMerger {
     return { doc, conflicts, autoMerged: params.auto + parts.auto };
   }
 
-  resolve(result: MergeResult, resolutions: readonly MergeResolution[]): WhittleDoc {
+  resolve(result: MergeResult, resolutions: readonly MergeResolution[]): WrenDoc {
     const doc = structuredClone(result.doc);
     for (const r of resolutions) {
       const c = result.conflicts.find((x) => x.id === r.conflictId);

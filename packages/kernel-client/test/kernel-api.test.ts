@@ -1,7 +1,7 @@
 /**
  * Drives the kernel worker's API object directly in Node against the built kernel (both
  * variants), plus once over a real MessageChannel to prove mesh buffers are transferred.
- * Skipped when packages/kernel/dist is missing (run `pnpm --filter @whittle/kernel build`).
+ * Skipped when packages/kernel/dist is missing (run `pnpm --filter @wren-cad/kernel build`).
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
@@ -18,8 +18,8 @@ import type {
   MeshBuffers,
   PrimitiveFeature,
   Result,
-} from '@whittle/contracts';
-import type { KernelInitModule } from '@whittle/kernel';
+} from '@wren-cad/contracts';
+import type { KernelInitModule } from '@wren-cad/kernel';
 import { type Endpoint, expose, wrap } from 'comlink';
 import { describe, expect, it } from 'vitest';
 import { createKernelApi, type KernelApiDeps } from '../src/kernel-api';
@@ -28,7 +28,7 @@ const dist = fileURLToPath(new URL('../../kernel/dist/', import.meta.url));
 const built = existsSync(`${dist}init.single.js`) && existsSync(`${dist}init.multi.js`);
 const skipNote = built
   ? ''
-  : ' — SKIPPED: packages/kernel/dist missing; run `pnpm --filter @whittle/kernel build`';
+  : ' — SKIPPED: packages/kernel/dist missing; run `pnpm --filter @wren-cad/kernel build`';
 
 const variants: KernelApiDeps['variants'] = {
   single: {

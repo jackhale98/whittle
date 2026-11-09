@@ -1,4 +1,4 @@
-import type { EntityRef, Expr, Feature, FeatureStatus, NamedDimension } from '@whittle/contracts';
+import type { EntityRef, Expr, Feature, FeatureStatus, NamedDimension } from '@wren-cad/contracts';
 import { type ReactNode, useMemo, useState } from 'react';
 import {
   CommandBar,

@@ -3,13 +3,13 @@
  * by packages/io (packaging, mesh formats) and packages/document (canonical JSON).
  */
 
-import type { Id, WhittleDoc } from './document';
+import type { Id, WrenDoc } from './document';
 import type { MeshBuffers } from './kernel';
 
 /**
  * Attachments: binary project files referenced by features (e.g. `imports/<featureId>.step`).
- * `ProjectCodec.toWhittle/fromWhittle` carry them in `extra`; libraries must persist `extra` and
- * the `.whittle/` cache with the document (opening and re-saving never drops files).
+ * `ProjectCodec.toWren/fromWren` carry them in `extra`; libraries must persist `extra` and
+ * the `.wren/` cache with the document (opening and re-saving never drops files).
  */
 
 /** A project as its canonical folder: relative POSIX path → file bytes. */
@@ -17,12 +17,12 @@ export type ProjectFiles = Map<string, Uint8Array>;
 
 export interface ProjectCodec {
   /** Deterministic: the same document always yields byte-identical files (sorted keys, LF, trailing newline). */
-  toFiles(doc: WhittleDoc): ProjectFiles;
-  fromFiles(files: ProjectFiles): WhittleDoc;
-  /** `.whittle` = the folder zipped (fflate). Cache (`.whittle/`) entries are optional. */
-  toWhittle(doc: WhittleDoc, cache?: ProjectFiles, extra?: ProjectFiles): Uint8Array;
+  toFiles(doc: WrenDoc): ProjectFiles;
+  fromFiles(files: ProjectFiles): WrenDoc;
+  /** `.wrencad` = the folder zipped (fflate). Cache (`.wren/`) entries are optional. */
+  toWren(doc: WrenDoc, cache?: ProjectFiles, extra?: ProjectFiles): Uint8Array;
   /** `extra` holds project files outside the document model (previews/, releases/), kept on round trips. */
-  fromWhittle(bytes: Uint8Array): { doc: WhittleDoc; cache: ProjectFiles; extra?: ProjectFiles };
+  fromWren(bytes: Uint8Array): { doc: WrenDoc; cache: ProjectFiles; extra?: ProjectFiles };
 }
 
 /** Mesh exports computed in TS from regen meshes (no kernel needed). */
@@ -46,9 +46,9 @@ export interface LibraryEntry {
 /** Local document library (IndexedDB metadata + OPFS blobs). */
 export interface LocalLibrary {
   list(): Promise<LibraryEntry[]>;
-  open(id: Id): Promise<{ doc: WhittleDoc; cache: ProjectFiles; extra: ProjectFiles }>;
+  open(id: Id): Promise<{ doc: WrenDoc; cache: ProjectFiles; extra: ProjectFiles }>;
   save(
-    doc: WhittleDoc,
+    doc: WrenDoc,
     cache?: ProjectFiles,
     thumbnail?: Uint8Array,
     options?: { id?: Id; extra?: ProjectFiles },

@@ -21,7 +21,7 @@ and note anything that fails, with the device, orientation and steps.
      copy/paste menu taking over.
    - Pinching the model never triggers multitasking.
 4. **The tutorial (the M2 acceptance test).**
-   - Ask someone who hasn't used Whittle to open it from the welcome card ("Take the 60-second
+   - Ask someone who hasn't used Wren to open it from the welcome card ("Take the 60-second
      tour") and finish it with fingers only, no keyboard, while you time it. **It must take under
      5 minutes.**
    - Note where they hesitate, and whether they pinch or two-finger-tap inside the sketch.
@@ -29,7 +29,7 @@ and note anything that fails, with the device, orientation and steps.
 5. **Smoothness.** In Safari's Web Inspector (connected from a Mac), record a Timeline while
    orbiting the demo bracket, then a large test model. Frames should stay at about 16 ms (60 fps).
 6. **Rendering.**
-   - In About Whittle (⌘K) or the diagnostics, confirm the renderer is **WebGPU**.
+   - In About Wren (⌘K) or the diagnostics, confirm the renderer is **WebGPU**.
    - Open Section and check that the cut faces are filled solid on X, Y and Z, on a picked face,
      and with Flip.
    - Drag a push/pull arrow and check that the translucent preview follows the finger.

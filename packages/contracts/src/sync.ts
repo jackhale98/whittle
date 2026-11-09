@@ -8,13 +8,13 @@
  * never the in-memory document. Merges happen on the parsed document, keyed by stable ids.
  *
  * Ported from Mycelium (same author, GPL-3.0-or-later, ADR-003): `RemoteFiles` → `StorageProvider`,
- * `syncFolder` → `SyncEngine`, `GitRepo` → `GitHistory`. Whittle replaces Mycelium's line-based
+ * `syncFolder` → `SyncEngine`, `GitRepo` → `GitHistory`. Wren replaces Mycelium's line-based
  * text merge with a structural merge of the document (`DocMerger`).
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import type { FeatureType, Id, Vec3, WhittleDoc } from './document';
+import type { FeatureType, Id, Vec3, WrenDoc } from './document';
 import type { ProjectFiles } from './io';
 import type { KernelError, MassProperties, MeshBuffers } from './kernel';
 import type { JsonPointer } from './store';
@@ -152,7 +152,7 @@ export interface RemoteListing {
 export interface RemoteFolder {
   name: string;
   path: string;
-  /** The folder holds a `whittle.project.json` (shown as a project in the picker). */
+  /** The folder holds a `wren.project.json` (shown as a project in the picker). */
   isProject: boolean;
 }
 
@@ -234,7 +234,7 @@ export interface SyncOutcome {
  * edited here are replaced; files edited on both sides merge three-way against the base with
  * `DocMerger`; only real overlaps become conflicts. Then push local edits against the base's
  * revision, so a write racing another device fails with `CONFLICT` and the next round merges it.
- * The `.whittle/` cache is never synced. `.whittle-history/` files are append-only and merge by
+ * The `.wren/` cache is never synced. `.wren-history/` files are append-only and merge by
  * union (see `SnapshotHistory`).
  */
 export interface SyncEngine {
@@ -310,7 +310,7 @@ export type MergeResolution =
 
 export interface MergeResult {
   /** The merged document with "ours" in every conflicting place until resolved. */
-  doc: WhittleDoc;
+  doc: WrenDoc;
   conflicts: MergeConflict[];
   /** Number of non-conflicting changes taken from "theirs". */
   autoMerged: number;
@@ -325,9 +325,9 @@ export interface MergeResult {
  * broken by the merge surface as "needs attention" on regen, never as a silent re-pick.
  */
 export interface DocMerger {
-  merge(base: WhittleDoc, ours: WhittleDoc, theirs: WhittleDoc): MergeResult;
+  merge(base: WrenDoc, ours: WrenDoc, theirs: WrenDoc): MergeResult;
   /** Applies resolutions; conflicts not mentioned keep "ours". */
-  resolve(result: MergeResult, resolutions: readonly MergeResolution[]): WhittleDoc;
+  resolve(result: MergeResult, resolutions: readonly MergeResolution[]): WrenDoc;
 }
 
 export interface FieldChange {
@@ -349,7 +349,7 @@ export interface DiffChange {
 
 /** Feature-level diff between two documents (compare panel, merge preview). */
 export interface DocDiffer {
-  diff(before: WhittleDoc, after: WhittleDoc): DiffChange[];
+  diff(before: WrenDoc, after: WrenDoc): DiffChange[];
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -442,7 +442,7 @@ export interface HistoryStore {
 }
 
 /**
- * Cloud drives and local-only projects: snapshots in `.whittle-history/` (docs/FILE_FORMAT.md),
+ * Cloud drives and local-only projects: snapshots in `.wren-history/` (docs/FILE_FORMAT.md),
  * synced with the project. Every file there is immutable and content-addressed or append-only
  * (`versions/<id>.json`, `snapshots/<hash>.zip`, `refs/…/<name>/<versionId>`), so two devices
  * adding versions offline merge by union with no conflicts. A branch with two heads after a sync
@@ -473,7 +473,7 @@ export type GitPushResult =
 export interface GitHistory extends HistoryStore {
   readonly backend: 'git';
   /**
-   * Project files that differ from the current commit (uncommitted, e.g. saved by Whittle or
+   * Project files that differ from the current commit (uncommitted, e.g. saved by Wren or
    * edited outside it). Local git repo mode shows them as "Uncommitted changes".
    */
   workingChanges(): Promise<

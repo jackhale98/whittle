@@ -1,4 +1,4 @@
-import { rectangleCornerTool } from '@whittle/sketch';
+import { rectangleCornerTool } from '@wren-cad/sketch';
 import { describe, expect, it } from 'vitest';
 import {
   convertRadiusDiameter,

@@ -22,10 +22,10 @@ import type {
   SketchEntity,
   SketchFeature,
   Vec3,
-  WhittleDoc,
-} from '@whittle/contracts';
-import { newDoc } from '@whittle/document';
-import type { KernelInitModule } from '@whittle/kernel';
+  WrenDoc,
+} from '@wren-cad/contracts';
+import { newDoc } from '@wren-cad/document';
+import type { KernelInitModule } from '@wren-cad/kernel';
 import { createModelingApi, type ModelingApiDeps } from '../../src/modeling-api';
 import type { RegenOutput } from '../../src/regen/engine';
 
@@ -33,7 +33,7 @@ const dist = fileURLToPath(new URL('../../../kernel/dist/', import.meta.url));
 export const built = existsSync(`${dist}init.single.js`) && existsSync(`${dist}init.multi.js`);
 export const skipNote = built
   ? ''
-  : ' — SKIPPED: packages/kernel/dist missing; run `pnpm --filter @whittle/kernel build`';
+  : ' — SKIPPED: packages/kernel/dist missing; run `pnpm --filter @wren-cad/kernel build`';
 
 export const variants: ModelingApiDeps['variants'] = {
   single: {
@@ -216,7 +216,7 @@ export function makeDoc(
   params: Record<string, string>,
   features: Feature[],
   partId = fid('PART'),
-): WhittleDoc {
+): WrenDoc {
   const doc = newDoc({ name: 'Test', now: '2026-11-08T00:00:00.000Z' });
   doc.params = Object.entries(params).map(([name, expr], i) => ({
     id: fid(`P${i}`),
@@ -233,7 +233,7 @@ export function makeDoc(
   return doc;
 }
 
-export function withParams(doc: WhittleDoc, changes: Record<string, string>): WhittleDoc {
+export function withParams(doc: WrenDoc, changes: Record<string, string>): WrenDoc {
   const next = structuredClone(doc);
   for (const p of next.params) {
     const v = changes[p.name];
@@ -242,7 +242,7 @@ export function withParams(doc: WhittleDoc, changes: Record<string, string>): Wh
   return next;
 }
 
-export function part(doc: WhittleDoc): Part {
+export function part(doc: WrenDoc): Part {
   return doc.parts[0] as Part;
 }
 

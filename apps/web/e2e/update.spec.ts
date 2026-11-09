@@ -4,6 +4,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
 
+/** Same base as the build (ADR-032). */
+const BASE_PATH = process.env.WREN_BASE ?? '/wren-cad/';
+
 /**
  * A new deploy must reach users without them closing every tab. Serves a private copy of the build
  * (so other tests are unaffected), visits it, then "deploys" a new service worker and checks that
@@ -12,13 +15,13 @@ import { expect, test } from '@playwright/test';
  */
 
 const PORT = 4183;
-const BASE = `http://127.0.0.1:${PORT}/whittle/`;
+const BASE = `http://127.0.0.1:${PORT}${BASE_PATH}`;
 
 let dir = '';
 let server: ChildProcess | null = null;
 
 test.beforeAll(async () => {
-  dir = mkdtempSync(join(tmpdir(), 'whittle-update-'));
+  dir = mkdtempSync(join(tmpdir(), 'wren-update-'));
   cpSync(join(import.meta.dirname, '..', 'dist'), dir, { recursive: true });
   server = spawn(
     process.execPath,
@@ -27,7 +30,7 @@ test.beforeAll(async () => {
       '--dir',
       dir,
       '--base',
-      '/whittle/',
+      BASE_PATH,
       '--port',
       String(PORT),
     ],

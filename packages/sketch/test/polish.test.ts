@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import type { Id, SketchSolveInput, Vec2 } from '@whittle/contracts';
+import type { Id, SketchSolveInput, Vec2 } from '@wren-cad/contracts';
 import { describe, expect, it } from 'vitest';
 import { buildModel } from '../src/model';
 import { type PolishStats, polish } from '../src/polish';

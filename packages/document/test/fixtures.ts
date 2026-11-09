@@ -11,8 +11,8 @@ import type {
   PushPullFeature,
   RevolveFeature,
   SketchFeature,
-  WhittleDoc,
-} from '@whittle/contracts';
+  WrenDoc,
+} from '@wren-cad/contracts';
 import { MATERIALS, newDoc } from '../src';
 
 /** Deterministic 26-char ULID-shaped ids for fixtures. */
@@ -157,8 +157,8 @@ export const sphere = (n: number): PrimitiveFeature => ({
 });
 
 /** A document exercising every feature type, a material, params and an annotation. */
-export function sampleDoc(): WhittleDoc {
-  const doc = newDoc({ name: 'Bracket', now: '2026-01-02T03:04:05.000Z', app: 'whittle/test' });
+export function sampleDoc(): WrenDoc {
+  const doc = newDoc({ name: 'Bracket', now: '2026-01-02T03:04:05.000Z', app: 'wren/test' });
   const filletF: Feature = {
     ...fillet(14, 12),
     annotations: [
@@ -216,7 +216,7 @@ export function sampleDoc(): WhittleDoc {
       name: 'Bracket',
       features,
       rollbackIndex: features.length,
-      material: structuredClone(MATERIALS[2] as NonNullable<WhittleDoc['parts'][0]['material']>),
+      material: structuredClone(MATERIALS[2] as NonNullable<WrenDoc['parts'][0]['material']>),
       color: '#9aa4b2',
     },
     { id: id(4), name: 'Bracket', features: [box(40)], rollbackIndex: 1 },

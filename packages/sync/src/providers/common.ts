@@ -6,7 +6,7 @@
  * token (callers pass only the service name, the path and the server's own summary).
  */
 
-import type { StorageError, StorageErrorCode, StorageResult } from '@whittle/contracts';
+import type { StorageError, StorageErrorCode, StorageResult } from '@wren-cad/contracts';
 
 export const ok = <T>(value: T): StorageResult<T> => ({ ok: true, value });
 
@@ -146,4 +146,4 @@ export function joinPath(dir: string, name: string): string {
 }
 
 /** Folders a provider never descends into: the local cache and git internals. */
-export const SKIP_FOLDERS: ReadonlySet<string> = new Set(['.whittle', '.git']);
+export const SKIP_FOLDERS: ReadonlySet<string> = new Set(['.wren', '.whittle', '.git']);

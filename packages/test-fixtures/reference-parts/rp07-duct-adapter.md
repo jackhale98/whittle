@@ -2,7 +2,7 @@
 
 CSWP-like. A PETG adapter: a rectangular flange block, a ruled loft from an inset copy of its top outline to a smaller rectangle higher up, and a round bore straight through.
 
-_Original Whittle reference part. Not derived from any published exam or textbook drawing._
+_Original Wren reference part. Not derived from any published exam or textbook drawing._
 
 Drawing: [rp07-duct-adapter.svg](rp07-duct-adapter.svg). Machine-readable spec: [rp07-duct-adapter.spec.json](rp07-duct-adapter.spec.json).
 
@@ -66,7 +66,7 @@ Method and accuracy: Exact. A ruled loft between two parallel rectangles with pa
 
 ## Independent check
 
-Built in FreeCAD 26.3.0 with `freecad/rp07.py` (a different construction than Whittle's).
+Built in FreeCAD 26.3.0 with `freecad/rp07.py` (a different construction than Wren's).
 
 | Stage | Analytic volume (mm^3) | FreeCAD volume (mm^3) | Difference |
 | --- | --- | --- | --- |

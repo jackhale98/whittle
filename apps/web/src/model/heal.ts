@@ -18,7 +18,7 @@ import type {
   Id,
   JsonPatchOp,
   Part,
-} from '@whittle/contracts';
+} from '@wren-cad/contracts';
 
 /** A rebound reference: its current name and, when the engine reports one, its fingerprint. */
 export type Heal = { path: string; name: string; fingerprint?: Fingerprint };

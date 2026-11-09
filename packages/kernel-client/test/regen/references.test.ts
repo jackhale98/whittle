@@ -6,9 +6,9 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import { SKETCH_ORIGIN, SKETCH_X_AXIS, SKETCH_Y_AXIS, type Vec3 } from '@whittle/contracts';
-import { evaluateFeatureValues, sketchSolveValues } from '@whittle/document';
-import { createSketchSolverCore } from '@whittle/sketch/core';
+import { SKETCH_ORIGIN, SKETCH_X_AXIS, SKETCH_Y_AXIS, type Vec3 } from '@wren-cad/contracts';
+import { evaluateFeatureValues, sketchSolveValues } from '@wren-cad/document';
+import { createSketchSolverCore } from '@wren-cad/sketch/core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   type Api,

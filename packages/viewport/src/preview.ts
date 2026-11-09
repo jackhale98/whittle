@@ -4,7 +4,7 @@
  * touching the geometry or allocating (PLAN §10: same-frame feedback).
  */
 
-import type { MeshBuffers } from '@whittle/contracts';
+import type { MeshBuffers } from '@wren-cad/contracts';
 import {
   abs,
   cross,

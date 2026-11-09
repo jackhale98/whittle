@@ -12,9 +12,9 @@
  * edit queue so pending clicks and solves still order correctly.
  */
 
-import type { Id, SketchEntity, StrokeRecognition, Vec2 } from '@whittle/contracts';
-import { indexEntities, polylineTool, type SketchFragment, sampleEntity } from '@whittle/sketch';
-import { strokeFragment } from '@whittle/sketch/recognize';
+import type { Id, SketchEntity, StrokeRecognition, Vec2 } from '@wren-cad/contracts';
+import { indexEntities, polylineTool, type SketchFragment, sampleEntity } from '@wren-cad/sketch';
+import { strokeFragment } from '@wren-cad/sketch/recognize';
 import {
   type Anchor,
   anchorConstraints,

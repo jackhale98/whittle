@@ -21,11 +21,11 @@ import type {
   StrokeSample,
   SuggestedFix,
   Vec2,
-} from '@whittle/contracts';
-import { evaluateFeatureValues, sketchSolveValues } from '@whittle/document';
-import { createSketchSolverClient, newId, type SketchSolverClient } from '@whittle/sketch';
-import { recognizeStroke, strokeFragment } from '@whittle/sketch/recognize';
-import type { GeometricConstraintKind, SketchToolId } from '@whittle/ui';
+} from '@wren-cad/contracts';
+import { evaluateFeatureValues, sketchSolveValues } from '@wren-cad/document';
+import { createSketchSolverClient, newId, type SketchSolverClient } from '@wren-cad/sketch';
+import { recognizeStroke, strokeFragment } from '@wren-cad/sketch/recognize';
+import type { GeometricConstraintKind, SketchToolId } from '@wren-cad/ui';
 import { toWorld } from '../model/frames';
 import { toleranceFor } from '../selection/pick';
 import {

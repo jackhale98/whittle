@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import type { SketchSolveResult, Vec2 } from '@whittle/contracts';
+import type { SketchSolveResult, Vec2 } from '@wren-cad/contracts';
 import { describe, expect, it } from 'vitest';
 import { core, deg, pos, radius, SketchBuilder } from './helpers';
 

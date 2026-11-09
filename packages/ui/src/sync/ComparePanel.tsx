@@ -1,4 +1,10 @@
-import type { DiffChange, DiffSubject, FeatureType, GeometricDiff, Vec3 } from '@whittle/contracts';
+import type {
+  DiffChange,
+  DiffSubject,
+  FeatureType,
+  GeometricDiff,
+  Vec3,
+} from '@wren-cad/contracts';
 import {
   Box,
   Boxes,

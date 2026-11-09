@@ -33,9 +33,9 @@ import type {
   SyncBase,
   SyncOutcome,
   SyncState,
-  WhittleDoc,
-} from '@whittle/contracts';
-import { fromFiles, MANIFEST_FILE, newDoc, toFiles } from '@whittle/document';
+  WrenDoc,
+} from '@wren-cad/contracts';
+import { fromFiles, MANIFEST_FILE, newDoc, toFiles } from '@wren-cad/document';
 import { documentPaths, pushRank, syncable, toAbsolute, toRelative } from '../paths';
 import { fail, forward, ok, pool } from '../providers/common';
 import { bytesEqual, sha256Hex } from './hash';
@@ -117,11 +117,11 @@ function syncableFiles(files: ProjectFiles): Map<string, Uint8Array> {
 }
 
 /** A base document for merging when none can be built: the same document with nothing in it. */
-function emptyLike(doc: WhittleDoc): WhittleDoc {
+function emptyLike(doc: WrenDoc): WrenDoc {
   return { ...doc, params: [], parts: [], assemblies: [], drawings: [] };
 }
 
-function tryFromFiles(files: ProjectFiles): { doc: WhittleDoc } | { error: string } {
+function tryFromFiles(files: ProjectFiles): { doc: WrenDoc } | { error: string } {
   try {
     return { doc: fromFiles(files) };
   } catch (e) {
@@ -143,7 +143,7 @@ export function fileConflict(fc: FileConflictContext): MergeConflict {
 }
 
 /** The current document for showing file-only conflicts. */
-function docForDisplay(files: ProjectFiles): WhittleDoc {
+function docForDisplay(files: ProjectFiles): WrenDoc {
   const r = tryFromFiles(files);
   return 'doc' in r ? r.doc : newDoc();
 }

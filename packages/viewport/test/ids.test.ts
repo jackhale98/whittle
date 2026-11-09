@@ -1,4 +1,4 @@
-import { boxMesh } from '@whittle/test-fixtures';
+import { boxMesh } from '@wren-cad/test-fixtures';
 import { describe, expect, it } from 'vitest';
 import {
   decodeId,

@@ -14,7 +14,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import type { Id, SketchConstraint, SketchEntity, Vec2 } from '@whittle/contracts';
+import type { Id, SketchConstraint, SketchEntity, Vec2 } from '@wren-cad/contracts';
 import { add, dot, normalize, scale, sub } from '../geometry';
 import { entityPoints } from '../model';
 import {

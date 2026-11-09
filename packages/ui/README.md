@@ -1,6 +1,6 @@
-# @whittle/ui
+# @wren-cad/ui
 
-The Whittle design system and the three app shells: design tokens, Radix-based primitives, motion
+The Wren design system and the three app shells: design tokens, Radix-based primitives, motion
 presets, the feature tree, the parameter table, the inspectors, the sketch toolbar and status chips,
 and the export menu. Everything here is presentational. It knows the document's types, but it does
 not call the kernel, the engine or the viewport.
@@ -10,8 +10,8 @@ not call the kernel, the engine or the viewport.
 Import the stylesheet once, in the app's entry point, then render a shell:
 
 ```tsx
-import '@whittle/ui/styles.css';
-import { AppShell, initTheme } from '@whittle/ui';
+import '@wren-cad/ui/styles.css';
+import { AppShell, initTheme } from '@wren-cad/ui';
 
 initTheme(); // before first paint
 
@@ -50,7 +50,7 @@ The entry is `src/index.ts`. The main groups are:
 | Formatting | `fmtNumber`, `prettyUnits`, `formatDensity`, `nudgeExpression`, `defaultFormatValue` |
 | Tokens and theme | `colors`, `fontFamily`, `layers`, `radii`, `surfaceAlpha`, `targets`; `initTheme`, `useTheme`, `applyTheme` |
 | Motion | `springs`, `useSpring`, `reducedTransition`, `resolveTransition`, `useReducedMotion` |
-| Brand | `BirdMark`, `WhittleLoader` |
+| Brand | `BirdMark`, `WrenLoader` |
 | Primitives | `Button`, `IconButton`, `Tooltip`, `Panel`, `Separator`, `Kbd`, `Menu`, `FloatingLayer`, `cn` |
 
 ## Design points
@@ -84,11 +84,11 @@ The entry is `src/index.ts`. The main groups are:
 
 | Command | What it does |
 | --- | --- |
-| `pnpm --filter @whittle/ui test` | `vitest run` over `test/`: the params inspector, expression input and other components, with Testing Library and jsdom |
-| `pnpm --filter @whittle/ui typecheck` | `tsc -p .` |
-| `pnpm --filter @whittle/ui harness` | The Vite harness for the design system (`vite.config.ts`) |
-| `pnpm --filter @whittle/ui e2e` | Playwright: `e2e/components.spec.ts` and `e2e/interactions.spec.ts`, with axe accessibility checks (`@axe-core/playwright`) and screenshots |
-| `pnpm --filter @whittle/ui e2e:update` | Re-records the screenshot baselines. The current baselines were recorded in the dev container (ADR-005 §6). |
+| `pnpm --filter @wren-cad/ui test` | `vitest run` over `test/`: the params inspector, expression input and other components, with Testing Library and jsdom |
+| `pnpm --filter @wren-cad/ui typecheck` | `tsc -p .` |
+| `pnpm --filter @wren-cad/ui harness` | The Vite harness for the design system (`vite.config.ts`) |
+| `pnpm --filter @wren-cad/ui e2e` | Playwright: `e2e/components.spec.ts` and `e2e/interactions.spec.ts`, with axe accessibility checks (`@axe-core/playwright`) and screenshots |
+| `pnpm --filter @wren-cad/ui e2e:update` | Re-records the screenshot baselines. The current baselines were recorded in the dev container (ADR-005 §6). |
 
 CI runs the UI suite with `--ignore-snapshots` until CI-generated baselines are committed (ADR-005 §6).
 The functional and accessibility checks still run in CI.

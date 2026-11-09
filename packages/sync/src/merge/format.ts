@@ -7,11 +7,11 @@
  * return `null` and the caller says "changed".
  */
 
-import type { Feature, NamedDimension, WhittleDoc } from '@whittle/contracts';
-import { exprFields } from '@whittle/document';
+import type { Feature, NamedDimension, WrenDoc } from '@wren-cad/contracts';
+import { exprFields } from '@wren-cad/document';
 import { isEntityRef, isObj } from './tree';
 
-export type Units = WhittleDoc['units'];
+export type Units = WrenDoc['units'];
 
 const SIMPLE =
   /^\s*([-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?)\s*(um|mm|cm|m|in|ft|deg|rad|°|")?\s*$/i;

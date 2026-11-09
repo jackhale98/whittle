@@ -6,13 +6,13 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import { findMaterial } from '@whittle/document';
+import { findMaterial } from '@wren-cad/document';
 import { baselineDims, stageDims } from './builder';
 import { Drawing } from './drawing';
 import { r12 } from './geom';
 import { type D, type Dims, dimGetter, type Model, type PartDef, type Step } from './types';
 
-export const SPEC_SCHEMA = 'whittle-reference-part/1';
+export const SPEC_SCHEMA = 'wren-reference-part/1';
 
 export interface Expected {
   volume_mm3: number;
@@ -139,7 +139,7 @@ export function markdownFor(part: PartDef, spec: PartSpec, fc?: FreecadResults):
   L.push(`# ${spec.id.slice(0, 4).toUpperCase()} ${spec.title}`, '');
   L.push(`${spec.level}. ${spec.summary}`, '');
   L.push(
-    '_Original Whittle reference part. Not derived from any published exam or textbook drawing._',
+    '_Original Wren reference part. Not derived from any published exam or textbook drawing._',
     '',
   );
   L.push(
@@ -206,7 +206,7 @@ export function markdownFor(part: PartDef, spec: PartSpec, fc?: FreecadResults):
     L.push(
       '## Independent check',
       '',
-      `Built in ${fc.tool} with \`${spec.independent.script}\` (a different construction than Whittle's).`,
+      `Built in ${fc.tool} with \`${spec.independent.script}\` (a different construction than Wren's).`,
       '',
     );
     L.push(

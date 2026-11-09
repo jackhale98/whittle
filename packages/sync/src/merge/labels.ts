@@ -12,9 +12,9 @@ import type {
   Part,
   SketchConstraint,
   SketchFeature,
-  WhittleDoc,
-} from '@whittle/contracts';
-import { constraintLabel, Namer } from '@whittle/sketch';
+  WrenDoc,
+} from '@wren-cad/contracts';
+import { constraintLabel, Namer } from '@wren-cad/sketch';
 import { getAtSegs, type Segs } from './tree';
 
 const META_LABEL: Record<string, string> = {
@@ -27,7 +27,7 @@ const META_LABEL: Record<string, string> = {
 };
 
 /** First version (in preference order) that has something at `segs`. */
-function find<T>(docs: readonly (WhittleDoc | undefined)[], segs: Segs): T | undefined {
+function find<T>(docs: readonly (WrenDoc | undefined)[], segs: Segs): T | undefined {
   for (const d of docs) {
     const v = d === undefined ? undefined : getAtSegs(d, segs);
     if (v !== undefined) return v as T;
@@ -47,7 +47,7 @@ export function constraintText(sketch: SketchFeature, c: SketchConstraint): stri
  * The subject of the value at `segs`. `docs` are the versions to take names from, most preferred
  * first (for a conflict: ours, theirs, base; for a diff: after, before).
  */
-export function subjectAt(segs: Segs, docs: readonly (WhittleDoc | undefined)[]): DiffSubject {
+export function subjectAt(segs: Segs, docs: readonly (WrenDoc | undefined)[]): DiffSubject {
   const [top, id, sub, fid, coll, itemId] = segs;
   if (top === 'meta') {
     return { kind: 'doc', label: META_LABEL[id ?? ''] ?? (id ? `Document ${id}` : 'Document') };

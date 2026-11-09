@@ -14,7 +14,7 @@
  * invalid document) never nests it.
  */
 
-import type { Id } from '@whittle/contracts';
+import type { Id } from '@wren-cad/contracts';
 
 /** What the helper needs of a feature; a full `Feature` fits. */
 export interface NestingFeature {

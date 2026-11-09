@@ -1,6 +1,6 @@
 /// <reference lib="webworker" />
 /**
- * Whittle's single service worker (PLAN §3 PWA, §8.3). vite-plugin-pwa `injectManifest` builds
+ * Wren's single service worker (PLAN §3 PWA, §8.3). vite-plugin-pwa `injectManifest` builds
  * this file and injects the precache manifest. Never register a second service worker and never
  * ship `coi-serviceworker`: only one worker can control a page.
  *
@@ -39,7 +39,7 @@ declare const self: ServiceWorkerGlobalScope & {
 const CACHE_VERSION = 'v1';
 
 setCacheNameDetails({
-  prefix: 'whittle',
+  prefix: 'wren',
   suffix: CACHE_VERSION,
   precache: 'precache',
   runtime: 'runtime',
@@ -90,7 +90,7 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     (async () => {
       for (const key of await caches.keys()) {
-        if (/^whittle-(precache|runtime|kernel)-/.test(key) && !key.endsWith(`-${CACHE_VERSION}`)) {
+        if (/^wren-(precache|runtime|kernel)-/.test(key) && !key.endsWith(`-${CACHE_VERSION}`)) {
           await caches.delete(key);
         }
       }

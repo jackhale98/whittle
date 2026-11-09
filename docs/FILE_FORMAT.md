@@ -1,59 +1,59 @@
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
 
-# Whittle project file format
+# Wren project file format
 
 Version: **schema 1** · Status: M1 · Licence of this specification: **CC-BY-4.0** (the reference
 implementation, `packages/document`, is GPL-3.0-or-later).
 
-A Whittle project is a **folder of deterministic text files**. A `.whittle` file is that folder
+A Wren project is a **folder of deterministic text files**. A `.wrencad` file is that folder
 zipped, for sharing and emailing. The text-first layout exists so that projects diff and merge
 well in git and other version-control systems (PLAN §8A.1, §8A.3). The same document always
 produces **byte-identical** files.
 
 Machine-readable schemas (JSON Schema draft-07) are generated from the TypeScript types and
 shipped in [`packages/document/schema/`](../packages/document/schema) and published with the app at
-`https://jackhale98.github.io/whittle/schema/<file>` (each schema's `$id`):
+`https://jackhale98.github.io/wren-cad/schema/<file>` (each schema's `$id`):
 
 | File | Describes |
 |---|---|
-| `whittle-project.schema.json` | `whittle.project.json` (manifest) |
-| `whittle-params.schema.json` | `params.json` |
-| `whittle-part.schema.json` | `parts/*.part.json` |
-| `whittle-drawing.schema.json` | `drawings/*.drawing.json` |
-| `whittle-assembly.schema.json` | `assemblies/*.assembly.json` |
-| `whittle-document.schema.json` | the whole in-memory document (what `DocumentStore.load` accepts) |
+| `wren-project.schema.json` | `wren.project.json` (manifest) |
+| `wren-params.schema.json` | `params.json` |
+| `wren-part.schema.json` | `parts/*.part.json` |
+| `wren-drawing.schema.json` | `drawings/*.drawing.json` |
+| `wren-assembly.schema.json` | `assemblies/*.assembly.json` |
+| `wren-document.schema.json` | the whole in-memory document (what `DocumentStore.load` accepts) |
 
 The TypeScript source of truth is [`packages/contracts/src/document.ts`](../packages/contracts/src/document.ts),
 [`sketch.ts`](../packages/contracts/src/sketch.ts) and
 [`packages/document/src/files.ts`](../packages/document/src/files.ts). Regenerate with
-`pnpm --filter @whittle/document schema`; a test fails if the committed schemas are stale.
+`pnpm --filter @wren-cad/document schema`; a test fails if the committed schemas are stale.
 
 ## 1. Folder layout
 
 ```
 my-bracket/
-├─ whittle.project.json          manifest: format, schemaVersion, units, meta, index of parts/drawings/assemblies
+├─ wren.project.json          manifest: format, schemaVersion, units, meta, index of parts/drawings/assemblies
 ├─ params.json                   global parameters
 ├─ parts/bracket.part.json       one file per part: features, sketches, material (keyed by stable ids)
 ├─ drawings/sheet-1.drawing.json one file per drawing   (placeholder until M4)
 ├─ assemblies/asm.assembly.json  one file per assembly  (placeholder until M6)
 ├─ imports/<featureId>.step      attachments: the bytes of import features (STEP, IGES, BREP, STL, OBJ, 3MF, GLB)
-├─ releases/rev-A/…              frozen exports for a release (STEP/PDF)        — not read by Whittle
-├─ previews/bracket.stl          optional small mesh for git-host 3D previews   — not read by Whittle
-├─ .whittle-history/             snapshot history for non-git storage (§8A.3)    — not read by the codec
-└─ .whittle/                     cache: meshes, BREP, thumbnails                  — regenerable, never synced or committed
+├─ releases/rev-A/…              frozen exports for a release (STEP/PDF)        — not read by Wren
+├─ previews/bracket.stl          optional small mesh for git-host 3D previews   — not read by Wren
+├─ .wren-history/             snapshot history for non-git storage (§8A.3)    — not read by the codec
+└─ .wren/                     cache: meshes, BREP, thumbnails                  — regenerable, never synced or committed
 ```
 
-Only `whittle.project.json`, `params.json` and the files the manifest lists are read when opening a
+Only `wren.project.json`, `params.json` and the files the manifest lists are read when opening a
 project. Everything else is ignored (and preserved by tools that copy folders). Derived geometry
 (meshes, BREP) never appears in source files.
 
 **Attachments.** An import feature (`type: "import"`) names its file in `source.path`
 (`imports/<featureId>.<format>`), with the lowercase hex `sha256` of the bytes and the original
-`fileName`. The bytes are a project file, never inline JSON. Whittle keeps every non-model file
+`fileName`. The bytes are a project file, never inline JSON. Wren keeps every non-model file
 (`imports/`, `previews/`, `releases/`, …) when it opens and saves a project.
 
-**Mesh cache.** Whittle writes the latest fine meshes to `.whittle/meshes/` so a project renders
+**Mesh cache.** Wren writes the latest fine meshes to `.wren/meshes/` so a project renders
 before the kernel has loaded: `index.json` (`{ version: 1, key, bodies: [{ id, file }], sketches }`)
 and one `<bodyId>.bin` per body — `"WMB1"`, a little-endian `u32` header length, a JSON header
 (`faceNames`, `edgeNames`, `bbox`, `arrays: [{ key, type: "f32" | "u32", length }]`) padded to 4
@@ -78,7 +78,7 @@ own `id` (they must agree).
 
 ## 2. Canonical JSON
 
-Every `.json` file Whittle writes follows these rules, so equal documents give identical bytes:
+Every `.json` file Wren writes follows these rules, so equal documents give identical bytes:
 
 1. UTF-8, no BOM.
 2. Object keys sorted by UTF-16 code unit order (`Array.prototype.sort()` default), at every depth.
@@ -95,11 +95,11 @@ Every `.json` file Whittle writes follows these rules, so equal documents give i
 Readers must accept any valid JSON for these files (including other key orders and indentation);
 only writers are required to be canonical.
 
-## 3. The `.whittle` archive
+## 3. The `.wrencad` archive
 
 A standard ZIP (PKWARE appnote 6.3.x, DEFLATE), written with `fflate`:
 
-- Paths are the folder-relative POSIX paths above. The cache is stored under `.whittle/`.
+- Paths are the folder-relative POSIX paths above. The cache is stored under `.wren/`.
 - **Deterministic**: entries sorted by path; every entry has the fixed timestamp 1980-01-01
   00:00:00 (DOS epoch); DEFLATE level 6; no per-entry comments or platform metadata.
   The same document and cache give the same archive bytes, whatever the clock or time zone.
@@ -115,15 +115,15 @@ All identifiers (`id`) are **ULIDs**: 26 characters of Crockford base32
 entity, constraint, parameter and annotation carries one; they are the merge keys. Ids are never
 reused.
 
-### 4.1 `whittle.project.json`
+### 4.1 `wren.project.json`
 
 ```jsonc
 {
   "assemblies": [],
   "drawings": [{ "file": "drawings/sheet-1.drawing.json", "id": "01J…", "name": "Sheet 1" }],
-  "format": "whittle-project",            // constant
+  "format": "wren-project",            // constant
   "meta": {
-    "app": "whittle/0.1.0",               // writer
+    "app": "wren/0.1.0",               // writer
     "created": "2026-01-02T03:04:05.000Z",
     "modified": "2026-01-02T03:04:05.000Z",
     "name": "Bracket",
@@ -292,7 +292,7 @@ Compound units are plain arithmetic: `g/cm^3`, `kg/m^3`, `lb/in^3`, `mm^2`.
 | material properties | `youngsModulus`, `yieldStrength` | pressure; `poissonsRatio` plain number |
 
 Driven (reference) sketch dimensions (`driving: false`) are not evaluated: the solver measures them.
-`evaluateFeatureValues(feature, doc, engine)` in `@whittle/document` walks exactly this table and
+`evaluateFeatureValues(feature, doc, engine)` in `@wren-cad/document` walks exactly this table and
 returns `{ values, errors }` keyed by JSON pointer, in millimetres / radians.
 
 ## 6. Materials
@@ -322,7 +322,7 @@ returns `{ values, errors }` keyed by JSON pointer, in millimetres / radians.
 `schemaVersion` (manifest and in-memory document) is an integer, currently **1**.
 
 - Readers **must** reject a `schemaVersion` greater than they understand, with a message telling
-  the user to update ("This file uses document version N, but this copy of Whittle understands up
+  the user to update ("This file uses document version N, but this copy of Wren understands up
   to version M").
 - Readers **must** migrate older versions forward in memory, one step at a time
   (`n → n+1`), then validate. A missing `schemaVersion` is treated as 0 (pre-release); the 0→1
@@ -342,9 +342,9 @@ returns `{ values, errors }` keyed by JSON pointer, in millimetres / radians.
    is a string. Semantic problems (an expression that does not evaluate, an unresolved reference)
    are *not* load errors; they surface in the UI as inline errors / "needs attention".
 
-## 9. Version history (`.whittle-history/`)
+## 9. Version history (`.wren-history/`)
 
-Projects stored on cloud drives or only on the device keep their history in `.whittle-history/`
+Projects stored on cloud drives or only on the device keep their history in `.wren-history/`
 beside the model (PLAN §8A.3, ADR-020). It syncs with the project like any other file. Git
 projects use git itself instead (§9.6). The reference implementation is `SnapshotHistory` in
 `packages/sync`.
@@ -352,7 +352,7 @@ projects use git itself instead (§9.6). The reference implementation is `Snapsh
 ### 9.1 Layout
 
 ```
-.whittle-history/
+.wren-history/
 ├─ versions/<versionId>.json            one file per version: metadata (immutable)
 ├─ snapshots/<sha256>.zip               the project files of a version (content-addressed, immutable)
 └─ refs/
@@ -367,8 +367,8 @@ projects use git itself instead (§9.6). The reference implementation is `Snapsh
   path segment: `A–Z a–z 0–9 _ -` are kept and every other UTF-8 byte is written `%XX` (uppercase
   hex). For example, `Rev A` becomes `Rev%20A`. The encoding is safe on every file service and
   reversible.
-- `.whittle-history/` is never part of a version: it is excluded from snapshots and from hashes,
-  and so is the `.whittle/` cache.
+- `.wren-history/` is never part of a version: it is excluded from snapshots and from hashes,
+  and so is the `.wren/` cache.
 
 ### 9.2 `versions/<id>.json`
 
@@ -380,7 +380,7 @@ Canonical JSON (§2):
   "author": { "email": "ann@example.com", "name": "Ann" },
   "auto": true,                          // optional: an automatic snapshot (§9.4)
   "branch": "main",                      // the branch it was saved on
-  "format": "whittle-version",
+  "format": "wren-version",
   "hash": "9f2c…",                       // §9.3; also names its snapshot
   "id": "01J…",
   "message": "Thinner wall",
@@ -394,7 +394,7 @@ hash.
 ### 9.3 Content hash and snapshots
 
 `hash` is the lowercase hex SHA-256 over the version's files, in ascending UTF-16 path order.
-`.whittle/` and `.whittle-history/` are excluded. Each file contributes the following bytes:
+`.wren/` and `.wren-history/` are excluded. Each file contributes the following bytes:
 
 ```
 utf8(path) 0x00 utf8(decimal byte length) 0x00 bytes
@@ -402,7 +402,7 @@ utf8(path) 0x00 utf8(decimal byte length) 0x00 bytes
 
 The hash doesn't depend on compression, so identical content gives an identical hash on every
 device, in both history backends, and across library versions. `snapshots/<hash>.zip` holds the
-files as a deterministic `.whittle` archive (§3, without the cache). Readers recompute the hash
+files as a deterministic `.wrencad` archive (§3, without the cache). Readers recompute the hash
 after unpacking and reject a snapshot that doesn't match. Saving content whose hash equals the
 current head's returns that head; no new version is written.
 
@@ -436,7 +436,7 @@ relying on the snapshot already being there). A pruned version reads as "not fou
 `refs/releases/<release>/<versionId>` holds canonical JSON:
 
 ```json
-{ "at": "…", "author": { "name": "Ann" }, "files": ["releases/rev-a/bracket.step"], "format": "whittle-release", "name": "Rev A", "versionId": "01J…" }
+{ "at": "…", "author": { "name": "Ann" }, "files": ["releases/rev-a/bracket.step"], "format": "wren-release", "name": "Rev A", "versionId": "01J…" }
 ```
 
 - The frozen exports are written once under `releases/<slug>/` in the project (slug as in §1).
@@ -449,9 +449,9 @@ relying on the snapshot already being there). A pruned version reads as "not fou
 tags:
 
 - The tag name is the release name made ref-safe (`Rev A` → `Rev-A`).
-- The tag message starts with the release name, and has one `Whittle-Release-File: <path>`
+- The tag message starts with the release name, and has one `Wren-Release-File: <path>`
   trailer per frozen export. The exports are committed to the branch.
-- Automatic snapshots are commits under the local ref `refs/whittle/auto/<oid>`. They are never
+- Automatic snapshots are commits under the local ref `refs/wren/auto/<oid>`. They are never
   pushed; pruning deletes the refs.
-- Whittle only writes the paths it owns: the model files, `imports/`, `previews/` and
+- Wren only writes the paths it owns: the model files, `imports/`, `previews/` and
   `releases/`. Every other file in the repository is carried through unchanged.

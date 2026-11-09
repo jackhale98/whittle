@@ -6,7 +6,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import type { EntityRef, Feature } from '@whittle/contracts';
+import type { EntityRef, Feature } from '@wren-cad/contracts';
 import {
   chamfer,
   edge,

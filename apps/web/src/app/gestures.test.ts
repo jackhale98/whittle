@@ -1,4 +1,4 @@
-import type { ViewportGesture } from '@whittle/contracts';
+import type { ViewportGesture } from '@wren-cad/contracts';
 import { describe, expect, it } from 'vitest';
 import { bubbleActions, type GestureMode, gestureAction, VIEW_ACTIONS } from './gestures';
 

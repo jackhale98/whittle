@@ -1,4 +1,4 @@
-import type { EvalResult, Expr } from '@whittle/contracts';
+import type { EvalResult, Expr } from '@wren-cad/contracts';
 import { Link2, Link2Off, RefreshCw } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Segmented, Switch } from '../components/controls';
@@ -360,8 +360,8 @@ export function LinkedEntityPanel({
       </div>
       {lost ? (
         <p role="alert" className="text-xs text-warning-text">
-          The model geometry this followed is gone. Whittle will not guess: re-pick the new source,
-          or unlink to keep it as plain sketch geometry.
+          The model geometry this followed is gone. Wren will not guess: re-pick the new source, or
+          unlink to keep it as plain sketch geometry.
         </p>
       ) : null}
       {state === 'approximate' ? (

@@ -13,7 +13,7 @@ const out = resolve(root, process.argv[2] ?? 'apps/web/dist/THIRD_PARTY_NOTICES.
 const TYPE_ONLY = (name) => name.startsWith('@types/') || name === 'csstype';
 
 const tree = JSON.parse(
-  execSync('pnpm --filter @whittle/web list --prod --json --depth Infinity', {
+  execSync('pnpm --filter @wren-cad/web list --prod --json --depth Infinity', {
     cwd: root,
     encoding: 'utf8',
     maxBuffer: 64 * 1024 * 1024,
@@ -38,9 +38,9 @@ function licenseText(dir) {
 
 const rule = '='.repeat(78);
 const parts = [
-  `Whittle — third-party notices
+  `Wren — third-party notices
 ${rule}
-Whittle is free software: GPL-3.0-or-later. Source: https://github.com/jackhale98/whittle
+Wren is free software: GPL-3.0-or-later. Source: https://github.com/jackhale98/wren-cad
 This file lists the third-party software included in this build and its licence terms.
 `,
   `${rule}
@@ -48,8 +48,8 @@ Open CASCADE Technology (OCCT) 8.0.1 — LGPL-2.1-only WITH Open-CASCADE-Excepti
 ${rule}
 The geometry kernel files whittle-kernel*.wasm / whittle-kernel*.js are OCCT compiled to
 WebAssembly with the libcascade / opencascade.js v3 toolchain (taucad/opencascade.js), linked with
-Whittle's façade. The complete corresponding build scripts and façade sources are in
-packages/kernel of the Whittle repository, so you can rebuild and relink the kernel.
+Wren's façade. The complete corresponding build scripts and façade sources are in
+packages/kernel of the Wren repository, so you can rebuild and relink the kernel.
 OCCT source: https://github.com/Open-Cascade-SAS/OCCT
 
 ${readFileSync(join(root, 'licenses/OCCT_LGPL_EXCEPTION.txt'), 'utf8').trim()}
@@ -59,7 +59,7 @@ ${readFileSync(join(root, 'licenses/LGPL-2.1.txt'), 'utf8').trim()}
 ];
 
 const sorted = [...pkgs.values()]
-  .filter((p) => !p.name.startsWith('@whittle/') && !TYPE_ONLY(p.name))
+  .filter((p) => !p.name.startsWith('@wren-cad/') && !TYPE_ONLY(p.name))
   .sort((a, b) => a.name.localeCompare(b.name));
 let missing = 0;
 for (const p of sorted) {

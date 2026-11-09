@@ -1,4 +1,4 @@
-import type { SketchConstraintKind } from '@whittle/contracts';
+import type { SketchConstraintKind } from '@wren-cad/contracts';
 import type { ReactNode } from 'react';
 import { cn } from '../components/primitives';
 

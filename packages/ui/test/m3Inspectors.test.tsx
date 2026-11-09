@@ -1,6 +1,6 @@
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { Feature } from '@whittle/contracts';
+import type { Feature } from '@wren-cad/contracts';
 import { describe, expect, it, vi } from 'vitest';
 import { makeEvaluator, sampleParams } from '../harness/fixtures';
 import { feat, holeTables, m3Features, r3 } from '../harness/m3Fixtures';

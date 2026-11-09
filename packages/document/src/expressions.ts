@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 /**
- * Expression engine (implements `ExpressionEngine` from @whittle/contracts).
+ * Expression engine (implements `ExpressionEngine` from @wren-cad/contracts).
  *
  * Quantities carry a canonical value (mm, rad, kg, s) and a dimension vector. Evaluation is a
  * plain tree walk over the AST from `parser.ts`; there is no `eval` and no `Function`.
@@ -20,7 +20,7 @@ import type {
   ExprError,
   ExpressionEngine,
   NamedDimension,
-} from '@whittle/contracts';
+} from '@wren-cad/contracts';
 import { ExprSyntaxError, type Node, parse, type Span } from './parser';
 import { suggest } from './suggest';
 import {

@@ -16,8 +16,8 @@ import type {
   RemoteListing,
   StorageProvider,
   StorageResult,
-} from '@whittle/contracts';
-import { MANIFEST_FILE } from '@whittle/document';
+} from '@wren-cad/contracts';
+import { MANIFEST_FILE } from '@wren-cad/document';
 import { fail, forward, ok, SKIP_FOLDERS } from './common';
 
 const SERVICE = 'The folder';
@@ -63,7 +63,7 @@ export async function folderPermission(
       state = await handle.requestPermission(mode);
     }
     if (state === 'granted') return ok(undefined);
-    return fail('PERMISSION', `Allow Whittle to use the folder ‘${handle.name}’ again.`);
+    return fail('PERMISSION', `Allow Wren to use the folder ‘${handle.name}’ again.`);
   } catch (e) {
     return mapError(e, '');
   }
@@ -74,7 +74,7 @@ function mapError<T>(e: unknown, path: string): StorageResult<T> {
   const where = path ? { path } : {};
   if (name === 'NotFoundError') return fail('NOT_FOUND', `‘${path}’ isn't in the folder.`, where);
   if (name === 'NotAllowedError' || name === 'SecurityError') {
-    return fail('PERMISSION', 'Whittle no longer has access to the folder. Allow it again.', where);
+    return fail('PERMISSION', 'Wren no longer has access to the folder. Allow it again.', where);
   }
   if (name === 'QuotaExceededError') return fail('QUOTA', 'The disk is full.', where);
   if (name === 'TypeMismatchError') {

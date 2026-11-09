@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-import type { MeshBuffers } from '@whittle/contracts';
+import type { MeshBuffers } from '@wren-cad/contracts';
 import { checkSize, checkTriangles, type ImportLimits, IoError, resolveLimits } from './errors';
 import { meshFromSoup } from './mesh';
 

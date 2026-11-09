@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import 'fake-indexeddb/auto';
-import type { ProjectFiles, WhittleDoc } from '@whittle/contracts';
+import type { ProjectFiles, WrenDoc } from '@wren-cad/contracts';
 import { describe, expect, it } from 'vitest';
 import {
   type BlobStore,
@@ -12,15 +12,15 @@ import {
 } from '../src/browser';
 
 const codec: LibraryCodec = {
-  toWhittle: (doc, cache) =>
+  toWren: (doc, cache) =>
     new TextEncoder().encode(JSON.stringify({ doc, cache: [...(cache ?? new Map()).keys()] })),
-  fromWhittle: (bytes) => {
-    const o = JSON.parse(new TextDecoder().decode(bytes)) as { doc: WhittleDoc; cache: string[] };
+  fromWren: (bytes) => {
+    const o = JSON.parse(new TextDecoder().decode(bytes)) as { doc: WrenDoc; cache: string[] };
     return { doc: o.doc, cache: new Map(o.cache.map((k) => [k, new Uint8Array([1])])) };
   },
 };
 
-function doc(name: string, extra: Record<string, unknown> = {}): WhittleDoc {
+function doc(name: string, extra: Record<string, unknown> = {}): WrenDoc {
   return {
     schemaVersion: 1,
     units: { length: 'mm', angle: 'deg' },
@@ -29,7 +29,7 @@ function doc(name: string, extra: Record<string, unknown> = {}): WhittleDoc {
     assemblies: [],
     drawings: [],
     meta: { name, created: 'c', modified: 'm', app: 'test', ...extra },
-  } as WhittleDoc;
+  } as WrenDoc;
 }
 
 let n = 0;
@@ -129,7 +129,7 @@ describe('LocalLibrary on IndexedDB blobs', () => {
   it('reports corrupt documents', async () => {
     const bad: LibraryCodec = {
       ...codec,
-      fromWhittle: () => {
+      fromWren: () => {
         throw new Error('boom');
       },
     };
@@ -174,10 +174,11 @@ describe('OPFS blobs', () => {
     const lib = await openLibrary({ codec, dbName: fresh(), blobStore: store });
     expect(lib.backend).toBe('opfs');
     const e = await lib.save(doc('Part A'));
+    // Storage name kept from before the rename (ADR-032).
     expect([...dir.files.keys()].filter((k) => k.endsWith('.whittle')).length).toBe(1);
     expect((await lib.open(e.id)).doc.meta.name).toBe('Part A');
     await lib.remove(e.id);
-    expect([...dir.files.keys()].filter((k) => k.endsWith('.whittle')).length).toBe(0);
+    expect([...dir.files.keys()].filter((k) => k.endsWith('.wrencad')).length).toBe(0);
     lib.close();
   });
 

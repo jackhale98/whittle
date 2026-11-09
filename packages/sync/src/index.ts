@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 /**
- * @whittle/sync — connections, sync and version control (PLAN §8A, ADR-020). Provider adapters,
+ * @wren-cad/sync — connections, sync and version control (PLAN §8A, ADR-020). Provider adapters,
  * auth flows, conflict handling and the git wrapper are ported from Mycelium (same author,
  * GPL-3.0-or-later).
  *
  *  - Providers, credential vault, OAuth PKCE and the sync engine
  *  - Structural merge and feature diff: `docMerger`, `docDiffer`, `mergeProjectFiles`
- *  - Snapshot history (`.whittle-history/`): `createSnapshotHistory`, `MemoryHistoryFiles`
+ *  - Snapshot history (`.wren-history/`): `createSnapshotHistory`, `MemoryHistoryFiles`
  *  - Git history (isomorphic-git): `createGitHistory`
  */
 

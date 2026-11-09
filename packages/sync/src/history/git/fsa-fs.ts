@@ -147,7 +147,7 @@ function mapDom(e: unknown, syscall: string, path: string): FsError {
       return new FsError('ENOTEMPTY', syscall, path);
     case 'NotAllowedError':
     case 'SecurityError':
-      return new FsError('EACCES', syscall, path, 'Whittle no longer has access to the folder');
+      return new FsError('EACCES', syscall, path, 'Wren no longer has access to the folder');
     case 'QuotaExceededError':
       return new FsError('ENOSPC', syscall, path);
     case 'NoModificationAllowedError':

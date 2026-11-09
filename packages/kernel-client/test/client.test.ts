@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import type { KernelStatus } from '@whittle/contracts';
+import type { KernelStatus } from '@wren-cad/contracts';
 import { describe, expect, it } from 'vitest';
 import { createKernelClient } from '../src/client';
 import { statusMessage } from '../src/protocol';

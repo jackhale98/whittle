@@ -9,7 +9,7 @@ import type {
   HoleTable,
   NamedDimension,
   UnresolvedRef,
-} from '@whittle/contracts';
+} from '@wren-cad/contracts';
 import { Field, Segmented } from '../components/controls';
 import { ExpressionInput } from '../components/ExpressionInput';
 import type { FormatValue } from '../format';

@@ -1,5 +1,5 @@
 {
-  "name": "@whittle/sync",
+  "name": "@wren-cad/sync",
   "version": "0.0.0",
   "private": true,
   "license": "GPL-3.0-or-later",
@@ -14,9 +14,9 @@
   },
   "dependencies": {
     "@isomorphic-git/lightning-fs": "4.10.3",
-    "@whittle/contracts": "workspace:*",
-    "@whittle/document": "workspace:*",
-    "@whittle/sketch": "workspace:*",
+    "@wren-cad/contracts": "workspace:*",
+    "@wren-cad/document": "workspace:*",
+    "@wren-cad/sketch": "workspace:*",
     "buffer": "6.0.3",
     "idb": "8.0.4",
     "isomorphic-git": "1.44.3"

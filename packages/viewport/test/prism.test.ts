@@ -1,5 +1,5 @@
-import type { MeshBuffers } from '@whittle/contracts';
-import { boxMesh, denseMesh } from '@whittle/test-fixtures';
+import type { MeshBuffers } from '@wren-cad/contracts';
+import { boxMesh, denseMesh } from '@wren-cad/test-fixtures';
 import { describe, expect, it } from 'vitest';
 import { boundaryEdges, buildPrism, faceTriangleRanges, liftedPosition } from '../src/prism';
 import { isClipped, keptRayRange, sectionEq, threePlane } from '../src/section';

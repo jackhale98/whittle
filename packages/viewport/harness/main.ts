@@ -5,8 +5,8 @@ import type {
   PickHit,
   RenderBackend,
   StandardView,
-} from '@whittle/contracts';
-import { boxMesh, denseMesh, sketchFixture } from '@whittle/test-fixtures';
+} from '@wren-cad/contracts';
+import { boxMesh, denseMesh, sketchFixture } from '@wren-cad/test-fixtures';
 import type { ViewportEngine } from '../src/index';
 import { createViewport, defaultTolerance } from '../src/index';
 import { sharedOverlayMaterialCount } from '../src/overlays';
@@ -195,8 +195,8 @@ async function main() {
   });
 
   await viewport.nextFrame();
-  hud.textContent = `Whittle viewport · ${viewport.backend}`;
-  document.title = `Whittle viewport harness (${viewport.backend})`;
+  hud.textContent = `Wren viewport · ${viewport.backend}`;
+  document.title = `Wren viewport harness (${viewport.backend})`;
 }
 
 const DOF = {

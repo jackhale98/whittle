@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 /**
- * Tree objects built directly, not from the index: a commit Whittle makes records exactly the
+ * Tree objects built directly, not from the index: a commit Wren makes records exactly the
  * project's files, spliced into the parent commit's tree at the project folder. Whatever else the
  * user has staged or changed in their repository is neither committed nor touched.
  */

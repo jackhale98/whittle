@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 /**
- * Tokenizer and Pratt parser for Whittle expressions. Hand-written; no `eval`, no `Function`.
+ * Tokenizer and Pratt parser for Wren expressions. Hand-written; no `eval`, no `Function`.
  *
  * Grammar (precedence low → high):
  *   additive   :=  term (('+' | '-') term)*

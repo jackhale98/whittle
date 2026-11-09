@@ -1,5 +1,5 @@
-import type { EntityQuery, Feature, FilletFeature, PickHit } from '@whittle/contracts';
-import { boxMesh } from '@whittle/test-fixtures';
+import type { EntityQuery, Feature, FilletFeature, PickHit } from '@wren-cad/contracts';
+import { boxMesh } from '@wren-cad/test-fixtures';
 import { describe, expect, it } from 'vitest';
 import { contextTools, newExtrude, newFillet, nextName } from '../features/factories';
 import {

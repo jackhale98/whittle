@@ -1,5 +1,5 @@
-// Ported from Mycelium src/lib/sync/engine.test.ts, on Whittle projects and the structural merge.
-import { MANIFEST_FILE, PARAMS_FILE, toFiles } from '@whittle/document';
+// Ported from Mycelium src/lib/sync/engine.test.ts, on Wren projects and the structural merge.
+import { MANIFEST_FILE, PARAMS_FILE, toFiles } from '@wren-cad/document';
 import { afterEach, describe, expect, it } from 'vitest';
 import { fileConflictPath } from '../../src/engine/round';
 import { MemoryProvider } from '../../src/providers/memory';
@@ -37,17 +37,17 @@ describe('sync engine: pull and push', () => {
   it('downloads a project on first sync, ignoring other folders and the cache', async () => {
     const remote = new MemoryProvider();
     for (const [p, b] of toFiles(makeDoc())) remote.put(abs(p), b);
-    remote.put(abs('.whittle/meshes/a.bin'), 'cache');
-    remote.put(abs('.whittle-history/versions/v1.json'), '{}');
+    remote.put(abs('.wren/meshes/a.bin'), 'cache');
+    remote.put(abs('.wren-history/versions/v1.json'), '{}');
     remote.put('/CAD/other/x.json', '{}');
     const d = device(remote);
     const r = await d.sync();
     expect([...d.store.files.keys()].sort()).toEqual([
-      '.whittle-history/versions/v1.json',
+      '.wren-history/versions/v1.json',
       'params.json',
       'parts/bracket.part.json',
       'parts/lid.part.json',
-      'whittle.project.json',
+      'wren.project.json',
     ]);
     expect(r.pulled).toBe(5);
     expect(r.files?.size).toBe(5);
@@ -69,18 +69,18 @@ describe('sync engine: pull and push', () => {
     expect(remote.calls.read).toBe(8); // the two first syncs only; our own uploads aren't re-read
   });
 
-  it('never uploads the .whittle/ cache, but syncs .whittle-history/', async () => {
+  it('never uploads the .wren/ cache, but syncs .wren-history/', async () => {
     const { remote, a, b } = await twoDevices();
-    a.save('.whittle/meshes/bracket.bin', 'mesh');
-    a.save('.whittle/thumb.png', 'png');
-    a.save('.whittle-history/versions/01J.json', '{"id":"01J"}');
+    a.save('.wren/meshes/bracket.bin', 'mesh');
+    a.save('.wren/thumb.png', 'png');
+    a.save('.wren-history/versions/01J.json', '{"id":"01J"}');
     await a.sync();
-    expect([...remote.files.values()].some((f) => f.path.includes('/.whittle/'))).toBe(false);
-    expect(remote.text(abs('.whittle-history/versions/01J.json'))).toBe('{"id":"01J"}');
+    expect([...remote.files.values()].some((f) => f.path.includes('/.wren/'))).toBe(false);
+    expect(remote.text(abs('.wren-history/versions/01J.json'))).toBe('{"id":"01J"}');
     expect((await a.engine.state()).pending).toEqual([]);
     await b.sync();
-    expect(b.store.text('.whittle-history/versions/01J.json')).toBe('{"id":"01J"}');
-    expect(b.store.files.has('.whittle/thumb.png')).toBe(false);
+    expect(b.store.text('.wren-history/versions/01J.json')).toBe('{"id":"01J"}');
+    expect(b.store.files.has('.wren/thumb.png')).toBe(false);
   });
 
   it('carries edits from one device to another', async () => {

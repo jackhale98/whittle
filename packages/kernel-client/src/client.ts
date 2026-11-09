@@ -12,7 +12,7 @@ import type {
   KernelInitOptions,
   KernelStatus,
   Result,
-} from '@whittle/contracts';
+} from '@wren-cad/contracts';
 import { type Remote, releaseProxy, wrap } from 'comlink';
 import type { ModelingWorkerApi, RegenWorkerOptions } from './modeling-api';
 import { isStatusMessage, STATUS_MESSAGE_TAG } from './protocol';

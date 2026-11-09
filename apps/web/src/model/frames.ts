@@ -1,6 +1,6 @@
 /** Placement frames for the reserved origin references (naming.ts) and small vector helpers. */
 
-import type { Frame, Vec2, Vec3 } from '@whittle/contracts';
+import type { Frame, Vec2, Vec3 } from '@wren-cad/contracts';
 
 /** A full plane frame (x, y, z axes), as `SketchResult.frame` and `screenToPlane` use. */
 export interface PlaneFrame {

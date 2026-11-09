@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-import type { Command, Feature, JsonPatchOp, Part, WhittleDoc } from '@whittle/contracts';
+import type { Command, Feature, JsonPatchOp, Part, WrenDoc } from '@wren-cad/contracts';
 import { describe, expect, it, vi } from 'vitest';
 import { createDocumentStore, newDoc, newPart, type StoreOptions, validateDoc } from '../src';
 import { box, extrude, fillet, id, sampleDoc, sketch } from './fixtures';
@@ -41,7 +41,7 @@ describe('apply / undo / redo', () => {
     expect(store.getDoc()).not.toBe(before);
     expect(before.parts[0]?.features).toHaveLength(0);
     expect(listener).toHaveBeenCalledTimes(1);
-    const [doc, change] = listener.mock.calls[0] as [WhittleDoc, { patches: JsonPatchOp[] }];
+    const [doc, change] = listener.mock.calls[0] as [WrenDoc, { patches: JsonPatchOp[] }];
     expect(doc).toBe(store.getDoc());
     expect(change.patches.length).toBeGreaterThan(0);
   });
@@ -326,7 +326,7 @@ describe('rollback bar', () => {
       return seed % n;
     };
     const { store } = setup();
-    const snapshots: WhittleDoc[] = [store.getDoc()];
+    const snapshots: WrenDoc[] = [store.getDoc()];
     let next = 100;
     for (let step = 0; step < 150; step++) {
       const p = part(store);

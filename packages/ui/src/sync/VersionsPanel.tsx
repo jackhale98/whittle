@@ -1,4 +1,4 @@
-import type { Branch, Version } from '@whittle/contracts';
+import type { Branch, Version } from '@wren-cad/contracts';
 import {
   ChevronDown,
   ChevronRight,

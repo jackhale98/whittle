@@ -1,7 +1,7 @@
 /// Project fixtures: a small document as canonical files, and edits to it.
 
-import type { Param, ProjectFiles, WhittleDoc } from '@whittle/contracts';
-import { fromFiles, newDoc, newPart, toFiles, ulid } from '@whittle/document';
+import type { Param, ProjectFiles, WrenDoc } from '@wren-cad/contracts';
+import { fromFiles, newDoc, newPart, toFiles, ulid } from '@wren-cad/document';
 
 export const NOW = '2026-11-08T10:00:00.000Z';
 
@@ -12,11 +12,11 @@ export function makeDoc(params: Record<string, string> = { width: '40 mm', heigh
   return doc;
 }
 
-export const filesOf = (doc: WhittleDoc): ProjectFiles => toFiles(doc);
-export const docOf = (files: ProjectFiles): WhittleDoc => fromFiles(files);
+export const filesOf = (doc: WrenDoc): ProjectFiles => toFiles(doc);
+export const docOf = (files: ProjectFiles): WrenDoc => fromFiles(files);
 
 /** Sets parameter `name` to `expr` (adds it if missing) and bumps `meta.modified`. */
-export function withParam(doc: WhittleDoc, name: string, expr: string, at = NOW): WhittleDoc {
+export function withParam(doc: WrenDoc, name: string, expr: string, at = NOW): WrenDoc {
   const next = structuredClone(doc);
   const p = next.params.find((x: Param) => x.name === name);
   if (p) p.expr = expr;
@@ -25,5 +25,5 @@ export function withParam(doc: WhittleDoc, name: string, expr: string, at = NOW)
   return next;
 }
 
-export const paramOf = (doc: WhittleDoc, name: string) =>
+export const paramOf = (doc: WrenDoc, name: string) =>
   doc.params.find((p) => p.name === name)?.expr;

@@ -1,6 +1,6 @@
-# @whittle/kernel
+# @wren-cad/kernel
 
-OCCT **8.0.1** compiled to WebAssembly with Whittle's coarse C++ façade
+OCCT **8.0.1** compiled to WebAssembly with Wren's coarse C++ façade
 ([`src/whittle_kernel.h`](src/whittle_kernel.h), PLAN §7). Built with
 [`@libcascade/toolchain`](https://www.npmjs.com/package/@libcascade/toolchain) 3.1.0
 (opencascade.js v3, Emscripten 6.0.5) in digest-pinned Docker images (ADR-002).
@@ -14,8 +14,8 @@ Requires Docker (or Podman) and about 21 GB of free disk for the two toolchain i
 layers: about 12 GB each alone, 21 GB together).
 
 ```sh
-pnpm --filter @whittle/kernel build   # = pnpm kernel:build from the repo root
-pnpm --filter @whittle/kernel test    # golden tests in Node, both variants
+pnpm --filter @wren-cad/kernel build   # = pnpm kernel:build from the repo root
+pnpm --filter @wren-cad/kernel test    # golden tests in Node, both variants
 ```
 
 `pnpm build` runs [`scripts/build.mjs`](scripts/build.mjs):
@@ -23,8 +23,8 @@ pnpm --filter @whittle/kernel test    # golden tests in Node, both variants
 1. `scripts/amalgamate.mjs` inlines `whittle_kernel.h`, `whittle_core.cpp`, `whittle_modeling.cpp`,
    `whittle_pushpull.cpp`, `whittle_measure.cpp`, `whittle_io.cpp`, `whittle_kernel.cpp` and
    `whittle_bindings.cpp` (in that order) into `.libcascade/whittle_facade.cpp`, and stamps
-   `WHITTLE_BUILD_ID`.
-   `WHITTLE_BUILD_ID` is a SHA-256 over the façade sources, `libcascade.config.ts`, the
+   `WREN_BUILD_ID`.
+   `WREN_BUILD_ID` is a SHA-256 over the façade sources, `libcascade.config.ts`, the
    amalgamation script and the toolchain version, and `kernelInfo()` reports it. The amalgamation
    is needed because `customBindings` with `scope: 'main'` concatenates file _contents_ into the
    toolchain's embind translation unit, so relative `#include`s can't resolve there.
@@ -86,14 +86,14 @@ For C++ iteration:
 
 | Subpath                            | Target                                                          |
 | ---------------------------------- | --------------------------------------------------------------- |
-| `@whittle/kernel`                  | `src/index.ts`: façade types and pure helpers; never loads Wasm |
-| `@whittle/kernel/single/init`      | `dist/init.single.js`                                           |
-| `@whittle/kernel/multi/init`       | `dist/init.multi.js`                                            |
-| `@whittle/kernel/single/wasm`      | `dist/whittle-kernel-st.wasm` (import with `?url`)              |
-| `@whittle/kernel/multi/wasm`       | `dist/whittle-kernel.wasm` (import with `?url`)                 |
-| `@whittle/kernel/single`, `/multi` | raw Emscripten factories (escape hatch)                         |
+| `@wren-cad/kernel`                  | `src/index.ts`: façade types and pure helpers; never loads Wasm |
+| `@wren-cad/kernel/single/init`      | `dist/init.single.js`                                           |
+| `@wren-cad/kernel/multi/init`       | `dist/init.multi.js`                                            |
+| `@wren-cad/kernel/single/wasm`      | `dist/whittle-kernel-st.wasm` (import with `?url`)              |
+| `@wren-cad/kernel/multi/wasm`       | `dist/whittle-kernel.wasm` (import with `?url`)                 |
+| `@wren-cad/kernel/single`, `/multi` | raw Emscripten factories (escape hatch)                         |
 
-Only the kernel worker ([`@whittle/kernel-client`](../kernel-client)) instantiates the kernel.
+Only the kernel worker ([`@wren-cad/kernel-client`](../kernel-client)) instantiates the kernel.
 With Vite, the threaded glue needs `worker: { format: 'es' }`.
 
 ## JS surface
@@ -228,7 +228,7 @@ meshes a copy (`BRepBuilderAPI_Copy`), so export quality never changes the viewp
 
 ## Licensing
 
-- Whittle's sources in this package (C++ façade, scripts, TS) are **GPL-3.0-or-later** (ADR-003).
+- Wren's sources in this package (C++ façade, scripts, TS) are **GPL-3.0-or-later** (ADR-003).
 - The produced `.wasm` and `.js` contain OCCT and are **LGPL-2.1-only WITH
   Open-CASCADE-Exception-1.0**. They ship as separate files that the app loads at runtime.
 - **Relinking:** the build is fully reproducible from public inputs: this directory, the npm-pinned

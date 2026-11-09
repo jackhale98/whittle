@@ -13,6 +13,11 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# GitHub Pages serves a project site at /<repository name>/: the build and every E2E server use
+# the same base, so renaming the repository (ADR-032) needs no workflow change.
+env:
+  WREN_BASE: /${{ github.event.repository.name }}/
+
 jobs:
   lint:
     name: Lint (Biome)
@@ -71,10 +76,9 @@ jobs:
         with:
           name: kernel-dist
           path: packages/kernel/dist
-      - name: Build (base /whittle/)
+      - name: Build (base /<repository name>/)
         run: pnpm build
         env:
-          WHITTLE_BASE: /whittle/
           # Public OAuth client ids and URLs for cloud/git sync (docs/SYNC_SETUP.md). Repository
           # *variables* (Settings > Secrets and variables > Actions > Variables), never secrets:
           # they are baked into the public bundle. Unset variables expand to empty strings, which
@@ -88,9 +92,8 @@ jobs:
           VITE_GITLAB_CLIENT_ID: ${{ vars.VITE_GITLAB_CLIENT_ID }}
           VITE_BITBUCKET_CLIENT_ID: ${{ vars.VITE_BITBUCKET_CLIENT_ID }}
       - name: Initial-route JS budget (<= 250 kB gzip)
-        run: pnpm --filter @whittle/web size
+        run: pnpm --filter @wren-cad/web size
         env:
-          WHITTLE_BASE: /whittle/
       - name: Upload web build
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -125,7 +128,7 @@ jobs:
           name: web-dist
           path: apps/web/dist
       - name: Install ${{ matrix.browser }}
-        run: pnpm --filter @whittle/web exec playwright install --with-deps ${{ matrix.browser }}
+        run: pnpm --filter @wren-cad/web exec playwright install --with-deps ${{ matrix.browser }}
       - name: Run Playwright
         # Firefox runs headed under Xvfb: headless Firefox on GPU-less runners has no GL context at
         # all, while Xvfb + Mesa (llvmpipe) gives it a working software WebGL2 (ADR-005 §7).
@@ -136,11 +139,11 @@ jobs:
         run: |
           case "${{ matrix.browser }}" in
             firefox)
-              WHITTLE_HEADED=1 xvfb-run -a pnpm --filter @whittle/web exec playwright test --trace retain-on-failure --project=firefox ;;
+              WREN_HEADED=1 xvfb-run -a pnpm --filter @wren-cad/web exec playwright test --trace retain-on-failure --project=firefox ;;
             chromium)
-              pnpm --filter @whittle/web exec playwright test --trace retain-on-failure --project=chromium --project=chromium-touch ;;
+              pnpm --filter @wren-cad/web exec playwright test --trace retain-on-failure --project=chromium --project=chromium-touch ;;
             webkit)
-              pnpm --filter @whittle/web exec playwright test --trace retain-on-failure --project=webkit --project=webkit-ipad ;;
+              pnpm --filter @wren-cad/web exec playwright test --trace retain-on-failure --project=webkit --project=webkit-ipad ;;
           esac
       - name: Upload Playwright report
         if: failure()
@@ -167,13 +170,13 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Install chromium
-        run: pnpm --filter @whittle/viewport exec playwright install --with-deps chromium
+        run: pnpm --filter @wren-cad/viewport exec playwright install --with-deps chromium
       - name: Viewport E2E
-        run: pnpm --filter @whittle/viewport e2e
+        run: pnpm --filter @wren-cad/viewport e2e
       # Visual baselines were recorded outside CI; until CI-generated baselines are committed,
       # run the UI suite's functional/a11y assertions and skip pixel comparison.
       - name: UI E2E (functional + axe)
-        run: pnpm --filter @whittle/ui exec playwright test --trace off --ignore-snapshots
+        run: pnpm --filter @wren-cad/ui exec playwright test --trace off --ignore-snapshots
 
   # Performance budgets (PLAN §10) enforced as a test, with the SwiftShader factor from
   # apps/web/e2e/perf/budgets.ts (ADR-009). Gates the deploy.
@@ -184,7 +187,7 @@ jobs:
     timeout-minutes: 40
     env:
       # Read by the viewport probes (1M-triangle orbit) and nothing else; they are skipped without it.
-      WHITTLE_PERF: "1"
+      WREN_PERF: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
@@ -199,18 +202,18 @@ jobs:
           name: web-dist
           path: apps/web/dist
       - name: Install chromium
-        run: pnpm --filter @whittle/web exec playwright install --with-deps chromium
+        run: pnpm --filter @wren-cad/web exec playwright install --with-deps chromium
       # Shell time-to-interactive (cold, fast 4G) and peak memory after the demo bracket + edits.
       # Same as `pnpm perf` minus the rebuild: the build job's artefact is what ships.
       - name: Web perf (shell TTI, memory)
-        run: pnpm --filter @whittle/web perf:run --trace off
-      # Viewport frame-time probes (WHITTLE_PERF=1 above). Owned by the viewport package. Advisory
+        run: pnpm --filter @wren-cad/web perf:run --trace off
+      # Viewport frame-time probes (WREN_PERF=1 above). Owned by the viewport package. Advisory
       # until the 1M-triangle probes are assertions and stable: at the time of writing both probes
       # die with "Execution context was destroyed" (a navigation mid-probe). Remove
       # continue-on-error to make them gate.
       - name: Viewport perf (1M triangles)
         continue-on-error: true
-        run: pnpm --filter @whittle/viewport perf
+        run: pnpm --filter @wren-cad/viewport perf
       - name: Upload perf results
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -245,7 +248,7 @@ jobs:
           name: web-dist
           path: apps/web/dist
       - name: Install chromium
-        run: pnpm --filter @whittle/web exec playwright install --with-deps chromium
+        run: pnpm --filter @wren-cad/web exec playwright install --with-deps chromium
       - name: Lighthouse CI
         working-directory: apps/web
         run: |

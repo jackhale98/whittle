@@ -1,7 +1,7 @@
 # Dependencies
 
 Every runtime dependency, with license, approximate shipped size, and why. Dev-only tooling is listed
-separately. Versions are pinned exactly in `package.json` (`save-exact=true`). Whittle is
+separately. Versions are pinned exactly in `package.json` (`save-exact=true`). Wren is
 GPL-3.0-or-later (ADR-003): every dependency must be GPL-3.0-compatible (no GPL-2.0-only).
 Notices: `pnpm build` writes `THIRD_PARTY_NOTICES.txt` into the site (`scripts/third-party-notices.mjs`) with every
 bundled package's licence text plus OCCT's LGPL-2.1 + exception (texts in `licenses/`).
@@ -23,7 +23,7 @@ bundled package's licence text plus OCCT's LGPL-2.1 + exception (texts in `licen
 | `@fontsource-variable/inter` | 5.3.0 | OFL-1.1 | latin woff2 48 KB (on demand) | ui | Self-hosted font (font data, separate work) |
 | `@salusoft89/planegcs` | 1.3.0 | LGPL-2.0-or-later | wasm 173 KB gzip + glue 9.5 KB (sketch worker, lazy) | sketch; kernel-client (lazy, for sketch re-solves in the kernel worker) | FreeCAD's PlaneGCS; outputs re-verified by our residual model |
 | `ulid` | 3.0.2 | MIT | < 1 KB | sketch | |
-| `fflate` | 0.8.3 | MIT | ≈ 8 KB | document, io, kernel-client | Zip for 3MF and `.whittle` |
+| `fflate` | 0.8.3 | MIT | ≈ 8 KB | document, io, kernel-client | Zip for 3MF and `.wrencad` |
 | `idb` | 8.0.4 | ISC | ≈ 1.2 KB | io (browser), sync | IndexedDB wrapper for the local library; sync's credential vault, sync state and merge bases, folder handles |
 
 | `idb` | 8.0.4 | ISC | ≈ 1.2 KB | io (browser) | IndexedDB wrapper for the local library |

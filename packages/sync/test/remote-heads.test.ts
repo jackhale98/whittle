@@ -7,7 +7,7 @@ import { type GitServer, startGitServer } from './support/git-server';
 describe('gitRemoteHeads (the connection’s repository step)', () => {
   let server: GitServer;
   beforeAll(async () => {
-    server = await startGitServer('seeded', { 'whittle.project.json': '{}\n' }, { auth: 'x:tok' });
+    server = await startGitServer('seeded', { 'wren.project.json': '{}\n' }, { auth: 'x:tok' });
     server.empty('fresh');
   });
   afterAll(() => server.close());

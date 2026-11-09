@@ -1,10 +1,10 @@
 /**
  * Synthetic `MeshBuffers` fixtures. They follow the index-space rules documented on `MeshBuffers`
- * in @whittle/contracts exactly, so the viewport can be developed and benchmarked before the real
+ * in @wren-cad/contracts exactly, so the viewport can be developed and benchmarked before the real
  * kernel mesher is wired in.
  */
 
-import type { MeshBuffers } from '@whittle/contracts';
+import type { MeshBuffers } from '@wren-cad/contracts';
 
 type V3 = [number, number, number];
 

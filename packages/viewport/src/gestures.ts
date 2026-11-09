@@ -13,7 +13,7 @@
  * `doubleTap` instead of a second `tap`.
  */
 
-import type { InputPolicy, ViewportGesture } from '@whittle/contracts';
+import type { InputPolicy, ViewportGesture } from '@wren-cad/contracts';
 import {
   DEFAULT_PALM_REJECT_MS,
   DOUBLE_TAP_MAX_MS,

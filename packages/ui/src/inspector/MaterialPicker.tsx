@@ -1,4 +1,4 @@
-import type { EvalResult, Expr, Material } from '@whittle/contracts';
+import type { EvalResult, Expr, Material } from '@wren-cad/contracts';
 import { Check, Search } from 'lucide-react';
 import { useId, useMemo, useState } from 'react';
 import { Segmented } from '../components/controls';

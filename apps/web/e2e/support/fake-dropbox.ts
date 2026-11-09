@@ -6,7 +6,7 @@
  * `Dropbox-API-Result`, `upload` with add/update modes and `strict_conflict`, `delete_v2` with
  * `parent_rev`, `get_current_account`, `/oauth2/authorize` and `/oauth2/token`.
  *
- * The app reaches it through `__whittleSyncOverrides.endpoints` (apps/web src/sync/env.ts).
+ * The app reaches it through `__wrenSyncOverrides.endpoints` (apps/web src/sync/env.ts).
  */
 
 import { createHash } from 'node:crypto';

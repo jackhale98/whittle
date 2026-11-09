@@ -1,4 +1,4 @@
-import type { DimensionVector, HoleFeature, HoleStandard, HoleTable } from '@whittle/contracts';
+import type { DimensionVector, HoleFeature, HoleStandard, HoleTable } from '@wren-cad/contracts';
 import { Field, Section, Segmented, Switch } from '../components/controls';
 import { defaultFormatValue } from '../format';
 import { type Ctx, type Edit, ExprField, Pick } from './fieldKit';

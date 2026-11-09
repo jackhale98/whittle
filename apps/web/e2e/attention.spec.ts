@@ -14,8 +14,8 @@ test.use({ viewport: { width: 1280, height: 720 } });
 async function clickEdge(page: Page, p: [number, number, number]): Promise<void> {
   await page.evaluate(() =>
     (
-      window as unknown as { __whittleViewport: { whenPickReady(): Promise<void> } }
-    ).__whittleViewport.whenPickReady(),
+      window as unknown as { __wrenViewport: { whenPickReady(): Promise<void> } }
+    ).__wrenViewport.whenPickReady(),
   );
   const s = await toPage(page, p);
   await page.mouse.move(s.x, s.y);

@@ -8,9 +8,9 @@ import type {
   FilletFeature,
   Part,
   SketchFeature,
-  WhittleDoc,
-} from '@whittle/contracts';
-import { applyPatch, compileCommand, validateDoc } from '@whittle/document';
+  WrenDoc,
+} from '@wren-cad/contracts';
+import { applyPatch, compileCommand, validateDoc } from '@wren-cad/document';
 import { Ajv, type ValidateFunction } from 'ajv';
 
 /** Deterministic 26-char ULID-shaped ids. */
@@ -117,7 +117,7 @@ export function bracket(): Part {
   };
 }
 
-export function baseDoc(): WhittleDoc {
+export function baseDoc(): WrenDoc {
   return {
     schemaVersion: 1,
     units: { length: 'mm', angle: 'deg' },
@@ -153,13 +153,13 @@ export function baseDoc(): WhittleDoc {
       name: 'Bracket',
       created: '2026-01-01T00:00:00.000Z',
       modified: '2026-01-01T00:00:00.000Z',
-      app: 'whittle/0.0.0',
+      app: 'wren/0.0.0',
     },
   };
 }
 
 /** Applies document commands in order (as the store would). Throws on a command that fails. */
-export function apply(doc: WhittleDoc, ...cmds: Command[]): WhittleDoc {
+export function apply(doc: WrenDoc, ...cmds: Command[]): WrenDoc {
   let cur = doc;
   for (const cmd of cmds) {
     const c = compileCommand(cur, cmd);
@@ -169,7 +169,7 @@ export function apply(doc: WhittleDoc, ...cmds: Command[]): WhittleDoc {
   return cur;
 }
 
-export function featureOf(doc: WhittleDoc, fid: string, pid = PART): Feature | undefined {
+export function featureOf(doc: WrenDoc, fid: string, pid = PART): Feature | undefined {
   return doc.parts.find((p) => p.id === pid)?.features.find((f) => f.id === fid);
 }
 
@@ -184,7 +184,7 @@ const schemaPath = join(
   '..',
   'document',
   'schema',
-  'whittle-document.schema.json',
+  'wren-document.schema.json',
 );
 let schema: ValidateFunction | undefined;
 

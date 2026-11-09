@@ -15,7 +15,7 @@ import type {
   MeshBuffers,
   RegenSlot,
   Vec3,
-} from '@whittle/contracts';
+} from '@wren-cad/contracts';
 import { type Endpoint, expose, wrap } from 'comlink';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { ModelingWorkerApi } from '../../src/modeling-api';

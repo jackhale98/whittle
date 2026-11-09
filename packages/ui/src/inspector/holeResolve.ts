@@ -1,4 +1,4 @@
-import type { HoleFeature, HoleSizeRow, HoleTable } from '@whittle/contracts';
+import type { HoleFeature, HoleSizeRow, HoleTable } from '@wren-cad/contracts';
 
 export interface ResolvedDim {
   key: string;

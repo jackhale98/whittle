@@ -1,4 +1,4 @@
-import type { TouchViewport } from '@whittle/contracts';
+import type { TouchViewport } from '@wren-cad/contracts';
 import { useEffect, useRef } from 'react';
 import { reportRenderBackend } from '../platform/runtime-state';
 
@@ -39,7 +39,7 @@ export function ViewportHost({ theme, onReady, onError, beforeCreate }: Viewport
     if (!canvas) return;
     let disposed = false;
     const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
-    void import('@whittle/viewport')
+    void import('@wren-cad/viewport')
       .then(async ({ createViewport }) => {
         // Creating the view compiles its shaders: a long main-thread task (≈ 0.5 s on software
         // GL). Let the last document (and its mesh cache) finish reading from the library first,
@@ -57,7 +57,7 @@ export function ViewportHost({ theme, onReady, onError, beforeCreate }: Viewport
         }
         viewportRef.current = viewport;
         // Test/perf probe handle (not an extension API).
-        (window as unknown as { __whittleViewport?: TouchViewport }).__whittleViewport = viewport;
+        (window as unknown as { __wrenViewport?: TouchViewport }).__wrenViewport = viewport;
         reportRenderBackend(viewport.backend);
         onReadyRef.current(viewport, canvas);
       })

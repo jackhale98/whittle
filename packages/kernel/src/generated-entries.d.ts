@@ -6,26 +6,26 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-declare module '@whittle/kernel/single/init' {
+declare module '@wren-cad/kernel/single/init' {
   export const createInstance: (
     options?: import('./facade').KernelModuleOptions,
   ) => Promise<unknown>;
   export default createInstance;
 }
 
-declare module '@whittle/kernel/multi/init' {
+declare module '@wren-cad/kernel/multi/init' {
   export const createInstance: (
     options?: import('./facade').KernelModuleOptions & { threadCount?: number },
   ) => Promise<unknown>;
   export default createInstance;
 }
 
-declare module '@whittle/kernel/single/wasm?url' {
+declare module '@wren-cad/kernel/single/wasm?url' {
   const url: string;
   export default url;
 }
 
-declare module '@whittle/kernel/multi/wasm?url' {
+declare module '@wren-cad/kernel/multi/wasm?url' {
   const url: string;
   export default url;
 }

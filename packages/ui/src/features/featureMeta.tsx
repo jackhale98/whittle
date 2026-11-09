@@ -1,4 +1,4 @@
-import type { FeatureType } from '@whittle/contracts';
+import type { FeatureType } from '@wren-cad/contracts';
 import {
   ArrowUpFromLine,
   Box,

@@ -1,5 +1,5 @@
-import type { Id, TouchViewport } from '@whittle/contracts';
-import { ulid } from '@whittle/document';
+import type { Id, TouchViewport } from '@wren-cad/contracts';
+import { ulid } from '@wren-cad/document';
 import {
   AppShell,
   type ExportTarget,
@@ -10,7 +10,7 @@ import {
   type ToolId,
   useTheme,
   writeNestSketches,
-} from '@whittle/ui';
+} from '@wren-cad/ui';
 import {
   lazy,
   Suspense,
@@ -133,15 +133,15 @@ export function App({ wb }: { wb: Workbench }) {
       {
         id: 'open-file',
         label: 'Open or import file…',
-        hint: '.whittle, STEP, BREP, STL, OBJ, 3MF, GLB',
+        hint: '.wrencad, STEP, BREP, STL, OBJ, 3MF, GLB',
         shortcut: '⌘O',
         run: () => void wb.openFromDisk(),
       },
       {
         id: 'save-file',
-        label: 'Save as .whittle file',
+        label: 'Save as .wrencad file',
         shortcut: '⌘S',
-        run: () => void wb.exportWhittle(),
+        run: () => void wb.exportWren(),
       },
       { id: 'box', label: 'Box', hint: 'Primitive', run: () => wb.addPrimitive('box') },
       {
@@ -180,7 +180,7 @@ export function App({ wb }: { wb: Workbench }) {
           });
         },
       },
-      { id: 'about', label: `About Whittle · ${diagnostics.appVersion}`, hint: 'Version' },
+      { id: 'about', label: `About Wren · ${diagnostics.appVersion}`, hint: 'Version' },
     ],
     [diagnostics.appVersion, wb, nestSketches, setNestSketches],
   );

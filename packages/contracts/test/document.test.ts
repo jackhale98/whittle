@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { SCHEMA_VERSION, type WhittleDoc } from '../src';
+import { SCHEMA_VERSION, type WrenDoc } from '../src';
 
 describe('contracts', () => {
   it('a minimal document round-trips through JSON unchanged', () => {
-    const doc: WhittleDoc = {
+    const doc: WrenDoc = {
       schemaVersion: SCHEMA_VERSION,
       units: { length: 'mm', angle: 'deg' },
       params: [{ id: '01JC0000000000000000000001', name: 'width', expr: '40mm' }],
@@ -33,7 +33,7 @@ describe('contracts', () => {
         name: 'Box',
         created: '2026-11-08T00:00:00Z',
         modified: '2026-11-08T00:00:00Z',
-        app: 'whittle/0.0.0',
+        app: 'wren/0.0.0',
       },
     };
     expect(JSON.parse(JSON.stringify(doc))).toEqual(doc);

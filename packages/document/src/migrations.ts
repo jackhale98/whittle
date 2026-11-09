@@ -7,7 +7,7 @@
  * then validates the result, so `DocumentStore.load` never accepts a malformed document.
  */
 
-import { SCHEMA_VERSION, type WhittleDoc } from '@whittle/contracts';
+import { SCHEMA_VERSION, type WrenDoc } from '@wren-cad/contracts';
 import { exprFields, FEATURE_TYPES } from './features';
 import { getAt } from './patch';
 
@@ -43,7 +43,7 @@ export interface MigrateOptions {
 }
 
 export type MigrateResult =
-  | { ok: true; doc: WhittleDoc; applied: number[] }
+  | { ok: true; doc: WrenDoc; applied: number[] }
   | { ok: false; error: string };
 
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -60,7 +60,7 @@ export function migrateDoc(raw: unknown, options: MigrateOptions = {}): MigrateR
   if (version > target) {
     return {
       ok: false,
-      error: `This file uses document version ${version}, but this copy of Whittle understands up to version ${target}. Update Whittle to open it.`,
+      error: `This file uses document version ${version}, but this copy of Wren understands up to version ${target}. Update Wren to open it.`,
     };
   }
   let doc: Obj = structuredClone(raw);
@@ -85,7 +85,7 @@ export function migrateDoc(raw: unknown, options: MigrateOptions = {}): MigrateR
       return { ok: false, error: `Invalid document: ${errors.slice(0, 3).join('; ')}${more}` };
     }
   }
-  return { ok: true, doc: doc as unknown as WhittleDoc, applied };
+  return { ok: true, doc: doc as unknown as WrenDoc, applied };
 }
 
 // ---------------------------------------------------------------------------------------------

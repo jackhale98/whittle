@@ -16,7 +16,7 @@ import type {
   PrimitiveFeature,
   Result,
   Vec3,
-} from '@whittle/contracts';
+} from '@wren-cad/contracts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   instantiateKernel,
@@ -280,7 +280,7 @@ for (const { variant, init } of VARIANTS) {
   const built = existsSync(initPath);
   const title = built
     ? `kernel golden: box (${variant}, ${KERNEL_ARTEFACT[variant]}.wasm)`
-    : `kernel golden: box (${variant}) — SKIPPED: ${initPath} missing; run \`pnpm --filter @whittle/kernel build\``;
+    : `kernel golden: box (${variant}) — SKIPPED: ${initPath} missing; run \`pnpm --filter @wren-cad/kernel build\``;
 
   describe.skipIf(!built)(title, () => {
     let k: WhittleKernelModule;

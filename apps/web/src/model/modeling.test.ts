@@ -1,5 +1,5 @@
-import type { RegenRequest, RegenResult, WhittleDoc } from '@whittle/contracts';
-import { newDoc } from '@whittle/document';
+import type { RegenRequest, RegenResult, WrenDoc } from '@wren-cad/contracts';
+import { newDoc } from '@wren-cad/document';
 import { describe, expect, it } from 'vitest';
 import {
   createRegenLoop,
@@ -60,7 +60,7 @@ const tick = () => new Promise((r) => setTimeout(r, 0));
 
 describe('regen loop', () => {
   it('coarse immediately, fine on idle, one call in flight, latest doc wins', async () => {
-    let doc: WhittleDoc = newDoc({ firstPart: 'P' });
+    let doc: WrenDoc = newDoc({ firstPart: 'P' });
     const s = scripted();
     const idle = manualIdle();
     const got: RegenOutcome[] = [];
@@ -112,7 +112,7 @@ describe('regen loop', () => {
   });
 
   it('drops stale results by revision and fine results for an outdated document', async () => {
-    let doc: WhittleDoc = newDoc({ firstPart: 'P' });
+    let doc: WrenDoc = newDoc({ firstPart: 'P' });
     const s = scripted();
     const idle = manualIdle();
     const got: RegenOutcome[] = [];
@@ -159,7 +159,7 @@ describe('regen loop', () => {
   });
 
   it('sends each attachment once per engine lifetime (keyed by sha256), resending after a failure', async () => {
-    let doc: WhittleDoc = newDoc({ firstPart: 'P' });
+    let doc: WrenDoc = newDoc({ firstPart: 'P' });
     const s = scripted();
     const a = { path: 'imports/A.step', sha256: 'aa', bytes: new Uint8Array([1, 2, 3]) };
     const b = { path: 'imports/B.stl', sha256: 'bb', bytes: new Uint8Array([4]) };

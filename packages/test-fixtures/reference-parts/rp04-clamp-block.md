@@ -2,7 +2,7 @@
 
 CSWA-like. A rounded base plate with a softened top edge and a chamfered underside, and a round boss added as a second body, combined, then pulled taller.
 
-_Original Whittle reference part. Not derived from any published exam or textbook drawing._
+_Original Wren reference part. Not derived from any published exam or textbook drawing._
 
 Drawing: [rp04-clamp-block.svg](rp04-clamp-block.svg). Machine-readable spec: [rp04-clamp-block.spec.json](rp04-clamp-block.spec.json).
 
@@ -73,7 +73,7 @@ Method and accuracy: Exact. Every blend runs along a loop of straight edges and 
 
 ## Independent check
 
-Built in FreeCAD 26.3.0 with `freecad/rp04.py` (a different construction than Whittle's).
+Built in FreeCAD 26.3.0 with `freecad/rp04.py` (a different construction than Wren's).
 
 | Stage | Analytic volume (mm^3) | FreeCAD volume (mm^3) | Difference |
 | --- | --- | --- | --- |

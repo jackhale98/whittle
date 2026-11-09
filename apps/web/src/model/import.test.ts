@@ -12,7 +12,7 @@ describe('import', () => {
     expect(importFormat('a.obj')).toBe('obj');
     expect(importFormat('a.3mf')).toBe('3mf');
     expect(importFormat('a.glb')).toBe('glb');
-    expect(importFormat('a.whittle')).toBeNull();
+    expect(importFormat('a.wrencad')).toBeNull();
     expect(importFormat('noext')).toBeNull();
   });
 

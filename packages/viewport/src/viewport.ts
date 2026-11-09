@@ -1,5 +1,5 @@
 /**
- * The Whittle viewport engine: imperative three.js on `WebGPURenderer` (automatic WebGL2
+ * The Wren viewport engine: imperative three.js on `WebGPURenderer` (automatic WebGL2
  * fallback), camera-controls for orbit/pan/zoom, render-on-demand, plus M1 picking (GPU ID buffer
  * + BVH + screen-space distance), selection highlights, sketch overlays, ghosts and a view cube.
  */
@@ -28,7 +28,7 @@ import type {
   ViewportGesture,
   ViewportOptions,
   ViewportStats,
-} from '@whittle/contracts';
+} from '@wren-cad/contracts';
 import CameraControls from 'camera-controls';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js';
@@ -1305,7 +1305,7 @@ class ViewportImpl implements ViewportEngine {
         this.pickStats.lastIdRefreshMs = performance.now() - t0;
       })
       .catch((err) => {
-        console.warn('[whittle/viewport] ID buffer readback failed', err);
+        console.warn('[wren/viewport] ID buffer readback failed', err);
       })
       .finally(() => {
         this.idBusy = false;

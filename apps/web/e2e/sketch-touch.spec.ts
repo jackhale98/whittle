@@ -1,5 +1,5 @@
 import { devices, expect, type Page, test } from '@playwright/test';
-import type { SketchFeature } from '@whittle/contracts';
+import type { SketchFeature } from '@wren-cad/contracts';
 import { addBox, app, boot, cameraState, cameraStill, toPage, topCenter, touch } from './helpers';
 
 /**

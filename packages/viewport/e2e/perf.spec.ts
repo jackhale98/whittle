@@ -26,7 +26,7 @@ async function firstBodyMs(
 test('perf probe: first-frame shader compile with and without idle warm-up', async ({
   browser,
 }) => {
-  test.skip(!process.env.WHITTLE_PERF, 'perf probe: set WHITTLE_PERF=1');
+  test.skip(!process.env.WREN_PERF, 'perf probe: set WREN_PERF=1');
   test.setTimeout(240_000);
   const runs = 3;
   const cold: number[] = [];

@@ -24,8 +24,8 @@ import type {
   SyncOutcome,
   SyncState,
   SyncStatus,
-} from '@whittle/contracts';
-import { toFiles } from '@whittle/document';
+} from '@wren-cad/contracts';
+import { toFiles } from '@wren-cad/document';
 import { syncable } from '../paths';
 import { fail, ok } from '../providers/common';
 import { bytesEqual, sha256Hex } from './hash';

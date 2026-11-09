@@ -10,7 +10,7 @@ import type {
   CredentialVault,
   StorageProvider,
   StorageResult,
-} from '@whittle/contracts';
+} from '@wren-cad/contracts';
 import { oauthTokenSource, refresherFor } from '../auth/tokens';
 import type { OAuthConfig, OAuthService } from '../auth/types';
 import { defaultFetch, type Fetcher, fail, ok } from './common';

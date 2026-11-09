@@ -1,5 +1,5 @@
 /**
- * Whittle document schema (PLAN §6). Lead-owned.
+ * Wren document schema (PLAN §6). Lead-owned.
  *
  * Invariants:
  *  - Plain-JSON serialisable (no classes, Maps, Dates, typed arrays, undefined-vs-missing games),
@@ -25,7 +25,7 @@ export type AngleUnit = 'deg' | 'rad';
 
 export const SCHEMA_VERSION = 1 as const;
 
-export interface WhittleDoc {
+export interface WrenDoc {
   schemaVersion: number;
   units: { length: LengthUnit; angle: AngleUnit };
   /** Global variables. */
@@ -45,7 +45,7 @@ export interface DocMeta {
   /** ISO-8601 timestamps. */
   created: string;
   modified: string;
-  /** Writer identification, e.g. `"whittle/0.1.0"`. */
+  /** Writer identification, e.g. `"wren/0.1.0"`. */
   app: string;
   partNumber?: string;
 }
@@ -147,7 +147,7 @@ export type BodyOp = 'new' | 'add' | 'cut' | 'intersect';
 /**
  * Placement frame: origin plus Z (normal) and X directions. Right-handed; Y = Z × X.
  * Numbers are **millimetres** — the canonical internal length unit for all stored geometry,
- * whatever `WhittleDoc.units` says (units only affect display and unit-less expression input).
+ * whatever `WrenDoc.units` says (units only affect display and unit-less expression input).
  * User-editable offsets belong in feature Exprs.
  */
 export interface Frame {

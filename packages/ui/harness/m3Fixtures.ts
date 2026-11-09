@@ -1,5 +1,5 @@
 /** M3 harness fixtures: one of every new feature, statuses and small hole tables. */
-import type { Feature, FeatureStatus, HoleTable } from '@whittle/contracts';
+import type { Feature, FeatureStatus, HoleTable } from '@wren-cad/contracts';
 
 type K = 'face' | 'edge' | 'region' | 'body' | 'vertex';
 export const r3 = (name: string, kind: K) => ({ name, kind });

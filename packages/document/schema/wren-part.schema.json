@@ -1,5 +1,5 @@
 {
-  "$id": "https://jackhale98.github.io/whittle/schema/whittle-part.schema.json",
+  "$id": "https://jackhale98.github.io/wren-cad/schema/wren-part.schema.json",
   "$ref": "#/definitions/Part",
   "$schema": "http://json-schema.org/draft-07/schema#",
   "definitions": {
@@ -1054,7 +1054,7 @@
     },
     "Frame": {
       "additionalProperties": false,
-      "description": "Placement frame: origin plus Z (normal) and X directions. Right-handed; Y = Z × X. Numbers are **millimetres** — the canonical internal length unit for all stored geometry, whatever `WhittleDoc.units` says (units only affect display and unit-less expression input). User-editable offsets belong in feature Exprs.",
+      "description": "Placement frame: origin plus Z (normal) and X directions. Right-handed; Y = Z × X. Numbers are **millimetres** — the canonical internal length unit for all stored geometry, whatever `WrenDoc.units` says (units only affect display and unit-less expression input). User-editable offsets belong in feature Exprs.",
       "properties": {
         "origin": {
           "$ref": "#/definitions/Vec3"

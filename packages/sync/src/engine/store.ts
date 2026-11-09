@@ -6,13 +6,13 @@
  * `MemorySyncStore`. See `createIdbSyncStore` for state and bases in IndexedDB.
  */
 
-import type { ProjectFiles, SyncState } from '@whittle/contracts';
+import type { ProjectFiles, SyncState } from '@wren-cad/contracts';
 import { bytesEqual } from './hash';
 
 export type FileChanges = ReadonlyMap<string, Uint8Array | null>;
 
 export interface SyncLocalStore {
-  /** The local working copy (may include `.whittle/`; the engine ignores it). */
+  /** The local working copy (may include `.wren/`; the engine ignores it). */
   readFiles(): Promise<ProjectFiles>;
   /**
    * Applies sync's changes (`null` deletes), but only if every path in `expected` still has

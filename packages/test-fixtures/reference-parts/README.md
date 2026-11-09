@@ -1,8 +1,8 @@
 # Reference parts (PLAN section 12 M3 and 12A)
 
-Ten original parts for Whittle's certification-style suite. Each is a drawing with named driving
+Ten original parts for Wren's certification-style suite. Each is a drawing with named driving
 dimensions, a material and a mass to verify, plus CSWP-style stages that change named dimensions.
-They are written for Whittle. Nothing here is copied or adapted from Dassault's CSWA or CSWP material
+They are written for Wren. Nothing here is copied or adapted from Dassault's CSWA or CSWP material
 or from any other published exam or textbook drawing, and nothing of that kind may be added.
 
 ## What is here
@@ -26,29 +26,29 @@ For each part `<id>` the folder holds:
 - `<id>.md`: the same for people: dimensions, build intent, the mass derivation, the stages, and the
   independent check.
 - `<id>.svg`: the spec drawing (orthographic views, every driving dimension named, with its own
-  "Whittle reference part" title block).
+  "Wren reference part" title block).
 - `freecad/rpNN.py`: the independent FreeCAD build. `freecad-results.json` records its output.
 
 The source of truth is TypeScript, in `parts/rpNN.ts` (a `PartDef`: dimensions, steps, the analytic
 model, stages, the drawing). `lib/spec.ts` generates the three committed files from it. A test fails
-when a committed file is stale; `pnpm --filter @whittle/test-fixtures generate` rewrites them.
+when a committed file is stale; `pnpm --filter @wren-cad/test-fixtures generate` rewrites them.
 
 ## Tests
 
 | Command | What it checks |
 | --- | --- |
-| `pnpm --filter @whittle/test-fixtures test` | Everything below. |
+| `pnpm --filter @wren-cad/test-fixtures test` | Everything below. |
 
 - `test/reference-parts.test.ts` (no kernel): the committed files are current; every derivation,
   recomputed in code from the spec's own dimensions, matches the stated volume, mass, area and
   bounding box to 1e-9 relative, at the baseline and at every stage; every drawing names every
-  driving dimension with its value; every part builds a well-formed `WhittleDoc` (all expressions
+  driving dimension with its value; every part builds a well-formed `WrenDoc` (all expressions
   evaluate with the right dimension, all references point to origin entities or earlier features);
   FreeCAD's recorded volumes and areas match to 1e-9.
 - `test/reference-parts.kernel.test.ts` (real Wasm kernel, through the kernel-client regen engine in
   Node, as the kernel-client goldens do): each part is regenerated at the baseline and at every stage,
   and volume and mass are checked to 0.1 %, with area and bounding box. It needs
-  `packages/kernel/dist` (set `WHITTLE_KERNEL_DIST` to use another build). A part that needs a
+  `packages/kernel/dist` (set `WREN_KERNEL_DIST` to use another build). A part that needs a
   feature the engine cannot regenerate yet is skipped with `test.skip` and the reason, driven by the
   `PENDING` table at the top of that file. **After merging an M3 workstream, delete its `PENDING`
   line and run the suite**: the parts that needed it then run for real.
@@ -57,7 +57,7 @@ when a committed file is stale; `pnpm --filter @whittle/test-fixtures generate` 
 
 ```jsonc
 {
-  "schema": "whittle-reference-part/1",
+  "schema": "wren-reference-part/1",
   "id": "rp01-base-plate", "no": 1, "title": "...", "level": "CSWA-like", "summary": "...",
   "units": { "length": "mm", "angle": "deg" },
   "material": { "libraryId": "whittle:aluminium-6061-t6", "name": "...", "density": "2.70 g/cm^3", "density_g_cm3": 2.7 },
@@ -81,7 +81,7 @@ values; the baseline document with only those parameters changed is the stage's 
 `features` is the ordered build intent. A UI script walks it step by step. A step is a feature of
 the document schema (`packages/contracts/src/document.ts`) with three changes: it has a local
 `id`, a `say` line (what a person would do; log it), and every `EntityRef` is written as a **pick**.
-The builder (`lib/builder.ts`, `buildDoc`) turns the same steps into a `WhittleDoc`, so the document
+The builder (`lib/builder.ts`, `buildDoc`) turns the same steps into a `WrenDoc`, so the document
 and the UI script cannot drift apart.
 
 ```jsonc
@@ -158,5 +158,5 @@ ISO 261); both are stated in the specs.
 ## Adding a part
 
 Write `parts/rpNN.ts`, add it to `parts/index.ts`, write its `freecad/rpNN.py`, run the FreeCAD
-build with `--write`, then `pnpm --filter @whittle/test-fixtures generate`. The drawing generator
+build with `--write`, then `pnpm --filter @wren-cad/test-fixtures generate`. The drawing generator
 refuses labels that fall off the sheet; the tests refuse a drawing that misses a dimension.

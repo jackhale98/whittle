@@ -6,7 +6,7 @@ import type {
   Material,
   NamedDimension,
   Param,
-} from '@whittle/contracts';
+} from '@wren-cad/contracts';
 import { domAnimation, LazyMotion } from 'motion/react';
 import { type ReactNode, useMemo, useState } from 'react';
 import {

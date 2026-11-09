@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-import type { MeshBuffers } from '@whittle/contracts';
+import type { MeshBuffers } from '@wren-cad/contracts';
 
 /** Box with per-face duplicated vertices (24 verts, 12 tris), outward CCW winding, like regen output. */
 export function boxMesh(w: number, d: number, h: number, ox = 0, oy = 0, oz = 0): MeshBuffers {

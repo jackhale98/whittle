@@ -3,7 +3,7 @@
  * +Z; each frame it is scaled so it spans `lengthPx` CSS px at its own depth, whatever the zoom.
  */
 
-import type { HandleSpec, Vec3 } from '@whittle/contracts';
+import type { HandleSpec, Vec3 } from '@wren-cad/contracts';
 import {
   Color,
   ConeGeometry,

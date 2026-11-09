@@ -21,7 +21,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('whittle worker configuration', () => {
+describe('wren worker configuration', () => {
   it('allows self-hosted Forgejo hosts only when they are listed', async () => {
     vi.stubGlobal('fetch', ok());
     expect((await call(`/forgejo.example.org/a/b.git${refs}`, env)).status).toBe(403);

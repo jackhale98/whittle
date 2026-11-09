@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import type { EntityRef, ShapeFingerprints, Vec3 } from '@whittle/contracts';
+import type { EntityRef, ShapeFingerprints, Vec3 } from '@wren-cad/contracts';
 import { describe, expect, it } from 'vitest';
 import { planeFrame } from '../../src/regen/geometry';
 import { hashKey, stableStringify } from '../../src/regen/hash';

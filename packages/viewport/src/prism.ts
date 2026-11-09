@@ -5,7 +5,7 @@
  * `position + direction * distance * lift`. Updating the distance is then a uniform write.
  */
 
-import type { MeshBuffers } from '@whittle/contracts';
+import type { MeshBuffers } from '@wren-cad/contracts';
 
 export interface PrismGeometry {
   /** Vertex positions at distance 0 (cap vertices first, then wall vertices). */

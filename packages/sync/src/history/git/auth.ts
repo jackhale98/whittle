@@ -6,7 +6,7 @@
  * put in a URL.
  */
 
-import type { Credential, GitProviderKind } from '@whittle/contracts';
+import type { Credential, GitProviderKind } from '@wren-cad/contracts';
 
 export type GitHost = GitProviderKind | 'other';
 

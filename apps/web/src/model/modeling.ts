@@ -19,8 +19,8 @@ import type {
   ModelingApi,
   RegenResult,
   Result,
-  WhittleDoc,
-} from '@whittle/contracts';
+  WrenDoc,
+} from '@wren-cad/contracts';
 
 /** The calls the app needs. `Remote<ModelingApi>` (Comlink) and the fake both satisfy it. */
 export type ModelingPort = Pick<
@@ -33,7 +33,7 @@ export interface RegenOutcome {
   result: RegenResult;
   quality: MeshQuality;
   /** The document the result was computed for (identity; the store keeps docs immutable). */
-  doc: WhittleDoc;
+  doc: WrenDoc;
 }
 
 /** Schedules `run` when the main thread is idle; returns a cancel function. */
@@ -62,9 +62,9 @@ export const defaultIdle: IdleScheduler = (run) => {
 
 export interface RegenLoopOptions {
   port: ModelingPort;
-  getDoc(): WhittleDoc;
+  getDoc(): WrenDoc;
   /** Part to regenerate (M1: the document's first part). */
-  partOf?(doc: WhittleDoc): Id | null;
+  partOf?(doc: WrenDoc): Id | null;
   onResult(outcome: RegenOutcome): void;
   /** The engine threw (worker crashed, bad input). Regeneration continues on the next edit. */
   onError?(error: KernelError): void;
@@ -77,7 +77,7 @@ export interface RegenLoopOptions {
    * the engine caches imported shapes per part by sha256 (contracts `RegenRequest.attachments`).
    * `forget(partId)` (the part was closed in the engine) sends them again next time.
    */
-  attachments?(doc: WhittleDoc): readonly Attachment[];
+  attachments?(doc: WrenDoc): readonly Attachment[];
 }
 
 export interface Attachment {
@@ -100,7 +100,7 @@ export interface RegenLoop {
   dispose(): void;
 }
 
-const firstPart = (doc: WhittleDoc): Id | null => doc.parts[0]?.id ?? null;
+const firstPart = (doc: WrenDoc): Id | null => doc.parts[0]?.id ?? null;
 
 function asKernelError(err: unknown): KernelError {
   return {
@@ -131,7 +131,7 @@ export function createRegenLoop(options: RegenLoopOptions): RegenLoop {
   const lastRevision = new Map<Id, number>();
   const sent = new Set<string>();
   let cancelFine: (() => void) | null = null;
-  let finePendingFor: WhittleDoc | null = null;
+  let finePendingFor: WrenDoc | null = null;
   let waiters: Array<() => void> = [];
 
   const settle = () => {
@@ -141,7 +141,7 @@ export function createRegenLoop(options: RegenLoopOptions): RegenLoop {
     for (const fn of w) fn();
   };
 
-  async function run(quality: MeshQuality, doc: WhittleDoc): Promise<void> {
+  async function run(quality: MeshQuality, doc: WrenDoc): Promise<void> {
     const partId = partOf(doc);
     if (!partId) return;
     busy = true;
@@ -178,7 +178,7 @@ export function createRegenLoop(options: RegenLoopOptions): RegenLoop {
     }
   }
 
-  function scheduleFine(doc: WhittleDoc) {
+  function scheduleFine(doc: WrenDoc) {
     cancelFine?.();
     if (!wantFine) return;
     finePendingFor = doc;

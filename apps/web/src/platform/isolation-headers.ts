@@ -7,7 +7,7 @@
  *    credentialless` (caniuse: unsupported through 26.5); it ignores the header and the page never
  *    becomes isolated. All iOS browsers are WebKit, so UA sniffing would also have to cover
  *    CriOS/FxiOS.
- *  - Whittle self-hosts every asset, so `require-corp` costs nothing. Using one policy everywhere
+ *  - Wren self-hosts every asset, so `require-corp` costs nothing. Using one policy everywhere
  *    means a cross-origin `no-cors` load that would break Safari also breaks Chrome in development,
  *    instead of surfacing only in Safari. CORS-enabled `fetch()` (cloud sync) is unaffected.
  *  - The dev/preview servers and public/_headers send the same value.

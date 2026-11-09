@@ -1,4 +1,4 @@
-import type { MeshBuffers } from '@whittle/contracts';
+import type { MeshBuffers } from '@wren-cad/contracts';
 import { describe, expect, it } from 'vitest';
 import { boxMesh, denseMesh } from '../src/meshes';
 

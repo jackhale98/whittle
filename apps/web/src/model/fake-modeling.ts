@@ -42,16 +42,16 @@ import type {
   SketchResult,
   UnresolvedRef,
   Vec3,
-  WhittleDoc,
-} from '@whittle/contracts';
+  WrenDoc,
+} from '@wren-cad/contracts';
 import {
   evaluateFeatureValues,
   expressionEngine,
   featureReferences,
   scopeOf,
   tryResolveDensity,
-} from '@whittle/document';
-import { indexEntities } from '@whittle/sketch';
+} from '@wren-cad/document';
+import { indexEntities } from '@wren-cad/sketch';
 import { sketchCurves } from '../sketch/overlay';
 import {
   frameFromNormal,
@@ -351,7 +351,7 @@ export function createFakeModeling(kernel: KernelPort, options: FakeModelingOpti
   }
 
   interface StepContext {
-    doc: WhittleDoc;
+    doc: WrenDoc;
     state: PartState;
     planes: Map<Id, Frame>;
     values: Record<string, number>;

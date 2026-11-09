@@ -1,18 +1,16 @@
 import { expect, type Page, test } from '@playwright/test';
-import type { RuntimeDiagnostics, WhittleTestHooks } from '@whittle/contracts';
+import type { RuntimeDiagnostics, WrenTestHooks } from '@wren-cad/contracts';
 
 /**
  * Platform E2E (PWA + cross-origin isolation). Runs against the production build served like
- * GitHub Pages: base `/whittle/`, no COOP/COEP from the server. See playwright.config.ts.
+ * GitHub Pages: base `/wren-cad/`, no COOP/COEP from the server. See playwright.config.ts.
  */
 
 const KERNEL_CACHE = 'whittle-kernel-v1';
-const FIXTURE_WASM = '/whittle/__e2e__/test.wasm';
+const FIXTURE_WASM = '/wren-cad/__e2e__/test.wasm';
 
 function diagnostics(page: Page): Promise<RuntimeDiagnostics> {
-  return page.evaluate(() =>
-    (window as unknown as { __whittle: WhittleTestHooks }).__whittle.diagnostics(),
-  );
+  return page.evaluate(() => (window as unknown as { __wren: WrenTestHooks }).__wren.diagnostics());
 }
 
 /** Counts main-frame navigations (initial load + reloads). */
@@ -155,7 +153,7 @@ test.describe('offline', () => {
 
     // And a wasm that was never fetched online is (correctly) unavailable.
     const missing = await page.evaluate(() =>
-      fetch('/whittle/__e2e__/never-fetched.wasm').then(
+      fetch('/wren-cad/__e2e__/never-fetched.wasm').then(
         () => 'resolved',
         () => 'rejected',
       ),
@@ -208,19 +206,19 @@ test.describe('PWA manifest and installability', () => {
   test('manifest is linked and valid', async ({ page, request, baseURL }) => {
     await page.goto('./');
     const href = await page.locator('link[rel="manifest"]').first().getAttribute('href');
-    expect(href).toBe('/whittle/manifest.webmanifest');
+    expect(href).toBe('/wren-cad/manifest.webmanifest');
     await expect(page.locator('link[rel="manifest"]')).toHaveCount(1);
 
     const response = await request.get(new URL(href ?? '', baseURL).toString());
     expect(response.status()).toBe(200);
     const manifest = await response.json();
 
-    expect(manifest.name).toBe('Whittle');
-    expect(manifest.short_name).toBe('Whittle');
+    expect(manifest.name).toBe('Wren CAD');
+    expect(manifest.short_name).toBe('Wren');
     expect(manifest.display).toBe('standalone');
     expect(manifest.display_override).toContain('standalone');
-    expect(manifest.start_url).toBe('/whittle/');
-    expect(manifest.scope).toBe('/whittle/');
+    expect(manifest.start_url).toBe(process.env.WREN_BASE ?? '/wren-cad/');
+    expect(manifest.scope).toBe(process.env.WREN_BASE ?? '/wren-cad/');
     expect(manifest.theme_color).toMatch(/^#[0-9a-f]{6}$/i);
     expect(manifest.background_color).toMatch(/^#[0-9a-f]{6}$/i);
     expect(manifest.launch_handler.client_mode).toBeTruthy();
@@ -237,7 +235,7 @@ test.describe('PWA manifest and installability', () => {
     const accepted = (
       manifest.file_handlers as Array<{ accept: Record<string, string[]> }>
     ).flatMap((handler) => Object.values(handler.accept).flat());
-    expect(accepted).toEqual(expect.arrayContaining(['.whittle', '.step', '.stp']));
+    expect(accepted).toEqual(expect.arrayContaining(['.wrencad', '.step', '.stp']));
   });
 
   test('chromium reports no installability errors once the SW controls the page', async ({

@@ -4,7 +4,7 @@
  * documents). Errors are reported but never lose the pending document: the next edit retries.
  */
 
-import type { WhittleDoc } from '@whittle/contracts';
+import type { WrenDoc } from '@wren-cad/contracts';
 
 export interface Timers {
   setTimeout(fn: () => void, ms: number): unknown;
@@ -12,24 +12,24 @@ export interface Timers {
 }
 
 export interface AutosaverOptions {
-  save(doc: WhittleDoc): Promise<void>;
+  save(doc: WrenDoc): Promise<void>;
   delayMs?: number;
   onError?(error: unknown): void;
   /** Called after each successful save. */
-  onSaved?(doc: WhittleDoc): void;
+  onSaved?(doc: WrenDoc): void;
   timers?: Timers;
 }
 
 export interface Autosaver {
   /** The document changed; save it once edits settle. */
-  schedule(doc: WhittleDoc): void;
+  schedule(doc: WrenDoc): void;
   /** Saves the pending document now (no-op when nothing is pending). */
   flush(): Promise<void>;
   /** Drops anything pending (e.g. the document was deleted). */
   cancel(): void;
   readonly pending: boolean;
   /** The last document that reached storage. */
-  readonly lastSaved: WhittleDoc | null;
+  readonly lastSaved: WrenDoc | null;
 }
 
 const defaultTimers: Timers = {
@@ -40,10 +40,10 @@ const defaultTimers: Timers = {
 export function createAutosaver(options: AutosaverOptions): Autosaver {
   const delay = options.delayMs ?? 500;
   const timers = options.timers ?? defaultTimers;
-  let pending: WhittleDoc | null = null;
+  let pending: WrenDoc | null = null;
   let timer: unknown = null;
   let running: Promise<void> = Promise.resolve();
-  let lastSaved: WhittleDoc | null = null;
+  let lastSaved: WrenDoc | null = null;
 
   const clear = () => {
     if (timer !== null) timers.clearTimeout(timer);

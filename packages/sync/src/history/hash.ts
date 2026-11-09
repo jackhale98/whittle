@@ -5,12 +5,12 @@
  * backends and across fflate versions.
  */
 
-import type { ProjectFiles } from '@whittle/contracts';
+import type { ProjectFiles } from '@wren-cad/contracts';
 import { sha256Hex } from '../engine/hash';
 
 /** Never part of a version: the regenerable cache and the snapshot history itself. */
-export const CACHE_PREFIX = '.whittle/';
-export const HISTORY_PREFIX = '.whittle-history/';
+export const CACHE_PREFIX = '.wren/';
+export const HISTORY_PREFIX = '.wren-history/';
 
 export function isVersionedPath(path: string): boolean {
   return !path.startsWith(CACHE_PREFIX) && !path.startsWith(HISTORY_PREFIX);

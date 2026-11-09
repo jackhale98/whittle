@@ -27,7 +27,7 @@ import type {
   ShapeHandle,
   SketchFeature,
   Vec3,
-} from '@whittle/contracts';
+} from '@wren-cad/contracts';
 import type { MeasureSubject } from '../../src/kernel-api';
 import type { RegenEngineDeps, SketchSolve } from '../../src/regen/engine';
 import type { ProjectedCurve, ProjectionApi } from '../../src/regen/linked';

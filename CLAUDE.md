@@ -1,6 +1,6 @@
-# Whittle — project memory
+# Wren — project memory
 
-Whittle is a free, open-source, local-first parametric CAD PWA. The full plan is in docs/PLAN.md. It is authoritative; read it before starting work.
+Wren is a free, open-source, local-first parametric CAD PWA. The full plan is in docs/PLAN.md. It is authoritative; read it before starting work.
 
 ## Golden rules
 

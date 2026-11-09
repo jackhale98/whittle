@@ -1,13 +1,13 @@
 /**
  * Connections, background sync, versions, compare and merge for the open project (PLAN §8A,
- * M2.5). Lazy: this module (with `@whittle/sync` and isomorphic-git) loads only when the user
+ * M2.5). Lazy: this module (with `@wren-cad/sync` and isomorphic-git) loads only when the user
  * opens Connections or Versions, a linked project (or one with history) opens, or the page is an
  * OAuth callback. The workbench reaches it only through `SyncHost`.
  *
  * - One `SyncEngine` per open linked project (file services, and local git repos where the
  *   project folder on disk is the working copy, ADR-029). The library entry is the engine's
  *   local working copy; merged results land in the open document as one undo step.
- * - History: `SnapshotHistory` in the project's `.whittle-history/` extra files (they sync with
+ * - History: `SnapshotHistory` in the project's `.wren-history/` extra files (they sync with
  *   it); `GitHistory` for git hosts (LightningFS clone) and local git repos (the folder).
  * - Compare regenerates a version in a `version:<id>` regen slot beside the live model.
  */
@@ -38,9 +38,9 @@ import type {
   SyncStatus,
   TouchViewport,
   Version,
-  WhittleDoc,
-} from '@whittle/contracts';
-import { slugify, ulid } from '@whittle/document';
+  WrenDoc,
+} from '@wren-cad/contracts';
+import { slugify, ulid } from '@wren-cad/document';
 import {
   beginSignIn,
   browserGitFs,
@@ -74,7 +74,7 @@ import {
   stripCallbackQuery,
   syncable,
   versionedFiles,
-} from '@whittle/sync';
+} from '@wren-cad/sync';
 import type {
   ConnectionItem,
   DivergedNotice,
@@ -83,7 +83,7 @@ import type {
   ProviderOption,
   TokenForm,
   WebDavForm,
-} from '@whittle/ui';
+} from '@wren-cad/ui';
 import { type Observable, observable } from '../app/observable';
 import type { DocLibrary } from '../doc/library';
 import type { Modeling } from '../model/modeling';
@@ -122,7 +122,7 @@ import {
 /** What the controller needs from the workbench (implemented there; tests can fake it). */
 export interface SyncHost {
   currentId(): string | undefined;
-  doc(): WhittleDoc;
+  doc(): WrenDoc;
   extra(): ProjectFiles;
   /** Runs `fn` with the library, one at a time with the app's own saves (null: no storage). */
   lockLibrary<T>(fn: (lib: DocLibrary) => Promise<T>): Promise<T | null>;
@@ -136,7 +136,7 @@ export interface SyncHost {
    * Sync wrote merged files to the library: show them as one undo step (`ops` from the open
    * document to `doc`, keeping `doc`'s modified time) that is not saved back.
    */
-  adoptRemote(doc: WhittleDoc, extra: ProjectFiles, ops: JsonPatchOp[]): void;
+  adoptRemote(doc: WrenDoc, extra: ProjectFiles, ops: JsonPatchOp[]): void;
   /** Replaces the open project as one undoable edit (restore, branch switch, merge). */
   applyFiles(extra: ProjectFiles, label: string, ops: JsonPatchOp[]): boolean;
   /** Writes (`null`: removes) extra files of the open project in memory; `persist` saves them. */
@@ -146,10 +146,10 @@ export interface SyncHost {
   /** Flushes pending autosave. */
   flush(): Promise<void>;
   /** Saves a new library project and opens it. */
-  openNewProject(doc: WhittleDoc, extra: ProjectFiles): Promise<boolean>;
+  openNewProject(doc: WrenDoc, extra: ProjectFiles): Promise<boolean>;
   modeling(): Promise<Modeling | null>;
   viewport(): TouchViewport | null;
-  attachments(doc: WhittleDoc): Record<string, Uint8Array>;
+  attachments(doc: WrenDoc): Record<string, Uint8Array>;
   evaluate(expr: Expr): EvalResult;
   toast(text: string, tone?: 'info' | 'error'): void;
   /** Top bar state. */
@@ -213,14 +213,14 @@ export interface SyncView {
     saving: boolean;
     saveError: string | null;
     notice: string | null;
-    /** `refresh`: the notice is a `CONFLICT` with something changed outside Whittle. */
+    /** `refresh`: the notice is a `CONFLICT` with something changed outside Wren. */
     noticeAction: 'refresh' | null;
     busy: string | null;
   };
   mode: CompareMode | MergeMode | null;
 }
 
-const AUTHOR: Author = { name: 'Whittle user' };
+const AUTHOR: Author = { name: 'Wren user' };
 const AUTO_EVERY_MS = 10 * 60_000;
 const PRUNE_EVERY_MS = 60 * 60_000;
 const PLACE_KEY = 'whittle:oauth-place';
@@ -502,7 +502,7 @@ export class SyncController {
     const url = cloneUrl(form.host, form.repo);
     if (!url) {
       this.patch({
-        addError: 'That repository address isn’t one Whittle can use. Try owner/name.',
+        addError: 'That repository address isn’t one Wren can use. Try owner/name.',
       });
       return;
     }
@@ -593,7 +593,7 @@ export class SyncController {
       const top: RemoteFolder[] = [];
       if (!path) {
         const manifest = await (root as unknown as FileSystemDirectoryHandle)
-          .getFileHandle('whittle.project.json')
+          .getFileHandle('wren.project.json')
           .then(
             () => true,
             () => false,
@@ -673,7 +673,7 @@ export class SyncController {
       if (!cloned.ok) return this.fail(cloned);
       const files = await this.readProject(id);
       if (!files) return;
-      const v = await h.saveVersion(files, 'First version from Whittle', { author: AUTHOR });
+      const v = await h.saveVersion(files, 'First version from Wren', { author: AUTHOR });
       if (!v.ok) return this.fail(v);
       const pushed = await h.push();
       if (!pushed.ok) return this.fail(pushed);
@@ -733,7 +733,7 @@ export class SyncController {
 
   /**
    * A refused operation, inline. `READ_ONLY` (a merge or rebase in progress, a detached HEAD…)
-   * explains itself; `CONFLICT` means something changed outside Whittle meanwhile (a file edited
+   * explains itself; `CONFLICT` means something changed outside Wren meanwhile (a file edited
    * on disk, another git committing), so it offers "Refresh" to re-read the repo and sync first.
    */
   private fail(r: { ok: false; error: { code?: string; message: string } }): void {
@@ -820,8 +820,8 @@ export class SyncController {
   }
 
   private async openNew(files: ProjectFiles, id: string): Promise<boolean> {
-    if (!files.has('whittle.project.json')) {
-      this.patchProject({ notice: 'That folder has no Whittle project (whittle.project.json).' });
+    if (!files.has('wren.project.json')) {
+      this.patchProject({ notice: 'That folder has no Wren project (wren.project.json).' });
       return false;
     }
     try {
@@ -873,7 +873,7 @@ export class SyncController {
         await this.startEngine(id, c, this.link);
       }
     }
-    // Local git mode never writes `.whittle-history/` (ADR-029), even when the folder is gone.
+    // Local git mode never writes `.wren-history/` (ADR-029), even when the folder is gone.
     if (id && !this.history && kind !== 'git' && kind !== 'localGit') {
       this.history = createSnapshotHistory({
         files: this.historyFiles(),
@@ -943,7 +943,7 @@ export class SyncController {
     this.engineOff = engine.subscribe((status) => {
       if (this.engine !== engine) return;
       this.patchProject({ status });
-      // Remote changes may carry new versions (`.whittle-history/` syncs with the project).
+      // Remote changes may carry new versions (`.wren-history/` syncs with the project).
       if (status.state === 'idle') void this.refreshHistory();
     });
   }
@@ -955,7 +955,7 @@ export class SyncController {
   }
 
   /** Autosave reached the library: queue the changed paths, maybe take an automatic snapshot. */
-  onSaved(id: string, doc: WhittleDoc, extra: ProjectFiles): void {
+  onSaved(id: string, doc: WrenDoc, extra: ProjectFiles): void {
     const files = projectFiles(doc, extra);
     const before = this.lastFiles.get(id);
     this.lastFiles.set(id, files);
@@ -1133,7 +1133,7 @@ export class SyncController {
     const out: ProjectFiles = new Map();
     for (const [p, b] of version) if (!extra.has(p)) out.set(p, b);
     for (const [p, b] of extra) out.set(p, b);
-    for (const p of [...out.keys()]) if (p.startsWith('.whittle/')) out.delete(p);
+    for (const p of [...out.keys()]) if (p.startsWith('.wren/')) out.delete(p);
     return out;
   }
 
@@ -1380,7 +1380,7 @@ export class SyncController {
         ? { conflictId, take: choice }
         : { conflictId, value: choice.value };
     const docIds = new Set(m.result.conflicts.filter((c) => !c.file).map((c) => c.id));
-    let doc: WhittleDoc;
+    let doc: WrenDoc;
     try {
       doc = docMerger.resolve(
         m.result,
@@ -1399,7 +1399,7 @@ export class SyncController {
 
   /** Regenerates `doc` in `slot` and overlays its difference from the live model (A = doc). */
   private async showDiff(
-    doc: WhittleDoc,
+    doc: WrenDoc,
     slot: RegenSlot,
     show: CompareMode['overlay'],
   ): Promise<GeometricDiff | null> {
@@ -1441,7 +1441,7 @@ export class SyncController {
     const v = this.view.get().project.history?.versions.find((x) => x.id === versionId);
     const r = await h.read(versionId);
     if (!r.ok) return this.fail(r);
-    let before: WhittleDoc;
+    let before: WrenDoc;
     try {
       before = splitProject(r.value, this.host.currentId() ?? '').doc;
     } catch {

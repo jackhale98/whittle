@@ -1,6 +1,6 @@
 /** Sketch overlay colour mapping (PLAN §9.5). Pure. */
 
-import type { DofState } from '@whittle/contracts';
+import type { DofState } from '@wren-cad/contracts';
 import type { OverlayColors } from './themes';
 
 export function mixHex(a: string, b: string, t: number): string {

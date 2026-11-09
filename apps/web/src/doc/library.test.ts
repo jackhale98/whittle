@@ -1,6 +1,6 @@
-import { newDoc } from '@whittle/document';
+import { newDoc } from '@wren-cad/document';
 import { describe, expect, it } from 'vitest';
-import { copyName, fromWhittleBytes, sameProject, toWhittleBytes } from './library';
+import { copyName, fromWrenBytes, sameProject, toWrenBytes } from './library';
 
 describe('opening files without overwriting the library', () => {
   it('names a copy so it does not collide', () => {
@@ -12,7 +12,7 @@ describe('opening files without overwriting the library', () => {
   it('same project = same document files and extra files (cache ignored)', () => {
     const doc = { ...newDoc({ name: 'A', firstPart: 'P' }), meta: { ...newDoc().meta, id: 'X' } };
     const extra = new Map([['imports/a.step', new Uint8Array([1, 2, 3])]]);
-    const a = fromWhittleBytes(toWhittleBytes(doc, extra, new Map([['m', new Uint8Array([9])]])));
+    const a = fromWrenBytes(toWrenBytes(doc, extra, new Map([['m', new Uint8Array([9])]])));
     expect(a.extra.get('imports/a.step')).toEqual(new Uint8Array([1, 2, 3]));
     expect(a.cache.get('m')).toEqual(new Uint8Array([9]));
     expect(sameProject(a, { doc, extra })).toBe(true);

@@ -4,11 +4,11 @@
  */
 import { existsSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import type { Feature, RegenResult, SketchFeature, WhittleDoc } from '@whittle/contracts';
-import { newDoc, ulid } from '@whittle/document';
-import type { KernelInitModule } from '@whittle/kernel';
-import { createKernelApi } from '@whittle/kernel-client/kernel-api';
-import { rectangleCornerTool } from '@whittle/sketch';
+import type { Feature, RegenResult, SketchFeature, WrenDoc } from '@wren-cad/contracts';
+import { newDoc, ulid } from '@wren-cad/document';
+import type { KernelInitModule } from '@wren-cad/kernel';
+import { createKernelApi } from '@wren-cad/kernel-client/kernel-api';
+import { rectangleCornerTool } from '@wren-cad/sketch';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { createFakeModeling } from './fake-modeling';
 
@@ -16,7 +16,7 @@ const dist = fileURLToPath(new URL('../../../../packages/kernel/dist/', import.m
 const built = existsSync(`${dist}init.single.js`);
 const PART = ulid();
 
-function docWith(features: Feature[], rollbackIndex = features.length): WhittleDoc {
+function docWith(features: Feature[], rollbackIndex = features.length): WrenDoc {
   const doc = newDoc({ name: 'Test', firstPart: 'Part 1' });
   const part = doc.parts[0];
   if (!part) throw new Error('no part');
@@ -60,7 +60,7 @@ describe.skipIf(!built)('fake ModelingApi over the real kernel', () => {
     fake = createFakeModeling(api);
   }, 60_000);
 
-  async function regen(doc: WhittleDoc): Promise<RegenResult> {
+  async function regen(doc: WrenDoc): Promise<RegenResult> {
     const partId = doc.parts[0]?.id ?? '';
     return fake.regenerate({ doc, partId, quality: 'coarse', massProperties: true });
   }

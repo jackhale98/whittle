@@ -2,7 +2,7 @@
 
 CSWA-like. A rectangular aluminium plate with four mounting holes, a central bore and a shallow pocket.
 
-_Original Whittle reference part. Not derived from any published exam or textbook drawing._
+_Original Wren reference part. Not derived from any published exam or textbook drawing._
 
 Drawing: [rp01-base-plate.svg](rp01-base-plate.svg). Machine-readable spec: [rp01-base-plate.spec.json](rp01-base-plate.spec.json).
 
@@ -69,7 +69,7 @@ Method and accuracy: Exact closed form: the plate is a box minus cylinders and o
 
 ## Independent check
 
-Built in FreeCAD 26.3.0 with `freecad/rp01.py` (a different construction than Whittle's).
+Built in FreeCAD 26.3.0 with `freecad/rp01.py` (a different construction than Wren's).
 
 | Stage | Analytic volume (mm^3) | FreeCAD volume (mm^3) | Difference |
 | --- | --- | --- | --- |

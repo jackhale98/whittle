@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 /**
  * The small file store `SnapshotHistory` runs on: the project's local working copy, addressed by
- * project-relative POSIX paths (`.whittle-history/versions/<id>.json`). The app backs it with the
+ * project-relative POSIX paths (`.wren-history/versions/<id>.json`). The app backs it with the
  * working copy (OPFS/IndexedDB), which the sync engine uploads like any other project file, so
  * history travels with the project. Tests use `MemoryHistoryFiles`.
  */

@@ -8,7 +8,7 @@ import { app, boot, cameraStill, toPage, touch } from './helpers';
  * the real document only. The run's duration is logged.
  */
 
-const SHOTS = process.env.WHITTLE_SHOTS;
+const SHOTS = process.env.WREN_SHOTS;
 
 test.use({
   viewport: { width: 1180, height: 820 },

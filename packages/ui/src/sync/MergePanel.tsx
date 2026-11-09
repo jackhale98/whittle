@@ -5,7 +5,7 @@ import type {
   MergeConflictKind,
   MergeResolution,
   MergeResult,
-} from '@whittle/contracts';
+} from '@wren-cad/contracts';
 import { ArrowDown, Check, Eye, GitMerge, Pencil } from 'lucide-react';
 import { useId, useRef, useState } from 'react';
 import { ExpressionInput } from '../components/ExpressionInput';

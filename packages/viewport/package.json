@@ -1,5 +1,5 @@
 {
-  "name": "@whittle/viewport",
+  "name": "@wren-cad/viewport",
   "version": "0.0.0",
   "private": true,
   "license": "GPL-3.0-or-later",
@@ -15,11 +15,11 @@
     "harness": "vite",
     "harness:build": "vite build",
     "e2e": "playwright test --trace off",
-    "perf": "WHITTLE_PERF=1 playwright test --trace off -g \"perf probe\"",
-    "perf:assert": "WHITTLE_PERF=1 WHITTLE_PERF_ASSERT=1 playwright test --trace off -g \"perf probe\""
+    "perf": "WREN_PERF=1 playwright test --trace off -g \"perf probe\"",
+    "perf:assert": "WREN_PERF=1 WREN_PERF_ASSERT=1 playwright test --trace off -g \"perf probe\""
   },
   "dependencies": {
-    "@whittle/contracts": "workspace:*",
+    "@wren-cad/contracts": "workspace:*",
     "camera-controls": "3.1.2",
     "three": "0.187.0",
     "three-mesh-bvh": "0.9.18"
@@ -27,7 +27,7 @@
   "devDependencies": {
     "@playwright/test": "1.63.0",
     "@types/three": "0.187.0",
-    "@whittle/test-fixtures": "workspace:*",
+    "@wren-cad/test-fixtures": "workspace:*",
     "vite": "8.3.6"
   }
 }

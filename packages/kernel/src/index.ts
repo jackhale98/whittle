@@ -1,10 +1,10 @@
 /**
- * @whittle/kernel — typed surface of the OCCT Wasm kernel and its two build variants.
+ * @wren-cad/kernel — typed surface of the OCCT Wasm kernel and its two build variants.
  *
  * Variant entries (generated into dist/ by `libcascade assemble`; absent until `pnpm build`):
- *   - `@whittle/kernel/single/init` → `createInstance()` for whittle-kernel-st.{js,wasm}
- *   - `@whittle/kernel/multi/init`  → `createInstance()` for whittle-kernel.{js,wasm} (pthreads)
- *   - `@whittle/kernel/single/wasm`, `@whittle/kernel/multi/wasm` → the `.wasm` files (`?url`)
+ *   - `@wren-cad/kernel/single/init` → `createInstance()` for whittle-kernel-st.{js,wasm}
+ *   - `@wren-cad/kernel/multi/init`  → `createInstance()` for whittle-kernel.{js,wasm} (pthreads)
+ *   - `@wren-cad/kernel/single/wasm`, `@wren-cad/kernel/multi/wasm` → the `.wasm` files (`?url`)
  *
  * This module only holds types and pure helpers; it never loads Wasm, so the main thread may
  * import it freely (golden rule: only the kernel worker instantiates the kernel).
@@ -14,7 +14,7 @@
 
 /// <reference path="./generated-entries.d.ts" />
 
-import type { KernelVariant } from '@whittle/contracts';
+import type { KernelVariant } from '@wren-cad/contracts';
 import type { KernelModuleOptions, WhittleKernelModule } from './facade';
 
 export type {

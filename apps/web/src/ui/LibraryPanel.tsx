@@ -3,8 +3,8 @@
  * new. A non-modal panel over the viewport; the rest of the app keeps working behind it.
  */
 
-import type { LibraryEntry } from '@whittle/contracts';
-import { Button, cn, IconButton } from '@whittle/ui';
+import type { LibraryEntry } from '@wren-cad/contracts';
+import { Button, cn, IconButton } from '@wren-cad/ui';
 import { Box, FolderOpen, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useObservable } from '../app/observable';

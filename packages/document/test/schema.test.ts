@@ -12,19 +12,19 @@ const load = (name: string): object => JSON.parse(readFileSync(join(schemaDir, n
 
 const ajv = new Ajv({ allErrors: true, strict: true });
 const validators = {
-  project: ajv.compile(load('whittle-project.schema.json')),
-  params: ajv.compile(load('whittle-params.schema.json')),
-  part: ajv.compile(load('whittle-part.schema.json')),
-  drawing: ajv.compile(load('whittle-drawing.schema.json')),
-  assembly: ajv.compile(load('whittle-assembly.schema.json')),
-  document: ajv.compile(load('whittle-document.schema.json')),
+  project: ajv.compile(load('wren-project.schema.json')),
+  params: ajv.compile(load('wren-params.schema.json')),
+  part: ajv.compile(load('wren-part.schema.json')),
+  drawing: ajv.compile(load('wren-drawing.schema.json')),
+  assembly: ajv.compile(load('wren-assembly.schema.json')),
+  document: ajv.compile(load('wren-document.schema.json')),
 };
 
 const fmt = (errs: ErrorObject[] | null | undefined) =>
   (errs ?? []).map((e) => `${e.instancePath} ${e.message}`).join('\n');
 
 function kindOf(path: string): keyof typeof validators | undefined {
-  if (path === 'whittle.project.json') return 'project';
+  if (path === 'wren.project.json') return 'project';
   if (path === 'params.json') return 'params';
   if (path.endsWith('.part.json')) return 'part';
   if (path.endsWith('.drawing.json')) return 'drawing';
@@ -91,7 +91,7 @@ describe('JSON Schema', () => {
 
   it('rejects bad manifests and params', () => {
     const files = toFiles(doc);
-    const manifest = JSON.parse(strFromU8(files.get('whittle.project.json') as Uint8Array));
+    const manifest = JSON.parse(strFromU8(files.get('wren.project.json') as Uint8Array));
     expect(validators.project({ ...manifest, format: 'other' })).toBe(false);
     expect(validators.project({ ...manifest, units: { length: 'furlong', angle: 'deg' } })).toBe(
       false,
@@ -109,7 +109,7 @@ describe('JSON Schema', () => {
     for (const [file, text] of Object.entries(fresh)) {
       expect(
         readFileSync(join(schemaDir, file), 'utf8'),
-        `${file} is stale — run pnpm --filter @whittle/document schema`,
+        `${file} is stale — run pnpm --filter @wren-cad/document schema`,
       ).toBe(text);
     }
   }, 120_000);

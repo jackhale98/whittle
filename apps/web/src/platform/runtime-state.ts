@@ -4,7 +4,7 @@
  * with `useSyncExternalStore(subscribe, getSnapshot)`.
  */
 
-import type { KernelVariant, RenderBackend, RuntimeDiagnostics } from '@whittle/contracts';
+import type { KernelVariant, RenderBackend, RuntimeDiagnostics } from '@wren-cad/contracts';
 
 export type ServiceWorkerState = RuntimeDiagnostics['serviceWorker'];
 

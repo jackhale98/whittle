@@ -6,7 +6,7 @@
  * resolved values, input result hashes). Editing feature k re-runs k…n only.
  */
 
-import type { EntityRef, Fingerprint, Id, Vec3, WhittleDoc } from './document';
+import type { EntityRef, Fingerprint, Id, Vec3, WrenDoc } from './document';
 import type {
   KernelApi,
   KernelError,
@@ -87,7 +87,7 @@ export interface SketchResult {
 }
 
 export interface RegenRequest {
-  doc: WhittleDoc;
+  doc: WrenDoc;
   partId: Id;
   /**
    * Attachment bytes referenced by features (ImportFeature.source.path → bytes). Only needed the

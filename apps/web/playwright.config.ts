@@ -1,7 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
 
-const PORT = Number(process.env.WHITTLE_E2E_PORT ?? 4173);
-const BASE_PATH = '/whittle/';
+const PORT = Number(process.env.WREN_E2E_PORT ?? 4173);
+/** Same base as the build (CI: `/<repository name>/`, ADR-032). */
+const BASE_PATH = process.env.WREN_BASE ?? '/wren-cad/';
 const PWA_SHELL = /pwa-shell\.spec\.ts/;
 
 export default defineConfig({
@@ -19,7 +20,7 @@ export default defineConfig({
     video: 'off',
     screenshot: 'off',
   },
-  // Production build served like GitHub Pages: base /whittle/, NO COOP/COEP from the server, so
+  // Production build served like GitHub Pages: base /wren-cad/, NO COOP/COEP from the server, so
   // isolation can only come from the service worker.
   webServer: {
     command: `node scripts/static-serve.mjs --dir dist --base ${BASE_PATH} --port ${PORT} --fixtures e2e/fixtures`,
@@ -54,7 +55,7 @@ export default defineConfig({
       use: {
         ...devices['Desktop Firefox'],
         // CI runs Firefox headed under Xvfb (see ci.yml) so it gets Mesa's software GL.
-        headless: !process.env.WHITTLE_HEADED,
+        headless: !process.env.WREN_HEADED,
         // GPU-less CI runners: headless Firefox refuses WebGL unless software GL is allowed
         // ("this.gl is null" in the viewport). Real Firefox with a GPU needs none of this.
         launchOptions: {

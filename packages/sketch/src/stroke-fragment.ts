@@ -13,7 +13,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import type { Id, SketchConstraint, StrokeRecognition, Vec2 } from '@whittle/contracts';
+import type { Id, SketchConstraint, StrokeRecognition, Vec2 } from '@wren-cad/contracts';
 import {
   arcCenterTool,
   circleCenterTool,

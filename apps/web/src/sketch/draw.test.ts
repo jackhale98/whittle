@@ -1,4 +1,4 @@
-import type { SketchConstraint, SketchEntity, Vec2 } from '@whittle/contracts';
+import type { SketchConstraint, SketchEntity, Vec2 } from '@wren-cad/contracts';
 import { describe, expect, it } from 'vitest';
 import {
   cancel,

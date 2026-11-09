@@ -4,11 +4,11 @@
  * the app evaluates the current step against a snapshot after every change and calls `advance`.
  */
 
-import type { Feature, FeatureStatus, Id, SketchFeature, WhittleDoc } from '@whittle/contracts';
-import { isDimension } from '@whittle/contracts';
+import type { Feature, FeatureStatus, Id, SketchFeature, WrenDoc } from '@wren-cad/contracts';
+import { isDimension } from '@wren-cad/contracts';
 
 export interface TutorialSnapshot {
-  doc: WhittleDoc;
+  doc: WrenDoc;
   /** Statuses of the last regen of this document (undefined before the first). */
   statuses: readonly FeatureStatus[] | undefined;
   /** The dimension whose value is being typed in sketch mode, if any. */
@@ -19,7 +19,7 @@ export interface TutorialSnapshot {
   paramsInUse: Readonly<Record<string, string>>;
 }
 
-const features = (doc: WhittleDoc): readonly Feature[] => doc.parts[0]?.features ?? [];
+const features = (doc: WrenDoc): readonly Feature[] => doc.parts[0]?.features ?? [];
 
 const ok = (s: TutorialSnapshot, f: Feature) => {
   const st = s.statuses?.find((x) => x.featureId === f.id);
@@ -66,7 +66,7 @@ export function hasClosedLoop(f: Pick<SketchFeature, 'entities' | 'constraints'>
 }
 
 /** Parameter names a feature mentions in its expressions (word match on the stored JSON). */
-export function paramsUsed(doc: WhittleDoc): string[] {
+export function paramsUsed(doc: WrenDoc): string[] {
   const text = features(doc)
     .map((f) => JSON.stringify(f))
     .join('\n');
@@ -81,7 +81,7 @@ export function paramsUsed(doc: WhittleDoc): string[] {
  */
 export function trackParams(
   seen: Readonly<Record<string, string>>,
-  doc: WhittleDoc,
+  doc: WrenDoc,
 ): { seen: Record<string, string>; changed: boolean } {
   const out: Record<string, string> = { ...seen };
   let changed = false;

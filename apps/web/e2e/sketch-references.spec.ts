@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import type { DimensionConstraint, SketchFeature } from '@whittle/contracts';
+import type { DimensionConstraint, SketchFeature } from '@wren-cad/contracts';
 import { app, boot, clickAt, sketchOn } from './helpers';
 
 /**

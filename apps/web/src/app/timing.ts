@@ -1,7 +1,7 @@
 /**
  * Boot timing marks (ms since navigation start) for the M0 "box on screen < 2 s" criterion and the
- * PLAN §10 budgets. Exposed to tests through `window.__whittle.firstBodyRendered()` and
- * `window.__whittleApp.marks()`.
+ * PLAN §10 budgets. Exposed to tests through `window.__wren.firstBodyRendered()` and
+ * `window.__wrenApp.marks()`.
  */
 export interface BootTimings {
   shellInteractiveMs: number;

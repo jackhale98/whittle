@@ -1,4 +1,4 @@
-import type { KernelStatus } from '@whittle/contracts';
+import type { KernelStatus } from '@wren-cad/contracts';
 import { CircleCheck, LoaderCircle, TriangleAlert } from 'lucide-react';
 import { cn } from './primitives';
 

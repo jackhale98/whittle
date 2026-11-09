@@ -1,6 +1,6 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { MergeResolution } from '@whittle/contracts';
+import type { MergeResolution } from '@wren-cad/contracts';
 import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import {
@@ -205,8 +205,8 @@ describe('ConnectionsPanel', () => {
     const list = screen.getByRole('list', { name: 'Folders' });
     const rows = within(list).getAllByRole('listitem');
     expect(rows).toHaveLength(4);
-    expect(within(rows[0] as HTMLElement).getByText('Whittle project')).toBeInTheDocument();
-    expect(within(rows[2] as HTMLElement).queryByText('Whittle project')).toBeNull();
+    expect(within(rows[0] as HTMLElement).getByText('Wren project')).toBeInTheDocument();
+    expect(within(rows[2] as HTMLElement).queryByText('Wren project')).toBeNull();
     await userEvent.click(screen.getByRole('button', { name: /^drawings/ }));
     expect(onBrowse).toHaveBeenCalledWith('/CAD/drawings');
     await userEvent.click(screen.getByRole('button', { name: 'Up one folder' }));

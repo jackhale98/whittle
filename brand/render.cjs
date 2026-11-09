@@ -27,7 +27,7 @@ const path = require('node:path');
   }
   // preview frames of the loader for checking
   await p.setViewportSize({ width: 880, height: 220 });
-  const L = fs.readFileSync('svg/whittle-loader-dark.svg', 'utf8');
+  const L = fs.readFileSync('svg/wren-loader-dark.svg', 'utf8');
   let html = '<html><body style="margin:0;background:#101217;display:flex">';
   const ts = [0.3, 1.0, 1.7, 2.6, 3.7];
   for (const t of ts) {
@@ -35,7 +35,7 @@ const path = require('node:path');
   }
   await p.setContent(`${html}</body></html>`);
   await p.waitForTimeout(200);
-  const frames = path.join(os.tmpdir(), 'whittle-loader-frames.png');
+  const frames = path.join(os.tmpdir(), 'wren-loader-frames.png');
   await p.screenshot({ path: frames });
   console.log(`loader preview frames: ${frames}`);
   await b.close();

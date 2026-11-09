@@ -1,10 +1,10 @@
 /**
- * @whittle/sketch — main-thread entry: the worker client, constraint inference, drawing-tool
+ * @wren-cad/sketch — main-thread entry: the worker client, constraint inference, drawing-tool
  * helpers and geometry utilities. Pencil stroke recognition is its own entry,
- * `@whittle/sketch/recognize`: the app's initial route imports this root (constraint labels), and a
+ * `@wren-cad/sketch/recognize`: the app's initial route imports this root (constraint labels), and a
  * root re-export would pull the recogniser into it as soon as the lazy sketch chunk uses it.
  * Everything here is pure TS; planegcs (Wasm) only loads inside the sketch worker
- * (`@whittle/sketch/worker`) or via `@whittle/sketch/core` in Node.
+ * (`@wren-cad/sketch/worker`) or via `@wren-cad/sketch/core` in Node.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  */

@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Browser-only: IndexedDB (idb) metadata + OPFS blobs with an IndexedDB-blob fallback.
-import type { Id, LibraryEntry, LocalLibrary, ProjectFiles, WhittleDoc } from '@whittle/contracts';
+import type { Id, LibraryEntry, LocalLibrary, ProjectFiles, WrenDoc } from '@wren-cad/contracts';
 import { type DBSchema, type IDBPDatabase, openDB } from 'idb';
 
 /** The subset of `ProjectCodec` (packages/document) the library needs; inject any instance. */
 export interface LibraryCodec {
-  toWhittle(doc: WhittleDoc, cache?: ProjectFiles, extra?: ProjectFiles): Uint8Array;
-  fromWhittle(bytes: Uint8Array): { doc: WhittleDoc; cache: ProjectFiles; extra?: ProjectFiles };
+  toWren(doc: WrenDoc, cache?: ProjectFiles, extra?: ProjectFiles): Uint8Array;
+  fromWren(bytes: Uint8Array): { doc: WrenDoc; cache: ProjectFiles; extra?: ProjectFiles };
 }
 
 export type LibraryErrorCode = 'quota' | 'not-found' | 'storage' | 'corrupt';
@@ -90,6 +90,7 @@ export async function createOpfsStore(
     const probe = await dir.getFileHandle('.probe', { create: true });
     if (typeof probe.createWritable !== 'function') return undefined; // Safari main thread
     await dir.removeEntry('.probe').catch(() => undefined);
+    // Storage name kept from before the rename (ADR-032): existing libraries keep working.
     const fname = (id: Id) => `${id.replace(/[^A-Za-z0-9_-]/g, '_')}.whittle`;
     return {
       kind: 'opfs',
@@ -220,7 +221,7 @@ export class IdbLibrary implements LocalLibrary {
     return q ? all.filter((e) => e.name.toLowerCase().includes(q)) : all;
   }
 
-  async open(id: Id): Promise<{ doc: WhittleDoc; cache: ProjectFiles; extra: ProjectFiles }> {
+  async open(id: Id): Promise<{ doc: WrenDoc; cache: ProjectFiles; extra: ProjectFiles }> {
     let meta: MetaRecord | undefined;
     let bytes: Uint8Array | undefined;
     try {
@@ -233,7 +234,7 @@ export class IdbLibrary implements LocalLibrary {
       throw new LibraryError('not-found', 'That document is no longer in the library.');
     }
     try {
-      const r = this.opts.codec.fromWhittle(bytes);
+      const r = this.opts.codec.fromWren(bytes);
       return { doc: r.doc, cache: r.cache, extra: r.extra ?? new Map() };
     } catch (e) {
       throw new LibraryError(
@@ -249,12 +250,12 @@ export class IdbLibrary implements LocalLibrary {
    * one, else the id of the entry with the same name, else a fresh UUID.
    */
   async save(
-    doc: WhittleDoc,
+    doc: WrenDoc,
     cache?: ProjectFiles,
     thumbnail?: Uint8Array,
     options: { id?: Id; extra?: ProjectFiles } = {},
   ): Promise<LibraryEntry> {
-    const bytes = this.opts.codec.toWhittle(doc, cache, options.extra);
+    const bytes = this.opts.codec.toWren(doc, cache, options.extra);
     const name = doc.meta.name || 'Untitled';
     let id = options.id ?? (doc.meta as { id?: unknown }).id;
     let prev: MetaRecord | undefined;

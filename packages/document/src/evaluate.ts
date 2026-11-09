@@ -13,14 +13,14 @@ import type {
   Id,
   NamedDimension,
   SketchFeature,
-  WhittleDoc,
-} from '@whittle/contracts';
+  WrenDoc,
+} from '@wren-cad/contracts';
 import { type AnyResult, ExpressionEngineImpl, expressionEngine } from './expressions';
 import { type ExprField, exprFields } from './features';
 import { getAt } from './patch';
 
 /** Evaluation scope of a document: its global parameters and default units. */
-export function scopeOf(doc: Pick<WhittleDoc, 'params' | 'units'>): EvalScope {
+export function scopeOf(doc: Pick<WrenDoc, 'params' | 'units'>): EvalScope {
   const params: Record<string, string> = Object.create(null) as Record<string, string>;
   for (const p of doc.params) if (!(p.name in params)) params[p.name] = p.expr;
   return { params, defaultLengthUnit: doc.units.length, defaultAngleUnit: doc.units.angle };
@@ -50,7 +50,7 @@ function evaluatorFor(engine: ExpressionEngine, scope: EvalScope): Evaluator {
  */
 export function evaluateFeatureValues(
   feature: Feature,
-  doc: Pick<WhittleDoc, 'params' | 'units'>,
+  doc: Pick<WrenDoc, 'params' | 'units'>,
   engine: ExpressionEngine = expressionEngine,
 ): FeatureValues {
   const evaluate = evaluatorFor(engine, scopeOf(doc));
@@ -107,7 +107,7 @@ export function sketchSolveValues(
 
 /** Evaluates all global parameters (no expected dimension). Keyed by parameter name. */
 export function evaluateParams(
-  doc: Pick<WhittleDoc, 'params' | 'units'>,
+  doc: Pick<WrenDoc, 'params' | 'units'>,
   engine: ExpressionEngineImpl = expressionEngine,
 ): Record<string, AnyResult> {
   const scope = scopeOf(doc);

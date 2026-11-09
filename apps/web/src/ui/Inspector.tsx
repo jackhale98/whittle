@@ -3,8 +3,8 @@
  * the viewport selection with context tools, or the part (material, mass) and document.
  */
 
-import type { EntityRef, Feature, Material, WhittleDoc } from '@whittle/contracts';
-import { MATERIALS } from '@whittle/document';
+import type { EntityRef, Feature, Material, WrenDoc } from '@wren-cad/contracts';
+import { MATERIALS } from '@wren-cad/document';
 import {
   Button,
   FeatureInspector,
@@ -17,7 +17,7 @@ import {
   SelectionInspector,
   SketchStatusChip,
   tools as shellTools,
-} from '@whittle/ui';
+} from '@wren-cad/ui';
 import { FolderOpen, Library, Plus, Save } from 'lucide-react';
 import { lazy, Suspense, useState, useSyncExternalStore } from 'react';
 import { useObservable } from '../app/observable';
@@ -47,7 +47,7 @@ export const LIBRARY: readonly MaterialLibraryItem[] = MATERIALS.map((m) => ({
 }));
 
 /** "Edge of Extrude 1", "Top plane", "Region of Sketch 1". */
-export function describeRef(doc: WhittleDoc, ref: EntityRef): string {
+export function describeRef(doc: WrenDoc, ref: EntityRef): string {
   const origin: Record<string, string> = {
     'origin:XY': 'Top plane',
     'origin:XZ': 'Front plane',
@@ -117,7 +117,7 @@ function DocumentSection({ wb }: { wb: Workbench }) {
         <Button
           variant="secondary"
           icon={<Save className="size-4" />}
-          onClick={() => void wb.exportWhittle()}
+          onClick={() => void wb.exportWren()}
         >
           Save file
         </Button>
@@ -127,7 +127,7 @@ function DocumentSection({ wb }: { wb: Workbench }) {
   );
 }
 
-export function useDoc(wb: Workbench): WhittleDoc {
+export function useDoc(wb: Workbench): WrenDoc {
   return useSyncExternalStore(wb.subscribeDoc, wb.getDoc);
 }
 

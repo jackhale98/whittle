@@ -7,7 +7,7 @@
  */
 
 import wasmUrl from '@salusoft89/planegcs/dist/planegcs_dist/planegcs.wasm?url';
-import type { SketchSolverApi } from '@whittle/contracts';
+import type { SketchSolverApi } from '@wren-cad/contracts';
 import { expose } from 'comlink';
 import { createSketchSolver } from './core';
 

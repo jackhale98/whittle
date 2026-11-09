@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Ported from Mycelium src/lib/auth/oauth.ts (`post`, `toTokenSet`: the Worker token exchange).
 /**
- * Google sign-in for Drive (`drive.file` scope only: files Whittle created or the user opened
+ * Google sign-in for Drive (`drive.file` scope only: files Wren created or the user opened
  * with it). Google's web-application clients need a client secret to trade a code, so the code
  * (with the PKCE verifier) goes through the Worker's `/oauth/google/token`, which adds the secret
  * and keeps nothing. Google Identity Services isn't loaded: it would break self-hosting and COEP.
  */
 
-import type { StorageResult } from '@whittle/contracts';
+import type { StorageResult } from '@wren-cad/contracts';
 import { defaultFetch, type Fetcher, fail, forward, ok, request } from '../providers/common';
 import type { OAuthCredential, TokenEndpointBody, TokenExchange } from './types';
 

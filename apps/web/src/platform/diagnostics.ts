@@ -3,7 +3,7 @@
  * `detectTier` and `buildDiagnostics` are pure so they can be unit-tested without a browser.
  */
 
-import type { DeviceTier, RuntimeDiagnostics, WhittleTestHooks } from '@whittle/contracts';
+import type { DeviceTier, RuntimeDiagnostics, WrenTestHooks } from '@wren-cad/contracts';
 import { getRuntimeState } from './runtime-state';
 import { APP_VERSION } from './version';
 
@@ -126,15 +126,15 @@ export function getDiagnostics(): RuntimeDiagnostics {
 }
 
 /**
- * Exposes `window.__whittle` for E2E/perf tests. The lead replaces this with the full hooks
+ * Exposes `window.__wren` for E2E/perf tests. The lead replaces this with the full hooks
  * (firstBodyRendered timing); keep `diagnostics()` working so platform tests keep passing.
  */
-export function installTestHooks(extra: Partial<WhittleTestHooks> = {}): void {
-  const hooks: WhittleTestHooks = {
+export function installTestHooks(extra: Partial<WrenTestHooks> = {}): void {
+  const hooks: WrenTestHooks = {
     diagnostics: getDiagnostics,
     firstBodyRendered: () =>
       Promise.reject(new Error('firstBodyRendered is not implemented in the placeholder shell')),
     ...extra,
   };
-  (window as unknown as { __whittle?: WhittleTestHooks }).__whittle = hooks;
+  (window as unknown as { __wren?: WrenTestHooks }).__wren = hooks;
 }

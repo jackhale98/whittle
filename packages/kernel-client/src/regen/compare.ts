@@ -24,7 +24,7 @@ import type {
   Result,
   ShapeHandle,
   Vec3,
-} from '@whittle/contracts';
+} from '@wren-cad/contracts';
 
 /** The façade calls compare needs (the engine passes its name-translating `exec`). */
 export interface DiffKernel {

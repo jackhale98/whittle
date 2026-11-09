@@ -1,6 +1,6 @@
 {
-  "$id": "https://jackhale98.github.io/whittle/schema/whittle-document.schema.json",
-  "$ref": "#/definitions/WhittleDoc",
+  "$id": "https://jackhale98.github.io/wren-cad/schema/wren-document.schema.json",
+  "$ref": "#/definitions/WrenDoc",
   "$schema": "http://json-schema.org/draft-07/schema#",
   "definitions": {
     "AngleUnit": {
@@ -750,7 +750,7 @@
       "additionalProperties": false,
       "properties": {
         "app": {
-          "description": "Writer identification, e.g. `\"whittle/0.1.0\"`.",
+          "description": "Writer identification, e.g. `\"wren/0.1.0\"`.",
           "type": "string"
         },
         "created": {
@@ -1128,7 +1128,7 @@
     },
     "Frame": {
       "additionalProperties": false,
-      "description": "Placement frame: origin plus Z (normal) and X directions. Right-handed; Y = Z × X. Numbers are **millimetres** — the canonical internal length unit for all stored geometry, whatever `WhittleDoc.units` says (units only affect display and unit-less expression input). User-editable offsets belong in feature Exprs.",
+      "description": "Placement frame: origin plus Z (normal) and X directions. Right-handed; Y = Z × X. Numbers are **millimetres** — the canonical internal length unit for all stored geometry, whatever `WrenDoc.units` says (units only affect display and unit-less expression input). User-editable offsets belong in feature Exprs.",
       "properties": {
         "origin": {
           "$ref": "#/definitions/Vec3"
@@ -3279,7 +3279,7 @@
       "minItems": 3,
       "type": "array"
     },
-    "WhittleDoc": {
+    "WrenDoc": {
       "additionalProperties": false,
       "properties": {
         "assemblies": {

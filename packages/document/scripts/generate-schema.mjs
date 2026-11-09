@@ -3,7 +3,7 @@
 // re-export the contract types). Output is canonical (sorted keys, 2-space, LF, trailing newline)
 // so the committed files only change when the types do.
 //
-//   pnpm --filter @whittle/document schema           # (re)write schema/*.schema.json
+//   pnpm --filter @wren-cad/document schema           # (re)write schema/*.schema.json
 //   node scripts/generate-schema.mjs --check         # exit 1 if the committed files are stale
 
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -15,12 +15,12 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 /** type name in src/files.ts → output file */
 export const SCHEMAS = {
-  ProjectManifest: 'whittle-project.schema.json',
-  ParamsFile: 'whittle-params.schema.json',
-  PartFile: 'whittle-part.schema.json',
-  DrawingFile: 'whittle-drawing.schema.json',
-  AssemblyFile: 'whittle-assembly.schema.json',
-  DocumentFile: 'whittle-document.schema.json',
+  ProjectManifest: 'wren-project.schema.json',
+  ParamsFile: 'wren-params.schema.json',
+  PartFile: 'wren-part.schema.json',
+  DrawingFile: 'wren-drawing.schema.json',
+  AssemblyFile: 'wren-assembly.schema.json',
+  DocumentFile: 'wren-document.schema.json',
 };
 
 function sortKeys(v) {
@@ -48,7 +48,7 @@ export function generate() {
       jsDoc: 'extended',
       skipTypeCheck: true,
     }).createSchema(type);
-    schema.$id = `https://jackhale98.github.io/whittle/schema/${file}`;
+    schema.$id = `https://jackhale98.github.io/wren-cad/schema/${file}`;
     schema.title = type;
     out[file] = `${JSON.stringify(sortKeys(schema), null, 2)}\n`;
   }

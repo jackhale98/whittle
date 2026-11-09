@@ -31,7 +31,7 @@ import type {
   ShapeFingerprints,
   ShapeHandle,
   Vec3,
-} from '@whittle/contracts';
+} from '@wren-cad/contracts';
 import {
   type ExportShape,
   instantiateKernel,
@@ -42,7 +42,7 @@ import {
   type RawImportResult,
   type RawKernelInfo,
   type WhittleKernelModule,
-} from '@whittle/kernel';
+} from '@wren-cad/kernel';
 import { transfer } from 'comlink';
 
 /** How to obtain one kernel variant. */
@@ -65,7 +65,7 @@ export interface KernelApiDeps {
   canUseThreads?: () => boolean;
 }
 
-export type { ExportShape, MeasureSubject } from '@whittle/kernel';
+export type { ExportShape, MeasureSubject } from '@wren-cad/kernel';
 
 /** One exported file; `bytes` is transferred (never copied) across the worker boundary. */
 export interface ExportedFile {
@@ -535,7 +535,7 @@ export function createKernelApi(deps: KernelApiDeps): KernelWorkerApi & KernelAp
       if (kernel === null) return notReady();
       const k = kernel;
       memfsCounter += 1;
-      const path = `/tmp/whittle-import-${memfsCounter}.${format}`;
+      const path = `/tmp/wren-import-${memfsCounter}.${format}`;
       let written = false;
       try {
         k.FS.writeFile(path, bytes);

@@ -8,6 +8,11 @@ before merging that branch, so both sides carry identical edits.
 
     python3 scripts/rename-to-wren.py            # rewrite tracked files and git-mv renamed paths
     python3 scripts/rename-to-wren.py --check    # list what would change, change nothing
+    python3 scripts/rename-to-wren.py PATH...    # only files under these paths
+
+Run it only on trees that predate the rename: on the renamed main branch a few files keep old
+names on purpose (readers of `.whittle` files, storage names), and a second full run would undo
+those hand edits.
 
 Kept on purpose (see ADR-032):
   * browser storage names and keys (IndexedDB databases, localStorage/sessionStorage keys,
@@ -35,13 +40,15 @@ SKIP_FILES = {
     "pnpm-lock.yaml",
 }
 SKIP_PREFIXES = ("packages/kernel/src/",)
+SKIP_SUFFIXES_IN_PREFIX = (".cpp", ".h", ".hpp")  # only the kernel's C++ is skipped there
 BINARY = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".wasm", ".zip", ".woff", ".woff2",
           ".ttf", ".otf", ".pdf", ".step", ".stp", ".stl", ".glb", ".3mf", ".brep", ".igs", ".iges"}
 
 # Substrings that must not change. Swapped for placeholders before the rewrite, restored after.
 PROTECT = [
-    re.compile(r"whittle:[A-Za-z0-9_$.{}-]*"),           # storage keys, material ids, marks
-    re.compile(r"whittle\.(?:theme|lastTools|nestSketches|diagnostics)\b"),  # localStorage keys
+    # storage keys, material ids, marks (`whittle:links`); not object keys like `__whittle: T`
+    re.compile(r"(?<![A-Za-z0-9_])whittle:(?! )[A-Za-z0-9_$.{}-]*"),
+    re.compile(r"(?<![A-Za-z0-9_])whittle\.(?:theme|lastTools|nestSketches|diagnostics)\b"),
     re.compile(r"whittle-(?:library|folders|save|vault|repo-|precache|srv-|kernel)[A-Za-z0-9_$.{}-]*"),
     re.compile(r"whittle-<kind>"),
     re.compile(r"whittle_[A-Za-z0-9_]+"),                 # kernel C++ identifiers and file names
@@ -96,8 +103,14 @@ def tracked() -> list[str]:
     return [p for p in out.stdout.decode().split("\0") if p]
 
 
+def skipped(path: str) -> bool:
+    return path in SKIP_FILES or (
+        path.startswith(SKIP_PREFIXES) and path.endswith(SKIP_SUFFIXES_IN_PREFIX)
+    )
+
+
 def renamed_path(path: str) -> str:
-    if path.startswith(SKIP_PREFIXES) or path in SKIP_FILES:
+    if skipped(path):
         return path
     parts = path.split("/")
     parts[-1] = re.sub(r"^whittle-", "wren-", parts[-1])
@@ -108,8 +121,9 @@ def renamed_path(path: str) -> str:
 def main() -> int:
     changed = 0
     moves: list[tuple[str, str]] = []
+    only = [a for a in sys.argv[1:] if not a.startswith("--")]
     for path in tracked():
-        if path in SKIP_FILES or path.startswith(SKIP_PREFIXES):
+        if skipped(path) or (only and not any(path.startswith(o) for o in only)):
             continue
         full = ROOT / path
         if not full.is_file() or full.suffix.lower() in BINARY:

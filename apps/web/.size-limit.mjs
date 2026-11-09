@@ -1,7 +1,7 @@
 // PLAN §10 budget: initial-route JS <= 250 kB gzip. "Initial route" = exactly the scripts that
 // dist/index.html loads eagerly (<script src> + <link rel="modulepreload">). Lazy chunks, the
 // service worker, the kernel glue and every .wasm are excluded by construction.
-// Run `pnpm --filter @whittle/web build` first.
+// Run `pnpm --filter @wren-cad/web build` first.
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,11 +10,11 @@ const root = dirname(fileURLToPath(import.meta.url));
 const indexPath = resolve(root, 'dist/index.html');
 
 if (!existsSync(indexPath)) {
-  throw new Error('dist/index.html not found: run `pnpm --filter @whittle/web build` first.');
+  throw new Error('dist/index.html not found: run `pnpm --filter @wren-cad/web build` first.');
 }
 
 const html = readFileSync(indexPath, 'utf8');
-const base = process.env.WHITTLE_BASE ?? '/whittle/';
+const base = process.env.WREN_BASE ?? '/wren-cad/';
 const urls = new Set();
 for (const tag of html.match(/<(?:script|link)\b[^>]*>/g) ?? []) {
   const isScript = /^<script\b/.test(tag) && /\btype="module"/.test(tag);

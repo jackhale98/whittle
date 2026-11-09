@@ -10,7 +10,7 @@ import type {
   SketchEntity,
   SketchSolveResult,
   Vec2,
-} from '@whittle/contracts';
+} from '@wren-cad/contracts';
 import { expect } from 'vitest';
 import type { SketchData, SketchEdit, SketchEditResult } from '../src/edit/draft';
 import { core } from './helpers';

@@ -8,7 +8,7 @@
  * plastics and woods vary widely with process and species.
  */
 
-import type { EvalScope, ExpressionEngine, Material } from '@whittle/contracts';
+import type { EvalScope, ExpressionEngine, Material } from '@wren-cad/contracts';
 import { expressionEngine } from './expressions';
 
 export const LIBRARY_PREFIX = 'whittle:';

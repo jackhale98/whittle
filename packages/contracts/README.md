@@ -1,6 +1,6 @@
-# @whittle/contracts
+# @wren-cad/contracts
 
-The shared types for every Whittle package: the document schema, the kernel and modelling APIs,
+The shared types for every Wren package: the document schema, the kernel and modelling APIs,
 the sketch solver API, the viewport API, the document store and the file codecs. It has no runtime
 code and no dependencies. Every other package imports from here, and nothing here imports from them.
 
@@ -10,11 +10,11 @@ This package is **lead-owned**. Propose changes before you make them (see
 ## Exports
 
 The package entry is `src/index.ts`, which re-exports every module below. Import from
-`@whittle/contracts`.
+`@wren-cad/contracts`.
 
 | Module | What it defines |
 | --- | --- |
-| `document.ts` | `WhittleDoc`, `Part`, `Param`, `Material`, the `Feature` union (primitive, sketch, extrude, revolve, fillet, chamfer, boolean, pushPull, plane, import), `EntityRef`, `Fingerprint`, `PmiAnnotation`, `SCHEMA_VERSION` |
+| `document.ts` | `WrenDoc`, `Part`, `Param`, `Material`, the `Feature` union (primitive, sketch, extrude, revolve, fillet, chamfer, boolean, pushPull, plane, import), `EntityRef`, `Fingerprint`, `PmiAnnotation`, `SCHEMA_VERSION` |
 | `expressions.ts` | `ExpressionEngine`, `EvalScope`, `EvalResult`, `ExprError`, dimension vectors and `NamedDimension` |
 | `naming.ts` | Persistent-name types (`PersistentName`, `NamingMap`) and the naming grammar notes (PLAN §7.3) |
 | `kernel.ts` | `KernelApi`: the low-level kernel surface (`mesh`, `massProperties`, `execFeature`, and so on), `Result`, `KernelError`, `MeshBuffers`, `KernelStatus` |
@@ -23,7 +23,7 @@ The package entry is `src/index.ts`, which re-exports every module below. Import
 | `viewport.ts` | `Viewport`, `InteractiveViewport`, `CreateViewport`, `PickHit`, `PickKind`, `SketchOverlay`, `HighlightItem`, `StandardView` |
 | `store.ts` | `DocumentStore`, `Command`, `JsonPatchOp`, `HistoryEntry`, `ApplyResult` |
 | `io.ts` | `ProjectCodec`, `ProjectFiles`, `MeshExporters`, `LocalLibrary`, `LibraryEntry` |
-| `runtime.ts` | `DeviceTier`, `RuntimeDiagnostics`, `WhittleTestHooks` |
+| `runtime.ts` | `DeviceTier`, `RuntimeDiagnostics`, `WrenTestHooks` |
 
 ## Design points
 
@@ -45,13 +45,13 @@ The package entry is `src/index.ts`, which re-exports every module below. Import
 
 ## Tests
 
-- `pnpm --filter @whittle/contracts test` runs `vitest run` on `test/document.test.ts`.
-- `pnpm --filter @whittle/contracts typecheck` runs `tsc -p .`.
+- `pnpm --filter @wren-cad/contracts test` runs `vitest run` on `test/document.test.ts`.
+- `pnpm --filter @wren-cad/contracts typecheck` runs `tsc -p .`.
 
 Almost everything here is a type. The runtime exports are a few constants (`SCHEMA_VERSION`,
 `DIMENSIONS`, `INFERENCE_CURSOR` and `INFERENCE_DRAWING`) and the `isDimension` type guard. Most
 checking happens in the packages that use the types. The JSON Schemas are generated from these
-TypeScript types by `@whittle/document` (`pnpm --filter @whittle/document schema`). A test fails if
+TypeScript types by `@wren-cad/document` (`pnpm --filter @wren-cad/document schema`). A test fails if
 the committed schemas are stale.
 
 ## Related

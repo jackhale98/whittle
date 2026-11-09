@@ -16,8 +16,8 @@ import type {
   DocumentStore,
   HistoryEntry,
   JsonPatchOp,
-  WhittleDoc,
-} from '@whittle/contracts';
+  WrenDoc,
+} from '@wren-cad/contracts';
 import { compileCommand } from './commands';
 import { newDoc } from './factory';
 import { type Migration, migrateDoc } from './migrations';
@@ -45,7 +45,7 @@ interface Entry {
   open: boolean;
 }
 
-type Listener = (doc: WhittleDoc, change: { patches: JsonPatchOp[] }) => void;
+type Listener = (doc: WrenDoc, change: { patches: JsonPatchOp[] }) => void;
 
 /** Merges two consecutive entries' ops; collapses pure `replace` runs so drags stay O(1). */
 function mergeOps(
@@ -67,7 +67,7 @@ function mergeOps(
 }
 
 export class DocumentStoreImpl implements DocumentStore {
-  private doc: WhittleDoc;
+  private doc: WrenDoc;
   private past: Entry[] = [];
   private future: Entry[] = [];
   private readonly listeners = new Set<Listener>();
@@ -77,7 +77,7 @@ export class DocumentStoreImpl implements DocumentStore {
   private readonly trackModified: boolean;
   private readonly migrations?: readonly Migration[];
 
-  constructor(initial: WhittleDoc = newDoc(), options: StoreOptions = {}) {
+  constructor(initial: WrenDoc = newDoc(), options: StoreOptions = {}) {
     this.doc = initial;
     this.clock = options.clock ?? Date.now;
     this.coalesceMs = options.coalesceWindowMs ?? 1000;
@@ -86,7 +86,7 @@ export class DocumentStoreImpl implements DocumentStore {
     this.migrations = options.migrations;
   }
 
-  getDoc(): WhittleDoc {
+  getDoc(): WrenDoc {
     return this.doc;
   }
 
@@ -125,7 +125,7 @@ export class DocumentStoreImpl implements DocumentStore {
     if (this.trackModified && !ops.some((o) => 'path' in o && o.path === '/meta/modified')) {
       ops.push({ op: 'replace', path: '/meta/modified', value: new Date(now).toISOString() });
     }
-    let result: ReturnType<typeof applyPatch<WhittleDoc>>;
+    let result: ReturnType<typeof applyPatch<WrenDoc>>;
     try {
       result = applyPatch(this.doc, ops);
     } catch (e) {
@@ -177,7 +177,7 @@ export class DocumentStoreImpl implements DocumentStore {
     this.closeGroup();
     const entry = this.past[this.past.length - 1];
     if (!entry) return false;
-    let next: WhittleDoc;
+    let next: WrenDoc;
     try {
       next = applyPatch(this.doc, entry.inverse).doc;
     } catch {
@@ -194,7 +194,7 @@ export class DocumentStoreImpl implements DocumentStore {
     this.closeGroup();
     const entry = this.future[this.future.length - 1];
     if (!entry) return false;
-    let next: WhittleDoc;
+    let next: WrenDoc;
     try {
       next = applyPatch(this.doc, entry.patches).doc;
     } catch {
@@ -249,9 +249,6 @@ export class DocumentStoreImpl implements DocumentStore {
   }
 }
 
-export function createDocumentStore(
-  initial?: WhittleDoc,
-  options?: StoreOptions,
-): DocumentStoreImpl {
+export function createDocumentStore(initial?: WrenDoc, options?: StoreOptions): DocumentStoreImpl {
   return new DocumentStoreImpl(initial, options);
 }

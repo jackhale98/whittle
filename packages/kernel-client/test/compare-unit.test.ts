@@ -14,7 +14,7 @@ import type {
   MeshBuffers,
   Result,
   ShapeHandle,
-} from '@whittle/contracts';
+} from '@wren-cad/contracts';
 import { describe, expect, it } from 'vitest';
 import { type DiffKernel, type DiffSide, geometricDiff } from '../src/regen/compare';
 

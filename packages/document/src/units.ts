@@ -8,7 +8,7 @@
  * be parsed and checked. Everything user-visible in the contract (named dimensions) has time 0.
  */
 
-import { DIMENSIONS, type NamedDimension } from '@whittle/contracts';
+import { DIMENSIONS, type NamedDimension } from '@wren-cad/contracts';
 
 /** Exponents of [length, mass, angle, time]. */
 export type Dim = readonly [length: number, mass: number, angle: number, time: number];

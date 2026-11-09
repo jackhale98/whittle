@@ -1,11 +1,11 @@
-# @whittle/io
+# @wren-cad/io
 
 Mesh formats, the local library and the browser file helpers. The package has two entry points, one
 that can run in a worker and one for the browser:
 
-- `@whittle/io` (`src/index.ts`) is worker-safe. It is pure TypeScript with no DOM, IndexedDB or OPFS.
+- `@wren-cad/io` (`src/index.ts`) is worker-safe. It is pure TypeScript with no DOM, IndexedDB or OPFS.
   It holds the mesh exporters and importers and the STL analysis.
-- `@whittle/io/browser` (`src/browser.ts`) is for the main thread. It holds the local library,
+- `@wren-cad/io/browser` (`src/browser.ts`) is for the main thread. It holds the local library,
   the file pickers and the launch-file hook, and thumbnails.
 
 Native CAD formats (STEP, BREP) are not in this package. The kernel reads and writes them (see
@@ -13,7 +13,7 @@ Native CAD formats (STEP, BREP) are not in this package. The kernel reads and wr
 
 ## Exports
 
-**`@whittle/io`**
+**`@wren-cad/io`**
 
 | Export | What it does |
 | --- | --- |
@@ -26,7 +26,7 @@ Native CAD formats (STEP, BREP) are not in this package. The kernel reads and wr
 | `weldMesh`, `checkMesh`, `meshFromSoup`, `bboxOf` | Welding, mesh checks (edge sharing and watertightness), and bounds |
 | `IoError`, `DEFAULT_LIMITS`, `ImportLimits` | Typed errors and the import limits |
 
-**`@whittle/io/browser`**
+**`@wren-cad/io/browser`**
 
 | Export | What it does |
 | --- | --- |
@@ -57,16 +57,16 @@ Native CAD formats (STEP, BREP) are not in this package. The kernel reads and wr
 
 | Command | What it does |
 | --- | --- |
-| `pnpm --filter @whittle/io test` | `vitest run`: `test/export.test.ts`, `test/import.test.ts` and `test/library.test.ts` (the library runs against `fake-indexeddb`) |
-| `pnpm --filter @whittle/io typecheck` | `tsc -p .` |
-| `pnpm --filter @whittle/io harness` | Vite harness for manual checks |
-| `pnpm --filter @whittle/io e2e` | Playwright: `e2e/library.spec.ts` checks the library in a real browser |
+| `pnpm --filter @wren-cad/io test` | `vitest run`: `test/export.test.ts`, `test/import.test.ts` and `test/library.test.ts` (the library runs against `fake-indexeddb`) |
+| `pnpm --filter @wren-cad/io typecheck` | `tsc -p .` |
+| `pnpm --filter @wren-cad/io harness` | Vite harness for manual checks |
+| `pnpm --filter @wren-cad/io e2e` | Playwright: `e2e/library.spec.ts` checks the library in a real browser |
 
 The exporters' output (including the watertight check) is covered by `test/export.test.ts`.
 
 ## Dependencies
 
-- `fflate`: ZIP for 3MF and `.whittle` files.
+- `fflate`: ZIP for 3MF and `.wrencad` files.
 - `idb`: a small IndexedDB wrapper for the library.
 - `fake-indexeddb` and `vite` (development only).
 
@@ -75,4 +75,4 @@ See [`docs/DEPENDENCIES.md`](../../docs/DEPENDENCIES.md).
 ## Related
 
 - [`packages/contracts`](../contracts/src/io.ts): `ProjectCodec`, `LocalLibrary` and `MeshExporters`.
-- [`docs/FILE_FORMAT.md`](../../docs/FILE_FORMAT.md): what the library stores and what a `.whittle` contains.
+- [`docs/FILE_FORMAT.md`](../../docs/FILE_FORMAT.md): what the library stores and what a `.wrencad` contains.

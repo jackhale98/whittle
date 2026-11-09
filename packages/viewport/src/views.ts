@@ -1,11 +1,11 @@
 /**
  * Pure view / framing math. No three.js dependency so it is trivially unit-testable.
  *
- * Whittle is Z-up (CAD convention). "Front" looks along +Y from the -Y side, so +X is screen
+ * Wren is Z-up (CAD convention). "Front" looks along +Y from the -Y side, so +X is screen
  * right and +Z is screen up. Directions are camera offsets from the orbit target.
  */
 
-import type { StandardView } from '@whittle/contracts';
+import type { StandardView } from '@wren-cad/contracts';
 
 export type Vec3 = [number, number, number];
 

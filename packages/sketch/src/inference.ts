@@ -13,7 +13,7 @@ import type {
   SketchEntityKind,
   SketchSolveInput,
   Vec2,
-} from '@whittle/contracts';
+} from '@wren-cad/contracts';
 import {
   add,
   arcGeom,

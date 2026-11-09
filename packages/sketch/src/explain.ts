@@ -11,7 +11,7 @@ import type {
   SketchConstraint,
   SketchEntity,
   SuggestedFix,
-} from '@whittle/contracts';
+} from '@wren-cad/contracts';
 import { isSketchReference, referenceName, SKETCH_ORIGIN } from './references';
 
 const KIND_LABEL: Record<SketchEntity['kind'], string> = {

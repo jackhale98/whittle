@@ -30,7 +30,7 @@ import type {
   NamedDimension,
   PmiAnnotation,
   SketchConstraint,
-} from '@whittle/contracts';
+} from '@wren-cad/contracts';
 
 export const FEATURE_TYPES = [
   'primitive',

@@ -3,8 +3,8 @@
  * of the project at `imports/<featureId>.<ext>` (never inline in the JSON), identified by sha256.
  */
 
-import type { ImportFeature, Part } from '@whittle/contracts';
-import { ulid } from '@whittle/document';
+import type { ImportFeature, Part } from '@wren-cad/contracts';
+import { ulid } from '@wren-cad/document';
 
 export type ImportFormat = ImportFeature['source']['format'];
 
@@ -22,7 +22,7 @@ const BY_EXT: Record<string, ImportFormat> = {
 };
 
 /**
- * File extensions the Open/Import pickers offer (besides `.whittle`). IGES is recognised (a
+ * File extensions the Open/Import pickers offer (besides `.wrencad`). IGES is recognised (a
  * dropped .igs gets the engine's "export it as STEP" explanation) but not offered until the
  * kernel reads it (PLAN M3 backlog).
  */

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-import type { Feature, MergeResult, SketchFeature, WhittleDoc } from '@whittle/contracts';
-import { canonicalJson } from '@whittle/document';
+import type { Feature, MergeResult, SketchFeature, WrenDoc } from '@wren-cad/contracts';
+import { canonicalJson } from '@wren-cad/document';
 import { describe, expect, it } from 'vitest';
 import { docMerger, MergeResolutionError } from '../src';
 import {
@@ -21,14 +21,14 @@ import {
   sk,
 } from './support/fixtures';
 
-const same = (a: WhittleDoc, b: WhittleDoc) => expect(canonicalJson(a)).toBe(canonicalJson(b));
-const valid = (r: MergeResult | WhittleDoc) => {
+const same = (a: WrenDoc, b: WrenDoc) => expect(canonicalJson(a)).toBe(canonicalJson(b));
+const valid = (r: MergeResult | WrenDoc) => {
   const doc = 'doc' in r ? r.doc : r;
   expect(problems(doc)).toEqual([]);
 };
-const featureIds = (d: WhittleDoc, pid = PART) =>
+const featureIds = (d: WrenDoc, pid = PART) =>
   (d.parts.find((p) => p.id === pid)?.features ?? []).map((f) => f.id);
-const setRadius = (doc: WhittleDoc, radius: string, fid = FILLET) => {
+const setRadius = (doc: WrenDoc, radius: string, fid = FILLET) => {
   const f = featureOf(doc, fid) as Feature;
   return apply(doc, {
     kind: 'updateFeature',

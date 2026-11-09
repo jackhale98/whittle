@@ -1,4 +1,4 @@
-import type { SyncStatus } from '@whittle/contracts';
+import type { SyncStatus } from '@wren-cad/contracts';
 import {
   CircleAlert,
   CloudCheck,

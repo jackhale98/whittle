@@ -12,7 +12,7 @@
  *    evaluated iff it lands before the bar.
  */
 
-import type { Command, Feature, JsonPatchOp, Param, Part, WhittleDoc } from '@whittle/contracts';
+import type { Command, Feature, JsonPatchOp, Param, Part, WrenDoc } from '@wren-cad/contracts';
 import { validateParamName } from './expressions';
 import { exprFields, featureReferences } from './features';
 import { identifierSpans } from './parser';
@@ -24,11 +24,11 @@ export type Compiled =
 
 const err = (error: string): Compiled => ({ ok: false, error });
 
-function partIndex(doc: WhittleDoc, partId: string): number {
+function partIndex(doc: WrenDoc, partId: string): number {
   return doc.parts.findIndex((p) => p.id === partId);
 }
 
-function usedIds(doc: WhittleDoc): Set<string> {
+function usedIds(doc: WrenDoc): Set<string> {
   const ids = new Set<string>();
   for (const p of doc.params) ids.add(p.id);
   for (const p of doc.parts) {
@@ -58,7 +58,7 @@ export function renameInExpr(expr: string, from: string, to: string): string {
   return out;
 }
 
-export function compileCommand(doc: WhittleDoc, cmd: Command): Compiled {
+export function compileCommand(doc: WrenDoc, cmd: Command): Compiled {
   switch (cmd.kind) {
     case 'addPart': {
       const part = structuredClone(cmd.part);
@@ -262,7 +262,7 @@ export function compileCommand(doc: WhittleDoc, cmd: Command): Compiled {
 }
 
 function compileUpdateParam(
-  doc: WhittleDoc,
+  doc: WrenDoc,
   cmd: Extract<Command, { kind: 'updateParam' }>,
 ): Compiled {
   const i = doc.params.findIndex((p) => p.id === cmd.paramId);

@@ -2,24 +2,24 @@ import { describe, expect, it } from 'vitest';
 import { documentPaths, pushRank, syncable, toAbsolute, toRelative } from '../src/paths';
 
 describe('project file rules', () => {
-  it('syncs every project file except the .whittle/ cache', () => {
+  it('syncs every project file except the .wren/ cache', () => {
     for (const p of [
-      'whittle.project.json',
+      'wren.project.json',
       'params.json',
       'parts/bracket.part.json',
       'imports/01J.step',
       'releases/rev-a/bracket.pdf',
       'previews/bracket.stl',
-      '.whittle-history/versions/01J.json',
-      '.whittle-history/snapshots/abc.zip',
-      '.whittle-history/refs/heads/main/01J',
-      '.whittle-historyx/x',
+      '.wren-history/versions/01J.json',
+      '.wren-history/snapshots/abc.zip',
+      '.wren-history/refs/heads/main/01J',
+      '.wren-historyx/x',
     ])
       expect(syncable(p), p).toBe(true);
     for (const p of [
-      '.whittle/meshes/a.bin',
-      '.whittle/thumb.png',
-      '.whittle',
+      '.wren/meshes/a.bin',
+      '.wren/thumb.png',
+      '.wren',
       '.git/config',
       'parts/.DS_Store',
       'Thumbs.db',
@@ -53,15 +53,15 @@ describe('project file rules', () => {
       'drawings/d.drawing.json',
       'params.json',
       'parts/a.part.json',
-      'whittle.project.json',
+      'wren.project.json',
     ]);
-    const order = ['whittle.project.json', 'parts/a.part.json', 'params.json']
+    const order = ['wren.project.json', 'parts/a.part.json', 'params.json']
       .map((p) => [p, pushRank(p, false)] as const)
       .sort((a, b) => a[1] - b[1])
       .map(([p]) => p);
-    expect(order).toEqual(['parts/a.part.json', 'params.json', 'whittle.project.json']);
+    expect(order).toEqual(['parts/a.part.json', 'params.json', 'wren.project.json']);
     expect(pushRank('parts/a.part.json', true)).toBeGreaterThan(
-      pushRank('whittle.project.json', false),
+      pushRank('wren.project.json', false),
     );
   });
 });

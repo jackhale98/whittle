@@ -1,6 +1,6 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { Feature } from '@whittle/contracts';
+import type { Feature } from '@wren-cad/contracts';
 import { describe, expect, it, vi } from 'vitest';
 import {
   FeatureTree,

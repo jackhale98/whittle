@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import type { SketchSolverApi } from '@whittle/contracts';
+import type { SketchSolverApi } from '@wren-cad/contracts';
 import { expose } from 'comlink';
 import { afterAll, describe, expect, it } from 'vitest';
 import { createSketchSolverClient } from '../src/client';

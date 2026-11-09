@@ -1,4 +1,4 @@
-import { applyPatch, createDocumentStore, newDoc, projectCodec, ulid } from '@whittle/document';
+import { applyPatch, createDocumentStore, newDoc, projectCodec, ulid } from '@wren-cad/document';
 import { describe, expect, it } from 'vitest';
 import {
   cloneUrl,
@@ -30,17 +30,17 @@ describe('working copy (document files + extra files)', () => {
     const d = doc();
     const extra = new Map([
       ['imports/a.step', enc('step')],
-      ['.whittle-history/versions/x.json', enc('{}')],
-      ['.whittle/meshes/index.json', enc('cache')],
+      ['.wren-history/versions/x.json', enc('{}')],
+      ['.wren/meshes/index.json', enc('cache')],
     ]);
     const files = projectFiles(d, extra);
-    expect(files.has('whittle.project.json')).toBe(true);
-    expect(files.has('.whittle/meshes/index.json')).toBe(false);
+    expect(files.has('wren.project.json')).toBe(true);
+    expect(files.has('.wren/meshes/index.json')).toBe(false);
     const back = splitProject(files, 'LIB1');
     expect(back.doc.meta.id).toBe('LIB1');
     expect(projectCodec.toFiles(back.doc)).toEqual(projectCodec.toFiles(d));
     expect([...back.extra.keys()].sort()).toEqual([
-      '.whittle-history/versions/x.json',
+      '.wren-history/versions/x.json',
       'imports/a.step',
     ]);
   });
@@ -115,16 +115,16 @@ describe('working copy (document files + extra files)', () => {
 
   it('a restore keeps this copy’s history and takes the version’s other files', () => {
     const current = new Map([
-      ['.whittle-history/versions/a.json', enc('a')],
+      ['.wren-history/versions/a.json', enc('a')],
       ['imports/old.step', enc('old')],
     ]);
     const version = new Map([
-      ['whittle.project.json', enc('{}')],
+      ['wren.project.json', enc('{}')],
       ['imports/v.step', enc('v')],
-      ['.whittle-history/versions/stale.json', enc('stale')],
+      ['.wren-history/versions/stale.json', enc('stale')],
     ]);
     expect([...restoredExtra(current, version).keys()].sort()).toEqual([
-      '.whittle-history/versions/a.json',
+      '.wren-history/versions/a.json',
       'imports/v.step',
     ]);
   });

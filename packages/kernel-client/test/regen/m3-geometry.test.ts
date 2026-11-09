@@ -15,7 +15,7 @@ import type {
   ShapeFingerprints,
   SketchEntity,
   Vec3,
-} from '@whittle/contracts';
+} from '@wren-cad/contracts';
 import { describe, expect, it } from 'vitest';
 import type { MeasureSubject } from '../../src/kernel-api';
 import { chainOrder } from '../../src/regen/chain';

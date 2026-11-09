@@ -1,5 +1,5 @@
 /*
- * Whittle design tokens (Tailwind CSS v4 @theme). Mirrored in ../tokens.ts, guarded by
+ * Wren design tokens (Tailwind CSS v4 @theme). Mirrored in ../tokens.ts, guarded by
  * test/tokens.test.ts (value parity + WCAG contrast). Light is the default; dark applies via
  * `data-theme="dark"` or, when no explicit theme is set, `prefers-color-scheme: dark`.
  */

@@ -1,4 +1,4 @@
-import type { Connection, Id, ProviderKind, RemoteFolder } from '@whittle/contracts';
+import type { Connection, Id, ProviderKind, RemoteFolder } from '@wren-cad/contracts';
 import {
   ArrowUp,
   Cloud,
@@ -525,8 +525,8 @@ function FormStep({
       <StepFrame title={`Sign in to ${label}`} step="Step 2 of 3 · Sign in">
         <p className="text-ui text-fg-muted" aria-live="polite">
           {signingIn
-            ? `Finish signing in to ${label} in the window that opened. Whittle never sees your password.`
-            : `A ${label} sign-in page opens. Whittle asks only for access to its own files.`}
+            ? `Finish signing in to ${label} in the window that opened. Wren never sees your password.`
+            : `A ${label} sign-in page opens. Wren asks only for access to its own files.`}
         </p>
         {error ? (
           <p role="alert" className="text-xs text-danger-text">
@@ -610,8 +610,8 @@ function FormStep({
             <p id={relayId} className="text-2xs text-fg-subtle">
               Browsers block requests to servers that don't allow them (CORS). If connecting fails
               with a CORS error, turn this on: the relay forwards your requests without storing
-              anything. Leave it off if your server already allows Whittle, so nothing passes
-              through a third party.
+              anything. Leave it off if your server already allows Wren, so nothing passes through a
+              third party.
             </p>
           </div>
           {error ? (
@@ -776,7 +776,7 @@ function FolderStep({
                 )}
                 <span className="flex min-w-0 flex-1 flex-col items-start gap-0.5 py-1">
                   <span className="max-w-full truncate text-sm">{f.name}</span>
-                  {f.isProject ? <Badge tone="accent">Whittle project</Badge> : null}
+                  {f.isProject ? <Badge tone="accent">Wren project</Badge> : null}
                 </span>
               </button>
               <Button

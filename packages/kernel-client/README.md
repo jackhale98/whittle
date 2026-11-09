@@ -1,4 +1,4 @@
-# @whittle/kernel-client
+# @wren-cad/kernel-client
 
 The kernel worker and its main-thread client (PLAN §4). The worker owns the OCCT Wasm kernel,
 every B-rep shape, planegcs (for sketch re-solves) and the **regeneration engine**; the main thread
@@ -6,20 +6,20 @@ only ever holds shape ids and transferred render buffers.
 
 | Entry                                         | What                                                                     |
 | --------------------------------------------- | ------------------------------------------------------------------------ |
-| `@whittle/kernel-client`                      | `createKernelClient()` — spawns the worker, `api: Remote<ModelingWorkerApi>` |
-| `@whittle/kernel-client/worker`               | worker entry (Comlink `expose`)                                          |
-| `@whittle/kernel-client/kernel-api`           | `createKernelApi()` — low-level façade wrapper (Node tests)              |
-| `@whittle/kernel-client/regen`                | `RegenEngine`, `resolveRef`, `planeFrame`, `hashKey` (pure parts testable) |
+| `@wren-cad/kernel-client`                      | `createKernelClient()` — spawns the worker, `api: Remote<ModelingWorkerApi>` |
+| `@wren-cad/kernel-client/worker`               | worker entry (Comlink `expose`)                                          |
+| `@wren-cad/kernel-client/kernel-api`           | `createKernelApi()` — low-level façade wrapper (Node tests)              |
+| `@wren-cad/kernel-client/regen`                | `RegenEngine`, `resolveRef`, `planeFrame`, `hashKey` (pure parts testable) |
 | `src/modeling-api.ts`                         | `createModelingApi()` — kernel + engine = the worker's Comlink surface    |
 
 ## Using it from the app
 
 ```ts
-import { createKernelClient } from '@whittle/kernel-client';
+import { createKernelClient } from '@wren-cad/kernel-client';
 
 const kernel = createKernelClient({ regen: { maxSpareResults: 32 } }); // tablet tier; default 128
 await kernel.ready();
-let doc = bracketDoc;                                 // a WhittleDoc from the document store
+let doc = bracketDoc;                                 // a WrenDoc from the document store
 const partId = doc.parts[0].id;
 let r = await kernel.api.regenerate({ doc, partId, quality: 'coarse' });
 viewport.setBodies(r.bodies);                         // meshes arrive transferred, not copied
@@ -69,7 +69,7 @@ A failing feature is skipped: the state keeps the geometry from before it, so ea
 always output. In addition `RegenOutput.ghosts` carries the bodies of the last regen in which every
 feature was ok (only those whose geometry differs now), for the PLAN §9.2 ghost display.
 
-**Sketches** are re-solved with planegcs (`@whittle/sketch/core`) from the stored positions with the
+**Sketches** are re-solved with planegcs (`@wren-cad/sketch/core`) from the stored positions with the
 evaluated driving dimensions; a sketch that doesn't solve is an `error` with the solver's conflict
 explanation and first suggested fix as `hint`. **Sketch planes**: `origin:XY|XZ|YZ` are fixed frames
 (XZ: normal −Y, v up; YZ: normal +X, v up); a plane feature (`F<id>:plane`) uses its frame; a planar
@@ -192,7 +192,7 @@ What the engine passes per type (FeatureInputs, refs keyed by JSON pointer into 
   `error.entityRefs`.
 - **Pattern instances** `F…:inst<k>(N)` never resolve by fingerprint onto another instance or onto
   the original's copies; a removed instance needs attention.
-- **Hole sizes**: `resolveHoleSize` from `@whittle/document` (ISO 273 / 262 / 4762 / 10642, ANSI
+- **Hole sizes**: `resolveHoleSize` from `@wren-cad/document` (ISO 273 / 262 / 4762 / 10642, ANSI
   inch), explicit values override.
 
 Tests: `m3-engine.test.ts` (fake kernel: inputs per type, tool cache, instance naming, linked
@@ -226,7 +226,7 @@ until then: pattern of holes, mirrored boss and shell after fillet edit-upstream
   prefilter for the default scope); the kernel `boolean` with the imported solids as tools, so their
   faces are boolean tool faces `F<id>:face(F<id>:face#k)` (naming.ts boolean rule). `add` merges into
   the oldest touched body only (warning when it touches more).
-- **Mesh formats** (STL/OBJ/3MF/GLB) → `@whittle/io` `importMesh`, placed in TS, handed to the kernel
+- **Mesh formats** (STL/OBJ/3MF/GLB) → `@wren-cad/io` `importMesh`, placed in TS, handed to the kernel
   as STL: one mesh-only body per object (`B<id>` / `B<id>#k`), one face `F<id>:face`, no edges.
   Displayed, exported (STL/STEP of a mesh face), with mesh-based mass properties; never part of an
   implicit scope; explicit scopes, booleans, fillets/chamfers and push/pull on them → `error`
@@ -270,7 +270,7 @@ face/edge/vertex refs → all current bodies; `body` refs → the body table by 
 
 ## Tests
 
-`pnpm --filter @whittle/kernel-client test` runs the golden suite in Node against the real kernel
+`pnpm --filter @wren-cad/kernel-client test` runs the golden suite in Node against the real kernel
 (`packages/kernel/dist`, skipped when missing) and real planegcs: plate, the M1 bracket with three
 upstream edits, face split/merge/removal by inserted features (`topology`) and by **dimension
 edits** (`naming`: a notch moved off the part merges two top faces and back, a depth going to 0, an

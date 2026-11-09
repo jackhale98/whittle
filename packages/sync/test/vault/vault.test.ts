@@ -1,5 +1,5 @@
 import 'fake-indexeddb/auto';
-import type { Credential } from '@whittle/contracts';
+import type { Credential } from '@wren-cad/contracts';
 import { openDB } from 'idb';
 import { afterEach, describe, expect, it } from 'vitest';
 import { IdbCredentialVault } from '../../src/vault/vault';

@@ -10,8 +10,8 @@ import type {
   SketchConstraint,
   SketchEntity,
   Vec2,
-} from '@whittle/contracts';
-import { indexEntities, isSketchReference, newId, SKETCH_ORIGIN } from '@whittle/sketch';
+} from '@wren-cad/contracts';
+import { indexEntities, isSketchReference, newId, SKETCH_ORIGIN } from '@wren-cad/sketch';
 import type { SketchData } from './draw';
 import { entitiesWithReferences } from './references';
 

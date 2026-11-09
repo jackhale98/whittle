@@ -17,8 +17,8 @@ import type {
   RevolveFeature,
   SketchFeature,
   Vec3,
-  WhittleDoc,
-} from '@whittle/contracts';
+  WrenDoc,
+} from '@wren-cad/contracts';
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { RegenOutput } from '../../src/regen/engine';
 import {
@@ -100,7 +100,7 @@ let api: Api;
 beforeAll(async () => {
   if (built) api = await loadApi();
 }, 60_000);
-const regen = (doc: WhittleDoc) => api.regenerate({ doc, partId: PART, quality: 'coarse' });
+const regen = (doc: WrenDoc) => api.regenerate({ doc, partId: PART, quality: 'coarse' });
 
 describe.skipIf(!built)(`regen golden (M3, current kernel): convert entities${skipNote}`, () => {
   it('a linked line follows a model edge through upstream edits', async () => {

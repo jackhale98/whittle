@@ -6,7 +6,7 @@
  * are not drawn into the ID buffer; they are picked by screen-space distance (see pick.ts).
  */
 
-import type { Vec3 } from '@whittle/contracts';
+import type { Vec3 } from '@wren-cad/contracts';
 
 /** Largest encodable id (24 bit). */
 export const MAX_ID = 0xffffff;

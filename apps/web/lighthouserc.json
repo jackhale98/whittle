@@ -1,9 +1,9 @@
 {
   "ci": {
     "collect": {
-      "url": ["http://127.0.0.1:4812/whittle/"],
+      "url": ["http://127.0.0.1:4812/wren/"],
       "numberOfRuns": 3,
-      "startServerCommand": "node scripts/static-serve.mjs --dir dist --base /whittle/ --port 4812",
+      "startServerCommand": "node scripts/static-serve.mjs --dir dist --base /wren-cad/ --port 4812",
       "startServerReadyPattern": "",
       "startServerReadyTimeout": 20000,
       "settings": {

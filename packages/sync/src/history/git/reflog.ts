@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 /**
- * Reflog entries for what Whittle does to a repository (`git reflog` then shows Whittle's commits,
+ * Reflog entries for what Wren does to a repository (`git reflog` then shows Wren's commits,
  * branch switches and fast-forwards, so a user can always find and restore an earlier state).
  * isomorphic-git writes no reflogs. Only written when the repository keeps them (`logs/` exists,
  * as `git init` makes it for working trees).

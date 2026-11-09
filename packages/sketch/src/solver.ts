@@ -31,7 +31,7 @@ import type {
   SketchSolveResult,
   SuggestedFix,
   Vec2,
-} from '@whittle/contracts';
+} from '@wren-cad/contracts';
 import { analyzeDof, type DofAnalysis } from './analysis';
 import { constraintLabel, explainConflict, fixLabel, Namer } from './explain';
 import { Algorithm, GcsSession, type PlanegcsModule } from './gcs';

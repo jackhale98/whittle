@@ -1,4 +1,4 @@
-import type { PickHit, Vec3 } from '@whittle/contracts';
+import type { PickHit, Vec3 } from '@wren-cad/contracts';
 import { describe, expect, it } from 'vitest';
 import {
   labelText,

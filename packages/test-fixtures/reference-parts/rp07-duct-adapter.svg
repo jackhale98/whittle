@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 297" width="420mm" height="297mm" data-part="RP07">
-<title>RP07 Duct adapter - Whittle reference part</title>
+<title>RP07 Duct adapter - Wren reference part</title>
 <rect x="5" y="5" width="410" height="287" fill="#fff" stroke="#111" stroke-width="0.8"/>
 <g data-view="Top">
 <text x="46" y="29.2" font-size="3.6" font-family="sans-serif" font-weight="bold" fill="#111">Top</text>
@@ -62,11 +62,11 @@
 <text data-dim="loft_h" data-value="40" x="183.2" y="202" text-anchor="start" font-size="3.2" font-family="monospace" fill="#111">loft_h = 40 mm</text>
 </g>
 <rect x="215" y="257" width="190" height="35" fill="#fff" stroke="#111" stroke-width="0.6"/>
-<text x="218" y="266" font-size="6" font-family="sans-serif" font-weight="bold" fill="#111">Whittle reference part</text>
+<text x="218" y="266" font-size="6" font-family="sans-serif" font-weight="bold" fill="#111">Wren reference part</text>
 <rect x="215" y="268" width="95" height="11" fill="none" stroke="#111" stroke-width="0.3"/><text x="216.5" y="271.2" font-size="2.2" font-family="sans-serif" fill="#666">PART</text><text x="216.5" y="277" font-size="3.6" font-family="sans-serif" fill="#111">RP07  Duct adapter</text>
 <rect x="310" y="268" width="95" height="11" fill="none" stroke="#111" stroke-width="0.3"/><text x="311.5" y="271.2" font-size="2.2" font-family="sans-serif" fill="#666">LEVEL</text><text x="311.5" y="277" font-size="3.6" font-family="sans-serif" fill="#111">CSWP-like</text>
 <rect x="215" y="279" width="95" height="13" fill="none" stroke="#111" stroke-width="0.3"/><text x="216.5" y="282.2" font-size="2.2" font-family="sans-serif" fill="#666">MATERIAL</text><text x="216.5" y="290" font-size="3.6" font-family="sans-serif" fill="#111">PETG</text>
 <rect x="310" y="279" width="95" height="13" fill="none" stroke="#111" stroke-width="0.3"/><text x="311.5" y="282.2" font-size="2.2" font-family="sans-serif" fill="#666">DENSITY</text><text x="311.5" y="290" font-size="3.6" font-family="sans-serif" fill="#111">1.27 g/cm^3</text>
 <text x="10" y="284" font-size="2.8" font-family="sans-serif" fill="#444">All dimensions in mm unless marked. Third-angle projection.</text>
-<text x="10" y="288" font-size="2.8" font-family="sans-serif" fill="#444">Original drawing for the Whittle certification-style suite; the named values drive the model.</text>
+<text x="10" y="288" font-size="2.8" font-family="sans-serif" fill="#444">Original drawing for the Wren certification-style suite; the named values drive the model.</text>
 </svg>

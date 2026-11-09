@@ -1,4 +1,4 @@
-import type { EvalResult, Expr } from '@whittle/contracts';
+import type { EvalResult, Expr } from '@wren-cad/contracts';
 import { FlipHorizontal2, Scissors } from 'lucide-react';
 import { Field, Segmented, Switch } from '../components/controls';
 import { ExpressionInput } from '../components/ExpressionInput';

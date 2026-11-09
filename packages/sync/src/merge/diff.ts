@@ -19,10 +19,10 @@ import type {
   SketchConstraint,
   SketchEntity,
   SketchFeature,
-  WhittleDoc,
-} from '@whittle/contracts';
-import { isDimension } from '@whittle/contracts';
-import { Namer } from '@whittle/sketch';
+  WrenDoc,
+} from '@wren-cad/contracts';
+import { isDimension } from '@wren-cad/contracts';
+import { Namer } from '@wren-cad/sketch';
 import { featureDims, formatValue, listText, plural, type Units } from './format';
 import { constraintText, fieldLabel, subjectAt } from './labels';
 import { barIdOf, byId, equal, idsOf, isAtomicObject, isObj, type Segs, toPointer } from './tree';
@@ -96,8 +96,8 @@ function fieldText(fc: FieldChange, units: Units, dims?: Map<string, NamedDimens
 class DiffRun {
   readonly out: DiffChange[] = [];
   constructor(
-    private readonly before: WhittleDoc,
-    private readonly after: WhittleDoc,
+    private readonly before: WrenDoc,
+    private readonly after: WrenDoc,
   ) {}
 
   private subject(segs: Segs, gone = false): DiffSubject {
@@ -499,7 +499,7 @@ class DiffRun {
 }
 
 export class FeatureDiffer implements DocDiffer {
-  diff(before: WhittleDoc, after: WhittleDoc): DiffChange[] {
+  diff(before: WrenDoc, after: WrenDoc): DiffChange[] {
     return new DiffRun(before, after).run();
   }
 }

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-import type { MeshBuffers, MeshExporters } from '@whittle/contracts';
+import type { MeshBuffers, MeshExporters } from '@wren-cad/contracts';
 import { type ImportLimits, IoError } from './errors';
 import { toGlb } from './glb';
 import { import3mf } from './import3mf';

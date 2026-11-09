@@ -1,7 +1,7 @@
-import type { ExportOptions } from '@whittle/contracts';
+import type { ExportOptions } from '@wren-cad/contracts';
 
 /** Everything the Export menu can produce. `ExportFormat` in contracts covers step/stl/brep only. */
-export type ExportTarget = 'step' | 'stl' | '3mf' | 'glb' | 'whittle';
+export type ExportTarget = 'step' | 'stl' | '3mf' | 'glb' | 'wren';
 
 export type TessellationQuality = 'coarse' | 'standard' | 'fine';
 
@@ -38,7 +38,7 @@ export const EXPORT_TARGETS: ReadonlyArray<{
   { id: 'stl', label: 'STL', ext: '.stl', blurb: '3D printing, triangles in mm' },
   { id: '3mf', label: '3MF', ext: '.3mf', blurb: '3D printing with units and colour' },
   { id: 'glb', label: 'GLB', ext: '.glb', blurb: 'Web and AR viewers' },
-  { id: 'whittle', label: 'Whittle project', ext: '.whittle', blurb: 'Everything, with history' },
+  { id: 'wren', label: 'Wren project', ext: '.wrencad', blurb: 'Everything, with history' },
 ];
 
 /** Builds the `ExportRequest` for a set of form choices. */

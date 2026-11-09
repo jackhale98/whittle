@@ -23,28 +23,28 @@ importers:
 
   apps/web:
     dependencies:
-      '@whittle/contracts':
+      '@wren-cad/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
-      '@whittle/document':
+      '@wren-cad/document':
         specifier: workspace:*
         version: link:../../packages/document
-      '@whittle/io':
+      '@wren-cad/io':
         specifier: workspace:*
         version: link:../../packages/io
-      '@whittle/kernel-client':
+      '@wren-cad/kernel-client':
         specifier: workspace:*
         version: link:../../packages/kernel-client
-      '@whittle/sketch':
+      '@wren-cad/sketch':
         specifier: workspace:*
         version: link:../../packages/sketch
-      '@whittle/sync':
+      '@wren-cad/sync':
         specifier: workspace:*
         version: link:../../packages/sync
-      '@whittle/ui':
+      '@wren-cad/ui':
         specifier: workspace:*
         version: link:../../packages/ui
-      '@whittle/viewport':
+      '@wren-cad/viewport':
         specifier: workspace:*
         version: link:../../packages/viewport
       lucide-react:
@@ -78,10 +78,10 @@ importers:
       '@vitejs/plugin-react':
         specifier: 6.2.1
         version: 6.2.1(vite@8.3.6(@types/node@22.20.5)(jiti@2.7.0)(terser@5.51.2)(yaml@2.9.1))
-      '@whittle/kernel':
+      '@wren-cad/kernel':
         specifier: workspace:*
         version: link:../../packages/kernel
-      '@whittle/test-fixtures':
+      '@wren-cad/test-fixtures':
         specifier: workspace:*
         version: link:../../packages/test-fixtures
       ajv:
@@ -128,7 +128,7 @@ importers:
 
   packages/document:
     dependencies:
-      '@whittle/contracts':
+      '@wren-cad/contracts':
         specifier: workspace:*
         version: link:../contracts
       fflate:
@@ -144,7 +144,7 @@ importers:
 
   packages/io:
     dependencies:
-      '@whittle/contracts':
+      '@wren-cad/contracts':
         specifier: workspace:*
         version: link:../contracts
       fflate:
@@ -166,7 +166,7 @@ importers:
 
   packages/kernel:
     dependencies:
-      '@whittle/contracts':
+      '@wren-cad/contracts':
         specifier: workspace:*
         version: link:../contracts
     devDependencies:
@@ -179,19 +179,19 @@ importers:
       '@salusoft89/planegcs':
         specifier: 1.3.0
         version: 1.3.0
-      '@whittle/contracts':
+      '@wren-cad/contracts':
         specifier: workspace:*
         version: link:../contracts
-      '@whittle/document':
+      '@wren-cad/document':
         specifier: workspace:*
         version: link:../document
-      '@whittle/io':
+      '@wren-cad/io':
         specifier: workspace:*
         version: link:../io
-      '@whittle/kernel':
+      '@wren-cad/kernel':
         specifier: workspace:*
         version: link:../kernel
-      '@whittle/sketch':
+      '@wren-cad/sketch':
         specifier: workspace:*
         version: link:../sketch
       comlink:
@@ -206,7 +206,7 @@ importers:
       '@salusoft89/planegcs':
         specifier: 1.3.0
         version: 1.3.0
-      '@whittle/contracts':
+      '@wren-cad/contracts':
         specifier: workspace:*
         version: link:../contracts
       comlink:
@@ -221,13 +221,13 @@ importers:
       '@isomorphic-git/lightning-fs':
         specifier: 4.10.3
         version: 4.10.3
-      '@whittle/contracts':
+      '@wren-cad/contracts':
         specifier: workspace:*
         version: link:../contracts
-      '@whittle/document':
+      '@wren-cad/document':
         specifier: workspace:*
         version: link:../document
-      '@whittle/sketch':
+      '@wren-cad/sketch':
         specifier: workspace:*
         version: link:../sketch
       buffer:
@@ -249,10 +249,10 @@ importers:
 
   packages/test-fixtures:
     dependencies:
-      '@whittle/contracts':
+      '@wren-cad/contracts':
         specifier: workspace:*
         version: link:../contracts
-      '@whittle/document':
+      '@wren-cad/document':
         specifier: workspace:*
         version: link:../document
 
@@ -276,7 +276,7 @@ importers:
       '@radix-ui/react-tooltip':
         specifier: 1.4.1
         version: 1.4.1(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
-      '@whittle/contracts':
+      '@wren-cad/contracts':
         specifier: workspace:*
         version: link:../contracts
       lucide-react:
@@ -334,7 +334,7 @@ importers:
 
   packages/viewport:
     dependencies:
-      '@whittle/contracts':
+      '@wren-cad/contracts':
         specifier: workspace:*
         version: link:../contracts
       camera-controls:
@@ -353,7 +353,7 @@ importers:
       '@types/three':
         specifier: 0.187.0
         version: 0.187.0
-      '@whittle/test-fixtures':
+      '@wren-cad/test-fixtures':
         specifier: workspace:*
         version: link:../test-fixtures
       vite:

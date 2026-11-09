@@ -5,7 +5,7 @@
  * SHA-256 per project, so identical files share nothing across projects (simple pruning).
  */
 
-import type { SyncState } from '@whittle/contracts';
+import type { SyncState } from '@wren-cad/contracts';
 import { type DBSchema, type IDBPDatabase, openDB } from 'idb';
 import type { SyncLocalStore } from './store';
 
@@ -43,7 +43,7 @@ export function createIdbSyncStore(
   workingCopy: Pick<SyncLocalStore, 'readFiles' | 'writeFiles'>,
   options: { dbName?: string } = {},
 ): SyncLocalStore {
-  const name = options.dbName ?? 'whittle-sync';
+  const name = options.dbName ?? 'wren-sync';
   return {
     readFiles: () => workingCopy.readFiles(),
     writeFiles: (changes, expected) => workingCopy.writeFiles(changes, expected),

@@ -7,9 +7,9 @@
  */
 
 import { MessageChannel, type MessagePort } from 'node:worker_threads';
-import type { EntityRef, RegenResult } from '@whittle/contracts';
-import { materialFromLibrary } from '@whittle/document';
-import { analyzeStl } from '@whittle/io';
+import type { EntityRef, RegenResult } from '@wren-cad/contracts';
+import { materialFromLibrary } from '@wren-cad/document';
+import { analyzeStl } from '@wren-cad/io';
 import { type Endpoint, expose, wrap } from 'comlink';
 import { unzipSync } from 'fflate';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';

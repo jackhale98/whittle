@@ -4,7 +4,7 @@
  * Install app, and links to the source and the licence. The app keeps working behind it.
  */
 
-import { BirdMark, Button, cn, IconButton } from '@whittle/ui';
+import { BirdMark, Button, cn, IconButton } from '@wren-cad/ui';
 import {
   Download,
   ExternalLink,
@@ -18,8 +18,8 @@ import {
 import type { Workbench } from '../app/workbench';
 import { promptInstall, useInstallState } from '../platform/install';
 
-export const REPO_URL = 'https://github.com/jackhale98/whittle';
-export const LICENSE_URL = 'https://github.com/jackhale98/whittle/blob/main/LICENSE';
+export const REPO_URL = 'https://github.com/jackhale98/wren-cad';
+export const LICENSE_URL = 'https://github.com/jackhale98/wren-cad/blob/main/LICENSE';
 
 export function WelcomeContent({ wb, compact }: { wb: Workbench; compact?: boolean }) {
   const install = useInstallState();
@@ -29,7 +29,7 @@ export function WelcomeContent({ wb, compact }: { wb: Workbench; compact?: boole
     <div className={cn('flex flex-col items-center text-center', compact ? 'gap-3' : 'gap-4')}>
       <BirdMark className={compact ? 'size-14' : 'size-20'} />
       <div>
-        <h2 className="text-lg font-semibold tracking-tight">Welcome to Whittle</h2>
+        <h2 className="text-lg font-semibold tracking-tight">Welcome to Wren</h2>
         <p className="mt-1 max-w-[34ch] text-ui text-fg-muted">
           Free, open-source parametric CAD that runs on your device — works offline.
         </p>

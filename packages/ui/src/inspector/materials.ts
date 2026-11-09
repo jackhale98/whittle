@@ -1,4 +1,4 @@
-import type { Expr, Material } from '@whittle/contracts';
+import type { Expr, Material } from '@wren-cad/contracts';
 
 /** One entry of the built-in (or user) material library. */
 export interface MaterialLibraryItem {

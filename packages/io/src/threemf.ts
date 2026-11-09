@@ -105,7 +105,7 @@ export function to3mf(
   const model =
     `<?xml version="1.0" encoding="UTF-8"?>\n` +
     `<model unit="${unit}" xml:lang="en-US" xmlns="${NS_CORE}">` +
-    `<metadata name="Application">Whittle</metadata>` +
+    `<metadata name="Application">Wren</metadata>` +
     `<resources>${resources.join('')}</resources>` +
     `<build>${items.join('')}</build></model>\n`;
   const contentTypes =

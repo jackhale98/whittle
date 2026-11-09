@@ -5,12 +5,12 @@
  * document's own rules (a feature cannot move above geometry it uses) still apply.
  */
 
-import type { ApplyOptions, ApplyResult, Command, Id, WhittleDoc } from '@whittle/contracts';
-import { DocumentStoreImpl } from '@whittle/document';
+import type { ApplyOptions, ApplyResult, Command, Id, WrenDoc } from '@wren-cad/contracts';
+import { DocumentStoreImpl } from '@wren-cad/document';
 
 /** The part of the document store these edits need. */
 export interface EditStore {
-  getDoc(): WhittleDoc;
+  getDoc(): WrenDoc;
   apply(command: Command, options?: ApplyOptions): ApplyResult;
   commit(): void;
 }

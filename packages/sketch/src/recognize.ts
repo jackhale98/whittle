@@ -1,7 +1,7 @@
 /**
  * Pencil primitive recognition (PLAN §2.1, §12 M2; ADR-009 item 5). A pure function, with no
  * Wasm and no allocation-heavy work, so the app can run it on the main thread on every pointer
- * move or at pen-up and show the clean-up in the same frame. Entry: `@whittle/sketch/recognize`
+ * move or at pen-up and show the clean-up in the same frame. Entry: `@wren-cad/sketch/recognize`
  * (not re-exported from the package root, which is on the app's initial route); `strokeFragment`
  * turns the result into entities + constraints like a drawing tool.
  *
@@ -42,7 +42,7 @@ import type {
   StrokeRecognition,
   StrokeSample,
   Vec2,
-} from '@whittle/contracts';
+} from '@wren-cad/contracts';
 
 export { strokeFragment } from './stroke-fragment';
 

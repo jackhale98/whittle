@@ -69,7 +69,7 @@ export async function projectStatus(
       if (!scope.worthWalking(path)) return null;
       if (path.slice(path.lastIndexOf('/') + 1) === '.git') return null;
       const rel = scope.toProject(path);
-      // The cache (`.whittle/`) and snapshot history are never part of a version.
+      // The cache (`.wren/`) and snapshot history are never part of a version.
       if (rel !== null && !isVersionedPath(`${rel}/`)) return null;
       if (!head && !stage && work) {
         if (await git.isIgnored({ fs: a.fs, dir: a.dir, gitdir, filepath: path })) return null;

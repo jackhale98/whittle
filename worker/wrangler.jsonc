@@ -1,6 +1,6 @@
-// Whittle sync worker. JSONC on purpose: Wrangler prefers a .jsonc config.
+// Wren sync worker. JSONC on purpose: Wrangler prefers a .jsonc config.
 {
-  "name": "whittle-sync",
+  "name": "wren-sync",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
   // Keep variables set in the Cloudflare dashboard when deploying (secrets are always kept).

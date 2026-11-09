@@ -6,7 +6,7 @@ import { app, boot, clickAt, palette, sketchOn, tool, toolButton, toolGroup } fr
  * last-used tool, per-tool hints) and the feature tree's nested sketches (ADR-015).
  */
 
-const SHOTS = process.env.WHITTLE_SHOTS;
+const SHOTS = process.env.WREN_SHOTS;
 
 async function start(page: Page) {
   await boot(page);

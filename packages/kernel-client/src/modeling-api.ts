@@ -16,8 +16,8 @@ import type {
   RegenRequest,
   RegenSlot,
   Result,
-} from '@whittle/contracts';
-import { createSketchSolverCore } from '@whittle/sketch/core';
+} from '@wren-cad/contracts';
+import { createSketchSolverCore } from '@wren-cad/sketch/core';
 import { transfer } from 'comlink';
 import {
   createKernelApi,
@@ -62,7 +62,7 @@ export type RegenWorkerOptions = Pick<RegenEngineOptions, 'maxSpareResults' | 'm
 export interface ModelingApiDeps extends KernelApiDeps {
   /** Bundler-resolved URL of `planegcs.wasm` (browser). Omit in Node. */
   planegcsWasmUrl?: string;
-  /** Override the sketch solver (tests). Default: `@whittle/sketch/core`, loaded on first use. */
+  /** Override the sketch solver (tests). Default: `@wren-cad/sketch/core`, loaded on first use. */
   sketchSolver?: () => Promise<SketchSolve>;
   regen?: RegenEngineOptions;
 }

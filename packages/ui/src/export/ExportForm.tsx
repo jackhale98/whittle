@@ -30,7 +30,7 @@ export interface ExportFormProps {
 
 /**
  * Export options (PLAN 12 M1): STEP AP214, STL (binary/ASCII, merged/per body, quality presets),
- * 3MF, GLB and `.whittle`. Emits one `ExportRequest`; the host runs it. Lazy-loaded.
+ * 3MF, GLB and `.wrencad`. Emits one `ExportRequest`; the host runs it. Lazy-loaded.
  */
 export default function ExportForm({
   onExport,
@@ -62,7 +62,7 @@ export default function ExportForm({
   const meta = EXPORT_TARGETS.find((t) => t.id === target);
   const selected = bodies.filter((b) => !off.has(b.id)).map((b) => b.id);
   const tess = target === 'stl' || target === '3mf' || target === 'glb';
-  const bodyScoped = target !== 'whittle';
+  const bodyScoped = target !== 'wren';
   const none = bodyScoped && bodies.length > 0 && selected.length === 0;
 
   return (

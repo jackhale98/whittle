@@ -1,17 +1,17 @@
 /**
  * Local git repo mode (ADR-029, ADR-030): a folder on this computer that is a git working tree.
- * Versions are real commits in it, through `openLocalGitRepo` from `@whittle/sync` (isomorphic-git
+ * Versions are real commits in it, through `openLocalGitRepo` from `@wren-cad/sync` (isomorphic-git
  * over File System Access, scoped to the project folder, read-only states, `.gitignore`).
  */
 
-import type { Author, Credential, StorageResult } from '@whittle/contracts';
+import type { Author, Credential, StorageResult } from '@wren-cad/contracts';
 import {
   browserGitHttp,
   type FolderHandle,
   type GitHost,
   type LocalGitRepo,
   openLocalGitRepo,
-} from '@whittle/sync';
+} from '@wren-cad/sync';
 
 /** The picked folder is a git working tree: it has `.git` (a folder, or a `gitdir:` file). */
 export async function isGitRepo(root: FileSystemDirectoryHandle): Promise<boolean> {
@@ -45,7 +45,7 @@ export interface LocalGitOptions {
 
 /**
  * Opens the repo for the project. When its `origin` is an HTTPS remote on a host the user signed
- * in to, it is reopened with network access so Whittle can also fetch, pull and push.
+ * in to, it is reopened with network access so Wren can also fetch, pull and push.
  */
 export async function openLocalGit(
   o: LocalGitOptions,

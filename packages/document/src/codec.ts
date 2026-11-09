@@ -1,20 +1,25 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 /**
- * Canonical project serialisation and `.whittle` packaging (implements `ProjectCodec`).
+ * Canonical project serialisation and `.wrencad` packaging (implements `ProjectCodec`).
  *
  * Determinism rules (docs/FILE_FORMAT.md): object keys sorted by UTF-16 code unit, 2-space
  * indent, LF, trailing newline, arrays keep their order, no `undefined`, finite numbers only.
  * Zip entries are sorted by path, use a fixed timestamp and fixed compression settings.
  */
 
-import type { ProjectCodec, ProjectFiles, WhittleDoc } from '@whittle/contracts';
+import type { ProjectCodec, ProjectFiles, WrenDoc } from '@wren-cad/contracts';
 import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate';
 import type { ManifestEntry, ParamsFile, ProjectManifest } from './files';
 import { migrateDoc } from './migrations';
 
-export const MANIFEST_FILE = 'whittle.project.json';
+export const MANIFEST_FILE = 'wren.project.json';
 export const PARAMS_FILE = 'params.json';
-export const CACHE_DIR = '.whittle/';
+export const CACHE_DIR = '.wren/';
+
+/** Names used before the project was renamed to Wren (ADR-032); still read, never written. */
+export const LEGACY_MANIFEST_FILE = 'whittle.project.json';
+export const LEGACY_CACHE_DIR = '.whittle/';
+const PROJECT_FORMATS = new Set(['wren-project', 'whittle-project']);
 
 // ---------------------------------------------------------------------------------------------
 // Canonical JSON
@@ -129,13 +134,13 @@ function entries(
   }));
 }
 
-export function toFiles(doc: WhittleDoc): ProjectFiles {
+export function toFiles(doc: WrenDoc): ProjectFiles {
   const files: ProjectFiles = new Map();
   const parts = entries(doc.parts, 'parts', 'part', 'part');
   const drawings = entries(doc.drawings, 'drawings', 'drawing', 'drawing');
   const assemblies = entries(doc.assemblies, 'assemblies', 'assembly', 'assembly');
   const manifest: ProjectManifest = {
-    format: 'whittle-project',
+    format: 'wren-project',
     schemaVersion: doc.schemaVersion,
     units: doc.units,
     meta: doc.meta,
@@ -207,10 +212,14 @@ function readEntries(files: ProjectFiles, list: unknown, key: string): unknown[]
 }
 
 /** Rebuilds a document from project files, migrating and validating it. Throws `ProjectFormatError`. */
-export function fromFiles(files: ProjectFiles): WhittleDoc {
-  const manifest = readJson(files, MANIFEST_FILE);
-  if (!isObj(manifest) || manifest.format !== 'whittle-project') {
-    throw new ProjectFormatError(`‘${MANIFEST_FILE}’ is not a Whittle project manifest`);
+export function fromFiles(files: ProjectFiles): WrenDoc {
+  const manifestFile =
+    !files.has(MANIFEST_FILE) && files.has(LEGACY_MANIFEST_FILE)
+      ? LEGACY_MANIFEST_FILE
+      : MANIFEST_FILE;
+  const manifest = readJson(files, manifestFile);
+  if (!isObj(manifest) || !PROJECT_FORMATS.has(String(manifest.format))) {
+    throw new ProjectFormatError(`‘${MANIFEST_FILE}’ is not a Wren project manifest`);
   }
   const params = readJson(files, PARAMS_FILE);
   if (!isObj(params) || !Array.isArray(params.params)) {
@@ -231,7 +240,7 @@ export function fromFiles(files: ProjectFiles): WhittleDoc {
 }
 
 // ---------------------------------------------------------------------------------------------
-// .whittle (zip)
+// .wrencad (zip)
 // ---------------------------------------------------------------------------------------------
 
 /** Zip entries carry no wall-clock time: 1980-01-01 00:00 (local fields, so the TZ cannot leak in). */
@@ -241,7 +250,7 @@ const fixedTime = (): Date => new Date(1980, 0, 1, 0, 0, 0);
 export const MAX_ARCHIVE_ENTRIES = 20_000;
 export const MAX_ARCHIVE_BYTES = 512 * 1024 * 1024;
 
-/** Zips files (sorted, fixed timestamp). `cache` entries are stored under `.whittle/`. */
+/** Zips files (sorted, fixed timestamp). `cache` entries are stored under `.wren/`. */
 export function packFiles(files: ProjectFiles, cache?: ProjectFiles): Uint8Array {
   const all = new Map<string, Uint8Array>(files);
   if (cache) for (const [k, v] of cache) all.set(`${CACHE_DIR}${k}`, v);
@@ -253,7 +262,7 @@ export function packFiles(files: ProjectFiles, cache?: ProjectFiles): Uint8Array
   return zipSync(tree);
 }
 
-/** Unzips a `.whittle`: project files (everything outside `.whittle/`) and the cache (keys relative to `.whittle/`). */
+/** Unzips a `.wrencad`: project files (everything outside `.wren/`) and the cache (keys relative to `.wren/`). */
 export function unpackFiles(bytes: Uint8Array): { files: ProjectFiles; cache: ProjectFiles } {
   let total = 0;
   let count = 0;
@@ -271,7 +280,7 @@ export function unpackFiles(bytes: Uint8Array): { files: ProjectFiles; cache: Pr
     });
   } catch (e) {
     if (e instanceof ProjectFormatError) throw e;
-    throw new ProjectFormatError('This is not a valid .whittle archive');
+    throw new ProjectFormatError('This is not a valid .wrencad archive');
   }
   let names = Object.keys(raw);
   for (const n of names) {
@@ -280,10 +289,13 @@ export function unpackFiles(bytes: Uint8Array): { files: ProjectFiles; cache: Pr
     }
   }
   // Tolerate a single wrapping folder (a project folder zipped by an ordinary tool).
-  if (!names.includes(MANIFEST_FILE)) {
+  const hasManifest = (prefix: string) =>
+    names.includes(`${prefix}${MANIFEST_FILE}`) ||
+    names.includes(`${prefix}${LEGACY_MANIFEST_FILE}`);
+  if (!hasManifest('')) {
     const roots = new Set(names.map((n) => n.split('/')[0]));
     const only = roots.size === 1 ? [...roots][0] : undefined;
-    if (only && names.includes(`${only}/${MANIFEST_FILE}`)) {
+    if (only && hasManifest(`${only}/`)) {
       const stripped: Record<string, Uint8Array> = {};
       for (const n of names) stripped[n.slice(only.length + 1)] = raw[n] as Uint8Array;
       raw = stripped;
@@ -294,26 +306,28 @@ export function unpackFiles(bytes: Uint8Array): { files: ProjectFiles; cache: Pr
   const cache: ProjectFiles = new Map();
   for (const n of names.sort()) {
     if (n.startsWith(CACHE_DIR)) cache.set(n.slice(CACHE_DIR.length), raw[n] as Uint8Array);
+    else if (n.startsWith(LEGACY_CACHE_DIR))
+      cache.set(n.slice(LEGACY_CACHE_DIR.length), raw[n] as Uint8Array);
     else files.set(n, raw[n] as Uint8Array);
   }
   return { files, cache };
 }
 
-const MODEL_PATH = /^(whittle\.project\.json|params\.json|(parts|drawings|assemblies)\/)/;
+const MODEL_PATH = /^(wren\.project\.json|params\.json|(parts|drawings|assemblies)\/)/;
 
 export const projectCodec: ProjectCodec = {
   toFiles,
   fromFiles,
-  toWhittle: (doc, cache, extra) => {
+  toWren: (doc, cache, extra) => {
     const files = toFiles(doc);
     // Attachments and other non-model files (imports/, previews/, releases/) ride along.
     if (extra) for (const [path, data] of extra) if (!MODEL_PATH.test(path)) files.set(path, data);
     return packFiles(files, cache);
   },
-  fromWhittle(bytes) {
+  fromWren(bytes) {
     const { files, cache } = unpackFiles(bytes);
     // Files outside the document model (previews/, releases/, …) are returned so a round trip
-    // through Whittle never drops them.
+    // through Wren never drops them.
     const extra: ProjectFiles = new Map();
     for (const [path, data] of files) {
       if (!MODEL_PATH.test(path)) extra.set(path, data);

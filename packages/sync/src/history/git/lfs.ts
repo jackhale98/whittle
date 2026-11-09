@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 /**
- * Git LFS pointers (ADR-029 item 5). Whittle runs no clean/smudge filters, so an LFS-tracked
+ * Git LFS pointers (ADR-029 item 5). Wren runs no clean/smudge filters, so an LFS-tracked
  * file is a small pointer blob in git while the user's checkout holds the real content (smudged
- * by git-lfs). Whittle leaves the pointer alone: a working file whose SHA-256 is the pointer's
+ * by git-lfs). Wren leaves the pointer alone: a working file whose SHA-256 is the pointer's
  * `oid` counts as unchanged, and a commit keeps the pointer blob as it is.
  */
 

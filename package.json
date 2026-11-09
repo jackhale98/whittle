@@ -1,5 +1,5 @@
 {
-  "name": "whittle",
+  "name": "wren",
   "private": true,
   "version": "0.0.0",
   "description": "Free, open-source, browser-native parametric CAD.",
@@ -10,18 +10,18 @@
     "node": ">=22"
   },
   "scripts": {
-    "dev": "pnpm --filter @whittle/web dev",
-    "build": "pnpm --filter @whittle/web build && node scripts/third-party-notices.mjs",
-    "preview": "pnpm --filter @whittle/web preview",
+    "dev": "pnpm --filter @wren-cad/web dev",
+    "build": "pnpm --filter @wren-cad/web build && node scripts/third-party-notices.mjs",
+    "preview": "pnpm --filter @wren-cad/web preview",
     "test": "pnpm -r --if-present test",
     "typecheck": "pnpm -r --if-present typecheck",
     "lint": "biome check .",
     "format": "biome format --write .",
-    "e2e": "pnpm --filter @whittle/web e2e",
-    "perf": "pnpm --filter @whittle/web perf",
-    "perf:viewport": "pnpm --filter @whittle/viewport perf",
-    "kernel:build": "pnpm --filter @whittle/kernel build",
-    "kernel:test": "pnpm --filter @whittle/kernel test"
+    "e2e": "pnpm --filter @wren-cad/web e2e",
+    "perf": "pnpm --filter @wren-cad/web perf",
+    "perf:viewport": "pnpm --filter @wren-cad/viewport perf",
+    "kernel:build": "pnpm --filter @wren-cad/kernel build",
+    "kernel:test": "pnpm --filter @wren-cad/kernel test"
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.6",

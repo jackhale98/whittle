@@ -16,7 +16,7 @@ import type {
   ShellFeature,
   SweepFeature,
   ThreadFeature,
-} from '@whittle/contracts';
+} from '@wren-cad/contracts';
 import { Crosshair, Info, Plus, TriangleAlert, X } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Field, fieldClass, Section, Segmented, Switch } from '../components/controls';

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 /**
  * Snapshot history for cloud drives and local-only projects (PLAN §8A.3, ADR-020 item 6). Lives
- * in `.whittle-history/` beside the project and syncs with it. Layout (docs/FILE_FORMAT.md §9):
+ * in `.wren-history/` beside the project and syncs with it. Layout (docs/FILE_FORMAT.md §9):
  *
  *   versions/<id>.json                  version metadata (immutable)
  *   snapshots/<sha256>.zip              the project files, packed (content-addressed, immutable)
@@ -28,8 +28,8 @@ import type {
   StorageError,
   StorageResult,
   Version,
-} from '@whittle/contracts';
-import { canonicalBytes, packFiles, slugify, ulid, unpackFiles } from '@whittle/document';
+} from '@wren-cad/contracts';
+import { canonicalBytes, packFiles, slugify, ulid, unpackFiles } from '@wren-cad/document';
 import type { HistoryFiles } from './files';
 import { HISTORY_PREFIX, hashProjectFiles, versionedFiles } from './hash';
 import { decodeName, encodeName, nameProblem } from './names';
@@ -49,13 +49,13 @@ export interface SnapshotHistoryOptions {
   onStateChange?: (state: SnapshotLocalState) => void;
   now?: () => Date;
   newId?: () => string;
-  /** Default `.whittle-history/`. */
+  /** Default `.wren-history/`. */
   root?: string;
 }
 
 /** `versions/<id>.json`. `branch` records where a version was saved (autos are listed by it). */
 interface VersionFile {
-  format: 'whittle-version';
+  format: 'wren-version';
   id: string;
   parents: string[];
   message: string;
@@ -67,7 +67,7 @@ interface VersionFile {
 }
 
 interface ReleaseFile {
-  format: 'whittle-release';
+  format: 'wren-release';
   name: string;
   versionId: string;
   at: string;
@@ -197,7 +197,7 @@ class SnapshotHistoryImpl implements SnapshotHistory {
           reads.push(
             this.files.read(full).then((b) => {
               const v = parseJson<VersionFile>(b);
-              if (v?.format === 'whittle-version' && v.id === vid) {
+              if (v?.format === 'wren-version' && v.id === vid) {
                 this.cache.set(vid, v);
                 versions.set(vid, v);
               }
@@ -218,7 +218,7 @@ class SnapshotHistoryImpl implements SnapshotHistory {
     for (const r of await Promise.all(
       releaseFiles.map(async (p) => parseJson<ReleaseFile>(await this.files.read(p))),
     )) {
-      if (r?.format !== 'whittle-release' || !versions.has(r.versionId)) continue;
+      if (r?.format !== 'wren-release' || !versions.has(r.versionId)) continue;
       const prev = byName.get(r.name);
       // Two devices released one name offline: the first release stands.
       if (!prev || r.at < prev.at || (r.at === prev.at && r.versionId < prev.versionId)) {
@@ -287,7 +287,7 @@ class SnapshotHistoryImpl implements SnapshotHistory {
     meta: Omit<VersionFile, 'format' | 'id' | 'at' | 'hash' | 'branch'>,
   ): Promise<VersionFile> {
     const v: VersionFile = {
-      format: 'whittle-version',
+      format: 'wren-version',
       id: this.newId(),
       ...meta,
       at: this.now().toISOString(),
@@ -523,7 +523,7 @@ class SnapshotHistoryImpl implements SnapshotHistory {
           paths.push(folder + p);
         }
         const r: ReleaseFile = {
-          format: 'whittle-release',
+          format: 'wren-release',
           name,
           versionId,
           at: this.now().toISOString(),

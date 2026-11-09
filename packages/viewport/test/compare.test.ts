@@ -1,5 +1,5 @@
-import type { CompareOverlay } from '@whittle/contracts';
-import { boxMesh } from '@whittle/test-fixtures';
+import type { CompareOverlay } from '@wren-cad/contracts';
+import { boxMesh } from '@wren-cad/test-fixtures';
 import type { Material, Mesh } from 'three/webgpu';
 import { describe, expect, it } from 'vitest';
 import {

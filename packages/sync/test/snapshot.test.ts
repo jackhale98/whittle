@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-import type { Author, ProjectFiles, StorageResult } from '@whittle/contracts';
-import { fromFiles, toFiles } from '@whittle/document';
+import type { Author, ProjectFiles, StorageResult } from '@wren-cad/contracts';
+import { fromFiles, toFiles } from '@wren-cad/document';
 import { describe, expect, it } from 'vitest';
 import {
   createSnapshotHistory,
@@ -46,14 +46,14 @@ const project = (
 ): ProjectFiles => {
   const files = toFiles(edit ? edit(baseDoc()) : baseDoc());
   files.set('imports/bolt.step', new Uint8Array([1, 2, 3]));
-  files.set('.whittle/meshes/index.json', new Uint8Array([9])); // cache: never versioned
+  files.set('.wren/meshes/index.json', new Uint8Array([9])); // cache: never versioned
   return files;
 };
 const width = (expr: string) => (d: ReturnType<typeof baseDoc>) =>
   apply(d, { kind: 'updateParam', paramId: P_WIDTH, expr });
 
 describe('SnapshotHistory', () => {
-  it('saves, reads back byte for byte and lays out .whittle-history/', async () => {
+  it('saves, reads back byte for byte and lays out .wren-history/', async () => {
     const { files, make } = setup();
     const h = make();
     const v = value(await h.saveVersion(project(), 'First', { author: ann }));
@@ -61,15 +61,15 @@ describe('SnapshotHistory', () => {
     expect(v.hash).toBe(await hashProjectFiles(project()));
     const back = value(await h.read(v.id));
     expect([...back.keys()].sort()).toEqual(
-      [...project().keys()].filter((p) => !p.startsWith('.whittle/')).sort(),
+      [...project().keys()].filter((p) => !p.startsWith('.wren/')).sort(),
     );
     for (const [p, b] of back) expect(b).toEqual(project().get(p));
     expect([...files.files.keys()].sort()).toEqual([
-      `.whittle-history/refs/heads/main/${v.id}`,
-      `.whittle-history/snapshots/${v.hash}.zip`,
-      `.whittle-history/versions/${v.id}.json`,
+      `.wren-history/refs/heads/main/${v.id}`,
+      `.wren-history/snapshots/${v.hash}.zip`,
+      `.wren-history/versions/${v.id}.json`,
     ]);
-    expect(files.files.get(`.whittle-history/refs/heads/main/${v.id}`)?.length).toBe(0);
+    expect(files.files.get(`.wren-history/refs/heads/main/${v.id}`)?.length).toBe(0);
   });
 
   it('an unchanged project returns the existing head', async () => {
@@ -150,7 +150,7 @@ describe('SnapshotHistory', () => {
     expect(m.parents).toEqual([va.id, vb.id]);
     expect((await a.branches()).map((x) => x.head)).toEqual([m.id]);
     // A stale head ref resurrected by a sync is ignored (it's an ancestor of the merge).
-    await files.write(`.whittle-history/refs/heads/main/${vb.id}`, new Uint8Array(0));
+    await files.write(`.wren-history/refs/heads/main/${vb.id}`, new Uint8Array(0));
     expect((await a.branches()).map((x) => x.head)).toEqual([m.id]);
     expect((await a.log()).map((v) => v.message)).toEqual(['Merge', 'B edit', 'A edit', 'First']);
   });
@@ -167,7 +167,7 @@ describe('SnapshotHistory', () => {
       files: ['releases/rev-a/bracket.step'],
     });
     expect(files.files.get('releases/rev-a/bracket.step')).toEqual(new Uint8Array([7, 7]));
-    expect(files.files.has(`.whittle-history/refs/releases/Rev%20A/${v.id}`)).toBe(true);
+    expect(files.files.has(`.wren-history/refs/releases/Rev%20A/${v.id}`)).toBe(true);
     const again = await h.release(v.id, 'Rev A', exports, ann);
     expect(again.ok === false && again.error.code).toBe('CONFLICT');
     expect((await h.releases()).map((x) => x.name)).toEqual(['Rev A']);

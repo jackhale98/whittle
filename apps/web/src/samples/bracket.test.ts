@@ -1,8 +1,8 @@
 /** The demo bracket loads into the store and regenerates with the real engine (Node). */
 import { existsSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { createDocumentStore } from '@whittle/document';
-import type { KernelInitModule } from '@whittle/kernel';
+import { createDocumentStore } from '@wren-cad/document';
+import type { KernelInitModule } from '@wren-cad/kernel';
 import { describe, expect, it } from 'vitest';
 import { createModelingApi } from '../../../../packages/kernel-client/src/modeling-api';
 import { demoBracket, demoBracketVolume } from './bracket';

@@ -19,8 +19,8 @@ import type {
   PushPullFeature,
   RevolveFeature,
   SketchFeature,
-} from '@whittle/contracts';
-import { ulid } from '@whittle/document';
+} from '@wren-cad/contracts';
+import { ulid } from '@wren-cad/document';
 
 const BASE_NAMES: Record<string, string> = {
   sketch: 'Sketch',

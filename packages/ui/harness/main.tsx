@@ -1,5 +1,5 @@
 import '../src/styles/index.css';
-import type { DeviceTier, KernelStatus, RuntimeDiagnostics } from '@whittle/contracts';
+import type { DeviceTier, KernelStatus, RuntimeDiagnostics } from '@wren-cad/contracts';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AppShell, StatusChip, type ThemeSetting } from '../src';

@@ -1,20 +1,20 @@
-# @whittle/sketch
+# @wren-cad/sketch
 
 The 2D sketch layer: the constraint solver, the degrees-of-freedom analysis, the conflict explanations,
 constraint inference while drawing, the drawing tools and the geometry helpers.
 
 The solver is [planegcs](https://github.com/salusoft89/planegcs) (`@salusoft89/planegcs`, LGPL-2.0-or-later),
-which is FreeCAD's PlaneGCS compiled to WebAssembly. Whittle owns the policy around it. planegcs
-answers "can these constraints be satisfied?", and Whittle checks the answer itself.
+which is FreeCAD's PlaneGCS compiled to WebAssembly. Wren owns the policy around it. planegcs
+answers "can these constraints be satisfied?", and Wren checks the answer itself.
 
 ## Entry points
 
 | Entry | Runs on | What it is |
 | --- | --- | --- |
-| `@whittle/sketch` (`src/index.ts`) | Main thread | `createSketchSolverClient()` (spawns the worker and wraps it with Comlink), inference, the drawing tools, geometry and explanation helpers. Loads no Wasm. |
-| `@whittle/sketch/worker` (`src/worker.ts`) | Sketch worker | Loads planegcs (the `.wasm` as a hashed asset via `?url`) and exposes `SketchSolverApi` over Comlink. |
-| `@whittle/sketch/edit` (`src/edit/index.ts`) | Main thread or any worker | Sketch editing (M3): `offsetEntities`, `convertEntities` / `reprojectLinked` / `relinkEntities` / `unlinkEntities`, `trimEntity` / `extendEntity`, `filletCorner` / `chamferCorner`, `mirrorEntities`. Pure functions on `SketchData`; each returns the new sketch, a patch summary (`created`, `removed`, `changed`, `addedConstraints`, `removedConstraints`), `notes` and an undo `description`, or `{ ok: false, reason }`. Loads no Wasm. |
-| `@whittle/sketch/core` (`src/core.ts`) | Node, or any worker | `createSketchSolver()`, the solver itself, synchronous once planegcs has loaded. The kernel worker uses it for sketch re-solves. |
+| `@wren-cad/sketch` (`src/index.ts`) | Main thread | `createSketchSolverClient()` (spawns the worker and wraps it with Comlink), inference, the drawing tools, geometry and explanation helpers. Loads no Wasm. |
+| `@wren-cad/sketch/worker` (`src/worker.ts`) | Sketch worker | Loads planegcs (the `.wasm` as a hashed asset via `?url`) and exposes `SketchSolverApi` over Comlink. |
+| `@wren-cad/sketch/edit` (`src/edit/index.ts`) | Main thread or any worker | Sketch editing (M3): `offsetEntities`, `convertEntities` / `reprojectLinked` / `relinkEntities` / `unlinkEntities`, `trimEntity` / `extendEntity`, `filletCorner` / `chamferCorner`, `mirrorEntities`. Pure functions on `SketchData`; each returns the new sketch, a patch summary (`created`, `removed`, `changed`, `addedConstraints`, `removedConstraints`), `notes` and an undo `description`, or `{ ok: false, reason }`. Loads no Wasm. |
+| `@wren-cad/sketch/core` (`src/core.ts`) | Node, or any worker | `createSketchSolver()`, the solver itself, synchronous once planegcs has loaded. The kernel worker uses it for sketch re-solves. |
 
 Never import `core` on the main thread. Use the client from the package root.
 
@@ -39,7 +39,7 @@ are in [`packages/contracts/src/sketch.ts`](../contracts/src/sketch.ts).
 
 1. **Model.** `src/model.ts` turns the sketch into a flat parameter vector in millimetres and one
    residual per constraint row. Reference (driven) dimensions are left out of the solve.
-2. **Solve.** planegcs solves the driving constraints. Whittle does not trust the answer on its own.
+2. **Solve.** planegcs solves the driving constraints. Wren does not trust the answer on its own.
 3. **Verify.** Every residual is recomputed in TypeScript. A sketch is `solved` only if all residuals
    are within tolerance (1e-7 times the sketch's scale for lengths, 1e-7 for angles). planegcs can
    report success on degenerate collapses, and this catches them.
@@ -100,8 +100,8 @@ with the cursor or an existing point. `bindCandidate` attaches the chosen candid
 
 | Command | What it does |
 | --- | --- |
-| `pnpm --filter @whittle/sketch test` | `vitest run` over `test/`: constraints, DOF, conflicts, drag (with the budget), inference, tools, the client and the helpers |
-| `pnpm --filter @whittle/sketch typecheck` | `tsc -p .` |
+| `pnpm --filter @wren-cad/sketch test` | `vitest run` over `test/`: constraints, DOF, conflicts, drag (with the budget), inference, tools, the client and the helpers |
+| `pnpm --filter @wren-cad/sketch typecheck` | `tsc -p .` |
 
 The solver tests use the real planegcs in Node. `test/helpers.ts` builds one shared core for them.
 
@@ -110,7 +110,7 @@ The solver tests use the real planegcs in Node. `test/helpers.ts` builds one sha
 - **Tolerance and coplanarity.** A dimension within 1e-7 times the sketch size counts as satisfied
   for planegcs' answer; the polish step (`src/polish.ts`, ADR-011) then drives driving dimensions
   and coincidences to ≤ 1e-11 mm, so sketches dimensioned to meet are exactly coplanar.
-- **Why Whittle re-verifies.** planegcs is a general-purpose solver. Whittle's checks keep the
+- **Why Wren re-verifies.** planegcs is a general-purpose solver. Wren's checks keep the
   document from getting a "solved" sketch that is in fact a collapsed one, and they feed DOF and the
   explanations.
 - **Licence.** planegcs is LGPL-2.0-or-later, which GPL-3.0 can use (ADR-001, ADR-003).

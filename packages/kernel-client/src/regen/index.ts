@@ -1,5 +1,5 @@
 /**
- * @whittle/kernel-client/regen — the parametric regeneration engine (runs in the kernel worker).
+ * @wren-cad/kernel-client/regen — the parametric regeneration engine (runs in the kernel worker).
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  */

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 /**
- * Three-way structural merge of Whittle documents, keyed by stable id (PLAN §8A.3, ADR-020 item
- * 5). This replaces Mycelium's line-based text merge: Whittle merges the parsed document.
+ * Three-way structural merge of Wren documents, keyed by stable id (PLAN §8A.3, ADR-020 item
+ * 5). This replaces Mycelium's line-based text merge: Wren merges the parsed document.
  *
  * Rules:
  *  - Arrays of identified items (`tree.ts` COLLECTIONS) merge as id-keyed maps plus an order.
@@ -31,9 +31,9 @@ import type {
   MergeResolution,
   MergeResult,
   Param,
-  WhittleDoc,
-} from '@whittle/contracts';
-import { validateDoc } from '@whittle/document';
+  WrenDoc,
+} from '@wren-cad/contracts';
+import { validateDoc } from '@wren-cad/document';
 import { subjectAt } from './labels';
 import {
   barIdOf,
@@ -54,9 +54,9 @@ import {
 type Choice = { take: 'ours' | 'theirs' | 'base' } | { value: unknown };
 
 interface Sides {
-  base: WhittleDoc;
-  ours: WhittleDoc;
-  theirs: WhittleDoc;
+  base: WrenDoc;
+  ours: WrenDoc;
+  theirs: WrenDoc;
 }
 
 /** The inputs of each result, so `resolve` can re-run the merge with the user's choices. */
@@ -86,10 +86,10 @@ class MergeRun {
     private readonly choices: ReadonlyMap<string, Choice>,
   ) {}
 
-  run(): WhittleDoc {
+  run(): WrenDoc {
     const { base, ours, theirs } = this.sides;
     // A copy: the walk returns the inputs' own objects where nothing changed.
-    const doc = clone(this.node([], base, ours, theirs)) as WhittleDoc;
+    const doc = clone(this.node([], base, ours, theirs)) as WrenDoc;
     this.paramNames(doc);
     return doc;
   }
@@ -257,7 +257,7 @@ class MergeRun {
   }
 
   /** Parameter names are unique: theirs' new or renamed name that clashes is a conflict. */
-  private paramNames(doc: WhittleDoc): void {
+  private paramNames(doc: WrenDoc): void {
     const { base, ours, theirs } = this.sides;
     const [bm, om, tm] = [byId(base.params), byId(ours.params), byId(theirs.params)];
     const count = new Map<string, number>();
@@ -397,7 +397,7 @@ function setAt(doc: Obj, segs: Segs, value: unknown): void {
   }
 }
 
-function resolveByPath(result: MergeResult, choices: ReadonlyMap<string, Choice>): WhittleDoc {
+function resolveByPath(result: MergeResult, choices: ReadonlyMap<string, Choice>): WrenDoc {
   const doc = clone(result.doc) as unknown as Obj;
   const counts = new Map<Obj, number>();
   for (const part of (doc.parts ?? []) as Obj[]) {
@@ -433,7 +433,7 @@ function resolveByPath(result: MergeResult, choices: ReadonlyMap<string, Choice>
     if (before !== undefined && r === before) r = n; // was fully rolled forward: stays so
     part.rollbackIndex = Math.max(0, Math.min(n, r));
   }
-  return doc as unknown as WhittleDoc;
+  return doc as unknown as WrenDoc;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -441,7 +441,7 @@ function resolveByPath(result: MergeResult, choices: ReadonlyMap<string, Choice>
 // ---------------------------------------------------------------------------------------------
 
 export class StructuralMerger implements DocMerger {
-  merge(base: WhittleDoc, ours: WhittleDoc, theirs: WhittleDoc): MergeResult {
+  merge(base: WrenDoc, ours: WrenDoc, theirs: WrenDoc): MergeResult {
     const sides = { base: clone(base), ours: clone(ours), theirs: clone(theirs) };
     const run = new MergeRun(sides, new Map());
     const doc = run.run();
@@ -457,7 +457,7 @@ export class StructuralMerger implements DocMerger {
    * an unknown conflict id or when the choices would make an invalid document (e.g. two
    * parameters with one name).
    */
-  resolve(result: MergeResult, resolutions: readonly MergeResolution[]): WhittleDoc {
+  resolve(result: MergeResult, resolutions: readonly MergeResolution[]): WrenDoc {
     const known = new Set(result.conflicts.map((c) => c.id));
     const choices = new Map<string, Choice>();
     for (const r of resolutions) {
