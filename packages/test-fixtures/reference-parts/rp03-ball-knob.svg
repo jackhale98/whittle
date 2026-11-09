@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 297" width="420mm" height="297mm" data-part="RP03">
+<title>RP03 Ball knob - Whittle reference part</title>
+<rect x="5" y="5" width="410" height="287" fill="#fff" stroke="#111" stroke-width="0.8"/>
+<g data-view="Front">
+<text x="30" y="-1.6" font-size="3.6" font-family="sans-serif" font-weight="bold" fill="#111">Front</text>
+<path d="M54.482 62.4 A80 80 0 0 0 84.4 195.793" stroke="#111" stroke-width="0.5" fill="none"/>
+<path d="M135.6 195.793 A80 80 0 0 0 165.518 62.4" stroke="#111" stroke-width="0.5" fill="none"/>
+<line x1="54.482" y1="62.4" x2="165.518" y2="62.4" stroke="#111" stroke-width="0.5" fill="none"/>
+<path d="M84.4 195.793 L84.4 243.2 L89.2 248 L130.8 248 L135.6 243.2 L135.6 195.793" stroke="#111" stroke-width="0.5" fill="none"/>
+<line x1="110" y1="36.8" x2="110" y2="273.6" stroke="#2a5db0" stroke-width="0.25" stroke-dasharray="6 1.5 1 1.5" fill="none"/>
+<line x1="209.2" y1="120" x2="252.8" y2="120" stroke="#444" stroke-width="0.2"/>
+<line x1="209.2" y1="62.4" x2="252.8" y2="62.4" stroke="#444" stroke-width="0.2"/>
+<line x1="254" y1="120" x2="254" y2="62.4" stroke="#111" stroke-width="0.25"/>
+<path d="M254 120 L253.2 117.6 L254.8 117.6 Z" fill="#111"/>
+<path d="M254 62.4 L254.8 64.8 L253.2 64.8 Z" fill="#111"/>
+<text data-dim="flat_h" data-value="18" x="255.2" y="91.2" text-anchor="start" font-size="3.2" font-family="monospace" fill="#111">flat_h = 18 mm</text>
+<line x1="30" y1="120" x2="30" y2="214" stroke="#444" stroke-width="0.2"/>
+<line x1="190" y1="120" x2="190" y2="214" stroke="#444" stroke-width="0.2"/>
+<line x1="30" y1="212.8" x2="190" y2="212.8" stroke="#111" stroke-width="0.25"/>
+<path d="M30 212.8 L32.4 212 L32.4 213.6 Z" fill="#111"/>
+<path d="M190 212.8 L187.6 213.6 L187.6 212 Z" fill="#111"/>
+<text data-dim="ball_d" data-value="50" x="110" y="216.8" text-anchor="middle" font-size="3.2" font-family="monospace" fill="#111">ball_d = 50 mm</text>
+<line x1="84.4" y1="248" x2="84.4" y2="274.8" stroke="#444" stroke-width="0.2"/>
+<line x1="135.6" y1="248" x2="135.6" y2="274.8" stroke="#444" stroke-width="0.2"/>
+<line x1="84.4" y1="273.6" x2="135.6" y2="273.6" stroke="#111" stroke-width="0.25"/>
+<path d="M84.4 273.6 L86.8 272.8 L86.8 274.4 Z" fill="#111"/>
+<path d="M135.6 273.6 L133.2 274.4 L133.2 272.8 Z" fill="#111"/>
+<text data-dim="stem_d" data-value="16" x="110" y="277.6" text-anchor="middle" font-size="3.2" font-family="monospace" fill="#111">stem_d = 16 mm</text>
+<line x1="209.2" y1="248" x2="246.4" y2="248" stroke="#444" stroke-width="0.2"/>
+<line x1="209.2" y1="120" x2="246.4" y2="120" stroke="#444" stroke-width="0.2"/>
+<line x1="247.6" y1="248" x2="247.6" y2="120" stroke="#111" stroke-width="0.25"/>
+<path d="M247.6 248 L246.8 245.6 L248.4 245.6 Z" fill="#111"/>
+<path d="M247.6 120 L248.4 122.4 L246.8 122.4 Z" fill="#111"/>
+<text data-dim="stem_l" data-value="40" x="248.8" y="184" text-anchor="start" font-size="3.2" font-family="monospace" fill="#111">stem_l = 40 mm</text>
+<line x1="134.194" y1="251.394" x2="144.094" y2="261.294" stroke="#111" stroke-width="0.25"/>
+<path d="M134.194 251.394 L136.457 252.525 L135.325 253.657 Z" fill="#111"/>
+<text data-dim="chamfer_c" data-value="1.5" x="145.094" y="261.294" text-anchor="start" font-size="3.2" font-family="monospace" fill="#111">chamfer_c = 1.5 mm</text>
+</g>
+<rect x="215" y="257" width="190" height="35" fill="#fff" stroke="#111" stroke-width="0.6"/>
+<text x="218" y="266" font-size="6" font-family="sans-serif" font-weight="bold" fill="#111">Whittle reference part</text>
+<rect x="215" y="268" width="95" height="11" fill="none" stroke="#111" stroke-width="0.3"/><text x="216.5" y="271.2" font-size="2.2" font-family="sans-serif" fill="#666">PART</text><text x="216.5" y="277" font-size="3.6" font-family="sans-serif" fill="#111">RP03  Ball knob</text>
+<rect x="310" y="268" width="95" height="11" fill="none" stroke="#111" stroke-width="0.3"/><text x="311.5" y="271.2" font-size="2.2" font-family="sans-serif" fill="#666">LEVEL</text><text x="311.5" y="277" font-size="3.6" font-family="sans-serif" fill="#111">CSWA-like</text>
+<rect x="215" y="279" width="95" height="13" fill="none" stroke="#111" stroke-width="0.3"/><text x="216.5" y="282.2" font-size="2.2" font-family="sans-serif" fill="#666">MATERIAL</text><text x="216.5" y="290" font-size="3.6" font-family="sans-serif" fill="#111">Brass C360</text>
+<rect x="310" y="279" width="95" height="13" fill="none" stroke="#111" stroke-width="0.3"/><text x="311.5" y="282.2" font-size="2.2" font-family="sans-serif" fill="#666">DENSITY</text><text x="311.5" y="290" font-size="3.6" font-family="sans-serif" fill="#111">8.50 g/cm^3</text>
+<text x="10" y="284" font-size="2.8" font-family="sans-serif" fill="#444">All dimensions in mm unless marked. Third-angle projection.</text>
+<text x="10" y="288" font-size="2.8" font-family="sans-serif" fill="#444">Original drawing for the Whittle certification-style suite; the named values drive the model.</text>
+</svg>

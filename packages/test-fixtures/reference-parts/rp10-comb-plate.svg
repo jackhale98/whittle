@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 297" width="420mm" height="297mm" data-part="RP10">
+<title>RP10 Comb plate - Whittle reference part</title>
+<rect x="5" y="5" width="410" height="287" fill="#fff" stroke="#111" stroke-width="0.8"/>
+<g data-view="Top">
+<text x="36" y="58.6" font-size="3.6" font-family="sans-serif" font-weight="bold" fill="#111">Top</text>
+<path d="M62 121 L218 121 L218 110.6 L244 110.6 L244 79.4 L218 79.4 L218 69 L62 69 L62 79.4 L36 79.4 L36 110.6 L62 110.6 Z" stroke="#111" stroke-width="0.5" fill="none"/>
+<rect x="77.6" y="79.4" width="7.8" height="31.2" stroke="#111" stroke-width="0.5" fill="none"/>
+<rect x="101" y="79.4" width="7.8" height="31.2" stroke="#111" stroke-width="0.5" fill="none"/>
+<rect x="124.4" y="79.4" width="7.8" height="31.2" stroke="#111" stroke-width="0.5" fill="none"/>
+<rect x="147.8" y="79.4" width="7.8" height="31.2" stroke="#555" stroke-width="0.3" stroke-dasharray="2 1.2" fill="none"/>
+<rect x="171.2" y="79.4" width="7.8" height="31.2" stroke="#111" stroke-width="0.5" fill="none"/>
+<rect x="194.6" y="79.4" width="7.8" height="31.2" stroke="#111" stroke-width="0.5" fill="none"/>
+<circle cx="49" cy="95" r="5.2" stroke="#111" stroke-width="0.5" fill="none"/>
+<circle cx="231" cy="95" r="5.2" stroke="#111" stroke-width="0.5" fill="none"/>
+<line x1="62" y1="121" x2="62" y2="133.9" stroke="#444" stroke-width="0.2"/>
+<line x1="218" y1="121" x2="218" y2="133.9" stroke="#444" stroke-width="0.2"/>
+<line x1="62" y1="132.7" x2="218" y2="132.7" stroke="#111" stroke-width="0.25"/>
+<path d="M62 132.7 L64.4 131.9 L64.4 133.5 Z" fill="#111"/>
+<path d="M218 132.7 L215.6 133.5 L215.6 131.9 Z" fill="#111"/>
+<text data-dim="plate_l" data-value="120" x="140" y="136.7" text-anchor="middle" font-size="3.2" font-family="monospace" fill="#111">plate_l = 120 mm</text>
+<line x1="62" y1="121" x2="52.8" y2="121" stroke="#444" stroke-width="0.2"/>
+<line x1="62" y1="69" x2="52.8" y2="69" stroke="#444" stroke-width="0.2"/>
+<line x1="51.6" y1="121" x2="51.6" y2="69" stroke="#111" stroke-width="0.25"/>
+<path d="M51.6 121 L50.8 118.6 L52.4 118.6 Z" fill="#111"/>
+<path d="M51.6 69 L52.4 71.4 L50.8 71.4 Z" fill="#111"/>
+<text data-dim="plate_w" data-value="40" x="50.4" y="95" text-anchor="end" font-size="3.2" font-family="monospace" fill="#111">plate_w = 40 mm</text>
+<line x1="218" y1="79.4" x2="218" y2="70.4" stroke="#444" stroke-width="0.2"/>
+<line x1="244" y1="79.4" x2="244" y2="70.4" stroke="#444" stroke-width="0.2"/>
+<line x1="218" y1="71.6" x2="244" y2="71.6" stroke="#111" stroke-width="0.25"/>
+<path d="M218 71.6 L220.4 70.8 L220.4 72.4 Z" fill="#111"/>
+<path d="M244 71.6 L241.6 72.4 L241.6 70.8 Z" fill="#111"/>
+<text data-dim="ear_l" data-value="20" x="231" y="70.4" text-anchor="middle" font-size="3.2" font-family="monospace" fill="#111">ear_l = 20 mm</text>
+<line x1="244" y1="110.6" x2="253.2" y2="110.6" stroke="#444" stroke-width="0.2"/>
+<line x1="244" y1="79.4" x2="253.2" y2="79.4" stroke="#444" stroke-width="0.2"/>
+<line x1="254.4" y1="110.6" x2="254.4" y2="79.4" stroke="#111" stroke-width="0.25"/>
+<path d="M254.4 110.6 L253.6 108.2 L255.2 108.2 Z" fill="#111"/>
+<path d="M254.4 79.4 L255.2 81.8 L253.6 81.8 Z" fill="#111"/>
+<text data-dim="ear_w" data-value="24" x="255.6" y="95" text-anchor="start" font-size="3.2" font-family="monospace" fill="#111">ear_w = 24 mm</text>
+<line x1="233.6" y1="99.503" x2="241.6" y2="113.36" stroke="#111" stroke-width="0.25"/>
+<path d="M233.6 99.503 L235.493 101.182 L234.107 101.982 Z" fill="#111"/>
+<text data-dim="ear_hole_d" data-value="8" x="242.6" y="113.36" text-anchor="start" font-size="3.2" font-family="monospace" fill="#111">ear_hole_d = 8 mm</text>
+<line x1="62" y1="69" x2="62" y2="58.7" stroke="#444" stroke-width="0.2"/>
+<line x1="81.5" y1="69" x2="81.5" y2="58.7" stroke="#444" stroke-width="0.2"/>
+<line x1="62" y1="59.9" x2="81.5" y2="59.9" stroke="#111" stroke-width="0.25"/>
+<path d="M62 59.9 L64.4 59.1 L64.4 60.7 Z" fill="#111"/>
+<path d="M81.5 59.9 L79.1 60.7 L79.1 59.1 Z" fill="#111"/>
+<text data-dim="slot_x0" data-value="-45" x="71.75" y="58.7" text-anchor="middle" font-size="3.2" font-family="monospace" fill="#111">slot_x0 = -45 mm</text>
+<line x1="81.5" y1="115.8" x2="81.5" y2="122.2" stroke="#444" stroke-width="0.2"/>
+<line x1="104.9" y1="115.8" x2="104.9" y2="122.2" stroke="#444" stroke-width="0.2"/>
+<line x1="81.5" y1="121" x2="104.9" y2="121" stroke="#111" stroke-width="0.25"/>
+<path d="M81.5 121 L83.9 120.2 L83.9 121.8 Z" fill="#111"/>
+<path d="M104.9 121 L102.5 121.8 L102.5 120.2 Z" fill="#111"/>
+<text data-dim="slot_pitch" data-value="18" x="93.2" y="125" text-anchor="middle" font-size="3.2" font-family="monospace" fill="#111">slot_pitch = 18 mm</text>
+<line x1="77.6" y1="79.4" x2="77.6" y2="73" stroke="#444" stroke-width="0.2"/>
+<line x1="85.4" y1="79.4" x2="85.4" y2="73" stroke="#444" stroke-width="0.2"/>
+<line x1="77.6" y1="74.2" x2="85.4" y2="74.2" stroke="#111" stroke-width="0.25"/>
+<path d="M77.6 74.2 L80 73.4 L80 75 Z" fill="#111"/>
+<path d="M85.4 74.2 L83 75 L83 73.4 Z" fill="#111"/>
+<text data-dim="slot_l" data-value="6" x="81.5" y="73" text-anchor="middle" font-size="3.2" font-family="monospace" fill="#111">slot_l = 6 mm</text>
+<line x1="85.4" y1="110.6" x2="92" y2="110.6" stroke="#444" stroke-width="0.2"/>
+<line x1="85.4" y1="79.4" x2="92" y2="79.4" stroke="#444" stroke-width="0.2"/>
+<line x1="93.2" y1="110.6" x2="93.2" y2="79.4" stroke="#111" stroke-width="0.25"/>
+<path d="M93.2 110.6 L92.4 108.2 L94 108.2 Z" fill="#111"/>
+<path d="M93.2 79.4 L94 81.8 L92.4 81.8 Z" fill="#111"/>
+<text data-dim="slot_w" data-value="24" x="94.4" y="95" text-anchor="start" font-size="3.2" font-family="monospace" fill="#111">slot_w = 24 mm</text>
+<text data-dim="slot_n" data-value="6" x="36" y="147" text-anchor="start" font-size="3.2" font-family="monospace" fill="#111">slot_n = 6</text>
+</g>
+<g data-view="Front">
+<text x="36" y="194" font-size="3.6" font-family="sans-serif" font-weight="bold" fill="#111">Front</text>
+<rect x="36" y="209.6" width="208" height="10.4" stroke="#111" stroke-width="0.5" fill="none"/>
+<line x1="244" y1="220" x2="258.4" y2="220" stroke="#444" stroke-width="0.2"/>
+<line x1="244" y1="209.6" x2="258.4" y2="209.6" stroke="#444" stroke-width="0.2"/>
+<line x1="259.6" y1="220" x2="259.6" y2="209.6" stroke="#111" stroke-width="0.25"/>
+<path d="M259.6 220 L258.8 217.6 L260.4 217.6 Z" fill="#111"/>
+<path d="M259.6 209.6 L260.4 212 L258.8 212 Z" fill="#111"/>
+<text data-dim="plate_t" data-value="8" x="260.8" y="214.8" text-anchor="start" font-size="3.2" font-family="monospace" fill="#111">plate_t = 8 mm</text>
+</g>
+<rect x="215" y="257" width="190" height="35" fill="#fff" stroke="#111" stroke-width="0.6"/>
+<text x="218" y="266" font-size="6" font-family="sans-serif" font-weight="bold" fill="#111">Whittle reference part</text>
+<rect x="215" y="268" width="95" height="11" fill="none" stroke="#111" stroke-width="0.3"/><text x="216.5" y="271.2" font-size="2.2" font-family="sans-serif" fill="#666">PART</text><text x="216.5" y="277" font-size="3.6" font-family="sans-serif" fill="#111">RP10  Comb plate</text>
+<rect x="310" y="268" width="95" height="11" fill="none" stroke="#111" stroke-width="0.3"/><text x="311.5" y="271.2" font-size="2.2" font-family="sans-serif" fill="#666">LEVEL</text><text x="311.5" y="277" font-size="3.6" font-family="sans-serif" fill="#111">CSWP-like</text>
+<rect x="215" y="279" width="95" height="13" fill="none" stroke="#111" stroke-width="0.3"/><text x="216.5" y="282.2" font-size="2.2" font-family="sans-serif" fill="#666">MATERIAL</text><text x="216.5" y="290" font-size="3.6" font-family="sans-serif" fill="#111">Acetal (POM)</text>
+<rect x="310" y="279" width="95" height="13" fill="none" stroke="#111" stroke-width="0.3"/><text x="311.5" y="282.2" font-size="2.2" font-family="sans-serif" fill="#666">DENSITY</text><text x="311.5" y="290" font-size="3.6" font-family="sans-serif" fill="#111">1.41 g/cm^3</text>
+<text x="10" y="284" font-size="2.8" font-family="sans-serif" fill="#444">All dimensions in mm unless marked. Third-angle projection.</text>
+<text x="10" y="288" font-size="2.8" font-family="sans-serif" fill="#444">Original drawing for the Whittle certification-style suite; the named values drive the model.</text>
+</svg>

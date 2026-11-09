@@ -1,6 +1,9 @@
 {
   "root": false,
   "extends": "//",
+  "files": {
+    "includes": ["**", "!**/*.md", "!reference-parts/*.json"]
+  },
   "overrides": [
     {
       "includes": ["test/**"],

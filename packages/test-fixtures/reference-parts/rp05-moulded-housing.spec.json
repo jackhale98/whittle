@@ -1,0 +1,264 @@
+{
+  "schema": "whittle-reference-part/1",
+  "id": "rp05-moulded-housing",
+  "no": 5,
+  "title": "Moulded housing",
+  "level": "CSWP-like",
+  "summary": "An ABS housing: a box whose four walls lean inward by a draft angle, then hollowed to a uniform wall with the top face removed.",
+  "units": {
+    "length": "mm",
+    "angle": "deg"
+  },
+  "material": {
+    "libraryId": "whittle:abs",
+    "name": "ABS",
+    "density": "1.04 g/cm^3",
+    "density_g_cm3": 1.04
+  },
+  "dimensions": {
+    "base_l": {
+      "value": 90,
+      "unit": "mm",
+      "description": "Length at the bottom (X)"
+    },
+    "base_w": {
+      "value": 60,
+      "unit": "mm",
+      "description": "Width at the bottom (Y)"
+    },
+    "height": {
+      "value": 40,
+      "unit": "mm",
+      "description": "Height (Z)"
+    },
+    "draft_a": {
+      "value": 3,
+      "unit": "deg",
+      "description": "Draft angle of the four walls"
+    },
+    "wall": {
+      "value": 3,
+      "unit": "mm",
+      "description": "Wall thickness, measured normal to the walls and floor"
+    }
+  },
+  "tags": [
+    "extrude",
+    "draft",
+    "shell"
+  ],
+  "standards": [],
+  "method": "Exact by integration. The cross-section at height z is a rectangle (l - 2 z tan a) x (w - 2 z tan a); its area is quadratic in z, so the antiderivative is exact. The cavity is the same family inset horizontally by wall/cos(a) on every side (the wall is thick normal to the drafted face) and starting at z = wall (the floor is horizontal). Volume = outer integral minus cavity integral. Accuracy: floating point (1e-12 relative). Assumed draft direction: neutral plane = the bottom face, walls lean inward going up (the top is smaller).",
+  "features": [
+    {
+      "tool": "sketch",
+      "id": "base_sk",
+      "say": "Sketch on Top (XY): a rectangle base_l x base_w centred on the origin.",
+      "on": {
+        "pick": "plane",
+        "name": "origin:XY"
+      },
+      "ops": [
+        {
+          "op": "rect",
+          "id": "L",
+          "x": "-base_l/2",
+          "y": "-base_w/2",
+          "w": "base_l",
+          "h": "base_w"
+        }
+      ]
+    },
+    {
+      "tool": "extrude",
+      "id": "base",
+      "say": "Extrude by height as a new body.",
+      "profile": [
+        {
+          "pick": "region",
+          "sketch": "base_sk",
+          "curves": [
+            "L1",
+            "L2",
+            "L3",
+            "L4"
+          ],
+          "at": [
+            20,
+            10,
+            0
+          ]
+        }
+      ],
+      "direction": "normal",
+      "end": {
+        "kind": "blind",
+        "depth": "height"
+      },
+      "op": "new"
+    },
+    {
+      "tool": "draft",
+      "id": "dr",
+      "say": "Draft the four side faces by draft_a, neutral plane = the bottom face, so the walls lean inward going up.",
+      "faces": [
+        {
+          "pick": "face",
+          "name": "F{base}:side(S{base_sk}:e(L1))",
+          "at": [
+            0,
+            -30,
+            20
+          ]
+        },
+        {
+          "pick": "face",
+          "name": "F{base}:side(S{base_sk}:e(L2))",
+          "at": [
+            45,
+            0,
+            20
+          ]
+        },
+        {
+          "pick": "face",
+          "name": "F{base}:side(S{base_sk}:e(L3))",
+          "at": [
+            0,
+            30,
+            20
+          ]
+        },
+        {
+          "pick": "face",
+          "name": "F{base}:side(S{base_sk}:e(L4))",
+          "at": [
+            -45,
+            0,
+            20
+          ]
+        }
+      ],
+      "neutral": {
+        "pick": "face",
+        "name": "F{base}:start",
+        "at": [
+          10,
+          10,
+          0
+        ]
+      },
+      "angle": "draft_a",
+      "reverse": false
+    },
+    {
+      "tool": "shell",
+      "id": "sh",
+      "say": "Shell inward by wall, removing the top face.",
+      "openFaces": [
+        {
+          "pick": "face",
+          "name": "F{base}:end",
+          "at": [
+            10,
+            10,
+            40
+          ]
+        }
+      ],
+      "thickness": "wall",
+      "direction": "inward"
+    }
+  ],
+  "expected": {
+    "volume_mm3": 47137.4466087,
+    "mass_g": 49.022944473,
+    "bbox": {
+      "min": [
+        -45,
+        -30,
+        0
+      ],
+      "max": [
+        45,
+        30,
+        40
+      ]
+    }
+  },
+  "stages": [
+    {
+      "name": "Stage 2: wall -> 4 mm",
+      "set": {
+        "wall": 4
+      },
+      "expected": {
+        "volume_mm3": 61093.3674024,
+        "mass_g": 63.5371020985,
+        "bbox": {
+          "min": [
+            -45,
+            -30,
+            0
+          ],
+          "max": [
+            45,
+            30,
+            40
+          ]
+        }
+      }
+    },
+    {
+      "name": "Stage 3: draft_a -> 5 deg",
+      "set": {
+        "draft_a": 5
+      },
+      "expected": {
+        "volume_mm3": 46490.4569985,
+        "mass_g": 48.3500752784,
+        "bbox": {
+          "min": [
+            -45,
+            -30,
+            0
+          ],
+          "max": [
+            45,
+            30,
+            40
+          ]
+        }
+      }
+    },
+    {
+      "name": "Stage 4: height -> 50 mm and base_l -> 100 mm",
+      "set": {
+        "height": 50,
+        "base_l": 100
+      },
+      "expected": {
+        "volume_mm3": 59841.1815015,
+        "mass_g": 62.2348287616,
+        "bbox": {
+          "min": [
+            -50,
+            -30,
+            0
+          ],
+          "max": [
+            50,
+            30,
+            50
+          ]
+        }
+      }
+    }
+  ],
+  "drawing": "rp05-moulded-housing.svg",
+  "independent": {
+    "tool": "FreeCAD",
+    "script": "freecad/rp05.py",
+    "results": "freecad-results.json"
+  }
+}

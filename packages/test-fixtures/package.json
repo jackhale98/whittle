@@ -4,15 +4,18 @@
   "private": true,
   "license": "GPL-3.0-or-later",
   "type": "module",
-  "description": "Synthetic, structurally correct MeshBuffers fixtures for viewport and UI tests.",
+  "description": "Synthetic MeshBuffers fixtures for viewport and UI tests, and the reference-part suite (specs, drawings, builder, kernel goldens; PLAN section 12A).",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./reference-parts": "./reference-parts/index.ts"
   },
   "scripts": {
     "typecheck": "tsc -p .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "generate": "UPDATE_REFERENCE_PARTS=1 vitest run test/reference-parts.test.ts"
   },
   "dependencies": {
-    "@whittle/contracts": "workspace:*"
+    "@whittle/contracts": "workspace:*",
+    "@whittle/document": "workspace:*"
   }
 }

@@ -1,0 +1,335 @@
+{
+  "schema": "whittle-reference-part/1",
+  "id": "rp09-flanged-hub",
+  "no": 9,
+  "title": "Flanged hub",
+  "level": "CSWP-like",
+  "summary": "A cast-iron flanged hub revolved from one profile, with a ring of bolt holes made by a circular pattern about a reference axis taken from the bore, two instances left out.",
+  "units": {
+    "length": "mm",
+    "angle": "deg"
+  },
+  "material": {
+    "libraryId": "whittle:cast-iron",
+    "name": "Cast iron (grey)",
+    "density": "7.20 g/cm^3",
+    "density_g_cm3": 7.2
+  },
+  "dimensions": {
+    "flange_d": {
+      "value": 120,
+      "unit": "mm",
+      "description": "Flange outside diameter"
+    },
+    "flange_t": {
+      "value": 12,
+      "unit": "mm",
+      "description": "Flange thickness"
+    },
+    "hub_d": {
+      "value": 56,
+      "unit": "mm",
+      "description": "Hub outside diameter"
+    },
+    "hub_h": {
+      "value": 30,
+      "unit": "mm",
+      "description": "Hub height above the flange"
+    },
+    "bore_d": {
+      "value": 32,
+      "unit": "mm",
+      "description": "Through bore diameter"
+    },
+    "bolt_d": {
+      "value": 9,
+      "unit": "mm",
+      "description": "Bolt hole diameter (ISO 273 M8 normal clearance)"
+    },
+    "pcd": {
+      "value": 90,
+      "unit": "mm",
+      "description": "Bolt circle diameter"
+    },
+    "bolt_n": {
+      "value": 8,
+      "unit": "",
+      "description": "Pattern count (including the original and the skipped ones)"
+    }
+  },
+  "tags": [
+    "revolve",
+    "axis",
+    "circularPattern",
+    "skip"
+  ],
+  "standards": [],
+  "method": "Exact. The solid of revolution is two stacked annular cylinders; each bolt hole is a cylinder through the flange only (the bolt circle lies outside the hub). The pattern has bolt_n instances equally spaced over 360 degrees; instances 2 and 5 are skipped, so bolt_n - 2 holes are cut. The surface area adds the cylinders and annuli and replaces, for each hole, two annular patches by the hole wall. Accuracy: floating point (1e-12 relative).",
+  "features": [
+    {
+      "tool": "sketch",
+      "id": "prof_sk",
+      "say": "Sketch on Front (XZ): the half section of the hub, bore edge to flange rim to hub top, as a closed polygon.",
+      "on": {
+        "pick": "plane",
+        "name": "origin:XZ"
+      },
+      "ops": [
+        {
+          "op": "polygon",
+          "id": "L",
+          "pts": [
+            [
+              "bore_d/2",
+              "0"
+            ],
+            [
+              "flange_d/2",
+              "0"
+            ],
+            [
+              "flange_d/2",
+              "flange_t"
+            ],
+            [
+              "hub_d/2",
+              "flange_t"
+            ],
+            [
+              "hub_d/2",
+              "flange_t + hub_h"
+            ],
+            [
+              "bore_d/2",
+              "flange_t + hub_h"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "tool": "revolve",
+      "id": "hub",
+      "say": "Revolve the profile 360 degrees about the Z axis.",
+      "profile": [
+        {
+          "pick": "region",
+          "sketch": "prof_sk",
+          "curves": [
+            "L1",
+            "L2",
+            "L3",
+            "L4",
+            "L5",
+            "L6"
+          ],
+          "at": [
+            38,
+            0,
+            6
+          ]
+        }
+      ],
+      "axis": {
+        "pick": "axis",
+        "name": "origin:Z"
+      },
+      "angle": "360 deg",
+      "direction": "normal",
+      "op": "new"
+    },
+    {
+      "tool": "axis",
+      "id": "ax",
+      "say": "Reference axis: through the axis of the bore (pick the bore face).",
+      "definition": {
+        "kind": "cylinder",
+        "face": {
+          "pick": "face",
+          "name": "F{hub}:side(S{prof_sk}:e(L6))",
+          "at": [
+            16,
+            0,
+            27
+          ]
+        }
+      }
+    },
+    {
+      "tool": "sketch",
+      "id": "bolt_sk",
+      "say": "Sketch on the flange top face: one point on the bolt circle at (pcd/2, 0).",
+      "on": {
+        "pick": "face",
+        "name": "F{hub}:side(S{prof_sk}:e(L3))",
+        "at": [
+          44,
+          0,
+          12
+        ]
+      },
+      "ops": [
+        {
+          "op": "point",
+          "id": "P",
+          "x": "pcd/2",
+          "y": "0"
+        }
+      ]
+    },
+    {
+      "tool": "hole",
+      "id": "bolt",
+      "say": "Hole wizard: simple ISO M8 clearance hole (normal fit), through all.",
+      "points": [
+        {
+          "pick": "vertex",
+          "name": "S{bolt_sk}:p(P)",
+          "at": [
+            45,
+            0,
+            12
+          ]
+        }
+      ],
+      "face": {
+        "pick": "face",
+        "name": "F{hub}:side(S{prof_sk}:e(L3))",
+        "at": [
+          44,
+          0,
+          12
+        ]
+      },
+      "standard": "ISO",
+      "kind": "simple",
+      "size": "M8",
+      "fit": "normal",
+      "end": {
+        "kind": "throughAll"
+      }
+    },
+    {
+      "tool": "circularPattern",
+      "id": "ring",
+      "say": "Circular pattern of the hole about the reference axis: bolt_n instances over 360 degrees, equal spacing, skip instances 2 and 5.",
+      "source": {
+        "kind": "features",
+        "features": [
+          "bolt"
+        ]
+      },
+      "axis": {
+        "pick": "axis",
+        "name": "F{ax}:axis",
+        "at": [
+          0,
+          0,
+          0
+        ]
+      },
+      "count": "bolt_n",
+      "angle": "360 deg",
+      "equalSpacing": true,
+      "skip": [
+        2,
+        5
+      ]
+    }
+  ],
+  "expected": {
+    "volume_mm3": 171248.215547,
+    "mass_g": 1232.98715194,
+    "bbox": {
+      "min": [
+        -60,
+        -60,
+        0
+      ],
+      "max": [
+        60,
+        60,
+        42
+      ]
+    },
+    "area_mm2": 36307.3862975
+  },
+  "stages": [
+    {
+      "name": "Stage 2: bolt_n -> 10 (instances 2 and 5 still skipped)",
+      "set": {
+        "bolt_n": 10
+      },
+      "expected": {
+        "volume_mm3": 169721.401518,
+        "mass_g": 1221.99409093,
+        "bbox": {
+          "min": [
+            -60,
+            -60,
+            0
+          ],
+          "max": [
+            60,
+            60,
+            42
+          ]
+        },
+        "area_mm2": 36731.5013058
+      }
+    },
+    {
+      "name": "Stage 3: pcd -> 100 mm",
+      "set": {
+        "pcd": 100
+      },
+      "expected": {
+        "volume_mm3": 171248.215547,
+        "mass_g": 1232.98715194,
+        "bbox": {
+          "min": [
+            -60,
+            -60,
+            0
+          ],
+          "max": [
+            60,
+            60,
+            42
+          ]
+        },
+        "area_mm2": 36307.3862975
+      }
+    },
+    {
+      "name": "Stage 4: hub_h -> 45 mm and bore_d -> 36 mm",
+      "set": {
+        "hub_h": 45,
+        "bore_d": 36
+      },
+      "expected": {
+        "volume_mm3": 183952.816238,
+        "mass_g": 1324.46027692,
+        "bbox": {
+          "min": [
+            -60,
+            -60,
+            0
+          ],
+          "max": [
+            60,
+            60,
+            57
+          ]
+        },
+        "area_mm2": 40743.3151244
+      }
+    }
+  ],
+  "drawing": "rp09-flanged-hub.svg",
+  "independent": {
+    "tool": "FreeCAD",
+    "script": "freecad/rp09.py",
+    "results": "freecad-results.json"
+  }
+}
