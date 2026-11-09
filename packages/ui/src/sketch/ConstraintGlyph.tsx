@@ -12,6 +12,7 @@ export const constraintLabels: Record<SketchConstraintKind, string> = {
   parallel: 'Parallel',
   perpendicular: 'Perpendicular',
   tangent: 'Tangent',
+  curvature: 'Curvature',
   equal: 'Equal',
   midpoint: 'Midpoint',
   concentric: 'Concentric',
@@ -35,6 +36,7 @@ export const geometricConstraintKinds = [
   'parallel',
   'perpendicular',
   'tangent',
+  'curvature',
   'equal',
   'midpoint',
   'concentric',
@@ -103,6 +105,16 @@ const glyphs: Record<SketchConstraintKind, ReactNode> = {
     <>
       <circle cx="12" cy="9" r="6" />
       <path d="M3 15h18" />
+    </>
+  ),
+  // G2: one circle that the curve shares on both sides of the join. The span before the join is
+  // solid, the span after it dashed, and the join is the dot. Tangent is a solid circle resting on
+  // a straight line; this has no line, and half of the circle is dashed.
+  curvature: (
+    <>
+      <path d="M4.5 13A7.5 7.5 0 0 1 19.5 13" />
+      <path d="M19.5 13A7.5 7.5 0 0 1 4.5 13" strokeDasharray="2 2.2" strokeWidth="1.4" />
+      <circle cx="19.5" cy="13" r="2.2" fill="currentColor" stroke="none" />
     </>
   ),
   equal: <path d="M6 9h12M6 15h12" />,
@@ -176,7 +188,7 @@ export interface ConstraintGlyphProps {
   className?: string;
 }
 
-/** A single constraint glyph. All 21 constraint kinds of `sketch.ts` are covered. */
+/** A single constraint glyph. Every constraint kind of `sketch.ts` are covered. */
 export function ConstraintGlyph({
   kind,
   size = 24,

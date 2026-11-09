@@ -47,6 +47,7 @@ import {
   sampleStatuses,
 } from './fixtures';
 import { M3Gallery } from './m3Gallery';
+import { M35Gallery } from './m35Gallery';
 import { SyncGallery } from './syncGallery';
 
 type Tier = 'desktop' | 'tablet' | 'phone';
@@ -583,6 +584,17 @@ export function Gallery({
       case 'm3-tree':
       case 'm3-bar':
         return <M3Gallery section={section} tier={tier} />;
+      case 'm35-radial':
+      case 'm35-radial-live':
+      case 'm35-chooser':
+      case 'm35-keymap':
+      case 'm35-overlay':
+      case 'm35-nav':
+      case 'm35-errors':
+      case 'm35-sketch':
+      case 'm35-dim':
+      case 'm35-lineage':
+        return <M35Gallery section={section} tier={tier} />;
       case 'sync':
       case 'connections':
       case 'versions':

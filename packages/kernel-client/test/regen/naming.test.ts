@@ -189,6 +189,9 @@ describe.skipIf(!built)(`regen golden: naming under dimension edits${skipNote}${
       massProperties: true,
     });
     expect(states(zero), describeFailures(zero)).toEqual(['ok', 'ok', 'ok', 'error', 'blocked']);
+    // M3.5: the notch's own edit is not an upstream cause; the fillet waits on the notch.
+    expect(zero.features[3]?.cause).toBeUndefined();
+    expect(zero.features[4]?.cause).toEqual({ featureId: CA, kind: 'failed' });
     relClose(totalVolume(zero.bodies), 40000, 1e-9);
     expect(zero.ghosts?.map((g) => g.id)).toEqual([`B${E1}`]);
   });
@@ -301,6 +304,12 @@ describe.skipIf(!built)(`regen golden: naming under dimension edits${skipNote}${
     const u = two.features[6]?.unresolved?.[0];
     expect(u?.ref).toEqual(middleFront);
     expect(u?.candidates?.sort()).toEqual([frontTop(`F${E1}:end#0`), frontTop(`F${E1}:end#1`)]);
+    // M3.5: notch A's width dimension (in its sketch) is the change that merged the pieces.
+    expect(u?.cause).toEqual({
+      featureId: NA,
+      kind: 'changed',
+      detail: 'horizontal distance 10 mm → 30 mm',
+    });
     relClose(totalVolume(two.bodies), 160000 - 4 * 6000, 1e-9);
 
     const again = await run('10 mm');

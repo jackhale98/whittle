@@ -284,9 +284,9 @@ std::string massProperties(ShapeHandle shape, double densityKgPerMm3) {
                  "Check the material's density.");
     }
     GProp_GProps volumeProps;
-    BRepGProp::VolumeProperties(record->shape, volumeProps);
+    reportedVolumeProperties(record->shape, volumeProps);
     GProp_GProps surfaceProps;
-    BRepGProp::SurfaceProperties(record->shape, surfaceProps);
+    reportedSurfaceProperties(record->shape, surfaceProps);
     const Bnd_Box box = exactBounds(*record);
     const Topo& topo = record->topo();
 

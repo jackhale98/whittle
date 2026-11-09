@@ -425,6 +425,189 @@ struct SketchPointDef {
   bool construction = false;
 };
 
+// OCCT's knot form: distinct, strictly increasing knots and their multiplicities.
+struct KnotVector {
+  std::vector<double> knots;
+  std::vector<int> mults;
+};
+
+// Contract default for a clamped (non-periodic) spline of `nPoles` poles (ADR-pending, sketch
+// curves): multiplicity degree + 1 at both ends, interior knots uniform in [0, 1] with
+// multiplicity 1, i.e. knots i / (nPoles - degree), i = 0 … nPoles - degree.
+KnotVector uniformClampedKnots(int nPoles, int degree) {
+  const int spans = nPoles - degree;
+  KnotVector kv;
+  for (int i = 0; i <= spans; ++i) {
+    kv.knots.push_back(static_cast<double>(i) / spans);
+    kv.mults.push_back(i == 0 || i == spans ? degree + 1 : 1);
+  }
+  return kv;
+}
+
+// Contract default for a periodic spline: nPoles + 1 knots i / nPoles (period 1), multiplicity 1.
+KnotVector uniformPeriodicKnots(int nPoles) {
+  KnotVector kv;
+  for (int i = 0; i <= nPoles; ++i) {
+    kv.knots.push_back(static_cast<double>(i) / nPoles);
+    kv.mults.push_back(1);
+  }
+  return kv;
+}
+
+// The B-spline of a sketch `bspline` entity (SketchBSpline). Validates everything OCCT would
+// reject (and the contract's "clamped unless periodic") first, so bad input is INVALID_INPUT
+// naming the entity rather than an OCCT exception.
+occ::handle<Geom_BSplineCurve> sketchBSplineCurve(const Json& e, const std::string& id,
+                                                  const std::vector<gp_Pnt>& poles,
+                                                  const std::string& ref) {
+  auto bad = [&](const std::string& message, const std::string& hint = {}) {
+    raiseError("INVALID_INPUT", "Spline " + id + " " + message, hint, {}, {ref});
+  };
+  const int maxDegree = Geom_BSplineCurve::MaxDegree();
+  const Json* degJ = e.get("degree");
+  if (degJ == nullptr || !degJ->isNumber() || degJ->number != std::floor(degJ->number) ||
+      degJ->number < 1 || degJ->number > maxDegree) {
+    bad("needs an integer degree from 1 to " + std::to_string(maxDegree), "Splines are usually degree 3.");
+  }
+  const int degree = static_cast<int>(degJ->number);
+  const Json* perJ = e.get("periodic");
+  if (perJ != nullptr && perJ->kind != Json::Kind::Bool) bad("periodic must be true or false");
+  const bool periodic = perJ != nullptr && perJ->boolean;
+  const int n = static_cast<int>(poles.size());
+  if (n < degree + 1) {
+    bad("needs at least degree + 1 = " + std::to_string(degree + 1) + " control points (has " +
+            std::to_string(n) + ")",
+        "Add control points or lower the degree.");
+  }
+  double extent = 0;
+  for (const gp_Pnt& p : poles) extent = std::max(extent, p.Distance(poles.front()));
+  if (!(extent > 1e-6)) bad("has zero length", "Drag its control points apart.");
+
+  std::vector<double> weights;
+  const Json* wJ = e.get("weights");
+  if (wJ != nullptr && wJ->kind != Json::Kind::Null) {
+    if (!wJ->isArray() || static_cast<int>(wJ->array.size()) != n) {
+      bad("needs one weight per control point (" + std::to_string(n) + ")");
+    }
+    for (const JsonPtr& w : wJ->array) {
+      if (!w->isNumber() || !std::isfinite(w->number) || !(w->number > 0)) {
+        bad("has a weight that is not a positive number", "Weights must be greater than zero.");
+      }
+      weights.push_back(w->number);
+    }
+  }
+
+  KnotVector kv;
+  const Json* kJ = e.get("knots");
+  const Json* mJ = e.get("multiplicities");
+  const bool hasK = kJ != nullptr && kJ->kind != Json::Kind::Null;
+  const bool hasM = mJ != nullptr && mJ->kind != Json::Kind::Null;
+  // ADR-048: an open spline's `knots` without `multiplicities` is a flat (expanded) knot vector
+  // when it has n + degree + 1 entries; equal neighbours collapse into one knot (exact equality,
+  // as the regen engine reads it). Anything else without the pair is refused.
+  const bool flatKnots = hasK && !hasM && !periodic && kJ->isArray() &&
+                         static_cast<int>(kJ->array.size()) == n + degree + 1;
+  if (hasK != hasM && !flatKnots) {
+    bad("needs knots and multiplicities together (or neither, for uniform knots)",
+        "An open spline may also give a flat knot vector of control points + degree + 1 values.");
+  }
+  if (!hasK) {
+    kv = periodic ? uniformPeriodicKnots(n) : uniformClampedKnots(n, degree);
+  } else if (flatKnots) {
+    for (const JsonPtr& k : kJ->array) {
+      if (!k->isNumber() || !std::isfinite(k->number)) bad("has a knot that is not a finite number");
+      if (!kv.knots.empty() && k->number == kv.knots.back()) {
+        ++kv.mults.back();
+        continue;
+      }
+      if (!kv.knots.empty() && !(k->number - kv.knots.back() > 1e-12 * std::max(1.0, std::fabs(k->number)))) {
+        bad("needs non-decreasing knots");
+      }
+      kv.knots.push_back(k->number);
+      kv.mults.push_back(1);
+    }
+    if (kv.knots.size() < 2) bad("needs at least two distinct knots");
+    for (size_t i = 1; i + 1 < kv.mults.size(); ++i) {
+      if (kv.mults[i] > degree) bad("has an interior knot with multiplicity above the degree");
+    }
+    if (kv.mults.front() != degree + 1 || kv.mults.back() != degree + 1) {
+      bad("is not clamped: its first and last knots need multiplicity degree + 1 = " +
+          std::to_string(degree + 1));
+    }
+  } else {
+    if (!kJ->isArray() || !mJ->isArray() || kJ->array.size() != mJ->array.size() || kJ->array.size() < 2) {
+      bad("needs knots and multiplicities of the same length (at least 2)");
+    }
+    for (size_t i = 0; i < kJ->array.size(); ++i) {
+      const Json& k = *kJ->array[i];
+      const Json& m = *mJ->array[i];
+      if (!k.isNumber() || !std::isfinite(k.number)) bad("has a knot that is not a finite number");
+      if (!m.isNumber() || m.number != std::floor(m.number) || m.number < 1 || m.number > degree + 1) {
+        bad("has a multiplicity that is not an integer from 1 to degree + 1");
+      }
+      if (i > 0 && !(k.number - kv.knots.back() > 1e-12 * std::max(1.0, std::fabs(k.number)))) {
+        bad("needs strictly increasing knots", "Repeat a knot with its multiplicity instead.");
+      }
+      kv.knots.push_back(k.number);
+      kv.mults.push_back(static_cast<int>(m.number));
+    }
+    const size_t last = kv.mults.size() - 1;
+    for (size_t i = 1; i < last; ++i) {
+      if (kv.mults[i] > degree) bad("has an interior knot with multiplicity above the degree");
+    }
+    int sum = 0;
+    for (int m : kv.mults) sum += m;
+    if (periodic) {
+      if (kv.mults[0] != kv.mults[last] || kv.mults[0] > degree) {
+        bad("is periodic: its first and last knots need the same multiplicity, at most the degree");
+      }
+      if (sum - kv.mults[last] != n) {
+        bad("has a knot vector of the wrong length: a periodic spline with " + std::to_string(n) +
+            " control points needs multiplicities summing to " + std::to_string(n) +
+            " without the last knot (has " + std::to_string(sum - kv.mults[last]) + ")");
+      }
+    } else {
+      if (kv.mults[0] != degree + 1 || kv.mults[last] != degree + 1) {
+        bad("is not clamped: its first and last knots need multiplicity degree + 1 = " +
+            std::to_string(degree + 1));
+      }
+      if (sum != n + degree + 1) {
+        bad("has a knot vector of the wrong length: " + std::to_string(n) + " control points of degree " +
+            std::to_string(degree) + " need " + std::to_string(n + degree + 1) +
+            " knots counting multiplicity (has " + std::to_string(sum) + ")");
+      }
+    }
+  }
+
+  NCollection_Array1<gp_Pnt> P(1, n);
+  for (int i = 0; i < n; ++i) P(i + 1) = poles[static_cast<size_t>(i)];
+  const int nk = static_cast<int>(kv.knots.size());
+  NCollection_Array1<double> K(1, nk);
+  NCollection_Array1<int> M(1, nk);
+  for (int i = 0; i < nk; ++i) {
+    K(i + 1) = kv.knots[static_cast<size_t>(i)];
+    M(i + 1) = kv.mults[static_cast<size_t>(i)];
+  }
+  try {
+    if (weights.empty()) return new Geom_BSplineCurve(P, K, M, degree, periodic);
+    NCollection_Array1<double> W(1, n);
+    for (int i = 0; i < n; ++i) W(i + 1) = weights[static_cast<size_t>(i)];
+    return new Geom_BSplineCurve(P, W, K, M, degree, periodic);
+  } catch (const Standard_Failure& f) {
+    const char* what = f.what();
+    bad(std::string("is not a valid B-spline: ") + (what != nullptr ? what : "OCCT refused it"));
+  }
+  return {};
+}
+
+// Lets a sketch vertex sit on its curve end: the solver keeps points on their curves to its own
+// tolerance (≤ 1e-6 mm, checked by the caller), BRepLib_MakeEdge wants them within the vertex
+// tolerance (1e-7 mm by default).
+void fitVertexToCurve(const TopoDS_Vertex& v, const gp_Pnt& onCurve) {
+  const double d = BRep_Tool::Pnt(v).Distance(onCurve);
+  if (d > BRep_Tool::Tolerance(v)) BRep_Builder().UpdateVertex(v, 1.01 * d);
+}
+
 std::string execSketch(const Json& feature, const Json& inputs, const std::string& id) {
   const Json* planeFrame = frameInput(inputs, "plane");
   const gp_Ax3 frame(parseFrame(planeFrame));
@@ -458,23 +641,27 @@ std::string execSketch(const Json& feature, const Json& inputs, const std::strin
     points[pid] = SketchPointDef{x->number, y->number, c != nullptr && c->boolean};
     pointOrder.push_back(pid);
   }
-  auto pointOf = [&](const Json& e, const char* key) -> const SketchPointDef& {
-    const std::string ref = requireString(e, key, "sketch entity");
+  auto pointById = [&](const Json& e, const std::string& ref) -> const SketchPointDef& {
     auto it = points.find(ref);
     if (it == points.end()) {
       raiseError("INVALID_INPUT", "Sketch entity " + optString(e, "id", "?") + " refers to unknown point " + ref);
     }
     return it->second;
   };
+  auto pointOf = [&](const Json& e, const char* key) -> const SketchPointDef& {
+    return pointById(e, requireString(e, key, "sketch entity"));
+  };
   std::map<std::string, TopoDS_Vertex> vertexOf;
-  auto vertexFor = [&](const Json& e, const char* key) {
-    const std::string ref = requireString(e, key, "sketch entity");
+  auto vertexById = [&](const Json& e, const std::string& ref) {
     auto found = vertexOf.find(ref);
     if (found != vertexOf.end()) return found->second;
-    const SketchPointDef& p = pointOf(e, key);
+    const SketchPointDef& p = pointById(e, ref);
     TopoDS_Vertex v = BRepBuilderAPI_MakeVertex(to3d(p.u, p.v)).Vertex();
     vertexOf[ref] = v;
     return v;
+  };
+  auto vertexFor = [&](const Json& e, const char* key) {
+    return vertexById(e, requireString(e, key, "sketch entity"));
   };
 
   struct Curve {
@@ -535,7 +722,10 @@ std::string execSketch(const Json& feature, const Json& inputs, const std::strin
       }
       occ::handle<Geom_Circle> circle =
           new Geom_Circle(gp_Ax2(to3d(ctr.u, ctr.v), zDir, xDir), r);
-      BRepBuilderAPI_MakeEdge mk(circle, vertexFor(e, "start"), vertexFor(e, "end"), a1, a2);
+      const TopoDS_Vertex vs = vertexFor(e, "start");
+      const TopoDS_Vertex ve = vertexFor(e, "end");
+      fitVertexToCurve(ve, circle->Value(a2));
+      BRepBuilderAPI_MakeEdge mk(circle, vs, ve, a1, a2);
       if (!mk.IsDone()) raiseError("OPERATION_FAILED", "Could not build arc " + c.id);
       c.edge = mk.Edge();
     } else if (kind == "ellipse") {
@@ -560,6 +750,96 @@ std::string execSketch(const Json& feature, const Json& inputs, const std::strin
       BRepBuilderAPI_MakeEdge mk(el);
       if (!mk.IsDone()) raiseError("OPERATION_FAILED", "Could not build ellipse " + c.id);
       c.edge = mk.Edge();
+    } else if (kind == "ellipticArc") {
+      // M3.5: counter-clockwise from start to end; major axis at `rotation` (as the ellipse).
+      const std::string ref = tag + ":e(" + c.id + ")";
+      const SketchPointDef& ctr = pointOf(e, "center");
+      const SketchPointDef& s = pointOf(e, "start");
+      const SketchPointDef& t = pointOf(e, "end");
+      const Json* maj = e.get("majorRadius");
+      const Json* min = e.get("minorRadius");
+      const Json* rot = e.get("rotation");
+      if (maj == nullptr || min == nullptr || !maj->isNumber() || !min->isNumber() ||
+          !std::isfinite(maj->number) || !std::isfinite(min->number) || !(maj->number > 1e-6) ||
+          !(min->number > 1e-6)) {
+        raiseError("INVALID_INPUT", "Elliptic arc " + c.id + " needs positive radii", {}, {}, {ref});
+      }
+      if (rot != nullptr && (!rot->isNumber() || !std::isfinite(rot->number))) {
+        raiseError("INVALID_INPUT", "Elliptic arc " + c.id + " needs a finite rotation (rad)", {}, {}, {ref});
+      }
+      double major = maj->number;
+      double minor = min->number;
+      double angle = rot != nullptr ? rot->number : 0.0;
+      if (minor > major) {
+        std::swap(major, minor);
+        angle += kPi / 2;
+      }
+      const gp_Dir axisX(std::cos(angle) * xDir.XYZ() + std::sin(angle) * yDir.XYZ());
+      const gp_Elips el(gp_Ax2(to3d(ctr.u, ctr.v), zDir, axisX), major, minor);
+      const gp_Pnt ps = to3d(s.u, s.v);
+      const gp_Pnt pt = to3d(t.u, t.v);
+      const double onTol = 1e-6 * std::max(1.0, major);
+      for (const gp_Pnt& q : {ps, pt}) {
+        if (ElCLib::Value(ElCLib::Parameter(el, q), el).Distance(q) > onTol) {
+          raiseError("INVALID_INPUT", "Elliptic arc " + c.id + " end point is not on its ellipse",
+                     "Solve the sketch before building it.", {}, {ref});
+        }
+      }
+      if (ps.Distance(pt) < 1e-9) {
+        raiseError("INVALID_INPUT", "Elliptic arc " + c.id + " has no sweep", "Use an ellipse instead.", {},
+                   {ref});
+      }
+      GC_MakeArcOfEllipse arc(el, ps, pt, true);
+      if (!arc.IsDone()) raiseError("OPERATION_FAILED", "Could not build elliptic arc " + c.id, {}, {}, {ref});
+      const occ::handle<Geom_TrimmedCurve>& trimmed = arc.Value();
+      const double p1 = trimmed->FirstParameter();
+      const double p2 = trimmed->LastParameter();
+      const TopoDS_Vertex vs = vertexFor(e, "start");
+      const TopoDS_Vertex ve = vertexFor(e, "end");
+      fitVertexToCurve(vs, trimmed->Value(p1));
+      fitVertexToCurve(ve, trimmed->Value(p2));
+      BRepBuilderAPI_MakeEdge mk(trimmed->BasisCurve(), vs, ve, p1, p2);
+      if (!mk.IsDone()) raiseError("OPERATION_FAILED", "Could not build elliptic arc " + c.id, {}, {}, {ref});
+      c.edge = mk.Edge();
+    } else if (kind == "bspline") {
+      // M3.5: exact B-spline from the pole points; clamped ends share the end poles' vertices.
+      const std::string ref = tag + ":e(" + c.id + ")";
+      const Json* polesJ = e.get("poles");
+      if (polesJ == nullptr || !polesJ->isArray()) {
+        raiseError("INVALID_INPUT", "Spline " + c.id + " needs a poles array of point ids", {}, {}, {ref});
+      }
+      std::vector<std::string> poleIds;
+      std::vector<gp_Pnt> poles;
+      for (const JsonPtr& pj : polesJ->array) {
+        if (!pj->isString()) {
+          raiseError("INVALID_INPUT", "Spline " + c.id + " poles must be point ids", {}, {}, {ref});
+        }
+        const SketchPointDef& p = pointById(e, pj->string);
+        poleIds.push_back(pj->string);
+        poles.push_back(to3d(p.u, p.v));
+      }
+      const occ::handle<Geom_BSplineCurve> curve = sketchBSplineCurve(e, c.id, poles, ref);
+      if (curve->IsPeriodic()) {
+        BRepBuilderAPI_MakeEdge mk(curve);
+        if (!mk.IsDone()) raiseError("OPERATION_FAILED", "Could not build spline " + c.id, {}, {}, {ref});
+        c.edge = mk.Edge();
+      } else {
+        const double u0 = curve->FirstParameter();
+        const double u1 = curve->LastParameter();
+        const TopoDS_Vertex v0 = vertexById(e, poleIds.front());
+        // A spline closed on itself (same end pole, or coincident end poles) has one vertex.
+        const bool closed = poleIds.back() == poleIds.front() ||
+                            poles.back().Distance(poles.front()) <= Precision::Confusion();
+        const TopoDS_Vertex v1 = closed ? v0 : vertexById(e, poleIds.back());
+        fitVertexToCurve(v0, curve->Value(u0));
+        fitVertexToCurve(v1, curve->Value(u1));
+        BRepBuilderAPI_MakeEdge mk(curve, v0, v1, u0, u1);
+        if (!mk.IsDone()) {
+          raiseError("OPERATION_FAILED", "Could not build spline " + c.id,
+                     "Check that its control points are not all on top of each other.", {}, {ref});
+        }
+        c.edge = mk.Edge();
+      }
     } else {
       raiseError("UNSUPPORTED_FEATURE", "Sketch entity kind '" + kind + "' is not supported");
     }

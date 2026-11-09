@@ -28,10 +28,12 @@ or `'webgl2'`), `maxPixelRatio`, `theme`, `reducedMotion` and `viewCube`.
   the runtime diagnostics.
 - **On-demand rendering.** A frame is drawn only when something changed: a camera move, a pointer
   down, new geometry, or a sketch overlay update. `getRenderCount()` lets tests assert this.
-- **Camera.** `camera-controls`. Left drag orbits, right and middle drag pan, the wheel zooms toward
-  the cursor. Touch: one finger orbits, two fingers pinch and pan. Double-click or double-tap fits the
-  view. Touch orbit ticks the render loop while a pointer is down, because camera-controls only applies
-  drag deltas inside `update()` (ADR-005 §8).
+- **Camera.** `camera-controls` owns the wheel (dolly to the cursor), two-finger pinch/pan and every
+  programmatic move (fit, `setView`, `lookAtPlane`, which ease unless reduced motion is on). Mouse
+  buttons, one-finger touch and non-drawing pen are handled by `NavigationMachine` (`src/navigation.ts`,
+  pure and unit-tested) and applied in `viewport.ts`, so the pivot, the marker and the 1:1 drag are
+  ours. See "Navigation (M3.5)" below. Double-click or double-tap fits the view until an app calls
+  `onGesture`.
 - **Studio light.** The first frame uses a hemisphere fill light. The procedural studio environment is
   built on idle after the first body frame, because its shader passes cost about 1.6 s on software GL
   (ADR-005 §4).
@@ -52,7 +54,7 @@ or `'webgl2'`), `maxPixelRatio`, `theme`, `reducedMotion` and `viewCube`.
   `viewCube: false`.
 - **Context loss.** A lost GPU context emits `contextlost` with a reason. When it comes back, the engine
   emits `contextrestored`. Hosts subscribe with `on(type, callback)`.
-- **Reduced motion.** `reducedMotion: true` disables camera animation and damping.
+- **Reduced motion.** `reducedMotion: true` (or the system `prefers-reduced-motion`) disables camera easing. Dragging never eased in the first place.
 
 ## Tests and scripts
 
@@ -61,7 +63,7 @@ or `'webgl2'`), `maxPixelRatio`, `theme`, `reducedMotion` and `viewCube`.
 | `pnpm --filter @wren-cad/viewport test` | `vitest run` over `test/` (views, the view cube, geometry and picking maths) |
 | `pnpm --filter @wren-cad/viewport typecheck` | `tsc -p .` |
 | `pnpm --filter @wren-cad/viewport harness` | A Vite page that mounts the engine with test meshes, for manual work |
-| `pnpm --filter @wren-cad/viewport e2e` | Playwright tests in `e2e/` (`viewport.spec.ts`, `picking.spec.ts`): orbit, zoom, fit, pinch, picking tolerances, sketch overlays |
+| `pnpm --filter @wren-cad/viewport e2e` | Playwright tests in `e2e/` (`viewport.spec.ts`, `picking.spec.ts`, `navigation.spec.ts`, ...): orbit, zoom, fit, pinch, picking tolerances, sketch overlays, pivot, presets, box selection |
 | `pnpm --filter @wren-cad/viewport perf` | Opt-in probes that set `WREN_PERF=1`: a 1-million-triangle model orbiting, and picking on the same model. Expect minutes on software GL. They log numbers and assert only that they ran. |
 
 The E2E tests run in CI's package-E2E job (Chromium, software GL). Fixtures come from
@@ -89,3 +91,48 @@ the live bodies, which fade to `ghostOpacity` (default 0.15); `setCompare(null)`
 Test hooks on the engine: `getCompareStats()` (active, show, mesh counts, ghost opacity, geometry
 builds, bounds) and `getBodyMaterialState(id)`. `fitAll(animate, { includeOverlay: true })` frames
 the overlay. Palette and rendering choices: see ADR-028 in docs/DECISIONS.md.
+
+## Navigation (M3.5, ADR-046)
+
+`setNavigation(partial)` / `getNavigation()` take the contract's `NavigationOptions`.
+
+- **Left drag never navigates**, under any preset. The viewport leaves left pointer events to the
+  app (picking, box select, sketch tools); the tap recogniser (`gestures.ts`) still sees left presses.
+- **Buttons per preset**
+  - `rightOrbit` (default): right drag orbits, middle drag pans, right click = `contextMenu`.
+  - `middleOrbit`: middle drag orbits, Ctrl+middle pans, right drag pans, middle click on geometry =
+    `setPivot`, right click = `contextMenu`.
+  - `middlePan`: middle drag pans, Shift+middle orbits, right drag orbits, right click = `contextMenu`.
+  - `rightOrbitRepeat`: as `rightOrbit`, but a right click released within 250 ms emits
+    `contextMenu` with `repeat: true`; slower presses emit a plain `contextMenu`.
+  - A secondary press released within 4 px is a click; past 4 px it navigates and emits no gesture.
+    The browser context menu is always suppressed. The wheel zooms to the cursor under every preset;
+    `invertZoom` reverses wheel and pinch.
+- **Pivot.** An orbit picks the surface point under the pointer (ID buffer when current, BVH when
+  cheap) when the drag passes its threshold, and rotates the camera rigidly about it, so that point
+  keeps its screen position. On a miss: a still-visible middle-click pivot, else the centre of the
+  visible bodies' bounds if in front of the camera and on screen, else the surface under the viewport
+  centre, else a point on the view axis. `pivot: 'center'` always uses the bodies' centre. The pick is
+  skipped (centre fallback) rather than stalling on a missing BVH of a very large model. Pan grabs the
+  scene at the same depth, so the point under the cursor follows it.
+- **Marker.** A ring and dot in the theme's accent and background tokens (constant 22/8 px) shows
+  while orbiting when `showPivot` is set. A `setPivot` click flashes it for 700 ms.
+- **Turntable / trackball.** Turntable rotates about the camera's up axis (+Z unless a two-finger twist
+  rolled it) and stops 0.5 degrees short of the poles. Trackball rotates about the camera's own axes
+  (up is carried with the camera, so there is no pole). Switching back to turntable levels the camera.
+  Standard views and the view cube level it too.
+- **1:1 dragging.** Orbit and pan write the camera pose directly each pointer event: no smoothing, no
+  inertia. `rotateSpeed` (0.25-4) scales the gain; a full canvas height of drag is one turn at speed 1.
+- **Touch and pen.** One finger orbits about the first finger's surface point after 8 px; a second
+  finger hands over to camera-controls' pinch/pan and the orbit does not resume. A pen with
+  `penDraws` never navigates. A pen without it orbits like a finger.
+- **`pickRect(rect, {mode, kinds, visibleOnly})`.** `window` returns what lies entirely inside,
+  `crossing` what touches. Faces use the ID buffer's visible pixels (counted per face inside the
+  rectangle against the whole image), edges and vertices their projected polylines, occlusion-tested
+  with sampled points when `visibleOnly` (default). Sketch entities are never occlusion-tested. Hits
+  are unique and sorted nearest to the camera first. Default kinds are face, edge, vertex,
+  sketchPoint and sketchCurve. `await whenPickReady()` first: with a stale ID image faces fall back to
+  a geometric test filtered by a 33 x 33 ray grid (approximate). The ID image is half resolution:
+  faces thinner than about 2 px may be missed.
+- **Diagnostics.** `getNavigationState()` (engine extra, not in the contract) reports the drag mode,
+  pivot, pivot source, marker visibility and the pivot's screen position, for tests.

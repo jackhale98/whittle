@@ -251,16 +251,17 @@ describe('recognizeStroke: shapes', () => {
     }
   });
 
-  it('an oval with aspect ratio over 1.3 is not a circle', () => {
+  it('an oval with aspect ratio over 1.3 is not a circle (M3.5: it is an ellipse)', () => {
     const rng = seeded(18);
     for (let i = 0; i < 20; i++) {
       const ratio = 1.3 + 0.015 * i;
       const g = genOval(rng, ratio);
       const r = must(recognize(g.samples));
       expect(r.shape.kind, g.note).not.toBe('circle');
-      expect(r.shape.kind, g.note).toBe('polyline');
-      if (r.shape.kind === 'polyline') expect(r.shape.closed).toBe(true);
-      expect(r.confidence, g.note).toBeLessThan(0.5);
+      expect(r.shape.kind, g.note).toBe('ellipse');
+      if (r.shape.kind === 'ellipse')
+        expect(r.shape.majorRadius / r.shape.minorRadius).toBeCloseTo(ratio, 0);
+      expect(r.confidence, g.note).toBeGreaterThan(0.5);
     }
   });
 

@@ -37,7 +37,17 @@ export interface DimensionLabelProps {
   onToggleDriving?(): void;
   /** Radius ↔ diameter, for circles and arcs. */
   onToggleKind?(): void;
+  /**
+   * Drag the label (mouse, touch, pen) past a small slop: called with the new centre in the same
+   * px space as `x`, `y`. It only moves the label position, never the value. A tap still edits.
+   */
+  onMove?(x: number, y: number): void;
+  /** The drag ended (commit the position as one undo step). */
+  onMoveEnd?(x: number, y: number): void;
 }
+
+/** Pointer travel (px) before a press on a label becomes a drag instead of a tap. */
+const DRAG_SLOP = 4;
 
 /** Small actions under a label: radius/diameter and driving/reference toggles. */
 function LabelActions({
@@ -119,9 +129,20 @@ export function DimensionLabel({
   onSelect,
   onToggleDriving,
   onToggleKind,
+  onMove,
+  onMoveEnd,
 }: DimensionLabelProps) {
   const [editing, setEditing] = useState(!!autoEdit && driving);
   const btn = useRef<HTMLButtonElement>(null);
+  const drag = useRef<{
+    id: number;
+    px: number;
+    py: number;
+    x: number;
+    y: number;
+    moved: boolean;
+  } | null>(null);
+  const justDragged = useRef(false);
   const fmt = formatValue ?? defaultFormatValue;
   const result = evaluate?.(expr);
   const text = driving
@@ -199,9 +220,41 @@ export function DimensionLabel({
       data-driving={driving}
       aria-label={`${kind === 'offset' ? (driving ? 'Offset dimension' : 'Reference offset') : driving ? 'Dimension' : 'Reference dimension'}: ${prefix[kind] ?? ''}${text}. ${driving ? 'Press Enter to edit.' : 'Measured, not editable.'}`}
       aria-pressed={selected}
-      onClick={() => (driving ? setEditing(true) : onSelect?.())}
+      data-draggable={onMove ? '' : undefined}
+      onPointerDown={(e) => {
+        if (!onMove || (e.pointerType === 'mouse' && e.button !== 0)) return;
+        drag.current = { id: e.pointerId, px: e.clientX, py: e.clientY, x, y, moved: false };
+        e.currentTarget.setPointerCapture?.(e.pointerId);
+      }}
+      onPointerMove={(e) => {
+        const d = drag.current;
+        if (!d || d.id !== e.pointerId) return;
+        const dx = e.clientX - d.px;
+        const dy = e.clientY - d.py;
+        if (!d.moved && Math.hypot(dx, dy) < DRAG_SLOP) return;
+        d.moved = true;
+        onMove?.(d.x + dx, d.y + dy);
+      }}
+      onPointerUp={(e) => {
+        const d = drag.current;
+        drag.current = null;
+        if (!d || d.id !== e.pointerId || !d.moved) return;
+        justDragged.current = true;
+        onMoveEnd?.(d.x + e.clientX - d.px, d.y + e.clientY - d.py);
+      }}
+      onPointerCancel={() => {
+        drag.current = null;
+      }}
+      onClick={() => {
+        if (justDragged.current) {
+          justDragged.current = false; // the click that ends a drag is not a tap
+          return;
+        }
+        if (driving) setEditing(true);
+        else onSelect?.();
+      }}
       className={cn(
-        'tnum pointer-events-auto absolute z-[1] h-6 rounded-[8px] px-2 text-xs font-semibold whitespace-nowrap transition-colors duration-fast',
+        'tnum pointer-events-auto absolute z-[1] h-6 touch-none rounded-[8px] px-2 text-xs font-semibold whitespace-nowrap transition-colors duration-fast',
         conflicting
           ? 'bg-danger-soft text-danger-text shadow-[inset_0_0_0_1.5px_var(--color-danger)]'
           : driving

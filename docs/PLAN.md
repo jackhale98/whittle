@@ -658,6 +658,7 @@ Wren can do better because its source format is text-based parametric data (§8A
 - **M2:** ui-engineer (tablet shell) ∥ viewport-engineer (gestures, Pencil, preview path) ∥ modeling-engineer (push/pull feature). sync-engineer can start the M2.5 provider spike in parallel, because it only depends on the M1 document format.
 - **M2.5:** sync-engineer (providers, sync, HistoryStore, merge) ∥ kernel-engineer (geometric diff booleans) ∥ ui-engineer (connections, versions and compare/merge UI) ∥ platform-engineer (proxy + token-exchange Worker).
 - **M3:** sketch-engineer (offset, convert entities, trim/extend, sketch fillet/chamfer, mirror) first ∥ kernel-engineer (shell, draft, sweep, loft, pattern/mirror tool shapes, hole, propagate toggle, kernel `import`, IGES) ∥ modeling-engineer (regen for the new types, reference axes/points/planes, linked-entity projection, hole tables) ∥ ui-engineer (inspectors, tools, Reference group, hole wizard). Then integration and the reference parts (§12A).
+- **M3.5:** viewport-engineer (pivot-at-cursor orbit, presets, button mapping, `pickRect`, pivot marker) ∥ ui-engineer (radial menu, Which-one chooser, keymap editor and overlay, navigation settings) ∥ sketch-engineer (splines, ellipses, elliptic arcs, tangent/G2, Pencil ovals and splines, conflict sets) ∥ kernel-engineer (exact spline and elliptic edges, golden tests) ∥ modeling-engineer (`AttentionCause`, regen of the new curves). Then integration in apps/web and the E2E acceptance.
 - **M4–M6:** as in §12.
 
 ---
@@ -719,6 +720,35 @@ Each milestone ends with a reviewer gate. "Done" means every criterion is demons
 - **Accept:** reproduce 10 reference parts (in `test-fixtures/reference-parts/`, with specs) within dimensional tolerance, entirely from the UI, in E2E scripts.
   - The reference parts start the **certification-style suite** (§12A). Each has an original spec drawing, a material, and an expected mass checked in an independent CAD tool (FreeCAD).
   - The E2E builds each part from the spec and checks the mass within 0.1 %. CSWP-style stages then change named dimensions and re-check the mass.
+
+### M3.5 — Navigation, input and sketch curves
+
+Owner-approved 2026-11-09 from the research report `docs/ux-research/reports/CAD UI feedback and lessons.md` (ADR-046). The goal: the tool and the orbit pivot come to the cursor, errors point at their cause, and sketches get free-form curves.
+
+- **Orbit and navigation** (contracts: `NavigationOptions`, `setNavigation`, `pickRect`, the `contextMenu` / `setPivot` gestures):
+  - Orbit turns about the surface point under the cursor when the drag starts, falling back to the centre of the visible bodies; never a stale or off-screen point. A pivot marker shows while orbiting. Touch orbit uses the first finger's point.
+  - Left drag is never navigation: it picks and box-selects (left → right = window, right → left = crossing). Default preset `rightOrbit`: right drag orbits, middle drag pans, wheel zooms to the cursor, a right click opens the radial menu. Presets named by behaviour: `middleOrbit` (middle-click on geometry sets the pivot), `middlePan`, `rightOrbitRepeat` (quick right click repeats the last command). Turntable (default, +Z up) or trackball; invert zoom; orbit speed. No smoothing while dragging (1 : 1 with the pointer); easing only for programmatic moves.
+- **Radial menu:** a right click (mouse), long-press (touch) or held key opens a radial menu of ≤ 8 items chosen by what is selected, at the cursor. It accepts a flick before it draws (direction + distance threshold); the same layout on every surface; a fixed "repeat last" slot (Space repeats too). It never opens under the next click: it appears only on release and ignores clicks that started before it drew.
+- **Which one?** Overlapping candidates are listed in a stable order (kind, then depth, then id), highlight on hover, and Tab / Shift+Tab cycles the preselection under a still pointer.
+- **Keyboard:** shortcuts bind `KeyboardEvent.code` (layout-independent), a keymap editor flags conflicts with the browser's own shortcuts, and holding Ctrl/Cmd/Alt for 600 ms shows an overlay of the shortcuts available now.
+- **Errors at their cause:** `needsAttention`, `error` and `blocked` features name the upstream feature whose change broke them (`AttentionCause`), and selecting the message selects that feature. Sketch conflicts highlight the conflicting set on the canvas and in the list and propose removing the most recently added constraint; no bare constraint numbers anywhere.
+- **Owner additions (2026-11-09):**
+  - **Sketch dimensions like other CAD sketchers:** a dimension's label is draggable after placement (mouse, touch, Pencil; a drag moves only the label), and it is drawn with extension lines and a dimension line with arrows (a leader for radius/diameter, an arc for angles) that show what it measures.
+  - **Feature lineage:** selecting a face, edge or vertex shows "Made by <feature>" (the latest feature that created or modified it, and its sketch) with Edit buttons; selecting a feature in the tree shows its parents (what it references) and children (what references it).
+  - **Bug:** a sketch on a part face was invisible after leaving the sketch on desktop Edge (only the centre point showed). Coplanar overlays must stay visible on WebGPU as well as WebGL2.
+  - **Bug fixed now:** the tutorial card covered an open tool flyout; flyouts truncated command names ("Extruded …").
+- **Sketch curves:** B-splines by control points and through points (degree 3 default, open or closed), ellipses and elliptic arcs; tangent constraints between any curves (G1 at shared ends), a curvature-continuous (G2) constraint where the solver can express it (otherwise an `unsupported` conflict, never dropped); the Pencil recognises ovals as ellipses and smooth strokes as splines; offset, trim/extend, mirror and convert work on the new curves where OCCT can (otherwise a clear refusal). The kernel builds exact B-spline and elliptic edges for profiles. Conics beyond ellipses are deferred.
+- **Accept:**
+  - E2E: orbiting from a point on a face keeps that point under the cursor within 2 px; panning then orbiting never pivots in empty space; the pivot marker is visible during the drag. Each preset's mapping is exercised (left box-select window and crossing, right/middle orbit and pan, right click opens the radial menu).
+  - E2E: a flick on the radial menu runs its command before the menu draws; Space repeats; the menu is reachable with touch (long-press) and Pencil.
+  - E2E: Tab cycles overlapping candidates; the chooser order is identical across runs.
+  - E2E: with a non-QWERTY layout emulated, shortcuts still fire by physical key; the keymap editor flags Ctrl+W / Ctrl+T as browser shortcuts.
+  - E2E: shortening an extrude so a fillet loses its edge shows "needs attention" naming the extrude; selecting the message selects the extrude. An over-constrained sketch highlights the set and proposes the last-added constraint.
+  - Golden tests: a profile bounded by a spline and an elliptic arc extrudes to the volume of a numerically integrated reference (≤ 1e-6 relative); splines survive save → load → regen byte-identically; Pencil recognition tests for ellipses and splines.
+  - E2E: a spline through 5 points, closed with a line, extrudes; moving a through point updates the solid.
+  - E2E: a dimension's label drags without changing its value and shows extension and dimension lines; selecting a face shows the feature that made it and Edit opens it; the tree shows a feature's parents and children.
+  - Render test on the WebGPU backend (or the closest available) shows a circle sketched on a face after finishing the sketch.
+  - All existing suites, the 10 reference parts and `pnpm perf` stay green; orbit start (pick under cursor) ≤ 2 ms on the 1M-triangle probe.
 
 ### M4 — Drawings
 

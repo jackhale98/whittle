@@ -17,6 +17,7 @@
 #include <BOPDS_DS.hxx>
 #include <BRepBuilderAPI_MakeSolid.hxx>
 #include <BRepBuilderAPI_MakeWire.hxx>
+#include <BRepBuilderAPI_NurbsConvert.hxx>
 #include <BRepBuilderAPI_Sewing.hxx>
 #include <BRepBuilderAPI_Transform.hxx>
 #include <BRepFilletAPI_LocalOperation.hxx>
@@ -70,7 +71,13 @@
 #include <Geom_Surface.hxx>
 #include <GeomAbs_CurveType.hxx>
 #include <GeomAbs_SurfaceType.hxx>
+#include <ElCLib.hxx>
+#include <GC_MakeArcOfEllipse.hxx>
+#include <Geom_BSplineCurve.hxx>
+#include <Geom_BezierCurve.hxx>
 #include <Geom_Circle.hxx>
+#include <Geom_TrimmedCurve.hxx>
+#include <NCollection_Array1.hxx>
 #include <Geom_Ellipse.hxx>
 #include <Geom_Line.hxx>
 #include <Geom_Plane.hxx>
@@ -961,8 +968,20 @@ gp_Pnt edgeCentroid(const TopoDS_Edge& e) {
   return boxCenter(e);
 }
 
+bool isFreeformCurveType(GeomAbs_CurveType t) {
+  return t == GeomAbs_BSplineCurve || t == GeomAbs_BezierCurve || t == GeomAbs_OffsetCurve ||
+         t == GeomAbs_OtherCurve;
+}
+
 double edgeLength(const TopoDS_Edge& e) {
   if (BRep_Tool::Degenerated(e)) return 0.0;
+  if (BRep_Tool::IsGeometric(e)) {
+    // B-splines and other free-form curves: adaptive integration per knot span (LinearProperties
+    // uses one fixed Gauss rule over the whole range: 1.5e-7 off on a rational quarter circle).
+    BRepAdaptor_Curve c(e);
+    const GeomAbs_CurveType t = c.GetType();
+    if (isFreeformCurveType(t)) return GCPnts_AbscissaPoint::Length(c, 1e-10);
+  }
   GProp_GProps props;
   BRepGProp::LinearProperties(e, props);
   return props.Mass();
@@ -1208,6 +1227,69 @@ bool isValidShape(const TopoDS_Shape& shape) {
   if (shape.IsNull()) return false;
   BRepCheck_Analyzer analyzer(shape);
   return analyzer.IsValid();
+}
+
+// Faces whose mass properties BRepGProp's default gets wrong by more than ~1e-8 (M3.5 sketch
+// curves): a plane bounded by a B-spline (or other free-form) edge, and an extrusion or revolution
+// of a free-form curve. B-spline *surfaces* (fillet corners, lofts, imports) are not included:
+// they keep the M3 behaviour and cost (see reportedVolumeProperties).
+bool hasSweptFreeformFace(const TopoDS_Shape& shape) {
+  for (TopExp_Explorer ex(shape, TopAbs_FACE); ex.More(); ex.Next()) {
+    const TopoDS_Face& f = TopoDS::Face(ex.Current());
+    if (!BRep_Tool::IsGeometric(f)) continue;
+    const BRepAdaptor_Surface s(f, false);
+    const GeomAbs_SurfaceType t = s.GetType();
+    if (t == GeomAbs_SurfaceOfExtrusion || t == GeomAbs_SurfaceOfRevolution) {
+      if (isFreeformCurveType(s.BasisCurve()->GetType())) return true;
+    } else if (t == GeomAbs_Plane) {
+      for (TopExp_Explorer ee(f, TopAbs_EDGE); ee.More(); ee.Next()) {
+        const TopoDS_Edge& e = TopoDS::Edge(ee.Current());
+        if (BRep_Tool::Degenerated(e) || !BRep_Tool::IsGeometric(e)) continue;
+        if (isFreeformCurveType(BRepAdaptor_Curve(e).GetType())) return true;
+      }
+    }
+  }
+  return false;
+}
+
+// Reported mass properties (massProperties, measure; ADR-pending, M3.5). BRepGProp's default
+// integrates every curve and surface with one fixed-order Gauss rule over its whole parameter
+// range, without splitting at knots, so a piecewise B-spline profile loses 1e-5 to 1e-3 of the
+// value (a 4-span C1 rational circle extruded: 0.3 %). The adaptive variant splits at knots, but
+// only at those of B-spline surfaces (BRepGProp_Face::UKnots): an extrusion or revolution of a
+// B-spline curve is still one span. So shapes with such faces are converted to NURBS first
+// (BRepBuilderAPI_NurbsConvert, exact) and integrated adaptively (relative error 1e-12; the run
+// time hardly depends on it). That costs about 3× the default on those shapes; every other shape
+// keeps the default, which is exact for analytic faces. Fingerprints and naming centroids keep
+// the default everywhere (they are matching keys, not measurements).
+constexpr double kFreeformGPropEps = 1e-12;
+
+template <typename Integrate, typename Fallback>
+void freeformProperties(const TopoDS_Shape& shape, Integrate&& integrate, Fallback&& fallback) {
+  if (!hasSweptFreeformFace(shape)) {
+    fallback(shape);
+    return;
+  }
+  TopoDS_Shape nurbs;
+  try {
+    BRepBuilderAPI_NurbsConvert convert(shape, true);
+    if (convert.IsDone()) nurbs = convert.Shape();
+  } catch (const Standard_Failure&) {
+    nurbs.Nullify();
+  }
+  integrate(nurbs.IsNull() ? shape : nurbs);
+}
+
+void reportedVolumeProperties(const TopoDS_Shape& shape, GProp_GProps& props) {
+  freeformProperties(
+      shape, [&](const TopoDS_Shape& s) { BRepGProp::VolumeProperties(s, props, kFreeformGPropEps); },
+      [&](const TopoDS_Shape& s) { BRepGProp::VolumeProperties(s, props); });
+}
+
+void reportedSurfaceProperties(const TopoDS_Shape& shape, GProp_GProps& props) {
+  freeformProperties(
+      shape, [&](const TopoDS_Shape& s) { BRepGProp::SurfaceProperties(s, props, kFreeformGPropEps); },
+      [&](const TopoDS_Shape& s) { BRepGProp::SurfaceProperties(s, props); });
 }
 
 double solidVolume(const TopoDS_Shape& shape) {

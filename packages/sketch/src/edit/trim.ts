@@ -7,6 +7,8 @@
  *    Trimming the middle splits the entity: the original keeps the first piece, a new entity the
  *    other, tied to the original (collinear, or same centre and radius).
  *  - `extendEntity` moves the free end of a line or arc nearest the pick to the next intersection.
+ *  - M3.5: ellipses, elliptic arcs and splines trim and extend as described in curve-ops.ts, and
+ *    every curve stops at them too.
  *
  * Rewiring: every new end is attached where it was cut, with `coincident` when it lands on another
  * entity's end point and `pointOn` otherwise. Constraints that no longer apply are dropped and
@@ -18,7 +20,8 @@
  */
 
 import type { Id, SketchEntity, Vec2 } from '@wren-cad/contracts';
-import { dist, TAU } from '../geometry';
+import { dist, type ParamCurve, TAU } from '../geometry';
+import { extendCurve, hitsOn, trimCurve } from './curve-ops';
 import {
   arcEnd,
   arcStart,
@@ -48,15 +51,16 @@ interface Hit {
 
 type Curved = Extract<SketchEntity, { kind: 'line' | 'arc' | 'circle' }>;
 
-function editable(k: SketchDraft, id: Id, verb: 'trim' | 'extend'): Curved | string {
+function editable(k: SketchDraft, id: Id, verb: 'trim' | 'extend'): SketchEntity | string {
   const e = k.get(id);
-  if (!e) return `Unknown entity ${id}`;
-  if (e.kind !== 'line' && e.kind !== 'arc' && e.kind !== 'circle') {
-    return `Only lines, arcs and circles can be ${verb === 'trim' ? 'trimmed' : 'extended'}`;
-  }
+  if (!e) return 'That entity is not in the sketch';
+  if (e.kind === 'point') return `A point can't be ${verb === 'trim' ? 'trimmed' : 'extended'}`;
   if (e.source) return `${k.name(id)} is linked to the model; unlink it to ${verb} it`;
   return e;
 }
+
+const isNewCurve = (e: SketchEntity) =>
+  e.kind === 'ellipse' || e.kind === 'ellipticArc' || e.kind === 'bspline';
 
 /** Points where other curves cross `id`'s carrier, on their own extents (sorted by parameter). */
 function crossings(k: SketchDraft, id: Id, carrier: Curve, own: Curve): Hit[] {
@@ -83,6 +87,43 @@ function crossings(k: SketchDraft, id: Id, carrier: Curve, own: Curve): Hit[] {
       hits.push({ t: paramOf(own, p), p, other: o.id, ...(point ? { point } : {}) });
     }
   }
+  // Ellipses, elliptic arcs and splines cut it too (sampled + refined intersections).
+  const span = k.scale * 4;
+  const pc: ParamCurve =
+    carrier.kind === 'line'
+      ? (() => {
+          const d: Vec2 = [carrier.b[0] - carrier.a[0], carrier.b[1] - carrier.a[1]];
+          const l = Math.hypot(d[0], d[1]) || 1;
+          const ext = span / l;
+          return {
+            t0: -ext,
+            t1: 1 + ext,
+            closed: false,
+            at: (t: number): Vec2 => [carrier.a[0] + d[0] * t, carrier.a[1] + d[1] * t],
+            d1: (): Vec2 => d,
+            d2: (): Vec2 => [0, 0],
+          };
+        })()
+      : {
+          t0: 0,
+          t1: TAU,
+          closed: true,
+          at: (t: number): Vec2 => [
+            carrier.c[0] + carrier.r * Math.cos(t),
+            carrier.c[1] + carrier.r * Math.sin(t),
+          ],
+          d1: (t: number): Vec2 => [-carrier.r * Math.sin(t), carrier.r * Math.cos(t)],
+          d2: (t: number): Vec2 => [-carrier.r * Math.cos(t), -carrier.r * Math.sin(t)],
+        };
+  const extra = hitsOn(
+    k,
+    self,
+    pc,
+    carrier.kind === 'line' ? 64 : 128,
+    (p) => paramOf(own, p),
+    isNewCurve,
+  );
+  for (const h of extra) if (!ownPoints.has(h.point ?? '')) hits.push(h);
   hits.sort((a, b) => a.t - b.t);
   return hits;
 }
@@ -185,8 +226,10 @@ export function trimEntity(
   options: EditOptions = {},
 ): SketchEditResult {
   const k = new SketchDraft(sketch, options);
-  const e = editable(k, id, 'trim');
-  if (typeof e === 'string') return refuse(e);
+  const any = editable(k, id, 'trim');
+  if (typeof any === 'string') return refuse(any);
+  if (isNewCurve(any)) return trimCurve(k, any, pick);
+  const e = any as Curved;
   const name = k.name(id);
   const own = k.curve(id) as Curve;
   const carrier: Curve = own.kind === 'arc' ? { kind: 'circle', c: own.c, r: own.r } : own;
@@ -294,8 +337,10 @@ export function extendEntity(
   options: EditOptions = {},
 ): SketchEditResult {
   const k = new SketchDraft(sketch, options);
-  const e = editable(k, id, 'extend');
-  if (typeof e === 'string') return refuse(e);
+  const any = editable(k, id, 'extend');
+  if (typeof any === 'string') return refuse(any);
+  if (isNewCurve(any)) return extendCurve(k, any, pick);
+  const e = any as Curved;
   if (e.kind === 'circle') return refuse('A circle has no ends to extend');
   const name = k.name(id);
   const own = k.curve(id) as Exclude<Curve, { kind: 'circle' }>;

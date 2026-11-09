@@ -77,6 +77,8 @@ export function sketchScale(entities: readonly SketchEntity[]): number {
       minY = Math.min(minY, e.y);
       maxY = Math.max(maxY, e.y);
     } else if (e.kind === 'circle') extra = Math.max(extra, 2 * e.radius);
+    else if (e.kind === 'ellipse' || e.kind === 'ellipticArc')
+      extra = Math.max(extra, 2 * e.majorRadius);
   }
   const ext = Number.isFinite(minX) ? Math.max(maxX - minX, maxY - minY) : 0;
   return Math.max(1, ext, extra);
@@ -167,6 +169,11 @@ export class SketchDraft {
     return e.id;
   }
 
+  /** Adds a complete entity (its id included) as created by this edit. */
+  addEntity(e: SketchEntity): Id {
+    return this.add(e);
+  }
+
   point(p: Vec2, construction = false): Id {
     return this.add({ id: this.nextId(), kind: 'point', construction, x: p[0], y: p[1] });
   }
@@ -239,13 +246,15 @@ export class SketchDraft {
     return this.constraints.filter((c) => constraintRefs(c).includes(id));
   }
 
-  /** Entities (other than `except`) that use point `pid` as an end or centre. */
+  /** Entities (other than `except`) that use point `pid` as an end, centre or pole. */
   pointUsers(pid: Id, except?: Id): SketchEntity[] {
     return this.entities.filter((e) => {
       if (e.id === except) return false;
       if (e.kind === 'line') return e.start === pid || e.end === pid;
       if (e.kind === 'arc') return e.start === pid || e.end === pid || e.center === pid;
       if (e.kind === 'circle' || e.kind === 'ellipse') return e.center === pid;
+      if (e.kind === 'ellipticArc') return e.start === pid || e.end === pid || e.center === pid;
+      if (e.kind === 'bspline') return e.poles.includes(pid);
       return false;
     });
   }

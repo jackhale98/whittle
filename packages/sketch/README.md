@@ -26,11 +26,22 @@ Never import `core` on the main thread. Use the client from the package root.
   `ConstraintDraft`.
 - **Drawing tools:** `lineTool`, `polylineTool`, `rectangleCornerTool`, `rectangleCenterTool`,
   `rectangle3PointTool`, `circleCenterTool`, `circle3PointTool`, `arcCenterTool`, `arc3PointTool`,
-  `arcTangentTool`, `slotTool`, `polygonTool`, `setConstruction`, `mergeFragment`, `newId`.
+  `arcTangentTool`, `slotTool`, `polygonTool`, `setConstruction`, `mergeFragment`, `newId`; M3.5:
+  `ellipseTool`, `ellipseFromRadii`, `ellipticArcTool`, `splineControlTool`, `splineThroughTool`.
 - **Reference geometry (ADR-017):** `SKETCH_ORIGIN`, `SKETCH_X_AXIS`, `SKETCH_Y_AXIS`, `SKETCH_REFERENCES`,
   `isSketchReference`, `referenceName`, `referenceEntities`, `usesReferences`, `constraintRefs`.
 - **Geometry:** `sampleSketch`, `sampleEntity`, `sketchBounds`, `closestOnEntity`, `closestOnSegment`,
-  `projectOnLine`, `circumcircle`, `indexEntities`, plus the line, arc and circle helpers.
+  `projectOnLine`, `circumcircle`, `indexEntities`, plus the line, arc and circle helpers; M3.5:
+  `paramCurve` / `closestParam` (any curve as a parametric curve), `ellipseGeom`, `ellipticArcGeom`,
+  `ellipsePoint`, `ellipseParam`, `splineGeom`.
+- **B-splines (`src/bspline.ts`, DECISIONS "Sketch B-splines"):** `defaultKnots`, `splineDefError`,
+  `splineAt` / `splinePoint` (rational de Boor with derivatives), `interpolate` (through points, knots
+  at the points), `subSpline` / `splitSpline` (knot insertion), `closestSplineParam`, `sampleParams`,
+  `splineAreaIntegral`, `reverseSpline`.
+- **Regions (`src/regions.ts`):** `sketchRegions` (bounded faces of the curve arrangement with exact
+  areas, holes and orientation), `loopPolygon`.
+- **Dimension annotations (`src/annotation.ts`):** `dimensionAnnotation` (extension lines, dimension
+  lines, arrows, leaders, angle arcs in sketch mm), `dragDimensionLabel`.
 
 The shared types (`SketchSolveInput`, `SketchSolveResult`, `SketchConflict`, `DofState` and so on)
 are in [`packages/contracts/src/sketch.ts`](../contracts/src/sketch.ts).
@@ -88,13 +99,30 @@ that doesn't use them builds exactly the same model as before.
 
 `beginDrag`, `drag` and `endDrag` add temporary constraints that pull the grabbed geometry toward
 the cursor, in a separate planegcs system. Each move is a re-solve in place. The drag budget is
-≤ 4 ms median for 200 entities (PLAN §10). `test/drag.test.ts` asserts it and allows 12 ms on CI.
+≤ 4 ms median for 200 entities (PLAN §10). `test/drag.test.ts` asserts it and allows 12 ms on CI;
+`test/drag-splines.test.ts` does the same with 20 through-point splines.
+
+### Ellipses, elliptic arcs and splines (M3.5)
+
+DECISIONS "Sketch curves in the solver" and "Sketch B-splines" have the details.
+
+- Every curve takes point-on. `tangent` works between any two curves: G1 at a shared point, or a contact point
+  anywhere. `curvature` (G2) is tangent plus equal curvature at a shared point, with a spline on one side.
+- Rows planegcs can't express (G2 between curved sides, an ellipse's major radius) are finished by
+  Newton on Wren's own rows.
+- Ellipse `radius` / `diameter` dimension the major radius, or the minor one with `axis: 'minor'`.
+- Splines drawn through points list their through points in `through` (the knot points).
+- A spline drawn through points keeps each through point at a knot. Its derived poles solve downstream of
+  everything else, so dragging a through point reshapes the curve and nothing else moves.
+- Conflicts list the geometry to highlight (`entities`). `fixes[0]` removes the most recently added
+  constraint of the set.
 
 ### Inference
 
 `src/inference.ts` proposes constraints while you draw: horizontal and vertical snaps, parallel,
 perpendicular and tangent within a small angular tolerance (`ANGLE_TOLERANCE`, 3°), and coincidence
-with the cursor or an existing point. `bindCandidate` attaches the chosen candidate to the drawing.
+with the cursor or an existing point. Tangent continuation also works from ellipses, elliptic arcs and splines, and
+for a spline's first leg. `bindCandidate` attaches the chosen candidate to the drawing.
 
 ## Tests and scripts
 

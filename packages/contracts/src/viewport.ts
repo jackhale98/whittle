@@ -69,6 +69,8 @@ export interface PickHit {
   normal?: Vec3;
   /** Screen distance in CSS px from the query point (edges/vertices are picked within a tolerance). */
   distancePx: number;
+  /** M3.5: distance from the camera along the pick ray, mm (stable "Which one?" ordering). */
+  depth?: number;
 }
 
 export interface PickOptions {
@@ -170,10 +172,30 @@ export interface InteractiveViewport extends Viewport {
  * acts on gestures itself.
  */
 export interface ViewportGesture {
-  kind: 'tap' | 'doubleTap' | 'longPress' | 'twoFingerTap' | 'threeFingerTap';
+  /**
+   * M3.5: `contextMenu` = a secondary-button press released within the drag threshold (the app
+   * opens its radial menu there; a drag past the threshold navigates instead). `setPivot` = a
+   * middle-button click on geometry under the `middleClickSetsPivot` preset (the viewport has
+   * already moved its pivot; the app may confirm it).
+   */
+  kind:
+    | 'tap'
+    | 'doubleTap'
+    | 'longPress'
+    | 'twoFingerTap'
+    | 'threeFingerTap'
+    | 'contextMenu'
+    | 'setPivot';
   x: number;
   y: number;
   pointerType: 'mouse' | 'pen' | 'touch';
+  /** `contextMenu` under `rightOrbitRepeat`: a quick click that means "repeat the last command". */
+  repeat?: boolean;
+  /**
+   * The pointer that made the gesture, for `longPress` / `contextMenu` raised while it is still
+   * down (touch long-press): the radial menu tracks it until it lifts.
+   */
+  pointerId?: number;
 }
 
 /**
@@ -241,6 +263,69 @@ export interface CameraChange {
   moving: boolean;
 }
 
+// ---- M3.5: navigation and box selection (research report "CAD UI feedback and lessons") -----
+
+/**
+ * Mouse navigation presets, named by behaviour, never by product (ADR-046). Left drag is never
+ * navigation: the app owns it (pick, box select, sketch tools). Wheel zooms toward the cursor.
+ * - `rightOrbit` (default): right drag orbits, middle drag pans, right click = `contextMenu`.
+ * - `middleOrbit`: middle drag orbits, Ctrl+middle pans, middle click on geometry sets the pivot,
+ *   right click = `contextMenu` (users of most desktop MCAD tools).
+ * - `middlePan`: middle drag pans, Shift+middle orbits, right click = `contextMenu`.
+ * - `rightOrbitRepeat`: as `rightOrbit`, but a right click emits `contextMenu` only after a hold;
+ *   a quick right click is reported as `contextMenu` with `repeat: true` (repeat last command).
+ */
+export type NavigationPreset = 'rightOrbit' | 'middleOrbit' | 'middlePan' | 'rightOrbitRepeat';
+
+export interface NavigationOptions {
+  preset: NavigationPreset;
+  /**
+   * `turntable` (default): the model's up axis (+Z) stays vertical on screen. `trackball`: free
+   * rotation about the screen axes, no up axis, no pole stop.
+   */
+  orbit: 'turntable' | 'trackball';
+  /**
+   * Where orbit turns: `cursor` (default) = the surface point under the pointer when the drag
+   * starts, falling back to the centre of the visible bodies' bounds (never a stale or off-screen
+   * point); `center` = always the visible bodies' centre. Touch orbit uses the first finger.
+   */
+  pivot: 'cursor' | 'center';
+  /** Show the pivot marker while orbiting. Default true. */
+  showPivot: boolean;
+  /** Reverse the wheel / pinch zoom direction. Default false. */
+  invertZoom: boolean;
+  /** Orbit gain multiplier, 0.25–4. Default 1. */
+  rotateSpeed: number;
+}
+
+export const DEFAULT_NAVIGATION: NavigationOptions = {
+  preset: 'rightOrbit',
+  orbit: 'turntable',
+  pivot: 'cursor',
+  showPivot: true,
+  invertZoom: false,
+  rotateSpeed: 1,
+};
+
+/** A screen rectangle in canvas CSS px (any corner order). */
+export interface ScreenRect {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+
+export interface RectPickOptions {
+  /**
+   * `window`: only what lies entirely inside (drag left → right); `crossing`: anything the
+   * rectangle touches (drag right → left). The app picks the mode from the drag direction.
+   */
+  mode: 'window' | 'crossing';
+  kinds?: PickKind[];
+  /** Ignore geometry hidden behind other faces (default true). */
+  visibleOnly?: boolean;
+}
+
 /** M2 surface; folds into `InteractiveViewport` once implemented. */
 export interface TouchViewport extends InteractiveViewport {
   setInputPolicy(policy: InputPolicy): void;
@@ -257,6 +342,11 @@ export interface TouchViewport extends InteractiveViewport {
   setPreview(id: string, preview: PreviewSpec | null): void;
   setHandle(id: string, handle: HandleSpec | null): void;
   setMarkers(id: string, markers: Marker[] | null): void;
+  /** M3.5: navigation mapping and orbit behaviour; partial updates merge into the current set. */
+  setNavigation(options: Partial<NavigationOptions>): void;
+  getNavigation(): NavigationOptions;
+  /** M3.5: everything in a screen rectangle (box selection). Deduplicated, nearest-first order. */
+  pickRect(rect: ScreenRect, options: RectPickOptions): PickHit[];
 }
 
 /**

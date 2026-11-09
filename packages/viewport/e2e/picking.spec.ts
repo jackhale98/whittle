@@ -566,7 +566,7 @@ test('perf probe: picking active on a 1M-triangle model', async ({ page }) => {
 
   // Orbit with picking enabled: frame time must not regress (ID pass only runs when idle).
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-  await page.mouse.down();
+  await page.mouse.down({ button: 'right' });
   for (let i = 0; i < 30; i++) {
     await page.mouse.move(
       box.x + box.width / 2 + Math.sin(i / 4) * 150,
@@ -574,7 +574,7 @@ test('perf probe: picking active on a 1M-triangle model', async ({ page }) => {
     );
     await page.evaluate(() => window.__viewport?.viewport.nextFrame());
   }
-  await page.mouse.up();
+  await page.mouse.up({ button: 'right' });
   const stats = await page.evaluate(() => window.__viewport?.viewport.stats());
   console.log(
     `[perf] orbit with picking enabled: renderCpuMs(avg60)=${stats?.frameMs.toFixed(2)} (advisory on SwiftShader)`,
