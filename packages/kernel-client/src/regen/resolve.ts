@@ -18,6 +18,12 @@
  *     (centroid, normal, area/length all agree); exactly one → resolved.
  *  4. Otherwise unresolved.
  *
+ * Copies (M3 mirror / patterns, naming.ts): `F<p>:inst<k>(N)` and `F<p>:mirror(N)` are distinct
+ * entities by construction. A fingerprint-only match (3) never lands on another instance of the
+ * same source (`inst<j>` for a ref to `inst<k>`) nor on a copy of the referenced original — when a
+ * pattern count drops or an index is skipped, a ref to the removed instance is unresolved even if
+ * another copy now sits where it was.
+ *
  * Tolerances are relative to `diag`, the diagonal of the part's current bounding box (all body
  * vertices; sketch geometry when there are no bodies):
  *  - strict (fingerprint-only): centroid within 1e-3·diag (≥ 1e-6 mm), normals within ~0.8°
@@ -286,6 +292,20 @@ async function byFingerprint(
   return { ok: false, reason: 'ambiguous', candidates: hits.map((h) => h.m.c.name) };
 }
 
+const INSTANCES = /:inst\d+\(/g;
+const COPY_ROLE = /:(?:inst\d+|mirror)\(/;
+
+/**
+ * Is `cand` a different copy of what `ref` names: a sibling instance (`inst<j>` vs `inst<k>` of
+ * the same source) or a copy (`…:inst<k>(N)`, `…:mirror(N)`) of the original `N` itself?
+ */
+export function isOtherCopy(refName: string, cand: string): boolean {
+  if (cand === refName) return false;
+  const generic = (n: string) => n.replace(INSTANCES, ':inst*(');
+  if (generic(refName) !== refName && generic(refName) === generic(cand)) return true;
+  return cand.endsWith(`(${refName})`) && COPY_ROLE.test(cand);
+}
+
 /** Resolves `ref` among `cands` (already filtered to the right kind and search space). */
 export async function resolveRef(
   ref: EntityRef,
@@ -326,5 +346,9 @@ export async function resolveRef(
     }
     return { ok: false, reason: 'missing' };
   }
-  return byFingerprint(ref, cands, ctx);
+  return byFingerprint(
+    ref,
+    cands.filter((c) => !isOtherCopy(ref.name, c.name)),
+    ctx,
+  );
 }

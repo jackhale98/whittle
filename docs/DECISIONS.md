@@ -1183,3 +1183,90 @@ git, raised choices ADR-029 leaves open.
     URL has `state` plus `code` or `error` *and* sessionStorage holds the pending PKCE record.
     A stray or bookmarked `?code=` is left as it is (the platform plumbing spec relies on this)
     and doesn't load the sync chunk.
+
+## ADR-pending — M3 regen: copies, reference geometry, linked entities (modeling workstream)
+
+**Context.** ADR-019 fixed the M3 feature types and the FeatureInputs keys. The regen engine
+(packages/kernel-client `src/regen`) has to supply those inputs, keep every copy feature's tool
+solids, resolve reference geometry the façade has no call for, and re-project linked sketch
+entities, without ever guessing a reference.
+
+**Decision.**
+
+1. **Tool-shape cache.** Each solid feature (extrude, revolve, primitive, sweep, loft, hole)
+   registers a `ToolSpec` when it evaluates ok: a key, its op code (`new`/`add` 0, `cut` 1,
+   `intersect` 2) and a thunk that builds the tool (the feature alone, op `new`; a hole without
+   `target`). The tool is built **lazily**, only when a mirror or pattern copies that feature, and
+   stored as its own cache entry. Its key hashes the tool's own inputs (definition without op and
+   scope, values, refs as content keys, frames), not the body it acts on, so editing the pattern
+   or an unrelated part of the body reuses it, and editing the feature or anything it reads
+   rebuilds it. Tool entries use the normal LRU (`maxSpareResults`); a pattern marks them used.
+   Features that were never copied never pay for a tool.
+2. **Copy targets.** Feature copies act on the one body their source features produced or
+   changed (more than one is an error suggesting body copies); a copied feature that failed is
+   `blocked`, one that is suppressed, later, or has no tool (fillet…) is an error, and a deleted
+   one needs attention at `/source/features/i`. Body copies with `merge` keep the first source
+   body's id and consume the others; without `merge` each copy is a new body, `B<featureId>` for
+   one copy and `B<featureId>:<key>` (the kernel's `FeatureResult.bodies[].key`) for several.
+3. **Pattern instances never rebind.** The fingerprint-only step of §7.3 never resolves a ref to
+   `F<p>:inst<k>(N)` onto a sibling `inst<j>`, nor a ref to `N` onto one of its copies
+   (`isOtherCopy`). Lowering a count or skipping an index makes refs to the removed instance
+   "needs attention" even when another instance now sits exactly where it was. Counts must be
+   whole numbers ≥ 1; skips outside `1…total-1` are ignored with a warning.
+4. **Reference geometry in TypeScript.** Axes, points and the new planes are computed by the
+   engine (`datums.ts`) from fingerprints and exact `measureShapes` closest points: straight
+   edges (end points by probing; direction from the smaller geometric key), circles (circumcentre
+   of probe points), cylinder axes (surface normals at probe points), sphere centres. Canonical
+   senses and a 1e-10 snap keep cache keys stable. Axes and points have no kernel shape: they are
+   frames in the walk state, referable as `F…:axis` / `F…:point` (revolve, patterns, holes, planes,
+   sketches); new plane definitions reach the kernel as `{ kind: 'frame' }`, and the kernel never
+   sees `flip` (the engine applies it). A position along a curved edge is `UNSUPPORTED_FEATURE`
+   until the façade can evaluate curves.
+5. **Sweep paths** are chained in the engine and passed in chain order: the feature's `path` is
+   reordered to match, so `refs['/path/i']` stays a JSON pointer into the feature the kernel gets.
+6. **Holes.** `frames['hole:i']`: origin = the point projected onto the face plane (a point more
+   than 1e-6 × diag off it is an error), z = −outward normal, x from `planeFrame`. Table values are
+   written at the feature's own pointers (`/diameter`, `/counterbore/*`, `/countersink/*`,
+   angles rad), so the kernel reads one place whether the value came from the table or the user.
+7. **Linked sketch entities.** Before a sketch solves, each distinct `source.ref` is resolved once
+   (§7.3) and projected onto the sketch plane: the kernel's `projectEdges` / `projectFaceOutline`
+   when present, else in TypeScript for reference geometry, other sketches' curves, straight edges
+   and circles parallel to the sketch (others are `UNSUPPORTED_FEATURE`). The curves go to a
+   `ReprojectLinked` function — packages/sketch's `reprojectLinked` once it lands, wired through
+   `RegenEngineDeps.reprojectLinked`; `reprojectLinkedFallback` until then. Linked entities are
+   grounded with `@linked:<id>` fix constraints (idempotent if the solver grounds them itself).
+   The cache key holds the re-projected geometry, so an upstream edit that doesn't move a source
+   leaves the sketch cached. A source that no longer resolves, or no longer fits its entity, makes
+   the sketch "needs attention": `unresolved[].path = /entities/i/source/ref` and the entity names
+   `S…:e(id)` / `S…:p(id)` in `error.entityRefs`. Nothing is re-picked.
+
+**Proposed for the contracts / kernel engineer.**
+
+- `execFeature(hole, inputs)` **without `target`** returns the drill solids alone (the hole's tool
+  for patterns); copies of `bodies` without `merge` return one `FeatureResult.bodies` entry per
+  copy with a stable `key`.
+- Linear patterns: `frames.axis` is the first direction and `frames.second` the second (geometry
+  only; the kernel applies `reverse`). Draft: `frames.neutral` always carries the neutral plane,
+  with `refs['/neutral']` when it is a face or plane shape (origin planes have none).
+- `UnresolvedRef.entity?: Id` (the linked sketch entity), instead of reading it from the path.
+- `RegenResult.datums?: { featureId, kind: 'axis' | 'point', frame }[]` so the viewport can draw
+  axes and points.
+- `HoleSizeRow.countersink` / `counterbore` optional (see the hole-table ADR); today `NaN` marks a
+  size the standard doesn't cover.
+
+## ADR-pending — Hole and thread tables (M3)
+
+**Decision.** The tables live in packages/document `hole-tables.ts` (`ISO_HOLES`, `ANSI_HOLES`,
+`holeRow`, `resolveHoleSize`), in millimetres (ANSI converted × 25.4). ISO: ISO 273 fine / medium /
+coarse as close / normal / loose for M1.6–M36, ISO 261/262 coarse pitches with DIN 336 / ISO 2306
+tap drills, counterbores for ISO 4762 (Ø from DIN 974-2, depth = head height k = d, flush) and
+countersinks for ISO 10642 at 90° (Ø = theoretical head diameter, flush; M3–M20, no M18). ANSI:
+close-fit / free-fit clearance drills and 75 % UNC tap drills from the standard drill chart, loose
+from ASME B18.2.8, B18.3 counterbores and B18.6.3 82° countersinks.
+
+- A size a standard doesn't cover has `NaN` in that column (`available()`), and the hole then
+  needs an explicit value; the engine never extrapolates a size.
+- Explicit `diameter`, `counterbore.*` and `countersink.*` always override the table.
+- **To check against the printed standards:** the ANSI `loose` column (recalled from ASME
+  B18.2.8; #0, #1, #3 and #12 are ≈ free fit + 1/64 in because the table as recalled has no row for
+  them), and the ISO 4762 counterbore depth convention (flush; some shops add 0.5 mm).

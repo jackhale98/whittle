@@ -280,3 +280,48 @@ export async function faceCentroid(api: Api, body: BodyResult, name: string): Pr
 export function facesStartingWith(body: BodyResult, prefix: string): string[] {
   return body.mesh.faceNames.filter((n) => n.startsWith(prefix));
 }
+
+/**
+ * Feature check for goldens that need façade work not merged yet (M3 kernel engineer): true iff
+ * the loaded kernel dispatches every listed feature type (an unknown type fails with
+ * `UNSUPPORTED_FEATURE` "Feature type '<type>' is not supported by this kernel build").
+ */
+export async function kernelSupports(api: Api, types: Feature['type'][]): Promise<boolean> {
+  for (const type of types) {
+    const probe = {
+      id: fid('PROBE'),
+      type,
+      name: 'probe',
+      suppressed: false,
+    } as unknown as Feature;
+    const r = await api.execFeature(probe, { values: {} });
+    if (r.ok) {
+      await api.release(r.value.shape);
+      continue;
+    }
+    if (r.error.code === 'UNSUPPORTED_FEATURE' && r.error.message.includes(`'${type}'`)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * The real kernel when it has the M3 features (one load, reused by the suite), else null: no
+ * built kernel, or a build without them.
+ */
+export async function m3Kernel(): Promise<Api | null> {
+  if (!built) return null;
+  const api = await loadApi();
+  const ok = await kernelSupports(api, [
+    'shell',
+    'hole',
+    'linearPattern',
+    'circularPattern',
+    'mirror',
+    'sweep',
+    'loft',
+    'draft',
+  ]);
+  return ok ? api : null;
+}
