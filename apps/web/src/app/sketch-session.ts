@@ -228,13 +228,16 @@ export class SketchSession {
     const f = this.feature();
     if (!f) return;
     const frame = this.wb.sketchFrame(f);
+    // A new sketch starts with the line tool, except for a Pencil user: no tool, so the Pencil
+    // draws freehand shapes that are recognised (pick a tool to draw with it instead).
+    const startTool = this.isNew && !this.wb.penRecentlyUsed() ? ('line' as const) : null;
     const sketch: SketchUi = {
       featureId: f.id,
       frame,
-      tool: this.isNew ? 'line' : null,
+      tool: startTool,
       variants: {},
       construction: false,
-      draw: this.isNew ? startDraw('line') : null,
+      draw: startTool ? startDraw(startTool) : null,
       dimPicks: [],
       cursor: null,
       selected: [],
@@ -960,15 +963,19 @@ export class SketchSession {
     if (!u || e.button !== 0) return;
     if (e.pointerType === 'pen') {
       this.penUsed = true;
-      // The Pencil draws: a stroke, or (no tool) a press on geometry drags it.
-      const picked = !u.draw && u.tool !== 'dimension' ? this.pickSketch(e)?.entity : undefined;
-      // The axes run across the whole view: a press on them still draws.
-      const onGeometry = picked && !isSketchReference(picked);
-      if (!onGeometry) {
-        e.stopPropagation();
-        e.preventDefault();
-        this.beginStroke(e);
-        return;
+      // With a tool selected the Pencil uses it, like a finger (drag to draw, tap to place,
+      // dimension picks). With no tool it draws freehand strokes that are recognised (a stroke
+      // may start on a corner and snap to it); a tap selects, and a press on *selected* geometry
+      // drags it.
+      if (!u.draw && u.tool !== 'dimension') {
+        const picked = this.pickSketch(e)?.entity;
+        const onSelected = picked && !isSketchReference(picked) && u.selected.includes(picked);
+        if (!onSelected) {
+          e.stopPropagation();
+          e.preventDefault();
+          this.beginStroke(e);
+          return;
+        }
       }
     } else if (e.pointerType === 'touch' && this.penUsed) {
       return; // fingers never draw while the Pencil is in use: they only navigate
@@ -989,7 +996,12 @@ export class SketchSession {
     if (u.draw || u.tool === 'dimension') {
       // Drawing owns the left button: no orbit.
       withhold();
-      if (e.pointerType === 'touch' && u.draw && u.draw.anchors.length === 0 && !u.draw.chainFrom)
+      if (
+        (e.pointerType === 'touch' || e.pointerType === 'pen') &&
+        u.draw &&
+        u.draw.anchors.length === 0 &&
+        !u.draw.chainFrom
+      )
         this.touchStart = { id: e.pointerId, x: e.clientX, y: e.clientY, placed: false };
       return;
     }

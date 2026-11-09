@@ -760,7 +760,7 @@ Each milestone ends with a reviewer gate. "Done" means every criterion is demons
 
 A capability check modelled on the SolidWorks CSWA/CSWP exams, which test exactly what users need: build a part from a drawing, set the material, confirm the mass, apply parametric changes, recreate the drawing, and assemble. It grows with the milestones (M3 parts and mass, M4 drawings, M6 assemblies) and is the final test at M7.
 
-- **Original content only.** The real exam and practice drawings are Dassault Systèmes' copyrighted material and are never committed or used in CI. The suite's parts and drawings are written for Whittle in the same style and difficulty. They live in `packages/test-fixtures/certification/`, licensed with the repo.
+- **Original content only.** The real exam and practice drawings are Dassault Systèmes' copyrighted material and are never committed or used in CI. The suite's parts and drawings are written for Whittle in the same style and difficulty. They live in `packages/test-fixtures/reference-parts/`, licensed with the repo.
 - **Each case has:** a spec drawing (SVG/PDF, plus the dimensions in JSON); the material and density; the expected mass (and centre of mass), computed independently in FreeCAD with the value and the script recorded; and CSWP-style modification stages (named dimension changes plus the expected new mass).
 - **Pass criteria:**
   - mass within 0.1 % (the exams' own tolerance) at every stage;

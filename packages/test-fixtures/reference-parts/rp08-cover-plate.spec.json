@@ -1,0 +1,423 @@
+{
+  "schema": "whittle-reference-part/1",
+  "id": "rp08-cover-plate",
+  "no": 8,
+  "title": "Cover plate",
+  "level": "CSWP-like",
+  "summary": "A stainless plate with an M6 counterbored hole, an M6 countersunk hole placed on a reference point, and a row of blind M8 tapped holes patterned along X with one instance skipped.",
+  "units": {
+    "length": "mm",
+    "angle": "deg"
+  },
+  "material": {
+    "libraryId": "whittle:stainless-steel-304",
+    "name": "Stainless steel 304",
+    "density": "8.00 g/cm^3",
+    "density_g_cm3": 8
+  },
+  "dimensions": {
+    "plate_l": {
+      "value": 100,
+      "unit": "mm",
+      "description": "Plate length (X)"
+    },
+    "plate_w": {
+      "value": 70,
+      "unit": "mm",
+      "description": "Plate width (Y)"
+    },
+    "plate_t": {
+      "value": 14,
+      "unit": "mm",
+      "description": "Plate thickness (Z)"
+    },
+    "cb_x": {
+      "value": -30,
+      "unit": "mm",
+      "description": "Counterbored hole X"
+    },
+    "cb_y": {
+      "value": 18,
+      "unit": "mm",
+      "description": "Counterbored hole Y"
+    },
+    "cb_d": {
+      "value": 11,
+      "unit": "mm",
+      "description": "Counterbore diameter"
+    },
+    "cb_h": {
+      "value": 6.5,
+      "unit": "mm",
+      "description": "Counterbore depth"
+    },
+    "cs_x": {
+      "value": 30,
+      "unit": "mm",
+      "description": "Countersunk hole X (the reference point)"
+    },
+    "cs_y": {
+      "value": 18,
+      "unit": "mm",
+      "description": "Countersunk hole Y (the reference point)"
+    },
+    "cs_d": {
+      "value": 12.4,
+      "unit": "mm",
+      "description": "Countersink diameter at the face (90 degree cone)"
+    },
+    "tap_x0": {
+      "value": -36,
+      "unit": "mm",
+      "description": "X of the first tapped hole"
+    },
+    "tap_dx": {
+      "value": 24,
+      "unit": "mm",
+      "description": "Pattern spacing along X"
+    },
+    "tap_n": {
+      "value": 4,
+      "unit": "",
+      "description": "Pattern count (including the original and the skipped one)"
+    },
+    "tap_y": {
+      "value": -18,
+      "unit": "mm",
+      "description": "Y of the tapped row"
+    },
+    "tap_depth": {
+      "value": 12,
+      "unit": "mm",
+      "description": "Tapped hole depth (drill depth)"
+    }
+  },
+  "tags": [
+    "extrude",
+    "point",
+    "holeCounterbore",
+    "holeCountersink",
+    "holeTapped",
+    "linearPattern",
+    "skip"
+  ],
+  "standards": [
+    {
+      "ref": "ISO 273 medium clearance, M6",
+      "value": "6.6 mm"
+    },
+    {
+      "ref": "ISO 261/262 coarse tap drill, M8 (pitch 1.25)",
+      "value": "6.8 mm"
+    }
+  ],
+  "method": "Exact. Every hole is a cylinder, a step or a cone frustum. The counterbore and countersink diameters and depths are the named dimensions above (so the model does not depend on a table row that might be edited); only the clearance diameter (M6, normal fit, 6.6 mm) and the tap drill (M8, 6.8 mm) come from the ISO tables. The tapped hole is its drill diameter, flat-bottomed, to tap_depth; the cosmetic thread adds no geometry. The pattern has tap_n instances; instance 1 is skipped. Accuracy: floating point (1e-12 relative). If the kernel hole tables ever change these two values the golden fails by design.",
+  "features": [
+    {
+      "tool": "sketch",
+      "id": "base_sk",
+      "say": "Sketch on Top (XY): a rectangle plate_l x plate_w centred on the origin.",
+      "on": {
+        "pick": "plane",
+        "name": "origin:XY"
+      },
+      "ops": [
+        {
+          "op": "rect",
+          "id": "L",
+          "x": "-plate_l/2",
+          "y": "-plate_w/2",
+          "w": "plate_l",
+          "h": "plate_w"
+        }
+      ]
+    },
+    {
+      "tool": "extrude",
+      "id": "base",
+      "say": "Extrude by plate_t as a new body.",
+      "profile": [
+        {
+          "pick": "region",
+          "sketch": "base_sk",
+          "curves": [
+            "L1",
+            "L2",
+            "L3",
+            "L4"
+          ],
+          "at": [
+            40,
+            25,
+            0
+          ]
+        }
+      ],
+      "direction": "normal",
+      "end": {
+        "kind": "blind",
+        "depth": "plate_t"
+      },
+      "op": "new"
+    },
+    {
+      "tool": "point",
+      "id": "cs_pt",
+      "say": "Reference point at (cs_x, cs_y) on the top face (coordinates).",
+      "definition": {
+        "kind": "coordinates",
+        "x": "cs_x",
+        "y": "cs_y",
+        "z": "plate_t"
+      }
+    },
+    {
+      "tool": "sketch",
+      "id": "pts_sk",
+      "say": "Sketch on the top face: a point for the counterbored hole and a point for the first tapped hole.",
+      "on": {
+        "pick": "face",
+        "name": "F{base}:end",
+        "at": [
+          40,
+          25,
+          14
+        ]
+      },
+      "ops": [
+        {
+          "op": "point",
+          "id": "CB",
+          "x": "cb_x",
+          "y": "cb_y"
+        },
+        {
+          "op": "point",
+          "id": "TP",
+          "x": "tap_x0",
+          "y": "tap_y"
+        }
+      ]
+    },
+    {
+      "tool": "hole",
+      "id": "h_cb",
+      "say": "Hole wizard: ISO counterbore for M6 (normal fit) at the first point, through all; counterbore cb_d x cb_h.",
+      "points": [
+        {
+          "pick": "vertex",
+          "name": "S{pts_sk}:p(CB)",
+          "at": [
+            -30,
+            18,
+            14
+          ]
+        }
+      ],
+      "face": {
+        "pick": "face",
+        "name": "F{base}:end",
+        "at": [
+          40,
+          25,
+          14
+        ]
+      },
+      "standard": "ISO",
+      "kind": "counterbore",
+      "size": "M6",
+      "fit": "normal",
+      "end": {
+        "kind": "throughAll"
+      },
+      "counterbore": {
+        "diameter": "cb_d",
+        "depth": "cb_h"
+      }
+    },
+    {
+      "tool": "hole",
+      "id": "h_cs",
+      "say": "Hole wizard: ISO countersink for M6 (normal fit) on the reference point, through all; countersink cs_d, 90 degrees.",
+      "points": [
+        {
+          "pick": "point",
+          "name": "F{cs_pt}:point",
+          "at": [
+            30,
+            18,
+            14
+          ]
+        }
+      ],
+      "face": {
+        "pick": "face",
+        "name": "F{base}:end",
+        "at": [
+          40,
+          25,
+          14
+        ]
+      },
+      "standard": "ISO",
+      "kind": "countersink",
+      "size": "M6",
+      "fit": "normal",
+      "end": {
+        "kind": "throughAll"
+      },
+      "countersink": {
+        "diameter": "cs_d",
+        "angle": "90 deg"
+      }
+    },
+    {
+      "tool": "hole",
+      "id": "h_tap",
+      "say": "Hole wizard: tapped M8 (tap drill from the table) at the third point, blind to tap_depth, cosmetic thread over the full depth.",
+      "points": [
+        {
+          "pick": "vertex",
+          "name": "S{pts_sk}:p(TP)",
+          "at": [
+            -36,
+            -18,
+            14
+          ]
+        }
+      ],
+      "face": {
+        "pick": "face",
+        "name": "F{base}:end",
+        "at": [
+          40,
+          25,
+          14
+        ]
+      },
+      "standard": "ISO",
+      "kind": "tapped",
+      "size": "M8",
+      "fit": "normal",
+      "end": {
+        "kind": "blind",
+        "depth": "tap_depth"
+      },
+      "thread": {}
+    },
+    {
+      "tool": "linearPattern",
+      "id": "pat",
+      "say": "Linear pattern of the tapped hole along X: tap_n instances, spacing tap_dx, skip instance 1.",
+      "source": {
+        "kind": "features",
+        "features": [
+          "h_tap"
+        ]
+      },
+      "direction": {
+        "pick": "axis",
+        "name": "origin:X"
+      },
+      "reverse": false,
+      "count": "tap_n",
+      "spacing": "tap_dx",
+      "skip": [
+        1
+      ]
+    }
+  ],
+  "expected": {
+    "volume_mm3": 95226.5936278,
+    "mass_g": 761.812749023,
+    "bbox": {
+      "min": [
+        -50,
+        -35,
+        0
+      ],
+      "max": [
+        50,
+        35,
+        14
+      ]
+    }
+  },
+  "stages": [
+    {
+      "name": "Stage 2: plate_t -> 18 mm",
+      "set": {
+        "plate_t": 18
+      },
+      "expected": {
+        "volume_mm3": 122952.898076,
+        "mass_g": 983.623184607,
+        "bbox": {
+          "min": [
+            -50,
+            -35,
+            0
+          ],
+          "max": [
+            50,
+            35,
+            18
+          ]
+        }
+      }
+    },
+    {
+      "name": "Stage 3: cb_h -> 8 mm and cs_d -> 13 mm",
+      "set": {
+        "cb_h": 8,
+        "cs_d": 13
+      },
+      "expected": {
+        "volume_mm3": 95107.6152309,
+        "mass_g": 760.860921847,
+        "bbox": {
+          "min": [
+            -50,
+            -35,
+            0
+          ],
+          "max": [
+            50,
+            35,
+            14
+          ]
+        }
+      }
+    },
+    {
+      "name": "Stage 4: tap_n -> 5, tap_dx -> 16 mm, tap_x0 -> -32 mm",
+      "set": {
+        "tap_n": 5,
+        "tap_dx": 16,
+        "tap_x0": -32
+      },
+      "expected": {
+        "volume_mm3": 94790.7918949,
+        "mass_g": 758.326335159,
+        "bbox": {
+          "min": [
+            -50,
+            -35,
+            0
+          ],
+          "max": [
+            50,
+            35,
+            14
+          ]
+        }
+      }
+    }
+  ],
+  "drawing": "rp08-cover-plate.svg",
+  "independent": {
+    "tool": "FreeCAD",
+    "script": "freecad/rp08.py",
+    "results": "freecad-results.json"
+  }
+}

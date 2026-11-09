@@ -13,6 +13,14 @@ const GESTURE_EVENTS = ['gesturestart', 'gesturechange', 'gestureend'] as const;
 
 const SCROLLABLE = /(auto|scroll)/;
 
+/** Movement (CSS px) under which an Apple Pencil touch is still a tap, not a drag. */
+export const STYLUS_TAP_SLOP_PX = 10;
+
+/** WebKit's `Touch.touchType` is `'stylus'` for the Apple Pencil. */
+function isStylus(t: Touch): boolean {
+  return (t as Touch & { touchType?: string }).touchType === 'stylus';
+}
+
 /**
  * True when a one-finger move of (dx, dy) px starting on `target` would scroll an element that
  * can still scroll that way (a panel list, the sheet content). Anything else would move the page
@@ -76,7 +84,13 @@ export function installPageGuards(doc: Document | undefined = globalThis.documen
     // dragging the whole screen). Pointer events keep flowing, so canvas and sheet drags work.
     const t = e.touches[0];
     if (!t || !start) return;
-    if (!canScroll(e.target, t.clientX - start.x, t.clientY - start.y)) e.preventDefault();
+    const dx = t.clientX - start.x;
+    const dy = t.clientY - start.y;
+    // The Apple Pencil reports sub-pixel moves during a tap (a finger's jitter is filtered).
+    // Cancelling those cancels the tap on iOS, so buttons never got the Pencil's clicks: a
+    // stylus only counts as a drag past a small slop.
+    if (isStylus(t) && Math.hypot(dx, dy) < STYLUS_TAP_SLOP_PX) return;
+    if (!canScroll(e.target, dx, dy)) e.preventDefault();
   };
   // The on-screen keyboard: iOS slides the page up to show the focused field and often leaves it
   // there after the keyboard closes. Once no field has focus any more, put the page back.

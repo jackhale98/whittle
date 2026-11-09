@@ -87,6 +87,23 @@ describe('page guards', () => {
     Object.defineProperty(moved, 'target', { value: grip });
     doc.dispatchEvent(moved);
     expect(moved.defaultPrevented).toBe(true);
+
+    // An Apple Pencil tap on a button jitters by a pixel or two: never cancelled (iOS would drop
+    // the tap's click), but a real Pencil drag on chrome still is.
+    const pen = (y: number) => [{ clientX: 10, clientY: y, touchType: 'stylus' }];
+    fire(doc, 'touchstart', { touches: pen(100) });
+    const jitter = Object.assign(new Event('touchmove', { cancelable: true }), {
+      touches: pen(101.5),
+    });
+    Object.defineProperty(jitter, 'target', { value: grip });
+    doc.dispatchEvent(jitter);
+    expect(jitter.defaultPrevented).toBe(false);
+    const drag = Object.assign(new Event('touchmove', { cancelable: true }), {
+      touches: pen(140),
+    });
+    Object.defineProperty(drag, 'target', { value: grip });
+    doc.dispatchEvent(drag);
+    expect(drag.defaultPrevented).toBe(true);
     uninstall();
   });
 

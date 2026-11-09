@@ -260,7 +260,7 @@ export function SketchToolbar({
                 aria-pressed={active}
                 aria-haspopup={spec.variants ? 'menu' : undefined}
                 data-tool={spec.id}
-                onClick={() => (active && !spec.variants ? onTool(null) : pick(spec))}
+                onClick={() => (active ? onTool(null) : pick(spec))}
                 onKeyDown={(e) => {
                   if (
                     spec.variants &&

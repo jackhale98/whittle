@@ -1,0 +1,472 @@
+{
+  "schema": "whittle-reference-part/1",
+  "id": "rp04-clamp-block",
+  "no": 4,
+  "title": "Clamp block",
+  "level": "CSWA-like",
+  "summary": "A rounded base plate with a softened top edge and a chamfered underside, and a round boss added as a second body, combined, then pulled taller.",
+  "units": {
+    "length": "mm",
+    "angle": "deg"
+  },
+  "material": {
+    "libraryId": "whittle:aluminium-7075-t6",
+    "name": "Aluminium 7075-T6",
+    "density": "2.81 g/cm^3",
+    "density_g_cm3": 2.81
+  },
+  "dimensions": {
+    "plate_l": {
+      "value": 100,
+      "unit": "mm",
+      "description": "Plate length (X)"
+    },
+    "plate_w": {
+      "value": 60,
+      "unit": "mm",
+      "description": "Plate width (Y)"
+    },
+    "plate_t": {
+      "value": 16,
+      "unit": "mm",
+      "description": "Plate thickness (Z)"
+    },
+    "corner_r": {
+      "value": 8,
+      "unit": "mm",
+      "description": "Radius of the four vertical corners"
+    },
+    "top_r": {
+      "value": 3,
+      "unit": "mm",
+      "description": "Fillet on the whole top edge loop"
+    },
+    "bot_c": {
+      "value": 2,
+      "unit": "mm",
+      "description": "Chamfer on the whole bottom edge loop"
+    },
+    "boss_d": {
+      "value": 30,
+      "unit": "mm",
+      "description": "Boss diameter"
+    },
+    "boss_h": {
+      "value": 20,
+      "unit": "mm",
+      "description": "Boss height as first extruded"
+    },
+    "boss_up": {
+      "value": 6,
+      "unit": "mm",
+      "description": "Push/pull distance added to the boss top"
+    },
+    "boss_c": {
+      "value": 2,
+      "unit": "mm",
+      "description": "Chamfer on the boss top edge"
+    }
+  },
+  "tags": [
+    "extrude",
+    "fillet",
+    "chamfer",
+    "propagate",
+    "noPropagate",
+    "boolean",
+    "pushPull"
+  ],
+  "standards": [],
+  "method": "Exact. Every blend runs along a loop of straight edges and quarter arcs, so Pappus gives its volume: the corner area of the cross-section times the length of the path of its centroid. Along a convex arc of radius Rc the centroid of a fillet gap lies 0.2234 r inside the wall, of a chamfer triangle c/3 inside. The top fillet is a single pick with propagation on; the bottom chamfer picks all eight edges with propagation off, and both are the same kind of loop. Accuracy: floating point (1e-12 relative).",
+  "features": [
+    {
+      "tool": "sketch",
+      "id": "base_sk",
+      "say": "Sketch on Top: a rectangle plate_l x plate_w centred on the origin.",
+      "on": {
+        "pick": "plane",
+        "name": "origin:XY"
+      },
+      "ops": [
+        {
+          "op": "rect",
+          "id": "L",
+          "x": "-plate_l/2",
+          "y": "-plate_w/2",
+          "w": "plate_l",
+          "h": "plate_w"
+        }
+      ]
+    },
+    {
+      "tool": "extrude",
+      "id": "base",
+      "say": "Extrude by plate_t as a new body.",
+      "profile": [
+        {
+          "pick": "region",
+          "sketch": "base_sk",
+          "curves": [
+            "L1",
+            "L2",
+            "L3",
+            "L4"
+          ],
+          "at": [
+            20,
+            10,
+            0
+          ]
+        }
+      ],
+      "direction": "normal",
+      "end": {
+        "kind": "blind",
+        "depth": "plate_t"
+      },
+      "op": "new"
+    },
+    {
+      "tool": "fillet",
+      "id": "fc",
+      "say": "Fillet the four vertical corner edges, radius corner_r.",
+      "edges": [
+        {
+          "pick": "edge",
+          "name": "edge(F{base}:side(S{base_sk}:e(L1))|F{base}:side(S{base_sk}:e(L2)))",
+          "at": [
+            50,
+            -30,
+            8
+          ]
+        },
+        {
+          "pick": "edge",
+          "name": "edge(F{base}:side(S{base_sk}:e(L2))|F{base}:side(S{base_sk}:e(L3)))",
+          "at": [
+            50,
+            30,
+            8
+          ]
+        },
+        {
+          "pick": "edge",
+          "name": "edge(F{base}:side(S{base_sk}:e(L3))|F{base}:side(S{base_sk}:e(L4)))",
+          "at": [
+            -50,
+            30,
+            8
+          ]
+        },
+        {
+          "pick": "edge",
+          "name": "edge(F{base}:side(S{base_sk}:e(L1))|F{base}:side(S{base_sk}:e(L4)))",
+          "at": [
+            -50,
+            -30,
+            8
+          ]
+        }
+      ],
+      "radius": "corner_r",
+      "propagate": true
+    },
+    {
+      "tool": "fillet",
+      "id": "ft",
+      "say": "Fillet ONE top edge with \"propagate along tangent edges\" on, radius top_r: the whole rounded top loop follows.",
+      "edges": [
+        {
+          "pick": "edge",
+          "name": "edge(F{base}:end|F{base}:side(S{base_sk}:e(L1)))",
+          "at": [
+            0,
+            -30,
+            16
+          ]
+        }
+      ],
+      "radius": "top_r",
+      "propagate": true
+    },
+    {
+      "tool": "chamfer",
+      "id": "cb",
+      "say": "Chamfer the bottom loop by bot_c with \"propagate\" OFF: pick all eight edges (four straight, four corner arcs) one by one.",
+      "edges": [
+        {
+          "pick": "edge",
+          "name": "edge(F{base}:side(S{base_sk}:e(L1))|F{base}:start)",
+          "at": [
+            0,
+            -30,
+            0
+          ]
+        },
+        {
+          "pick": "edge",
+          "name": "edge(F{base}:side(S{base_sk}:e(L2))|F{base}:start)",
+          "at": [
+            50,
+            0,
+            0
+          ]
+        },
+        {
+          "pick": "edge",
+          "name": "edge(F{base}:side(S{base_sk}:e(L3))|F{base}:start)",
+          "at": [
+            0,
+            30,
+            0
+          ]
+        },
+        {
+          "pick": "edge",
+          "name": "edge(F{base}:side(S{base_sk}:e(L4))|F{base}:start)",
+          "at": [
+            -50,
+            0,
+            0
+          ]
+        },
+        {
+          "pick": "edge",
+          "name": "edge(F{base}:start|F{fc}:fillet(edge(F{base}:side(S{base_sk}:e(L1))|F{base}:side(S{base_sk}:e(L2)))))",
+          "at": [
+            47.65685424949238,
+            -27.65685424949238,
+            0
+          ]
+        },
+        {
+          "pick": "edge",
+          "name": "edge(F{base}:start|F{fc}:fillet(edge(F{base}:side(S{base_sk}:e(L2))|F{base}:side(S{base_sk}:e(L3)))))",
+          "at": [
+            47.65685424949238,
+            27.65685424949238,
+            0
+          ]
+        },
+        {
+          "pick": "edge",
+          "name": "edge(F{base}:start|F{fc}:fillet(edge(F{base}:side(S{base_sk}:e(L3))|F{base}:side(S{base_sk}:e(L4)))))",
+          "at": [
+            -47.65685424949238,
+            27.65685424949238,
+            0
+          ]
+        },
+        {
+          "pick": "edge",
+          "name": "edge(F{base}:start|F{fc}:fillet(edge(F{base}:side(S{base_sk}:e(L1))|F{base}:side(S{base_sk}:e(L4)))))",
+          "at": [
+            -47.65685424949238,
+            -27.65685424949238,
+            0
+          ]
+        }
+      ],
+      "mode": {
+        "kind": "distance",
+        "distance": "bot_c"
+      },
+      "propagate": false
+    },
+    {
+      "tool": "sketch",
+      "id": "boss_sk",
+      "say": "Sketch on the top face: a circle of boss_d at the origin.",
+      "on": {
+        "pick": "face",
+        "name": "F{base}:end",
+        "at": [
+          20,
+          10,
+          16
+        ]
+      },
+      "ops": [
+        {
+          "op": "circle",
+          "id": "C",
+          "cx": "0",
+          "cy": "0",
+          "d": "boss_d"
+        }
+      ]
+    },
+    {
+      "tool": "extrude",
+      "id": "boss",
+      "say": "Extrude the circle upwards by boss_h as a NEW body (a second body touching the plate).",
+      "profile": [
+        {
+          "pick": "region",
+          "sketch": "boss_sk",
+          "curves": [
+            "C"
+          ],
+          "at": [
+            0,
+            0,
+            16
+          ]
+        }
+      ],
+      "direction": "normal",
+      "end": {
+        "kind": "blind",
+        "depth": "boss_h"
+      },
+      "op": "new"
+    },
+    {
+      "tool": "boolean",
+      "id": "join",
+      "say": "Combine: add the boss body to the plate body.",
+      "op": "add",
+      "target": {
+        "pick": "body",
+        "name": "B{base}"
+      },
+      "tools": [
+        {
+          "pick": "body",
+          "name": "B{boss}"
+        }
+      ],
+      "keepTools": false
+    },
+    {
+      "tool": "pushPull",
+      "id": "pull",
+      "say": "Push/pull the boss top face outwards by boss_up.",
+      "faces": [
+        {
+          "pick": "face",
+          "name": "F{join}:face(F{boss}:end)",
+          "at": [
+            0,
+            0,
+            36
+          ]
+        }
+      ],
+      "distance": "boss_up"
+    },
+    {
+      "tool": "chamfer",
+      "id": "cboss",
+      "say": "Chamfer the boss top edge by boss_c (propagate off: it is a single circular edge).",
+      "edges": [
+        {
+          "pick": "edge",
+          "name": "edge(F{join}:face(F{boss}:end)|F{join}:face(F{boss}:side(S{boss_sk}:e(C))))",
+          "at": [
+            15,
+            0,
+            42
+          ]
+        }
+      ],
+      "mode": {
+        "kind": "distance",
+        "distance": "boss_c"
+      },
+      "propagate": false
+    }
+  ],
+  "expected": {
+    "volume_mm3": 112131.642332,
+    "mass_g": 315.089914954,
+    "bbox": {
+      "min": [
+        -50,
+        -30,
+        0
+      ],
+      "max": [
+        50,
+        30,
+        42
+      ]
+    }
+  },
+  "stages": [
+    {
+      "name": "Stage 2: plate_l -> 120 mm",
+      "set": {
+        "plate_l": 120
+      },
+      "expected": {
+        "volume_mm3": 131174.385671,
+        "mass_g": 368.600023736,
+        "bbox": {
+          "min": [
+            -60,
+            -30,
+            0
+          ],
+          "max": [
+            60,
+            30,
+            42
+          ]
+        }
+      }
+    },
+    {
+      "name": "Stage 3: boss_d -> 36 mm and boss_up -> 10 mm",
+      "set": {
+        "boss_d": 36,
+        "boss_up": 10
+      },
+      "expected": {
+        "volume_mm3": 124251.90679,
+        "mass_g": 349.147858079,
+        "bbox": {
+          "min": [
+            -50,
+            -30,
+            0
+          ],
+          "max": [
+            50,
+            30,
+            46
+          ]
+        }
+      }
+    },
+    {
+      "name": "Stage 4: corner_r -> 12 mm and top_r -> 4 mm",
+      "set": {
+        "corner_r": 12,
+        "top_r": 4
+      },
+      "expected": {
+        "volume_mm3": 110621.262988,
+        "mass_g": 310.845748997,
+        "bbox": {
+          "min": [
+            -50,
+            -30,
+            0
+          ],
+          "max": [
+            50,
+            30,
+            42
+          ]
+        }
+      }
+    }
+  ],
+  "drawing": "rp04-clamp-block.svg",
+  "independent": {
+    "tool": "FreeCAD",
+    "script": "freecad/rp04.py",
+    "results": "freecad-results.json"
+  }
+}

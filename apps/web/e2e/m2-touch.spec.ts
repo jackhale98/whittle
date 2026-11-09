@@ -235,8 +235,14 @@ test('Pencil: strokes are recognised live and committed; fingers never draw whil
   const t = await touch(page);
   await page.getByRole('button', { name: 'Sketch', exact: true }).tap();
   await page.getByTestId('plane-chooser').getByRole('button', { name: /Top/ }).tap();
-  await expect(page.getByRole('toolbar', { name: 'Sketch tools' })).toBeVisible();
+  const tools = page.getByRole('toolbar', { name: 'Sketch tools' });
+  await expect(tools).toBeVisible();
   await cameraStill(page);
+  // Entered by finger, so the line tool is selected; tapping it again leaves no tool, and the
+  // Pencil draws freehand shapes that are recognised.
+  await expect(tools.getByRole('button', { name: 'Line' })).toHaveAttribute('aria-pressed', 'true');
+  await tools.getByRole('button', { name: 'Line' }).tap();
+  await expect.poll(async () => (await a.ui()).sketch?.tool ?? null).toBeNull();
 
   // A rectangle, drawn as one stroke.
   const corners: Array<[number, number]> = [
@@ -272,7 +278,7 @@ test('Pencil: strokes are recognised live and committed; fingers never draw whil
   expect((await a.sketch())?.status).not.toBe('failed');
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/ipad-pencil-recognised.png` });
 
-  // The line tool is active, but a finger tap no longer draws: fingers navigate.
+  // A finger tap no longer draws once the Pencil is in use: fingers navigate.
   const n = sk.entities.length;
   const p = await toPage(page, [50, 40, 0]);
   await t.tap([p]);
@@ -368,4 +374,62 @@ test('touch targets: welcome actions, Close, Library and the prompt Esc are 44 p
   const chip = page.getByTestId('prompt-chip');
   await expect(chip).toContainText('Select a plane');
   await expectTouchTarget(chip.getByRole('button', { name: /cancel selection/ }), 'Esc');
+});
+
+test('Pencil: a selected tool draws with the Pencil; a new sketch after Pencil use starts freehand', async ({
+  page,
+}) => {
+  test.slow();
+  await boot(page);
+  await page.getByRole('button', { name: 'Close welcome' }).tap();
+  const a = app(page);
+  const t = await touch(page);
+  const pencilTap = async (loc: import('@playwright/test').Locator) => {
+    const b = await loc.boundingBox();
+    if (!b) throw new Error('not visible');
+    const at = { x: b.x + b.width / 2, y: b.y + b.height / 2 };
+    await t.pen.down(at);
+    await t.pen.up(at);
+  };
+  // The Pencil presses the toolbar buttons too.
+  await pencilTap(page.getByRole('button', { name: 'Sketch', exact: true }));
+  await pencilTap(page.getByTestId('plane-chooser').getByRole('button', { name: /Top/ }));
+  const tools = page.getByRole('toolbar', { name: 'Sketch tools' });
+  await expect(tools).toBeVisible();
+  await cameraStill(page);
+  // The Pencil was just used: no tool, freehand.
+  expect((await a.ui()).sketch?.tool ?? null).toBeNull();
+
+  // Rectangle tool, then a Pencil drag from corner to corner draws that rectangle.
+  await pencilTap(tools.getByRole('button', { name: 'Rectangle' }));
+  await expect.poll(async () => (await a.ui()).sketch?.tool).toBe('rectangle');
+  const from = await toPage(page, [-20, -10, 0]);
+  const to = await toPage(page, [20, 15, 0]);
+  await t.pen.down(from);
+  for (let k = 1; k <= 10; k++)
+    await t.pen.move({
+      x: from.x + ((to.x - from.x) * k) / 10,
+      y: from.y + ((to.y - from.y) * k) / 10,
+    });
+  await t.pen.up(to);
+  await a.settled();
+  const sk = (await a.doc()).parts[0]?.features[0];
+  if (sk?.type !== 'sketch') throw new Error('no sketch');
+  expect(sk.entities.filter((e) => e.kind === 'line')).toHaveLength(4);
+  // Drawn by the tool (not recognised from a stroke): no stroke was recognised.
+  expect((await a.ui()).sketch?.lastStroke ?? null).toBeNull();
+
+  // Dimension tool with the Pencil: tap the bottom edge, then tap where the label goes.
+  await pencilTap(tools.getByRole('button', { name: 'Dimension' }));
+  await expect.poll(async () => (await a.ui()).sketch?.tool).toBe('dimension');
+  const edge = await toPage(page, [8, -10, 0]);
+  await t.pen.down(edge);
+  await t.pen.up(edge);
+  const label = await toPage(page, [8, -25, 0]); // off the vertical axis
+  await t.pen.down(label);
+  await t.pen.up(label);
+  await a.settled();
+  const sk2 = (await a.doc()).parts[0]?.features[0];
+  if (sk2?.type !== 'sketch') throw new Error('no sketch');
+  expect(sk2.constraints.some((c) => 'value' in c)).toBe(true);
 });

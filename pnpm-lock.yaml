@@ -252,6 +252,9 @@ importers:
       '@whittle/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@whittle/document':
+        specifier: workspace:*
+        version: link:../document
 
   packages/ui:
     dependencies:
