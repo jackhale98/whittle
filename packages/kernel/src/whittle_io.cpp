@@ -349,6 +349,58 @@ std::string importBrep(const std::string& path) {
   return importBodiesJson(bodies, false);
 }
 
+// IGES (M3): IGESControl_Reader, then solids as they are; loose faces are sewn and closed shells
+// become solids, open shells stay shell bodies. Lengths arrive in mm (OCCT's default unit).
+// Builds with WHITTLE_NO_IGES (size measurements, see README) leave the IGES toolkit out.
+std::string importIges(const std::string& path) {
+#if defined(WHITTLE_NO_IGES)
+  (void)path;
+  raiseError("UNSUPPORTED_FEATURE", "This kernel build cannot read IGES files",
+             "Use the standard Whittle kernel, or import a STEP file.");
+#else
+  IGESControl_Reader reader;
+  if (reader.ReadFile(path.c_str()) != IFSelect_RetDone) {
+    raiseError("INVALID_INPUT", "This file is not a readable IGES file");
+  }
+  if (reader.TransferRoots() == 0 || reader.NbShapes() == 0) {
+    raiseError("INVALID_INPUT", "The IGES file contains no surfaces or solids",
+               "Export surfaces or solids (not only curves) from the other program.");
+  }
+  const TopoDS_Shape shape = reader.OneShape();
+  if (shape.IsNull()) raiseError("INVALID_INPUT", "The IGES file contains no shapes");
+  std::vector<std::pair<TopoDS_Shape, std::string>> bodies;
+  for (TopExp_Explorer ex(shape, TopAbs_SOLID); ex.More(); ex.Next()) bodies.emplace_back(ex.Current(), std::string());
+  // Faces outside solids: sew, then close.
+  BRepBuilderAPI_Sewing sewing(1e-3);
+  int loose = 0;
+  for (TopExp_Explorer ex(shape, TopAbs_FACE, TopAbs_SOLID); ex.More(); ex.Next()) {
+    sewing.Add(ex.Current());
+    ++loose;
+  }
+  if (loose > 0) {
+    sewing.Perform();
+    const TopoDS_Shape sewn = sewing.SewedShape();
+    for (TopExp_Explorer ex(sewn, TopAbs_SHELL); ex.More(); ex.Next()) {
+      const TopoDS_Shell shell = TopoDS::Shell(ex.Current());
+      if (BRep_Tool::IsClosed(shell)) {
+        BRepBuilderAPI_MakeSolid ms(shell);
+        if (ms.IsDone()) {
+          TopoDS_Solid solid = ms.Solid();
+          BRepLib::OrientClosedSolid(solid);
+          bodies.emplace_back(solid, std::string());
+          continue;
+        }
+      }
+      bodies.emplace_back(shell, std::string());
+    }
+    for (TopExp_Explorer ex(sewn, TopAbs_FACE, TopAbs_SHELL); ex.More(); ex.Next()) {
+      bodies.emplace_back(ex.Current(), std::string());
+    }
+  }
+  return importBodiesJson(bodies, false);
+#endif
+}
+
 std::string importStl(const std::string& path) {
   const occ::handle<Poly_Triangulation> tri = RWStl::ReadFile(path.c_str());
   if (tri.IsNull() || tri->NbTriangles() == 0) {

@@ -46,10 +46,13 @@ void carryFaceNames(BRepBuilderAPI_MakeShape& algo, const NamedInput& input, con
 
 // Boolean of named inputs. Faces of `objects` keep their names; faces of `tools` keep theirs
 // (mapped through `toolRename`, e.g. to F…:face(<name>)) where no object face claimed them.
+//
+// `manyTools` (M3 patterns and holes): tools are known-good solids (no inverted-solid check) and
+// the threaded build runs the General Fuse in parallel.
 NamedShape booleanNamed(BOPAlgo_Operation op, const std::vector<NamedInput>& objects,
                         const std::vector<NamedInput>& tools,
                         const std::function<std::string(const std::string&)>& toolRename,
-                        const std::string& fallback) {
+                        const std::string& fallback, bool manyTools = false) {
   ShapeList args;
   ShapeList toolList;
   for (const NamedInput& o : objects) args.Append(o.shape);
@@ -58,7 +61,12 @@ NamedShape booleanNamed(BOPAlgo_Operation op, const std::vector<NamedInput>& obj
   bop.SetOperation(op);
   bop.SetArguments(args);
   bop.SetTools(toolList);
+#if defined(__EMSCRIPTEN_PTHREADS__)
+  bop.SetRunParallel(manyTools);
+#else
   bop.SetRunParallel(false);
+#endif
+  if (manyTools) bop.SetCheckInverted(false);
   bop.Build();
   if (bop.HasErrors() || !bop.IsDone()) {
     std::ostringstream diag;
@@ -1242,6 +1250,41 @@ double maxWorkingRadius(const TopoDS_Shape& shape, const std::vector<TopoDS_Edge
   return lo;
 }
 
+// `propagate: false` (M3). OCCT has no switch for it: every BRepFilletAPI_MakeFillet /
+// BRepFilletAPI_MakeChamfer Add() calls ChFi3d_Builder::PerformElement (ChFi3d_Builder_1.cxx),
+// which always extends the contour along tangent-continuous edges. So when the contour OCCT
+// built is longer than the selection, refuse with the extra edges instead of silently blending
+// more than was asked (never fake it).
+bool propagateOption(const Json& feature) {
+  const Json* p = feature.get("propagate");
+  return !(p != nullptr && p->kind == Json::Kind::Bool && !p->boolean);
+}
+
+void refuseTangentPropagation(const BRepFilletAPI_LocalOperation& mk, const EdgeSelection& sel,
+                              const char* what) {
+  std::vector<std::string> extra;
+  for (int ic = 1; ic <= mk.NbContours(); ++ic) {
+    for (int j = 1; j <= mk.NbEdges(ic); ++j) {
+      const TopoDS_Edge& e = mk.Edge(ic, j);
+      bool selected = false;
+      for (const TopoDS_Edge& s : sel.edges) selected = selected || s.IsSame(e);
+      if (selected) continue;
+      const int ei = sel.target->topo().edges.FindIndex(e);
+      const size_t idx = static_cast<size_t>(ei - 1);
+      extra.push_back(ei > 0 && idx < sel.target->edgeNames.size() ? sel.target->edgeNames[idx]
+                                                                    : std::string("edge #") + std::to_string(ei - 1));
+    }
+  }
+  if (extra.empty()) return;
+  std::vector<std::string> refs = sel.names;
+  refs.insert(refs.end(), extra.begin(), extra.end());
+  raiseError("UNSUPPORTED_FEATURE",
+             std::string("The ") + what + " cannot stop at tangent edges: " + std::to_string(extra.size()) +
+                 (extra.size() == 1 ? " tangent edge continues" : " tangent edges continue") + " the selection",
+             "Turn on \"Propagate along tangent edges\", or select the whole tangent chain.",
+             "OCCT ChFi3d_Builder::PerformElement always propagates along tangent edges", refs);
+}
+
 std::string roundDownHint(double v) {
   double step = v >= 10 ? 1.0 : (v >= 1 ? 0.1 : (v >= 0.1 ? 0.01 : 0.001));
   double rounded = std::floor(v / step) * step;
@@ -1249,7 +1292,7 @@ std::string roundDownHint(double v) {
   return fmtMm(rounded);
 }
 
-std::string execFillet(const Json& /*feature*/, const Json& inputs, const std::string& tag) {
+std::string execFillet(const Json& feature, const Json& inputs, const std::string& tag) {
   const Json& values = valuesOf(inputs);
   const EdgeSelection sel = selectEdges(inputs, "fillet");
   const double r = requireValue(values, "/radius", "fillet radius");
@@ -1271,6 +1314,7 @@ std::string execFillet(const Json& /*feature*/, const Json& inputs, const std::s
   try {
     mk = std::make_unique<BRepFilletAPI_MakeFillet>(sel.target->shape);
     for (const TopoDS_Edge& e : sel.edges) mk->Add(r, e);
+    if (!propagateOption(feature)) refuseTangentPropagation(*mk, sel, "fillet");
     mk->Build();
     if (mk->IsDone()) result = mk->Shape();
   } catch (const Standard_Failure& e) {
@@ -1328,6 +1372,7 @@ std::string execChamfer(const Json& feature, const Json& inputs, const std::stri
       }
       mk->AddDA(d, angle, e, ref);
     }
+    if (!propagateOption(feature)) refuseTangentPropagation(*mk, sel, "chamfer");
     mk->Build();
     if (mk->IsDone()) result = mk->Shape();
   } catch (const Standard_Failure& e) {
@@ -1400,60 +1445,21 @@ std::string execBoolean(const Json& feature, const Json& inputs, const std::stri
   return storeResult(result, warnings);
 }
 
-// ---------------------------------------------------------------------------------------------
-// Datum plane
-// ---------------------------------------------------------------------------------------------
-
-std::string execPlane(const Json& feature, const Json& inputs, const std::string& tag) {
-  const Json* def = feature.get("definition");
-  if (def == nullptr || !def->isObject()) raiseError("INVALID_INPUT", "plane.definition is required");
-  const std::string kind = optString(*def, "kind", "");
-  gp_Ax3 frame;
-  double size = 100;
-  if (kind == "frame") {
-    const Json* f = def->get("frame");
-    if (f == nullptr) f = frameInput(inputs, "plane");
-    frame = gp_Ax3(parseFrame(f));
-  } else if (kind == "offset") {
-    const double distance = requireValue(valuesOf(inputs), "/definition/distance", "plane offset");
-    const std::vector<RefTarget> refs = refsAt(inputs, "/definition/from");
-    if (!refs.empty()) {
-      const RefTarget& r = refs[0];
-      gp_Pln pln;
-      gp_Dir n;
-      if (r.kind != "face" || !planeOf(TopoDS::Face(r.sub), pln, n)) {
-        raiseError("INVALID_INPUT", "An offset plane needs a planar face or a plane", {}, {},
-                   {r.name});
-      }
-      if (r.record->hasFrame && r.record->faceNames.size() == 1) {
-        frame = r.record->frame;
-      } else {
-        const gp_Pnt c = faceCentroid(TopoDS::Face(r.sub));
-        frame = gp_Ax3(c, n, pln.Position().XDirection());
-      }
-      Bnd_Box box;
-      BRepBndLib::Add(r.sub, box);
-      if (!box.IsVoid()) size = std::max(10.0, std::sqrt(box.SquareExtent()) * 1.2);
-    } else {
-      const Json* f = frameInput(inputs, "/definition/from");
-      if (f == nullptr) f = frameInput(inputs, "from");
-      if (f == nullptr) raiseError("UNRESOLVED_REFERENCE", "Select the face or plane to offset from");
-      frame = gp_Ax3(parseFrame(f));
-    }
-    frame.Translate(gp_Vec(frame.Direction()) * distance);
-  } else {
-    raiseError("INVALID_INPUT", "plane.definition.kind must be offset or frame");
-  }
-  const double h = size / 2;
-  const TopoDS_Face face = BRepBuilderAPI_MakeFace(gp_Pln(frame), -h, h, -h, h).Face();
-  NamedShape ns = finalizeNamed(face, {"F" + tag + ":plane"}, "F" + tag + ":plane");
-  ns.hasFrame = true;
-  ns.frame = frame;
-  return storeResult(ns, {}, ",\"frame\":" + jsonFrame(frame));
-}
-
-// Defined in whittle_pushpull.cpp (later in the amalgamated translation unit).
+// Defined later in the amalgamated translation unit (whittle_pushpull.cpp, whittle_shape_ops.cpp,
+// whittle_copies.cpp, whittle_reference.cpp).
 std::string execPushPull(const Json& feature, const Json& inputs, const std::string& tag);
+std::string execShell(const Json& feature, const Json& inputs, const std::string& tag);
+std::string execDraft(const Json& feature, const Json& inputs, const std::string& tag);
+std::string execSweep(const Json& feature, const Json& inputs, const std::string& tag);
+std::string execLoft(const Json& feature, const Json& inputs, const std::string& tag);
+std::string execCopies(const std::string& type, const Json& feature, const Json& inputs,
+                       const std::string& tag);
+std::string execHole(const Json& feature, const Json& inputs, const std::string& tag);
+std::string execImport(const Json& feature, const Json& inputs, const std::string& tag);
+std::string execThread(const Json& feature, const Json& inputs, const std::string& tag);
+std::string execPlane(const Json& feature, const Json& inputs, const std::string& tag);
+std::string execAxis(const Json& feature, const Json& inputs, const std::string& tag);
+std::string execPoint(const Json& feature, const Json& inputs, const std::string& tag);
 
 std::string dispatchFeature(const Json& feature, const Json& inputs) {
   const std::string type = requireString(feature, "type", "feature");
@@ -1468,6 +1474,18 @@ std::string dispatchFeature(const Json& feature, const Json& inputs) {
   if (type == "boolean") return execBoolean(feature, inputs, id);
   if (type == "plane") return execPlane(feature, inputs, id);
   if (type == "pushPull") return execPushPull(feature, inputs, id);
+  if (type == "shell") return execShell(feature, inputs, id);
+  if (type == "draft") return execDraft(feature, inputs, id);
+  if (type == "sweep") return execSweep(feature, inputs, id);
+  if (type == "loft") return execLoft(feature, inputs, id);
+  if (type == "mirror" || type == "linearPattern" || type == "circularPattern") {
+    return execCopies(type, feature, inputs, id);
+  }
+  if (type == "hole") return execHole(feature, inputs, id);
+  if (type == "import") return execImport(feature, inputs, id);
+  if (type == "thread") return execThread(feature, inputs, id);
+  if (type == "axis") return execAxis(feature, inputs, id);
+  if (type == "point") return execPoint(feature, inputs, id);
   raiseError("UNSUPPORTED_FEATURE",
              "Feature type '" + type + "' is not supported by this kernel build",
              "Update Whittle, or remove the feature.");

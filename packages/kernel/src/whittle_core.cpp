@@ -5,13 +5,36 @@
 // their *contents* into one translation unit, so relative includes cannot be resolved there.
 // scripts/amalgamate.mjs inlines, in this order:
 //   whittle_kernel.h, whittle_core.cpp, whittle_modeling.cpp, whittle_pushpull.cpp,
-//   whittle_measure.cpp, whittle_io.cpp, whittle_kernel.cpp, whittle_bindings.cpp
+//   whittle_shape_ops.cpp, whittle_copies.cpp, whittle_reference.cpp, whittle_measure.cpp,
+//   whittle_io.cpp, whittle_kernel.cpp, whittle_bindings.cpp
 // into .libcascade/whittle_facade.cpp, which is what libcascade.config.ts points at. The files
 // after this one share its anonymous namespace helpers and are not standalone TUs.
 
 #include "whittle_kernel.h"
 
 #include <BOPAlgo_BuilderFace.hxx>
+#include <BOPAlgo_CheckerSI.hxx>
+#include <BOPDS_DS.hxx>
+#include <BRepBuilderAPI_MakeSolid.hxx>
+#include <BRepBuilderAPI_MakeWire.hxx>
+#include <BRepBuilderAPI_Sewing.hxx>
+#include <BRepBuilderAPI_Transform.hxx>
+#include <BRepFilletAPI_LocalOperation.hxx>
+#include <BRepOffsetAPI_DraftAngle.hxx>
+#include <BRepOffsetAPI_MakePipeShell.hxx>
+#include <BRepOffsetAPI_ThruSections.hxx>
+#include <BRepOffset_MakeOffset.hxx>
+#include <BRepTools_WireExplorer.hxx>
+#include <GCPnts_AbscissaPoint.hxx>
+#include <GCPnts_TangentialDeflection.hxx>
+#include <GeomAPI_ProjectPointOnCurve.hxx>
+#include <Geom_Curve.hxx>
+#if !defined(WHITTLE_NO_IGES)
+#include <IGESControl_Reader.hxx>
+#endif
+#include <TopoDS_Shell.hxx>
+#include <gp_Cone.hxx>
+#include <gp_XY.hxx>
 #include <BOPAlgo_Operation.hxx>
 #include <BRepAdaptor_Curve.hxx>
 #include <BRepAdaptor_Surface.hxx>

@@ -21,8 +21,9 @@ pnpm --filter @whittle/kernel test    # golden tests in Node, both variants
 `pnpm build` runs [`scripts/build.mjs`](scripts/build.mjs):
 
 1. `scripts/amalgamate.mjs` inlines `whittle_kernel.h`, `whittle_core.cpp`, `whittle_modeling.cpp`,
-   `whittle_pushpull.cpp`, `whittle_measure.cpp`, `whittle_io.cpp`, `whittle_kernel.cpp` and
-   `whittle_bindings.cpp` (in that order) into `.libcascade/whittle_facade.cpp`, and stamps
+   `whittle_pushpull.cpp`, `whittle_shape_ops.cpp`, `whittle_copies.cpp`, `whittle_reference.cpp`,
+   `whittle_measure.cpp`, `whittle_io.cpp`, `whittle_kernel.cpp` and `whittle_bindings.cpp` (in that
+   order) into `.libcascade/whittle_facade.cpp`, and stamps
    `WHITTLE_BUILD_ID`.
    `WHITTLE_BUILD_ID` is a SHA-256 over the façade sources, `libcascade.config.ts`, the
    amalgamation script and the toolchain version, and `kernelInfo()` reports it. The amalgamation
@@ -113,8 +114,10 @@ last resort is an empty string (the worker reports it as a malformed result).
 | `massProperties(shape, densityKgPerMm3)`   | `MassProperties`; `mass` + `inertia` when density > 0           |
 | `fingerprints(shape)`                      | `ShapeFingerprints` (TopExp order)                              |
 | `exportShapes(shapes, format, options)`    | `{path, files:[{path,name}]}` in MEMFS (`step`, `stl`, `brep`)  |
-| `importFile(path, format)`                 | `{bodies:[{shape,name?}]}`                                      |
+| `importFile(path, format)`                 | `{bodies:[{shape,name?}]}` (`step`, `iges`, `brep`, `stl`)      |
 | `measure(query)`                           | `Measurement` (M2; `{a, b?}`, see below)                        |
+| `projectEdges(query)`                      | M3: `ProjectedEdge[]` (`{shape, edges, plane}`, see below)      |
+| `projectFaceOutline(query)`                | M3: `{outer, inner}` (`{shape, face, plane}`)                   |
 | `configureThreads(count)`                  | `{threads, max}` (threaded build; no-op single)                 |
 | `release(shape)`, `liveHandleCount()`      |                                                                 |
 
@@ -183,6 +186,115 @@ A push that splits the body warns.
     lines, [0, π/2];
   - face–edge: between the line and the plane.
 
+### Features (M3)
+
+Inputs follow the rule above: refs and values are keyed by JSON pointer into the feature, frames
+by pointer too (origin planes/axes/points and reference features resolve to frames), with the
+role keys of `kernel.ts` (`plane`, `axis`, `upTo`, …) accepted as well.
+
+| Feature                    | Inputs                                                                                                                                                         |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `shell`                    | `inputs.target` (else the first face's body, or refs `/body`); refs `/openFaces/<n>`; `/thickness`; `direction` inward / outward. No open faces = hollow solid |
+| `draft`                    | `inputs.target`; refs `/faces/<n>`; neutral plane at refs `/neutral` (planar face) or `frames["/neutral"]`; `/angle` rad; `reverse`                             |
+| `sweep`                    | refs `/profile/<n>` (or every region of `shapes.profile`); refs `/path/<n>` edges in chain order; `orientation`; op/scope as extrude                           |
+| `loft`                     | refs `/sections/<n>`: region faces, closed edges, or vertices (first/last only); `ruled`, `closed`; op/scope as extrude. `guides` give a warning (ignored)      |
+| `mirror`                   | plane at refs `/plane` or `frames["/plane"]` / `frames.plane`                                                                                                   |
+| `linearPattern`            | direction at refs `/direction` (straight edge, circular edge or cylinder axis, planar face normal) or `frames["/direction"]` (z); `/count`, `/spacing`; `second`: `/second/direction`, `/second/count`, `/second/spacing` |
+| `circularPattern`          | axis at refs `/axis` or `frames["/axis"]` / `frames.axis`; `/count`, `/angle`; `equalSpacing`                                                                   |
+| `hole`                     | `inputs.target`; `frames["hole:<i>"]` (origin on the face, z into the material); values below; `end` blind / throughAll / upTo (refs or frames `/end/target`, or `frames.upTo`) |
+| `import`                   | `inputs.shapes["source…"]`: raw handles from `importFile` (key order); `frame`; `op`/scope                                                                    |
+| `thread`                   | refs `/face` (cylindrical); returns the body unchanged plus the cylinder `frame` and `radius`                                                                  |
+| `axis` / `point` / `plane` | refs or frames at the definition's pointers (`/definition/a`, `/definition/face`, …); values `/definition/<field>`; the result carries `frame`                  |
+
+**Copies** (mirror and both patterns). Feature copies: each source feature's tool solid is
+`shapes["tool:<featureId>"]` with its op in `values["/ops/<featureId>"]` (0 add, 1 cut;
+2 intersect is refused with `UNSUPPORTED_FEATURE`), applied to `inputs.target` in source order,
+all instances of one feature in **one** `BRepAlgoAPI` boolean with a multi-tool argument (no
+inverted-solid check; parallel in the threaded build). Rigid instances are moved shapes (shared
+geometry); mirrors are rebuilt (`BRepBuilderAPI_Transform`). A feature's tool solid is what it
+returns with `op: "new"`; for `hole`, send the feature with an extra `"op": "new"` (and the target,
+for through-all sizing) to get the hole tools as one shape. Body copies: refs
+`/source/bodies/<i>`; `merge` fuses the originals and every copy into one body (one boolean),
+otherwise the copies come back as separate bodies: `shape` is the first, `bodies` the rest with
+keys `inst<k>:<i>` (`mirror:<i>`), body `i` outer, instance inner.
+Instances: linear `k = row · count + column` (row along `second`); circular `k = 1…count−1` at
+`k · step`, where `step = angle / count` for a full 360° with `equalSpacing`, `angle / (count − 1)`
+for a partial span with `equalSpacing`, and `angle` itself otherwise. `skip` removes indices
+without renumbering the rest. Instance 0 is the original.
+
+**Hole values** (the regen engine resolves the tables; pointers are the feature's own fields, set
+even when the field is absent): `/diameter` (clearance or tap drill), `/end/depth` (blind: face to
+the end of the full-diameter wall; the drill point adds `r / tan(tip/2)`), `/tipAngle` (blind
+only; absent = flat bottom), `/counterbore/diameter` + `/counterbore/depth`,
+`/countersink/diameter` + `/countersink/angle` (included angle). Tapped holes use the drill
+diameter; the thread is cosmetic. Each hole is a revolved profile that starts `max(1, 2r)` above
+the face so the cut leaves no coincident skin; all holes go in one multi-tool cut.
+
+**Reference geometry.** `axis` returns a segment named `F…:axis` with `frame` (origin + z):
+`twoPoints`; `edge` (straight); `cylinder` (cylindrical/conical face or circular edge, spanning
+its extent); `twoPlanes` (origin = the line point nearest the planes' own origins);
+`pointNormal`. `point` returns a vertex `F…:point` with `frame.origin`: `coordinates`
+(`/definition/x|y|z`), `vertex`, `center` (circular edge, sphere), `alongEdge` (`/definition/t`
+as a fraction of the arc length, in the curve's parameter direction), `intersection` (edge × face
+or plane, edge × edge; frames read as the EntityRef kind: face = plane, edge = axis). `plane` adds
+`threePoints` (origin = the first, x towards the second), `angle` (through the axis, rotated
+`angle` from `from` about it), `normalToCurve` (`at` a vertex, or `/definition/at/t`),
+`midplane`, `throughPoint`, and `flip` for every kind.
+
+**Draft direction.** The pull direction is the neutral plane's normal (a face's outward normal)
+and the body narrows along it; `reverse` flips both. With the bottom face of a box as the neutral
+plane, a positive angle leans a side face out at the top.
+
+**Shell.** `BRepOffset_MakeOffset` (thick solid with the open faces as closing faces; with none,
+an offset solid that becomes the void of a hollow solid), sharp intersection joins; if OCCT cannot
+build those (some curved bodies) it retries with rounded arc joins and warns. A result that is
+invalid, self-intersecting or not smaller than the body (inward) is `OPERATION_FAILED`
+"The shell is too thick for this body" with the open faces as `entityRefs`.
+
+**Sweep** uses `BRepOffsetAPI_MakePipeShell` per profile wire (outer minus holes):
+`followPath` = corrected Frenet, `fixed` = constant trihedron (the profile translates). The profile
+stays where it is (no contact/correction). A result that `BOPAlgo_CheckerSI` finds
+self-intersecting is `OPERATION_FAILED`.
+
+**Loft** uses `BRepOffsetAPI_ThruSections` (solid, compatibility check on). Sections with holes
+are `UNSUPPORTED_FEATURE`. Guides are infeasible with ThruSections (it has no guide input; the
+alternatives, `MakePipeShell` with an auxiliary spine or `BRepFill_Filling` patches, change the
+result class), so they are ignored with an `UNSUPPORTED_FEATURE` warning.
+
+**Fillet/chamfer `propagate: false`.** OCCT cannot stop a blend at a tangent edge: every
+`BRepFilletAPI_MakeFillet::Add` / `BRepFilletAPI_MakeChamfer::Add` calls
+`ChFi3d_Builder::PerformElement` (`ChFi3d_Builder_1.cxx`, called from `ChFi3d_FilBuilder.cxx` and
+`ChFi3d_ChBuilder.cxx`), which always walks on along tangent-continuous edges; there is no flag.
+So with `propagate: false` the façade compares the contour OCCT built (`NbContours`/`NbEdges`/
+`Edge`) with the selection: equal → a normal blend; longer → `UNSUPPORTED_FEATURE` "The fillet
+cannot stop at tangent edges", with the selected and the extra edges as `entityRefs`. It never
+blends more than was selected without saying so. Golden: one straight top edge of a slot pulls in
+both arcs and the other line.
+
+**Projection** (`projectEdges`, `projectFaceOutline`, for "convert entities"). Coordinates are the
+plane frame's local x/y. Lines stay lines; circles and arcs whose axis is parallel to the plane
+normal stay `circle`s and counter-clockwise `arc`s (from either side of the plane); everything else
+(circles seen obliquely, ellipses, B-splines) is a `polyline` sampled with
+`GCPnts_TangentialDeflection` (0.05 rad, 1 µm) and projected; a sampled curve that projects onto a
+line (a circle seen edge-on) is one `line`. Edges along the normal project to points and come back
+with no curves. Outlines list the outer loop, then each inner loop, in wire order.
+
+**IGES** (`importFile(path, "iges")`): `IGESControl_Reader`; solids are kept, loose faces are sewn
+(`BRepBuilderAPI_Sewing`, 1 µm tolerance) and closed shells become solids, open shells stay
+shell bodies. Lengths arrive in mm. A `WHITTLE_NO_IGES=1` build leaves the reader out (size
+measurements); it answers `UNSUPPORTED_FEATURE`.
+
+**Import feature.** Replaces the M1 TypeScript workarounds (BREP location rewriting and a no-op
+intersect for naming): the raw shapes are moved by the feature's `frame` (shared geometry, no
+round trip) and named in C++: faces `F<id>:face#k` per body by geometric key, edges and vertices
+from their faces, bodies ordered by the geometric key of their volume centroid (`shape` first,
+then `bodies` keyed `body#<k>`); add/cut/intersect name tool faces `F<id>:face(F<id>:face#k)`; a
+mesh reference body (STL) is one face `F<id>:face` and only `op: "new"`.
+
+**Performance** (PLAN §10, 300 ms regen budget): a 10 × 10 pattern of Ø5 through holes on a
+200 × 200 × 10 plate, as a pattern of a hole feature, is one 99-tool cut. The golden gates the
+call's process CPU time (shared CI machines are oversubscribed, so wall time is only logged).
+
 ### Naming (packages/contracts/src/naming.ts)
 
 - Sketch: `S<id>:e(<entity>)` (split curves `…#k`), `S<id>:p(<point>)` (coincident points are
@@ -205,6 +317,13 @@ A push that splits the body warns.
   faces merge, old > moved > wall (a wall merged into a side face takes its name; a moved face
   flush with an old face disappears).
 - Faces no rule names (not expected) get `F<id>:unnamed#k`.
+- M3: shell offset faces `F<id>:shell(<face>)`, rims `F<id>:rim(<open face>)` (OCCT builds one
+  annular rim face per open face, the closing face's `Modified` image); drafted faces keep their
+  names (`ModifiedShape`); sweep/loft `F<id>:start`, `F<id>:end`, `F<id>:side(<profile curve>)`;
+  copies `F<id>:inst<k>(<N>)` / `F<id>:mirror(<N>)`; holes `F<id>:hole(<point name>):wall`,
+  `:bottom`, `:tip`, `:cbore.wall`, `:cbore.floor`, `:csink` (the point name is the feature's
+  `points[i].name`, `#<i>` when absent); reference geometry `F<id>:axis` (edge), `F<id>:point`
+  (vertex), `F<id>:plane` (face).
 
 ### Mesh caching
 
@@ -225,6 +344,7 @@ meshes a copy (`BRepBuilderAPI_Copy`), so export quality never changes the viewp
   triangulation at the requested deflection. The output is watertight because BRepMesh is
   conformal across shared edges. Import uses `RWStl::ReadFile` into one triangulation-only face.
 - **BREP**: `BRepTools::Write`/`Read` (exact).
+- **IGES** (M3, import only): see Features (M3).
 
 ## Licensing
 

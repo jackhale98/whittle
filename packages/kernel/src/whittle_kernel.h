@@ -49,6 +49,8 @@ std::string kernelInfo();
 //   plane (offset from refs "/definition/from" or a frame)
 //   pushPull  (M2: planar faces of inputs.target at refs "/faces/<n>", values "/distance" mm along
 //             each face's outward normal; prism + fuse/cut, naming.ts "M2 additions")
+//   M3: shell, draft, sweep, loft, mirror, linearPattern, circularPattern, hole, import, thread,
+//             axis, point and the M3 plane definitions (inputs per type: packages/kernel/README.md)
 // using Generated / Modified / IsDeleted history for names (PLAN §7.3).
 // Returns Result<{"shape":int,"naming":NamingMap,"warnings":KernelError[]}> plus, where they
 // apply: "frame" (sketch, plane), "regions" (sketch: region names) and "bodies" (cut/intersect
@@ -93,6 +95,19 @@ std::string configureThreads(int32_t count);
 // distance + closest points (BRepExtrema_DistShapeShape) and, for planar faces/straight edges,
 // the angle in radians (conventions in whittle_measure.cpp). Returns Result<Measurement>.
 std::string measure(const std::string& queryJson);
+
+// M3 "convert entities": projects model edges onto a sketch plane. queryJson:
+// {"shape":int,"edges":[int (TopExp edge ordinals)],"plane":Frame}. Returns
+// Result<[{"edge":int,"curves":ProjectedCurve[]}]> in the plane frame's local x/y (mm), where
+// ProjectedCurve = {"kind":"line","a":[x,y],"b":[x,y]} | {"kind":"circle","c":[x,y],"r":number}
+// | {"kind":"arc","c","r","start","end"} (counter-clockwise in plane coordinates)
+// | {"kind":"polyline","points":[[x,y],…]} (approximated: ellipses, circles seen obliquely,
+// splines; within ~1 µm). Edges that project to a point (along the normal) get no curves.
+std::string projectEdges(const std::string& queryJson);
+
+// M3: {"shape":int,"face":int (TopExp face ordinal),"plane":Frame} →
+// Result<{"outer":[{"edge","curves"}…],"inner":[[{"edge","curves"}…]…]}> (loops in wire order).
+std::string projectFaceOutline(const std::string& queryJson);
 
 // M4: hlrProject; M5: exportStep with PMI — added by contract proposal.
 

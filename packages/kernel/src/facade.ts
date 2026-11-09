@@ -8,6 +8,8 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+import type { Frame, Vec2 } from '@whittle/contracts';
+
 /** Owned render buffers (C++ `whittle::MeshData`). Must be `delete()`d. */
 export interface MeshDataHandle {
   /** Views alias the Wasm heap: copy them (e.g. `.slice()`) before the next kernel call. */
@@ -43,13 +45,23 @@ export interface WhittleKernelModule {
    * reads every file with `FS.readFile` and unlinks it.
    */
   exportShapes(shapesJson: string, format: string, optionsJson: string): string;
-  /** Reads a MEMFS file (`step` | `stl` | `brep`). Returns `Result<RawImportResult>` JSON. */
+  /**
+   * Reads a MEMFS file (`step` | `iges` | `stl` | `brep`). Returns `Result<RawImportResult>`
+   * JSON.
+   */
   importFile(path: string, format: string): string;
   /**
    * Exact B-rep measurement. `queryJson`: `MeasureQuery`. Returns `Result<Measurement>` JSON
    * (contracts kernel.ts).
    */
   measure(queryJson: string): string;
+  /**
+   * M3 "convert entities": `queryJson` is a `ProjectEdgesQuery`. Returns
+   * `Result<ProjectedEdge[]>` JSON.
+   */
+  projectEdges(queryJson: string): string;
+  /** M3: `queryJson` is a `ProjectFaceOutlineQuery`. Returns `Result<ProjectedOutline>` JSON. */
+  projectFaceOutline(queryJson: string): string;
   /** Threaded build: caps OCCT's thread pool. Returns `Result<{threads, max}>` JSON. */
   configureThreads(count: number): string;
   release(shape: number): void;
@@ -100,6 +112,48 @@ export type MeasureSubject =
 export interface MeasureQuery {
   a: MeasureSubject;
   b?: MeasureSubject;
+}
+
+/** A point in a sketch plane's local x/y, mm (the contracts `Vec2`). */
+export type PlaneXY = Vec2;
+
+/**
+ * One model curve projected onto a plane (plane-frame local x/y, mm). Arcs run counter-clockwise
+ * in plane coordinates. `polyline` is an approximation (ellipses, circles seen obliquely, splines),
+ * within about 1 µm of the exact projection.
+ */
+export type ProjectedCurve =
+  | { kind: 'line'; a: PlaneXY; b: PlaneXY }
+  | { kind: 'circle'; c: PlaneXY; r: number }
+  | { kind: 'arc'; c: PlaneXY; r: number; start: PlaneXY; end: PlaneXY }
+  | { kind: 'polyline'; points: PlaneXY[] };
+
+/** A projected edge: `edge` is its TopExp ordinal; no curves when it projects to a point. */
+export interface ProjectedEdge {
+  edge: number;
+  curves: ProjectedCurve[];
+}
+
+/** A projected face outline: the outer loop and each inner loop, edges in wire order. */
+export interface ProjectedOutline {
+  outer: ProjectedEdge[];
+  inner: ProjectedEdge[][];
+}
+
+/** `projectEdges()` query. */
+export interface ProjectEdgesQuery {
+  shape: number;
+  /** TopExp edge ordinals of `shape`. */
+  edges: number[];
+  plane: Frame;
+}
+
+/** `projectFaceOutline()` query. */
+export interface ProjectFaceOutlineQuery {
+  shape: number;
+  /** TopExp face ordinal of `shape`. */
+  face: number;
+  plane: Frame;
 }
 
 /** Value of `kernelInfo()` on success. */

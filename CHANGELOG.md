@@ -84,3 +84,11 @@
 - Local git repo mode (ADR-029, desktop Chromium): "Open a local git repo…"; the project folder on disk is the working copy, versions are commits, branches and tags are the repo's, uncommitted changes listed, refresh on focus, read-only banners for merges/rebases/detached HEAD, inline `.gitignore` offer, branch switches refused over uncommitted changes.
 - Compare: "Compare with current" regenerates the version in a `version:<id>` slot and shows the feature diff, mass/size deltas and the viewport overlay with Both/Added/Removed bound to the panel; the slot is released on exit. The compare legend swatches are now the viewport's exact fills (`compare-*-swatch` tokens, parity-tested); removed-text tokens moved to the same vermillion family.
 - E2E `m25.spec.ts` (acceptance a–g) with a fake Dropbox, a real git smart-HTTP server and an OPFS repo; `gitRemoteHeads` in `@whittle/sync`.
+
+### M3 — Advanced part features (kernel)
+
+- Kernel: shell (inward/outward, open faces or a closed hollow solid; sharp joins, rounded fallback with a warning), draft about a neutral plane or face, sweep along a chained path (follow path / fixed; new, add, cut, intersect), loft through regions, closed curves and end points (ruled, closed; guides reported as ignored), mirror, linear (two directions, `skip`) and circular (step or equal spacing) patterns of features or bodies, hole wizard (simple, counterbore, countersink, tapped; blind with drill point, through all, up to), cosmetic threads, reference axes, points and the new plane definitions, all with names per naming.ts M3 and golden tests.
+- Kernel: the `import` feature places and names imported shapes in C++ (no BREP round trip); IGES import (bounded surfaces are sewn into solids).
+- Kernel: `projectEdges` / `projectFaceOutline` for "convert entities" (lines, circles, counter-clockwise arcs, polylines for oblique curves and splines); wired through `KernelLowLevelApi`.
+- Kernel: fillet/chamfer `propagate: false` blends exactly the selection, or refuses with the tangent edges OCCT would add (OCCT cannot stop a blend inside a tangent chain; ADR-pending).
+- Kernel: patterns cut or fuse every instance in one multi-tool boolean; a 10 × 10 hole pattern regenerates within the 300 ms budget.
