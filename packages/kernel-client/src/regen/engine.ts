@@ -146,17 +146,12 @@ import {
 import { hashKey } from './hash';
 import {
   compareGeoKey,
-  faceNamesByKey,
   frameMatrix,
-  importNamingTag,
   isIdentity,
   type Matrix34,
   mentionsImport,
-  placeBrep,
   placeMesh,
   sha256Hex,
-  translateName,
-  translateNaming,
 } from './imports';
 import {
   flattenProjection,
@@ -290,7 +285,10 @@ interface BodyState {
 interface RawImport {
   sha: string;
   format: ImportFeature['source']['format'];
-  /** B-rep solids in file order (owned by the import cache). */
+  /**
+   * B-rep bodies in file order (owned by the import cache), unplaced and unnamed: solids, and
+   * for IGES also the sewn open shells or loose faces.
+   */
   shapes: ShapeHandle[];
   /** Mesh formats: one mesh per object in the file (TS-side; placed and handed to the kernel per use). */
   meshes: MeshBuffers[];
@@ -914,20 +912,12 @@ export class RegenEngine {
   }
 
   /**
-   * `execFeature` with kernel names translated to document names (imported topology: see
-   * `translateName`). Every kernel feature call of the engine goes through here.
+   * `execFeature`. Every kernel feature call of the engine goes through here. (Kernel names are
+   * document names: the M1 translation of imported names, `F<id>:face:unnamed` → `F<id>:face`,
+   * went with the kernel `import` feature, which names imported faces `F<id>:face#k` itself.)
    */
-  private async exec(feature: Feature, inputs: FeatureInputs): Promise<Result<FeatureResult>> {
-    const r = await this.kernel.execFeature(feature, inputs);
-    if (!r.ok) return { ok: false, error: translateError(r.error) };
-    const v = r.value;
-    const out: FeatureResult = {
-      ...v,
-      naming: translateNaming(v.naming),
-      warnings: v.warnings.map(translateError),
-    };
-    if (v.bodies) out.bodies = v.bodies.map((b) => ({ ...b, naming: translateNaming(b.naming) }));
-    return { ok: true, value: out };
+  private exec(feature: Feature, inputs: FeatureInputs): Promise<Result<FeatureResult>> {
+    return this.kernel.execFeature(feature, inputs);
   }
 
   // -------------------------------------------------------------------------------------------
@@ -3918,7 +3908,7 @@ export class RegenEngine {
   }
 
   // -------------------------------------------------------------------------------------------
-  // Import (STEP/BREP solids, mesh reference bodies)
+  // Import (STEP/IGES/BREP solids, mesh reference bodies)
   // -------------------------------------------------------------------------------------------
 
   private async planImport(ctx: WalkContext, f: ImportFeature): Promise<Planned> {
@@ -3926,15 +3916,6 @@ export class RegenEngine {
     const format = f.source.format;
     const taintNew = [`B${f.id}`];
     const meshFormat = MESH_FORMATS.has(format);
-    if (format === 'iges') {
-      return {
-        unresolved,
-        taint: taintNew,
-        error: kerr('UNSUPPORTED_FEATURE', 'IGES files cannot be imported yet', {
-          hint: 'Export the part as STEP from the other program and import that instead.',
-        }),
-      };
-    }
     if (meshFormat && f.op !== 'new') {
       return {
         unresolved,
@@ -4041,7 +4022,12 @@ export class RegenEngine {
         return { ok: false, error: kerr('INVALID_INPUT', 'The mesh file contains no triangles') };
       }
     } else {
-      const r = await this.kernel.importShapes(bytes, format === 'brep' ? 'brep' : 'step');
+      // IGES (M3): the kernel sews loose faces; closed shells become solids, open ones stay
+      // shell bodies (whittle_io.cpp importIges).
+      const r = await this.kernel.importShapes(
+        bytes,
+        format === 'brep' ? 'brep' : format === 'iges' ? 'iges' : 'step',
+      );
       if (!r.ok) return r;
       raw.shapes = r.value.map((b) => b.shape);
       for (const h of raw.shapes) this.ownedHandles.add(h);
@@ -4054,39 +4040,14 @@ export class RegenEngine {
     return { ok: true, value: raw };
   }
 
-  /** Fresh copies of `shapes` moved by `m`, via a BREP round trip (see `placeBrep`). */
-  private async placedCopies(shapes: ShapeHandle[], m: Matrix34): Promise<Result<ShapeHandle[]>> {
-    const ex = await this.kernel.exportShapes(
-      shapes.map((shape, i) => ({ shape, name: `s${i}` })),
-      'brep',
-    );
-    if (!ex.ok) return ex;
-    const file = ex.value[0];
-    const text = file ? new TextDecoder().decode(file.bytes) : '';
-    const placed = isIdentity(m) ? text : placeBrep(text, m);
-    if (placed === null) {
-      return { ok: false, error: kerr('INTERNAL', 'The imported shape could not be placed') };
-    }
-    const back = await this.kernel.importShapes(new TextEncoder().encode(placed), 'brep');
-    if (!back.ok) return back;
-    const out = back.value.map((b) => b.shape);
-    if (out.length !== shapes.length) {
-      for (const h of out) await this.kernel.release(h);
-      return {
-        ok: false,
-        error: kerr('INTERNAL', 'The imported shape could not be placed', {
-          detail: `${shapes.length} solids in, ${out.length} out`,
-        }),
-      };
-    }
-    return { ok: true, value: out };
-  }
-
   /**
-   * Placed, named B-rep solids of an import (fresh handles the caller owns), ordered by the
-   * geometric key of their volume centroids. Naming: the kernel names the topology during a no-op
-   * intersect with an enclosing box (tag `importNamingTag`) — faces `F<id>:face#k` by geometric
-   * key, edges/vertices from adjacent faces — checked to have left the solid unchanged.
+   * Placed, named B-rep bodies of an import (fresh handles the caller owns) from the kernel's
+   * `import` feature (ADR-039 item 11): the raw shapes go in as `shapes["source:<k>"]` in file
+   * order, the kernel moves them by the frame (shared geometry, no re-import) and names faces
+   * `F<id>:face#k` per body by geometric key, edges and vertices from their adjacent faces.
+   * Bodies come back ordered by the geometric key of their volume centroids (`shape` first, then
+   * `bodies` keyed `body#k`). These are the names the M1 engine gave, so stored references keep
+   * resolving (ADR-pending "kernel import feature"; test/regen/import-naming.test.ts).
    */
   private async namedSolids(
     f: ImportFeature,
@@ -4095,119 +4056,38 @@ export class RegenEngine {
   ): Promise<
     Result<{ bodies: { shape: ShapeHandle; naming: NamingMap }[]; warnings: KernelError[] }>
   > {
-    let shapes = raw.shapes;
-    const temp: ShapeHandle[] = [];
-    if (!isIdentity(m)) {
-      const p = await this.placedCopies(raw.shapes, m);
-      if (!p.ok) return p;
-      shapes = p.value;
-      temp.push(...shapes);
-    }
-    const box = emptyBox();
-    const before: (MassProperties | null)[] = [];
-    for (const s of shapes) {
-      const mp = await this.massOf(s);
-      before.push(mp);
-      if (mp) {
-        extendBox(box, mp.bbox.min);
-        extendBox(box, mp.bbox.max);
-      }
-    }
-    const margin = Math.max(1, 0.01 * boxDiagonal(box));
-    const size = (k: 0 | 1 | 2) => box.max[k] - box.min[k] + 2 * margin;
-    const namer: Feature = {
-      id: importNamingTag(f.id),
-      type: 'primitive',
-      name: f.name,
-      suppressed: false,
-      op: 'intersect',
-      shape: 'box',
-      frame: {
-        origin: [box.min[0] - margin, box.min[1] - margin, box.min[2] - margin],
-        z: [0, 0, 1],
-        x: [1, 0, 0],
-      },
-      dx: '0',
-      dy: '0',
-      dz: '0',
-    };
-    const extra: Record<string, ShapeHandle> = {};
-    shapes.slice(1).forEach((s, i) => {
-      extra[`scope:${String(i + 1).padStart(4, '0')}`] = s;
+    const width = Math.max(4, String(raw.shapes.length - 1).length);
+    const shapes: Record<string, ShapeHandle> = {};
+    raw.shapes.forEach((h, i) => {
+      shapes[`source:${String(i).padStart(width, '0')}`] = h;
     });
-    const r = await this.exec(namer, {
-      values: { '/dx': size(0), '/dy': size(1), '/dz': size(2) },
-      target: shapes[0] as ShapeHandle,
-      shapes: extra,
-    });
-    const named: ({ shape: ShapeHandle; naming: NamingMap } | null)[] = shapes.map(() => null);
-    if (r.ok) {
-      named[0] = { shape: r.value.shape, naming: r.value.naming };
-      for (const b of r.value.bodies ?? []) {
-        named[Number(b.key.slice('scope:'.length))] = { shape: b.shape, naming: b.naming };
-      }
-    }
-    const warnings: KernelError[] = [];
-    const out: { shape: ShapeHandle; naming: NamingMap; centroid: Vec3 }[] = [];
-    const fallback: number[] = [];
-    for (let i = 0; i < shapes.length; i++) {
-      const n = named[i];
-      const was = before[i];
-      const now = n ? await this.massOf(n.shape) : null;
-      const unchanged =
-        n &&
-        was &&
-        now &&
-        now.faceCount === was.faceCount &&
-        now.edgeCount === was.edgeCount &&
-        Math.abs(now.volume - was.volume) <= 1e-9 * Math.max(1, Math.abs(was.volume));
-      if (n && now && unchanged) {
-        out.push({ ...n, centroid: now.centroid });
-      } else {
-        if (n) await this.releaseHandle(n.shape);
-        fallback.push(i);
-      }
-    }
-    if (fallback.length > 0) {
-      // Unnamed copies (faces named by key only), so no handle of the raw cache leaks into results.
-      const copies = await this.placedCopies(
-        fallback.map((i) => raw.shapes[i] as ShapeHandle),
-        m,
-      );
-      if (!copies.ok) {
-        for (const o of out) await this.releaseHandle(o.shape);
-        for (const h of temp) await this.releaseHandle(h);
-        return copies;
-      }
-      for (const shape of copies.value) {
-        const fp = await this.fingerprints(shape);
-        const mp = await this.massOf(shape);
-        out.push({
-          shape,
-          naming: faceNamesByKey(
-            f.id,
-            (fp?.faces ?? []).map((x) => x.centroid),
-          ),
-          centroid: mp?.centroid ?? [0, 0, 0],
-        });
-      }
-      warnings.push(
-        kerr(
-          'OPERATION_FAILED',
-          'Edges and vertices of the imported shape could not be named; only its faces can be referenced',
-          {
-            hint: 'The file may contain invalid geometry; try repairing or re-exporting it.',
-            ...(r.ok ? {} : { detail: r.error.message }),
-          },
-        ),
-      );
-    }
-    for (const h of temp) await this.releaseHandle(h);
-    out.sort((a, b) => compareGeoKey(a.centroid, b.centroid));
-    return {
-      ok: true,
-      value: { bodies: out.map(({ shape, naming }) => ({ shape, naming })), warnings },
+    // The frame as the engine validated and orthonormalised it (frameMatrix columns).
+    const frame: Frame = {
+      origin: [m[3], m[7], m[11]],
+      z: [m[2], m[6], m[10]],
+      x: [m[0], m[4], m[8]],
     };
+    const { scope: _scope, ...feature } = f;
+    const r = await this.exec({ ...feature, op: 'new', frame }, { values: {}, shapes });
+    if (!r.ok) return r;
+    const rank = (key: string) => Number(/^body#(\d+)$/.exec(key)?.[1] ?? Number.NaN);
+    const extra = [...(r.value.bodies ?? [])];
+    if (extra.some((b) => !Number.isInteger(rank(b.key)))) {
+      for (const b of extra) await this.releaseHandle(b.shape);
+      await this.releaseHandle(r.value.shape);
+      return {
+        ok: false,
+        error: kerr('INTERNAL', 'The imported bodies could not be ordered', {
+          detail: `kernel body keys: ${extra.map((b) => b.key).join(', ')}`,
+        }),
+      };
+    }
+    extra.sort((a, b) => rank(a.key) - rank(b.key));
+    const bodies = [
+      { shape: r.value.shape, naming: r.value.naming },
+      ...extra.map((b) => ({ shape: b.shape, naming: b.naming })),
+    ];
+    return { ok: true, value: { bodies, warnings: r.value.warnings } };
   }
 
   /** Mesh reference bodies (fresh handles): placed in TS, handed to the kernel as STL. */
@@ -4503,10 +4383,6 @@ function capitalise(s: string): string {
 
 function validSpare(n: number | undefined): number | undefined {
   return n !== undefined && Number.isInteger(n) && n >= 0 ? n : undefined;
-}
-
-function translateError(e: KernelError): KernelError {
-  return e.entityRefs ? { ...e, entityRefs: e.entityRefs.map(translateName) } : e;
 }
 
 /** The first name per index of `kind` (aliases come later in a naming map), "" when unnamed. */

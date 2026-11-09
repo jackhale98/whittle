@@ -37,14 +37,7 @@ export {
 } from './engine';
 export { ORIGIN_AXES, ORIGIN_PLANES, planeFrame } from './geometry';
 export { hashKey, stableStringify } from './hash';
-export {
-  frameMatrix,
-  importNamingTag,
-  placeBrep,
-  placeMesh,
-  sha256Hex,
-  translateName,
-} from './imports';
+export { frameMatrix, placeMesh, sha256Hex } from './imports';
 export {
   type LinkedCurve,
   type LinkedSource,

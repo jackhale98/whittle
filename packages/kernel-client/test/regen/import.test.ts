@@ -20,6 +20,7 @@ import type {
 } from '@wren-cad/contracts';
 import { analyzeStl, meshExporters } from '@wren-cad/io';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { igesBox } from '../../../kernel/test/iges';
 import { sha256Hex } from '../../src/regen/imports';
 import { BRACKET_DIMS, BRACKET_PARAMS, bracketDoc, bracketVolume } from './bracket';
 import {
@@ -28,6 +29,7 @@ import {
   describeFailures,
   edge,
   extrude,
+  faceCentroid,
   fid,
   fillet,
   loadApi,
@@ -71,6 +73,17 @@ function importFeature(
 
 const near = (a: Vec3, b: Vec3, tol: number) =>
   Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]) <= tol;
+
+/** The kernel goldens' IGES box ([0,dx]×[0,dy]×[0,dz] as six bounded planes) as an attachment. */
+async function igesAttachment(
+  path: string,
+  dx: number,
+  dy: number,
+  dz: number,
+): Promise<Attachment> {
+  const bytes = new TextEncoder().encode(igesBox(dx, dy, dz));
+  return { path, bytes, sha256: await sha256Hex(bytes) };
+}
 
 describe.skipIf(!built)(`regen golden: import${skipNote}`, () => {
   let api: Api;
@@ -220,7 +233,7 @@ describe.skipIf(!built)(`regen golden: import${skipNote}`, () => {
     expect(bad.features[0]?.error?.message).toMatch(/placement/);
   });
 
-  it('missing or corrupted attachments are errors; IGES and mesh booleans are refused clearly', async () => {
+  it('missing or corrupted attachments are errors; non-IGES bytes and mesh booleans are refused clearly', async () => {
     await api.closePart(PART); // forget the cached import
     const missing = await regen([importFeature(step, 'step')]);
     expect(missing.features[0]?.state).toBe('error');
@@ -233,9 +246,11 @@ describe.skipIf(!built)(`regen golden: import${skipNote}`, () => {
     );
     expect(corrupt.features[0]?.state).toBe('error');
     expect(corrupt.features[0]?.error?.message).toMatch(/checksum/);
+    // IGES is read since M3: a STEP file declared as IGES is a clear read error, not a guess.
     const iges = await regen([importFeature(step, 'iges')], [step]);
-    expect(iges.features[0]?.error?.code).toBe('UNSUPPORTED_FEATURE');
-    expect(iges.features[0]?.error?.hint).toMatch(/STEP/);
+    expect(iges.features[0]?.state).toBe('error');
+    expect(iges.features[0]?.error?.code).toBe('INVALID_INPUT');
+    expect(iges.features[0]?.error?.message).toBe('This file is not a readable IGES file');
     const meshAdd = await regen([importFeature(step, 'stl', { op: 'add' })], [step]);
     expect(meshAdd.features[0]?.error?.message).toMatch(/new reference body/);
   });
@@ -441,6 +456,99 @@ describe.skipIf(!built)(`regen golden: import${skipNote}`, () => {
     const add = await regen([...base, importFeature(step, 'step', { op: 'add' })], [step]);
     expect(states(add), describeFailures(add)).toEqual(['ok', 'ok', 'ok']);
     relClose(totalVolume(add.bodies), 100 * 70 * 4 + volume - overlap, 1e-7);
+  });
+
+  it('IGES: a box of six bounded planes is sewn into one solid, named, placed and cached', async () => {
+    const igs = await igesAttachment('imports/box.igs', 10, 20, 30);
+    const r = await regen([importFeature(igs, 'iges')], [igs]);
+    expect(states(r), describeFailures(r)).toEqual(['ok']);
+    expect(r.bodies.map((b) => b.id)).toEqual([`B${IMP}`]);
+    const mp = r.bodies[0]?.massProperties;
+    relClose(mp?.volume ?? 0, 6000, 1e-9);
+    relClose(mp?.area ?? 0, 2 * (200 + 300 + 600), 1e-9);
+    expect([mp?.faceCount, mp?.edgeCount, mp?.vertexCount]).toEqual([6, 12, 8]);
+    const body = r.bodies[0] as BodyResult;
+    expect([...body.mesh.faceNames].sort()).toEqual(
+      [0, 1, 2, 3, 4, 5].map((k) => `F${IMP}:face#${k}`),
+    );
+    expect(
+      body.mesh.edgeNames.every((n) =>
+        new RegExp(`^edge\\(F${IMP}:face#\\d\\|F${IMP}:face#\\d\\)$`).test(n),
+      ),
+    ).toBe(true);
+    expect(new Set(body.mesh.edgeNames).size).toBe(12);
+    // Faces by geometric key: x = 0 first (#0), x = 10 last (#5).
+    expect(
+      near((await faceCentroid(api, body, `F${IMP}:face#0`)) ?? [9, 9, 9], [0, 10, 15], 1e-9),
+    ).toBe(true);
+    expect(
+      near((await faceCentroid(api, body, `F${IMP}:face#5`)) ?? [9, 9, 9], [10, 10, 15], 1e-9),
+    ).toBe(true);
+
+    // Cached by sha256 like STEP; a placement change re-runs from the cached raw shape.
+    const again = await regen([importFeature(igs, 'iges')]);
+    expect(again.cache).toEqual({ hits: 1, misses: 0 });
+    const frame: Frame = { origin: [100, 0, 0], z: [0, 0, 1], x: [0, 1, 0] };
+    const moved = await regen([importFeature(igs, 'iges', { frame })]);
+    expect(states(moved), describeFailures(moved)).toEqual(['ok']);
+    const bb = moved.bodies[0]?.massProperties?.bbox;
+    for (const [v, e] of [
+      [bb?.min, [80, 0, 0]],
+      [bb?.max, [100, 10, 30]],
+    ] as const) {
+      for (let k = 0; k < 3; k++) expect(v?.[k]).toBeCloseTo(e[k] as number, 9);
+    }
+    relClose(moved.bodies[0]?.massProperties?.volume ?? 0, 6000, 1e-9);
+    expect([...(moved.bodies[0]?.mesh.faceNames ?? [])].sort()).toEqual(
+      [...body.mesh.faceNames].sort(),
+    );
+  });
+
+  it('IGES: downstream fillet and cut on the imported solid; names stable from scratch', async () => {
+    const igs = await igesAttachment('imports/box.igs', 10, 20, 30);
+    const r0 = await regen([importFeature(igs, 'iges')], [igs]);
+    const body = r0.bodies[0] as BodyResult;
+    const fp = await api.fingerprints(body.shape);
+    if (!fp.ok) throw new Error('fingerprints');
+    // The vertical edge on the z axis (x = y = 0, 30 long).
+    const ei = fp.value.edges.findIndex(
+      (e) => near(e.centroid, [0, 0, 15], 1e-9) && Math.abs(e.length - 30) < 1e-9,
+    );
+    const edgeRef = await api.refFor(PART, { bodyId: body.id, kind: 'edge', index: ei });
+    if (!edgeRef) throw new Error('refFor');
+    const features: Feature[] = [importFeature(igs, 'iges'), fillet(FIL, [edgeRef], '2')];
+    const a = await regen(features, [igs]);
+    expect(states(a), describeFailures(a)).toEqual(['ok', 'ok']);
+    expect(a.features[1]?.rebound).toBeUndefined();
+    relClose(totalVolume(a.bodies), 6000 - (1 - Math.PI / 4) * 4 * 30, 1e-9);
+    expect(a.bodies[0]?.mesh.faceNames).toContain(`F${FIL}:fillet(${edgeRef.name})`);
+    await api.closePart(PART);
+    const b = await regen(features, [igs]);
+    expect(b.cache.hits).toBe(0);
+    expect(b.bodies[0]?.mesh.faceNames).toEqual(a.bodies[0]?.mesh.faceNames);
+    expect(b.bodies[0]?.mesh.edgeNames).toEqual(a.bodies[0]?.mesh.edgeNames);
+
+    // op cut: a 20 mm cube minus the IGES box (overlap 10 × 20 × 20); tool faces named.
+    const cube: Feature = {
+      id: fid('ICUBE'),
+      type: 'primitive',
+      name: 'Cube',
+      suppressed: false,
+      op: 'new',
+      shape: 'box',
+      dx: '20',
+      dy: '20',
+      dz: '20',
+    };
+    const cut = await regen([cube, importFeature(igs, 'iges', { op: 'cut' })], [igs]);
+    expect(states(cut), describeFailures(cut)).toEqual(['ok', 'ok']);
+    expect(cut.bodies.map((x) => x.id)).toEqual([`B${fid('ICUBE')}`]);
+    relClose(totalVolume(cut.bodies), 8000 - 4000, 1e-9);
+    const tool = cut.bodies[0]?.mesh.faceNames.filter((n) => n.startsWith(`F${IMP}:face(`)) ?? [];
+    expect(tool.length).toBeGreaterThan(0);
+    expect(tool.every((n) => new RegExp(`^F${IMP}:face\\(F${IMP}:face#\\d\\)$`).test(n))).toBe(
+      true,
+    );
   });
 
   it('mesh files become mesh-only reference bodies: shown and exported, never modified', async () => {
