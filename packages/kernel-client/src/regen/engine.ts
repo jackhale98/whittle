@@ -133,6 +133,7 @@ import {
   emptyBox,
   extendBox,
   groupByNormal,
+  norm,
   normalize,
   ORIGIN_AXES,
   ORIGIN_PLANES,
@@ -335,7 +336,17 @@ interface ToolSpec {
   key: string;
   /** values["/ops/<id>"]: 0 add, 1 cut, 2 intersect (`new` copies are added to its body). */
   op: 0 | 1 | 2;
-  build: () => Promise<Result<FeatureResult>>;
+  /**
+   * Builds the tool. `depth` is given for through-all extrudes only (`throughAll` below): the
+   * kernel refuses `throughAll` without a body to size it by, so their tool is the same extrude
+   * made blind, `depth` long, in the same direction (normal, reverse or symmetric).
+   */
+  build: (depth?: number) => Promise<Result<FeatureResult>>;
+  /**
+   * Through-all extrudes: the shapes their profile regions live on. A copy sizes the blind tool
+   * from these, its target body and how far the copies move (`throughAllDepth`).
+   */
+  throughAll?: ShapeHandle[];
   /** Bodies the feature produced or changed (set when the feature ran ok). */
   bodies: string[];
 }
@@ -1750,7 +1761,27 @@ export class RegenEngine {
         frames: inputs.frames ?? {},
       }),
       op: opCode(f.op),
-      build: () => this.exec(tool, toolInputs),
+      build: (depth?: number) => {
+        if (depth === undefined || f.type !== 'extrude' || f.end.kind !== 'throughAll') {
+          return this.exec(tool, toolInputs);
+        }
+        const blind = { ...tool, end: { kind: 'blind', depth: `${depth} mm` } } as Feature;
+        return this.exec(blind, {
+          ...toolInputs,
+          values: { ...inputs.values, '/end/depth': depth },
+        });
+      },
+      ...(f.type === 'extrude' && f.end.kind === 'throughAll'
+        ? {
+            throughAll: [
+              ...new Set(
+                Object.entries(inputs.refs ?? {})
+                  .filter(([p]) => p.startsWith('/profile/'))
+                  .map(([, r]) => r.shape),
+              ),
+            ],
+          }
+        : {}),
     };
   }
 
@@ -3138,26 +3169,28 @@ export class RegenEngine {
   private async toolOf(
     ctx: WalkContext,
     spec: ToolSpec,
+    depth?: number,
   ): Promise<Result<{ shape: ShapeHandle; naming: NamingMap }>> {
-    let e = ctx.pc.entries.get(spec.key);
+    const key = depth === undefined ? spec.key : hashKey({ tool: spec.key, depth });
+    let e = ctx.pc.entries.get(key);
     if (!e?.result.ok || !e.result.tool) {
-      const r = await spec.build();
+      const r = await spec.build(depth);
       if (!r.ok) return r;
       for (const extra of r.value.bodies ?? []) {
         if (extra.shape !== r.value.shape) await this.releaseHandle(extra.shape);
       }
       const tool = { shape: r.value.shape, naming: r.value.naming };
       e = {
-        key: spec.key,
+        key,
         owned: [tool.shape],
         result: { ok: true, set: [], remove: [], touched: [], tool, warnings: [] },
         lastUsed: ctx.pc.tick,
       };
       this.ownedHandles.add(tool.shape);
-      ctx.pc.entries.set(spec.key, e);
+      ctx.pc.entries.set(key, e);
     }
     e.lastUsed = ctx.pc.tick;
-    ctx.used.add(spec.key);
+    ctx.used.add(key);
     const tool = (e.result as { tool: { shape: ShapeHandle; naming: NamingMap } }).tool;
     return { ok: true, value: tool };
   }
@@ -3351,6 +3384,67 @@ export class RegenEngine {
   }
 
   /**
+   * Depth of the blind tool that stands in for a copied through-all extrude (`ToolSpec.build`).
+   * Every copy must still cut through the whole target body, so the depth is at least twice the
+   * farthest a target point can be from a copied profile plane: the diagonal of the target and
+   * profile boxes together (the kernel's own through-all bound) plus the farthest a profile point
+   * moves (linear: the pattern's full span; circular: twice its distance from the axis; mirror:
+   * twice its distance from the plane). Rounded up to a power of two, so edits that resize the
+   * body a little keep the cached tool.
+   */
+  private async throughAllDepth(
+    f: MirrorFeature | LinearPatternFeature | CircularPatternFeature,
+    inputs: FeatureInputs,
+    target: BodyState,
+    profiles: ShapeHandle[],
+  ): Promise<number> {
+    const box = emptyBox();
+    const profile = emptyBox();
+    const tb = await this.massOf(target.shape);
+    if (tb) {
+      extendBox(box, tb.bbox.min);
+      extendBox(box, tb.bbox.max);
+    }
+    for (const s of profiles) {
+      const pb = await this.massOf(s);
+      if (!pb) continue;
+      for (const p of [pb.bbox.min, pb.bbox.max]) {
+        extendBox(box, p);
+        extendBox(profile, p);
+      }
+    }
+    const corners: Vec3[] = [];
+    if (profile.max[0] >= profile.min[0]) {
+      for (let i = 0; i < 8; i++) {
+        corners.push([
+          (i & 1 ? profile.max : profile.min)[0],
+          (i & 2 ? profile.max : profile.min)[1],
+          (i & 4 ? profile.max : profile.min)[2],
+        ]);
+      }
+    }
+    const values = inputs.values;
+    let reach = 0;
+    if (f.type === 'linearPattern') {
+      for (const p of ['', '/second']) {
+        const n = values[`${p}/count`] ?? 1;
+        reach += Math.max(0, n - 1) * Math.abs(values[`${p}/spacing`] ?? 0);
+      }
+    } else {
+      const frame = f.type === 'mirror' ? inputs.frames?.plane : inputs.frames?.axis;
+      for (const c of corners) {
+        if (!frame) break;
+        const z = normalize(frame.z);
+        const d = sub(c, frame.origin);
+        const off = f.type === 'mirror' ? Math.abs(dot(d, z)) : norm(sub(d, scale(z, dot(d, z))));
+        reach = Math.max(reach, 2 * off);
+      }
+    }
+    const needed = 2 * (boxDiagonal(box) + reach) + 1;
+    return 2 ** Math.ceil(Math.log2(Math.max(needed, 1)));
+  }
+
+  /**
    * Runs a mirror / pattern. Feature copies change the source features' body in place (it keeps
    * its id). Body copies with `merge` fuse into the first source body (the others are consumed);
    * without `merge` each copy is a new body: `B<featureId>` for one, else `B<featureId>:<key>`
@@ -3368,7 +3462,11 @@ export class RegenEngine {
     const fail = (error: KernelError) => ({ result: { ok: false as const, error }, owned: [] });
     const shapes: Record<string, ShapeHandle> = {};
     for (const spec of specs) {
-      const t = await this.toolOf(ctx, spec);
+      const depth =
+        spec.throughAll && target
+          ? await this.throughAllDepth(f, inputs, target, spec.throughAll)
+          : undefined;
+      const t = await this.toolOf(ctx, spec, depth);
       if (!t.ok) return fail(t.error);
       shapes[`tool:${spec.featureId}`] = t.value.shape;
     }

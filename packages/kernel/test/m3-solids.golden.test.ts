@@ -286,27 +286,71 @@ for (const { variant } of VARIANTS) {
 
       it('5° on one side face about the bottom: volume, area, names kept', () => {
         const ss = session();
-        // Pull direction = the neutral face's outward normal (-z for the bottom face); the body
-        // narrows along it, so the drafted face leans out at the top: its top edge moves by
-        // 10·tan 5° in +x. `reverse` flips the pull direction and the taper.
+        // Pull direction = the neutral plane's normal on the drafted faces' side (+z: the face is
+        // above the bottom); a positive angle narrows the body along it, so the drafted face
+        // leans in at the top: its top edge moves by 10·tan 5° in -x (a moulded box with its
+        // parting line at the bottom). `reverse` flips the pull direction and the taper.
         const { box, r } = drafted(ss, false);
         const m = ss.mass(r.shape);
-        const top = 10 + 10 * t5;
+        const top = 10 - 10 * t5;
         const cos5 = Math.cos((5 * PI) / 180);
-        relClose(m.volume, 1000 + 500 * t5, REL);
-        relClose(m.bbox.max[0], top, REL);
+        relClose(m.volume, 1000 - 500 * t5, REL);
+        relClose(m.bbox.max[0], 10, REL);
         // xmin + bottom + top + two trapezoid sides + the tilted face.
         relClose(m.area, 100 + 100 + 10 * top + 2 * ((10 + top) / 2) * 10 + 100 / cos5, REL);
         expect(m.faceCount).toBe(6);
         expect(names(r, 'face').sort()).toEqual(names(box, 'face').sort());
         const rev = drafted(ss, true).r;
         const mr = ss.mass(rev.shape);
-        relClose(mr.volume, 1000 - 500 * t5, REL);
+        relClose(mr.volume, 1000 + 500 * t5, REL);
+        relClose(mr.bbox.max[0], 10 + 10 * t5, REL);
         relClose(
           mr.area,
-          100 + 100 + 10 * (10 - 10 * t5) + 2 * ((20 - 10 * t5) / 2) * 10 + 100 / cos5,
+          100 + 100 + 10 * (10 + 10 * t5) + 2 * ((20 + 10 * t5) / 2) * 10 + 100 / cos5,
           REL,
         );
+      });
+
+      it('the body narrows away from the neutral plane, whichever way the plane points', () => {
+        const ss = session();
+        const box = ss.exec(boxFeature(BOX), boxValues(10, 10, 10));
+        const xmax = face(box.shape, indexOf(box, `${B}:face.xmax`, 'face'));
+        const run = (
+          neutral: { refs?: Record<string, ResolvedRef>; frames?: Record<string, Frame> },
+          reverse = false,
+        ) => {
+          const inputs: FeatureInputs = {
+            values: { '/angle': (5 * PI) / 180 },
+            target: box.shape,
+            refs: { '/faces/0': xmax, ...neutral.refs },
+          };
+          if (neutral.frames) inputs.frames = neutral.frames;
+          return ss.mass(ss.exec(draftFeature(reverse), inputs).shape);
+        };
+        // Top face as neutral (outward normal +z; the drafted face is below it): the pull is -z,
+        // the top edge stays and the bottom edge moves in.
+        const topFace = run({
+          refs: { '/neutral': face(box.shape, indexOf(box, `${B}:face.zmax`, 'face')) },
+        });
+        relClose(topFace.volume, 1000 - 500 * t5, REL);
+        relClose(topFace.bbox.max[0], 10, REL);
+        expect(topFace.centroid[2]).toBeGreaterThan(5);
+        // A datum plane through the bottom face acts like the face, pointing up or down.
+        for (const z of [1, -1]) {
+          const frames = { neutral: frameAt([0, 0, 0], [0, 0, z]) };
+          const datum = run({ frames });
+          relClose(datum.volume, 1000 - 500 * t5, REL);
+          expect(datum.centroid[2]).toBeLessThan(5);
+          relClose(run({ frames }, true).volume, 1000 + 500 * t5, REL);
+        }
+        // Mid-plane neutral (the face is centred on it): the plane's own normal is the pull, so
+        // +z narrows the top half and widens the bottom half by the same amount.
+        const frames = { neutral: frameAt([0, 0, 5]) };
+        const mid = run({ frames });
+        relClose(mid.volume, 1000, REL);
+        relClose(mid.bbox.max[0], 10 + 5 * t5, REL);
+        expect(mid.centroid[2]).toBeLessThan(5);
+        expect(run({ frames }, true).centroid[2]).toBeGreaterThan(5);
       });
 
       it('names are stable when the box is resized upstream', () => {
@@ -321,7 +365,7 @@ for (const { variant } of VARIANTS) {
             '/neutral': face(box.shape, indexOf(box, `${B}:face.zmin`, 'face')),
           },
         });
-        relClose(ss.mass(b.shape).volume, 2500 + 1250 * t5, REL);
+        relClose(ss.mass(b.shape).volume, 2500 - 1250 * t5, REL);
         expect(names(b).sort()).toEqual(names(a).sort());
         expect(names(a).filter((n) => n.includes(':unnamed'))).toEqual([]);
       });

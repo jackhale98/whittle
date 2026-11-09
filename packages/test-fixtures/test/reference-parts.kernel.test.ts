@@ -20,21 +20,7 @@ import { type Api, kernelBuilt, kernelSkipNote, loadApi, measure } from './kerne
  * Features (or sketch operations) the engine in this checkout cannot regenerate yet. The lead
  * removes entries as the M3 workstreams merge and re-runs the suite.
  */
-const PENDING: Record<string, string> = {
-  shell: 'M3 kernel shell (kernel-engineer)',
-  draft: 'M3 kernel draft (kernel-engineer)',
-  sweep: 'M3 kernel sweep and sweep-cut (kernel-engineer)',
-  loft: 'M3 kernel loft (kernel-engineer)',
-  mirror: 'M3 mirror regen (kernel-engineer, modeling-engineer)',
-  linearPattern: 'M3 linear pattern regen (kernel-engineer, modeling-engineer)',
-  circularPattern: 'M3 circular pattern regen (kernel-engineer, modeling-engineer)',
-  hole: 'M3 hole wizard regen and tables (modeling-engineer)',
-  axis: 'M3 reference axes (modeling-engineer)',
-  point: 'M3 reference points (modeling-engineer)',
-  'sketch.offset': 'M3 offset entities and the offset dimension in the solver (sketch-engineer)',
-  'sketch.convert':
-    'M3 convert entities, linked sketch geometry (sketch-engineer, modeling-engineer)',
-};
+const PENDING: Record<string, string> = {};
 
 function needs(steps: Step[]): string[] {
   const out = new Set<string>();

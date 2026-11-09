@@ -337,7 +337,13 @@ export interface ShellFeature extends FeatureBase {
   direction: 'inward' | 'outward';
 }
 
-/** Taper faces by `angle` about a neutral plane, along its normal (flip with `reverse`). */
+/**
+ * Taper `faces` by `angle` about the `neutral` plane. Each face keeps its line on the neutral plane
+ * and turns about it. The pull direction is the neutral plane's normal on the side the drafted
+ * faces are; a positive angle makes the body narrower along it (faces lean inward moving away from
+ * the neutral plane, as a moulded part needs). Faces centred on the plane use the plane's own
+ * normal (a face's outward normal, a plane's +z). `reverse` flips the pull direction.
+ */
 export interface DraftFeature extends FeatureBase {
   type: 'draft';
   faces: EntityRef[];
