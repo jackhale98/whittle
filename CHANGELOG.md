@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Test fixtures: the M3 reference-part suite (PLAN 12A), 10 original parts with specs, drawings, derived masses, CSWP stages, a spec-to-`WhittleDoc` builder, real-kernel goldens (parts using M3 features are skipped until they merge) and independent FreeCAD checks (all 40 cases within 3e-12 of the analytic volume).
+
 ### M0 — Foundations
 
 - Plan, project memory (`CLAUDE.md`), subagent definitions, ADR-001 (stack), ADR-002 (kernel toolchain).

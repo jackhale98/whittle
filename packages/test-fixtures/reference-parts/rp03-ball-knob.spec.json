@@ -1,0 +1,344 @@
+{
+  "schema": "whittle-reference-part/1",
+  "id": "rp03-ball-knob",
+  "no": 3,
+  "title": "Ball knob",
+  "level": "CSWA-like",
+  "summary": "A brass ball with a stem below it and a flat on top. The ball is a revolved semicircle; the flat is cut from a reference plane.",
+  "units": {
+    "length": "mm",
+    "angle": "deg"
+  },
+  "material": {
+    "libraryId": "whittle:brass-c360",
+    "name": "Brass C360",
+    "density": "8.50 g/cm^3",
+    "density_g_cm3": 8.5
+  },
+  "dimensions": {
+    "ball_d": {
+      "value": 50,
+      "unit": "mm",
+      "description": "Ball diameter"
+    },
+    "stem_d": {
+      "value": 16,
+      "unit": "mm",
+      "description": "Stem diameter"
+    },
+    "stem_l": {
+      "value": 40,
+      "unit": "mm",
+      "description": "Stem length below the ball centre"
+    },
+    "flat_h": {
+      "value": 18,
+      "unit": "mm",
+      "description": "Height of the flat above the ball centre (reference plane offset)"
+    },
+    "chamfer_c": {
+      "value": 1.5,
+      "unit": "mm",
+      "description": "Chamfer on the stem end"
+    }
+  },
+  "tags": [
+    "revolve",
+    "sphere",
+    "extrude",
+    "cut",
+    "plane",
+    "chamfer"
+  ],
+  "standards": [],
+  "method": "Exact closed forms: sphere 4/3 pi R^3; spherical cap pi h^2 (3R - h)/3; the part of the stem outside the ball is the cylinder minus its intersection with the ball, 2 pi/3 (R^3 - (R^2 - a^2)^(3/2)); the chamfer by Pappus. The surface area is a sum of a sphere zone, a flat disc, a cylinder, a cone and an end disc. Accuracy: floating point (1e-12 relative).",
+  "features": [
+    {
+      "tool": "sketch",
+      "id": "ball_sk",
+      "say": "Sketch on Front (XZ): a semicircle centred on the origin, to the right of the Z axis, closed by a line along the axis.",
+      "on": {
+        "pick": "plane",
+        "name": "origin:XZ"
+      },
+      "ops": [
+        {
+          "op": "point",
+          "id": "pa",
+          "x": "0",
+          "y": "-ball_d/2"
+        },
+        {
+          "op": "point",
+          "id": "pb",
+          "x": "0",
+          "y": "ball_d/2",
+          "dims": "x"
+        },
+        {
+          "op": "arc",
+          "id": "A1",
+          "c": "o",
+          "a": "pa",
+          "b": "pb"
+        },
+        {
+          "op": "line",
+          "id": "L1",
+          "a": "pb",
+          "b": "pa"
+        }
+      ]
+    },
+    {
+      "tool": "revolve",
+      "id": "ball",
+      "say": "Revolve the half disc 360 degrees about the Z axis: a sphere.",
+      "profile": [
+        {
+          "pick": "region",
+          "sketch": "ball_sk",
+          "curves": [
+            "A1",
+            "L1"
+          ],
+          "at": [
+            12.5,
+            0,
+            0
+          ]
+        }
+      ],
+      "axis": {
+        "pick": "axis",
+        "name": "origin:Z"
+      },
+      "angle": "360 deg",
+      "direction": "normal",
+      "op": "new"
+    },
+    {
+      "tool": "sketch",
+      "id": "stem_sk",
+      "say": "Sketch on Top (XY): a circle of stem_d at the origin.",
+      "on": {
+        "pick": "plane",
+        "name": "origin:XY"
+      },
+      "ops": [
+        {
+          "op": "circle",
+          "id": "C",
+          "cx": "0",
+          "cy": "0",
+          "d": "stem_d"
+        }
+      ]
+    },
+    {
+      "tool": "extrude",
+      "id": "stem",
+      "say": "Extrude the circle downwards by stem_l, adding to the ball.",
+      "profile": [
+        {
+          "pick": "region",
+          "sketch": "stem_sk",
+          "curves": [
+            "C"
+          ],
+          "at": [
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "direction": "reverse",
+      "end": {
+        "kind": "blind",
+        "depth": "stem_l"
+      },
+      "op": "add"
+    },
+    {
+      "tool": "plane",
+      "id": "flat_pl",
+      "say": "Reference plane: offset flat_h above the Top plane.",
+      "definition": {
+        "kind": "offset",
+        "from": {
+          "pick": "plane",
+          "name": "origin:XY"
+        },
+        "distance": "flat_h"
+      }
+    },
+    {
+      "tool": "sketch",
+      "id": "flat_sk",
+      "say": "Sketch on the new plane: a square, ball_d + 10 on a side, centred on the origin.",
+      "on": {
+        "pick": "plane",
+        "name": "F{flat_pl}:plane",
+        "at": [
+          0,
+          0,
+          18
+        ]
+      },
+      "ops": [
+        {
+          "op": "rect",
+          "id": "R",
+          "x": "-(ball_d+10)/2",
+          "y": "-(ball_d+10)/2",
+          "w": "ball_d+10",
+          "h": "ball_d+10"
+        }
+      ]
+    },
+    {
+      "tool": "extrude",
+      "id": "flat",
+      "say": "Cut-extrude the square upwards through all: this removes the top of the ball.",
+      "profile": [
+        {
+          "pick": "region",
+          "sketch": "flat_sk",
+          "curves": [
+            "R1",
+            "R2",
+            "R3",
+            "R4"
+          ],
+          "at": [
+            27,
+            0,
+            18
+          ]
+        }
+      ],
+      "direction": "normal",
+      "end": {
+        "kind": "throughAll"
+      },
+      "op": "cut"
+    },
+    {
+      "tool": "chamfer",
+      "id": "cham",
+      "say": "Chamfer the circular edge at the end of the stem by chamfer_c.",
+      "edges": [
+        {
+          "pick": "edge",
+          "name": "edge(F{stem}:end|F{stem}:side(S{stem_sk}:e(C)))",
+          "at": [
+            8,
+            0,
+            -40
+          ]
+        }
+      ],
+      "mode": {
+        "kind": "distance",
+        "distance": "chamfer_c"
+      },
+      "propagate": true
+    }
+  ],
+  "expected": {
+    "volume_mm3": 65054.4639736,
+    "mass_g": 552.962943776,
+    "bbox": {
+      "min": [
+        -25,
+        -25,
+        -40
+      ],
+      "max": [
+        25,
+        25,
+        18
+      ]
+    },
+    "area_mm2": 8467.57883801
+  },
+  "stages": [
+    {
+      "name": "Stage 2: ball_d -> 60 mm",
+      "set": {
+        "ball_d": 60
+      },
+      "expected": {
+        "volume_mm3": 103401.356644,
+        "mass_g": 878.911531474,
+        "bbox": {
+          "min": [
+            -30,
+            -30,
+            -40
+          ],
+          "max": [
+            30,
+            30,
+            18
+          ]
+        },
+        "area_mm2": 11363.801578
+      }
+    },
+    {
+      "name": "Stage 3: stem_d -> 20 mm and stem_l -> 55 mm",
+      "set": {
+        "stem_d": 20,
+        "stem_l": 55
+      },
+      "expected": {
+        "volume_mm3": 71641.2950272,
+        "mass_g": 608.951007731,
+        "bbox": {
+          "min": [
+            -25,
+            -25,
+            -55
+          ],
+          "max": [
+            25,
+            25,
+            18
+          ]
+        },
+        "area_mm2": 9644.31490773
+      }
+    },
+    {
+      "name": "Stage 4: flat_h -> 10 mm",
+      "set": {
+        "flat_h": 10
+      },
+      "expected": {
+        "volume_mm3": 54406.559273,
+        "mass_g": 462.455753821,
+        "bbox": {
+          "min": [
+            -25,
+            -25,
+            -40
+          ],
+          "max": [
+            25,
+            25,
+            10
+          ]
+        },
+        "area_mm2": 7914.65853098
+      }
+    }
+  ],
+  "drawing": "rp03-ball-knob.svg",
+  "independent": {
+    "tool": "FreeCAD",
+    "script": "freecad/rp03.py",
+    "results": "freecad-results.json"
+  }
+}

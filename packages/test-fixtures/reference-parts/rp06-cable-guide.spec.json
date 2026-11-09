@@ -1,0 +1,553 @@
+{
+  "schema": "whittle-reference-part/1",
+  "id": "rp06-cable-guide",
+  "no": 6,
+  "title": "Cable guide",
+  "level": "CSWP-like",
+  "summary": "A nylon block with a round groove swept along a straight-arc-straight path across its top, and a bent rod swept up from the top face.",
+  "units": {
+    "length": "mm",
+    "angle": "deg"
+  },
+  "material": {
+    "libraryId": "whittle:nylon-pa12",
+    "name": "Nylon PA12",
+    "density": "1.01 g/cm^3",
+    "density_g_cm3": 1.01
+  },
+  "dimensions": {
+    "blk_l": {
+      "value": 100,
+      "unit": "mm",
+      "description": "Block length (X)"
+    },
+    "blk_w": {
+      "value": 50,
+      "unit": "mm",
+      "description": "Block width (Y)"
+    },
+    "blk_t": {
+      "value": 20,
+      "unit": "mm",
+      "description": "Block thickness (Z)"
+    },
+    "ch_d": {
+      "value": 10,
+      "unit": "mm",
+      "description": "Groove diameter (its centre line lies on the top face)"
+    },
+    "ch_in": {
+      "value": 10,
+      "unit": "mm",
+      "description": "Groove entry: offset of its first leg from the centre line, towards -Y"
+    },
+    "ch_turn_x": {
+      "value": 20,
+      "unit": "mm",
+      "description": "X where the groove starts to bend"
+    },
+    "ch_bend": {
+      "value": 10,
+      "unit": "mm",
+      "description": "Groove bend radius (a quarter turn to +Y)"
+    },
+    "rod_d": {
+      "value": 8,
+      "unit": "mm",
+      "description": "Rod diameter"
+    },
+    "rod_x": {
+      "value": 30,
+      "unit": "mm",
+      "description": "Rod plane: distance from the YZ plane towards -X"
+    },
+    "rod_y": {
+      "value": 15,
+      "unit": "mm",
+      "description": "Rod foot position along Y"
+    },
+    "rod_h": {
+      "value": 20,
+      "unit": "mm",
+      "description": "Length of the straight rising leg"
+    },
+    "rod_bend": {
+      "value": 10,
+      "unit": "mm",
+      "description": "Rod bend radius (a quarter turn towards -Y)"
+    },
+    "rod_tail": {
+      "value": 15,
+      "unit": "mm",
+      "description": "Length of the straight horizontal tail"
+    }
+  },
+  "tags": [
+    "extrude",
+    "plane",
+    "sweep",
+    "sweepCut"
+  ],
+  "standards": [],
+  "method": "Exact by Pappus. A circular profile swept along a path of length s has volume pi r^2 s. The groove profile is centred on the top face, so half of it is cut; the centroid of the removed half disc lies straight below the path, at the same bend radius, so the volume is (pi r^2 / 2) s_groove with no correction. The rod sits clear of the groove and above the block. Accuracy: floating point (1e-12 relative). The kernel result also depends on the sweep keeping the profile normal to the path (a planar path, so Frenet is exact).",
+  "features": [
+    {
+      "tool": "sketch",
+      "id": "base_sk",
+      "say": "Sketch on Top (XY): a rectangle blk_l x blk_w centred on the origin.",
+      "on": {
+        "pick": "plane",
+        "name": "origin:XY"
+      },
+      "ops": [
+        {
+          "op": "rect",
+          "id": "L",
+          "x": "-blk_l/2",
+          "y": "-blk_w/2",
+          "w": "blk_l",
+          "h": "blk_w"
+        }
+      ]
+    },
+    {
+      "tool": "extrude",
+      "id": "base",
+      "say": "Extrude by blk_t as a new body.",
+      "profile": [
+        {
+          "pick": "region",
+          "sketch": "base_sk",
+          "curves": [
+            "L1",
+            "L2",
+            "L3",
+            "L4"
+          ],
+          "at": [
+            30,
+            15,
+            0
+          ]
+        }
+      ],
+      "direction": "normal",
+      "end": {
+        "kind": "blind",
+        "depth": "blk_t"
+      },
+      "op": "new"
+    },
+    {
+      "tool": "plane",
+      "id": "top_pl",
+      "say": "Reference plane: offset blk_t above the Top plane (the block top).",
+      "definition": {
+        "kind": "offset",
+        "from": {
+          "pick": "plane",
+          "name": "origin:XY"
+        },
+        "distance": "blk_t"
+      }
+    },
+    {
+      "tool": "sketch",
+      "id": "ch_path",
+      "say": "Sketch the groove path on the new plane: a line in from the -X end, a quarter arc of ch_bend, and a line out to the +Y side.",
+      "on": {
+        "pick": "plane",
+        "name": "F{top_pl}:plane",
+        "at": [
+          0,
+          0,
+          20
+        ]
+      },
+      "ops": [
+        {
+          "op": "point",
+          "id": "p0",
+          "x": "-blk_l/2",
+          "y": "-ch_in"
+        },
+        {
+          "op": "point",
+          "id": "p1",
+          "x": "ch_turn_x",
+          "y": "-ch_in"
+        },
+        {
+          "op": "point",
+          "id": "pc",
+          "x": "ch_turn_x",
+          "y": "-ch_in+ch_bend",
+          "dims": "none"
+        },
+        {
+          "op": "point",
+          "id": "p2",
+          "x": "ch_turn_x+ch_bend",
+          "y": "-ch_in+ch_bend"
+        },
+        {
+          "op": "point",
+          "id": "p3",
+          "x": "ch_turn_x+ch_bend",
+          "y": "blk_w/2"
+        },
+        {
+          "op": "line",
+          "id": "R1",
+          "a": "p0",
+          "b": "p1"
+        },
+        {
+          "op": "arc",
+          "id": "R2",
+          "c": "pc",
+          "a": "p1",
+          "b": "p2",
+          "radius": "ch_bend"
+        },
+        {
+          "op": "line",
+          "id": "R3",
+          "a": "p2",
+          "b": "p3"
+        }
+      ]
+    },
+    {
+      "tool": "plane",
+      "id": "ch_pl",
+      "say": "Reference plane: offset blk_l/2 from the Right plane (YZ) towards -X, the plane of the groove start.",
+      "definition": {
+        "kind": "offset",
+        "from": {
+          "pick": "plane",
+          "name": "origin:YZ"
+        },
+        "distance": "-blk_l/2"
+      }
+    },
+    {
+      "tool": "sketch",
+      "id": "ch_prof",
+      "say": "Sketch on that plane: a circle of ch_d centred on the groove start, level with the block top.",
+      "on": {
+        "pick": "plane",
+        "name": "F{ch_pl}:plane",
+        "at": [
+          -50,
+          0,
+          0
+        ]
+      },
+      "ops": [
+        {
+          "op": "circle",
+          "id": "C",
+          "cx": "-ch_in",
+          "cy": "blk_t",
+          "d": "ch_d"
+        }
+      ]
+    },
+    {
+      "tool": "sweep",
+      "id": "groove",
+      "say": "Sweep-cut the circle along the groove path (profile follows the path).",
+      "profile": [
+        {
+          "pick": "region",
+          "sketch": "ch_prof",
+          "curves": [
+            "C"
+          ],
+          "at": [
+            -50,
+            -10,
+            20
+          ]
+        }
+      ],
+      "path": [
+        {
+          "pick": "edge",
+          "name": "S{ch_path}:e(R1)",
+          "at": [
+            -40,
+            -10,
+            20
+          ]
+        },
+        {
+          "pick": "edge",
+          "name": "S{ch_path}:e(R2)",
+          "at": [
+            27.071067811865476,
+            -7.0710678118654755,
+            20
+          ]
+        },
+        {
+          "pick": "edge",
+          "name": "S{ch_path}:e(R3)",
+          "at": [
+            30,
+            12.5,
+            20
+          ]
+        }
+      ],
+      "orientation": "followPath",
+      "op": "cut"
+    },
+    {
+      "tool": "plane",
+      "id": "rod_pl",
+      "say": "Reference plane: offset rod_x from the Right plane (YZ) towards -X, the plane of the rod path.",
+      "definition": {
+        "kind": "offset",
+        "from": {
+          "pick": "plane",
+          "name": "origin:YZ"
+        },
+        "distance": "-rod_x"
+      }
+    },
+    {
+      "tool": "sketch",
+      "id": "rod_path",
+      "say": "Sketch the rod path on that plane: a line up from the block top, a quarter arc of rod_bend towards -Y, and a horizontal tail.",
+      "on": {
+        "pick": "plane",
+        "name": "F{rod_pl}:plane",
+        "at": [
+          -30,
+          0,
+          0
+        ]
+      },
+      "ops": [
+        {
+          "op": "point",
+          "id": "q0",
+          "x": "rod_y",
+          "y": "blk_t"
+        },
+        {
+          "op": "point",
+          "id": "q1",
+          "x": "rod_y",
+          "y": "blk_t+rod_h"
+        },
+        {
+          "op": "point",
+          "id": "qc",
+          "x": "rod_y-rod_bend",
+          "y": "blk_t+rod_h",
+          "dims": "none"
+        },
+        {
+          "op": "point",
+          "id": "q2",
+          "x": "rod_y-rod_bend",
+          "y": "blk_t+rod_h+rod_bend"
+        },
+        {
+          "op": "point",
+          "id": "q3",
+          "x": "rod_y-rod_bend-rod_tail",
+          "y": "blk_t+rod_h+rod_bend"
+        },
+        {
+          "op": "line",
+          "id": "S1",
+          "a": "q0",
+          "b": "q1"
+        },
+        {
+          "op": "arc",
+          "id": "S2",
+          "c": "qc",
+          "a": "q1",
+          "b": "q2",
+          "radius": "rod_bend"
+        },
+        {
+          "op": "line",
+          "id": "S3",
+          "a": "q2",
+          "b": "q3"
+        }
+      ]
+    },
+    {
+      "tool": "sketch",
+      "id": "rod_prof",
+      "say": "Sketch on the block-top plane: a circle of rod_d at (-rod_x, rod_y).",
+      "on": {
+        "pick": "plane",
+        "name": "F{top_pl}:plane",
+        "at": [
+          0,
+          0,
+          20
+        ]
+      },
+      "ops": [
+        {
+          "op": "circle",
+          "id": "C2",
+          "cx": "-rod_x",
+          "cy": "rod_y",
+          "d": "rod_d"
+        }
+      ]
+    },
+    {
+      "tool": "sweep",
+      "id": "rod",
+      "say": "Sweep the circle along the rod path, adding to the block.",
+      "profile": [
+        {
+          "pick": "region",
+          "sketch": "rod_prof",
+          "curves": [
+            "C2"
+          ],
+          "at": [
+            -30,
+            15,
+            20
+          ]
+        }
+      ],
+      "path": [
+        {
+          "pick": "edge",
+          "name": "S{rod_path}:e(S1)",
+          "at": [
+            -30,
+            15,
+            30
+          ]
+        },
+        {
+          "pick": "edge",
+          "name": "S{rod_path}:e(S2)",
+          "at": [
+            -30,
+            12.071067811865476,
+            47.071067811865476
+          ]
+        },
+        {
+          "pick": "edge",
+          "name": "S{rod_path}:e(S3)",
+          "at": [
+            -30,
+            -2.5,
+            50
+          ]
+        }
+      ],
+      "orientation": "followPath",
+      "op": "add"
+    }
+  ],
+  "expected": {
+    "volume_mm3": 98201.3686869,
+    "mass_g": 99.1833823738,
+    "bbox": {
+      "min": [
+        -50,
+        -25,
+        0
+      ],
+      "max": [
+        50,
+        25,
+        54
+      ]
+    }
+  },
+  "stages": [
+    {
+      "name": "Stage 2: ch_d -> 12 mm",
+      "set": {
+        "ch_d": 12
+      },
+      "expected": {
+        "volume_mm3": 96288.4724044,
+        "mass_g": 97.2513571284,
+        "bbox": {
+          "min": [
+            -50,
+            -25,
+            0
+          ],
+          "max": [
+            50,
+            25,
+            54
+          ]
+        }
+      }
+    },
+    {
+      "name": "Stage 3: rod_h -> 30 mm and rod_d -> 10 mm",
+      "set": {
+        "rod_h": 30,
+        "rod_d": 10
+      },
+      "expected": {
+        "volume_mm3": 100420.500734,
+        "mass_g": 101.424705742,
+        "bbox": {
+          "min": [
+            -50,
+            -25,
+            0
+          ],
+          "max": [
+            50,
+            25,
+            65
+          ]
+        }
+      }
+    },
+    {
+      "name": "Stage 4: blk_t -> 25 mm and ch_bend -> 12 mm",
+      "set": {
+        "blk_t": 25,
+        "ch_bend": 12
+      },
+      "expected": {
+        "volume_mm3": 123156.538448,
+        "mass_g": 124.388103833,
+        "bbox": {
+          "min": [
+            -50,
+            -25,
+            0
+          ],
+          "max": [
+            50,
+            25,
+            59
+          ]
+        }
+      }
+    }
+  ],
+  "drawing": "rp06-cable-guide.svg",
+  "independent": {
+    "tool": "FreeCAD",
+    "script": "freecad/rp06.py",
+    "results": "freecad-results.json"
+  }
+}

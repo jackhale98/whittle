@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 297" width="420mm" height="297mm" data-part="RP09">
+<title>RP09 Flanged hub - Whittle reference part</title>
+<rect x="5" y="5" width="410" height="287" fill="#fff" stroke="#111" stroke-width="0.8"/>
+<g data-view="Top">
+<text x="26" y="37" font-size="3.6" font-family="sans-serif" font-weight="bold" fill="#111">Top</text>
+<circle cx="110" cy="135" r="84" stroke="#111" stroke-width="0.5" fill="none"/>
+<circle cx="110" cy="135" r="39.2" stroke="#111" stroke-width="0.5" fill="none"/>
+<circle cx="110" cy="135" r="22.4" stroke="#111" stroke-width="0.5" fill="none"/>
+<circle cx="110" cy="135" r="63" stroke="#2a5db0" stroke-width="0.25" stroke-dasharray="6 1.5 1 1.5" fill="none"/>
+<circle cx="173" cy="135" r="6.3" stroke="#111" stroke-width="0.5" fill="none"/>
+<circle cx="154.548" cy="90.452" r="6.3" stroke="#111" stroke-width="0.5" fill="none"/>
+<circle cx="110" cy="72" r="6.3" stroke="#555" stroke-width="0.3" stroke-dasharray="2 1.2" fill="none"/>
+<circle cx="65.452" cy="90.452" r="6.3" stroke="#111" stroke-width="0.5" fill="none"/>
+<circle cx="47" cy="135" r="6.3" stroke="#111" stroke-width="0.5" fill="none"/>
+<circle cx="65.452" cy="179.548" r="6.3" stroke="#555" stroke-width="0.3" stroke-dasharray="2 1.2" fill="none"/>
+<circle cx="110" cy="198" r="6.3" stroke="#111" stroke-width="0.5" fill="none"/>
+<circle cx="154.548" cy="179.548" r="6.3" stroke="#111" stroke-width="0.5" fill="none"/>
+<line x1="26" y1="219" x2="26" y2="231.4" stroke="#444" stroke-width="0.2"/>
+<line x1="194" y1="219" x2="194" y2="231.4" stroke="#444" stroke-width="0.2"/>
+<line x1="26" y1="230.2" x2="194" y2="230.2" stroke="#111" stroke-width="0.25"/>
+<path d="M26 230.2 L28.4 229.4 L28.4 231 Z" fill="#111"/>
+<path d="M194 230.2 L191.6 231 L191.6 229.4 Z" fill="#111"/>
+<text data-dim="flange_d" data-value="120" x="110" y="234.2" text-anchor="middle" font-size="3.2" font-family="monospace" fill="#111">flange_d = 120 mm</text>
+<line x1="87.516" y1="167.111" x2="74.897" y2="185.132" stroke="#111" stroke-width="0.25"/>
+<path d="M87.516 167.111 L86.795 169.536 L85.484 168.618 Z" fill="#111"/>
+<text data-dim="hub_d" data-value="56" x="73.897" y="185.132" text-anchor="end" font-size="3.2" font-family="monospace" fill="#111">hub_d = 56 mm</text>
+<line x1="88.951" y1="142.661" x2="64.519" y2="151.554" stroke="#111" stroke-width="0.25"/>
+<path d="M88.951 142.661 L86.969 144.234 L86.422 142.73 Z" fill="#111"/>
+<text data-dim="bore_d" data-value="32" x="63.519" y="151.554" text-anchor="end" font-size="3.2" font-family="monospace" fill="#111">bore_d = 32 mm</text>
+<line x1="179.085" y1="133.369" x2="196.472" y2="128.711" stroke="#111" stroke-width="0.25"/>
+<path d="M179.085 133.369 L181.196 131.976 L181.611 133.521 Z" fill="#111"/>
+<text data-dim="bolt_d" data-value="9" x="197.472" y="128.711" text-anchor="start" font-size="3.2" font-family="monospace" fill="#111">bolt_d = 9 mm</text>
+<line x1="78.5" y1="80.44" x2="60.5" y2="49.263" stroke="#111" stroke-width="0.25"/>
+<path d="M78.5 80.44 L76.607 78.762 L77.993 77.962 Z" fill="#111"/>
+<text data-dim="pcd" data-value="90" x="59.5" y="49.263" text-anchor="end" font-size="3.2" font-family="monospace" fill="#111">pcd = 90 mm</text>
+<text data-dim="bolt_n" data-value="8" x="201" y="219" text-anchor="start" font-size="3.2" font-family="monospace" fill="#111">bolt_n = 8</text>
+</g>
+<g data-view="Front (section)">
+<text x="230" y="119" font-size="3.6" font-family="sans-serif" font-weight="bold" fill="#111">Section through the axis</text>
+<path d="M344 200 L410 200 L410 182 L362 182 L362 137 L344 137 Z" stroke="#111" stroke-width="0.5" fill="none"/>
+<path d="M296 200 L230 200 L230 182 L278 182 L278 137 L296 137 Z" stroke="#111" stroke-width="0.5" fill="none"/>
+<line x1="320" y1="209" x2="320" y2="128" stroke="#2a5db0" stroke-width="0.25" stroke-dasharray="6 1.5 1 1.5" fill="none"/>
+<line x1="230" y1="200" x2="219.2" y2="200" stroke="#444" stroke-width="0.2"/>
+<line x1="230" y1="182" x2="219.2" y2="182" stroke="#444" stroke-width="0.2"/>
+<line x1="218" y1="200" x2="218" y2="182" stroke="#111" stroke-width="0.25"/>
+<path d="M218 200 L217.2 197.6 L218.8 197.6 Z" fill="#111"/>
+<path d="M218 182 L218.8 184.4 L217.2 184.4 Z" fill="#111"/>
+<text data-dim="flange_t" data-value="12" x="216.8" y="191" text-anchor="end" font-size="3.2" font-family="monospace" fill="#111">flange_t = 12 mm</text>
+<line x1="362" y1="182" x2="381.8" y2="182" stroke="#444" stroke-width="0.2"/>
+<line x1="362" y1="137" x2="381.8" y2="137" stroke="#444" stroke-width="0.2"/>
+<line x1="383" y1="182" x2="383" y2="137" stroke="#111" stroke-width="0.25"/>
+<path d="M383 182 L382.2 179.6 L383.8 179.6 Z" fill="#111"/>
+<path d="M383 137 L383.8 139.4 L382.2 139.4 Z" fill="#111"/>
+<text data-dim="hub_h" data-value="30" x="384.2" y="159.5" text-anchor="start" font-size="3.2" font-family="monospace" fill="#111">hub_h = 30 mm</text>
+</g>
+<rect x="215" y="257" width="190" height="35" fill="#fff" stroke="#111" stroke-width="0.6"/>
+<text x="218" y="266" font-size="6" font-family="sans-serif" font-weight="bold" fill="#111">Whittle reference part</text>
+<rect x="215" y="268" width="95" height="11" fill="none" stroke="#111" stroke-width="0.3"/><text x="216.5" y="271.2" font-size="2.2" font-family="sans-serif" fill="#666">PART</text><text x="216.5" y="277" font-size="3.6" font-family="sans-serif" fill="#111">RP09  Flanged hub</text>
+<rect x="310" y="268" width="95" height="11" fill="none" stroke="#111" stroke-width="0.3"/><text x="311.5" y="271.2" font-size="2.2" font-family="sans-serif" fill="#666">LEVEL</text><text x="311.5" y="277" font-size="3.6" font-family="sans-serif" fill="#111">CSWP-like</text>
+<rect x="215" y="279" width="95" height="13" fill="none" stroke="#111" stroke-width="0.3"/><text x="216.5" y="282.2" font-size="2.2" font-family="sans-serif" fill="#666">MATERIAL</text><text x="216.5" y="290" font-size="3.6" font-family="sans-serif" fill="#111">Cast iron (grey)</text>
+<rect x="310" y="279" width="95" height="13" fill="none" stroke="#111" stroke-width="0.3"/><text x="311.5" y="282.2" font-size="2.2" font-family="sans-serif" fill="#666">DENSITY</text><text x="311.5" y="290" font-size="3.6" font-family="sans-serif" fill="#111">7.20 g/cm^3</text>
+<text x="10" y="284" font-size="2.8" font-family="sans-serif" fill="#444">All dimensions in mm unless marked. Third-angle projection.</text>
+<text x="10" y="288" font-size="2.8" font-family="sans-serif" fill="#444">Original drawing for the Whittle certification-style suite; the named values drive the model.</text>
+</svg>
