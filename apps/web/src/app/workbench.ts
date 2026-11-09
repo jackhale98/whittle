@@ -2739,6 +2739,13 @@ export class Workbench {
         await this.viewport?.nextFrame();
       },
       flushSave: () => this.flushSave(),
+      /** The persistent name of a viewport hit's face or edge (read only; E2E pick checks). */
+      hitName: (bodyId: string, kind: string, index: number): string | null => {
+        const mesh = this.regen.get()?.result.bodies.find((b) => b.id === bodyId)?.mesh;
+        if (kind === 'face') return mesh?.faceNames[index] ?? null;
+        if (kind === 'edge') return mesh?.edgeNames[index] ?? null;
+        return null;
+      },
       sketch: () => {
         const solve = this.ui.get().sketch?.solve;
         return solve ? { ...solve, busy: this.sketch?.busy ?? false } : null;

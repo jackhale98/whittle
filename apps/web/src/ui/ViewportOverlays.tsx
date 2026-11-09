@@ -42,9 +42,12 @@ import { measureLabel } from '../model/measure';
 import { labelAnchor } from '../sketch/dimension';
 import { entityAnchor } from '../sketch/overlay';
 import { describeRef, useDoc } from './Inspector';
-import { SketchEditPanels } from './SketchEditPanels';
 
 const LibraryPanel = lazy(() => import('./LibraryPanel'));
+// Sketch Edit-menu panels: only in sketch mode, so not on the initial route.
+const SketchEditPanels = lazy(() =>
+  import('./SketchEditPanels').then((m) => ({ default: m.SketchEditPanels })),
+);
 // Versions, connections, compare and merge (with @wren-cad/sync): fetched when first opened.
 const ProjectPanel = lazy(() => import('../sync/ProjectPanel'));
 
@@ -550,7 +553,9 @@ export function ViewportOverlays({ wb, touch }: { wb: Workbench; touch: boolean 
             className="pointer-events-auto absolute left-1/2 -translate-x-1/2"
             style={{ top: 'var(--chrome-top, 3.5rem)' }}
           >
-            <SketchEditPanels wb={wb} session={session} ui={sk} doc={doc} touch={touch} />
+            <Suspense fallback={null}>
+              <SketchEditPanels wb={wb} session={session} ui={sk} doc={doc} touch={touch} />
+            </Suspense>
           </div>
           <StrokeChip wb={wb} session={session} ui={sk} />
           <div className="absolute" style={TOP_LEFT}>

@@ -4,7 +4,7 @@
  */
 
 import type { EntityRef, Feature, Material, WrenDoc } from '@wren-cad/contracts';
-import { HOLE_TABLES, MATERIALS } from '@wren-cad/document';
+import { MATERIALS } from '@wren-cad/document';
 import {
   Button,
   FeatureInspector,
@@ -19,7 +19,7 @@ import {
   tools as shellTools,
 } from '@wren-cad/ui';
 import { FolderOpen, Library, Plus, Save } from 'lucide-react';
-import { lazy, Suspense, useState, useSyncExternalStore } from 'react';
+import { lazy, Suspense, useEffect, useState, useSyncExternalStore } from 'react';
 import { useObservable } from '../app/observable';
 import type { Workbench } from '../app/workbench';
 import type { FeatureTool, ModelTool } from '../features/factories';
@@ -127,6 +127,26 @@ function DocumentSection({ wb }: { wb: Workbench }) {
   );
 }
 
+type HoleTables = typeof import('../features/hole-tables')['HOLE_TABLES'];
+let holeTables: HoleTables | null = null;
+
+/** The standards tables, loaded the first time a hole or thread is in the inspector. */
+function useHoleTables(needed: boolean): HoleTables | null {
+  const [tables, setTables] = useState(holeTables);
+  useEffect(() => {
+    if (!needed || tables) return;
+    let live = true;
+    void import('../features/hole-tables').then((m) => {
+      holeTables = m.HOLE_TABLES;
+      if (live) setTables(m.HOLE_TABLES);
+    });
+    return () => {
+      live = false;
+    };
+  }, [needed, tables]);
+  return tables;
+}
+
 export function useDoc(wb: Workbench): WrenDoc {
   return useSyncExternalStore(wb.subscribeDoc, wb.getDoc);
 }
@@ -156,6 +176,8 @@ export function Inspector({
   const doc = useDoc(wb);
   const regen = useObservable(wb.regen);
   const part = doc.parts[0];
+  const editingType = part?.features.find((x) => x.id === ui.featureId)?.type;
+  const tables = useHoleTables(editingType === 'hole' || editingType === 'thread');
   if (!part) return null;
   const touch = density === 'touch';
 
@@ -236,7 +258,7 @@ export function Inspector({
           pickingPath={ui.picking?.featureId === f.id ? ui.picking.path : null}
           describeRef={(r) => describeRef(doc, r)}
           describeFeature={(id) => part.features.find((x) => x.id === id)?.name ?? id}
-          holeTables={HOLE_TABLES}
+          {...(tables ? { holeTables: tables } : {})}
           {...(f.type === 'sketch' ? { onEditSketch: () => wb.editFeature(f.id) } : {})}
           onDone={() => wb.selectFeature(null)}
           units={{ length: doc.units.length, angle: doc.units.angle === 'deg' ? '°' : 'rad' }}
