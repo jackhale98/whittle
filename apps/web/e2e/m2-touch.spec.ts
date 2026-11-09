@@ -100,8 +100,9 @@ test('touch taps select once; bubble; double-tap zoom; long-press; 2/3-finger un
   expect((await a.ui()).selection).toEqual(['face']);
   expect((await a.ui()).choices).toBe(before + 1);
   await expect(bubble(page)).toBeVisible();
-  await expect(bubble(page).locator('[data-action]')).toHaveCount(3);
-  for (const id of ['sketch', 'pushPull', 'measure'])
+  // A flat face: sketch on it, push/pull it, drill holes in it (M3), measure it.
+  await expect(bubble(page).locator('[data-action]')).toHaveCount(4);
+  for (const id of ['sketch', 'pushPull', 'hole', 'measure'])
     await expect(bubble(page).locator(`[data-action="${id}"]`)).toBeVisible();
   // The bubble stays clear of the top bar and the rail.
   const bb = await bubble(page).boundingBox();

@@ -24,14 +24,15 @@ test('the command bar is grouped, keyboard-navigable, and remembers the last-use
   await start(page);
   const b = bar(page);
 
-  // Five categories and More; no wider than the old flat bar (it was ~620 px).
-  await expect(b.getByRole('button')).toHaveCount(6);
-  expect((await b.boundingBox())?.width ?? 0).toBeLessThanOrEqual(620);
+  // Seven categories and More (M3 added Pattern and Reference, ADR-038): the bar stays compact.
+  await expect(b.getByRole('button')).toHaveCount(8);
+  expect((await b.boundingBox())?.width ?? 0).toBeLessThanOrEqual(720);
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/desktop-bar-collapsed.png` });
 
-  // Sketch and Hole are direct buttons; Solid / Modify / Inspect open flyouts.
+  // Sketch and Hole are direct buttons; Solid / Modify / Pattern / Reference / Inspect open
+  // flyouts. Every tool works from M3 on.
   await expect(toolButton(page, 'sketch')).toBeVisible();
-  await expect(toolButton(page, 'hole')).toHaveAttribute('aria-disabled', 'true');
+  await expect(toolButton(page, 'hole')).not.toHaveAttribute('aria-disabled', 'true');
   await expect(toolGroup(page, 'solid')).toHaveAttribute('aria-haspopup', 'true');
 
   // Roving focus: Left/Right move across the categories.
@@ -45,19 +46,18 @@ test('the command bar is grouped, keyboard-navigable, and remembers the last-use
   await expect(toolButton(page, 'extrude')).toBeFocused();
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/desktop-bar-open.png` });
   await page.keyboard.press('ArrowDown');
-  await expect(toolButton(page, 'pushPull')).toBeFocused();
+  await expect(toolButton(page, 'extrudeCut')).toBeFocused(); // Extrude, Extruded cut, … (ADR-038)
   await page.keyboard.press('Escape');
   await expect(page.getByTestId('tool-flyout')).toBeHidden();
   await expect(toolGroup(page, 'solid')).toBeFocused();
 
-  // Disabled tools say when they arrive, and stay reachable.
+  // The Modify flyout lists the M3 tools, all enabled.
   await page.keyboard.press('ArrowRight');
   await expect(toolGroup(page, 'modify')).toBeFocused();
   await page.keyboard.press('Enter');
-  const shell = toolButton(page, 'shell');
-  await expect(shell).toHaveAttribute('aria-disabled', 'true');
-  await expect(shell).toContainText('Coming in M3');
-  await expect(toolButton(page, 'fillet')).not.toHaveAttribute('aria-disabled', 'true');
+  for (const id of ['fillet', 'chamfer', 'shell', 'draft', 'thread'])
+    await expect(toolButton(page, id)).not.toHaveAttribute('aria-disabled', 'true');
+  await expect(page.getByTestId('tool-flyout')).not.toContainText('Coming in');
   await page.keyboard.press('Escape');
 
   // Choosing a tool makes it the category's face, and it survives a reload (per user).
