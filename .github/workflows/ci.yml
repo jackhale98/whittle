@@ -291,7 +291,7 @@ jobs:
         working-directory: apps/web
         run: |
           export CHROME_PATH="$(node -e "console.log(require('@playwright/test').chromium.executablePath())")"
-          npx --yes @lhci/cli@0.16.0 autorun
+          npx --yes @lhci/cli@0.16.0 autorun --config=lighthouserc.cjs
       - name: Record scores
         if: always()
         working-directory: apps/web

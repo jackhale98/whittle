@@ -4,6 +4,7 @@
 import 'fake-indexeddb/auto';
 import type { Author, Feature, ProjectFiles, StorageResult, WrenDoc } from '@wren-cad/contracts';
 import { fromFiles, toFiles } from '@wren-cad/document';
+import git from 'isomorphic-git';
 import http from 'isomorphic-git/http/node';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
@@ -316,6 +317,32 @@ describe('GitHistory without a remote (local-only)', () => {
       expect(r.ok).toBe(false);
       if (!r.ok) expect(r.error.message).toMatch(/no remote/);
     }
+  });
+
+  it('automatic snapshots saved before the rename (refs/whittle/auto) are still listed and pruned', async () => {
+    const fs = browserGitFs(`legacy-${fsN++}`, { wipe: true });
+    let now = Date.parse('2026-11-01T00:00:00Z');
+    const h = createGitHistory({ fs, http, dir: '/l', url: null, now: () => new Date(now) });
+    const head = value(await h.saveVersion(seedFiles(), 'First', { author: ann }));
+    const autos = [];
+    for (let i = 0; i < 2; i++) {
+      now += 60_000;
+      const files = edit(seedFiles(), (d) => withRadius(d, `${20 + i}mm`));
+      autos.push(value(await h.saveVersion(files, 'auto', { author: ann, auto: true })));
+    }
+    // Move both snapshot refs to the pre-rename folder, as an M2.5 build left them.
+    for (const v of autos) {
+      await git.writeRef({ fs, dir: '/l', ref: `refs/whittle/auto/${v.id}`, value: v.id });
+      await git.deleteRef({ fs, dir: '/l', ref: `refs/wren/auto/${v.id}` });
+    }
+    const listed = (await h.log({ includeAuto: true })).filter((v) => v.auto).map((v) => v.id);
+    expect(listed.sort()).toEqual(autos.map((v) => v.id).sort());
+    expect((await h.log())[0]?.id).toBe(head.id);
+    // Both fall in one hourly bucket a day later: one is pruned, from the legacy folder.
+    now += 2 * 24 * 3_600_000;
+    expect(await h.prune()).toBe(1);
+    const left = await git.listRefs({ fs, dir: '/l', filepath: 'refs/whittle/auto' });
+    expect(left).toHaveLength(1);
   });
 
   it('reports uncommitted working-tree changes and configured remotes (local git repo mode)', async () => {

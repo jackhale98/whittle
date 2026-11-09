@@ -82,6 +82,8 @@ export const DEFAULT_CORS_PROXY = 'https://cors.isomorphic-git.org';
 
 const REMOTE = 'origin';
 const AUTO_REFS = 'refs/wren/auto';
+/** Where snapshots lived before the rename (ADR-032): still listed and pruned, never written. */
+const LEGACY_AUTO_REFS = 'refs/whittle/auto';
 const RELEASE_FILE = 'Wren-Release-File: ';
 const OID = /^[0-9a-f]{40}$/;
 
@@ -910,13 +912,23 @@ class GitHistoryImpl implements GitHistory {
 
   /** Where this project's automatic snapshots live. */
   private get autoDir(): string {
-    return this.scope.whole ? AUTO_REFS : `${AUTO_REFS}/${gitRefName(this.scope.prefix)}`;
+    return this.autoDirUnder(AUTO_REFS);
   }
 
+  private autoDirUnder(root: string): string {
+    return this.scope.whole ? root : `${root}/${gitRefName(this.scope.prefix)}`;
+  }
+
+  /** Snapshot oids under the current and the pre-rename ref folders (each oid once). */
   private async autoRefs(): Promise<string[]> {
     const { cache: _, ...at } = this.local();
-    const names = await git.listRefs({ ...at, filepath: this.autoDir }).catch(() => [] as string[]);
-    return names.filter((n) => OID.test(n));
+    const out = new Set<string>();
+    for (const root of [AUTO_REFS, LEGACY_AUTO_REFS]) {
+      const dir = this.autoDirUnder(root);
+      const names = await git.listRefs({ ...at, filepath: dir }).catch(() => [] as string[]);
+      for (const n of names) if (OID.test(n)) out.add(n);
+    }
+    return [...out];
   }
 
   /** This project's tags (all tags for the root project). */
@@ -1480,7 +1492,11 @@ class GitHistoryImpl implements GitHistory {
       }
       const drop = selectPrunable(candidates, keep, policy, this.now());
       for (const oid of drop)
-        await git.deleteRef({ ...this.local(), ref: `${this.autoDir}/${oid}` });
+        for (const root of [AUTO_REFS, LEGACY_AUTO_REFS]) {
+          await git
+            .deleteRef({ ...this.local(), ref: `${this.autoDirUnder(root)}/${oid}` })
+            .catch(() => undefined);
+        }
       await this.flush();
       return drop.length;
     });

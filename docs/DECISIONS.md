@@ -1214,6 +1214,11 @@ on any branch that predates the rename before that branch is merged.
     user-visible change; they may be renamed later.
 - **Old files still open.** `.whittle` archives, `whittle.project.json`, `format: "whittle-project"`
   and a `.whittle/` cache folder are all read; files are always written with the new names.
+  Automatic snapshots in local git repos written under `refs/whittle/auto/` before the rename are
+  still listed and pruned; new ones go under `refs/wren/auto/`.
+- **Every base-path use reads `WREN_BASE`** (build, E2E server and specs, Lighthouse CI config):
+  the rename script turned a `/whittle/` that followed a digit into `/wren/`, and specs that
+  hard-coded `/wren-cad/` broke on CI, which still builds at `/whittle/` until the repo is renamed.
 - **Pages base path.** CI derives the base from the repository name
   (`/${{ github.event.repository.name }}/`), so the deploy works before and after the owner
   renames the repository on GitHub. After the rename, sign-in redirect URIs must change to

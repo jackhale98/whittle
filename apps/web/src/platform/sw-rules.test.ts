@@ -20,9 +20,9 @@ describe('service worker request rules', () => {
   });
 
   it('runtime-caches only kernel files', () => {
-    expect(isKernelAsset(new URL('https://x/wren/assets/whittle-kernel-abc.wasm'))).toBe(true);
-    expect(isKernelAsset(new URL('https://x/wren/assets/whittle-kernel-st.js'))).toBe(true);
-    expect(isKernelAsset(new URL('https://x/wren/api/files.json'))).toBe(false);
-    expect(isKernelAsset(new URL('https://x/wren/assets/index-abc.js'))).toBe(false);
+    expect(isKernelAsset(new URL('https://x/wren-cad/assets/whittle-kernel-abc.wasm'))).toBe(true);
+    expect(isKernelAsset(new URL('https://x/wren-cad/assets/whittle-kernel-st.js'))).toBe(true);
+    expect(isKernelAsset(new URL('https://x/wren-cad/api/files.json'))).toBe(false);
+    expect(isKernelAsset(new URL('https://x/wren-cad/assets/index-abc.js'))).toBe(false);
   });
 });
