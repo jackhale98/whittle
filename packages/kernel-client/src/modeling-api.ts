@@ -33,6 +33,8 @@ import {
   type RegenOutput,
   type SketchSolve,
 } from './regen/engine';
+import type { ReprojectLinked } from './regen/linked';
+import { reprojectLinkedSketch } from './regen/linked-sketch';
 
 /**
  * Everything the kernel worker exposes over Comlink (M1): the contracts' `ModelingApi` (a subtype
@@ -64,6 +66,11 @@ export interface ModelingApiDeps extends KernelApiDeps {
   planegcsWasmUrl?: string;
   /** Override the sketch solver (tests). Default: `@wren-cad/sketch/core`, loaded on first use. */
   sketchSolver?: () => Promise<SketchSolve>;
+  /**
+   * Re-projection of linked (converted) sketch entities on regen. Default: packages/sketch's
+   * `reprojectLinked` (`reprojectLinkedSketch`), with the engine's fallback for reference geometry.
+   */
+  reprojectLinked?: ReprojectLinked;
   regen?: RegenEngineOptions;
 }
 
@@ -85,6 +92,7 @@ export function createModelingApi(deps: ModelingApiDeps): ModelingApiImpl {
   const engine = new RegenEngine({
     kernel,
     sketchSolver: deps.sketchSolver ?? (() => createSketchSolverCore(solverOptions)),
+    reprojectLinked: deps.reprojectLinked ?? reprojectLinkedSketch,
     ...(deps.regen === undefined ? {} : { options: deps.regen }),
   });
   return {

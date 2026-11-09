@@ -54,6 +54,7 @@ export {
   type ReprojectResult,
   reprojectLinkedFallback,
 } from './linked';
+export { reprojectLinkedSketch } from './linked-sketch';
 export {
   baseName,
   type Candidate,
