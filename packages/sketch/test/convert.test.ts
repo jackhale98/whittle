@@ -310,3 +310,42 @@ describe('re-projection', () => {
     expect(unlinkEntities(s, ['u']).ok).toBe(false);
   });
 });
+
+describe('convert with join (edges converted together make a loop)', () => {
+  const square: ProjectedEdge[] = [
+    { ref: ref('E1'), curve: { kind: 'line', a: [-40, -30], b: [40, -30] } },
+    { ref: ref('E2'), curve: { kind: 'line', a: [40, -30], b: [40, 30] } },
+    { ref: ref('E3'), curve: { kind: 'line', a: [40, 30], b: [-40, 30] } },
+    { ref: ref('E4'), curve: { kind: 'line', a: [-40, 30], b: [-40, -30] } },
+  ];
+  const points = (s: SketchData) => s.entities.filter((e) => e.kind === 'point');
+
+  it('shares the corner points, in one call or one edge at a time', () => {
+    expect(points(ok(convertEntities(empty, square, { join: true })).sketch)).toHaveLength(4);
+    let s: SketchData = empty;
+    for (const e of square) s = ok(convertEntities(s, [e], { join: true })).sketch;
+    expect(points(s)).toHaveLength(4);
+    // Without join every edge keeps its own end points.
+    expect(points(ok(convertEntities(empty, square)).sketch)).toHaveLength(8);
+  });
+
+  it('the joined loop offsets inside as one chain and re-projects', async () => {
+    const r = ok(convertEntities(empty, square, { join: true }));
+    const { offsetEntities } = await import('../src/edit/offset');
+    const lines = curves(r.sketch).map((e) => e.id);
+    const off = ok(offsetEntities(r.sketch, lines, { distance: 5, side: 'inside' }));
+    const kind = (id: Id) => off.sketch.entities.find((e) => e.id === id)?.kind;
+    expect(off.created.filter((id) => kind(id) === 'line')).toHaveLength(4);
+    const wider = (p: Vec2): Vec2 => [p[0] * 1.5, p[1]];
+    const moved = square.map((e) =>
+      e.curve.kind === 'line'
+        ? { ...e, curve: { kind: 'line' as const, a: wider(e.curve.a), b: wider(e.curve.b) } }
+        : e,
+    );
+    const rp = reprojectLinked(r.sketch, moved);
+    expect(rp.lost).toEqual([]);
+    expect(
+      points(rp.sketch).every((p) => p.kind === 'point' && Math.abs(Math.abs(p.x) - 60) < 1e-9),
+    ).toBe(true);
+  });
+});

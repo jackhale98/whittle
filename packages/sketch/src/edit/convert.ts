@@ -37,6 +37,12 @@ export interface ConvertOptions extends EditOptions {
   construction?: boolean;
   /** Fit tolerance for polylines, mm (default 0.01). */
   tolerance?: number;
+  /**
+   * Share end points: a converted line or arc end that lands on an existing linked point (within
+   * 1e-6 of the sketch size) uses that point, so edges converted together, or one after another,
+   * make a connected chain or loop (offset, trim and regions follow it). Default false.
+   */
+  join?: boolean;
 }
 
 export interface LostSource {
@@ -76,7 +82,7 @@ export function convertEntities(
     const bad = invalidCurve(edge.curve);
     if (bad) return { ok: false, reason: `${edge.ref.name}: ${bad}` };
     existing.add(edge.ref.name);
-    build(k, edge, options.construction ?? false, tol);
+    build(k, edge, options.construction ?? false, tol, options.join === true);
     made++;
   }
   if (made === 0) return { ok: false, reason: 'Those edges are already converted' };
@@ -104,13 +110,30 @@ const angleOf = (c: Vec2, v: number | Vec2): number =>
   typeof v === 'number' ? v : Math.atan2(v[1] - c[1], v[0] - c[0]);
 
 /** Creates the linked entities for one edge. */
-function build(k: SketchDraft, edge: ProjectedEdge, construction: boolean, tol: number) {
+function build(
+  k: SketchDraft,
+  edge: ProjectedEdge,
+  construction: boolean,
+  tol: number,
+  join = false,
+) {
   const exact = { ref: edge.ref };
   const approx = { ref: edge.ref, approximate: true };
   const linkPoint = (p: Vec2, source: LinkedEntity['source']): Id => {
     const id = k.point(p, construction);
     (k.get(id) as SketchEntity).source = source;
     return id;
+  };
+  /** A curve end: an existing linked point there when joining (corners of a converted loop). */
+  const endPoint = (p: Vec2, source: LinkedEntity['source']): Id => {
+    if (join) {
+      const eps = 1e-6 * k.scale;
+      const hit = k.entities.find(
+        (e) => e.kind === 'point' && e.source !== undefined && dist([e.x, e.y], p) <= eps,
+      );
+      if (hit) return hit.id;
+    }
+    return linkPoint(p, source);
   };
   const link = (id: Id, source: LinkedEntity['source']) => {
     (k.get(id) as SketchEntity).source = source;
@@ -122,7 +145,7 @@ function build(k: SketchDraft, edge: ProjectedEdge, construction: boolean, tol: 
         linkPoint(c.a, exact); // An edge seen end-on projects to a point.
         return;
       }
-      link(k.line(linkPoint(c.a, exact), linkPoint(c.b, exact), construction), exact);
+      link(k.line(endPoint(c.a, exact), endPoint(c.b, exact), construction), exact);
       return;
     }
     case 'circle': {
@@ -142,8 +165,8 @@ function build(k: SketchDraft, edge: ProjectedEdge, construction: boolean, tol: 
         link(k.circle(center, c.r, construction), exact);
         return;
       }
-      const s = linkPoint(add(c.c, fromAngle(a0, c.r)), exact);
-      const e = linkPoint(add(c.c, fromAngle(a1, c.r)), exact);
+      const s = endPoint(add(c.c, fromAngle(a0, c.r)), exact);
+      const e = endPoint(add(c.c, fromAngle(a1, c.r)), exact);
       link(k.arc(center, s, e, construction), exact);
       return;
     }
