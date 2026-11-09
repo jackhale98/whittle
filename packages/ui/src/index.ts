@@ -49,6 +49,12 @@ export {
   TooltipProvider,
 } from './components/primitives';
 export {
+  RADIAL_REPEAT_ID,
+  type RadialItem,
+  RadialMenu,
+  type RadialMenuProps,
+} from './components/RadialMenu';
+export {
   describeKernelStatus,
   StatusChip,
   type StatusChipProps,
@@ -107,11 +113,59 @@ export {
   nudgeExpression,
   prettyUnits,
 } from './format';
+export { DEFAULT_COMMANDS } from './input/defaultKeymap';
+export { KeymapEditor, type KeymapEditorProps } from './input/KeymapEditor';
+export {
+  type Binding,
+  type BindingConflicts,
+  BROWSER_RESERVED,
+  bindingParts,
+  codeLabel,
+  detectPlatform,
+  eventBindingId,
+  eventToBinding,
+  type FormatOptions,
+  findConflicts,
+  findReserved,
+  formatBindingId,
+  formatBindingLabel,
+  isTypingTarget,
+  type KeymapCommand,
+  type KeymapContext,
+  type KeymapOverrides,
+  keyLabel,
+  type LayoutMap,
+  matchCommand,
+  normalizeBindingId,
+  type Platform,
+  parseBinding,
+  type ReservedSeverity,
+  type ReservedShortcut,
+  type ResolvedKeymap,
+  readLayoutMap,
+  reservedFor,
+  resolveKeymap,
+} from './input/keymap';
+export {
+  type HeldModifier,
+  type ModifierHoldOptions,
+  ShortcutOverlay,
+  type ShortcutOverlayProps,
+  useModifierHold,
+} from './input/ShortcutOverlay';
+export {
+  type AttentionInput,
+  type AttentionSentence,
+  attentionSentence,
+  attentionSentences,
+} from './inspector/attentionMessage';
+export { CauseSentence, type CauseSentenceProps } from './inspector/CauseSentence';
 export {
   FeatureInspector,
   type FeatureInspectorProps,
   HoleWizard,
 } from './inspector/FeatureInspector';
+export { FeatureLineage, type FeatureLineageProps } from './inspector/FeatureLineage';
 export {
   type ResolvedDim,
   resolveHole,
@@ -134,10 +188,12 @@ export {
   withArticle,
 } from './inspector/PickField';
 export {
+  type LineageRef,
   type SelectionAction,
   SelectionInspector,
   type SelectionInspectorProps,
   type SelectionKind,
+  type SelectionLineage,
   type SelectionState,
 } from './inspector/SelectionInspector';
 export {
@@ -148,8 +204,31 @@ export {
   type Rect,
   type Side,
 } from './logic/bubble';
+export {
+  compareCandidates,
+  cyclePreselection,
+  KIND_PRIORITY,
+  type Orderable,
+  sortCandidates,
+} from './logic/chooser';
 export type { KeypadKey } from './logic/keypad';
 export { applyKeypadKey, type EditResult } from './logic/keypad';
+export {
+  NAVIGATION_KEY,
+  readNavigation,
+  sanitizeNavigation,
+  writeNavigation,
+} from './logic/navigationStorage';
+export {
+  clampCenter,
+  layoutSlots,
+  RADIAL_SLOTS,
+  type RadialSlot,
+  slotDirection,
+  slotFromDigitCode,
+  slotFromVector,
+  stepSlot,
+} from './logic/radial';
 export {
   estimateVelocity,
   type SheetSnap,
@@ -196,6 +275,11 @@ export {
   useSpring,
 } from './motion';
 export { MeasurePanel, type MeasurePanelProps } from './panels/MeasurePanel';
+export {
+  NAVIGATION_PRESETS,
+  NavigationSettings,
+  type NavigationSettingsProps,
+} from './panels/NavigationSettings';
 export { type PartListItem, PartsPanel, type PartsPanelProps } from './panels/PartsPanel';
 export { type SectionAxis, SectionPanel, type SectionPanelProps } from './panels/SectionPanel';
 export { ParamsTable, type ParamsTableProps } from './params/ParamsTable';
@@ -219,6 +303,11 @@ export {
   type GlyphTone,
   geometricConstraintKinds,
 } from './sketch/ConstraintGlyph';
+export {
+  DimensionAnnotation,
+  type DimensionAnnotationProps,
+  type DimensionGeometry,
+} from './sketch/DimensionAnnotation';
 export { DimensionLabel, type DimensionLabelProps } from './sketch/DimensionLabel';
 export {
   ConvertPanel,
@@ -245,12 +334,15 @@ export {
 } from './sketch/SketchStatusChip';
 export {
   type GeometricConstraintKind,
+  type SketchCurveToolId,
   type SketchDrawToolId,
   SketchToolbar,
   type SketchToolbarProps,
   type SketchToolId,
+  sketchCurveTools,
   sketchEditTools,
   sketchTools,
+  type ToolSpec as SketchToolSpec,
 } from './sketch/SketchToolbar';
 export {
   type CompareOverlay,
