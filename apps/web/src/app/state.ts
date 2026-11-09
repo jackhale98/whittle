@@ -13,8 +13,8 @@ import type {
   Vec3,
   WrenDoc,
 } from '@wren-cad/contracts';
-import type { SheetSnap, SheetTabId, SketchToolId } from '@wren-cad/ui';
-import type { ModelTool } from '../features/factories';
+import type { SheetSnap, SheetTabId, SketchEditToolId, SketchToolId } from '@wren-cad/ui';
+import type { FeatureTool, ModelTool } from '../features/factories';
 import type { SectionAxis } from '../model/faces';
 import type { PlaneFrame } from '../model/frames';
 import type { MeasurePick } from '../model/measure';
@@ -53,6 +53,42 @@ export interface SketchUi {
   stroke: StrokeUi | null;
   /** The last Pencil stroke's recognised shape (tests, the status line). */
   lastStroke: { shape: string; confidence: number } | null;
+  /** An Edit-menu tool in progress (offset, convert, trim/extend, corner, mirror); null otherwise. */
+  edit: SketchEditUi | null;
+}
+
+/** A model edge or face picked for Convert Entities (or a Re-pick of a lost source). */
+export interface ConvertPick {
+  bodyId: string;
+  kind: 'edge' | 'face';
+  index: number;
+  point: Vec3;
+  ref: EntityRef | null;
+}
+
+/**
+ * State of the sketch Edit-menu tools (M3, ADR-033…035, ADR-038). Each tool's panel is controlled
+ * from here; Apply runs the `@wren-cad/sketch/edit` operation as one undo step.
+ */
+export interface SketchEditUi {
+  tool: SketchEditToolId;
+  /** Offset chain / mirror entities (curve ids), or fillet / chamfer corners (point ids). */
+  picks: Id[];
+  /** Offset distance, fillet radius or chamfer distance (an expression). */
+  value: string;
+  side: 'left' | 'right';
+  both: boolean;
+  corner: 'fillet' | 'chamfer';
+  trim: 'trim' | 'extend';
+  /** Mirror: which pick the next click answers, and the mirror line. */
+  phase: 'entities' | 'axis';
+  axis: Id | null;
+  /** Convert: model edges or one face's outline, and what was picked. */
+  source: 'edges' | 'face';
+  model: ConvertPick[];
+  /** Re-pick of a lost linked source: its stored reference name. */
+  relink: string | null;
+  busy: boolean;
 }
 
 export interface StrokeUi {
@@ -156,7 +192,7 @@ export interface UiState {
   exporting: boolean;
   toast: Toast | null;
   /** The last tool, for Space = repeat last. */
-  lastTool: ModelTool | null;
+  lastTool: ModelTool | FeatureTool | null;
   pushPull: PushPullUi | null;
   measure: MeasureUi | null;
   section: SectionUi;

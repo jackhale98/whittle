@@ -4,7 +4,7 @@
  */
 
 import type { EntityRef, Feature, Material, WrenDoc } from '@wren-cad/contracts';
-import { MATERIALS } from '@wren-cad/document';
+import { HOLE_TABLES, MATERIALS } from '@wren-cad/document';
 import {
   Button,
   FeatureInspector,
@@ -22,7 +22,7 @@ import { FolderOpen, Library, Plus, Save } from 'lucide-react';
 import { lazy, Suspense, useState, useSyncExternalStore } from 'react';
 import { useObservable } from '../app/observable';
 import type { Workbench } from '../app/workbench';
-import type { ModelTool } from '../features/factories';
+import type { FeatureTool, ModelTool } from '../features/factories';
 import { selectionKind } from '../selection/pick';
 
 const MeasureView = lazy(() => import('./InspectPanels').then((m) => ({ default: m.MeasureView })));
@@ -131,7 +131,7 @@ export function useDoc(wb: Workbench): WrenDoc {
   return useSyncExternalStore(wb.subscribeDoc, wb.getDoc);
 }
 
-const actionMeta = (id: ModelTool): SelectionAction => {
+const actionMeta = (id: ModelTool | FeatureTool): SelectionAction => {
   const t = shellTools.find((x) => x.id === id);
   return {
     id,
@@ -235,6 +235,8 @@ export function Inspector({
           {...(status?.state === 'needsAttention' ? { onRepick: () => wb.repick(f.id) } : {})}
           pickingPath={ui.picking?.featureId === f.id ? ui.picking.path : null}
           describeRef={(r) => describeRef(doc, r)}
+          describeFeature={(id) => part.features.find((x) => x.id === id)?.name ?? id}
+          holeTables={HOLE_TABLES}
           {...(f.type === 'sketch' ? { onEditSketch: () => wb.editFeature(f.id) } : {})}
           onDone={() => wb.selectFeature(null)}
           units={{ length: doc.units.length, angle: doc.units.angle === 'deg' ? '°' : 'rad' }}
@@ -255,7 +257,7 @@ export function Inspector({
         actions={wb.selectionTools().map(actionMeta)}
         onAction={(id) => {
           if (id === 'sketch') wb.sketchTool();
-          else void wb.runTool(id as ModelTool);
+          else void wb.runTool(id as ModelTool | FeatureTool);
         }}
       />
     );

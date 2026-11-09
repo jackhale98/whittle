@@ -51,9 +51,13 @@ describe('context bubble actions', () => {
     expect(bubbleActions([{ kind: 'face', planar: true }], 'tablet')).toEqual([
       'sketch',
       'pushPull',
+      'hole',
       'measure',
     ]);
-    expect(bubbleActions([{ kind: 'face', planar: false }], 'tablet')).toEqual(['measure']);
+    expect(bubbleActions([{ kind: 'face', planar: false }], 'tablet')).toEqual([
+      'thread',
+      'measure',
+    ]);
     expect(
       bubbleActions(
         [
@@ -62,12 +66,27 @@ describe('context bubble actions', () => {
         ],
         'tablet',
       ),
-    ).toEqual(['pushPull', 'measure']);
+    ).toEqual(['pushPull', 'shell', 'draft', 'measure']);
+    expect(
+      bubbleActions(
+        [
+          { kind: 'face', planar: true },
+          { kind: 'face', planar: true },
+          { kind: 'face', planar: false },
+        ],
+        'tablet',
+      ),
+    ).toEqual(['shell', 'draft']);
     expect(bubbleActions([{ kind: 'edge' }], 'tablet')).toEqual(['fillet', 'chamfer', 'measure']);
     expect(bubbleActions([{ kind: 'edge' }, { kind: 'edge' }, { kind: 'edge' }], 'tablet')).toEqual(
       ['fillet', 'chamfer'],
     );
-    expect(bubbleActions([{ kind: 'region' }], 'tablet')).toEqual(['extrude', 'cut', 'revolve']);
+    expect(bubbleActions([{ kind: 'region' }], 'tablet')).toEqual([
+      'extrude',
+      'cut',
+      'revolve',
+      'sweep',
+    ]);
     expect(bubbleActions([{ kind: 'vertex' }], 'tablet')).toEqual(['measure']);
   });
   it('phone: viewer actions only; desktop: none', () => {

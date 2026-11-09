@@ -37,7 +37,7 @@ import {
   slotTool,
 } from '@wren-cad/sketch';
 
-export type DrawToolId = 'line' | 'rectangle' | 'circle' | 'arc' | 'slot' | 'polygon';
+export type DrawToolId = 'line' | 'rectangle' | 'circle' | 'arc' | 'slot' | 'polygon' | 'point';
 
 export interface SketchData {
   entities: readonly SketchEntity[];
@@ -88,6 +88,8 @@ export function clicksFor(tool: DrawToolId, variant: string): number {
       return 3;
     case 'polygon':
       return 2;
+    case 'point':
+      return 1;
   }
 }
 
@@ -98,6 +100,7 @@ export const defaultVariant: Record<DrawToolId, string> = {
   arc: 'threePoint',
   slot: 'slot',
   polygon: 'polygon',
+  point: 'point',
 };
 
 export function startDraw(tool: DrawToolId, variant?: string, construction = false): DrawState {
@@ -287,6 +290,7 @@ function shapeFragment(
     }
     case 'polygon':
       return polygonTool(a, b, 6, o);
+    case 'point':
     case 'line':
       return null;
   }
@@ -356,6 +360,23 @@ export function click(state: DrawState, sketch: SketchData): ClickResult {
         glyphs: [],
       },
       edit,
+    };
+  }
+
+  if (state.tool === 'point') {
+    // A point (hole centres, references): snaps like any click; onto an existing point is a no-op.
+    if (hover.pointId) return { state, edit: null };
+    const id = newId();
+    const constraints = hover.snap ? [bind(hover.snap, { cursorPoint: id })] : [];
+    return {
+      state: { ...state, anchors: [], candidates: [], glyphs: [] },
+      edit: {
+        entities: [
+          { id, kind: 'point', construction: state.construction, x: hover.at[0], y: hover.at[1] },
+        ],
+        constraints,
+        created: [id],
+      },
     };
   }
 

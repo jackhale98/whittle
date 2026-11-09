@@ -50,6 +50,11 @@ export type BubbleActionId =
   | 'revolve'
   | 'fillet'
   | 'chamfer'
+  | 'sweep'
+  | 'hole'
+  | 'thread'
+  | 'shell'
+  | 'draft'
   | 'measure'
   | 'section'
   | 'fit'
@@ -79,12 +84,19 @@ export function bubbleActions(sel: readonly BubbleSelection[], tier: DeviceTier)
     if (sel.length === 1 && all('face') && planar) out.push('section');
     return out;
   }
-  if (all('region')) return ['extrude', 'cut', 'revolve'];
+  if (all('region')) return ['extrude', 'cut', 'revolve', 'sweep'];
   if (all('edge')) return measurable ? ['fillet', 'chamfer', 'measure'] : ['fillet', 'chamfer'];
   if (all('face')) {
-    const out: BubbleActionId[] = [];
-    if (sel.length === 1 && planar) out.push('sketch');
-    if (planar) out.push('pushPull');
+    // One flat face: sketch on it, push/pull it, drill holes in it; a curved one: thread it.
+    // Several faces: push/pull (flat), shell them open, draft them (M3).
+    const out: BubbleActionId[] =
+      sel.length === 1
+        ? planar
+          ? ['sketch', 'pushPull', 'hole']
+          : ['thread']
+        : planar
+          ? ['pushPull', 'shell', 'draft']
+          : ['shell', 'draft'];
     if (measurable) out.push('measure');
     return out;
   }

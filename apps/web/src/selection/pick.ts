@@ -153,26 +153,104 @@ export async function refForHit(
   return q ? refFor(partId, q) : null;
 }
 
-/** What a feature's pick field accepts in the viewport, and how hits are turned into refs. */
-export function acceptsFor(path: string): { kinds: PickKind[]; as?: EntityKind; noun: string } {
+/**
+ * Reference geometry a pick field takes that has no pickable shape in the view (origin planes and
+ * axes, plane / axis / point features): offered as chips next to the prompt.
+ */
+export type RefChoice = 'plane' | 'axis' | 'point';
+
+export interface Accepts {
+  kinds: PickKind[];
+  as?: EntityKind;
+  noun: string;
+  /** Reference geometry chips to offer (origin planes and axes, reference features). */
+  refs?: RefChoice[];
+  /** The field lists features (mirror / pattern sources): tree clicks and model clicks add one. */
+  features?: boolean;
+}
+
+const PLANES: Accepts = { kinds: ['face'], noun: 'a plane or flat face', refs: ['plane'] };
+const AXES: Accepts = {
+  kinds: ['sketchCurve', 'edge'],
+  noun: 'an axis or straight edge',
+  refs: ['axis'],
+};
+const POINTS: Accepts = {
+  kinds: ['sketchPoint', 'vertex'],
+  noun: 'a point or vertex',
+  refs: ['point'],
+};
+
+/**
+ * What a feature's pick field accepts in the viewport, and how hits are turned into refs. Some
+ * fields depend on the feature (`/definition/a` is a plane for a midplane and a point for a
+ * two-point axis): pass it when known.
+ */
+export function acceptsFor(path: string, feature?: Feature): Accepts {
   const root = path.replace(/\/\d+$/, '');
+  const def =
+    feature && 'definition' in feature ? (feature.definition as { kind: string }).kind : null;
   switch (root) {
     case '/edges':
       return { kinds: ['edge'], noun: 'edges' };
     case '/profile':
       return { kinds: ['region'], noun: 'sketch regions' };
+    case '/sections':
+      return { kinds: ['region'], noun: 'section regions, in order' };
+    case '/path':
+    case '/guides':
+      return { kinds: ['sketchCurve', 'edge'], noun: 'path curves, in order' };
     case '/axis':
-      return { kinds: ['sketchCurve', 'edge'], noun: 'an axis line' };
+    case '/definition/axis':
+      return AXES;
+    case '/direction':
+    case '/second/direction':
+      return {
+        kinds: ['sketchCurve', 'edge'],
+        noun: 'a direction: an edge, an axis or a plane',
+        refs: ['axis', 'plane'],
+      };
+    case '/plane':
+    case '/neutral':
+    case '/definition/from':
+    case '/definition/plane':
+      return PLANES;
     case '/end/target':
     case '/on':
-    case '/definition/from':
     case '/mode/face':
+    case '/face':
+    case '/definition/face':
       return { kinds: ['face'], noun: 'a face' };
     case '/faces':
+    case '/openFaces':
       return { kinds: ['face'], noun: 'faces' };
+    case '/points':
+    case '/definition/points':
+    case '/definition/point':
+    case '/definition/at':
+    case '/definition/vertex':
+      return POINTS;
+    case '/definition/edge':
+    case '/definition/curve':
+      return { kinds: ['sketchCurve', 'edge'], noun: 'an edge' };
+    case '/definition/of':
+      return { kinds: ['edge', 'face'], noun: 'a circular edge or a sphere' };
+    case '/definition/a':
+    case '/definition/b':
+      if (def === 'twoPoints') return POINTS;
+      if (def === 'midplane' || def === 'twoPlanes') return PLANES;
+      return {
+        kinds: ['face', 'edge', 'sketchCurve'],
+        noun: 'a plane, an axis or an edge',
+        refs: ['plane', 'axis'],
+      };
+    case '/source/features':
+      return { kinds: ['face'], noun: 'features, in the tree or the model', features: true };
     case '/target':
     case '/tools':
+    case '/body':
     case '/scope/bodies':
+    case '/source/bodies':
       return { kinds: ['face'], as: 'body', noun: 'bodies' };
     default:
       return { kinds: ['face', 'edge', 'vertex'], noun: 'geometry' };

@@ -7,6 +7,7 @@
 
 import type {
   CameraChange,
+  CircularPatternFeature,
   Command,
   DeviceTier,
   EntityRef,
@@ -16,8 +17,10 @@ import type {
   HighlightItem,
   Id,
   JsonPatchOp,
+  LinearPatternFeature,
   Material,
   MeshBuffers,
+  MirrorFeature,
   NamedDimension,
   Part,
   PickHit,
@@ -35,6 +38,7 @@ import {
   compileCommand,
   createDocumentStore,
   type DocumentStoreImpl,
+  entityRefs,
   expressionEngine,
   newDoc,
   scopeOf,
@@ -51,23 +55,34 @@ import {
   withoutMeshes,
 } from '../doc/mesh-cache';
 import {
+  consumedSketchRefs,
+  contextFeatureTools,
   contextTools,
   defaultAxisFor,
+  FEATURE_PICKS,
+  type FeatureTool,
+  isFeatureTool,
+  isModelTool,
+  isUnset,
   type ModelTool,
   newBox,
   newChamfer,
   newCut,
   newCylinder,
   newExtrude,
+  newExtrudeCut,
+  newFeatureFor,
   newFillet,
   newPlane,
   newRevolve,
+  newRevolveCut,
   newSketch,
   TOOL_NEEDS,
 } from '../features/factories';
 import { pruneAttachments, savedExtra } from '../model/attachments';
 import { attentionItems, attentionMarkers, locateName, partDiagonal } from '../model/attention';
 import { bootEngine, type EngineBoot } from '../model/engine';
+import { explainStatus } from '../model/explain';
 import {
   type FaceInfo,
   faceInfo,
@@ -83,6 +98,7 @@ import { type Attachment, createRegenLoop, type Modeling, type RegenLoop } from 
 import { getDiagnostics } from '../platform/diagnostics';
 import { policyFor, type TierPolicy } from '../platform/tier-policy';
 import {
+  type Accepts,
   acceptsFor,
   applyPick,
   hitKey,
@@ -501,7 +517,7 @@ export class Workbench {
     const p = this.ui.get().picking;
     const part = doc.parts[0];
     if (!p || !part) return doc;
-    const kinds = acceptsFor(p.path).kinds;
+    const kinds = this.pickAccepts()?.kinds ?? [];
     if (!kinds.some((k) => k === 'edge' || k === 'face' || k === 'vertex')) return doc;
     const idx = part.features.findIndex((f) => f.id === p.featureId);
     if (idx < 0 || idx >= part.rollbackIndex) return doc;
@@ -609,7 +625,12 @@ export class Workbench {
 
   // ------------------------------------------------------------------ regeneration → viewport
 
-  private onRegen(outcome: RegenView): void {
+  private onRegen(raw: RegenView): void {
+    // Errors the app can explain better (propagate: false naming its tangent edges, ADR-040).
+    const features = raw.result.features.map((s) => explainStatus(raw.doc, s));
+    const outcome = features.some((s, i) => s !== raw.result.features[i])
+      ? { ...raw, result: { ...raw.result, features } }
+      : raw;
     const current = outcome.doc === this.store.getDoc();
     if (current || !this.ui.get().picking) this.treeStatuses.set(outcome.result.features);
     if (current) {
@@ -905,26 +926,22 @@ export class Workbench {
     if (!v || !view) return;
     const part = this.part;
     const u = this.ui.get();
+    const pickKinds = this.pickAccepts()?.kinds ?? [];
+    // Regions, sketch curves (sweep paths) and sketch points (hole centres) are picked on sketches.
     const wantRegions =
-      u.prompt?.tool === 'extrude' ||
-      u.prompt?.tool === 'revolve' ||
-      (u.picking !== null && acceptsFor(u.picking.path).kinds.includes('region'));
+      (u.prompt !== null && TOOL_NEEDS[u.prompt.tool].kinds.includes('region')) ||
+      pickKinds.some((k) => k === 'region' || k === 'sketchCurve' || k === 'sketchPoint');
     const editing = u.featureId ? part?.features.find((f) => f.id === u.featureId) : undefined;
     const next = new Set<string>();
+    const uses = (f: Feature | undefined, id: Id) =>
+      !!f && consumedSketchRefs(f).some((r) => r.name.startsWith(`S${id}:`));
     for (const s of view.result.sketches) {
       if (u.sketch?.featureId === s.featureId) {
         next.add(s.featureId);
         continue; // the sketch session owns the active overlay
       }
-      const consumed = part?.features.some(
-        (f) =>
-          (f.type === 'extrude' || f.type === 'revolve') &&
-          f.profile.some((r) => r.name.startsWith(`S${s.featureId}:`)),
-      );
-      const related =
-        editing?.id === s.featureId ||
-        ((editing?.type === 'extrude' || editing?.type === 'revolve') &&
-          editing.profile.some((r) => r.name.startsWith(`S${s.featureId}:`)));
+      const consumed = part?.features.some((f) => uses(f, s.featureId));
+      const related = editing?.id === s.featureId || uses(editing, s.featureId);
       if (consumed && !wantRegions && !related) continue;
       v.setSketch(s.featureId, { sketch: s, active: false });
       next.add(s.featureId);
@@ -962,12 +979,8 @@ export class Workbench {
 
   private highlightsForRefs(f: Feature, result: RegenResult): HighlightItem[] {
     const out: HighlightItem[] = [];
-    const refs: EntityRef[] =
-      f.type === 'extrude' || f.type === 'revolve'
-        ? f.profile
-        : f.type === 'fillet' || f.type === 'chamfer'
-          ? f.edges
-          : [];
+    // Every reference of the feature (M3 features too), except its sketch plane.
+    const refs: EntityRef[] = f.type === 'sketch' ? [] : entityRefs(f);
     for (const ref of refs) {
       if (ref.kind === 'region') {
         for (const s of result.sketches) {
@@ -978,6 +991,11 @@ export class Workbench {
         for (const b of result.bodies) {
           const i = b.mesh.edgeNames.indexOf(ref.name);
           if (i >= 0) out.push({ bodyId: b.id, kind: 'edge', index: i });
+        }
+      } else if (ref.kind === 'face') {
+        for (const b of result.bodies) {
+          const i = b.mesh.faceNames.indexOf(ref.name);
+          if (i >= 0) out.push({ bodyId: b.id, kind: 'face', index: i });
         }
       }
     }
@@ -997,9 +1015,30 @@ export class Workbench {
     const u = this.ui.get();
     if (u.section.picking) return ['face'];
     if (u.measure?.active) return ['face', 'edge', 'vertex'];
-    if (u.picking) return acceptsFor(u.picking.path).kinds;
+    if (u.picking) return this.pickAccepts()?.kinds ?? [];
     if (u.prompt) return TOOL_NEEDS[u.prompt.tool].kinds;
     return ['face', 'edge', 'vertex', 'region'];
+  }
+
+  /** What the inspector field being picked accepts (null when nothing is being picked). */
+  pickAccepts(): Accepts | null {
+    const p = this.ui.get().picking;
+    if (!p) return null;
+    return acceptsFor(
+      p.path,
+      this.part?.features.find((f) => f.id === p.featureId),
+    );
+  }
+
+  /** The prompt chip text while an inspector field is picked (the tool's own wording first). */
+  pickPrompt(): string | null {
+    const p = this.ui.get().picking;
+    const f = p ? this.part?.features.find((x) => x.id === p.featureId) : undefined;
+    if (!p || !f) return null;
+    const tool = toolOfFeature(f);
+    const root = p.path.replace(/\/\d+$/, '');
+    const step = tool ? FEATURE_PICKS[tool].find((s) => s.path === root) : undefined;
+    return step?.prompt ?? `Select ${this.pickAccepts()?.noun ?? 'geometry'}`;
   }
 
   private pick(e: PointerEvent | MouseEvent, kinds: PickKind[], all = true): PickHit[] {
@@ -1217,16 +1256,17 @@ export class Workbench {
       if (!hit) return;
       const f = part.features.find((x) => x.id === u.picking?.featureId);
       if (!f) return;
-      const accepts = acceptsFor(u.picking.path);
+      const accepts = acceptsFor(u.picking.path, f);
+      if (accepts.features) {
+        // Mirror / pattern sources: the feature that made the clicked geometry.
+        const owner = this.ownerFeature(hit, f.id);
+        if (owner) this.addSourceFeature(owner);
+        else this.toast('Pick geometry a feature made, or the feature in the tree.', 'info');
+        return;
+      }
       const ref = await this.refFor(hit, accepts.as);
       if (!ref) return this.toast('That can’t be referenced yet — try again in a moment.', 'info');
-      const next = applyPick(f, u.picking.path, ref);
-      if (next !== f)
-        this.apply({ kind: 'updateFeature', partId: part.id, featureId: f.id, feature: next });
-      this.commit();
-      // Replacing one entry ends picking; adding to a list keeps it open.
-      if (/\/\d+$/.test(u.picking.path) || !Array.isArray(pointerValue(f, u.picking.path)))
-        this.patchUi({ picking: null });
+      this.pickRef(ref);
       return;
     }
     if (u.prompt) {
@@ -1247,6 +1287,90 @@ export class Workbench {
     const modeling = this.modeling;
     if (!part) return null;
     return refForHit(hit, part.id, (p, q) => modeling?.refFor(p, q) ?? Promise.resolve(null), as);
+  }
+
+  /**
+   * Puts a reference into the inspector field being picked: a viewport pick, or a reference chip
+   * (origin plane or axis, a plane / axis / point feature). Filling a single field, or the one
+   * pick a profile takes, moves on to the tool's next empty field; list fields stay open until
+   * Enter, Done or another field.
+   */
+  pickRef(ref: EntityRef): void {
+    const p = this.ui.get().picking;
+    const part = this.part;
+    const f = p ? part?.features.find((x) => x.id === p.featureId) : undefined;
+    if (!p || !part || !f) return;
+    const next = applyPick(f, p.path, ref);
+    if (next !== f)
+      this.apply({ kind: 'updateFeature', partId: part.id, featureId: f.id, feature: next });
+    this.commit();
+    const root = p.path.replace(/\/\d+$/, '');
+    const list = root === p.path && Array.isArray(pointerValue(f, p.path));
+    const tool = toolOfFeature(next);
+    const once = tool ? FEATURE_PICKS[tool].find((s) => s.path === root)?.once : false;
+    if (!list || once) this.advancePicking(next, root);
+  }
+
+  /** Picking moves to the tool's next empty reference field after `from`, or ends. */
+  advancePicking(f?: Feature, from?: string): void {
+    const p = this.ui.get().picking;
+    const feature = f ?? (p ? this.part?.features.find((x) => x.id === p.featureId) : undefined);
+    const after = from ?? p?.path.replace(/\/\d+$/, '');
+    if (!feature) return;
+    const tool = toolOfFeature(feature);
+    const steps = tool ? FEATURE_PICKS[tool] : [];
+    const i = steps.findIndex((s) => s.path === after);
+    const next = i >= 0 ? steps.slice(i + 1).find((s) => emptyField(feature, s.path)) : undefined;
+    this.patchUi({ picking: next ? { featureId: feature.id, path: next.path } : null });
+    this.loop?.request();
+    this.refreshSketchVisibility();
+    this.pushHighlights();
+  }
+
+  /** The feature whose output a model hit belongs to (latest named), before `before`. */
+  private ownerFeature(hit: PickHit, before: Id): Id | null {
+    const part = this.part;
+    const mesh = this.regen.get()?.result.bodies.find((b) => b.id === hit.bodyId)?.mesh;
+    const name =
+      hit.kind === 'face'
+        ? mesh?.faceNames[hit.index]
+        : hit.kind === 'edge'
+          ? mesh?.edgeNames[hit.index]
+          : undefined;
+    if (!part || !name) return null;
+    const end = part.features.findIndex((f) => f.id === before);
+    const earlier = part.features.slice(0, end < 0 ? undefined : end);
+    return earlier.findLast((f) => f.type !== 'sketch' && name.includes(f.id))?.id ?? null;
+  }
+
+  /** Adds a feature to the mirror / pattern source being picked (no duplicates, earlier only). */
+  addSourceFeature(id: Id): void {
+    const p = this.ui.get().picking;
+    const part = this.part;
+    const f = p
+      ? part?.features.find(
+          (x): x is MirrorFeature | LinearPatternFeature | CircularPatternFeature =>
+            x.id === p.featureId &&
+            (x.type === 'mirror' || x.type === 'linearPattern' || x.type === 'circularPattern'),
+        )
+      : undefined;
+    if (!part || !f || f.source.kind !== 'features') return;
+    const at = part.features.findIndex((x) => x.id === id);
+    const self = part.features.findIndex((x) => x.id === f.id);
+    if (id === f.id || at < 0 || at > self) {
+      this.toast('Only features before this one can be copied.', 'info');
+      return;
+    }
+    if (f.source.features.includes(id)) return;
+    const next = {
+      ...f,
+      source: { kind: 'features' as const, features: [...f.source.features, id] },
+    };
+    this.apply(
+      { kind: 'updateFeature', partId: part.id, featureId: f.id, feature: next as Feature },
+      `Copy ${part.features[at]?.name ?? 'feature'}`,
+    );
+    this.commit();
   }
 
   private async selectHit(hit: PickHit, additive: boolean): Promise<void> {
@@ -1290,15 +1414,8 @@ export class Workbench {
       else await this.measure.start(this.ui.get().selection.map((s) => s.hit));
       return;
     }
-    if (
-      tool !== 'sketch' &&
-      tool !== 'extrude' &&
-      tool !== 'revolve' &&
-      tool !== 'fillet' &&
-      tool !== 'chamfer' &&
-      tool !== 'pushPull'
-    )
-      return;
+    if (isFeatureTool(tool)) return this.startFeatureTool(tool);
+    if (!isModelTool(tool)) return;
     const u = this.ui.get();
     if (u.welcome) this.patchUi({ welcome: false });
     if (u.measure?.active) this.measure.stop();
@@ -1340,12 +1457,19 @@ export class Workbench {
       case 'extrude':
         feature = newExtrude(part, refs, bodies);
         break;
-      case 'revolve': {
+      case 'extrudeCut':
+        feature = newExtrudeCut(part, refs);
+        break;
+      case 'revolve':
+      case 'revolveCut': {
         const sk = part.features.find(
           (f): f is SketchFeature =>
             f.type === 'sketch' && (refs[0]?.name ?? '').startsWith(`S${f.id}:`),
         );
-        feature = newRevolve(part, refs, defaultAxisFor(sk), bodies);
+        feature =
+          tool === 'revolve'
+            ? newRevolve(part, refs, defaultAxisFor(sk), bodies)
+            : newRevolveCut(part, refs, defaultAxisFor(sk));
         break;
       }
       case 'fillet':
@@ -1356,6 +1480,43 @@ export class Workbench {
         break;
     }
     this.addFeature(feature, need.path);
+  }
+
+  /**
+   * An M3 tool: creates its feature with defaults at once (inspector open), then collects its
+   * references field by field (`FEATURE_PICKS`). Select first, act second: a selection that fits
+   * the first field fills it; a feature selected in the tree becomes a mirror / pattern source.
+   */
+  private async startFeatureTool(tool: FeatureTool): Promise<void> {
+    const part = this.part;
+    if (!part) return;
+    const u = this.ui.get();
+    if (u.welcome) this.patchUi({ welcome: false });
+    if (u.measure?.active) this.measure.stop();
+    this.pushPull.cancel();
+    const copies = tool === 'mirror' || tool === 'linearPattern' || tool === 'circularPattern';
+    const selected = u.featureId ? part.features.find((f) => f.id === u.featureId) : undefined;
+    const sources = copies && selected && selected.type !== 'sketch' ? [selected.id] : [];
+    let feature = newFeatureFor(tool, part, {
+      bodyCount: this.regen.get()?.result.bodies.length ?? 0,
+      sources,
+    });
+    const steps = FEATURE_PICKS[tool];
+    const first = steps[0];
+    if (first && u.selection.length > 0) {
+      const accepts = acceptsFor(first.path, feature);
+      if (!accepts.features && u.selection.every((s) => accepts.kinds.includes(s.hit.kind))) {
+        for (const s of u.selection) {
+          const ref = s.ref ?? (await this.refFor(s.hit, accepts.as));
+          if (ref) feature = applyPick(feature, first.path, ref);
+        }
+      }
+    }
+    // The first field still empty (a pre-filled list field moves on to the next one).
+    const filledFirst = first && !emptyField(feature, first.path);
+    const next = steps.find((s, i) => (i > 0 || !filledFirst) && emptyField(feature, s.path));
+    this.patchUi({ lastTool: tool });
+    this.addFeature(feature, next?.path);
   }
 
   /** Bubble "Cut": the selected regions cut through everything (holes); more can be tapped. */
@@ -1601,6 +1762,11 @@ export class Workbench {
   // ------------------------------------------------------------------ feature tree / inspector
 
   selectFeature(id: Id | null): void {
+    // A tree click while a mirror / pattern picks its sources adds that feature.
+    if (id && this.pickAccepts()?.features) {
+      this.addSourceFeature(id);
+      return;
+    }
     this.patchUi({ featureId: id, picking: null, selection: [], prompt: null });
     if (id === null) this.restoreSheet();
     this.refreshSketchVisibility();
@@ -1760,16 +1926,40 @@ export class Workbench {
       if (this.cancel()) e.preventDefault();
       return;
     }
-    if (e.shiftKey) return;
-    const tools: Record<string, ModelTool> = {
-      s: 'sketch',
-      e: 'extrude',
-      r: 'revolve',
-      f: 'fillet',
-      c: 'chamfer',
-      p: 'pushPull',
-    };
+    // Enter while a list field is being picked: done with it, on to the tool's next field.
+    if (e.key === 'Enter' && this.ui.get().picking) {
+      e.preventDefault();
+      this.advancePicking();
+      return;
+    }
+    // Shortcuts (PLAN 9.4, ADR-038); the shifted ones are the M3 tools' second keys.
+    const tools: Record<string, ModelTool | FeatureTool> = e.shiftKey
+      ? {
+          e: 'extrudeCut',
+          r: 'revolveCut',
+          w: 'loft',
+          t: 'draft',
+          o: 'thread',
+          n: 'circularPattern',
+          g: 'axis',
+          p: 'point',
+        }
+      : {
+          s: 'sketch',
+          e: 'extrude',
+          r: 'revolve',
+          f: 'fillet',
+          c: 'chamfer',
+          p: 'pushPull',
+          w: 'sweep',
+          t: 'shell',
+          o: 'hole',
+          i: 'mirror',
+          n: 'linearPattern',
+          g: 'plane',
+        };
     const tool = tools[k];
+    if (e.shiftKey && !tool) return;
     if (k === 'm') {
       e.preventDefault();
       void this.runTool('measure');
@@ -1779,7 +1969,7 @@ export class Workbench {
       else void this.runTool(tool);
     } else if (k === ' ' && this.ui.get().lastTool) {
       e.preventDefault();
-      const last = this.ui.get().lastTool as ModelTool;
+      const last = this.ui.get().lastTool as ModelTool | FeatureTool;
       if (last === 'sketch') this.sketchTool();
       else void this.runTool(last);
     } else if (/^[0-7]$/.test(k)) {
@@ -2452,8 +2642,50 @@ export class Workbench {
   }
 
   /** Context tools for the current selection (select first, act second). */
-  selectionTools(): ModelTool[] {
-    return contextTools(this.ui.get().selection.map((s) => s.hit.kind));
+  selectionTools(): Array<ModelTool | FeatureTool> {
+    const kinds = this.ui.get().selection.map((s) => s.hit.kind);
+    return [...new Set([...contextTools(kinds), ...contextFeatureTools(kinds)])];
+  }
+
+  /**
+   * Reference geometry the field being picked can take but the view has no shape for: the origin
+   * planes and axes, and plane / axis / point features before the feature being edited (PLAN
+   * 9.2). Shown as chips beside the prompt; tapping one is the pick.
+   */
+  referenceChoices(): { label: string; ref: EntityRef }[] {
+    const accepts = this.pickAccepts();
+    const p = this.ui.get().picking;
+    const part = this.part;
+    if (!accepts?.refs || !p || !part) return [];
+    const end = part.features.findIndex((f) => f.id === p.featureId);
+    const earlier = part.features.slice(0, end < 0 ? undefined : end).filter((f) => !f.suppressed);
+    const out: { label: string; ref: EntityRef }[] = [];
+    if (accepts.refs.includes('plane')) {
+      out.push(
+        { label: 'Top (XY)', ref: { name: 'origin:XY', kind: 'face' } },
+        { label: 'Front (XZ)', ref: { name: 'origin:XZ', kind: 'face' } },
+        { label: 'Right (YZ)', ref: { name: 'origin:YZ', kind: 'face' } },
+      );
+      for (const f of earlier)
+        if (f.type === 'plane')
+          out.push({ label: f.name, ref: { name: `F${f.id}:plane`, kind: 'face' } });
+    }
+    if (accepts.refs.includes('axis')) {
+      out.push(
+        { label: 'X axis', ref: { name: 'origin:X', kind: 'edge' } },
+        { label: 'Y axis', ref: { name: 'origin:Y', kind: 'edge' } },
+        { label: 'Z axis', ref: { name: 'origin:Z', kind: 'edge' } },
+      );
+      for (const f of earlier)
+        if (f.type === 'axis')
+          out.push({ label: f.name, ref: { name: `F${f.id}:axis`, kind: 'edge' } });
+    }
+    if (accepts.refs.includes('point')) {
+      for (const f of earlier)
+        if (f.type === 'point')
+          out.push({ label: f.name, ref: { name: `F${f.id}:point`, kind: 'vertex' } });
+    }
+    return out;
   }
 
   /** Test hooks: document, regen summary, idle. */
@@ -2627,6 +2859,18 @@ export class Workbench {
       },
     };
   }
+}
+
+/** The M3 tool that makes a feature (its pick sequence), if any. */
+function toolOfFeature(f: Feature): FeatureTool | null {
+  return isFeatureTool(f.type) ? f.type : null;
+}
+
+/** A reference field still to be picked: an empty list or an unset reference. */
+function emptyField(f: Feature, path: string): boolean {
+  const v = pointerValue(f, path);
+  if (Array.isArray(v)) return v.length === 0;
+  return v === undefined || isUnset(v as EntityRef);
 }
 
 function pointerValue(f: Feature, path: string): unknown {

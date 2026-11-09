@@ -7,6 +7,7 @@
 
 import type {
   DimensionConstraint,
+  EntityRef,
   ExtrudeFeature,
   Id,
   PickHit,
@@ -38,10 +39,10 @@ import type { SketchUi } from '../app/state';
 import type { Workbench } from '../app/workbench';
 import { ORIGIN_FRAMES, type OriginPlane } from '../model/frames';
 import { measureLabel } from '../model/measure';
-import { acceptsFor } from '../selection/pick';
 import { labelAnchor } from '../sketch/dimension';
 import { entityAnchor } from '../sketch/overlay';
 import { describeRef, useDoc } from './Inspector';
+import { SketchEditPanels } from './SketchEditPanels';
 
 const LibraryPanel = lazy(() => import('./LibraryPanel'));
 // Versions, connections, compare and merge (with @wren-cad/sync): fetched when first opened.
@@ -100,6 +101,43 @@ function PlaneChooser({ wb, doc }: { wb: Workbench; doc: WrenDoc }) {
           className="flex h-9 items-center rounded-[10px] px-3 text-ui font-medium text-fg hover:bg-surface-2"
         >
           {p.name}
+        </button>
+      ))}
+    </fieldset>
+  );
+}
+
+/**
+ * Reference geometry for the field being picked that has no shape in the view: the origin planes
+ * and axes and earlier plane / axis / point features (PLAN 9.2). A chip press is the pick.
+ */
+function ReferenceChooser({
+  choices,
+  touch,
+  onPick,
+}: {
+  choices: { label: string; ref: EntityRef }[];
+  touch: boolean;
+  onPick(ref: EntityRef): void;
+}) {
+  return (
+    <fieldset
+      className="w-panel pointer-events-auto m-0 flex max-w-[min(720px,calc(100vw-32px))] flex-wrap items-center justify-center gap-1 rounded-[14px] border-0 p-1"
+      data-testid="reference-chooser"
+      aria-label="Reference geometry"
+    >
+      {choices.map((c) => (
+        <button
+          key={c.ref.name}
+          type="button"
+          data-ref={c.ref.name}
+          onClick={() => onPick(c.ref)}
+          className={cn(
+            'flex items-center rounded-[10px] px-3 text-ui font-medium text-fg hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-accent',
+            touch ? 'h-11' : 'h-9',
+          )}
+        >
+          {c.label}
         </button>
       ))}
     </fieldset>
@@ -436,7 +474,6 @@ export function ViewportOverlays({ wb, touch }: { wb: Workbench; touch: boolean 
   const sk = ui.sketch;
 
   const editing = ui.featureId ? part?.features.find((f) => f.id === ui.featureId) : undefined;
-  const picking = ui.picking ? acceptsFor(ui.picking.path) : null;
   const verb = touch ? 'Tap' : 'Click';
   const promptText = ui.section.picking
     ? `${verb} a flat face for the section plane`
@@ -444,7 +481,8 @@ export function ViewportOverlays({ wb, touch }: { wb: Workbench; touch: boolean 
       ? `Drag the arrow, or ${verb.toLowerCase()} the value to type it`
       : ui.measure?.active && !ui.measure.picks.length
         ? `${verb} faces, edges or points to measure`
-        : (ui.prompt?.text ?? (picking ? `Select ${picking.noun}` : null));
+        : (ui.prompt?.text ?? (ui.picking ? wb.pickPrompt() : null));
+  const refChoices = ui.picking ? wb.referenceChoices() : [];
   const pickedCount =
     ui.picking && editing
       ? (() => {
@@ -480,6 +518,7 @@ export function ViewportOverlays({ wb, touch }: { wb: Workbench; touch: boolean 
             enabledConstraints={session.enabledConstraints()}
             onFinish={() => session.finish()}
             onEscape={() => session.finish()}
+            density={touch ? 'touch' : 'compact'}
           />
         </div>
       ) : null}
@@ -491,6 +530,9 @@ export function ViewportOverlays({ wb, touch }: { wb: Workbench; touch: boolean 
           data-testid="prompt"
         >
           {ui.prompt?.tool === 'sketch' ? <PlaneChooser wb={wb} doc={doc} /> : null}
+          {refChoices.length ? (
+            <ReferenceChooser choices={refChoices} touch={touch} onPick={(r) => wb.pickRef(r)} />
+          ) : null}
           <PromptChip
             {...(pickedCount ? { count: pickedCount } : {})}
             size={touch ? 'touch' : 'md'}
@@ -504,6 +546,12 @@ export function ViewportOverlays({ wb, touch }: { wb: Workbench; touch: boolean 
       {sk && session ? (
         <>
           <SketchLayer wb={wb} session={session} ui={sk} doc={doc} />
+          <div
+            className="pointer-events-auto absolute left-1/2 -translate-x-1/2"
+            style={{ top: 'var(--chrome-top, 3.5rem)' }}
+          >
+            <SketchEditPanels wb={wb} session={session} ui={sk} doc={doc} touch={touch} />
+          </div>
           <StrokeChip wb={wb} session={session} ui={sk} />
           <div className="absolute" style={TOP_LEFT}>
             {sk.solve ? (

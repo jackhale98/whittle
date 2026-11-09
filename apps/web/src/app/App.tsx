@@ -1,4 +1,4 @@
-import type { Id, TouchViewport } from '@wren-cad/contracts';
+import type { Feature, Id, TouchViewport } from '@wren-cad/contracts';
 import { ulid } from '@wren-cad/document';
 import {
   AppShell,
@@ -7,6 +7,7 @@ import {
   type MoveStep,
   type PaletteCommand,
   readNestSketches,
+  tools as shellTools,
   type ToolId,
   useTheme,
   writeNestSketches,
@@ -20,6 +21,7 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react';
+import { isFeatureTool } from '../features/factories';
 import { reorderFeatures } from '../model/tree-edits';
 import { getDiagnostics } from '../platform/diagnostics';
 import { getRuntimeState, subscribeRuntimeState } from '../platform/runtime-state';
@@ -64,16 +66,8 @@ function kernelLoadingNote(engine: EngineState): string | undefined {
   return undefined;
 }
 
-const ENABLED_TOOLS: readonly ToolId[] = [
-  'sketch',
-  'extrude',
-  'pushPull',
-  'revolve',
-  'fillet',
-  'chamfer',
-  'measure',
-  'section',
-];
+/** Every tool of the command bar and rail (M3: all of them work). */
+const ENABLED_TOOLS: readonly ToolId[] = shellTools.map((t) => t.id);
 
 export function App({ wb }: { wb: Workbench }) {
   const runtime = useSyncExternalStore(subscribeRuntimeState, getRuntimeState);
@@ -212,7 +206,7 @@ export function App({ wb }: { wb: Workbench }) {
         ? 'measure'
         : ui.section.open
           ? 'section'
-          : (ui.prompt?.tool ?? null);
+          : (ui.prompt?.tool ?? pickingTool(part?.features, ui.picking?.featureId));
   const contextBubble = useContextBubble(wb);
   const valueChip = useValueChip(wb);
   const measure = useMeasureProps(wb);
@@ -408,6 +402,12 @@ export function App({ wb }: { wb: Workbench }) {
       </p>
     </>
   );
+}
+
+/** The M3 tool whose feature is collecting its references (shown as the active tool). */
+function pickingTool(features: readonly Feature[] | undefined, id: Id | undefined): ToolId | null {
+  const f = id ? features?.find((x) => x.id === id) : undefined;
+  return f && isFeatureTool(f.type) ? f.type : null;
 }
 
 function runtimeOverrides(runtime: ReturnType<typeof getRuntimeState>) {

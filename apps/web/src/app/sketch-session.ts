@@ -61,6 +61,7 @@ import {
 import { MIN_CONFIDENCE, strokeEdit } from '../sketch/stroke';
 import { observable } from './observable';
 import { replayedPointerDowns } from './pointers';
+import { isEditTool, SketchEditTools, startEdit } from './sketch-edit';
 import type { SketchUi } from './state';
 import type { Workbench } from './workbench';
 
@@ -70,7 +71,15 @@ function solver(): SketchSolverClient {
   return solverClient;
 }
 
-const DRAW_TOOLS = new Set<string>(['line', 'rectangle', 'circle', 'arc', 'slot', 'polygon']);
+const DRAW_TOOLS = new Set<string>([
+  'line',
+  'rectangle',
+  'circle',
+  'arc',
+  'slot',
+  'polygon',
+  'point',
+]);
 
 /** A pen press that moves less than this (CSS px) is a tap (a click for the tool), not a stroke. */
 const STROKE_SLOP_PX = 6;
@@ -203,11 +212,26 @@ export class SketchSession {
   private disposed = false;
   private readonly cleanup: Array<() => void> = [];
 
+  /** The Edit-menu tools (offset, convert, trim/extend, corner, mirror, unlink / re-pick). */
+  readonly edits: SketchEditTools;
+
   constructor(
     private readonly wb: Workbench,
     readonly featureId: Id,
     private readonly isNew: boolean,
-  ) {}
+  ) {
+    this.edits = new SketchEditTools({
+      wb,
+      feature: () => this.feature(),
+      sketchUi: () => this.ui(),
+      setEdit: (edit) => {
+        this.patch({ edit, tool: edit ? edit.tool : null, draw: null });
+        this.pushHighlights();
+      },
+      commitEdit: (edit, label) => this.commitEdit(edit, label),
+      selected: () => this.ui()?.selected ?? [],
+    });
+  }
 
   // ------------------------------------------------------------------ lifecycle
 
@@ -250,6 +274,7 @@ export class SketchSession {
       isNew: this.isNew,
       stroke: null,
       lastStroke: null,
+      edit: null,
     };
     this.wb.patchUi({ sketch });
     this.tickCamera();
@@ -473,18 +498,24 @@ export class SketchSession {
    * edit is a function of the sketch as it is when the edit runs, so quick successive edits (fast
    * clicks while a solve is in flight) build on each other instead of overwriting.
    */
-  commitEdit(edit: (cur: SketchFeature) => SketchData, label: string, key?: string): Promise<void> {
+  commitEdit(
+    edit: (cur: SketchFeature) => SketchData,
+    label: string | (() => string),
+    key?: string,
+  ): Promise<void> {
     return this.serial(async () => {
       const f = this.feature();
       const part = this.wb.part;
       if (!f || !part || this.disposed) return;
       const next = edit(f);
+      // An edit that changed nothing (a refused operation) is not an undo step.
+      if (next.entities === f.entities && next.constraints === f.constraints) return;
       const res = await this.solveData(next);
       const entities = res.status === 'solved' ? res.entities : [...next.entities];
       const feature: SketchFeature = { ...f, entities, constraints: [...next.constraints] };
       this.wb.apply(
         { kind: 'updateFeature', partId: part.id, featureId: f.id, feature },
-        label,
+        typeof label === 'function' ? label() : label,
         key,
       );
       if (!key) this.wb.commit();
@@ -504,8 +535,20 @@ export class SketchSession {
       tool && DRAW_TOOLS.has(tool)
         ? startDraw(tool as DrawToolId, variant ?? variants[tool], u.construction)
         : null;
-    this.patch({ tool, variants, draw, dimPicks: [], selected: [], selectedConstraint: null });
+    // Edit-menu tools start from the current selection (select first, act second).
+    const f = this.feature();
+    const edit = isEditTool(tool) && f ? startEdit(tool, f.entities, u.selected) : null;
+    this.patch({
+      tool,
+      variants,
+      draw,
+      edit,
+      dimPicks: [],
+      selected: [],
+      selectedConstraint: null,
+    });
     this.scheduleOverlay();
+    this.pushHighlights();
   }
 
   toggleConstruction(): void {
@@ -993,6 +1036,11 @@ export class SketchSession {
       const f = this.fingers.get(e.pointerId);
       if (f && e.pointerType === 'touch') f.withheld = true;
     };
+    if (u.edit) {
+      // Edit tools pick on release. Convert picks the model, so a drag there still orbits.
+      if (u.edit.tool !== 'convert') withhold();
+      return;
+    }
     if (u.draw || u.tool === 'dimension') {
       // Drawing owns the left button: no orbit.
       withhold();
@@ -1116,6 +1164,16 @@ export class SketchSession {
     // Only this pointer's own press counts (never another finger's or the pen's).
     if (e.button !== 0 || !down || down.id !== e.pointerId) return;
     const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y) > 5;
+    if (u.edit) {
+      e.stopPropagation();
+      if (moved) return;
+      const { x, y } = this.wb.local(e);
+      const hit = u.edit.tool === 'convert' ? null : this.pickSketch(e);
+      void this.wb.track(
+        this.edits.click(hit, this.toSketch(e), { x, y, pointerType: e.pointerType }),
+      );
+      return;
+    }
     if (u.draw) {
       e.stopPropagation();
       if (moved && down.type === 'mouse') return;
@@ -1200,6 +1258,12 @@ export class SketchSession {
   escapeTool(): boolean {
     const u = this.ui();
     if (!u) return false;
+    // An edit tool: first Esc drops its picks, the next leaves the tool.
+    if (u.edit && (u.edit.picks.length || u.edit.model.length || u.edit.axis)) {
+      this.patch({ edit: { ...u.edit, picks: [], model: [], axis: null, phase: 'entities' } });
+      this.pushHighlights();
+      return true;
+    }
     if (u.draw) {
       const next = cancelDraw(u.draw);
       if (next) {
@@ -1322,7 +1386,12 @@ export class SketchSession {
         entity: id,
       };
     };
-    const selectedIds = [...u.selected, ...u.dimPicks];
+    const selectedIds = [
+      ...u.selected,
+      ...u.dimPicks,
+      ...(u.edit?.picks ?? []),
+      ...(u.edit?.axis ? [u.edit.axis] : []),
+    ];
     const c = u.selectedConstraint
       ? f.constraints.find((x) => x.id === u.selectedConstraint)
       : null;
@@ -1341,6 +1410,9 @@ export class SketchSession {
           if (key !== 'id' && typeof val === 'string') selectedIds.push(val);
     }
     const selected = selectedIds.map(item).filter((x): x is HighlightItem => !!x);
+    // Model edges / a face picked for Convert entities.
+    for (const p of u.edit?.model ?? [])
+      selected.push({ bodyId: p.bodyId, kind: p.kind, index: p.index });
     const hover = u.hoverEntity ? item(u.hoverEntity) : null;
     v.setHighlights({ selected, preselected: hover ? [hover] : [] });
   }

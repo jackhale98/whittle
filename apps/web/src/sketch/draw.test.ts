@@ -134,4 +134,16 @@ describe('sketch drawing', () => {
     ]);
     expect(slot.data.entities.filter((e) => e.kind === 'arc')).toHaveLength(2);
   });
+
+  it('point tool: one click per point; snaps to the axes; an existing point is not doubled', () => {
+    const free = run(startDraw('point'), { entities: [], constraints: [] }, [[12, 7]]);
+    expect(free.data.entities).toEqual([
+      expect.objectContaining({ kind: 'point', x: 12, y: 7, construction: false }),
+    ]);
+    expect(free.data.constraints).toEqual([]);
+    const onAxis = run(startDraw('point'), { entities: [], constraints: [] }, [[0, 20]], 0.5);
+    expect(kinds(onAxis.data.constraints)).toEqual(['pointOn']);
+    const again = run(startDraw('point'), free.data, [[12, 7]]);
+    expect(again.data.entities).toHaveLength(1);
+  });
 });
