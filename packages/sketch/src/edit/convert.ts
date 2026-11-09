@@ -10,13 +10,29 @@
  * geometry.
  *
  * Splines and other curves arrive as polylines and become chains of lines, or of arcs where the
- * points lie on a circle, all marked `approximate`.
+ * points lie on a circle, all marked `approximate`. M3.5 (ADR-048): exact ellipses, elliptic arcs
+ * and B-splines (as the kernel and the regen engine project them) become exact linked
+ * `ellipse`, `ellipticArc` and `bspline` entities and are followed in place. A spline whose
+ * source gains or loses control points (or stops being a spline) is lost: it needs attention and
+ * is never refitted.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
 import type { EntityRef, Id, SketchEntity, Vec2 } from '@wren-cad/contracts';
-import { add, circumcircle, cross, dist, fromAngle, lerp, sub, TAU } from '../geometry';
+import { sampleParams, splineDefError, splinePoint } from '../bspline';
+import {
+  add,
+  circumcircle,
+  cross,
+  dist,
+  ellipseParam,
+  ellipsePoint,
+  fromAngle,
+  lerp,
+  sub,
+  TAU,
+} from '../geometry';
 import { type EditOptions, type SketchData, SketchDraft, type SketchEdit } from './draft';
 
 /** A projected model curve in sketch-plane coordinates (mm). */
@@ -25,7 +41,29 @@ export type ProjectedCurve =
   | { kind: 'circle'; c: Vec2; r: number }
   /** Counter-clockwise from `start` to `end`: angles (rad) or points on the circle. */
   | { kind: 'arc'; c: Vec2; r: number; start: number | Vec2; end: number | Vec2 }
-  | { kind: 'polyline'; points: Vec2[] };
+  | { kind: 'polyline'; points: Vec2[] }
+  /** M3.5: an exact ellipse (major ≥ minor; `rotation` = major axis direction, radians). */
+  | { kind: 'ellipse'; c: Vec2; majorRadius: number; minorRadius: number; rotation: number }
+  /** M3.5: counter-clockwise from `start` to `end` (points on the ellipse). */
+  | {
+      kind: 'ellipticArc';
+      c: Vec2;
+      majorRadius: number;
+      minorRadius: number;
+      rotation: number;
+      start: Vec2;
+      end: Vec2;
+    }
+  /** M3.5: a B-spline with `SketchBSpline`'s fields, poles as coordinates (ADR-048 knots). */
+  | {
+      kind: 'bspline';
+      poles: Vec2[];
+      degree: number;
+      periodic: boolean;
+      weights?: number[];
+      knots?: number[];
+      multiplicities?: number[];
+    };
 
 export interface ProjectedEdge {
   ref: EntityRef;
@@ -103,6 +141,21 @@ function invalidCurve(c: ProjectedCurve): string | null {
       return c.points.length >= 1 && c.points.every(finite)
         ? null
         : 'the projected polyline is empty';
+    case 'ellipse':
+    case 'ellipticArc':
+      return finite(c.c) &&
+        c.minorRadius > 0 &&
+        c.majorRadius >= c.minorRadius &&
+        Number.isFinite(c.majorRadius) &&
+        Number.isFinite(c.rotation) &&
+        (c.kind === 'ellipse' || (finite(c.start) && finite(c.end)))
+        ? null
+        : 'the projected ellipse is not valid';
+    case 'bspline': {
+      if (!c.poles.every(finite)) return 'the projected spline is not finite';
+      const why = splineDefError(c.poles.length, c);
+      return why ? `the projected spline is not valid: ${why}` : null;
+    }
   }
 }
 
@@ -168,6 +221,60 @@ function build(
       const s = endPoint(add(c.c, fromAngle(a0, c.r)), exact);
       const e = endPoint(add(c.c, fromAngle(a1, c.r)), exact);
       link(k.arc(center, s, e, construction), exact);
+      return;
+    }
+    case 'ellipse': {
+      const center = linkPoint(c.c, exact);
+      k.addEntity({
+        id: k.newId(),
+        kind: 'ellipse',
+        construction,
+        source: exact,
+        center,
+        majorRadius: c.majorRadius,
+        minorRadius: c.minorRadius,
+        rotation: c.rotation,
+      });
+      return;
+    }
+    case 'ellipticArc': {
+      const center = linkPoint(c.c, exact);
+      const s = endPoint(c.start, exact);
+      const e = endPoint(c.end, exact);
+      k.addEntity({
+        id: k.newId(),
+        kind: 'ellipticArc',
+        construction,
+        source: exact,
+        center,
+        start: s,
+        end: e,
+        majorRadius: c.majorRadius,
+        minorRadius: c.minorRadius,
+        rotation: c.rotation,
+      });
+      return;
+    }
+    case 'bspline': {
+      const n = c.poles.length;
+      const poles = c.poles.map((p, i) => {
+        if (!c.periodic && (i === 0 || i === n - 1)) return endPoint(p, exact);
+        const id = linkPoint(p, exact);
+        (k.get(id) as SketchEntity).construction = true;
+        return id;
+      });
+      k.addEntity({
+        id: k.newId(),
+        kind: 'bspline',
+        construction,
+        source: exact,
+        poles,
+        degree: c.degree,
+        periodic: c.periodic,
+        ...(c.weights ? { weights: [...c.weights] } : {}),
+        ...(c.knots ? { knots: [...c.knots] } : {}),
+        ...(c.multiplicities ? { multiplicities: [...c.multiplicities] } : {}),
+      });
       return;
     }
     case 'polyline': {
@@ -338,7 +445,9 @@ export function reprojectLinked(
       lost.push({ ref: g.ref, entities: g.entities.map((e) => e.id) });
       continue;
     }
-    update(k, g, edge, options.tolerance ?? 0.01);
+    if (!update(k, g, edge, options.tolerance ?? 0.01)) {
+      lost.push({ ref: g.ref, entities: g.entities.map((e) => e.id) });
+    }
   }
   const n = k.changed.size;
   const result = k.finish(n === 1 ? 'Update 1 linked entity' : `Update ${n} linked entities`);
@@ -367,7 +476,12 @@ export function relinkEntities(
     k.touch(e.id);
   }
   const moved = groups(k.entities).get(edge.ref.name) as Group;
-  update(k, moved, edge, options.tolerance ?? 0.01);
+  if (!update(k, moved, edge, options.tolerance ?? 0.01)) {
+    return {
+      ok: false,
+      reason: `${edge.ref.name} is a different spline (other control points); delete and convert it again`,
+    };
+  }
   return k.finish(
     `Re-pick ${g.entities.length === 1 ? k.name(g.entities[0]?.id as Id) : 'linked entities'}`,
   );
@@ -418,25 +532,31 @@ export function unlinkEntities(
   return k.finish(`Unlink ${name}`);
 }
 
-/** Moves a group's entities onto a fresh curve. */
-function update(k: SketchDraft, g: Group, edge: ProjectedEdge, tol: number) {
+/**
+ * Moves a group's entities onto a fresh curve. False when they can't follow it: a spline whose
+ * source has other control points, or turned into (or from) another kind of curve; it is never
+ * refitted (the sketch needs attention).
+ */
+function update(k: SketchDraft, g: Group, edge: ProjectedEdge, tol: number): boolean {
   const curves = g.entities.filter((e) => e.kind !== 'point');
   const c = edge.curve;
+  const wasSpline = curves.some((e) => e.kind === 'bspline');
+  if (wasSpline !== (c.kind === 'bspline')) return false;
   if (!g.approximate && curves.length <= 1 && c.kind !== 'polyline') {
     const target = curves[0];
     if (!target) {
       // A projected point (edge seen end-on, or a vertex).
       const p = g.entities.find((e) => e.kind === 'point');
-      if (p) k.setPos(p.id, c.kind === 'line' ? c.a : c.c);
-      return;
+      if (p && c.kind !== 'bspline') k.setPos(p.id, c.kind === 'line' ? c.a : c.c);
+      return true;
     }
-    updateExact(k, target.id, edge, g.ref);
-    return;
+    return updateExact(k, target.id, edge, g.ref);
   }
   updateChain(k, g, edge, tol);
+  return true;
 }
 
-function updateExact(k: SketchDraft, id: Id, edge: ProjectedEdge, ref: EntityRef) {
+function updateExact(k: SketchDraft, id: Id, edge: ProjectedEdge, ref: EntityRef): boolean {
   const e = k.get(id) as SketchEntity;
   const c = edge.curve;
   const src = { ref };
@@ -446,6 +566,52 @@ function updateExact(k: SketchDraft, id: Id, edge: ProjectedEdge, ref: EntityRef
     (k.get(pid) as SketchEntity).source = src;
     return pid;
   };
+  if (c.kind === 'bspline') {
+    if (e.kind !== 'bspline' || e.poles.length !== c.poles.length) return false;
+    c.poles.forEach((p, i) => {
+      k.setPos(e.poles[i] as Id, p);
+    });
+    const { weights: _w, knots: _k, multiplicities: _m, ...rest } = e;
+    k.replace({
+      ...rest,
+      degree: c.degree,
+      periodic: c.periodic,
+      ...(c.weights ? { weights: [...c.weights] } : {}),
+      ...(c.knots ? { knots: [...c.knots] } : {}),
+      ...(c.multiplicities ? { multiplicities: [...c.multiplicities] } : {}),
+    });
+    return true;
+  }
+  if (c.kind === 'ellipse' || c.kind === 'ellipticArc') {
+    const center = 'center' in e ? e.center : newPoint(c.c);
+    k.setPos(center, c.c);
+    const shape = { majorRadius: c.majorRadius, minorRadius: c.minorRadius, rotation: c.rotation };
+    if (c.kind === 'ellipse') {
+      k.replace({
+        id,
+        kind: 'ellipse',
+        construction: e.construction,
+        source: src,
+        center,
+        ...shape,
+      });
+      if (e.kind !== 'ellipse') k.notes.push(`${k.name(id)} now follows a full ellipse`);
+      return true;
+    }
+    const [s, t] = reuse(k, e, newPoint, [c.start, c.end]);
+    k.replace({
+      id,
+      kind: 'ellipticArc',
+      construction: e.construction,
+      source: src,
+      center,
+      start: s,
+      end: t,
+      ...shape,
+    });
+    if (e.kind !== 'ellipticArc') k.notes.push(`${k.name(id)} now follows an elliptic arc`);
+    return true;
+  }
   if (c.kind === 'line') {
     if (e.kind === 'line') {
       // Keep the orientation that moves the ends least (so angles don't flip).
@@ -454,18 +620,18 @@ function updateExact(k: SketchDraft, id: Id, edge: ProjectedEdge, ref: EntityRef
       const swap = dist(s, c.b) + dist(t, c.a) < dist(s, c.a) + dist(t, c.b);
       k.setPos(e.start, swap ? c.b : c.a);
       k.setPos(e.end, swap ? c.a : c.b);
-      return;
+      return true;
     }
     const [a, b] = reuse(k, e, newPoint, [c.a, c.b]);
     k.replace({ id, kind: 'line', construction: e.construction, source: src, start: a, end: b });
     k.notes.push(`${k.name(id)} now follows a straight edge`);
-    return;
+    return true;
   }
   if (c.kind === 'circle' || (c.kind === 'arc' && fullTurn(c))) {
     if (e.kind === 'circle') {
       k.setPos(e.center, c.c);
       k.replace({ ...e, radius: c.r });
-      return;
+      return true;
     }
     const center = e.kind === 'arc' ? e.center : newPoint(c.c);
     k.setPos(center, c.c);
@@ -478,7 +644,7 @@ function updateExact(k: SketchDraft, id: Id, edge: ProjectedEdge, ref: EntityRef
       radius: c.r,
     });
     k.notes.push(`${k.name(id)} now follows a full circle`);
-    return;
+    return true;
   }
   if (c.kind === 'arc') {
     const a0 = angleOf(c.c, c.start);
@@ -489,7 +655,7 @@ function updateExact(k: SketchDraft, id: Id, edge: ProjectedEdge, ref: EntityRef
       k.setPos(e.center, c.c);
       k.setPos(e.start, ps);
       k.setPos(e.end, pe);
-      return;
+      return true;
     }
     const center = e.kind === 'circle' ? e.center : newPoint(c.c);
     k.setPos(center, c.c);
@@ -505,6 +671,7 @@ function updateExact(k: SketchDraft, id: Id, edge: ProjectedEdge, ref: EntityRef
     });
     k.notes.push(`${k.name(id)} now follows an arc`);
   }
+  return true;
 }
 
 const fullTurn = (c: Extract<ProjectedCurve, { kind: 'arc' }>) => {
@@ -515,7 +682,8 @@ const fullTurn = (c: Extract<ProjectedCurve, { kind: 'arc' }>) => {
 
 /** End points of `e` reused for a new kind (line ends ↔ arc ends), new ones created as needed. */
 function reuse(k: SketchDraft, e: SketchEntity, make: (p: Vec2) => Id, at: [Vec2, Vec2]): [Id, Id] {
-  const ends = e.kind === 'line' || e.kind === 'arc' ? [e.start, e.end] : [];
+  const ends =
+    e.kind === 'line' || e.kind === 'arc' || e.kind === 'ellipticArc' ? [e.start, e.end] : [];
   const one = (i: 0 | 1): Id => {
     const id = ends[i];
     if (!id) return make(at[i]);
@@ -535,6 +703,32 @@ function samplePoints(c: ProjectedCurve): { pts: Vec2[]; closed: boolean } {
         c.points.length > 2 &&
         dist(c.points[0] as Vec2, c.points[c.points.length - 1] as Vec2) < 1e-9;
       return { pts: closed ? c.points.slice(0, -1) : [...c.points], closed };
+    }
+    case 'ellipse':
+    case 'ellipticArc': {
+      const u: Vec2 = [Math.cos(c.rotation), Math.sin(c.rotation)];
+      const g = {
+        c: c.c,
+        a: c.majorRadius,
+        b: c.minorRadius,
+        rotation: c.rotation,
+        u,
+        v: [-u[1], u[0]] as Vec2,
+      };
+      const t0 = c.kind === 'ellipticArc' ? ellipseParam(g, c.start) : 0;
+      let sweep = c.kind === 'ellipticArc' ? ellipseParam(g, c.end) - t0 : TAU;
+      while (sweep <= 0) sweep += TAU;
+      const closed = c.kind === 'ellipse';
+      const n = 64;
+      const pts: Vec2[] = [];
+      for (let i = 0; i < (closed ? n : n + 1); i++)
+        pts.push(ellipsePoint(g, t0 + (sweep * i) / n));
+      return { pts, closed };
+    }
+    case 'bspline': {
+      const pts = sampleParams(c, 0.01, 512).map((t) => splinePoint(c, t));
+      if (c.periodic) pts.pop();
+      return { pts, closed: c.periodic };
     }
     case 'circle':
     case 'arc': {

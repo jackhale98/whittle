@@ -604,6 +604,13 @@
         {
           "additionalProperties": false,
           "properties": {
+            "axis": {
+              "enum": [
+                "major",
+                "minor"
+              ],
+              "type": "string"
+            },
             "curve": {
               "$ref": "#/definitions/Id"
             },
@@ -636,6 +643,13 @@
         {
           "additionalProperties": false,
           "properties": {
+            "axis": {
+              "enum": [
+                "major",
+                "minor"
+              ],
+              "type": "string"
+            },
             "curve": {
               "$ref": "#/definitions/Id"
             },
@@ -2956,6 +2970,13 @@
             "ref"
           ],
           "type": "object"
+        },
+        "through": {
+          "description": "Through points of a spline drawn through points (ADR-050): point entities held at the inner knots, in order. The solver keeps each on its knot; editing one reshapes the curve.",
+          "items": {
+            "$ref": "#/definitions/Id"
+          },
+          "type": "array"
         },
         "weights": {
           "items": {

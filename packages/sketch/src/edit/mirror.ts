@@ -3,8 +3,11 @@
  * sketch line, usually construction).
  *
  * Kept originals: every copied point is tied to its original by `symmetric(original, copy,
- * about)`, so editing the source moves the copy; circles also get `equal` (symmetry only ties
- * their centres). Points that lie on the mirror line are shared, not copied, so copies connect.
+ * about)`, so editing the source moves the copy; circles, ellipses and elliptic arcs also get
+ * `equal` (symmetry only ties their centres; an ellipse's rotation is not tied: no constraint
+ * holds an axis direction, so the notes say so). Splines copy their poles (same order, knots and
+ * weights), so symmetric poles tie the whole curve. Points that lie on the mirror line are
+ * shared, not copied, so copies connect.
  *
  * Deleted originals ("mirror move"): the originals go, and constraints among them move to the
  * copies (reflection-invariant kinds as they are; an angle reads the other way, so its lines swap;
@@ -59,6 +62,9 @@ export function mirrorEntities(
     if (u[0] === 0 && u[1] === 0) return refuse(`${k.name(axis)} has no length`);
   }
   const axisName = isSketchReference(axis) ? referenceName(axis) : k.name(axis);
+  const axisAngle = Math.atan2(u[1], u[0]);
+  /** A major-axis direction reflected about the mirror line. */
+  const reflectRotation = (r: number) => 2 * axisAngle - r;
   const reflect = (p: Vec2): Vec2 => {
     const d = sub(p, a);
     const along = scale(u, dot(d, u));
@@ -74,7 +80,6 @@ export function mirrorEntities(
     if (id === axis) continue;
     const e = k.get(id);
     if (!e) return refuse(`Unknown entity ${id}`);
-    if (e.kind === 'ellipse') return refuse('Ellipses cannot be mirrored yet');
     selected.push(e);
   }
   if (selected.length === 0) return refuse('Pick the entities to mirror');
@@ -115,8 +120,43 @@ export function mirrorEntities(
         entityMap.set(e.id, copy);
         break;
       }
-      default:
+      case 'ellipse': {
+        const copy = k.addEntity({
+          ...e,
+          id: k.newId(),
+          center: mapPoint(e.center),
+          rotation: reflectRotation(e.rotation),
+        });
+        if (keep) {
+          k.constrain({ kind: 'equal', a: e.id, b: copy });
+          k.notes.push(`The mirrored copy of ${k.name(e.id)} keeps its size, but not its rotation`);
+        }
+        entityMap.set(e.id, copy);
         break;
+      }
+      case 'ellipticArc': {
+        // Reflection reverses the turning sense: the copy runs from the image of the end.
+        const copy = k.addEntity({
+          ...e,
+          id: k.newId(),
+          center: mapPoint(e.center),
+          start: mapPoint(e.end),
+          end: mapPoint(e.start),
+          rotation: reflectRotation(e.rotation),
+        });
+        if (keep) k.constrain({ kind: 'equal', a: e.id, b: copy });
+        entityMap.set(e.id, copy);
+        break;
+      }
+      case 'bspline': {
+        const copy = k.addEntity({
+          ...structuredClone(e),
+          id: k.newId(),
+          poles: e.poles.map(mapPoint),
+        });
+        entityMap.set(e.id, copy);
+        break;
+      }
     }
   }
   for (const [from, to] of pointMap) entityMap.set(from, to);

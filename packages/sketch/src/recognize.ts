@@ -23,6 +23,11 @@
  *     a line nor an arc at their point of maximum deviation; drop tiny hooks and rounded
  *     corners; merge nearly collinear neighbours. Thresholds are relative to L, with a floor of
  *     0.3 × tolerance for hand noise on short strokes.
+ *  6b. M3.5: a closed stroke that is no circle but fits an ellipse tightly, with axis ratio
+ *     ≥ 1.25 (clearly not round), is an `ellipse`. A smooth stroke (curved segments, or ≥ 3
+ *     pieces without a sharp corner: ShortStraw's straw stays above 0.75 of its median) that a
+ *     cubic through a few evenly spaced points of it follows within 2% of L is a `spline`
+ *     through those points (ends included; inner points averaged over their neighbours).
  *  7. Classify: line, rectangle (4 sides, right angles within 2 × angleTolerance), or polyline.
  *     Clean-up: a rectangle gets the least-squares rectangle (snapped axis-aligned within
  *     angleTolerance); polyline segments snap to horizontal/vertical and corners to 90° within
@@ -43,6 +48,14 @@ import type {
   StrokeSample,
   Vec2,
 } from '@wren-cad/contracts';
+
+import {
+  DEFAULT_SPLINE_DEGREE,
+  interpolate,
+  type SplineGeom,
+  sampleParams,
+  splinePoint,
+} from './bspline';
 
 export { strokeFragment } from './stroke-fragment';
 
@@ -750,6 +763,246 @@ function simplify(p: readonly Vec2[], eps: number): Vec2[] {
 }
 
 // ---------------------------------------------------------------------------------------------
+// M3.5: ovals (ellipses) and smooth strokes (splines)
+// ---------------------------------------------------------------------------------------------
+
+/** An oval is an ellipse only when clearly not round: major / minor ≥ this. */
+export const ELLIPSE_MIN_RATIO = 1.25;
+/** Ellipse fit: RMS / worst geometric deviation relative to the minor radius. */
+const ELLIPSE_RMS = 0.04;
+const ELLIPSE_MAX = 0.12;
+/** Spline fit: worst deviation of the stroke from the fitted spline, × L (with the noise floor). */
+const SPLINE_MAX = 0.02;
+/** …and is good (no more points needed) within this × L (or 1.2 × the noise floor). */
+const SPLINE_GOOD = 0.008;
+/** Straight pieces are a smooth curve only from this many (a single kink is a polyline)… */
+const SMOOTH_SEGMENTS = 3;
+/**
+ * …and no corner may be sharp: at a drawn corner the straw (chord across ±W points) drops to
+ * ≲ 0.65 of its median (measured on the pen corpus); across a smooth bend it stays ≳ 0.89.
+ */
+const SMOOTH_STRAW = 0.75;
+
+/** The smallest straw at a corner candidate relative to the median straw (1 = no corner). */
+function cornerSharpness(straw: Float64Array, corners: readonly number[]): number {
+  const vals = [...straw].filter(Number.isFinite).sort((a, b) => a - b);
+  const med = vals[vals.length >> 1];
+  if (!med) return 1;
+  let min = 1;
+  for (const c of corners) min = Math.min(min, (straw[c] as number) / med);
+  return min;
+}
+
+export interface EllipseFit {
+  c: Vec2;
+  a: number;
+  b: number;
+  /** Major axis direction, radians in (−π/2, π/2]. */
+  rotation: number;
+  rms: number;
+  max: number;
+}
+
+/**
+ * Ellipse through a closed, arc-length-resampled loop: centre and axes from the points' principal
+ * axes (exact for a symmetric oval), radii by linear least squares on (x/a)² + (y/b)² = 1, errors
+ * as geometric distances (Newton on the eccentric angle). Null when degenerate.
+ */
+export function fitEllipse(p: readonly Vec2[]): EllipseFit | null {
+  const n = p.length;
+  if (n < 6) return null;
+  let mx = 0;
+  let my = 0;
+  for (const q of p) {
+    mx += q[0];
+    my += q[1];
+  }
+  mx /= n;
+  my /= n;
+  let sxx = 0;
+  let syy = 0;
+  let sxy = 0;
+  for (const q of p) {
+    sxx += (q[0] - mx) ** 2;
+    syy += (q[1] - my) ** 2;
+    sxy += (q[0] - mx) * (q[1] - my);
+  }
+  const theta = 0.5 * Math.atan2(2 * sxy, sxx - syy);
+  const u: Vec2 = [Math.cos(theta), Math.sin(theta)];
+  const v: Vec2 = [-u[1], u[0]];
+  // Linear least squares for P = 1/a², Q = 1/b².
+  let s40 = 0;
+  let s22 = 0;
+  let s04 = 0;
+  let s20 = 0;
+  let s02 = 0;
+  for (const q of p) {
+    const d: Vec2 = [q[0] - mx, q[1] - my];
+    const x2 = dot(d, u) ** 2;
+    const y2 = dot(d, v) ** 2;
+    s40 += x2 * x2;
+    s22 += x2 * y2;
+    s04 += y2 * y2;
+    s20 += x2;
+    s02 += y2;
+  }
+  const det = s40 * s04 - s22 * s22;
+  if (!(Math.abs(det) > 1e-300)) return null;
+  const P = (s20 * s04 - s02 * s22) / det;
+  const Q = (s40 * s02 - s22 * s20) / det;
+  if (!(P > 0) || !(Q > 0)) return null;
+  let a = 1 / Math.sqrt(P);
+  let b = 1 / Math.sqrt(Q);
+  let rotation = theta;
+  if (b > a) {
+    [a, b] = [b, a];
+    rotation += Math.PI / 2;
+  }
+  while (rotation > Math.PI / 2) rotation -= Math.PI;
+  while (rotation <= -Math.PI / 2) rotation += Math.PI;
+  const U: Vec2 = [Math.cos(rotation), Math.sin(rotation)];
+  const V: Vec2 = [-U[1], U[0]];
+  let s2 = 0;
+  let max = 0;
+  for (const q of p) {
+    const d: Vec2 = [q[0] - mx, q[1] - my];
+    const e = ellipseDistance(dot(d, U), dot(d, V), a, b);
+    s2 += e * e;
+    if (e > max) max = e;
+  }
+  return { c: [mx, my], a, b, rotation, rms: Math.sqrt(s2 / n), max };
+}
+
+/** Distance from (x, y) to the axis-aligned ellipse with radii a, b (Newton on the angle). */
+function ellipseDistance(x: number, y: number, a: number, b: number): number {
+  let t = Math.atan2(y / b, x / a);
+  for (let i = 0; i < 8; i++) {
+    const c = Math.cos(t);
+    const s = Math.sin(t);
+    const ex = a * c - x;
+    const ey = b * s - y;
+    const f = -a * s * ex + b * c * ey;
+    const df = a * a * s * s + b * b * c * c - a * c * ex - b * s * ey;
+    if (!(Math.abs(df) > 1e-300)) break;
+    t -= f / df;
+  }
+  return Math.hypot(a * Math.cos(t) - x, b * Math.sin(t) - y);
+}
+
+/** `k` points at equal arc length along p (ends included; closed: no repeated end). */
+function evenPoints(p: readonly Vec2[], k: number, closed: boolean): Vec2[] {
+  const cum = [0];
+  const path = closed ? [...p, at(p, 0)] : p;
+  for (let i = 1; i < path.length; i++)
+    cum.push(at(cum, i - 1) + dist(at(path, i - 1), at(path, i)));
+  const total = at(cum, cum.length - 1);
+  const out: Vec2[] = [];
+  const steps = closed ? k : k - 1;
+  let j = 1;
+  for (let i = 0; i < k; i++) {
+    const s = (total * i) / steps;
+    while (j < cum.length - 1 && at(cum, j) < s) j++;
+    const a0 = at(cum, j - 1);
+    const a1 = at(cum, j);
+    const f = a1 > a0 ? (s - a0) / (a1 - a0) : 0;
+    const q0 = at(path, j - 1);
+    const q1 = at(path, j);
+    out.push([q0[0] + (q1[0] - q0[0]) * f, q0[1] + (q1[1] - q0[1]) * f]);
+  }
+  if (!closed) {
+    out[0] = at(p, 0);
+    out[k - 1] = at(p, p.length - 1);
+  }
+  return out;
+}
+
+/** Points averaged with their ±2 neighbours (hand jitter out of the fit points); open ends kept. */
+function smoothed(p: readonly Vec2[], closed: boolean): Vec2[] {
+  const n = p.length;
+  return p.map((q, i) => {
+    if (!closed && (i < 2 || i > n - 3)) return q;
+    let x = 0;
+    let y = 0;
+    for (let k = -2; k <= 2; k++) {
+      const r = at(p, (i + k + n) % n);
+      x += r[0];
+      y += r[1];
+    }
+    return [x / 5, y / 5];
+  });
+}
+
+/**
+ * Worst distance from the stroke points to a polyline (the sampled spline). Both run the same
+ * way, so each point searches a window around the previous match (cyclic when closed).
+ */
+function worstDeviation(p: readonly Vec2[], poly: readonly Vec2[], closed: boolean): number {
+  let worst = 0;
+  const m = poly.length - 1;
+  const w = Math.max(6, Math.ceil(m / 10));
+  let prev = 0;
+  for (let n = 0; n < p.length; n += 2) {
+    const q = at(p, n);
+    let best = Number.POSITIVE_INFINITY;
+    let bestI = prev;
+    for (let k = -w; k <= w; k++) {
+      let i = prev + k;
+      if (closed) i = ((i % m) + m) % m;
+      else if (i < 0 || i >= m) continue;
+      const a = at(poly, i);
+      const b = at(poly, i + 1);
+      const d = sub(b, a);
+      const l2 = dot(d, d);
+      const t = l2 > 0 ? Math.max(0, Math.min(1, dot(sub(q, a), d) / l2)) : 0;
+      const e = Math.hypot(q[0] - a[0] - d[0] * t, q[1] - a[1] - d[1] * t);
+      if (e < best) {
+        best = e;
+        bestI = i;
+      }
+    }
+    prev = bestI;
+    if (best > worst) worst = best;
+  }
+  return worst;
+}
+
+/**
+ * A spline through a few evenly spaced points of the stroke (ends included): the fewest points
+ * (from 4, or 5 closed) whose interpolating cubic is within hand noise, else the best one
+ * within the fit tolerance. Null when no count up to 12 (14 closed) fits.
+ */
+function fitSpline(
+  p: readonly Vec2[],
+  closed: boolean,
+  L: number,
+  noise: number,
+): { points: Vec2[]; dev: number; tol: number; good: number } | null {
+  const tol = Math.max(SPLINE_MAX * L, noise);
+  // A fit this close is hand noise: stop adding points.
+  const good = Math.max(SPLINE_GOOD * L, 1.2 * noise);
+  let best: { points: Vec2[]; dev: number; tol: number; good: number } | null = null;
+  // Start from the stroke's total turning (≈ one point per 60° of it).
+  let turning = 0;
+  for (let i = 1; i + 1 < p.length; i++)
+    turning += Math.abs(angleBetween(sub(at(p, i), at(p, i - 1)), sub(at(p, i + 1), at(p, i))));
+  const sm = smoothed(p, closed);
+  const lo = closed ? 5 : 4;
+  const hi = closed ? 14 : 12;
+  const start = Math.max(lo, Math.min(hi, Math.round(turning / (60 * DEG)) + (closed ? 1 : 2)));
+  for (let k = start; k <= hi; k++) {
+    const points = evenPoints(sm, k, closed);
+    const it = interpolate(points, DEFAULT_SPLINE_DEGREE, closed);
+    if (!it) continue;
+    const g: SplineGeom = { ...it, periodic: closed };
+    const poly = sampleParams(g, tol / 4, 256).map((t) => splinePoint(g, t));
+    const dev = worstDeviation(p, poly, closed);
+    if (!best || dev < best.dev) best = { points, dev, tol, good };
+    if (dev <= good) break;
+  }
+  return best && best.dev <= tol ? best : null;
+}
+
+// ---------------------------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------------------------
 
@@ -773,8 +1026,9 @@ function cleanSamples(samples: readonly StrokeSample[]): Vec2[] {
 }
 
 /**
- * Recognises a freehand stroke (sketch-local mm) as a line, polyline, rectangle, circle, arc or
- * scribble, with clean-up applied. Null for degenerate strokes. See the module comment.
+ * Recognises a freehand stroke (sketch-local mm) as a line, polyline, rectangle, circle, arc,
+ * ellipse, spline or scribble, with clean-up applied. Null for degenerate strokes. See the module
+ * comment.
  */
 export const recognizeStroke: RecognizeStroke = (samples, options) => {
   const tolerance =
@@ -866,26 +1120,74 @@ export const recognizeStroke: RecognizeStroke = (samples, options) => {
     }
   }
 
+  // --- Ellipse (M3.5): a closed oval, clearly not round ----------------------------------------
+  if (closed) {
+    const el = fitEllipse(loop);
+    if (
+      el &&
+      el.a / el.b >= ELLIPSE_MIN_RATIO &&
+      el.rms <= ELLIPSE_RMS * el.b &&
+      el.max <= Math.max(ELLIPSE_MAX * el.b, noise)
+    ) {
+      const quality = 1 - el.rms / el.b / (ELLIPSE_RMS * 1.6);
+      return result(
+        {
+          kind: 'ellipse',
+          center: el.c,
+          majorRadius: el.a,
+          minorRadius: el.b,
+          rotation: el.rotation,
+        },
+        0.55 + 0.45 * quality,
+      );
+    }
+  }
+
   // --- Segments -------------------------------------------------------------------------------
   let pts = loop;
   let cuts: number[];
+  let sharpness = 1;
   if (closed) {
     // Rotate the loop to start at its sharpest corner so no side straddles the seam.
     const { corners, straw } = strawCorners(loop, true);
+    sharpness = cornerSharpness(straw, corners);
     let start = 0;
     for (const c of corners) if ((straw[c] as number) < (straw[start] as number)) start = c;
     pts = [...loop.slice(start), ...loop.slice(0, start), at(loop, start)];
     const n = loop.length;
     cuts = corners.map((c) => (c - start + n) % n);
   } else {
-    cuts = strawCorners(open, false).corners;
+    const sc = strawCorners(open, false);
+    cuts = sc.corners;
+    sharpness = cornerSharpness(sc.straw, sc.corners);
   }
   const segs = segmentStroke(pts, cuts, Lc, angTol, noise);
   if (segs.length === 0) return null;
 
+  // A smooth curve: a spline through a few of its points (M3.5), when the stroke has curved
+  // pieces, or is several straight pieces without a single sharp corner.
+  const curvedStroke = segs.some((sg) => sg.curved) || (closed && segs.length < 3);
+  if (curvedStroke || (segs.length >= SMOOTH_SEGMENTS && sharpness >= SMOOTH_STRAW)) {
+    const sp = fitSpline(closed ? loop : open, closed, Lc, noise);
+    // Drawn corners fit lines to the noise; bends don't. The spline must follow the stroke at
+    // least as well as the straight pieces, or within hand noise with hardly more points.
+    const linesDev = Math.max(...segs.map((sg) => sg.line.max));
+    const fits =
+      sp !== null &&
+      (curvedStroke ||
+        sp.dev <= linesDev ||
+        (sp.dev <= sp.good && sp.points.length <= segs.length + 2));
+    if (sp && fits) {
+      return result(
+        { kind: 'spline', points: sp.points, closed },
+        0.55 + 0.35 * clamp01(1 - sp.dev / sp.tol),
+        closed ? ['coincident'] : [],
+      );
+    }
+  }
   if (segs.some((s) => s.curved) || (closed && segs.length < 3)) {
-    // Curves mixed with lines, or a smooth closed curve that isn't a circle (an oval): a
-    // simplified polyline, low confidence (the app keeps the raw stroke).
+    // Curves mixed with lines at corners: a simplified polyline, low confidence (the app keeps
+    // the raw stroke).
     const poly = simplify(closed ? pts.slice(0, -1) : pts, 0.004 * Lc);
     return result({ kind: 'polyline', points: poly, closed }, 0.3, closed ? ['coincident'] : []);
   }

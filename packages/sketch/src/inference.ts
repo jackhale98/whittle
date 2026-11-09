@@ -18,6 +18,7 @@ import {
   add,
   arcGeom,
   closestOnEntity,
+  closestParam,
   cross,
   dist,
   dot,
@@ -25,6 +26,7 @@ import {
   len,
   lineGeom,
   normalize,
+  paramCurve,
   perp,
   pointPos,
   scale,
@@ -221,6 +223,29 @@ export function infer(
     const v = sub(cursor, from);
     const u = normalize(v);
     const vl = len(v);
+    /** Tangent to curves of `kinds` passing through `from`, when the drawn direction is close. */
+    const curveTangents = (kinds: readonly SketchEntityKind[]) => {
+      const sinTol = Math.sin(ANGLE_TOLERANCE);
+      for (const e of input.entities) {
+        if (!kinds.includes(e.kind)) continue;
+        const curve = paramCurve(index, e);
+        if (!curve) continue;
+        const t = closestParam(curve, from, 48);
+        const q = curve.at(t);
+        const scaleRef = Math.max(1, len(from));
+        if (dist(q, from) > 1e-6 * scaleRef) continue;
+        const d = normalize(curve.d1(t));
+        if (len(d) === 0) continue;
+        const s = cross(u, d);
+        if (Math.abs(s) > sinTol) continue;
+        push(
+          { kind: 'tangent', a: DRAWING_ENTITY, b: e.id },
+          add(from, scale(d, dot(v, d))),
+          WEIGHT.tangent,
+          Math.abs(Math.asin(Math.max(-1, Math.min(1, s)))) / ANGLE_TOLERANCE,
+        );
+      }
+    };
     if (drawing.kind === 'line') {
       const sinTol = Math.sin(ANGLE_TOLERANCE);
       // Horizontal / vertical.
@@ -325,6 +350,11 @@ export function infer(
             push({ kind: 'tangent', a: DRAWING_ENTITY, b: e.id }, tp, WEIGHT.tangent, dt / tol);
         }
       }
+      // Tangent continuation from an ellipse, elliptic arc or spline the line starts on.
+      curveTangents(['ellipse', 'ellipticArc', 'bspline']);
+    } else if (drawing.kind === 'bspline') {
+      // A spline's first leg sets its end tangent: continue any curve it starts on.
+      curveTangents(['line', 'circle', 'arc', 'ellipse', 'ellipticArc', 'bspline']);
     } else if (drawing.kind === 'circle' || drawing.kind === 'arc') {
       // Equal radius with existing circles/arcs (from = centre).
       for (const e of input.entities) {

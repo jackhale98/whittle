@@ -98,6 +98,11 @@ export interface SketchBSpline extends EntityBase {
   weights?: number[];
   knots?: number[];
   multiplicities?: number[];
+  /**
+   * Through points of a spline drawn through points (ADR-050): point entities held at the inner
+   * knots, in order. The solver keeps each on its knot; editing one reshapes the curve.
+   */
+  through?: Id[];
 }
 
 export type SketchEntity =
@@ -165,8 +170,9 @@ export type DimensionConstraint = ConstraintBase & {
     | { kind: 'hDistance'; a: Id; b: Id }
     | { kind: 'vDistance'; a: Id; b: Id }
     | { kind: 'length'; line: Id }
-    | { kind: 'radius'; curve: Id }
-    | { kind: 'diameter'; curve: Id }
+    /** On an ellipse or elliptic arc, `axis` picks the radius (default `major`). */
+    | { kind: 'radius'; curve: Id; axis?: 'major' | 'minor' }
+    | { kind: 'diameter'; curve: Id; axis?: 'major' | 'minor' }
     | { kind: 'angle'; a: Id; b: Id } // between two lines, measured CCW from a to b
     /**
      * M3 Offset Entities: `targets[i]` stays offset from `sources[i]` by `value` (lines parallel at

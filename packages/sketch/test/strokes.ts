@@ -188,7 +188,15 @@ export function arcPath(
   return out;
 }
 
-export type Label = 'line' | 'polyline' | 'rectangle' | 'circle' | 'arc' | 'scribble';
+export type Label =
+  | 'line'
+  | 'polyline'
+  | 'rectangle'
+  | 'circle'
+  | 'arc'
+  | 'scribble'
+  | 'ellipse'
+  | 'spline';
 
 export interface Generated {
   label: Label;
@@ -196,7 +204,16 @@ export interface Generated {
   note: string;
   samples: StrokeSample[];
   /** Ideal geometry (vertices / centre & radius / sweep sign). */
-  truth: { vertices?: Vec2[]; center?: Vec2; radius?: number; ccw?: boolean; angle?: number };
+  truth: {
+    vertices?: Vec2[];
+    center?: Vec2;
+    radius?: number;
+    ccw?: boolean;
+    angle?: number;
+    /** Ellipses: radii and major-axis direction. */
+    radii?: [number, number];
+    path?: Vec2[];
+  };
 }
 
 const origin = (rng: Rng): Vec2 => [range(rng, -200, 200), range(rng, -200, 200)];
@@ -343,6 +360,71 @@ export function genOval(rng: Rng, ratio: number): Generated {
     note: `oval ${ratio.toFixed(2)}:1`,
     samples: penStroke(path, [], rng),
     truth: { center: c },
+  };
+}
+
+/** M3.5: an ellipse (oval) of the given aspect ratio, closed, labelled as such. */
+export function genEllipse(rng: Rng, ratio = range(rng, 1.4, 3)): Generated {
+  const c = origin(rng);
+  const b = range(rng, 15, 35);
+  const rotation = range(rng, 0, Math.PI);
+  const path = arcPath(
+    c,
+    b * ratio,
+    b,
+    rotation,
+    range(rng, 0, 2 * Math.PI),
+    (rng() < 0.5 ? 1 : -1) * (2 * Math.PI + 4 * DEG),
+  );
+  return {
+    label: 'ellipse',
+    note: `ellipse ${ratio.toFixed(2)}:1 at ${(rotation / DEG).toFixed(0)}°`,
+    samples: penStroke(path, [], rng),
+    truth: { center: c, radii: [b * ratio, b], angle: rotation },
+  };
+}
+
+/** M3.5: a smooth open wave (one or two S-bends), labelled spline. */
+export function genWave(rng: Rng): Generated {
+  const o = origin(rng);
+  const len = range(rng, 70, 140);
+  const amp = range(rng, 0.08, 0.2) * len;
+  const waves = 0.75 + rng() * 0.5;
+  const angle = range(rng, 0, Math.PI);
+  const ph = range(rng, 0, Math.PI / 2);
+  const path: Vec2[] = [];
+  for (let i = 0; i <= 200; i++) {
+    const t = i / 200;
+    path.push(rot([t * len, amp * Math.sin(2 * Math.PI * waves * t + ph)], angle, o));
+  }
+  return {
+    label: 'spline',
+    note: `wave ${len.toFixed(0)} mm, ${waves.toFixed(2)} waves`,
+    samples: penStroke(path, [], rng),
+    truth: { path },
+  };
+}
+
+/** M3.5: a smooth closed blob with 3–4 lobes (no circle, no ellipse), labelled spline. */
+export function genBlob(rng: Rng): Generated {
+  const c = origin(rng);
+  const r = range(rng, 20, 45);
+  const lobes = 3 + Math.floor(rng() * 2);
+  const depth = range(rng, 0.15, 0.3);
+  const ph = range(rng, 0, 2 * Math.PI);
+  const path: Vec2[] = [];
+  const n = 240;
+  const dir = rng() < 0.5 ? 1 : -1;
+  for (let i = 0; i <= n + 6; i++) {
+    const t = (dir * 2 * Math.PI * i) / n;
+    const rr = r * (1 + depth * Math.sin(lobes * t + ph));
+    path.push([c[0] + rr * Math.cos(t), c[1] + rr * Math.sin(t)]);
+  }
+  return {
+    label: 'spline',
+    note: `blob r=${r.toFixed(0)}, ${lobes} lobes`,
+    samples: penStroke(path, [], rng),
+    truth: { center: c, path },
   };
 }
 

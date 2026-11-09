@@ -65,12 +65,23 @@ function trim(v: number): string {
 
 export class Namer {
   private names = new Map<Id, string>();
+  private kinds = new Map<Id, SketchEntity['kind']>();
   constructor(entities: readonly SketchEntity[]) {
     const counts: Record<string, number> = {};
     for (const e of entities) {
       counts[e.kind] = (counts[e.kind] ?? 0) + 1;
       this.names.set(e.id, `${KIND_LABEL[e.kind]} ${counts[e.kind]}`);
+      this.kinds.set(e.id, e.kind);
     }
+  }
+  /** An entity's kind (undefined for the reference geometry and unknown ids). */
+  kind(id: Id): SketchEntity['kind'] | undefined {
+    return this.kinds.get(id);
+  }
+  /** An ellipse or elliptic arc (their radius is the major one, M3.5). */
+  isConic(id: Id): boolean {
+    const k = this.kinds.get(id);
+    return k === 'ellipse' || k === 'ellipticArc';
   }
   /** "Line 2"; the reference geometry by name ("the origin", "the horizontal axis"). */
   entity(id: Id): string {
@@ -213,10 +224,14 @@ export function describeFor(
     case 'length':
       return v === undefined ? 'a fixed length' : `${formatLength(v)} long`;
     case 'radius':
-      return v === undefined ? 'a fixed radius' : `radius ${formatLength(v)}`;
-    case 'diameter':
-      return v === undefined ? 'a fixed diameter' : `diameter ${formatLength(v)}`;
+    case 'diameter': {
+      const what = `${namer.isConic(c.curve) ? 'major ' : ''}${c.kind}`;
+      return v === undefined ? `a fixed ${what}` : `${what} ${formatLength(v)}`;
+    }
     case 'distance':
+      // From an ellipse's centre to the ellipse: its minor radius (M3.5).
+      if (namer.isConic(c.a) || namer.isConic(c.b))
+        return v === undefined ? 'a fixed minor radius' : `minor radius ${formatLength(v)}`;
       return `${v === undefined ? 'a set distance' : formatLength(v)} from ${other(c.a, c.b)}`;
     case 'hDistance':
       return `${v === undefined ? 'a set distance' : formatLength(Math.abs(v))} horizontally from ${other(c.a, c.b)}`;

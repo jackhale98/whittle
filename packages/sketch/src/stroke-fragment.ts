@@ -17,12 +17,14 @@ import type { Id, SketchConstraint, StrokeRecognition, Vec2 } from '@wren-cad/co
 import {
   arcCenterTool,
   circleCenterTool,
+  ellipseFromRadii,
   lineTool,
   newId,
   polylineTool,
   rectangle3PointTool,
   rectangleCornerTool,
   type SketchFragment,
+  splineThroughTool,
   type ToolOptions,
 } from './tools';
 
@@ -72,15 +74,16 @@ export function strokeFragment(
     case 'polyline':
       return polylineFragment(shape.points, shape.closed, implied, opts, nextId);
     case 'ellipse':
-    case 'spline':
-      // M3.5 placeholder (ADR-046): the sketch workstream replaces this (ellipse and spline tools).
-      return polylineFragment(
-        shape.kind === 'spline' ? shape.points : [shape.center],
-        shape.kind === 'spline' && shape.closed,
-        implied,
+      return ellipseFromRadii(
+        shape.center,
+        shape.majorRadius,
+        shape.minorRadius,
+        shape.rotation,
         opts,
-        nextId,
       );
+    case 'spline':
+      // A spline through the fit points (held at its knots, so editing a point reshapes it).
+      return splineThroughTool(shape.points, { ...opts, closed: shape.closed });
   }
 }
 
