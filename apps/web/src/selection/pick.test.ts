@@ -1,10 +1,19 @@
 import type { EntityQuery, Feature, FilletFeature, PickHit } from '@wren-cad/contracts';
 import { boxMesh } from '@wren-cad/test-fixtures';
 import { describe, expect, it } from 'vitest';
-import { contextTools, newExtrude, newFillet, nextName } from '../features/factories';
+import {
+  contextFeatureTools,
+  contextTools,
+  FEATURE_PICKS,
+  newExtrude,
+  newFeatureFor,
+  newFillet,
+  nextName,
+} from '../features/factories';
 import {
   acceptsFor,
   applyPick,
+  orderStackedRegions,
   pickVertices,
   refForHit,
   resolvePick,
@@ -137,5 +146,60 @@ describe('picking', () => {
     // A taller box keeps the bottom corner at the same ordinal.
     expect(vertexAt(pickVertices(boxMesh(40, 30, 35)), [40, 0, 0])).toBe(i);
     expect(pickVertices(undefined)).toBeUndefined();
+  });
+});
+
+describe('M3 tools: pick sequences and accepted kinds', () => {
+  const part = { features: [] as Feature[] };
+  it('every field a tool asks for is pickable, with its own wording', () => {
+    for (const [tool, steps] of Object.entries(FEATURE_PICKS)) {
+      const f = newFeatureFor(tool as keyof typeof FEATURE_PICKS, part, {
+        bodyCount: 1,
+        sources: [],
+      });
+      for (const s of steps) {
+        const a = acceptsFor(s.path, f);
+        expect(a.noun, `${tool} ${s.path}`).not.toBe('geometry');
+        expect(a.kinds.length + (a.refs?.length ?? 0), `${tool} ${s.path}`).toBeGreaterThan(0);
+      }
+    }
+  });
+  it('reference geometry offers chips; sources pick features; a/b depend on the definition', () => {
+    expect(acceptsFor('/plane').refs).toEqual(['plane']);
+    expect(acceptsFor('/axis').refs).toEqual(['axis']);
+    expect(acceptsFor('/points/0').refs).toEqual(['point']);
+    expect(acceptsFor('/direction').refs).toEqual(['axis', 'plane']);
+    expect(acceptsFor('/source/features').features).toBe(true);
+    const axis = newFeatureFor('axis', part, { bodyCount: 1, sources: [] });
+    const twoPoints = { ...axis, definition: { kind: 'twoPoints' } } as Feature;
+    expect(acceptsFor('/definition/a', twoPoints).kinds).toEqual(['sketchPoint', 'vertex']);
+    const twoPlanes = { ...axis, definition: { kind: 'twoPlanes' } } as Feature;
+    expect(acceptsFor('/definition/a', twoPlanes).refs).toEqual(['plane']);
+  });
+  it('context tools add the M3 actions', () => {
+    expect(contextFeatureTools(['region'])).toEqual(['extrudeCut', 'sweep', 'loft']);
+    expect(contextFeatureTools(['face'])).toEqual(['hole', 'shell', 'draft']);
+    expect(contextFeatureTools(['face', 'face'])).toEqual(['shell', 'draft']);
+    expect(contextFeatureTools(['edge'])).toEqual(['axis']);
+  });
+});
+
+describe('stacked sketch regions', () => {
+  const region = (bodyId: string, z: number): PickHit => ({
+    bodyId,
+    kind: 'region',
+    index: 0,
+    entity: `S${bodyId}:region(a)`,
+    point: [0, 0, z],
+    distancePx: 0,
+  });
+  const face: PickHit = { bodyId: 'B1', kind: 'face', index: 0, point: [0, 0, 5], distancePx: 0 };
+  it('the region nearest the camera first; coplanar ones: the smaller first', () => {
+    const area = (h: PickHit) => (h.bodyId === 'plate' ? 8000 : 300);
+    const cam = [0, 0, 100] as const;
+    const near = orderStackedRegions([region('low', 0), face, region('high', 10)], cam, area);
+    expect(near.map((h) => h.bodyId)).toEqual(['B1', 'high', 'low']);
+    const flat = orderStackedRegions([region('plate', 0), region('slot', 0)], cam, area);
+    expect(flat.map((h) => h.bodyId)).toEqual(['slot', 'plate']);
   });
 });

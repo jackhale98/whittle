@@ -102,6 +102,7 @@ import {
   acceptsFor,
   applyPick,
   hitKey,
+  orderStackedRegions,
   pickVertices,
   refForHit,
   resolvePick,
@@ -1057,10 +1058,36 @@ export class Workbench {
       v as { getCameraState?: () => { position: [number, number, number] } }
     ).getCameraState?.()?.position;
     if (!cam) return hits;
-    const d = (h: PickHit) =>
-      h.kind === 'region' ? Math.hypot(...h.point.map((c, k) => c - (cam[k] as number))) : 0;
-    const regions = hits.filter((h) => h.kind === 'region').sort((p, q) => d(p) - d(q));
-    return [...hits.filter((h) => h.kind !== 'region'), ...regions];
+    return orderStackedRegions(hits, cam as [number, number, number], (h) => this.regionArea(h));
+  }
+
+  private regionAreas = new WeakMap<MeshBuffers, number>();
+
+  /** Area (mm²) of a picked sketch region's mesh (cached per immutable mesh). */
+  private regionArea(h: PickHit): number {
+    const mesh = this.regen
+      .get()
+      ?.result.sketches.find((s) => s.featureId === h.bodyId)
+      ?.regions.find((r) => r.name === h.entity)?.mesh;
+    if (!mesh) return Number.POSITIVE_INFINITY;
+    const cached = this.regionAreas.get(mesh);
+    if (cached !== undefined) return cached;
+    const p = mesh.positions;
+    const ix = mesh.indices;
+    const at = (v: number, c: number) => p[(ix[v] as number) * 3 + c] as number;
+    let a = 0;
+    for (let t = 0; t + 2 < ix.length; t += 3) {
+      const u = [0, 1, 2].map((c) => at(t + 1, c) - at(t, c)) as [number, number, number];
+      const w = [0, 1, 2].map((c) => at(t + 2, c) - at(t, c)) as [number, number, number];
+      a +=
+        Math.hypot(
+          u[1] * w[2] - u[2] * w[1],
+          u[2] * w[0] - u[0] * w[2],
+          u[0] * w[1] - u[1] * w[0],
+        ) / 2;
+    }
+    this.regionAreas.set(mesh, a);
+    return a;
   }
 
   /** Only presses on the canvas itself count (not the view cube or other host children). */
@@ -2739,6 +2766,28 @@ export class Workbench {
         await this.viewport?.nextFrame();
       },
       flushSave: () => this.flushSave(),
+      /**
+       * What a mouse click at canvas px would pick in the current mode, as the click itself
+       * resolves it (`pickAt` + `resolvePick`): the best hit and how many tie ("Which one?").
+       */
+      resolveAt: (x: number, y: number) => {
+        const r = resolvePick(this.pickAt(x, y, 'mouse', this.pickKinds()), {
+          pointerType: 'mouse',
+        });
+        return {
+          best: r.best
+            ? {
+                bodyId: r.best.bodyId,
+                kind: r.best.kind,
+                index: r.best.index,
+                ...(r.best.entity !== undefined ? { entity: r.best.entity } : {}),
+                point: r.best.point,
+                distancePx: r.best.distancePx,
+              }
+            : null,
+          ties: r.ties.length,
+        };
+      },
       /** The persistent name of a viewport hit's face or edge (read only; E2E pick checks). */
       hitName: (bodyId: string, kind: string, index: number): string | null => {
         const mesh = this.regen.get()?.result.bodies.find((b) => b.id === bodyId)?.mesh;

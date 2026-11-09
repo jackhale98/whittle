@@ -104,6 +104,29 @@ export function resolvePick(
   return { best, ties: ties.length > 1 ? ties : [] };
 }
 
+/**
+ * Viewport hits with stacked sketch regions ordered as the user sees them: all regions are
+ * "0 px away", so the one nearest the camera comes first; coplanar ones (a slot sketched on the
+ * plate's own plane) are equally near, and the smaller is the specific thing under the cursor,
+ * as a hole region over its face. Non-region hits keep their order, before the regions.
+ */
+export function orderStackedRegions(
+  hits: readonly PickHit[],
+  camera: readonly [number, number, number],
+  areaOf: (h: PickHit) => number,
+): PickHit[] {
+  const d = (h: PickHit) => Math.hypot(...h.point.map((c, k) => c - (camera[k] as number)));
+  const regions = hits
+    .filter((h) => h.kind === 'region')
+    .sort((p, q) => {
+      const dp = d(p);
+      const dq = d(q);
+      if (Math.abs(dp - dq) > 1e-6 * Math.max(1, dp, dq)) return dp - dq;
+      return areaOf(p) - areaOf(q);
+    });
+  return [...hits.filter((h) => h.kind !== 'region'), ...regions];
+}
+
 /** Selection noun for a hit (SelectionInspector kinds). */
 export function selectionKind(kind: PickKind): 'face' | 'edge' | 'vertex' | 'region' {
   switch (kind) {

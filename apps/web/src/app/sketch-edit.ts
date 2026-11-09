@@ -372,7 +372,7 @@ export class SketchEditTools {
     this.patch({ busy: false });
     if (!edges) return;
     if (edges.length === 0) return this.toast('Those edges are seen end-on from this sketch.');
-    const ok = await this.run((m, cur) => m.convertEntities(cur, edges));
+    const ok = await this.run((m, cur) => m.convertEntities(cur, edges, { join: true }));
     if (ok) this.patch({ model: [] });
   }
 
