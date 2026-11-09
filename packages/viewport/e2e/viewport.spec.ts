@@ -204,10 +204,10 @@ test.describe('camera', () => {
     expect(pinched.distance).toBeLessThan(orbited.distance - 1);
 
     // Double-tap fits.
-    for (let n = 0; n < 2; n++) {
-      await touch('touchStart', [{ x: cx, y: cy, id: 1 }]);
-      await touch('touchEnd', []);
-    }
+    // Queued back to back: round trips under load must not stretch the 300 ms double-tap window.
+    await Promise.all(
+      [0, 1].flatMap(() => [touch('touchStart', [{ x: cx, y: cy, id: 1 }]), touch('touchEnd', [])]),
+    );
     await page.waitForTimeout(100);
     await page.evaluate(() => window.__viewport?.viewport.nextFrame());
     const fitted = (await cam())!;

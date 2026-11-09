@@ -880,7 +880,7 @@ class ViewportImpl implements ViewportEngine {
           distancePx: h.distancePx,
         });
       }
-      if (handleHits.length > 0 && !options.all) return handleHits;
+      if (handleHits.length > 0 && !options.all) return this.withDepth(handleHits);
     }
     const ray = this.rayAt(x, y);
     const project = this.projector();
@@ -983,9 +983,18 @@ class ViewportImpl implements ViewportEngine {
       if (f) out.push(f);
     }
 
-    if (options.all) return [...handleHits, ...sortByDistance(out)];
+    if (options.all) return this.withDepth([...handleHits, ...sortByDistance(out)]);
     const best = bestCandidate(out);
-    return best ? [best] : [];
+    return best ? this.withDepth([best]) : [];
+  }
+
+  /** Stamp hits with their distance from the camera (mm), the chooser's stable tie-break. */
+  private withDepth(hits: PickHit[]): PickHit[] {
+    const o = this.camera.position;
+    for (const h of hits) {
+      h.depth = Math.hypot(h.point[0] - o.x, h.point[1] - o.y, h.point[2] - o.z);
+    }
+    return hits;
   }
 
   setHighlights(highlights: { selected: HighlightItem[]; preselected: HighlightItem[] }): void {
@@ -3070,7 +3079,7 @@ class ViewportImpl implements ViewportEngine {
     return found
       .map((h) => ({ h, d: depth(h) }))
       .sort((a, b) => a.d - b.d || KIND_PRIORITY[a.h.kind] - KIND_PRIORITY[b.h.kind])
-      .map((x) => x.h);
+      .map((x) => ({ ...x.h, depth: x.d }));
   }
 
   /** Per-id pixel totals of the whole ID image (cached per image). */

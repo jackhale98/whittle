@@ -637,6 +637,8 @@ test.describe('pickRect', () => {
     const cam = await pose(page);
     const d = hits.map((h) => dist(h.point as V3, cam.position));
     for (let i = 1; i < d.length; i++) expect(d[i]!).toBeGreaterThanOrEqual(d[i - 1]! - 1e-6);
+    // Every hit carries its camera distance (the chooser's tie-break).
+    for (let i = 0; i < d.length; i++) expect(hits[i]!.depth).toBeCloseTo(d[i]!, 3);
     const faces = await rect(page, all, 'crossing', { kinds: ['face'] });
     expect(faces.every((h) => h.kind === 'face')).toBe(true);
     // Reversed corners give the same answer.
