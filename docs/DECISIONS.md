@@ -1658,3 +1658,46 @@ Scope approved by the owner from the UX research report (`docs/ux-research/repor
 - **`AttentionCause`** on `UnresolvedRef` and `FeatureStatus`: the upstream feature whose change, suppression, deletion, reordering or failure broke the reference or the feature. Reported only when the engine can tell, never guessed (the SolidWorks 2023 Top Ten #1 and #5 requests and the UIST 2024 DeCAD finding).
 - **Placeholders.** So every workstream starts from a green tree, the lead added minimal cases for the new union members (control-polygon sampling, `null` closest points, "cannot be projected yet", no-op gestures, stub `setNavigation` / `pickRect`), each marked "M3.5 placeholder (ADR-046)". The workstreams replace them; the gate checks none remain.
 
+## ADR-047 — M3.5 error causes: how the regen engine names the upstream feature (2026-11-09)
+
+Modeling workstream (packages/kernel-client `src/regen/cause.ts`; README "Error causes").
+
+- **Evidence, not heuristics.** Each regen records a walk per slot: each feature's definition and values, cache key, the features whose output it read, and the containers it set. A cause comes from one of three rules; anything else gets no cause.
+  - Rule 1 reads it from the persistent name: a tagged feature that is deleted, suppressed, after the consumer, or failed.
+  - Rule 2 derives it from the difference to the previous regen's walk.
+  - Rule 3 carries it from the previous regen while it still holds.
+- **Rule 2 needs the same stored ref to have resolved in the last regen.** The touchers of the name family are the features whose results set or removed a container holding it, plus the producer. They are tried nearest first:
+  - A toucher that changed itself is the cause.
+  - A toucher whose key changed only through its inputs hands over to a breadth-first walk of its dependencies, through features whose keys changed. The first level holding a changed or removed feature decides: one feature is the cause; several mean no cause.
+  - This is the "nearest upstream feature that changed" rule for chains. A pocket whose floor vanished because the plate under it got thinner names the plate.
+  - Fallback: a single change upstream of the consumer is the cause, because regeneration is deterministic.
+- **Sticky causes.** The contract says "changed this regen". The engine keeps the cause while the ref stays broken, until the ref resolves or the cause stops holding, so an unrelated edit does not erase the explanation. Proposed contract wording: "since the reference last resolved".
+- **Kinds.**
+  - Added, unsuppressed and moved-above features are `changed`, with `detail` "added", "unsuppressed" or "moved". The contract has no `added` kind; the detail is enough.
+  - `detail` labels sketch dimensions by kind ("horizontal distance 30 mm → 200 mm"), never by constraint id.
+  - A blocked feature names what it waits on (`failed`): the referenced feature that failed itself, or the first feature that failed on its body. The UI follows `cause.featureId` to reach the root.
+  - A feature's own edit is never its upstream cause.
+- **Deps** come from three sources: reference name tags, copied features, and the last writer of each body that a feature acts on or whose content key it hashes (`Plan.reads` for implicit scopes).
+- **Cost**: one canonical-JSON snapshot of each definition per regen, about 20 µs per feature.
+
+## ADR-048 — M3.5 regen of the new curves: knot conventions, sampling, exact projections (2026-11-09)
+
+Modeling workstream. The kernel and sketch workstreams should confirm or amend this (ADR-046).
+
+- **Knot convention of `SketchBSpline`.** All three workstreams must agree on it.
+  - `knots` are the distinct knot values and `multiplicities` their multiplicities. This is OCCT's `Geom_BSplineCurve` form. Give both or neither. For an open spline without `multiplicities`, the regen also reads a flat vector of length n + p + 1.
+  - Open (clamped) default: knots `i/(n−p)`, i = 0…n−p, with multiplicities p+1, 1, …, 1, p+1.
+  - Periodic default: knots `i/n`, i = 0…n, all multiplicity 1.
+  - The domain is [0, 1] in both cases.
+  - Periodic flat knots follow `BSplCLib::KnotSequence`: p+1−m₀ knots of the neighbouring period on each side, and pole i supported on flat knots i … i+p+1. So the default periodic cubic starts at (P₀ + 4P₁ + P₂)/6. The kernel's `Geom_BSplineCurve(poles, weights, knots, mults, p, periodic=true)` with these arrays should give the same curve and parametrisation. This follows from reading `BSplCLib` and has not been checked against a build yet; the kernel goldens should confirm it.
+  - If all `weights` are equal, the spline is non-rational.
+- **Sampling** for display produces exact points at the sketch chord tolerance. Sampling never feeds geometry; the kernel builds the exact edges.
+  - Elliptic arcs: uniform in the parametric angle, with the step of a circle of the major radius.
+  - Splines: de Boor, with per-span subdivision against 0.9 × the tolerance at the middle and quarter points.
+- **Exact projection** of another sketch's curves:
+  - Ellipses and elliptic arcs are exact when the planes are parallel. Otherwise the kernel's polyline is used, marked approximate.
+  - B-splines are exact onto any plane that does not see them edge-on. Orthographic projection is affine, and B-splines (rational ones too) are affine invariant.
+  - Proposed for the kernel's `projectEdges`: return the same exact `ellipse` / `ellipticArc` / `bspline` curves for model edges. kernel-client's `ProjectedCurve` already accepts them.
+  - Proposed for packages/sketch `convertEntities` / `reprojectLinked`: create and follow `SketchEllipse`, `SketchEllipticArc` and `SketchBSpline` linked entities from those curves.
+  - Until then, the engine's own fallback re-projects linked entities of these kinds in place. A spline whose source gains or loses poles is lost (needs attention), never refitted.
+

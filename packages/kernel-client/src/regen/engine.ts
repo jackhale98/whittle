@@ -23,6 +23,7 @@
  */
 
 import type {
+  AttentionCause,
   AxisFeature,
   BodyResult,
   BodyScope,
@@ -82,6 +83,7 @@ import type {
   WrenDoc,
 } from '@wren-cad/contracts';
 import {
+  entityRefs,
   evaluateFeatureValues,
   expressionEngine,
   featureReferences,
@@ -95,6 +97,21 @@ import { IoError, importMesh, meshToStl } from '@wren-cad/io';
 import { zipSync } from 'fflate';
 import type { KernelApiInternals, KernelWorkerApi, MeasureSubject } from '../kernel-api';
 import { copyMesh, faceIndex, faceSubMesh } from './buffers';
+import {
+  type CauseEnv,
+  changeCause,
+  nameTags,
+  newWalk,
+  pushWalk,
+  refIdentity,
+  stillHolds,
+  structuralCause,
+  upstreamCause,
+  valueAt,
+  type Walk,
+  type WalkContainer,
+  type WalkEntry,
+} from './cause';
 import { chainOrder } from './chain';
 import { type CompareOutput, type DiffSide, geometricDiff } from './compare';
 import {
@@ -143,7 +160,7 @@ import {
   sub,
   toWorld,
 } from './geometry';
-import { hashKey } from './hash';
+import { hashKey, stableStringify } from './hash';
 import {
   compareGeoKey,
   frameMatrix,
@@ -396,6 +413,8 @@ interface PartCache {
    * only when needed.
    */
   lastResolved: Map<string, { shape: ShapeHandle; kind: SubKind; index: number }>;
+  /** The previous regen's walk (cause.ts), for `AttentionCause`. */
+  walk: Walk | null;
 }
 
 class ModelState {
@@ -431,7 +450,8 @@ interface WalkContext {
   pc: PartCache;
   state: ModelState;
   failed: Set<Id>;
-  tainted: Set<string>;
+  /** Tainted body → the feature that failed on it first (what later features wait on). */
+  tainted: Map<string, Id>;
   used: Set<string>;
   hits: number;
   misses: number;
@@ -443,6 +463,13 @@ interface WalkContext {
   usedImports: Set<string>;
   /** The feature being planned: id and the refs rebound so far. */
   current: { featureId: Id; rebound: ReboundRef[] };
+  /** This regen's walk (cause.ts) and the walk entry of the feature being run. */
+  walk: Walk;
+  rec: WalkEntry | null;
+  /** Position of every feature in `part.features`. */
+  index: Map<Id, number>;
+  /** Body id → the feature whose result last set it. */
+  bodyOwner: Map<string, Id>;
 }
 
 /** What a feature needs once its references are resolved. */
@@ -450,6 +477,11 @@ interface Plan {
   key: string;
   /** Bodies the feature reads or acts on (taint check before running). */
   involved: string[];
+  /**
+   * Further bodies whose content keys are part of `key` (an implicit scope's candidates), for
+   * the cause walk's dependencies (cause.ts); not taint-checked.
+   */
+  reads?: string[];
   /** `transient`: the outcome depends on something outside the key (attachments): don't cache it. */
   run: () => Promise<{ result: EntryResult; owned: ShapeHandle[]; transient?: boolean }>;
   /** Solid features: how to build their tool solid for copies (registered when the feature is ok). */
@@ -946,6 +978,7 @@ export class RegenEngine {
         lastGood: null,
         imports: new Map(),
         lastResolved: new Map(),
+        walk: null,
       };
       slots.set(slot, pc);
     }
@@ -1001,7 +1034,7 @@ export class RegenEngine {
       pc,
       state: new ModelState(),
       failed: new Set(),
-      tainted: new Set(),
+      tainted: new Map(),
       used: new Set(),
       hits: 0,
       misses: 0,
@@ -1010,22 +1043,38 @@ export class RegenEngine {
       importIds: new Set(part.features.filter((f) => f.type === 'import').map((f) => f.id)),
       usedImports: new Set(),
       current: { featureId: '', rebound: [] },
+      walk: newWalk(),
+      rec: null,
+      index: new Map(part.features.map((f, i) => [f.id, i])),
+      bodyOwner: new Map(),
     };
     const rollback = Math.max(0, Math.min(part.rollbackIndex, part.features.length));
     const features: RegenFeatureStatus[] = [];
     for (let i = 0; i < part.features.length; i++) {
       const f = part.features[i] as Feature;
-      if (i >= rollback) {
-        features.push({ featureId: f.id, state: 'rolledBack', cached: false, ms: 0 });
-      } else if (f.suppressed) {
-        features.push({ featureId: f.id, state: 'suppressed', cached: false, ms: 0 });
+      if (i >= rollback || f.suppressed) {
+        const state = i >= rollback ? 'rolledBack' : 'suppressed';
+        features.push({ featureId: f.id, state, cached: false, ms: 0 });
+        pushWalk(ctx.walk, { id: f.id, state, planned: false, deps: [] });
       } else {
         const ft = this.now();
         const status = await this.runFeature(ctx, f);
+        const rec = ctx.rec as WalkEntry;
+        rec.state = status.state;
+        this.attachCauses(ctx, f, status, rec);
+        if (status.unresolved) {
+          rec.unresolved = status.unresolved.map((u) =>
+            u.cause ? { path: u.path, cause: u.cause } : { path: u.path },
+          );
+        }
+        if (status.cause) rec.cause = status.cause;
+        pushWalk(ctx.walk, rec);
+        ctx.rec = null;
         status.ms = this.now() - ft;
         features.push(status);
       }
     }
+    pc.walk = ctx.walk;
 
     // Outputs.
     const density = this.densityOf(part, doc);
@@ -1108,6 +1157,9 @@ export class RegenEngine {
     for (const p of points.values()) extent = Math.max(extent, Math.abs(p[0]), Math.abs(p[1]));
     for (const e of s.entities) {
       if (e.kind === 'circle') extent = Math.max(extent, e.radius);
+      if (e.kind === 'ellipse' || e.kind === 'ellipticArc') {
+        extent = Math.max(extent, e.majorRadius, e.minorRadius);
+      }
     }
     const chord = Math.max(1e-4, (extent || 10) * this.quality[quality].linearDeflection);
     const curves: SketchResult['curves'] = [];
@@ -1181,31 +1233,54 @@ export class RegenEngine {
     };
     const fail = (taint: string[]) => {
       ctx.failed.add(f.id);
-      for (const b of taint) ctx.tainted.add(b);
+      for (const b of taint) if (!ctx.tainted.has(b)) ctx.tainted.set(b, f.id);
     };
     const allBodies = () => [...ctx.state.bodies.keys()];
-
-    // 1. References into failed features (or copies of one) → blocked.
-    const copied = copiedFeatures(f);
-    for (const id of ctx.failed) {
-      if (featureReferences(f, id) || copied.includes(id)) {
-        fail(allBodiesFor(f, allBodies()));
-        return status('blocked', {
-          error: kerr('UNRESOLVED_REFERENCE', 'An upstream feature this one depends on failed', {
-            hint: 'Fix the features marked above first.',
-          }),
-        });
-      }
-    }
-
-    // 2. Values and references.
     const evaluated = evaluateFeatureValues(f, ctx.doc);
     const exprErrors = Object.entries(evaluated.errors).filter(
       ([p]) => !p.startsWith('/annotations/'),
     );
+    const copied = copiedFeatures(f);
+    const rec = this.walkEntry(ctx, f, evaluated.values, exprErrors, copied);
+    ctx.rec = rec;
+    /** What a blocked feature waits on: the feature that failed first on one of its bodies. */
+    const taintCause = (bodies: readonly string[]): { cause?: AttentionCause } => {
+      const b = bodies.find((x) => ctx.tainted.has(x));
+      const id = b === undefined ? undefined : ctx.tainted.get(b);
+      return id === undefined ? {} : { cause: { featureId: id, kind: 'failed' } };
+    };
+
+    // 1. References into failed features (or copies of one) → blocked.
+    const waitsOn = [...ctx.failed].filter((id) => featureReferences(f, id) || copied.includes(id));
+    if (waitsOn.length > 0) {
+      // The cause: a referenced feature that failed itself (not merely blocked), else the first.
+      const root =
+        waitsOn.find((id) => {
+          const st = ctx.walk.byId.get(id)?.state;
+          return st === 'error' || st === 'needsAttention';
+        }) ?? (waitsOn[0] as Id);
+      fail(allBodiesFor(f, allBodies()));
+      return status('blocked', {
+        error: kerr('UNRESOLVED_REFERENCE', 'An upstream feature this one depends on failed', {
+          hint: 'Fix the features marked above first.',
+        }),
+        cause: { featureId: root, kind: 'failed' },
+      });
+    }
+
+    // 2. Values and references.
     let planned: Planned;
     try {
       planned = await this.planFeature(ctx, f, evaluated.values);
+      if (planned.plan) {
+        rec.key = planned.plan.key;
+        rec.planned = planned.unresolved.length === 0 && !planned.error;
+        for (const b of [...planned.plan.involved, ...(planned.plan.reads ?? [])]) {
+          const owner = ctx.bodyOwner.get(b);
+          if (owner !== undefined && owner !== f.id && !rec.deps.includes(owner))
+            rec.deps.push(owner);
+        }
+      }
     } catch (e) {
       fail(allBodies());
       return status('error', {
@@ -1215,11 +1290,13 @@ export class RegenEngine {
 
     // 3. Acting on a tainted body → blocked.
     if (planned.plan?.involved.some((b) => ctx.tainted.has(b))) {
+      const waits = taintCause(planned.plan.involved);
       fail(planned.taint);
       return status('blocked', {
         error: kerr('UNRESOLVED_REFERENCE', 'An upstream feature on this body failed', {
           hint: 'Fix the features marked above first.',
         }),
+        ...waits,
       });
     }
 
@@ -1298,15 +1375,19 @@ export class RegenEngine {
       return status('error', { error: r.error, cached });
     }
     if (r.touched.some((b) => ctx.tainted.has(b))) {
+      const waits = taintCause(r.touched);
       fail(planned.taint);
       return status('blocked', {
         cached,
         error: kerr('UNRESOLVED_REFERENCE', 'An upstream feature on this body failed', {
           hint: 'Fix the features marked above first.',
         }),
+        ...waits,
       });
     }
     ctx.state.apply(r);
+    rec.delta = walkDelta(r);
+    for (const b of r.set) ctx.bodyOwner.set(b.id, f.id);
     if (plan.tool) {
       ctx.state.tools.set(f.id, { ...plan.tool, bodies: r.set.map((b) => b.id) });
     }
@@ -1314,6 +1395,102 @@ export class RegenEngine {
     const warnings = [...(planned.warnings ?? []), ...r.warnings];
     if (warnings.length > 0) out.warnings = warnings;
     return out;
+  }
+
+  // -------------------------------------------------------------------------------------------
+  // Error causes (cause.ts)
+  // -------------------------------------------------------------------------------------------
+
+  /** The walk record of a feature about to run: its own definition, values and reference tags. */
+  private walkEntry(
+    ctx: WalkContext,
+    f: Feature,
+    values: Record<string, number>,
+    exprErrors: [string, unknown][],
+    copied: Id[],
+  ): WalkEntry {
+    const own: Record<string, number> = {};
+    for (const [k, v] of Object.entries(values)) if (!k.startsWith('/annotations/')) own[k] = v;
+    const deps: Id[] = [];
+    const dep = (id: Id) => {
+      if (id !== f.id && ctx.walk.byId.has(id) && !deps.includes(id)) deps.push(id);
+    };
+    for (const r of entityRefs(f)) for (const id of nameTags(r.name, r.kind).all) dep(id);
+    for (const id of copied) dep(id);
+    const rec: WalkEntry = {
+      id: f.id,
+      state: 'ok',
+      def: stableStringify(definition(f)),
+      values: own,
+      planned: false,
+      deps,
+    };
+    if (exprErrors.length > 0) rec.valueErrors = exprErrors.map(([p]) => p);
+    return rec;
+  }
+
+  private causeEnv(ctx: WalkContext): CauseEnv {
+    return {
+      part: ctx.part,
+      index: ctx.index,
+      walk: ctx.walk,
+      prev: ctx.pc.walk,
+      label: causeLabel,
+    };
+  }
+
+  /**
+   * `AttentionCause` for a finished feature's unresolved refs and its status (cause.ts rules):
+   * structural from the name, else this regen's change if the same stored ref resolved last
+   * regen, else the cause it already had. Blocked causes are set by `runFeature`.
+   */
+  private attachCauses(
+    ctx: WalkContext,
+    f: Feature,
+    status: RegenFeatureStatus,
+    rec: WalkEntry,
+  ): void {
+    if (status.state === 'ok' || status.state === 'blocked') return;
+    const env = this.causeEnv(ctx);
+    const prev = ctx.pc.walk?.byId.get(f.id);
+    // Entities sharing a linked source share one name: compute its change once.
+    const changed = new Map<string, AttentionCause | null>();
+    for (const u of status.unresolved ?? []) {
+      const stored = refIdentity(valueAt(f, u.path));
+      const same =
+        prev !== undefined &&
+        stored !== undefined &&
+        refIdentity(valueAt(prev.def, u.path)) === stored;
+      let cause = structuralCause(env, f.id, u.ref.name, u.ref.kind);
+      if (!cause && same && prev?.planned) {
+        const k = `${u.ref.kind}|${u.ref.name}`;
+        if (!changed.has(k)) changed.set(k, changeCause(env, f.id, u.ref.name, u.ref.kind));
+        cause = changed.get(k) ?? null;
+      } else if (!cause && same) {
+        const was = prev?.unresolved?.find((x) => x.path === u.path)?.cause;
+        if (was && stillHolds(env, f.id, was)) cause = was;
+      }
+      if (cause) u.cause = cause;
+    }
+    if (status.state === 'needsAttention') {
+      const first = status.unresolved?.find((u) => u.cause)?.cause;
+      if (first) status.cause = first;
+      return;
+    }
+    if (status.state !== 'error' || status.cause || !prev) return;
+    const ownSame =
+      prev.def === rec.def && stableStringify(prev.values) === stableStringify(rec.values);
+    if (prev.state === 'ok') {
+      const c = upstreamCause(env, rec);
+      if (c) status.cause = c;
+    } else if (
+      prev.state === 'error' &&
+      prev.cause &&
+      ownSame &&
+      stillHolds(env, f.id, prev.cause)
+    ) {
+      status.cause = prev.cause;
+    }
   }
 
   // -------------------------------------------------------------------------------------------
@@ -1707,7 +1884,7 @@ export class RegenEngine {
     const taint = f.op === 'new' ? [`B${f.id}`] : scoped.bodies.map((b) => b.id);
     if (scoped.mode === 'bodies') for (const b of scoped.bodies) involved.add(b.id);
     else if (f.op !== 'new') {
-      for (const t of ctx.tainted) if (!ctx.state.bodies.has(t)) involved.add(t);
+      for (const t of ctx.tainted.keys()) if (!ctx.state.bodies.has(t)) involved.add(t);
     }
     const key = hashKey({
       t: f.type,
@@ -1725,6 +1902,7 @@ export class RegenEngine {
       plan: {
         key,
         involved: [...involved],
+        reads: scoped.bodies.map((b) => b.id),
         run: () => this.runSolid(f, inputs, scoped, key),
         tool: this.solidTool(f, inputs, refKeys),
       },
@@ -3128,7 +3306,7 @@ export class RegenEngine {
     const taint = f.op === 'new' ? taintNew : scoped.bodies.map((b) => b.id);
     if (scoped.mode === 'bodies') for (const b of scoped.bodies) involved.add(b.id);
     else if (f.op !== 'new') {
-      for (const t of ctx.tainted) if (!ctx.state.bodies.has(t)) involved.add(t);
+      for (const t of ctx.tainted.keys()) if (!ctx.state.bodies.has(t)) involved.add(t);
     }
     const key = hashKey({
       t: f.type,
@@ -3145,6 +3323,7 @@ export class RegenEngine {
       plan: {
         key,
         involved: [...involved],
+        reads: scoped.bodies.map((b) => b.id),
         run: () => this.runSolid(feature, inputs, scoped, key),
         tool: this.solidTool(feature, inputs, refKeys),
       },
@@ -3794,7 +3973,8 @@ export class RegenEngine {
       fixed.add(e.id);
       if (e.kind === 'line') fixed.add(e.start).add(e.end);
       if (e.kind === 'circle' || e.kind === 'ellipse') fixed.add(e.center);
-      if (e.kind === 'arc') fixed.add(e.center).add(e.start).add(e.end);
+      if (e.kind === 'arc' || e.kind === 'ellipticArc') fixed.add(e.center).add(e.start).add(e.end);
+      if (e.kind === 'bspline') for (const id of e.poles) fixed.add(id);
     }
     const fixes = [...fixed].map(
       (id): SketchConstraint => ({ id: `@linked:${id}`, kind: 'fix', entity: id }),
@@ -3948,7 +4128,7 @@ export class RegenEngine {
     const involved = new Set<string>();
     if (scoped.mode === 'bodies') for (const b of scoped.bodies) involved.add(b.id);
     else if (f.op !== 'new') {
-      for (const t of ctx.tainted) if (!ctx.state.bodies.has(t)) involved.add(t);
+      for (const t of ctx.tainted.keys()) if (!ctx.state.bodies.has(t)) involved.add(t);
     }
     const key = hashKey({
       t: 'import',
@@ -3966,6 +4146,7 @@ export class RegenEngine {
       plan: {
         key,
         involved: [...involved],
+        reads: scoped.bodies.map((b) => b.id),
         run: () => this.runImport(ctx, f, m, scoped, key),
       },
     };
@@ -4320,6 +4501,23 @@ export class RegenEngine {
   }
 }
 
+/** The containers an ok result sets (cause.ts touchers) and the bodies it removes. */
+function walkDelta(r: Extract<EntryResult, { ok: true }>): NonNullable<WalkEntry['delta']> {
+  const set: WalkContainer[] = r.set.map((b) => ({ id: b.id, naming: b.naming }));
+  if (r.sketch) set.push({ id: `sketch:${r.sketch.id}`, naming: r.sketch.naming });
+  if (r.plane) set.push({ id: `plane:${r.plane.id}`, naming: r.plane.naming });
+  if (r.datum) {
+    const d = r.datum;
+    set.push({
+      id: `datum:${d.id}`,
+      naming: [
+        { name: `F${d.id}:${d.kind}`, kind: d.kind === 'axis' ? 'edge' : 'vertex', index: 0 },
+      ],
+    });
+  }
+  return { set, remove: [...r.remove] };
+}
+
 function crossY(f: Frame): Vec3 {
   const y: Vec3 = [
     f.z[1] * f.x[2] - f.z[2] * f.x[1],
@@ -4391,6 +4589,26 @@ function fieldLabel(f: Feature, pointer: string): string {
     return c ? `Sketch dimension ${c.id} (${c.kind})` : 'Sketch dimension';
   }
   return FIELD_LABELS[pointer] ?? pointer;
+}
+
+const DIMENSION_LABELS: Record<string, string> = {
+  distance: 'Distance',
+  hDistance: 'Horizontal distance',
+  vDistance: 'Vertical distance',
+  length: 'Length',
+  radius: 'Radius',
+  diameter: 'Diameter',
+  angle: 'Angle',
+};
+
+/** `AttentionCause.detail` labels: sketch dimensions by kind, never by constraint id. */
+function causeLabel(f: Feature, pointer: string): string {
+  const m = /^\/constraints\/(\d+)\/value$/.exec(pointer);
+  if (m && f.type === 'sketch') {
+    const c = f.constraints[Number(m[1])];
+    return (c && DIMENSION_LABELS[c.kind]) ?? 'Dimension';
+  }
+  return fieldLabel(f, pointer);
 }
 
 /** Spare (unused by the latest regen) imported attachments kept per part, LRU. */

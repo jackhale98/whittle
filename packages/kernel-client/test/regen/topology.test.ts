@@ -196,6 +196,14 @@ describe.skipIf(!built)(`regen golden: topology changes upstream${skipNote}`, ()
     expect(u?.ref).toEqual(corner);
     expect(u?.reason).toBe('missing');
     expect(moved.features[4]?.error?.code).toBe('UNRESOLVED_REFERENCE');
+    // M3.5: the cause is the pocket sketch's dimension, two steps up the chain (cause.ts).
+    expect(u?.cause).toEqual({
+      featureId: PS,
+      kind: 'changed',
+      detail: 'horizontal distance 30 mm → 200 mm',
+    });
+    expect(moved.features[4]?.cause).toEqual(u?.cause);
+    expect(moved.features[5]?.cause).toEqual({ featureId: FI, kind: 'failed' });
     // Earlier bodies are still output: the untouched plate.
     expect(moved.bodies.map((b) => b.id)).toEqual([`B${E1}`]);
     relClose(totalVolume(moved.bodies), 40000, 1e-9);
