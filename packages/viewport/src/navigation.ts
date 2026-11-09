@@ -41,7 +41,7 @@ const NONE: ButtonMap = { drag: null, click: null };
 /**
  * Mouse button mapping per preset (button 0 = left never navigates, 1 = middle, 2 = right).
  * Right drag under `middleOrbit` pans and under `middlePan` orbits (the contract leaves right
- * drag open; see the ADR-pending entry in DECISIONS.md).
+ * drag open; see ADR-057).
  */
 export function mapMouseButton(
   preset: NavigationPreset,
