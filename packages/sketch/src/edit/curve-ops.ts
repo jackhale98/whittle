@@ -316,6 +316,7 @@ function splineEntity(
     const end = !geom.periodic && (i === 0 || i === n - 1);
     return k.point(p, end ? e.construction : true);
   });
+  const through = pieceThrough(e, geom);
   return {
     id,
     kind: 'bspline',
@@ -326,7 +327,31 @@ function splineEntity(
     ...(geom.weights ? { weights: [...geom.weights] } : {}),
     ...(geom.knots ? { knots: [...geom.knots] } : {}),
     ...(geom.multiplicities ? { multiplicities: [...geom.multiplicities] } : {}),
+    ...(through ? { through } : {}),
   };
+}
+
+/**
+ * The original's through points (ADR-050) at a piece's inner knots, in order: a piece keeps the
+ * original knot values (a closed original's may be one period on). Undefined when the original
+ * has none, or when an inner knot of the piece has no through point (then nothing is listed).
+ */
+function pieceThrough(e: SketchBSpline, piece: SplineGeom): Id[] | undefined {
+  if (!e.through) return undefined;
+  const orig = splineBasis(e.poles.length, e);
+  const knots = orig.innerKnots();
+  const T = orig.hi - orig.lo;
+  const inner = splineBasis(piece.poles.length, piece).innerKnots();
+  const out: Id[] = [];
+  for (const u of inner) {
+    const i = knots.findIndex((k) =>
+      [k, k + T, k - T].some((v) => Math.abs(v - u) <= 1e-12 * Math.max(1, Math.abs(u))),
+    );
+    const id = i >= 0 ? e.through[i] : undefined;
+    if (!id) return undefined;
+    out.push(id);
+  }
+  return out;
 }
 
 function trimSpline(k: SketchDraft, e: SketchBSpline, pick: Vec2): SketchEditResult {

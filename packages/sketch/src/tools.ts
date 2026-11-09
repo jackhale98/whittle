@@ -533,7 +533,8 @@ export function splineControlTool(
 /**
  * Spline through points (DECISIONS "Sketch B-splines"): the picked points become the through
  * points, the poles interpolate them with knots at the points (chord-length parameters), and each
- * inner through point (every one when closed) is held on the curve by `pointOn` at its knot, so
+ * inner through point (every one when closed) is listed in `through` (ADR-050) and held on the
+ * curve by `pointOn` at its knot, so
  * moving a through point reshapes the curve. An open spline's ends are its first and last poles
  * (shared with the end through points); the poles next to them are free tangent handles. Natural
  * ends (zero curvature) initially. Null when degenerate (repeated points, fewer than 2; 3 closed).
@@ -563,6 +564,7 @@ export function splineThroughTool(
     periodic: closed,
     knots: it.knots,
     multiplicities: it.multiplicities,
+    through: closed ? [...through] : through.slice(1, -1),
   });
   for (const t of closed ? through : through.slice(1, -1))
     k.constrain({ kind: 'pointOn', point: t, on: spline });
