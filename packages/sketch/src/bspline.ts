@@ -5,15 +5,19 @@
  * thread. The conventions here are the ones the kernel uses for exact OCCT edges
  * (`Geom_BSplineCurve(poles, weights, knots, multiplicities, degree, periodic)`):
  *
- *  - **Clamped (non-periodic)**, n poles, degree p (1 ≤ p ≤ n − 1). Default knots 0, 1, …, n − p
- *    with multiplicities p + 1, 1, …, 1, p + 1 (uniform clamped). The curve starts at the first
+ *  - **Clamped (non-periodic)**, n poles, degree p (1 ≤ p ≤ n − 1). Default knots i / (n − p),
+ *    i = 0…n − p, with multiplicities p + 1, 1, …, 1, p + 1 (uniform clamped, domain [0, 1]). The curve starts at the first
  *    pole and ends at the last. Given knots must be strictly increasing with end multiplicities
  *    p + 1, interior ones 1…p, and Σ multiplicities = n + p + 1.
- *  - **Periodic (closed)**, n poles (n ≥ p + 1). Default knots 0, 1, …, n with every
- *    multiplicity 1 (uniform periodic; the period is knots[last] − knots[0]). The first and last
+ *  - **Periodic (closed)**, n poles (n ≥ p + 1). Default knots i / n, i = 0…n, every
+ *    multiplicity 1 (uniform periodic, domain [0, 1]; the period is knots[last] − knots[0]). The first and last
  *    multiplicities must be 1 and Σ multiplicities − last = n. The span [k0, k1] uses poles
  *    0…p (OCCT's and planegcs' convention), so a uniform cubic starts at (P0 + 4 P1 + P2) / 6.
- *  - **Weights** omitted = all 1 (non-rational). Given weights must be positive, one per pole.
+ *  - **Weights** omitted = all 1 (non-rational); all equal is non-rational too. Given weights
+ *    must be positive, one per pole.
+ *
+ * These are ADR-048's conventions (modeling workstream), which ADR-pending "Sketch B-splines"
+ * confirms.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
@@ -44,11 +48,11 @@ export function defaultKnots(
   periodic: boolean,
 ): { knots: number[]; multiplicities: number[] } {
   if (periodic) {
-    const knots = Array.from({ length: n + 1 }, (_, i) => i);
+    const knots = Array.from({ length: n + 1 }, (_, i) => i / n);
     return { knots, multiplicities: knots.map(() => 1) };
   }
   const spans = Math.max(1, n - degree);
-  const knots = Array.from({ length: spans + 1 }, (_, i) => i);
+  const knots = Array.from({ length: spans + 1 }, (_, i) => i / spans);
   const multiplicities = knots.map((_, i) => (i === 0 || i === spans ? degree + 1 : 1));
   return { knots, multiplicities };
 }
@@ -101,12 +105,16 @@ export function flatKnots(knots: readonly number[], mults: readonly number[]): n
 }
 
 /** Distinct knots and multiplicities of a flat knot vector (values within `eps` merge). */
-export function compressKnots(flat: readonly number[], eps = 0): { knots: number[]; mults: number[] } {
+export function compressKnots(
+  flat: readonly number[],
+  eps = 0,
+): { knots: number[]; mults: number[] } {
   const knots: number[] = [];
   const mults: number[] = [];
   for (const k of flat) {
     const last = knots[knots.length - 1];
-    if (last !== undefined && Math.abs(k - last) <= eps) mults[mults.length - 1] = (mults[mults.length - 1] as number) + 1;
+    if (last !== undefined && Math.abs(k - last) <= eps)
+      mults[mults.length - 1] = (mults[mults.length - 1] as number) + 1;
     else {
       knots.push(k);
       mults.push(1);
@@ -150,7 +158,7 @@ export class SplineBasis {
     this.knots = def.knots ?? (dk as { knots: number[] }).knots;
     this.mults = def.multiplicities ?? (dk as { multiplicities: number[] }).multiplicities;
     const w = def.weights;
-    this.weights = w && w.some((x) => x !== 1) ? Float64Array.from(w) : null;
+    this.weights = w?.some((x) => x !== w[0]) ? Float64Array.from(w) : null;
     if (def.periodic) {
       const T = (this.knots[this.knots.length - 1] as number) - (this.knots[0] as number);
       const s = flatKnots(this.knots.slice(0, -1), this.mults.slice(0, -1));
@@ -438,8 +446,10 @@ function solveDense(A: Float64Array, B: Float64Array, n: number): Float64Array |
     for (let r = c + 1; r < n; r++) {
       const f = (a[r * n + c] as number) / d;
       if (f === 0) continue;
-      for (let k = c; k < n; k++) a[r * n + k] = (a[r * n + k] as number) - f * (a[c * n + k] as number);
-      for (let k = 0; k < 2; k++) b[r * 2 + k] = (b[r * 2 + k] as number) - f * (b[c * 2 + k] as number);
+      for (let k = c; k < n; k++)
+        a[r * n + k] = (a[r * n + k] as number) - f * (a[c * n + k] as number);
+      for (let k = 0; k < 2; k++)
+        b[r * 2 + k] = (b[r * 2 + k] as number) - f * (b[c * 2 + k] as number);
     }
   }
   const x = new Float64Array(n * 2);
@@ -566,7 +576,10 @@ export function interpolate(
   }
   const x = solveDense(A, B, n);
   if (!x) return null;
-  const poles = Array.from({ length: n }, (_, i): Vec2 => [x[i * 2] as number, x[i * 2 + 1] as number]);
+  const poles = Array.from(
+    { length: n },
+    (_, i): Vec2 => [x[i * 2] as number, x[i * 2 + 1] as number],
+  );
   poles[0] = pts[0] as Vec2;
   poles[n - 1] = pts[m - 1] as Vec2;
   return { poles, degree: p, knots: t, multiplicities: mults, params: t };
@@ -592,7 +605,8 @@ function putDerivative(
 function besselTangent(pts: readonly Vec2[], t: readonly number[], end: 0 | 1): Vec2 {
   const m = pts.length;
   const P = (i: number) => pts[end === 0 ? i : m - 1 - i] as Vec2;
-  const T = (i: number) => Math.abs((t[end === 0 ? i : m - 1 - i] as number) - (t[end === 0 ? 0 : m - 1] as number));
+  const T = (i: number) =>
+    Math.abs((t[end === 0 ? i : m - 1 - i] as number) - (t[end === 0 ? 0 : m - 1] as number));
   const s = end === 0 ? 1 : -1;
   const d01 = sub2(P(1), P(0));
   if (m < 3) return [(s * d01[0]) / T(1), (s * d01[1]) / T(1)];
@@ -702,11 +716,7 @@ function insertKnot(f: OpenForm, u: number, target: number) {
         const a = (u - (f.flat[i] as number)) / ((f.flat[i + p] as number) - (f.flat[i] as number));
         const P = f.cw[i] as [number, number, number];
         const Q = f.cw[i - 1] as [number, number, number];
-        out.push([
-          a * P[0] + (1 - a) * Q[0],
-          a * P[1] + (1 - a) * Q[1],
-          a * P[2] + (1 - a) * Q[2],
-        ]);
+        out.push([a * P[0] + (1 - a) * Q[0], a * P[1] + (1 - a) * Q[1], a * P[2] + (1 - a) * Q[2]]);
       }
     }
     f.cw = out;
@@ -846,12 +856,12 @@ export function sampleParams(g: SplineGeom, tol = 0.01, maxSegments = 2048): num
 }
 
 const GL_X = [
-  -0.9602898564975363, -0.7966664774136267, -0.5255324099163290, -0.1834346424956498,
+  -0.9602898564975363, -0.7966664774136267, -0.525532409916329, -0.1834346424956498,
   0.1834346424956498, 0.525532409916329, 0.7966664774136267, 0.9602898564975363,
 ];
 const GL_W = [
-  0.1012285362903763, 0.2223810344533745, 0.3137066458778873, 0.3626837833783620,
-  0.362683783378362, 0.3137066458778873, 0.2223810344533745, 0.1012285362903763,
+  0.1012285362903763, 0.2223810344533745, 0.3137066458778873, 0.362683783378362, 0.362683783378362,
+  0.3137066458778873, 0.2223810344533745, 0.1012285362903763,
 ];
 
 /** Gauss–Legendre (8 points) of `fn` over [a, b]. */
@@ -899,7 +909,8 @@ export function splineAreaIntegral(g: SplineGeom, a: number, b: number): number 
     if (!rational) s += gauss8(f, lo, hi);
     else {
       // Rational: subdivide for accuracy.
-      for (let j = 0; j < 8; j++) s += gauss8(f, lo + ((hi - lo) * j) / 8, lo + ((hi - lo) * (j + 1)) / 8);
+      for (let j = 0; j < 8; j++)
+        s += gauss8(f, lo + ((hi - lo) * j) / 8, lo + ((hi - lo) * (j + 1)) / 8);
     }
   }
   return s;

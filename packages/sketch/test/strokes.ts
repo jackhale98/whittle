@@ -368,7 +368,14 @@ export function genEllipse(rng: Rng, ratio = range(rng, 1.4, 3)): Generated {
   const c = origin(rng);
   const b = range(rng, 15, 35);
   const rotation = range(rng, 0, Math.PI);
-  const path = arcPath(c, b * ratio, b, rotation, range(rng, 0, 2 * Math.PI), (rng() < 0.5 ? 1 : -1) * (2 * Math.PI + 4 * DEG));
+  const path = arcPath(
+    c,
+    b * ratio,
+    b,
+    rotation,
+    range(rng, 0, 2 * Math.PI),
+    (rng() < 0.5 ? 1 : -1) * (2 * Math.PI + 4 * DEG),
+  );
   return {
     label: 'ellipse',
     note: `ellipse ${ratio.toFixed(2)}:1 at ${(rotation / DEG).toFixed(0)}°`,
@@ -381,8 +388,8 @@ export function genEllipse(rng: Rng, ratio = range(rng, 1.4, 3)): Generated {
 export function genWave(rng: Rng): Generated {
   const o = origin(rng);
   const len = range(rng, 70, 140);
-  const amp = range(rng, 0.12, 0.25) * len;
-  const waves = 0.75 + rng() * 0.75;
+  const amp = range(rng, 0.08, 0.2) * len;
+  const waves = 0.75 + rng() * 0.5;
   const angle = range(rng, 0, Math.PI);
   const ph = range(rng, 0, Math.PI / 2);
   const path: Vec2[] = [];

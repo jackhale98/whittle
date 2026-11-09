@@ -186,7 +186,9 @@ export function ellipsePoint(g: EllipseGeom, t: number): Vec2 {
 /** Eccentric angle of a point (exact for points on the ellipse), in [0, 2π). */
 export function ellipseParam(g: EllipseGeom, p: Vec2): number {
   const d = sub(p, g.c);
-  return angle0(Math.atan2(dot(d, g.v) / Math.max(g.b, 1e-300), dot(d, g.u) / Math.max(g.a, 1e-300)));
+  return angle0(
+    Math.atan2(dot(d, g.v) / Math.max(g.b, 1e-300), dot(d, g.u) / Math.max(g.a, 1e-300)),
+  );
 }
 
 export function ellipticArcGeom(index: EntityIndex, e: SketchEllipticArc): EllipticArcGeom {
@@ -333,7 +335,6 @@ export function refineCurveParam(curve: ParamCurve, p: Vec2, tIn: number): numbe
   }
   return t;
 }
-
 
 // ---------------------------------------------------------------------------------------------
 // Sampling (overlays, kernel wires)
@@ -522,7 +523,12 @@ export function closestOnEntity(index: EntityIndex, e: SketchEntity, p: Vec2): V
       const g = ellipticArcGeom(index, e);
       if (!(g.a > 0) || !(g.b > 0)) return g.start;
       // Closest on the whole ellipse; outside the arc's sweep, the nearer end.
-      const full: ParamCurve = { ...(paramCurve(index, e) as ParamCurve), t0: 0, t1: TAU, closed: true };
+      const full: ParamCurve = {
+        ...(paramCurve(index, e) as ParamCurve),
+        t0: 0,
+        t1: TAU,
+        closed: true,
+      };
       const t = closestParam(full, p);
       if (angle0(t - g.t0) <= g.sweep) return full.at(t);
       return dist(p, g.start) <= dist(p, g.end) ? g.start : g.end;

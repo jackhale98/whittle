@@ -9,7 +9,14 @@ import { closestParam, indexEntities, type ParamCurve, paramCurve } from '../src
 import type { SketchBuilder } from './helpers';
 
 export type CurveKind = 'line' | 'circle' | 'arc' | 'ellipse' | 'ellipticArc' | 'bspline';
-export const CURVE_KINDS: CurveKind[] = ['line', 'circle', 'arc', 'ellipse', 'ellipticArc', 'bspline'];
+export const CURVE_KINDS: CurveKind[] = [
+  'line',
+  'circle',
+  'arc',
+  'ellipse',
+  'ellipticArc',
+  'bspline',
+];
 export const OPEN_KINDS: CurveKind[] = ['line', 'arc', 'ellipticArc', 'bspline'];
 
 const rot = (p: Vec2, a: number): Vec2 => [

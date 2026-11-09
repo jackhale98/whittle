@@ -44,7 +44,11 @@ export class GcsSession {
     const map = new Int32Array(x.length).fill(-1);
     // Spline curve parameters first: constraints refer to them by name.
     for (const g of model.gcsParams) {
-      const at = w.push_sketch_param(g.name, g.idx >= 0 ? (x[g.idx] as number) : g.value, g.idx < 0);
+      const at = w.push_sketch_param(
+        g.name,
+        g.idx >= 0 ? (x[g.idx] as number) : g.value,
+        g.idx < 0,
+      );
       if (g.idx >= 0) map[g.idx] = at;
     }
     for (const p of model.primitives) w.push_primitive(withPositions(p, model, x));

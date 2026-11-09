@@ -78,7 +78,9 @@ describe('drag performance with splines', () => {
       expect(last.status).toBe('solved');
     }
     // The dragged spline's other through points stay put.
-    others.forEach((id, i) => expect(pos(last, id)).toEqual(before[i]));
+    others.forEach((id, i) => {
+      expect(pos(last, id)).toEqual(before[i]);
+    });
     const end = solver.endDrag(session);
     expect(end.status).toBe('solved');
     times.sort((a, b) => a - b);

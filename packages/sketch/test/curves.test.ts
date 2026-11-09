@@ -7,9 +7,8 @@
 
 import type { Id, SketchSolveResult, Vec2 } from '@wren-cad/contracts';
 import { describe, expect, it } from 'vitest';
-import { interpolate } from '../src/bspline';
+import { interpolate, splinePoint } from '../src/bspline';
 import { closestParam, indexEntities, paramCurve, splineGeom } from '../src/geometry';
-import { splinePoint } from '../src/bspline';
 import {
   CURVE_KINDS,
   type CurveKind,
@@ -22,9 +21,10 @@ import {
 import { core, entity, pos, SketchBuilder } from './helpers';
 
 const solved = (r: SketchSolveResult, what = '') => {
-  expect(r.status, `${what} ${r.error ?? ''} ${r.conflicts.map((c) => c.explanation).join('; ')}`).toBe(
-    'solved',
-  );
+  expect(
+    r.status,
+    `${what} ${r.error ?? ''} ${r.conflicts.map((c) => c.explanation).join('; ')}`,
+  ).toBe('solved');
 };
 
 /** A through-point spline the way the tool builds it (end poles shared, inner points at knots). */
@@ -112,9 +112,9 @@ describe('ellipses and elliptic arcs', () => {
     const p = b.point(30, 0);
     b.dim({ kind: 'distance', a: p, b: e }, 3);
     const bad = (await core()).solve(b.input());
-    expect(bad.conflicts.some((k) => k.kind === 'unsupported' && /centre/.test(k.explanation))).toBe(
-      true,
-    );
+    expect(
+      bad.conflicts.some((k) => k.kind === 'unsupported' && /centre/.test(k.explanation)),
+    ).toBe(true);
   });
 
   it('point on an elliptic arc, equal elliptic arcs, concentric', async () => {
@@ -221,7 +221,9 @@ describe('B-splines through points', () => {
     solved(res);
     expect(res.dof).toBe(2 * through.length + 4);
     // Nothing moved: the tool's geometry already satisfies the interpolation.
-    through.forEach((t, i) => expect(pos(res, t)).toEqual(pts[i]));
+    through.forEach((t, i) => {
+      expect(pos(res, t)).toEqual(pts[i]);
+    });
     expect(res.entityDof[s]).toBe('free');
   });
 

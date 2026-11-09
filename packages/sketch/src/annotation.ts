@@ -171,18 +171,31 @@ function readable(d: Vec2): Vec2 {
 // Linear
 // ---------------------------------------------------------------------------------------------
 
+/** Where an extension line starts, given the dimension-line end it runs to. */
+type Origin = Vec2 | ((to: Vec2) => Vec2);
+
 /**
  * A linear dimension measuring along unit `d` between anchors `A` and `B` (points on the
- * measured carriers); `oa`/`ob` are where the real geometry is (extension lines start there).
+ * measured carriers); `oa`/`ob` are where the real geometry is (extension lines start there;
+ * a function picks the nearest point of a line's extent to the dimension line).
  */
-function linear(A: Vec2, B: Vec2, d: Vec2, L: Vec2, o: Opts, oa = A, ob = B): DimensionAnnotation {
+function linear(
+  A: Vec2,
+  B: Vec2,
+  d: Vec2,
+  L: Vec2,
+  o: Opts,
+  oa: Origin = A,
+  ob: Origin = B,
+): DimensionAnnotation {
   const n = perp(d);
   const a1 = add(A, scale(n, dot(sub(L, A), n)));
   const b1 = add(B, scale(n, dot(sub(L, B), n)));
+  const at = (org: Origin, to: Vec2): Vec2 => (typeof org === 'function' ? org(to) : org);
   const extensions: [Vec2, Vec2][] = [];
   for (const [from, to] of [
-    [oa, a1],
-    [ob, b1],
+    [at(oa, a1), a1],
+    [at(ob, b1), b1],
   ] as const) {
     const e = sub(to, from);
     const el = len(e);
@@ -221,7 +234,7 @@ function linear(A: Vec2, B: Vec2, d: Vec2, L: Vec2, o: Opts, oa = A, ob = B): Di
     arcs: [],
     arrows,
     text: { at: L, dir: readable(d) },
-    arrowsOutside: outside && fits === false ? true : outside,
+    arrowsOutside: outside,
   };
 }
 
@@ -326,7 +339,8 @@ function angular(
   if (!inSector(start)) {
     const pastEnd = angle0(tl - end);
     const beforeStart = angle0(start - tl);
-    if (pastEnd <= beforeStart) arcs.push({ center: O, radius: R, start: angle0(end), sweep: pastEnd });
+    if (pastEnd <= beforeStart)
+      arcs.push({ center: O, radius: R, start: angle0(end), sweep: pastEnd });
     else arcs.push({ center: O, radius: R, start: tl, sweep: beforeStart });
   }
   // Extension lines along each ray when the arc lies beyond the line's extent on that ray.
@@ -376,8 +390,9 @@ function angular(
 // ---------------------------------------------------------------------------------------------
 
 /**
- * Where a dimension is measured: the default label placement (and the reference for `dragLabel`).
- * Null when the dimension's geometry isn't drawable (unknown entities, degenerate lines).
+ * The drawing geometry of dimension `c` on solved `entities` (the origin and axes may be
+ * referenced). `value` is its value (mm / rad; angles need it for the sector). Null when the
+ * geometry isn't drawable (unknown entities, coincident points, parallel lines for an angle).
  */
 export function dimensionAnnotation(
   entities: readonly SketchEntity[],
@@ -412,9 +427,9 @@ export function dimensionAnnotation(
         // The major radius: a leader along the major axis, on the label's side.
         const g = ellipseGeom(index, e);
         const side = dot(sub(L, g.c), g.u) >= 0 ? 1 : -1;
-        const tip = add(g.c, scale(g.u, side * g.a));
-        const along = add(g.c, scale(g.u, side * dot(sub(L, g.c), g.u)));
-        return radial({ c: g.c, r: g.a }, dist(along, g.c) > 0 ? along : tip, c.kind === 'diameter', o);
+        const along = add(g.c, scale(g.u, Math.max(Math.abs(dot(sub(L, g.c), g.u)), 1e-9) * side));
+        const ann = radial({ c: g.c, r: g.a }, along, c.kind === 'diameter', o);
+        return { ...ann, text: { ...ann.text, at: L } };
       }
       return null;
     }
@@ -470,10 +485,24 @@ function acrossLines(
   const B = foot(lb, L);
   if (dist(A, B) < 1e-12) return null;
   const d = normalize(sub(B, A));
-  return linear(A, B, d, L, o, nearestOnLine(ia, la, A), nearestOnLine(ib, lb, B));
+  return linear(
+    A,
+    B,
+    d,
+    L,
+    o,
+    (to) => nearestOnLine(ia, la, to),
+    (to) => nearestOnLine(ib, lb, to),
+  );
 }
 
-function distanceAnnotation(index: Index, a: Id, b: Id, L: Vec2, o: Opts): DimensionAnnotation | null {
+function distanceAnnotation(
+  index: Index,
+  a: Id,
+  b: Id,
+  L: Vec2,
+  o: Opts,
+): DimensionAnnotation | null {
   const ea = index.get(a);
   const eb = index.get(b);
   if (!ea || !eb) return null;
@@ -500,7 +529,7 @@ function distanceAnnotation(index: Index, a: Id, b: Id, L: Vec2, o: Opts): Dimen
     if (dist(P, F) < 1e-12) return null;
     const d = normalize(sub(F, P));
     const A = round ? add(P, scale(d, round.r)) : P;
-    return linear(A, F, d, L, o, A, nearestOnLine(lid, l, F));
+    return linear(A, F, d, L, o, A, (to) => nearestOnLine(lid, l, to));
   }
   // Ellipse and its centre: the minor radius along the minor axis, on the label's side.
   for (const [p, q] of [

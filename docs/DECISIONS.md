@@ -1701,3 +1701,74 @@ Modeling workstream. The kernel and sketch workstreams should confirm or amend t
   - Proposed for packages/sketch `convertEntities` / `reprojectLinked`: create and follow `SketchEllipse`, `SketchEllipticArc` and `SketchBSpline` linked entities from those curves.
   - Until then, the engine's own fallback re-projects linked entities of these kinds in place. A spline whose source gains or loses poles is lost (needs attention), never refitted.
 
+## ADR-pending — Sketch B-splines: knots, periodic form, splines through points (M3.5, sketch workstream)
+
+Confirms ADR-048's knot convention and decides how a spline drawn through points behaves (ADR-046 left that to the sketch workstream). packages/sketch `src/bspline.ts`; its de Boor matches kernel-client's `regen/curves.ts` to 1e-9 (clamped, periodic, rational, explicit knots).
+
+- **Knots, multiplicities, weights (normative for the kernel).** `knots` are distinct and strictly increasing; `multiplicities` go with them (both or neither; the solver refuses one without the other).
+  - Open splines are clamped: end multiplicities p + 1, interior 1…p, Σ multiplicities = n + p + 1, n ≥ p + 1. Default: knots i/(n − p), i = 0…n − p, multiplicities p + 1, 1, …, 1, p + 1.
+  - Periodic splines: n ≥ p + 1 poles, Σ multiplicities − last = n, first and last multiplicity 1, interior ≤ p. Default: knots i/n, i = 0…n, all 1. Domain [knots₀, knots_last] ([0, 1] by default).
+  - Weights omitted, or all equal: non-rational. Otherwise one positive weight per pole.
+- **Periodic form.** Flat knots: the p knots of the previous period before knots₀, one period, then p + 1 knots of the next period. Unwrapped control points are poles 0…n − 1, then 0…p − 1 again. The span [k₀, k₁] uses poles 0…p, so a uniform cubic starts at (P₀ + 4P₁ + P₂)/6. planegcs 1.3.0 gives the same point (measured), and so does OCCT `Geom_BSplineCurve(…, periodic = true)` from the same arrays (via `BSplCLib::PoleIndex`). The kernel goldens should confirm the OCCT side.
+- **Splines through points: the solver holds the interpolation exactly.**
+  - The tool (and the Pencil) interpolate with knots *at* the through points' chord-length parameters (normalised to [0, 1]). So every through point sits at a knot.
+  - Open: n = m + p − 1 poles. The end through points *are* the end poles (shared ids), and every inner through point has `pointOn` the spline. For a cubic the poles next to the ends are free **tangent handles**, starting at Bessel end tangents (the parabola through the first or last three points). Other degrees start with vanishing higher end derivatives.
+  - Closed: periodic, n = m poles, every through point at a knot (`pointOn`), no handles.
+  - In the solver, a `pointOn` on a spline with explicit `knots` whose point is (within 1e-6 × the sketch size) at an inner knot is a **knot point**: its curve parameter is that knot, fixed. Any other `pointOn` on a spline has a free curve parameter, so the point slides. On a clamped spline, past the ends, the curve continues polynomially (the carrier convention lines and arcs already follow).
+  - With knot parameters fixed, the derived (non-handle) poles are a linear function of the through points and the handles. When nothing else constrains them, the solver solves them **downstream** (`offsetSplit`, generalised from offsets). Everything else solves first, without them, so dragging a through point moves only that point and reshapes its spline. The other through points stay put to the bit, and dragging back restores the original curve. Otherwise everything solves together.
+  - DOF: open cubic through m points = 2m + 4 (the points plus the two handles); closed = 2m.
+  - Rejected: free curve parameters for through points. They drift with every drag, make the other through points move, and leave the spline never fully defined. Recomputing the poles in the tool on every edit was rejected too: the solver couldn't drag or dimension a through point, and other constraints couldn't act on the shape.
+- **Proposed contract change.** The knot-point rule is geometric: a through point moved off its knot without a solve stops being one. Make it explicit with `SketchBSpline.through?: Id[]`, the through points in order (the i-th at the i-th inner knot, or at knots 0…n − 1 when periodic). Until then the geometric rule applies.
+
+## ADR-pending — Sketch curves in the solver (M3.5, sketch workstream)
+
+packages/sketch `src/model.ts`, `src/gcs.ts`, `src/solver.ts`. Our own residual rows stay the truth (verification, DOF, conflicts). planegcs solves where it can express the rows. Rows it can't express are marked `gcs: false` and finished by Newton on our rows (`polish`, ≤ 30 steps; ≤ 12 per drag frame).
+
+- **Parameters.** Ellipses and elliptic arcs use planegcs' parametrisation: centre, focus and minor radius. An elliptic arc's start and end are points with internal on-ellipse rows (focal sum); planegcs uses `arc_of_ellipse` + `arc_of_ellipse_rules`. A spline has no parameters of its own (its poles are points). A free spline curve parameter is a model parameter mapped to a planegcs sketch parameter (`point_on_bspline`). A tangency between curves that share no point gets an internal contact point. Unconstrained DOF: ellipse 5, elliptic arc 7, spline 2 × poles.
+- **Point on**: lines, circles, arcs (as before), ellipses and elliptic arcs (their ellipse), splines (above).
+- **Tangent, every pair.** Lines run start → end, circles and conics CCW, splines with increasing u. These are planegcs' normal conventions, measured.
+  - **At a shared point** (shared or coincident ends, or a point held on both), the row is regular: sin of the angle between the tangents at the joint (G1, either sense). A spline end's tangent is its end leg (P₁ − P₀). planegcs: lines and spline end legs use `parallel` (helper lines) and `perpendicular_pppp` against circles. Conics and points on splines use `angle_via_point` / `angle_via_point_and_param` at 0 or π, chosen from the current geometry.
+  - **Elsewhere**, between two lines/circles/arcs: as before. Any pair involving an ellipse, elliptic arc or spline gets a contact point on both curves where the tangents are parallel, seeded at the curves' closest approach. Like lines and arcs, this holds on the carrier (a spline's polynomial continuation).
+- **Curvature (G2)** = tangent at the shared point plus equal curvature vectors there (one row: their difference along A's normal, scaled to mm). Curvature vectors: lines 0; circles (c − P)/r²; ellipses ab/(r₁r₂)^{3/2} along the focal bisector; splines (C″ − (C″·T)T)/|C′|². Against a line, the row is the spline's third pole on its end leg's line (planegcs `point_on_line_ppp`). Otherwise there is no planegcs counterpart and Newton finishes it. Refused as `unsupported`, never dropped: no shared point ("…needs Spline 1 and Line 1 to share an end point"), no spline on either side. A tangent at the same joint is redundant, not a conflict.
+- **Ellipse dimensions.** `radius` / `diameter` on an ellipse or elliptic arc dimension the **major** radius (Newton-finished: planegcs 1.3.0's `internal_alignment_point2ellipse` ignores its alignment type, measured). A `distance` from an ellipse's own centre to it is the **minor** radius (planegcs `equal` on its minor radius). Other point–ellipse and spline distances are refused. Pole-to-pole distances are point distances. Proposed contract change: `radius`/`diameter` `axis?: 'major' | 'minor'`, to make both explicit.
+- **Equal** between ellipses and elliptic arcs: equal minor radii plus equal centre–focus distances (planegcs' `equal_radii_ee` rejects arcs of ellipses).
+- **Drags.** Ellipses and elliptic arcs: the centre near it, else the grabbed curve point follows the cursor. Splines: the curve point at the grabbed parameter follows the cursor. Through points: see "Sketch B-splines". Budget: 200 entities with 20 through-point splines, median 1.4 ms per drag solve (test/drag-splines.test.ts).
+- **Conflicts.** `entities` lists the user geometry the set's constraints act on (and the fixed or linked geometry that makes it conflict), never the origin or axes. `constraints` are in sketch order. `fixes[0]` removes the **most recently added** member (last by position); that is also the constraint the relaxed solution leaves out. Value changes and "make reference" follow it. Invalid or inexpressible constraints are `kind: 'unsupported'`. A `failed` result carries `error`, worded with entity names ("Spline 1: a degree-3 spline needs at least 4 control points"), and so do the explanations.
+
+## ADR-pending — Pencil ovals and splines (M3.5, sketch workstream)
+
+packages/sketch `src/recognize.ts`.
+
+- **Ellipse.** A closed stroke that is not a circle is fitted with the centre and axes from its principal axes, and the radii by least squares on (x/a)² + (y/b)² = 1. It is an `ellipse` when the RMS / worst geometric deviation ≤ 4% / 12% of b and **a/b ≥ 1.25**. Circles keep the aspect ≤ 1.2 gate, so nearly round strokes are never ellipses. Rectangles fail the fit.
+- **Spline.** A cubic through 4–12 evenly spaced fit points (5–14 closed; ends exact; inner points averaged with their neighbours) must follow the stroke within 2% of its length. Splines are tried only for strokes with curved pieces, closed non-circles, or ≥ 3 straight pieces **without a sharp corner**. A corner is sharp when ShortStraw's straw drops below 0.75 of its median: drawn corners measured ≤ 0.65, smooth bends ≥ 0.79. The spline must also fit no worse than the pieces' lines, or within hand noise with at most one point more than the polyline's vertices. A smooth stroke that fails all this stays a polyline (the old fallback).
+- Results: the 30- and 300-stroke corpora stay at 100%, and the shaky corpus at 98.3%. Its misses are shaky short arcs, now read as splines rather than polylines. Ellipses: all 24 tested; shaky ovals ≥ 90%. Waves: ≥ 90% with a normal hand and ≥ 75% shaky; the rest stay polylines. Frozen fixtures: test/fixtures/m35-strokes.json, from the seeded pen model (no real pen recordings were available).
+- `strokeFragment`: ellipse → centre point + ellipse; spline → the through-point spline tool.
+
+## ADR-pending — Editing the new curves (M3.5, sketch workstream)
+
+packages/sketch `src/edit/curve-ops.ts`, `trim.ts`, `mirror.ts`, `offset.ts`, `convert.ts`.
+
+- **Intersections** of any two curves: crossings of their samplings refined by Newton on the exact curves. Tangential touches are not cut points. Lines, arcs and circles now also stop at ellipses, elliptic arcs and splines.
+- **Trim.** An ellipse needs two cuts and becomes an elliptic arc (same id). An elliptic arc shortens or splits like an arc. The split-off piece shares the centre and is tied by `equal` + `pointOn`; its rotation is otherwise free.
+- A spline **splits by knot insertion** (Boehm). The curve is unchanged, and the pieces keep the original knot values, so through points stay at their knots (and keep reshaping their piece). The piece that keeps an original end keeps its end pole; other poles are new. Through points on a removed part lose their `pointOn` (noted). A closed spline needs two cuts and becomes open (same id).
+- **Extend.** Elliptic arcs extend along their ellipse. Splines and ellipses are refused with the reason.
+- **Mirror.** Ellipses (`equal`; the rotation isn't tied, and a note says so), elliptic arcs (reversed sense, `equal`), splines (poles mirrored in order, same knots and weights; symmetric poles tie the whole curve).
+- **Offset** refuses ellipses, elliptic arcs and splines: their offsets are not curves of the same kind, and Wren doesn't approximate them.
+- **Fillet / chamfer** stay lines and arcs ("A corner is where two lines or arcs meet").
+- **Convert Entities** (ADR-048's proposal, done). `ProjectedCurve` gains `ellipse`, `ellipticArc` (ends as points, CCW) and `bspline` (`SketchBSpline` fields, poles as coordinates). They become exact linked entities and are followed in place. A spline whose source gains or loses poles, or turns into another kind, is reported `lost` (needs attention) and never refitted; Re-pick refuses it with the reason.
+
+## ADR-pending — Sketch regions in TypeScript (M3.5, sketch workstream)
+
+packages/sketch `src/regions.ts`, `sketchRegions(entities)`. The kernel's regions (General Fuse + BOPAlgo_BuilderFace) stay the truth for profiles. This mirrors their rule for previews, picking and tests. Regions are the bounded faces of the arrangement of every non-construction curve. Curves are split where they cross or an end lies on them, within 1e-6 × the sketch size (the kernel's fuzzy value). Dangling pieces are dropped, and faces are traced on the half-edge graph. Outer loops are counter-clockwise; nested loops are holes and also regions of their own. Areas are exact per piece by Green's theorem: closed forms for lines and arcs, Gauss–Legendre per knot span for splines (exact to degree 8 when non-rational), per eighth turn for ellipses. They match a dense-polygon reference to ≤ 1e-6 relative.
+
+## ADR-pending — Dimension annotations (M3.5, owner request, sketch workstream)
+
+packages/sketch `src/annotation.ts`, `dimensionAnnotation(entities, constraint, value, options) → DimensionAnnotation` in sketch mm. The UI draws it, and dragging the label changes only `DimensionConstraint.label`.
+
+- **Linear.** `distance` (an ellipse's minor radius too, along its minor axis), `length`, `hDistance` (x), `vDistance` (y), and line and circle `offset`s give extension lines (1 mm gap, 1.5 mm overshoot by default) and a dimension line through the label with two arrows. Measurement is aligned for point–point and length, across the line for point–line and line–line, and axis-parallel for h/v. An extension starts at the nearest point of a line's extent, not at the foot point. A label beyond the extensions pulls the dimension line out to it.
+- **Radial.** `radius` and `diameter` draw a leader along the line through the centre towards the label. An arc gets an extension arc when the leader leaves its sweep. On ellipses the leader runs along the major axis.
+- **Angular.** An arc at the label's distance from the lines' intersection. A label in the vertical sector shows the same angle there. A label outside the sector gets an extension arc. Extension lines are drawn where the arc lies beyond a line.
+- **Arrows flip outside** (same tips, pointing in, with stubs) when the space can't hold the text (default 8 mm) plus two arrowheads.
+- `dragDimensionLabel` keeps an h/v distance's text clear of its points' span, on the side it was dragged to. The dimension line then never crosses the measured geometry, and the placement still reads as horizontal or vertical.
+- Proposed contract addition, if the type is shared beyond packages/sketch: `DimensionAnnotation` (extensions, lines, arcs, arrows, text, arrowsOutside) in contracts/sketch.ts. For now it is exported from `@wren-cad/sketch`.
+

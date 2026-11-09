@@ -65,8 +65,22 @@ export class SketchBuilder {
     this.entities.push({ id, kind: 'arc', construction: false, center, start, end });
     return id;
   }
-  ellipse(center: Id, majorRadius: number, minorRadius: number, rotation = 0, id = this.id('e')): Id {
-    this.entities.push({ id, kind: 'ellipse', construction: false, center, majorRadius, minorRadius, rotation });
+  ellipse(
+    center: Id,
+    majorRadius: number,
+    minorRadius: number,
+    rotation = 0,
+    id = this.id('e'),
+  ): Id {
+    this.entities.push({
+      id,
+      kind: 'ellipse',
+      construction: false,
+      center,
+      majorRadius,
+      minorRadius,
+      rotation,
+    });
     return id;
   }
   /** Elliptic arc; `start`/`end` are placed on the ellipse at eccentric angles t0/t1 when numbers. */
@@ -94,7 +108,13 @@ export class SketchBuilder {
   }
   bspline(
     poles: Id[],
-    options: { degree?: number; periodic?: boolean; knots?: number[]; multiplicities?: number[]; weights?: number[] } = {},
+    options: {
+      degree?: number;
+      periodic?: boolean;
+      knots?: number[];
+      multiplicities?: number[];
+      weights?: number[];
+    } = {},
     id = this.id('s'),
   ): Id {
     this.entities.push({

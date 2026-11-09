@@ -49,12 +49,13 @@ function sampledArea(g: SplineGeom, a: number, b: number, n = 20000): number {
 describe('B-spline conventions', () => {
   it('default knots: uniform clamped and uniform periodic', () => {
     expect(defaultKnots(4, 3, false)).toEqual({ knots: [0, 1], multiplicities: [4, 4] });
+    // ADR-048: domain [0, 1].
     expect(defaultKnots(6, 3, false)).toEqual({
-      knots: [0, 1, 2, 3],
+      knots: [0, 1 / 3, 2 / 3, 1],
       multiplicities: [4, 1, 1, 4],
     });
     expect(defaultKnots(5, 3, true)).toEqual({
-      knots: [0, 1, 2, 3, 4, 5],
+      knots: [0, 0.2, 0.4, 0.6, 0.8, 1],
       multiplicities: [1, 1, 1, 1, 1, 1],
     });
   });
@@ -69,7 +70,12 @@ describe('B-spline conventions', () => {
       /weights/,
     );
     expect(
-      splineDefError(4, { degree: 3, periodic: true, knots: [0, 1, 2, 3, 4], multiplicities: [1, 1, 1, 1, 1] }),
+      splineDefError(4, {
+        degree: 3,
+        periodic: true,
+        knots: [0, 1, 2, 3, 4],
+        multiplicities: [1, 1, 1, 1, 1],
+      }),
     ).toBeNull();
   });
 
@@ -97,10 +103,11 @@ describe('B-spline conventions', () => {
       periodic: true,
     };
     near(splinePoint(g, 0), [(0 + 16 + 4) / 6, (0 + 0 + 4) / 6], 1e-12);
-    // Matches planegcs' value at u = 0.5 (measured: 3.8333, 2).
-    near(splinePoint(g, 0.5), [23 / 6, 2], 1e-12);
+    // Halfway through the first span (u = 0.125 on [0, 1]): planegcs measured (3.8333, 2) there
+    // with knots 0…4, the same curve.
+    near(splinePoint(g, 0.125), [23 / 6, 2], 1e-12);
     // Periodic: u and u + period are the same point.
-    near(splinePoint(g, 0.3), splinePoint(g, 4.3), 1e-12);
+    near(splinePoint(g, 0.3), splinePoint(g, 1.3), 1e-12);
   });
 
   it('first and second derivatives agree with finite differences (rational too)', () => {
@@ -115,7 +122,8 @@ describe('B-spline conventions', () => {
       weights: [1, Math.SQRT1_2, 1],
     };
     // A rational quadratic with these weights is an exact quarter circle.
-    for (const u of [0, 0.3, 0.71, 1]) expect(Math.hypot(...splinePoint(rational, u))).toBeCloseTo(1, 14);
+    for (const u of [0, 0.3, 0.71, 1])
+      expect(Math.hypot(...splinePoint(rational, u))).toBeCloseTo(1, 14);
     for (const g of [bezier, rational]) {
       for (const u of [0.13, 0.5, 0.77]) {
         const h = 1e-5;
@@ -145,7 +153,9 @@ describe('interpolation', () => {
     expect(it3.poles[0]).toEqual(pts[0]);
     expect(it3.poles[it3.poles.length - 1]).toEqual(pts[pts.length - 1]);
     const g: SplineGeom = { ...it3, periodic: false };
-    pts.forEach((p, i) => near(splinePoint(g, it3.params[i] as number), p, 1e-9));
+    pts.forEach((p, i) => {
+      near(splinePoint(g, it3.params[i] as number), p, 1e-9);
+    });
     expect(it3.params).toEqual(it3.knots);
     // Bessel: the end tangent is the parabola's through the first three points.
     const t = it3.params;
@@ -162,7 +172,9 @@ describe('interpolation', () => {
     const q = interpolate(arc, 3, false);
     if (!q) throw new Error('no arc');
     for (let j = 0; j <= 100; j++)
-      expect(Math.abs(Math.hypot(...splinePoint({ ...q, periodic: false }, j / 100)) - 50)).toBeLessThan(0.05);
+      expect(
+        Math.abs(Math.hypot(...splinePoint({ ...q, periodic: false }, j / 100)) - 50),
+      ).toBeLessThan(0.05);
   });
 
   it('closed: periodic, every point at a knot', () => {
@@ -170,7 +182,9 @@ describe('interpolation', () => {
     if (!it3) throw new Error('no interpolation');
     expect(it3.poles).toHaveLength(pts.length);
     const g: SplineGeom = { ...it3, periodic: true };
-    pts.forEach((p, i) => near(splinePoint(g, it3.params[i] as number), p, 1e-9));
+    pts.forEach((p, i) => {
+      near(splinePoint(g, it3.params[i] as number), p, 1e-9);
+    });
     expect(splineDefError(g.poles.length, g)).toBeNull();
     // Three points: the degree drops to 2 (an odd count, so the collocation is regular).
     const tri = interpolate(pts.slice(0, 3), 3, true);
@@ -178,7 +192,17 @@ describe('interpolation', () => {
   });
 
   it('refuses repeated points', () => {
-    expect(interpolate([[0, 0], [0, 0], [1, 1]], 3, false)).toBeNull();
+    expect(
+      interpolate(
+        [
+          [0, 0],
+          [0, 0],
+          [1, 1],
+        ],
+        3,
+        false,
+      ),
+    ).toBeNull();
   });
 });
 

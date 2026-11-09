@@ -25,7 +25,7 @@
  *     0.3 × tolerance for hand noise on short strokes.
  *  6b. M3.5: a closed stroke that is no circle but fits an ellipse tightly, with axis ratio
  *     ≥ 1.25 (clearly not round), is an `ellipse`. A smooth stroke (curved segments, or ≥ 3
- *     pieces with no sharp corner, which the spline follows better than the pieces' lines) that a
+ *     pieces without a sharp corner: ShortStraw's straw stays above 0.75 of its median) that a
  *     cubic through a few evenly spaced points of it follows within 2% of L is a `spline`
  *     through those points (ends included; inner points averaged over their neighbours).
  *  7. Classify: line, rectangle (4 sides, right angles within 2 × angleTolerance), or polyline.
@@ -49,7 +49,13 @@ import type {
   Vec2,
 } from '@wren-cad/contracts';
 
-import { DEFAULT_SPLINE_DEGREE, interpolate, type SplineGeom, sampleParams, splinePoint } from './bspline';
+import {
+  DEFAULT_SPLINE_DEGREE,
+  interpolate,
+  type SplineGeom,
+  sampleParams,
+  splinePoint,
+} from './bspline';
 
 export { strokeFragment } from './stroke-fragment';
 
@@ -769,9 +775,7 @@ const ELLIPSE_MAX = 0.12;
 const SPLINE_MAX = 0.02;
 /** …and is good (no more points needed) within this × L (or 1.2 × the noise floor). */
 const SPLINE_GOOD = 0.008;
-/** A spline must beat the polyline's worst line-fit deviation by this factor… */
-const SPLINE_BEATS_POLYLINE = 0.85;
-/** …and a polyline of fewer pieces stays one (a single kink is a polyline)… */
+/** Straight pieces are a smooth curve only from this many (a single kink is a polyline)… */
 const SMOOTH_SEGMENTS = 3;
 /**
  * …and no corner may be sharp: at a drawn corner the straw (chord across ±W points) drops to
@@ -889,7 +893,8 @@ function ellipseDistance(x: number, y: number, a: number, b: number): number {
 function evenPoints(p: readonly Vec2[], k: number, closed: boolean): Vec2[] {
   const cum = [0];
   const path = closed ? [...p, at(p, 0)] : p;
-  for (let i = 1; i < path.length; i++) cum.push(at(cum, i - 1) + dist(at(path, i - 1), at(path, i)));
+  for (let i = 1; i < path.length; i++)
+    cum.push(at(cum, i - 1) + dist(at(path, i - 1), at(path, i)));
   const total = at(cum, cum.length - 1);
   const out: Vec2[] = [];
   const steps = closed ? k : k - 1;
@@ -934,9 +939,10 @@ function smoothed(p: readonly Vec2[], closed: boolean): Vec2[] {
 function worstDeviation(p: readonly Vec2[], poly: readonly Vec2[], closed: boolean): number {
   let worst = 0;
   const m = poly.length - 1;
-  const w = Math.max(8, Math.ceil(m / 6));
+  const w = Math.max(6, Math.ceil(m / 10));
   let prev = 0;
-  for (const q of p) {
+  for (let n = 0; n < p.length; n += 2) {
+    const q = at(p, n);
     let best = Number.POSITIVE_INFINITY;
     let bestI = prev;
     for (let k = -w; k <= w; k++) {
@@ -962,8 +968,8 @@ function worstDeviation(p: readonly Vec2[], poly: readonly Vec2[], closed: boole
 
 /**
  * A spline through a few evenly spaced points of the stroke (ends included): the fewest points
- * (from 4, or 5 closed) whose interpolating cubic stays within the fit tolerance. Null when no
- * count up to 10 (12 closed) fits.
+ * (from 4, or 5 closed) whose interpolating cubic is within hand noise, else the best one
+ * within the fit tolerance. Null when no count up to 12 (14 closed) fits.
  */
 function fitSpline(
   p: readonly Vec2[],
@@ -981,7 +987,7 @@ function fitSpline(
     turning += Math.abs(angleBetween(sub(at(p, i), at(p, i - 1)), sub(at(p, i + 1), at(p, i))));
   const sm = smoothed(p, closed);
   const lo = closed ? 5 : 4;
-  const hi = closed ? 12 : 10;
+  const hi = closed ? 14 : 12;
   const start = Math.max(lo, Math.min(hi, Math.round(turning / (60 * DEG)) + (closed ? 1 : 2)));
   for (let k = start; k <= hi; k++) {
     const points = evenPoints(sm, k, closed);
@@ -1159,16 +1165,19 @@ export const recognizeStroke: RecognizeStroke = (samples, options) => {
   if (segs.length === 0) return null;
 
   // A smooth curve: a spline through a few of its points (M3.5), when the stroke has curved
-  // pieces, or when the spline follows it clearly better than the polyline's straight pieces do
-  // (drawn corners fit lines to the noise; bends don't).
+  // pieces, or is several straight pieces without a single sharp corner.
   const curvedStroke = segs.some((sg) => sg.curved) || (closed && segs.length < 3);
-  if (process.env.RDEBUG) console.log('DBG gate', sharpness.toFixed(2), segs.length, curvedStroke);
   if (curvedStroke || (segs.length >= SMOOTH_SEGMENTS && sharpness >= SMOOTH_STRAW)) {
     const sp = fitSpline(closed ? loop : open, closed, Lc, noise);
+    // Drawn corners fit lines to the noise; bends don't. The spline must follow the stroke at
+    // least as well as the straight pieces, or within hand noise with hardly more points.
     const linesDev = Math.max(...segs.map((sg) => sg.line.max));
-    if (process.env.RDEBUG) console.log('DBG', sharpness.toFixed(2), segs.length, segs.filter((g) => g.curved).length, sp?.dev.toFixed(2), sp?.good.toFixed(2), sp?.tol.toFixed(2), sp?.points.length, linesDev.toFixed(2));
-    const simpler = sp !== null && sp.points.length <= segs.length + 1 && sp.dev <= sp.good;
-    if (sp && (curvedStroke || simpler || sp.dev < SPLINE_BEATS_POLYLINE * linesDev)) {
+    const fits =
+      sp !== null &&
+      (curvedStroke ||
+        sp.dev <= linesDev ||
+        (sp.dev <= sp.good && sp.points.length <= segs.length + 2));
+    if (sp && fits) {
       return result(
         { kind: 'spline', points: sp.points, closed },
         0.55 + 0.35 * clamp01(1 - sp.dev / sp.tol),

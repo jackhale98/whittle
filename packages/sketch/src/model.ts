@@ -849,7 +849,10 @@ export function buildModel(input: SketchSolveInput, options: ModelOptions = {}):
         const r = ref.round;
         return {
           params: uniq([...r.params, ...P(pj)]),
-          t: (x) => [-((x[pj + 1] as number) - (x[r.c + 1] as number)), (x[pj] as number) - (x[r.c] as number)],
+          t: (x) => [
+            -((x[pj + 1] as number) - (x[r.c + 1] as number)),
+            (x[pj] as number) - (x[r.c] as number),
+          ],
           k: (x) => {
             const rx = (x[r.c] as number) - (x[pj] as number);
             const ry = (x[r.c + 1] as number) - (x[pj + 1] as number);
@@ -887,7 +890,10 @@ export function buildModel(input: SketchSolveInput, options: ModelOptions = {}):
           return {
             params: uniq([...P(a), ...P(b)]),
             kParams: uniq([...support, ...P(a), ...P(b)]),
-            t: (x) => [(x[b] as number) - (x[a] as number), (x[b + 1] as number) - (x[a + 1] as number)],
+            t: (x) => [
+              (x[b] as number) - (x[a] as number),
+              (x[b + 1] as number) - (x[a + 1] as number),
+            ],
             k: (x) => splineCurvature(x, sp, u),
             crv: `h:${owner}:${sp.id}`,
             line: [sp.entity.poles[i0] as Id, sp.entity.poles[i1] as Id],
@@ -896,7 +902,10 @@ export function buildModel(input: SketchSolveInput, options: ModelOptions = {}):
           };
         }
         const site = where;
-        const params = site.idx >= 0 ? uniq([...sp.params, site.idx]) : uniq([...sp.basis.support(site.u)].flatMap((i) => P(sp.poles[i] as number)));
+        const params =
+          site.idx >= 0
+            ? uniq([...sp.params, site.idx])
+            : uniq([...sp.basis.support(site.u)].flatMap((i) => P(sp.poles[i] as number)));
         const uOf = (x: Float64Array) => (site.idx >= 0 ? (x[site.idx] as number) : site.u);
         return {
           params,
@@ -913,10 +922,17 @@ export function buildModel(input: SketchSolveInput, options: ModelOptions = {}):
   }
 
   /** planegcs primitives for "the tangents of a and b at point `p` are parallel" (+ helper lines). */
-  function angleAtPoint(sa: Site, sb: Site, p: Id, angle: number, nextId: () => string): SketchPrimitive[] {
+  function angleAtPoint(
+    sa: Site,
+    sb: Site,
+    p: Id,
+    angle: number,
+    nextId: () => string,
+  ): SketchPrimitive[] {
     const out: SketchPrimitive[] = [];
     for (const s of [sa, sb]) {
-      if (s.line) out.push({ id: s.crv, type: 'line', p1_id: gid(s.line[0]), p2_id: gid(s.line[1]) });
+      if (s.line)
+        out.push({ id: s.crv, type: 'line', p1_id: gid(s.line[0]), p2_id: gid(s.line[1]) });
     }
     // Straight against straight, or against a circle: planegcs' exact line constraints.
     if (sa.ends && sb.ends) {
@@ -959,7 +975,14 @@ export function buildModel(input: SketchSolveInput, options: ModelOptions = {}):
         angle,
       });
     } else {
-      out.push({ id: nextId(), type: 'angle_via_point', crv1_id: sa.crv, crv2_id: sb.crv, p_id: gid(p), angle });
+      out.push({
+        id: nextId(),
+        type: 'angle_via_point',
+        crv1_id: sa.crv,
+        crv2_id: sb.crv,
+        p_id: gid(p),
+        angle,
+      });
     }
     return out;
   }
@@ -1041,9 +1064,18 @@ export function buildModel(input: SketchSolveInput, options: ModelOptions = {}):
         const sp = ref.spline;
         const params = [...P(pi), ...sp.params, uIdx];
         for (const k of [0, 1]) {
-          row(params, (x) => (x[pi + k] as number) - (evalSpline(x, sp, x[uIdx] as number, 0)[k] as number));
+          row(
+            params,
+            (x) => (x[pi + k] as number) - (evalSpline(x, sp, x[uIdx] as number, 0)[k] as number),
+          );
         }
-        prims.push({ id: nextId(), type: 'point_on_bspline', p_id: gid(pId), b_id: gid(ref.id), pointparam: uName });
+        prims.push({
+          id: nextId(),
+          type: 'point_on_bspline',
+          p_id: gid(pId),
+          b_id: gid(ref.id),
+          pointparam: uName,
+        });
         break;
       }
     }
@@ -1073,7 +1105,13 @@ export function buildModel(input: SketchSolveInput, options: ModelOptions = {}):
     const ti = values.length;
     values.push((pa[0] + pb[0]) / 2, (pa[1] + pb[1]) / 2);
     pointIdx.set(tId, ti);
-    prims.push({ id: gid(tId), type: 'point', x: values[ti] as number, y: values[ti + 1] as number, fixed: false });
+    prims.push({
+      id: gid(tId),
+      type: 'point',
+      x: values[ti] as number,
+      y: values[ti + 1] as number,
+      fixed: false,
+    });
     const pr = PRIORITY.tangent;
     const sites: Site[] = [];
     for (const [ref, t] of [
@@ -1122,7 +1160,9 @@ export function buildModel(input: SketchSolveInput, options: ModelOptions = {}):
     const xs = x0snapshot();
     const va = sa.t(xs);
     const vb = sb.t(xs);
-    prims.push(...angleAtPoint(sa, sb, tId, va[0] * vb[0] + va[1] * vb[1] >= 0 ? 0 : Math.PI, nextId));
+    prims.push(
+      ...angleAtPoint(sa, sb, tId, va[0] * vb[0] + va[1] * vb[1] >= 0 ? 0 : Math.PI, nextId),
+    );
     return null;
   }
 
@@ -1173,14 +1213,22 @@ export function buildModel(input: SketchSolveInput, options: ModelOptions = {}):
       if (n < 3 || sp.spline.entity.degree < 2) return null; // straight: zero curvature already
       {
         const [p0, p1, p2] =
-          splineEnd.end === 'start' ? [ids[0], ids[1], ids[2]] : [ids[n - 1], ids[n - 2], ids[n - 3]];
+          splineEnd.end === 'start'
+            ? [ids[0], ids[1], ids[2]]
+            : [ids[n - 1], ids[n - 2], ids[n - 3]];
         const i0 = pointOf(p0 as Id, g.id);
         const i1 = pointOf(p1 as Id, g.id);
         const i2 = pointOf(p2 as Id, g.id);
         row.params = uniq([...row.params, ...P(i0), ...P(i1), ...P(i2)]);
         row.f = (x) => p2lSigned(x, i2, i0, i1);
         row.gcs = true;
-        prims.push({ id: nextId(), type: 'point_on_line_ppp', p_id: gid(p2 as Id), lp1_id: gid(p0 as Id), lp2_id: gid(p1 as Id) });
+        prims.push({
+          id: nextId(),
+          type: 'point_on_line_ppp',
+          p_id: gid(p2 as Id),
+          lp1_id: gid(p0 as Id),
+          lp2_id: gid(p1 as Id),
+        });
       }
     }
     out.push(row);
@@ -1239,7 +1287,8 @@ export function buildModel(input: SketchSolveInput, options: ModelOptions = {}):
               : { id: nextId(), type: 'point_on_arc', p_id: gid(g.point), a_id: gid(g.on) },
           );
         } else if (on.kind === 'ellipse' || on.kind === 'ellipticArc') {
-          if (on.kind === 'ellipticArc' && (on.start === g.point || on.end === g.point)) return null;
+          if (on.kind === 'ellipticArc' && (on.start === g.point || on.end === g.point))
+            return null;
           const q = conicRef(g.on) as ConicRef;
           row([...P(p), ...q.params], (x) => onConic(x, p, q.c, q.f, q.b));
           prims.push({
@@ -1256,7 +1305,10 @@ export function buildModel(input: SketchSolveInput, options: ModelOptions = {}):
             const u = site.idx;
             const ps = [...P(p), ...sp.params, u];
             for (const k of [0, 1])
-              row(ps, (x) => (x[p + k] as number) - (evalSpline(x, sp, x[u] as number, 0)[k] as number));
+              row(
+                ps,
+                (x) => (x[p + k] as number) - (evalSpline(x, sp, x[u] as number, 0)[k] as number),
+              );
           } else {
             // A through point at its knot: only the poles of that knot's span move it.
             const uk = site.u;
@@ -1340,7 +1392,8 @@ export function buildModel(input: SketchSolveInput, options: ModelOptions = {}):
         const ca = curveRef(g.a);
         const cb = curveRef(g.b);
         if (!ca || !cb) return 'Tangency needs two curves';
-        if (ca.k === 'line' && cb.k === 'line') return 'Two lines cannot be tangent (make them collinear)';
+        if (ca.k === 'line' && cb.k === 'line')
+          return 'Two lines cannot be tangent (make them collinear)';
         if (ca.k === 'conic' || ca.k === 'spline' || cb.k === 'conic' || cb.k === 'spline') {
           const joint = sharedEnd(g.a, g.b);
           if (joint !== null) {
@@ -1736,7 +1789,9 @@ export function buildModel(input: SketchSolveInput, options: ModelOptions = {}):
     const ea = ent(a);
     const eb = ent(b);
     const round = (e: SketchEntity) => e.kind === 'circle' || e.kind === 'arc';
-    const conic = (e: SketchEntity): e is Extract<SketchEntity, { kind: 'ellipse' | 'ellipticArc' }> =>
+    const conic = (
+      e: SketchEntity,
+    ): e is Extract<SketchEntity, { kind: 'ellipse' | 'ellipticArc' }> =>
       e.kind === 'ellipse' || e.kind === 'ellipticArc';
     // From an ellipse's own centre the nearest point of the curve is a minor vertex: the minor
     // radius (DECISIONS "Ellipse dimensions"). Other point–ellipse distances are not supported.
@@ -2080,6 +2135,9 @@ export function entitiesFrom(model: SketchModel, x: Float64Array): SketchEntity[
       case 'ellipse':
       case 'ellipticArc': {
         const el = model.ellipseIdx.get(e.id) as { focus: number; radmin: number };
+        // Unmoved: the stored definition, bit for bit (no round trip through the focus).
+        const own = [el.focus, el.focus + 1, el.radmin, ...(model.entityParams.get(e.id) ?? [])];
+        if (own.every((i) => x[i] === model.x0[i])) return { ...e };
         const c = model.pointIdx.get(e.center) as number;
         const fx = (x[el.focus] as number) - (x[c] as number);
         const fy = (x[el.focus + 1] as number) - (x[c + 1] as number);

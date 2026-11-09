@@ -39,15 +39,9 @@ import type {
   Vec2,
 } from '@wren-cad/contracts';
 import { analyzeDof, type DofAnalysis } from './analysis';
-import {
-  constraintLabel,
-  explainConflict,
-  fixLabel,
-  Namer,
-  referencedEntities,
-} from './explain';
-import { closestParam, paramCurve } from './geometry';
+import { constraintLabel, explainConflict, fixLabel, Namer, referencedEntities } from './explain';
 import { Algorithm, GcsSession, type PlanegcsModule } from './gcs';
+import { closestParam, paramCurve } from './geometry';
 import { infer } from './inference';
 import {
   buildModel,
@@ -219,7 +213,12 @@ export class SketchSolverCore {
     // planegcs' point–line distances are unsigned and can settle an offset on the wrong side;
     // our own rows are signed, so Newton on them finds the intended solution. Rows planegcs has no
     // counterpart for (G2) and spline parameters it left outside a period are finished the same way.
-    if (split || model.tsOnly || model.splineIdx.size || model.active.some((c) => c.kind === 'offset')) {
+    if (
+      split ||
+      model.tsOnly ||
+      model.splineIdx.size ||
+      model.active.some((c) => c.kind === 'offset')
+    ) {
       for (const start of best ? [best, x0] : [x0]) {
         const y = polish(model, start, model.rows, undefined, 30);
         if (isSatisfied(model, y)) return accept(y);
@@ -671,12 +670,22 @@ export function offsetSplit(model: SketchModel, dragged?: Id): OffsetSplit | nul
       for (const src of c.sources)
         for (const i of model.entityParams.get(src) ?? []) target.delete(i);
     if (target.size)
-      stages.push({ owners: new Set(offsets.map((c) => c.id)), target, internalOf: targetEntities });
+      stages.push({
+        owners: new Set(offsets.map((c) => c.id)),
+        target,
+        internalOf: targetEntities,
+      });
   }
   for (const g of model.interpolations)
-    stages.push({ owners: new Set(g.constraints), target: new Set(g.derived), internalOf: new Set() });
+    stages.push({
+      owners: new Set(g.constraints),
+      target: new Set(g.derived),
+      internalOf: new Set(),
+    });
   if (stages.length === 0) return null;
-  const draggedParams = new Set(dragged !== undefined ? (model.entityParams.get(dragged) ?? []) : []);
+  const draggedParams = new Set(
+    dragged !== undefined ? (model.entityParams.get(dragged) ?? []) : [],
+  );
   const rows: Row[] = [];
   const owners = new Set<Id>();
   const target = new Set<number>();
