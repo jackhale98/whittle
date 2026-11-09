@@ -1184,7 +1184,7 @@ git, raised choices ADR-029 leaves open.
     A stray or bookmarked `?code=` is left as it is (the platform plumbing spec relies on this)
     and doesn't load the sync chunk.
 
-## ADR-pending — Offset dimension: solver rows and sign (sketch editing, M3)
+## ADR-033 — Offset dimension: solver rows and sign (sketch editing, M3)
 
 1. **Sign (contracts, lead's convention).** Positive = right of the source's direction (outward
    of a CCW loop). The value's sign places the *reference pair* (the first pair whose source is a
@@ -1215,7 +1215,7 @@ git, raised choices ADR-029 leaves open.
    neighbours joined; results that cross themselves are refused; the built geometry must satisfy
    the solver's rows exactly or the call refuses. A seeded fuzz (400 random chains) checks this.
 
-## ADR-pending — Linked (converted) entities in the solver and editing operations
+## ADR-034 — Linked (converted) entities in the solver and editing operations
 
 1. **Fixed.** Entities with `source` are grounded in `buildModel` (all their parameters), like
    `fix`. Conflict search frees them (new `unlinked` model option) to find the minimal linked set
@@ -1228,7 +1228,7 @@ git, raised choices ADR-029 leaves open.
    fraction of length along the fresh polyline and arcs re-fit through their ends and middle.
 3. **Arc `start`/`end` in projected curves** accept angles (rad) or points on the circle.
 
-## ADR-pending — Trim, fillet/chamfer and mirror rewiring
+## ADR-035 — Trim, fillet/chamfer and mirror rewiring
 
 1. **Trim** attaches new ends with `coincident` (on another entity's end) or `pointOn`; a middle
    trim splits, the new piece tied by `pointOn` × 2 (lines) or `equal` with a shared centre

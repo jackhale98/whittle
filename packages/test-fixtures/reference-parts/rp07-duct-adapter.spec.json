@@ -118,7 +118,7 @@
     {
       "tool": "sketch",
       "id": "sec_sk",
-      "say": "Sketch on the top face. Convert Entities on the four top edges, then Offset Entities on that loop inwards by inset.",
+      "say": "Sketch on the top face. Convert Entities on the four top edges, then Offset Entities on that loop inwards by inset (the offset dimension is -inset: positive is outward for a counter-clockwise loop).",
       "on": {
         "pick": "face",
         "name": "F{base}:end",
@@ -222,7 +222,7 @@
             "T3",
             "T4"
           ],
-          "distance": "inset",
+          "distance": "-inset",
           "bounds": [
             -40,
             -30,

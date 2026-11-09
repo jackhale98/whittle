@@ -62,7 +62,7 @@ export const rp07: PartDef = {
       {
         tool: 'sketch',
         id: 'sec_sk',
-        say: 'Sketch on the top face. Convert Entities on the four top edges, then Offset Entities on that loop inwards by inset.',
+        say: 'Sketch on the top face. Convert Entities on the four top edges, then Offset Entities on that loop inwards by inset (the offset dimension is -inset: positive is outward for a counter-clockwise loop).',
         on: face('F{base}:end', [30, 20, T]),
         ops: [
           {
@@ -97,7 +97,7 @@ export const rp07: PartDef = {
             op: 'offsetRect',
             id: 'O',
             sources: ['T1', 'T2', 'T3', 'T4'],
-            distance: 'inset',
+            distance: '-inset',
             bounds: [-L / 2, -W / 2, L / 2, W / 2],
           },
         ],

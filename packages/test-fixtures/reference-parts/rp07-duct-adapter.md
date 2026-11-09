@@ -27,7 +27,7 @@ PETG (`whittle:petg`), density 1.27 g/cm^3.
 
 1. **sketch** (`base_sk`): Sketch on Top (XY): a rectangle base_l x base_w centred on the origin.
 2. **extrude** (`base`): Extrude by base_t as a new body.
-3. **sketch** (`sec_sk`): Sketch on the top face. Convert Entities on the four top edges, then Offset Entities on that loop inwards by inset.
+3. **sketch** (`sec_sk`): Sketch on the top face. Convert Entities on the four top edges, then Offset Entities on that loop inwards by inset (the offset dimension is -inset: positive is outward for a counter-clockwise loop).
 4. **plane** (`top_pl`): Reference plane: offset base_t + loft_h above the Top plane.
 5. **sketch** (`top_sk`): Sketch on the new plane: a rectangle top_l x top_w centred on the origin.
 6. **loft** (`lo`): Loft (ruled, open) from the offset rectangle to the top rectangle, adding to the block.
