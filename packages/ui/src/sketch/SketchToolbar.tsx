@@ -5,6 +5,7 @@ import {
   ChevronDown,
   Circle,
   Construction,
+  Dot,
   FlipHorizontal2,
   Hexagon,
   Link2,
@@ -31,6 +32,7 @@ export type SketchDrawToolId =
   | 'arc'
   | 'slot'
   | 'polygon'
+  | 'point'
   | 'dimension';
 export type SketchToolId = SketchDrawToolId | SketchEditToolId;
 export type GeometricConstraintKind = GeometricConstraint['kind'];
@@ -113,6 +115,8 @@ export const sketchTools: readonly ToolSpec[] = [
     short: 'Polygon',
     icon: <Hexagon className={ic} strokeWidth={1.75} />,
   },
+  /** Sketch points: hole centres (hole wizard), construction and reference points (M3). */
+  { id: 'point', label: 'Point', shortcut: 'P', icon: <Dot className={ic} strokeWidth={3} /> },
   {
     id: 'dimension',
     label: 'Dimension',

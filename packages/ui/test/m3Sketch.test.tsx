@@ -487,6 +487,7 @@ describe('sketch toolbar touch density', () => {
         'Arc',
         'Slot',
         'Polygon',
+        'Point',
         'Dimension',
         'Edit',
       ]),
