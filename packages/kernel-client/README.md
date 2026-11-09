@@ -30,7 +30,9 @@ if (r.revision >= shownRevision) viewport.setBodies(r.bodies);       // drop sta
 ```
 
 `r.features[i]` gives each feature's state (`ok`, `error`, `needsAttention` with `unresolved`,
-`suppressed`, `rolledBack`, `blocked`), `cached`, `ms`, `warnings` and `rebound` (below). Shapes in `r.bodies` belong to the
+`suppressed`, `rolledBack`, `blocked`), `cached`, `ms`, `warnings`, `rebound` (below) and, M3.5,
+`cause` on the status and on each `unresolved[i]` (the upstream feature that broke it, see
+"Error causes"). Shapes in `r.bodies` belong to the
 engine: never `release()` them (the worker ignores such calls). `refFor(partId, {bodyId, kind,
 index})` turns a pick (mesh face/edge ordinal = TopExp index) into an `EntityRef` with a
 fingerprint to store in the document; `exportPart` / `importFile` / `closePart` complete the API.
@@ -201,6 +203,87 @@ entities), `m3-geometry.test.ts` (probes, frames, chaining, re-projection), `m3-
 flipped planes), `m3.golden.test.ts` (real kernel with the M3 façade, skipped by a feature check
 until then: pattern of holes, mirrored boss and shell after fillet edit-upstream, sweep and loft).
 
+## Error causes (`src/regen/cause.ts`, M3.5, ADR-046)
+
+`UnresolvedRef.cause` and `FeatureStatus.cause` (`AttentionCause {featureId, kind, detail?}`) name
+the upstream feature whose change broke a reference or a feature, so the UI can say "Fillet 2 lost
+its edge because Extrude 1 changed (depth 10 mm → 4 mm)" and select Extrude 1. A cause is set only
+when the engine can tell; otherwise it is absent (never a guess).
+
+Every regen records a **walk** per slot: for each feature its position, state, canonical
+definition and evaluated values, cache key, `deps` (the features whose output it read: name tags
+of its references, copied features, and the last writers of the bodies it acts on or whose keys
+it hashes), the containers it set (bodies, sketch, plane, datum, with their naming maps) and its
+unresolved refs with causes. The previous walk of the same slot is the history. Rules for an
+unresolved ref of feature C with stored name N (first match wins):
+
+1. **Structural** — the feature tags recorded in N (`F<id>:`, `S<id>:`, `B<id>`; the outermost
+   producer of each top-level component first, then inner tags): a tagged feature that is gone →
+   `deleted`; suppressed → `suppressed`; now after C → `reordered`; failed this regen → `failed`.
+   N cannot exist unless each of them ran before C. Needs no history.
+2. **This regen's change** — only if the same stored ref (same path, same name) resolved in the
+   previous regen. The *touchers* of N are the features before C whose result set or removed a
+   container holding N's name family, plus the producer (the latest outermost tag). From the
+   nearest toucher back:
+   - its own definition or values changed, or it is new, unsuppressed or moved above C →
+     `changed` with `detail` (the first changed value as "depth 10 mm → 4 mm", sketch dimensions
+     by kind, "horizontal distance 30 mm → 200 mm", never a constraint id; else "profile changed",
+     "added", "unsuppressed", "moved", …);
+   - its cache key changed only through its inputs → the **nearest change in its dependency
+     chain**: breadth-first over `deps`, expanding only features whose keys changed; the first
+     level with a changed (or removed: deleted / suppressed / moved below C) feature decides. One
+     such feature → it; two or more at that distance → no cause;
+   - its key is unchanged (identical output) → the next older toucher.
+   Fallback: exactly one feature upstream of C changed, was added or was removed since the last
+   regen → that one (regeneration is deterministic, so nothing else can have broken N).
+3. **Carried over** — a ref already unresolved in the previous regen, with the same stored ref,
+   keeps its cause while the cause still holds (the feature still exists upstream of C; or is
+   still deleted / suppressed / after C). So the message survives unrelated edits and undo
+   stacks; it disappears when the ref resolves again. The contract's "changed this regen" means
+   "changed since the ref last resolved".
+
+Feature-level causes: `needsAttention` = the first unresolved ref's cause; `error` = rule 2 with
+the feature itself as the toucher (only when it ran ok last regen and its own definition and
+values are unchanged — an edit to the feature itself is not an upstream cause), else rule 3;
+`blocked` = `{ kind: 'failed' }` on the feature it waits on: for a reference into failed
+features the referenced one that failed itself (`error`/`needsAttention`), else the first; for a
+tainted body the feature that failed first on that body. A blocked feature's cause may itself be
+blocked; follow `cause.featureId` → that feature's `cause` to the root.
+
+Examples (tests): shortening the plate so a 6 mm pocket goes through → the fillet on the pocket
+floor and a sketch converted from that edge get `{E1, changed, "depth 10 mm → 4 mm"}` (the pocket
+is the producer but unchanged; its input changed); deepening the pocket itself → the pocket;
+a chamfer inserted on the edge → `{chamfer, changed, "added"}`; plate thinner **and** pocket moved
+in one regen → no cause; a fresh worker opening a broken document → no `changed` cause.
+
+Cost: one canonical-JSON snapshot of each definition per regen (≈ 20 µs per feature on the fake
+kernel bench, 60 features ≈ 1.3 ms); causes themselves are computed only for failing features.
+
+## M3.5 sketch curves (`src/regen/curves.ts`, ADR-046)
+
+- **Display sampling** (`sampleEntity`): elliptic arcs are exact points uniform in the
+  parametric angle, with the step a circle of the major radius gets at the sketch's chord
+  tolerance (an ellipse's sagitta is at most a·Δt²/8), counter-clockwise from `start` to `end`,
+  ends snapped to the stored points. B-splines are exact de Boor points (homogeneous when
+  `weights` differ): four steps per non-empty knot span (one for degree 1), chords halved while
+  the middle or quarter points deviate more than 0.9 × the tolerance (≤ 10 levels, ≤ 4096
+  samples); knots are always samples; periodic splines close exactly. An invalid definition shows
+  its control polygon (the kernel reports why).
+- **Knots** (shared with the kernel and sketch workstreams, ADR-pending "M3.5 regen of the new
+  curves"): `knots` are distinct values and `multiplicities` theirs (OCCT); omitted = clamped
+  `i/(n−p)` with end multiplicity p+1, or periodic `i/n` all 1, domain [0, 1]; periodic flat
+  knots as `BSplCLib::KnotSequence`.
+- **Pass-through**: the solver result goes to the kernel `sketch` feature unchanged (planegcs
+  passes `ellipticArc` / `bspline` through, poles are ordinary points); linked ones are fixed
+  (centre, ends, poles).
+- **Linked (convert)**: another sketch's ellipse / elliptic arc on a parallel plane projects to an
+  exact `ellipse` / `ellipticArc` curve (rigid map; facing planes reverse the arc); a spline
+  projects exactly onto any plane that does not see it edge-on (orthographic projection is
+  affine; B-splines, rational too, are affine invariant). Otherwise the kernel's projection is
+  used (a `polyline`, `approximate: true`). The engine's fallback re-projects these kinds in
+  place (same ids; a spline whose source has another pole count or periodicity is lost, never
+  refitted); `ProjectedCurve` here accepts them from the kernel's `projectEdges` too.
+
 ## Imports (`src/regen/imports.ts`, `planImport` in the engine)
 
 - **STEP / IGES / BREP** → `kernel.importShapes` (STEP/BREP: one shape per solid; IGES: solids,
@@ -300,6 +383,16 @@ fake kernel.
 adversarial unit cases (near-equidistant, flipped normals, far moves, vanished pieces, weak
 names). Timings are printed as `[regen timing]` lines.
 
+M3.5: `cause.test.ts` (real kernel, one test per cause rule: changed via a chain and by the
+producer, carried over and cleared, added, suppressed, deleted, reordered, failed/blocked, an
+`error` feature, and "never guesses"); `topology.test.ts` / `naming.test.ts` assert the causes of
+their edit-upstream breakages; `curves.test.ts` (de Boor vs Bernstein, Cox–de Boor sums, the
+rational quarter circle, periodic seams, chord tolerance, elliptic arcs vs the ellipse
+equation); `curves-linked.test.ts` (exact projections, fallback re-projection, pass-through with
+the identity solver and planegcs); `curves.golden.test.ts` (spline / elliptic-arc profiles
+extruded vs integrated areas; **skipped** until the kernel builds those edges, and meanwhile
+checks today's clear `UNSUPPORTED_FEATURE`).
+
 ## Kernel gaps and contract notes
 
 - **Kernel**: the M1 gaps (no transform call, no naming call, no IGES reader) are closed by the M3
@@ -314,3 +407,13 @@ names). Timings are printed as `[regen timing]` lines.
   - `configureRegen` options gain `maxVersionSlots?: number`.
   - The `GeometricDiff.added` comment "per body pair" should read "one mesh per non-empty
     difference", because the sides are unioned first.
+- **Contracts** (proposed, M3.5):
+  - `AttentionCause.kind` `changed`: "its inputs or values changed since the reference last
+    resolved, or it was added, unsuppressed or moved above the consumer (`detail` says which)".
+  - Optional `AttentionCause.via?: Id` — the producing feature when the cause is further up its
+    chain ("the pocket's floor is gone because the plate changed").
+  - `SketchBSpline`: state that `knots` are distinct values with `multiplicities` (both or
+    neither), the default knot vectors and the periodic flat-knot convention above, domain [0, 1].
+- **Kernel** (`@wren-cad/kernel` `ProjectedCurve`, proposed): `projectEdges` returns exact
+  `ellipse` / `ellipticArc` for elliptic edges parallel to the plane and `bspline` (projected
+  poles, same knots/weights) for B-spline edges, as this package's `ProjectedCurve`.
