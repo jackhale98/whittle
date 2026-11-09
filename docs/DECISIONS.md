@@ -1224,6 +1224,9 @@ on any branch that predates the rename before that branch is merged.
   renames the repository on GitHub. After the rename, sign-in redirect URIs must change to
   `https://jackhale98.github.io/wren-cad/` (docs/SYNC_SETUP.md), and installed home-screen copies
   need reinstalling from the new address.
+- **Done 2026-11-09:** the owner renamed the repository to `jackhale98/wren-cad`. The first build
+  after the rename deploys at `/wren-cad/`; the build that ran just before it still referenced
+  `/whittle/` assets, so the site was blank at the new address until that redeploy.
 
 ## ADR-033 — Offset dimension: solver rows and sign (sketch editing, M3)
 
