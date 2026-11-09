@@ -1,5 +1,13 @@
 import { m } from 'motion/react';
-import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { createPortal } from 'react-dom';
 import { useSpring } from '../motion';
 import { cn, Kbd } from './primitives';
@@ -39,7 +47,7 @@ function anchorRect(a: FloatingAnchor): Pick<DOMRect, 'left' | 'right' | 'top' |
  * modeling is modal).
  */
 export function FloatingLayer({
-  anchor,
+  anchor: anchorProp,
   placement = 'bottom-start',
   onDismiss,
   children,
@@ -51,6 +59,15 @@ export function FloatingLayer({
   restoreFocus = true,
   testId,
 }: FloatingLayerProps) {
+  // A point anchor is often a fresh `{ x, y }` object on every render; keying on its coordinates
+  // keeps the placement and the focus-restore effects from re-running (and stealing focus).
+  const anchorEl = anchorProp instanceof HTMLElement ? anchorProp : null;
+  const anchorX = anchorEl ? 0 : (anchorProp as { x: number }).x;
+  const anchorY = anchorEl ? 0 : (anchorProp as { y: number }).y;
+  const anchor = useMemo<FloatingAnchor>(
+    () => anchorEl ?? { x: anchorX, y: anchorY },
+    [anchorEl, anchorX, anchorY],
+  );
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
   const dismiss = useRef(onDismiss);

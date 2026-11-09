@@ -117,6 +117,26 @@ test('the bracket tutorial, touch only, on an iPad', async ({ page }) => {
   await a.idle();
   await tapWorld([30, 10, 0]);
   await a.idle();
+  // The coach card never covers an open tool flyout (it hid Extrude on an iPad).
+  const solid = page.locator('[data-tool-group="solid"]').first();
+  await solid.tap();
+  const flyout = page.getByTestId('tool-flyout').first();
+  await expect(flyout).toBeVisible();
+  await expect
+    .poll(async () => {
+      const c = await card.boundingBox();
+      const f = await flyout.boundingBox();
+      if (!c || !f) return 'missing';
+      const apart =
+        c.x >= f.x + f.width ||
+        c.x + c.width <= f.x ||
+        c.y >= f.y + f.height ||
+        c.y + c.height <= f.y;
+      return apart ? 'clear' : `card ${JSON.stringify(c)} over flyout ${JSON.stringify(f)}`;
+    })
+    .toBe('clear');
+  await solid.tap();
+  await expect(flyout).toBeHidden();
   await bubbleAction('extrude').tap();
   await a.idle();
   await page.getByTestId('extrude-depth-input').getByRole('textbox').tap();

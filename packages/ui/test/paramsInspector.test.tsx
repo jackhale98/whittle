@@ -498,9 +498,10 @@ describe('SelectionInspector, PromptChip, WhichOneChooser', () => {
       />,
     );
     const opts = await screen.findAllByRole('option');
-    expect(opts.map((o) => o.getAttribute('data-kind'))).toEqual(['face', 'edge', 'vertex']);
+    // Stable order (ADR-046): kind priority vertex, edge, face, then depth, then id.
+    expect(opts.map((o) => o.getAttribute('data-kind'))).toEqual(['vertex', 'edge', 'face']);
     expect(opts[0]).toHaveFocus();
-    expect(onHover).toHaveBeenLastCalledWith('f');
+    expect(onHover).toHaveBeenLastCalledWith('v');
     await userEvent.keyboard('{ArrowDown}');
     expect(opts[1]).toHaveFocus();
     expect(onHover).toHaveBeenLastCalledWith('e');

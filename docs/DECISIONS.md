@@ -1671,3 +1671,63 @@ Scope approved by the owner from the UX research report (`docs/ux-research/repor
 - **`pickRect` faces come from per-face pixel counts of the half-resolution ID image.** Window mode compares the in-rectangle count with the whole-image count (cached per image). Edges and vertices are projected polylines; occlusion uses a 5 x 5 ID-buffer neighbourhood as a cheap "nothing in front" test, then the BVH ray. A stale ID image falls back to projected triangles filtered by a ray grid. Default kinds exclude `region` and `handle`.
 - **A pen without `penDraws` orbits like a finger** (unchanged), and palm-rejected touches do not start an orbit.
 - **Extra engine API `getNavigationState()`** (not in the contract) exposes the drag mode, pivot, pivot source and marker state for tests and for the integration step.
+
+## ADR-047 — M3.5 error causes: how the regen engine names the upstream feature (2026-11-09)
+
+Modeling workstream (packages/kernel-client `src/regen/cause.ts`; README "Error causes").
+
+- **Evidence, not heuristics.** Each regen records a walk per slot: each feature's definition and values, cache key, the features whose output it read, and the containers it set. A cause comes from one of three rules; anything else gets no cause.
+  - Rule 1 reads it from the persistent name: a tagged feature that is deleted, suppressed, after the consumer, or failed.
+  - Rule 2 derives it from the difference to the previous regen's walk.
+  - Rule 3 carries it from the previous regen while it still holds.
+- **Rule 2 needs the same stored ref to have resolved in the last regen.** The touchers of the name family are the features whose results set or removed a container holding it, plus the producer. They are tried nearest first:
+  - A toucher that changed itself is the cause.
+  - A toucher whose key changed only through its inputs hands over to a breadth-first walk of its dependencies, through features whose keys changed. The first level holding a changed or removed feature decides: one feature is the cause; several mean no cause.
+  - This is the "nearest upstream feature that changed" rule for chains. A pocket whose floor vanished because the plate under it got thinner names the plate.
+  - Fallback: a single change upstream of the consumer is the cause, because regeneration is deterministic.
+- **Sticky causes.** The contract says "changed this regen". The engine keeps the cause while the ref stays broken, until the ref resolves or the cause stops holding, so an unrelated edit does not erase the explanation. Proposed contract wording: "since the reference last resolved".
+- **Kinds.**
+  - Added, unsuppressed and moved-above features are `changed`, with `detail` "added", "unsuppressed" or "moved". The contract has no `added` kind; the detail is enough.
+  - `detail` labels sketch dimensions by kind ("horizontal distance 30 mm → 200 mm"), never by constraint id.
+  - A blocked feature names what it waits on (`failed`): the referenced feature that failed itself, or the first feature that failed on its body. The UI follows `cause.featureId` to reach the root.
+  - A feature's own edit is never its upstream cause.
+- **Deps** come from three sources: reference name tags, copied features, and the last writer of each body that a feature acts on or whose content key it hashes (`Plan.reads` for implicit scopes).
+- **Cost**: one canonical-JSON snapshot of each definition per regen, about 20 µs per feature.
+
+## ADR-048 — M3.5 regen of the new curves: knot conventions, sampling, exact projections (2026-11-09)
+
+Modeling workstream. The kernel and sketch workstreams should confirm or amend this (ADR-046).
+
+- **Knot convention of `SketchBSpline`.** All three workstreams must agree on it.
+  - `knots` are the distinct knot values and `multiplicities` their multiplicities. This is OCCT's `Geom_BSplineCurve` form. Give both or neither. For an open spline without `multiplicities`, the regen also reads a flat vector of length n + p + 1.
+  - Open (clamped) default: knots `i/(n−p)`, i = 0…n−p, with multiplicities p+1, 1, …, 1, p+1.
+  - Periodic default: knots `i/n`, i = 0…n, all multiplicity 1.
+  - The domain is [0, 1] in both cases.
+  - Periodic flat knots follow `BSplCLib::KnotSequence`: p+1−m₀ knots of the neighbouring period on each side, and pole i supported on flat knots i … i+p+1. So the default periodic cubic starts at (P₀ + 4P₁ + P₂)/6. The kernel's `Geom_BSplineCurve(poles, weights, knots, mults, p, periodic=true)` with these arrays should give the same curve and parametrisation. This follows from reading `BSplCLib` and has not been checked against a build yet; the kernel goldens should confirm it.
+  - If all `weights` are equal, the spline is non-rational.
+- **Sampling** for display produces exact points at the sketch chord tolerance. Sampling never feeds geometry; the kernel builds the exact edges.
+  - Elliptic arcs: uniform in the parametric angle, with the step of a circle of the major radius.
+  - Splines: de Boor, with per-span subdivision against 0.9 × the tolerance at the middle and quarter points.
+- **Exact projection** of another sketch's curves:
+  - Ellipses and elliptic arcs are exact when the planes are parallel. Otherwise the kernel's polyline is used, marked approximate.
+  - B-splines are exact onto any plane that does not see them edge-on. Orthographic projection is affine, and B-splines (rational ones too) are affine invariant.
+  - Proposed for the kernel's `projectEdges`: return the same exact `ellipse` / `ellipticArc` / `bspline` curves for model edges. kernel-client's `ProjectedCurve` already accepts them.
+  - Proposed for packages/sketch `convertEntities` / `reprojectLinked`: create and follow `SketchEllipse`, `SketchEllipticArc` and `SketchBSpline` linked entities from those curves.
+  - Until then, the engine's own fallback re-projects linked entities of these kinds in place. A spline whose source gains or loses poles is lost (needs attention), never refitted.
+
+
+## ADR-049 — M3.5 UI: radial menu, chooser, keymap, navigation settings, errors at cause (2026-11-09)
+
+Choices made by the UI workstream that the contracts and PLAN leave open. Fold into ADR-046 at the gate.
+
+- **Radial geometry.** Eight fixed 45 degree sectors clockwise from north, the same on every surface; a flick in an empty or disabled sector does nothing (it never snaps to the nearest item). Items fill clockwise from north-east and north is reserved for Repeat, so Repeat is always in the same place. Pills are 128 px wide (88 px under 480 px viewports; the full label stays in the accessible name) on a 136 px ring, sized so neighbours never touch.
+- **Flick versus hover.** Before the menu has drawn (250 ms for mouse and pen), moving 40 px toward an item selects it. After it has drawn, movement only highlights (held pointer) and a click or Enter selects, so moving the mouse away from an open menu is never a command. A held pointer (touch long-press) or held key selects on release and, lifted with no direction, stays open for a tap (a held key cancels: spring-loaded). Keyboard and touch sources draw at once.
+- **Never act on a stale click.** The menu acts only on presses it saw begin after it mounted (or the explicitly `held` opening pointer). A press outside cancels it and that press's click is eaten (one-shot, 500 ms), as is the click after a held release. Cancelling swallows a click that would otherwise have reached the canvas: a second click is needed, which is the price of removing the SolidWorks mis-click.
+- **Chooser order** is vertex, edge, face, body (the hardest target first, after the bubble-cursor result), then pick-ray depth, then id compared by code unit (locale-independent), so it is identical on every run. `PickCandidate.depth` is optional (an additive prop). Tab and Shift+Tab are captured at the document while the chooser is open, and the pure `cyclePreselection` is exported for the app to drive the viewport preselect without it.
+- **Keymap model.** A binding is `Mod+Alt+Shift+<code>`; `Mod` is Cmd on macOS and Ctrl elsewhere, so one stored keymap works across platforms. A literal Ctrl on macOS or Meta elsewhere is not bindable (the OS's). Overrides are stored per command and replace the defaults; `[]` unbinds; locked commands (Esc, Space-repeat) cannot change. Contexts are `global`, `model`, `sketch`; commands conflict only when their contexts overlap, so P is Point in a sketch and Push/pull in the model. Browser-reserved keys have two severities: `blocked` (Ctrl/Cmd+W, T, N, Shift+N/T/W, Q, L, Tab, Ctrl+Tab, Ctrl+1-9, F11, F12 ...) cannot be assigned at all; `preventable` (Save, Open, Print, F5, Find ...) needs an explicit "Use anyway". The table is by-hand knowledge of Chrome, Edge, Firefox and Safari and must be rechecked when a browser changes; `docs/` has no source for it beyond the browsers' own shortcut pages.
+- **Keymap storage** is the app's: `KeymapOverrides` is plain JSON (suggested key `wren.keymap`, via `readJson` / `writeJson`). The default keymap (`DEFAULT_COMMANDS`) reproduces `workbench.ts onKey` and the sketch toolbar, plus B, Shift+B, Shift+E and Shift+A for the four new curve tools (clash-free with every sketch tool; asserted by a test).
+- **Settings key.** Navigation settings live under `wren.navigation` (new keys use the post-rename prefix; the legacy `whittle.*` keys keep their names so no user loses a setting). `sanitizeNavigation` clamps and defaults anything stored. There is no settings panel in the app yet (theme is a toolbar toggle, nest-sketches a palette command), so `NavigationSettings` is a stand-alone controlled panel for whichever surface the integration chooses.
+- **Overlay.** Ctrl, Cmd or Alt held alone for 600 ms; any other key (a chord), a pointer press (Ctrl-click multi-select) or a wheel cancels it; its listeners are passive and never cancel events; it takes no focus.
+- **Errors at the cause.** A sentence exists only when the engine reported an `AttentionCause`. A cause that was deleted, or whose id the app cannot name, is plain text, never a dead button. In a tree row the cause button is not a tab stop (a treeitem must not nest tab stops); the inspector has the keyboard path.
+- **Sketch toolbar.** The four curve tools sit behind a "Curves" menu (like "Edit") rather than four more buttons on a bar that is already long on the tablet rail. The toolbar's own shortcut handler now matches `KeyboardEvent.code` (falling back to `key` for synthetic events), so it is layout-independent even before the keymap switch-over. `curvature` is added to the Constraints menu (disabled unless `enabledConstraints` allows it).
+- **`FloatingLayer` anchors.** A point anchor `{ x, y }` is keyed by its coordinates: a fresh object on every render used to re-run the focus-restore effect and steal focus from the chooser on each hover.
