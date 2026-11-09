@@ -383,6 +383,7 @@ Use any of these:
 | Format | Extensions | What you get |
 | --- | --- | --- |
 | STEP | `.step`, `.stp` | Solid bodies, one per solid. Assemblies are flattened. |
+| IGES | `.iges`, `.igs` | Solid bodies. Surface models are sewn into solids where their faces close. |
 | BREP | `.brep`, `.brp` | Solid bodies |
 | STL | `.stl` | A reference mesh body |
 | OBJ | `.obj` | A reference mesh body |
@@ -393,7 +394,14 @@ Use any of these:
 Mesh files (STL, OBJ, 3MF, GLB) come in as reference bodies. You can see and export them, but you
 cannot use them in booleans, fillets or chamfers. Mesh files can only be imported as **New**.
 
-IGES files (`.iges`, `.igs`) are not supported yet. Export them as STEP from the other program.
+Many programs export IGES as separate surfaces. Wren sews them together, and every closed set of
+faces becomes a solid. If the surfaces leave a gap, you get a surface body and a warning. You can
+see, measure and export a surface body, but its volume and mass are not meaningful, and it cannot
+add to, cut or intersect other bodies. Close the gap in the other program, or export a solid or a
+STEP file.
+
+Imported faces, edges and corners keep their names from one regeneration to the next, so a fillet
+or a sketch on an imported face stays attached.
 
 ### Export
 

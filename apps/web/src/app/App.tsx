@@ -127,7 +127,7 @@ export function App({ wb }: { wb: Workbench }) {
       {
         id: 'open-file',
         label: 'Open or import file…',
-        hint: '.wrencad, STEP, BREP, STL, OBJ, 3MF, GLB',
+        hint: '.wrencad, STEP, IGES, BREP, STL, OBJ, 3MF, GLB',
         shortcut: '⌘O',
         run: () => void wb.openFromDisk(),
       },

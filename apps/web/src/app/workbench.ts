@@ -2321,7 +2321,7 @@ export class Workbench {
     if (usable.length === 0) {
       const names = files.map((f) => f.name).join(', ');
       this.toast(
-        `Wren can open .wrencad projects and import STEP, BREP, STL, OBJ, 3MF and GLB files${names ? ` (not ${names})` : ''}.`,
+        `Wren can open .wrencad projects and import STEP, IGES, BREP, STL, OBJ, 3MF and GLB files${names ? ` (not ${names})` : ''}.`,
         'info',
       );
       return;

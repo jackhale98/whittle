@@ -235,7 +235,9 @@ test.describe('PWA manifest and installability', () => {
     const accepted = (
       manifest.file_handlers as Array<{ accept: Record<string, string[]> }>
     ).flatMap((handler) => Object.values(handler.accept).flat());
-    expect(accepted).toEqual(expect.arrayContaining(['.wrencad', '.step', '.stp']));
+    expect(accepted).toEqual(
+      expect.arrayContaining(['.wrencad', '.step', '.stp', '.igs', '.iges']),
+    );
   });
 
   test('chromium reports no installability errors once the SW controls the page', async ({

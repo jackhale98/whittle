@@ -4143,9 +4143,38 @@ export class RegenEngine {
       tools = r.value.bodies;
       warnings = r.value.warnings;
     }
+    const bodyId = (k: number) => (tools.length === 1 ? `B${f.id}` : `B${f.id}#${k}`);
+    // Open surfaces (IGES surface models whose faces do not close, loose faces): never passed
+    // off as solids. Their volume and mass mean nothing, and booleans with them are refused.
+    const open = meshOnly
+      ? []
+      : tools.flatMap((t, k) => (hasFreeEdges(t.naming, f.id) ? [bodyId(k)] : []));
+    if (open.length > 0) {
+      const what =
+        open.length === tools.length ? 'The imported file has' : 'Some imported bodies have';
+      if (f.op !== 'new') {
+        for (const t of tools) await this.releaseHandle(t.shape);
+        return fail(
+          kerr(
+            'INVALID_INPUT',
+            `${what} open surfaces, so it cannot ${f.op === 'add' ? 'add to' : f.op} a body`,
+            {
+              hint: 'Set the operation to New, or close the gaps (or export a solid) in the other program.',
+              entityRefs: open,
+            },
+          ),
+        );
+      }
+      warnings.push(
+        kerr('OPERATION_FAILED', `${what} open surfaces, not closed solids`, {
+          hint: 'Their volume and mass are not meaningful. Close the gaps or export a solid in the other program.',
+          entityRefs: open,
+        }),
+      );
+    }
     const asNew = (extra: KernelError[]) => {
       const set: BodyState[] = tools.map((t, k) => {
-        const id = tools.length === 1 ? `B${f.id}` : `B${f.id}#${k}`;
+        const id = bodyId(k);
         const b: BodyState = { id, shape: t.shape, naming: t.naming, key: `${key}/${id}` };
         if (meshOnly) b.meshOnly = true;
         return b;
@@ -4422,6 +4451,16 @@ const MESH_FORMATS: ReadonlySet<ImportFeature['source']['format']> = new Set([
   '3mf',
   'glb',
 ]);
+
+/**
+ * Does an imported body have free (boundary) edges? Its edges are named from their adjacent faces
+ * (naming.ts): `edge(A|B)` between two faces, `edge(A|A)` on a seam, `edge(A)` on a free edge,
+ * which a closed solid never has.
+ */
+function hasFreeEdges(naming: NamingMap, featureId: Id): boolean {
+  const free = new RegExp(`^edge\\(F${featureId}:face(#\\d+)?\\)(#\\d+)?$`);
+  return naming.some((n) => n.kind === 'edge' && free.test(n.name));
+}
 
 const IDENTITY_FRAME: Frame = { origin: [0, 0, 0], z: [0, 0, 1], x: [1, 0, 0] };
 

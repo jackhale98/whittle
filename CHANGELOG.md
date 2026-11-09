@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- IGES import end to end (M3 gate B1): `.igs` / `.iges` from the Open/Import pickers, drag and drop and the installed app's file handler. Surface models are sewn into solids; an open surface model comes in as a surface body with a warning and is refused as an add/cut/intersect tool.
+- Imports are placed and named by the kernel's `import` feature instead of the M1 TypeScript workaround (BREP rewrite, re-import, naming by a no-op intersect). Persistent names of imported faces, edges and vertices and the body ids are unchanged, checked against a golden recorded with the old path, so existing references keep resolving.
 - M3 in the app: every M3 tool is wired — extruded and revolved cut, sweep, loft, shell, draft, hole wizard (ISO by default, sizes from the tables, counterbore and countersink overrides), cosmetic thread, mirror, linear and circular patterns (sources from the tree or the model, skip toggles), reference plane, axis and point. Tools ask for each reference in turn with a prompt; reference chips for origin planes and axes and reference features; M3 shortcuts and context actions (inspector and touch bubble).
 - Sketch Edit menu in the app: offset, convert entities (projected in the kernel worker, linked), trim / extend, sketch fillet / chamfer and mirror, each one undo step named after the operation; Linked panel with Unlink and Re-pick for lost sources; a Point tool (P); labelled sketch toolbar on touch.
 - Linked sketch entities follow their edges on regen through packages/sketch's `reprojectLinked` (kernel-client default).

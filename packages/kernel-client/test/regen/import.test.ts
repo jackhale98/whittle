@@ -551,6 +551,41 @@ describe.skipIf(!built)(`regen golden: import${skipNote}`, () => {
     );
   });
 
+  it('IGES: an open surface model is a surface body with a warning, never a cutting tool', async () => {
+    const bytes = new TextEncoder().encode(igesBox(10, 20, 30, 5)); // no z max face
+    const igs: Attachment = { path: 'imports/open.igs', bytes, sha256: await sha256Hex(bytes) };
+    const r = await regen([importFeature(igs, 'iges')], [igs]);
+    expect(states(r), describeFailures(r)).toEqual(['ok']);
+    expect(r.bodies.map((b) => b.id)).toEqual([`B${IMP}`]);
+    expect(r.bodies[0]?.massProperties?.faceCount).toBe(5);
+    expect(r.bodies[0]?.mesh.edgeNames).toContain(`edge(F${IMP}:face#3)`); // a free edge
+    const w = r.features[0]?.warnings?.[0];
+    expect(w?.message).toBe('The imported file has open surfaces, not closed solids');
+    expect(w?.entityRefs).toEqual([`B${IMP}`]);
+    // The closed box has no such warning.
+    const closed = await igesAttachment('imports/box.igs', 10, 20, 30);
+    const ok = await regen([importFeature(closed, 'iges')], [closed]);
+    expect(ok.features[0]?.warnings ?? []).toEqual([]);
+    const cube: Feature = {
+      id: fid('ICUBE'),
+      type: 'primitive',
+      name: 'Cube',
+      suppressed: false,
+      op: 'new',
+      shape: 'box',
+      dx: '20',
+      dy: '20',
+      dz: '20',
+    };
+    const cut = await regen([cube, importFeature(igs, 'iges', { op: 'cut' })], [igs]);
+    expect(states(cut)).toEqual(['ok', 'error']);
+    expect(cut.features[1]?.error?.message).toBe(
+      'The imported file has open surfaces, so it cannot cut a body',
+    );
+    expect(cut.features[1]?.error?.code).toBe('INVALID_INPUT');
+    relClose(totalVolume(cut.bodies), 8000, 1e-9);
+  });
+
   it('mesh files become mesh-only reference bodies: shown and exported, never modified', async () => {
     const stl = await attachmentOf(bracketDoc(), 'imports/bracket.stl', 'stl');
     const r0 = await regen([importFeature(stl, 'stl')], [stl]);

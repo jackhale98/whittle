@@ -64,8 +64,8 @@ progress, and the rest of the roadmap is listed under [Coming next](#coming-next
 
 **Import and export**
 
-- Import STEP (`.step`, `.stp`) and BREP (`.brep`, `.brp`) as solids. Import STL, OBJ, 3MF and GLB
-  as reference meshes.
+- Import STEP (`.step`, `.stp`), IGES (`.iges`, `.igs`) and BREP (`.brep`, `.brp`) as solids.
+  Import STL, OBJ, 3MF and GLB as reference meshes.
 - Export STEP (AP214), STL (binary or ASCII, one merged file or one per body, three quality
   presets), 3MF, GLB, and `.wrencad` projects.
 

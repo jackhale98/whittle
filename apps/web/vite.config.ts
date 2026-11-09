@@ -152,6 +152,7 @@ export default defineConfig(({ command }) => {
                 'application/x-wren': ['.wrencad', '.whittle'],
                 'model/step': ['.step', '.stp'],
                 'application/step': ['.step', '.stp'],
+                'model/iges': ['.igs', '.iges'],
               },
             },
           ],

@@ -39,8 +39,11 @@ function chunks(record: string): string[] {
 
 const hollerith = (s: string): string => `${s.length}H${s}`;
 
-/** IGES text of the box [0,dx]×[0,dy]×[0,dz] (mm). */
-export function igesBox(dx: number, dy: number, dz: number): string {
+/**
+ * IGES text of the box [0,dx]×[0,dy]×[0,dz] (mm). `faceCount` < 6 writes only the first faces
+ * (x min, x max, y min, y max, z min, z max): an open surface model.
+ */
+export function igesBox(dx: number, dy: number, dz: number, faceCount = 6): string {
   const entities: Entity[] = [];
   const add = (e: Entity): number => {
     entities.push(e);
@@ -102,7 +105,7 @@ export function igesBox(dx: number, dy: number, dz: number): string {
       ],
     },
   ];
-  for (const f of faces) {
+  for (const f of faces.slice(0, faceCount)) {
     const lines = f.loop.map((a, i) => {
       const b = f.loop[(i + 1) % f.loop.length] as Vec3;
       return add({ type: 110, form: 0, params: [...a, ...b].map(real), subordinate: true });

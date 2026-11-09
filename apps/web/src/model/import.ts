@@ -22,13 +22,10 @@ const BY_EXT: Record<string, ImportFormat> = {
 };
 
 /**
- * File extensions the Open/Import pickers offer (besides `.wrencad`). IGES is recognised (a
- * dropped .igs gets the engine's "export it as STEP" explanation) but not offered until the
- * kernel reads it (PLAN M3 backlog).
+ * File extensions the Open/Import pickers offer (besides `.wrencad`): every format the engine
+ * reads, IGES included since M3 (the kernel's IGES reader sews surface models into solids).
  */
-export const IMPORT_EXTENSIONS = Object.keys(BY_EXT)
-  .filter((e) => BY_EXT[e] !== 'iges')
-  .map((e) => `.${e}`);
+export const IMPORT_EXTENSIONS = Object.keys(BY_EXT).map((e) => `.${e}`);
 
 /** The import format of a file name, or null for anything else. */
 export function importFormat(fileName: string): ImportFormat | null {
