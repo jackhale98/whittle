@@ -100,6 +100,8 @@ export function mirrorEntities(
     return copy;
   };
   const entityMap = new Map<Id, Id>();
+  // Picked points first, so a curve that refers to them (a spline's through points) finds them.
+  for (const e of selected) if (e.kind === 'point') mapPoint(e.id);
   for (const e of selected) {
     switch (e.kind) {
       case 'point':
@@ -149,10 +151,16 @@ export function mirrorEntities(
         break;
       }
       case 'bspline': {
+        const { through, ...rest } = structuredClone(e);
+        const poles = e.poles.map(mapPoint);
+        // Through points go with the copy only when they were picked too (they're points of
+        // their own; picked ones were copied above or now).
+        const mapped = through?.map((t) => pointMap.get(t));
         const copy = k.addEntity({
-          ...structuredClone(e),
+          ...rest,
           id: k.newId(),
-          poles: e.poles.map(mapPoint),
+          poles,
+          ...(mapped?.every((t) => t !== undefined) ? { through: mapped as Id[] } : {}),
         });
         entityMap.set(e.id, copy);
         break;

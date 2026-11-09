@@ -110,8 +110,8 @@ DECISIONS "Sketch curves in the solver" and "Sketch B-splines" have the details.
   anywhere. `curvature` (G2) is tangent plus equal curvature at a shared point, with a spline on one side.
 - Rows planegcs can't express (G2 between curved sides, an ellipse's major radius) are finished by
   Newton on Wren's own rows.
-- Ellipse `radius` / `diameter` dimension the major radius. A distance from the centre to the ellipse is the
-  minor radius.
+- Ellipse `radius` / `diameter` dimension the major radius, or the minor one with `axis: 'minor'`.
+- Splines drawn through points list their through points in `through` (the knot points).
 - A spline drawn through points keeps each through point at a knot. Its derived poles solve downstream of
   everything else, so dragging a through point reshapes the curve and nothing else moves.
 - Conflicts list the geometry to highlight (`entities`). `fixes[0]` removes the most recently added

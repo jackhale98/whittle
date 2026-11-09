@@ -9,7 +9,7 @@
  *    measurement (point–point, length), across the lines (point–line, line–line, offsets), or
  *    axis-parallel (`hDistance` x, `vDistance` y). The dimension line passes through the label;
  *    a label beyond the extension lines pulls the dimension line out to it.
- *  - Radial (`radius`, `diameter`, circle/arc offsets, the minor radius of an ellipse): a leader
+ *  - Radial (`radius`, `diameter`; on ellipses along the axis `axis` picks): a leader
  *    along the line through the centre towards the label; an arc gets an extension arc when the
  *    leader leaves its sweep.
  *  - Angular (`angle`): an arc between the two lines at the label's distance from their
@@ -424,11 +424,13 @@ export function dimensionAnnotation(
       if (round) return radial(round, L, c.kind === 'diameter', o);
       const e = index.get(c.curve);
       if (e?.kind === 'ellipse' || e?.kind === 'ellipticArc') {
-        // The major radius: a leader along the major axis, on the label's side.
+        // A leader along the dimensioned axis (`axis`, major by default), on the label's side.
         const g = ellipseGeom(index, e);
-        const side = dot(sub(L, g.c), g.u) >= 0 ? 1 : -1;
-        const along = add(g.c, scale(g.u, Math.max(Math.abs(dot(sub(L, g.c), g.u)), 1e-9) * side));
-        const ann = radial({ c: g.c, r: g.a }, along, c.kind === 'diameter', o);
+        const minor = c.axis === 'minor';
+        const ax = minor ? g.v : g.u;
+        const side = dot(sub(L, g.c), ax) >= 0 ? 1 : -1;
+        const along = add(g.c, scale(ax, Math.max(Math.abs(dot(sub(L, g.c), ax)), 1e-9) * side));
+        const ann = radial({ c: g.c, r: minor ? g.b : g.a }, along, c.kind === 'diameter', o);
         return { ...ann, text: { ...ann.text, at: L } };
       }
       return null;
@@ -530,18 +532,6 @@ function distanceAnnotation(
     const d = normalize(sub(F, P));
     const A = round ? add(P, scale(d, round.r)) : P;
     return linear(A, F, d, L, o, A, (to) => nearestOnLine(lid, l, to));
-  }
-  // Ellipse and its centre: the minor radius along the minor axis, on the label's side.
-  for (const [p, q] of [
-    [ea, eb],
-    [eb, ea],
-  ] as const) {
-    if (isPoint(p) && (q.kind === 'ellipse' || q.kind === 'ellipticArc')) {
-      const g = ellipseGeom(index, q);
-      const side = dot(sub(L, g.c), g.v) >= 0 ? 1 : -1;
-      const B = add(g.c, scale(g.v, side * g.b));
-      return linear(g.c, B, scale(g.v, side), L, o);
-    }
   }
   // Circles / points around circles: along the line of centres, between the nearest points.
   const ra = roundOf(index, a);

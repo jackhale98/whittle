@@ -128,7 +128,8 @@ export function constraintLabel(
   namer: Namer,
   values: Record<Id, number>,
 ): string {
-  const base = CONSTRAINT_LABEL[c.kind];
+  const minor = (c.kind === 'radius' || c.kind === 'diameter') && c.axis === 'minor';
+  const base = minor ? `Minor ${CONSTRAINT_LABEL[c.kind].toLowerCase()}` : CONSTRAINT_LABEL[c.kind];
   if (c.kind === 'offset') {
     const v = values[c.id];
     return `${base}${v === undefined ? '' : ` ${formatLength(v)}`} (${offsetRefs(c, namer)})`;
@@ -225,13 +226,10 @@ export function describeFor(
       return v === undefined ? 'a fixed length' : `${formatLength(v)} long`;
     case 'radius':
     case 'diameter': {
-      const what = `${namer.isConic(c.curve) ? 'major ' : ''}${c.kind}`;
+      const what = `${namer.isConic(c.curve) ? `${c.axis ?? 'major'} ` : ''}${c.kind}`;
       return v === undefined ? `a fixed ${what}` : `${what} ${formatLength(v)}`;
     }
     case 'distance':
-      // From an ellipse's centre to the ellipse: its minor radius (M3.5).
-      if (namer.isConic(c.a) || namer.isConic(c.b))
-        return v === undefined ? 'a fixed minor radius' : `minor radius ${formatLength(v)}`;
       return `${v === undefined ? 'a set distance' : formatLength(v)} from ${other(c.a, c.b)}`;
     case 'hDistance':
       return `${v === undefined ? 'a set distance' : formatLength(Math.abs(v))} horizontally from ${other(c.a, c.b)}`;

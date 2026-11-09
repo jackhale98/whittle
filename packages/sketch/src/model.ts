@@ -482,6 +482,14 @@ export function buildModel(input: SketchSolveInput, options: ModelOptions = {}):
       case 'bspline': {
         const why = splineDefError(e.poles.length, e);
         if (why) throw new SketchInputError(`${nm(e.id)}: ${why}`);
+        if (e.through) {
+          const inner = new SplineBasis(e.poles.length, e).innerKnots().length;
+          if (e.through.length !== inner || new Set(e.through).size !== inner)
+            throw new SketchInputError(
+              `${nm(e.id)}: it needs one through point per inner knot (${inner}), each once`,
+            );
+          for (const t of e.through) pointOf(t, e.id);
+        }
         const poles = Int32Array.from(e.poles.map((id) => pointOf(id, e.id)));
         const params = uniq([...poles].flatMap((i) => P(i)));
         const basis = new SplineBasis(e.poles.length, e);
@@ -622,8 +630,18 @@ export function buildModel(input: SketchSolveInput, options: ModelOptions = {}):
       continue; // a clamped spline's end poles are on it
     const p: Vec2 = [values[pi] as number, values[pi + 1] as number];
     const curve = paramCurve(geomIndex, e) as ParamCurve;
-    // A through point (an interpolating spline's point at a knot) stays at its knot.
-    if (e.knots) {
+    // A through point stays at its knot. `through` (ADR-050) says which knot; documents without
+    // it fall back to recognising a point that sits at an inner knot.
+    if (e.through) {
+      const i = e.through.indexOf(c.point);
+      if (i >= 0) {
+        const k = sp.basis.innerKnots()[i] as number;
+        splineSites.set(c.id, { idx: -1, u: k, name: `k:${c.id}` });
+        knotPoints.set(c.id, { spline: e.id, knot: k });
+        gcsParams.push({ name: `k:${c.id}`, idx: -1, value: k });
+        continue;
+      }
+    } else if (e.knots) {
       let bestK = Number.NaN;
       let bestD = Number.POSITIVE_INFINITY;
       for (const k of sp.basis.innerKnots()) {
@@ -1720,13 +1738,6 @@ export function buildModel(input: SketchSolveInput, options: ModelOptions = {}):
           });
         else if (kind === 'cc')
           prims.push({ id: nextId(), type: 'c2cdistance', c1_id: gid(a), c2_id: gid(b), dist: v });
-        else if (kind === 'pe')
-          prims.push({
-            id: nextId(),
-            type: 'equal',
-            param1: { o_id: gid(b), prop: 'radmin' },
-            param2: v,
-          });
         else prims.push({ id: nextId(), type: 'c2ldistance', c_id: gid(a), l_id: gid(b), dist: v });
         break;
       }
@@ -1758,6 +1769,15 @@ export function buildModel(input: SketchSolveInput, options: ModelOptions = {}):
       case 'diameter': {
         const radius = c.kind === 'radius' ? v : v / 2;
         if (conicRef(c.curve)) {
+          if (c.axis === 'minor') {
+            prims.push({
+              id: nextId(),
+              type: 'equal',
+              param1: { o_id: gid(c.curve), prop: 'radmin' },
+              param2: radius,
+            });
+            break;
+          }
           // The major radius √(|CF|² + b²): no planegcs counterpart (its internal alignment of a
           // vertex point ignores the vertex kind in this build), so Newton finishes it.
           (out[0] as Row).gcs = false;
@@ -1784,7 +1804,7 @@ export function buildModel(input: SketchSolveInput, options: ModelOptions = {}):
     return { rows: out, prims };
   }
 
-  type PairKind = 'pp' | 'pl' | 'll' | 'pc' | 'cc' | 'cl' | 'pe';
+  type PairKind = 'pp' | 'pl' | 'll' | 'pc' | 'cc' | 'cl';
   function distancePair(a: Id, b: Id): [PairKind, Id, Id] | string {
     const ea = ent(a);
     const eb = ent(b);
@@ -1793,18 +1813,10 @@ export function buildModel(input: SketchSolveInput, options: ModelOptions = {}):
       e: SketchEntity,
     ): e is Extract<SketchEntity, { kind: 'ellipse' | 'ellipticArc' }> =>
       e.kind === 'ellipse' || e.kind === 'ellipticArc';
-    // From an ellipse's own centre the nearest point of the curve is a minor vertex: the minor
-    // radius (DECISIONS "Ellipse dimensions"). Other point–ellipse distances are not supported.
-    for (const [p, q] of [
-      [ea, eb],
-      [eb, ea],
-    ] as const) {
-      if (p.kind !== 'point' || !conic(q)) continue;
-      if (root(p.id) === root(q.center)) return ['pe', p.id, q.id];
-      return `A distance to ${nm(q.id)} is measured from its centre (its minor radius)`;
-    }
-    if (conic(ea) || conic(eb) || ea.kind === 'bspline' || eb.kind === 'bspline')
-      return 'Distance needs points, lines, circles or arcs (or an ellipse and its centre)';
+    if (conic(ea) || conic(eb))
+      return 'A distance to an ellipse is not supported: dimension its radii (major or minor)';
+    if (ea.kind === 'bspline' || eb.kind === 'bspline')
+      return 'A distance to a spline is not supported: dimension its points';
     if (ea.kind === 'point' && eb.kind === 'point') return ['pp', a, b];
     if (ea.kind === 'point' && eb.kind === 'line') return ['pl', a, b];
     if (ea.kind === 'line' && eb.kind === 'point') return ['pl', b, a];
@@ -1868,10 +1880,6 @@ export function buildModel(input: SketchSolveInput, options: ModelOptions = {}):
             angular: false,
           };
         }
-        if (kind === 'pe') {
-          const q = conicRef(b) as ConicRef;
-          return { params: [q.b], fn: (x) => Math.abs(x[q.b] as number), angular: false };
-        }
         if (kind === 'cc') {
           const p = roundRef(a) as RoundRef;
           const q = roundRef(b) as RoundRef;
@@ -1922,8 +1930,10 @@ export function buildModel(input: SketchSolveInput, options: ModelOptions = {}):
       case 'diameter': {
         const q = conicRef(c.curve);
         if (q) {
-          // An ellipse's radius / diameter is its major one (DECISIONS "Ellipse dimensions").
+          // An ellipse's radius / diameter: `axis` picks it, major by default (ADR-051).
           const k = c.kind === 'radius' ? 1 : 2;
+          if (c.axis === 'minor')
+            return { params: [q.b], fn: (x) => k * Math.abs(x[q.b] as number), angular: false };
           return {
             params: q.params,
             fn: (x) => k * Math.hypot(hyp(x, q.f, q.c), x[q.b] as number),

@@ -91,30 +91,50 @@ describe('ellipses and elliptic arcs', () => {
     solver.endDrag(session);
   });
 
-  it('radius / diameter dimension the major radius; centre-to-curve distance the minor radius', async () => {
+  it('radius / diameter: `axis` picks major (default) or minor', async () => {
     const b = new SketchBuilder();
     const c = b.point(0, 0);
     b.geo({ kind: 'fix', entity: c });
     const e = b.ellipse(c, 10, 5, 0.3);
-    const rad = b.dim({ kind: 'radius', curve: e }, 12);
-    b.dim({ kind: 'distance', a: c, b: e }, 4);
-    const ref = b.dim({ kind: 'diameter', curve: e }, 0, false);
+    b.dim({ kind: 'radius', curve: e }, 12);
+    b.dim({ kind: 'diameter', curve: e, axis: 'minor' }, 8);
+    const major = b.dim({ kind: 'diameter', curve: e }, 0, false);
+    const minor = b.dim({ kind: 'radius', curve: e, axis: 'minor' }, 0, false);
     const res = (await core()).solve(b.input());
     solved(res);
     const g = entity(res, e, 'ellipse');
     expect(g.majorRadius).toBeCloseTo(12, 9);
     expect(g.minorRadius).toBeCloseTo(4, 9);
-    expect(res.driven[ref]).toBeCloseTo(24, 9);
+    expect(res.driven[major]).toBeCloseTo(24, 9);
+    expect(res.driven[minor]).toBeCloseTo(4, 9);
     // Only the rotation is left.
     expect(res.dof).toBe(1);
-    void rad;
-    // A distance from another point to an ellipse is refused with a plain reason.
-    const p = b.point(30, 0);
-    b.dim({ kind: 'distance', a: p, b: e }, 3);
+    // Labels say which radius.
+    const { constraintLabel, Namer } = await import('../src/explain');
+    const namer = new Namer(b.entities);
+    const dims = b.constraints.filter((k) => k.kind === 'radius' || k.kind === 'diameter');
+    expect(dims.map((k) => constraintLabel(k, namer, b.values))).toContain(
+      'Minor diameter ⌀8 mm (Ellipse 1)',
+    );
+  });
+
+  it('an elliptic arc minor radius; distances to an ellipse are refused', async () => {
+    const b = new SketchBuilder();
+    const c = b.point(0, 0);
+    b.geo({ kind: 'fix', entity: c });
+    const s = b.pointOnEllipse([0, 0], 10, 4, 0, 0.3);
+    const t = b.pointOnEllipse([0, 0], 10, 4, 0, 2);
+    const ea = b.ellipticArc(c, 10, 4, 0, s, t);
+    b.dim({ kind: 'radius', curve: ea, axis: 'minor' }, 3);
+    const res = (await core()).solve(b.input());
+    solved(res);
+    expect(entity(res, ea, 'ellipticArc').minorRadius).toBeCloseTo(3, 9);
+    // The old centre-distance convention is gone: a distance to an ellipse is refused.
+    const d = b.dim({ kind: 'distance', a: c, b: ea }, 3);
     const bad = (await core()).solve(b.input());
-    expect(
-      bad.conflicts.some((k) => k.kind === 'unsupported' && /centre/.test(k.explanation)),
-    ).toBe(true);
+    const conflict = bad.conflicts.find((k) => k.constraints.includes(d));
+    expect(conflict?.kind).toBe('unsupported');
+    expect(conflict?.explanation).toMatch(/dimension its radii \(major or minor\)/);
   });
 
   it('point on an elliptic arc, equal elliptic arcs, concentric', async () => {
