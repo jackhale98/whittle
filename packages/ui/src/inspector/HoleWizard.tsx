@@ -16,6 +16,9 @@ const kindOptions = [
 ] as const satisfies readonly { value: HoleFeature['kind']; label: string }[];
 
 const mm = (n: number) => `${Number(n.toFixed(4))}mm`;
+/** A table value to start an override from ('' when the standard has no value for the size). */
+const seed = (n: number, unit: 'mm' | 'deg') =>
+  Number.isFinite(n) ? `${Number(n.toFixed(4))} ${unit}` : '';
 
 /**
  * Hole wizard fields (PLAN 12 M3): an inspector section, not a dialog. Standard, kind, size from
@@ -30,7 +33,19 @@ export function HoleFields({ f, c, edit }: { f: HoleFeature; c: Ctx; edit: Edit<
   const overrideOn = f.diameter !== undefined;
   const ov = f.diameter ? c.evaluate(f.diameter, 'length') : undefined;
   const override = ov?.ok ? ov.value : undefined;
-  const resolved = row ? resolveHole(f, row, override) : [];
+  // Counterbore / countersink overrides replace their table rows in the read-out.
+  const own: Record<string, { expr: string | undefined; dim: 'length' | 'angle' }> = {
+    cbDiameter: { expr: f.counterbore?.diameter, dim: 'length' },
+    cbDepth: { expr: f.counterbore?.depth, dim: 'length' },
+    csDiameter: { expr: f.countersink?.diameter, dim: 'length' },
+    csAngle: { expr: f.countersink?.angle, dim: 'angle' },
+  };
+  const resolved = (row ? resolveHole(f, row, override) : []).map((d) => {
+    const o = own[d.key];
+    const r = o?.expr ? c.evaluate(o.expr, o.dim) : undefined;
+    if (!r?.ok) return d;
+    return { ...d, value: o?.dim === 'angle' ? (r.value * 180) / Math.PI : r.value, overridden: true };
+  });
   const depth = f.end.kind === 'blind' ? c.evaluate(f.end.depth, 'length') : undefined;
   const cbDepth = row && f.kind === 'counterbore' ? row.counterbore.depth : undefined;
 
@@ -165,6 +180,90 @@ export function HoleFields({ f, c, edit }: { f: HoleFeature; c: Ctx; edit: Edit<
                 edit={edit}
                 build={(diameter) => ({ ...f, diameter })}
               />
+            ) : null}
+            {f.kind === 'counterbore' ? (
+              <>
+                <Switch
+                  label="Override counterbore"
+                  checked={f.counterbore !== undefined}
+                  onChange={(on) => {
+                    const { counterbore: _cb, ...rest } = f;
+                    edit.commit(
+                      on
+                        ? {
+                            ...rest,
+                            counterbore: {
+                              diameter: seed(row.counterbore.diameter, 'mm'),
+                              depth: seed(row.counterbore.depth, 'mm'),
+                            },
+                          }
+                        : rest,
+                    );
+                  }}
+                />
+                {f.counterbore ? (
+                  <>
+                    <ExprField
+                      label="Counterbore diameter"
+                      value={f.counterbore.diameter ?? ''}
+                      expected="length"
+                      c={c}
+                      edit={edit}
+                      build={(diameter) => ({ ...f, counterbore: { ...f.counterbore, diameter } })}
+                    />
+                    <ExprField
+                      label="Counterbore depth"
+                      value={f.counterbore.depth ?? ''}
+                      expected="length"
+                      c={c}
+                      edit={edit}
+                      build={(depth) => ({ ...f, counterbore: { ...f.counterbore, depth } })}
+                    />
+                  </>
+                ) : null}
+              </>
+            ) : null}
+            {f.kind === 'countersink' ? (
+              <>
+                <Switch
+                  label="Override countersink"
+                  checked={f.countersink !== undefined}
+                  onChange={(on) => {
+                    const { countersink: _cs, ...rest } = f;
+                    edit.commit(
+                      on
+                        ? {
+                            ...rest,
+                            countersink: {
+                              diameter: seed(row.countersink.diameter, 'mm'),
+                              angle: seed(row.countersink.angle, 'deg'),
+                            },
+                          }
+                        : rest,
+                    );
+                  }}
+                />
+                {f.countersink ? (
+                  <>
+                    <ExprField
+                      label="Countersink diameter"
+                      value={f.countersink.diameter ?? ''}
+                      expected="length"
+                      c={c}
+                      edit={edit}
+                      build={(diameter) => ({ ...f, countersink: { ...f.countersink, diameter } })}
+                    />
+                    <ExprField
+                      label="Countersink angle"
+                      value={f.countersink.angle ?? ''}
+                      expected="angle"
+                      c={c}
+                      edit={edit}
+                      build={(angle) => ({ ...f, countersink: { ...f.countersink, angle } })}
+                    />
+                  </>
+                ) : null}
+              </>
             ) : null}
           </>
         ) : null}

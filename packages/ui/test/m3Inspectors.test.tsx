@@ -497,6 +497,36 @@ describe('hole wizard', () => {
     expect('diameter' in last<Feature>(onChange)).toBe(false);
   });
 
+  it('counterbore override: seeds the table values, edits them, shows them as overrides', async () => {
+    const { onChange } = setup(hole);
+    expect(screen.queryByRole('textbox', { name: 'Counterbore diameter' })).toBeNull();
+    await userEvent.click(screen.getByRole('switch', { name: 'Override counterbore' }));
+    expect(last<Feature & { counterbore: object }>(onChange).counterbore).toEqual({
+      diameter: '11 mm',
+      depth: '6.5 mm',
+    });
+    document.body.innerHTML = '';
+    const again = setup({ ...hole, counterbore: { diameter: '12mm', depth: '7mm' } });
+    expect(resolved().getByText('12 mm')).toBeInTheDocument();
+    expect(resolved().getAllByText('override')).toHaveLength(2);
+    await type('Counterbore depth', '8mm');
+    expect(last<Feature & { counterbore: object }>(again.onChange).counterbore).toEqual({
+      diameter: '12mm',
+      depth: '8mm',
+    });
+    await userEvent.click(screen.getByRole('switch', { name: 'Override counterbore' }));
+    expect('counterbore' in last<Feature>(again.onChange)).toBe(false);
+  });
+
+  it('countersink override: diameter and angle', async () => {
+    const { onChange } = setup({ ...hole, kind: 'countersink' });
+    await userEvent.click(screen.getByRole('switch', { name: 'Override countersink' }));
+    expect(last<Feature & { countersink: { angle: string } }>(onChange).countersink.angle).toBe(
+      '90 deg',
+    );
+    expect(screen.queryByRole('switch', { name: 'Override counterbore' })).toBeNull();
+  });
+
   it('tapped override is the drill diameter', () => {
     setup({ ...hole, kind: 'tapped', size: 'M6', diameter: '5.1mm' });
     expect(screen.getByRole('textbox', { name: 'Drill diameter' })).toBeInTheDocument();
