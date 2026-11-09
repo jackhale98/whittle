@@ -154,7 +154,7 @@ export function ToolRail({
           animate={{ opacity: 1, x: 0 }}
           transition={spring}
           style={{ top }}
-          className="w-panel pointer-events-auto absolute left-[calc(100%+8px)] flex w-44 flex-col gap-0.5 p-1.5"
+          className="w-panel pointer-events-auto absolute left-[calc(100%+8px)] flex w-max max-w-[min(20rem,calc(100vw-7rem))] min-w-44 flex-col gap-0.5 p-1.5"
         >
           {toolGroups
             .find((g) => g.id === open)
@@ -173,12 +173,13 @@ export function ToolRail({
                   title={on ? undefined : toolHint(id)}
                   onClick={() => pick(id, group)}
                   className={cn(
-                    'flex h-12 items-center gap-3 rounded-control px-3 text-left text-sm font-medium text-fg transition-colors duration-fast select-none active:bg-surface-3 aria-disabled:text-fg-muted aria-disabled:opacity-60',
+                    'flex min-h-12 items-center gap-3 rounded-control py-1.5 px-3 text-left text-sm font-medium text-fg transition-colors duration-fast select-none active:bg-surface-3 aria-disabled:text-fg-muted aria-disabled:opacity-60',
                     activeTool === id ? 'bg-accent-soft text-accent-text' : 'hover:bg-surface-2',
                   )}
                 >
                   <t.Icon className="size-5 shrink-0" strokeWidth={1.7} aria-hidden />
-                  <span className="min-w-0 flex-1 truncate">{t.label}</span>
+                  {/* Full names, never truncated: wrap only past the max width. */}
+                  <span className="min-w-0 flex-1 leading-tight">{t.label}</span>
                   {t.shortcut ? (
                     <span aria-hidden className="text-2xs text-fg-subtle">
                       {t.shortcut}
