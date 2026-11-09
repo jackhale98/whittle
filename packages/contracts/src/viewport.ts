@@ -69,6 +69,8 @@ export interface PickHit {
   normal?: Vec3;
   /** Screen distance in CSS px from the query point (edges/vertices are picked within a tolerance). */
   distancePx: number;
+  /** M3.5: distance from the camera along the pick ray, mm (stable "Which one?" ordering). */
+  depth?: number;
 }
 
 export interface PickOptions {
@@ -189,6 +191,11 @@ export interface ViewportGesture {
   pointerType: 'mouse' | 'pen' | 'touch';
   /** `contextMenu` under `rightOrbitRepeat`: a quick click that means "repeat the last command". */
   repeat?: boolean;
+  /**
+   * The pointer that made the gesture, for `longPress` / `contextMenu` raised while it is still
+   * down (touch long-press): the radial menu tracks it until it lifts.
+   */
+  pointerId?: number;
 }
 
 /**

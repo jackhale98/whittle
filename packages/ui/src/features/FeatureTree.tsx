@@ -27,6 +27,8 @@ import {
 } from 'react';
 import { type FloatingAnchor, Menu, type MenuItem } from '../components/floating';
 import { cn, Tooltip } from '../components/primitives';
+import { type AttentionSentence, attentionSentences } from '../inspector/attentionMessage';
+import { CauseSentence } from '../inspector/CauseSentence';
 import { useLongPress } from '../logic/longPress';
 import { readStored, writeStored } from '../logic/persist';
 import {
@@ -59,6 +61,12 @@ export interface FeatureTreeProps {
   /** Features at index >= this are rolled back. Default `features.length`. */
   rollbackIndex?: number;
   selectedId?: Id | null;
+  /**
+   * Lineage of the selected feature (computed by the app from feature refs): its parents and
+   * children are marked in the list (`data-lineage`) and announced ("built from the selected
+   * feature's ..."). Selecting is unchanged; pair with `FeatureLineage` for the inline lists.
+   */
+  lineage?: { parents: readonly Id[]; children: readonly Id[] };
   onSelect?(id: Id | null): void;
   onRename?(id: Id, name: string): void;
   onRollback?(index: number): void;
@@ -111,15 +119,36 @@ interface VisibleRow {
 
 const clampIdx = (n: number, max: number) => Math.max(0, Math.min(max, n));
 
+interface StatusLine {
+  tone: 'danger' | 'warning' | 'muted';
+  message: string;
+  hint?: string | undefined;
+  /** "<feature> lost its edge because <cause> changed": the cause name is a button. */
+  sentence?: AttentionSentence | undefined;
+}
+
 function describeStatus(
   s: FeatureStatus | undefined,
-): { tone: 'danger' | 'warning' | 'muted'; message: string; hint?: string } | null {
+  name: string,
+  nameOf: (id: Id) => string | undefined,
+): StatusLine | null {
   if (!s) return null;
+  const sentence =
+    s.state === 'error' || s.state === 'needsAttention' || s.state === 'blocked'
+      ? attentionSentences({
+          feature: name,
+          state: s.state,
+          ...(s.unresolved ? { unresolved: s.unresolved } : {}),
+          ...(s.cause ? { cause: s.cause } : {}),
+          nameOf,
+        })[0]
+      : undefined;
   if (s.state === 'error') {
     return {
       tone: 'danger',
-      message: s.error?.message ?? 'This feature failed to rebuild.',
+      message: sentence?.text ?? s.error?.message ?? 'This feature failed to rebuild.',
       hint: s.error?.hint,
+      sentence,
     };
   }
   if (s.state === 'needsAttention') {
@@ -127,15 +156,18 @@ function describeStatus(
     return {
       tone: 'warning',
       message:
-        n === 1 ? 'A reference needs re-picking.' : `${n || 'Some'} references need re-picking.`,
+        sentence?.text ??
+        (n === 1 ? 'A reference needs re-picking.' : `${n || 'Some'} references need re-picking.`),
       hint: 'Select the feature and pick the highlighted references again.',
+      sentence,
     };
   }
   if (s.state === 'blocked') {
     return {
       tone: 'muted',
-      message: 'Waiting on an earlier feature.',
+      message: sentence?.text ?? 'Waiting on an earlier feature.',
       hint: 'Fix the failing feature above first.',
+      sentence,
     };
   }
   return null;
@@ -159,6 +191,7 @@ export function FeatureTree({
   statuses,
   rollbackIndex,
   selectedId = null,
+  lineage,
   onSelect,
   onRename,
   onRollback,
@@ -176,6 +209,8 @@ export function FeatureTree({
   const rollback = clampIdx(rollbackIndex ?? n, n);
   const touch = density === 'touch';
   const statusById = new Map(statuses?.map((s) => [s.featureId, s]));
+  const nameById = new Map(features.map((f) => [f.id, f.name]));
+  const nameOf = (id: Id) => nameById.get(id);
 
   const wrap = useRef<HTMLDivElement>(null);
   const rows = useRef(new Map<Id, HTMLDivElement>());
@@ -604,7 +639,7 @@ export function FeatureTree({
             const shared = f.type === 'sketch' ? sharedCount(nesting, f.id) : 0;
             const meta = featureMeta[f.type];
             const status = statusById.get(f.id);
-            const st = describeStatus(status);
+            const st = describeStatus(status, f.name, nameOf);
             const rolled = i >= rollback || status?.state === 'rolledBack';
             const suppressed = f.suppressed || status?.state === 'suppressed';
             const selected = selectedId === f.id;
@@ -624,6 +659,8 @@ export function FeatureTree({
                 ? `Contains ${kids.length === 1 ? 'a sketch' : `${kids.length} sketches`}.`
                 : '',
               shared ? `Used by ${shared} features.` : '',
+              lineage?.parents.includes(f.id) ? 'The selected feature is built from this one.' : '',
+              lineage?.children.includes(f.id) ? 'Built from the selected feature.' : '',
               st?.hint,
             ]
               .filter(Boolean)
@@ -645,6 +682,13 @@ export function FeatureTree({
                 tabIndex={activeFocus === f.id ? 0 : -1}
                 data-feature-id={f.id}
                 data-state={status?.state ?? 'ok'}
+                data-lineage={
+                  lineage?.parents.includes(f.id)
+                    ? 'parent'
+                    : lineage?.children.includes(f.id)
+                      ? 'child'
+                      : undefined
+                }
                 data-nested={nested || undefined}
                 onFocus={(e) => {
                   if (e.target === e.currentTarget) setFocusId(f.id);
@@ -663,6 +707,7 @@ export function FeatureTree({
                 style={dragging ? { transform: `translateY(${drag?.dy}px)`, zIndex: 2 } : undefined}
                 className={cn(
                   'group/row relative list-none outline-none',
+                  'data-[lineage=child]:shadow-[inset_3px_0_0_var(--color-warning)] data-[lineage=parent]:shadow-[inset_3px_0_0_var(--color-accent)]',
                   dragging && 'opacity-90',
                 )}
               >
@@ -809,7 +854,17 @@ export function FeatureTree({
                           ) : (
                             <Ban className="mt-px size-3 shrink-0" aria-hidden />
                           )}
-                          <span>{st.message}</span>
+                          <span>
+                            {st.sentence ? (
+                              <CauseSentence
+                                sentence={st.sentence}
+                                inTree
+                                {...(onSelect ? { onSelectFeature: onSelect } : {})}
+                              />
+                            ) : (
+                              st.message
+                            )}
+                          </span>
                         </span>
                       </Tooltip>
                     ) : null}

@@ -23,6 +23,7 @@ import { Menu, type MenuItem } from '../components/floating';
 import { ChamferIcon } from '../components/icons';
 import { Button, cn, Tooltip } from '../components/primitives';
 import { ConstraintGlyph, constraintLabels, geometricConstraintKinds } from './ConstraintGlyph';
+import { SplineControlIcon, sketchCurveTools } from './curveTools';
 import type { SketchEditToolId } from './EditChrome';
 
 export type SketchDrawToolId =
@@ -34,10 +35,12 @@ export type SketchDrawToolId =
   | 'polygon'
   | 'point'
   | 'dimension';
-export type SketchToolId = SketchDrawToolId | SketchEditToolId;
+/** M3.5 curve tools (ADR-046). They sit behind the "Curves" menu button. */
+export type SketchCurveToolId = 'splineControl' | 'splineThrough' | 'ellipse' | 'ellipticArc';
+export type SketchToolId = SketchDrawToolId | SketchCurveToolId | SketchEditToolId;
 export type GeometricConstraintKind = GeometricConstraint['kind'];
 
-interface ToolSpec {
+export interface ToolSpec {
   id: SketchToolId;
   label: string;
   /** Text under the icon in touch density. */
@@ -189,13 +192,26 @@ export const sketchEditTools: readonly (ToolSpec & { id: SketchEditToolId })[] =
   },
 ];
 
-const allSketchTools: readonly ToolSpec[] = [...sketchTools, ...sketchEditTools];
+const allSketchTools: readonly ToolSpec[] = [
+  ...sketchTools,
+  ...sketchCurveTools,
+  ...sketchEditTools,
+];
 
-/** `⇧C` -> shift + c; `O` -> o. */
+export { sketchCurveTools };
+
+/**
+ * `⇧C` -> shift + c; `O` -> o. Matches the physical key (`KeyboardEvent.code`, PLAN 9.4) so a
+ * shortcut sits on the same key on every layout; synthetic events without a code fall back to `key`.
+ */
 function matchesShortcut(e: KeyboardEvent, shortcut: string | undefined): boolean {
   if (!shortcut) return false;
   const shift = shortcut.startsWith('⇧');
-  return e.shiftKey === shift && e.key.toLowerCase() === shortcut.replace('⇧', '').toLowerCase();
+  if (e.shiftKey !== shift) return false;
+  const letter = shortcut.replace('⇧', '');
+  return e.code
+    ? e.code === `Key${letter.toUpperCase()}`
+    : e.key.toLowerCase() === letter.toLowerCase();
 }
 
 export interface SketchToolbarProps {
@@ -208,6 +224,8 @@ export interface SketchToolbarProps {
   onToggleConstruction(): void;
   /** Applies a constraint to the current selection. */
   onConstraint?(kind: GeometricConstraintKind): void;
+  /** M3.5 curve tools behind the "Curves" button (default {@link sketchCurveTools}); [] hides it. */
+  curveTools?: readonly ToolSpec[];
   /** Constraints applicable to the current selection; others are shown disabled. */
   enabledConstraints?: readonly GeometricConstraintKind[];
   onFinish(): void;
@@ -240,6 +258,7 @@ export function SketchToolbar({
   construction,
   onToggleConstruction,
   onConstraint,
+  curveTools = sketchCurveTools,
   enabledConstraints,
   onFinish,
   onEscape,
@@ -255,6 +274,7 @@ export function SketchToolbar({
     | { kind: 'variants'; tool: ToolSpec; anchor: HTMLElement }
     | { kind: 'constraints'; anchor: HTMLElement }
     | { kind: 'edit'; anchor: HTMLElement }
+    | { kind: 'curves'; anchor: HTMLElement }
     | null
   >(null);
   const pressTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -289,7 +309,7 @@ export function SketchToolbar({
           e.preventDefault();
           L.onTool(null);
         } else L.onEscape?.();
-      } else if (!e.shiftKey && e.key.toLowerCase() === 'x') {
+      } else if (!e.shiftKey && (e.code ? e.code === 'KeyX' : e.key.toLowerCase() === 'x')) {
         e.preventDefault();
         L.onToggleConstruction();
       } else {
@@ -307,6 +327,7 @@ export function SketchToolbar({
     !enabledConstraints || enabledConstraints.includes(k);
   const side = rail ? 'right' : 'top';
   const activeEdit = sketchEditTools.find((t) => t.id === activeTool);
+  const activeCurve = curveTools.find((t) => t.id === activeTool);
   const touch = density === 'touch';
   const size = touch ? 'h-14 w-16 flex-col gap-0.5' : rail ? 'size-11' : 'size-10';
   const wide = touch ? size : rail ? size : 'h-10 w-12 gap-0.5';
@@ -325,22 +346,31 @@ export function SketchToolbar({
           checked: (chosen[menu.tool.id] ?? menu.tool.variants?.[0]?.id) === v.id,
           onSelect: () => pick(menu.tool, v.id),
         }))
-      : menu?.kind === 'edit'
-        ? sketchEditTools.map((t) => ({
+      : menu?.kind === 'curves'
+        ? curveTools.map((t) => ({
             id: t.id,
             label: t.label,
             icon: t.icon,
-            shortcut: t.shortcut,
+            ...(t.shortcut ? { shortcut: t.shortcut } : {}),
             checked: activeTool === t.id,
             onSelect: () => onTool(t.id),
           }))
-        : geometricConstraintKinds.map((k) => ({
-            id: k,
-            label: constraintLabels[k],
-            disabled: !enabled(k) || !onConstraint,
-            icon: <ConstraintGlyph kind={k} size={18} tone="plain" />,
-            onSelect: () => onConstraint?.(k),
-          }));
+        : menu?.kind === 'edit'
+          ? sketchEditTools.map((t) => ({
+              id: t.id,
+              label: t.label,
+              icon: t.icon,
+              shortcut: t.shortcut,
+              checked: activeTool === t.id,
+              onSelect: () => onTool(t.id),
+            }))
+          : geometricConstraintKinds.map((k) => ({
+              id: k,
+              label: constraintLabels[k],
+              disabled: !enabled(k) || !onConstraint,
+              icon: <ConstraintGlyph kind={k} size={18} tone="plain" />,
+              onSelect: () => onConstraint?.(k),
+            }));
 
   return (
     <>
@@ -415,6 +445,22 @@ export function SketchToolbar({
             </Tooltip>
           );
         })}
+        {curveTools.length ? (
+          <Tooltip content="Splines, ellipses, elliptic arcs" side={side}>
+            <RToolbar.Button
+              aria-label="Curves"
+              aria-haspopup="menu"
+              aria-expanded={menu?.kind === 'curves'}
+              aria-pressed={activeCurve !== undefined}
+              data-tool-group="curves"
+              onClick={(e) => setMenu({ kind: 'curves', anchor: e.currentTarget })}
+              className={cn(itemBase, wide)}
+            >
+              {activeCurve?.icon ?? <SplineControlIcon className={ic} />}
+              {touch ? lbl('Curves') : <ChevronDown className="size-3" aria-hidden />}
+            </RToolbar.Button>
+          </Tooltip>
+        ) : null}
         <Tooltip content="Offset, convert, trim, fillet, mirror" side={side}>
           <RToolbar.Button
             aria-label="Edit"
@@ -482,7 +528,9 @@ export function SketchToolbar({
               ? `${menu.tool.label} options`
               : menu.kind === 'edit'
                 ? 'Edit tools'
-                : 'Constraints'
+                : menu.kind === 'curves'
+                  ? 'Curve tools'
+                  : 'Constraints'
           }
           items={menuItems}
           placement={rail ? 'right-start' : 'top-start'}
