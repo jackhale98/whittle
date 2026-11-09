@@ -1,5 +1,5 @@
-import { fileURLToPath } from 'node:url';
 import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
 import { docWith, fid } from './fixtures';
 import { app, boot } from './helpers';
