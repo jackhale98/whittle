@@ -182,6 +182,11 @@ export function sampleEntity(
       }
       return out;
     }
+    case 'ellipticArc':
+      // M3.5 placeholder (ADR-046): the modeling workstream samples the exact curve.
+      return [p(e.start), p(e.end)];
+    case 'bspline':
+      return e.poles.map(p); // M3.5 placeholder: control polygon until exact sampling lands.
   }
 }
 

@@ -20,6 +20,8 @@ const KIND_LABEL: Record<SketchEntity['kind'], string> = {
   circle: 'Circle',
   arc: 'Arc',
   ellipse: 'Ellipse',
+  ellipticArc: 'Elliptic arc',
+  bspline: 'Spline',
 };
 
 const CONSTRAINT_LABEL: Record<SketchConstraint['kind'], string> = {
@@ -32,6 +34,7 @@ const CONSTRAINT_LABEL: Record<SketchConstraint['kind'], string> = {
   parallel: 'Parallel',
   perpendicular: 'Perpendicular',
   tangent: 'Tangent',
+  curvature: 'Curvature',
   equal: 'Equal',
   midpoint: 'Midpoint',
   concentric: 'Concentric',
@@ -191,6 +194,8 @@ export function describeFor(
       return `perpendicular to ${other(c.a, c.b)}`;
     case 'tangent':
       return `tangent to ${other(c.a, c.b)}`;
+    case 'curvature':
+      return `curvature-continuous with ${other(c.a, c.b)}`;
     case 'equal':
       return `equal to ${other(c.a, c.b)}`;
     case 'midpoint':

@@ -110,6 +110,7 @@ export const PRIORITY: Record<SketchConstraint['kind'], number> = {
   concentric: 1,
   pointOn: 2,
   tangent: 3,
+  curvature: 3,
   horizontal: 4,
   vertical: 4,
   horizontalPoints: 4,
@@ -1170,6 +1171,10 @@ export function entityPoints(e: SketchEntity): Id[] {
     case 'circle':
     case 'ellipse':
       return [e.center];
+    case 'ellipticArc':
+      return [e.center, e.start, e.end];
+    case 'bspline':
+      return [...e.poles];
   }
 }
 

@@ -45,6 +45,26 @@ export interface UnresolvedRef {
   candidates?: string[];
   /** Previous resolved location when the stored ref had no fingerprint (ghost the old spot). */
   lastKnown?: Fingerprint;
+  /** M3.5. The upstream change that made this ref missing or ambiguous, when it can be named. */
+  cause?: AttentionCause;
+}
+
+/**
+ * M3.5 (PLAN §7.3, research report "errors far from their cause"): which upstream feature's change
+ * broke a reference or a feature, so the UI can name and select it ("Fillet 2 lost its edge because
+ * Extrude 1 changed"). Only reported when the engine can tell; never a guess.
+ */
+export interface AttentionCause {
+  /** The upstream feature whose output no longer contains the entity, or that failed or vanished. */
+  featureId: Id;
+  /**
+   * `changed`: its inputs or values changed this regen and the entity is gone from its output;
+   * `suppressed` / `deleted` / `reordered`: the feature that produced the entity is suppressed,
+   * deleted or now after the consumer; `failed`: it errored, so its output is missing.
+   */
+  kind: 'changed' | 'suppressed' | 'deleted' | 'reordered' | 'failed';
+  /** Optional human detail, e.g. which parameter changed ("depth 10 → 4 mm"). */
+  detail?: string;
 }
 
 export interface FeatureStatus {
@@ -56,6 +76,8 @@ export interface FeatureStatus {
   cached: boolean;
   /** Non-fatal warnings (e.g. "The cut does not touch any body"). */
   warnings?: KernelError[];
+  /** M3.5. For `error`/`blocked`/`needsAttention`: the upstream cause when it can be named. */
+  cause?: AttentionCause;
   /** Refs resolved by fingerprint/disambiguation, with their current name, so the UI can heal stored refs. */
   rebound?: { path: string; name: string; fingerprint?: Fingerprint }[];
   ms: number;

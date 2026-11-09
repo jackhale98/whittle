@@ -463,6 +463,10 @@ export function preview(state: DrawState, sketch: SketchData): SketchFragment | 
           return { ...e, id: re(e.id), center: re(e.center) };
         case 'arc':
           return { ...e, id: re(e.id), center: re(e.center), start: re(e.start), end: re(e.end) };
+        case 'ellipticArc':
+          return { ...e, id: re(e.id), center: re(e.center), start: re(e.start), end: re(e.end) };
+        case 'bspline':
+          return { ...e, id: re(e.id), poles: e.poles.map(re) };
         default:
           return { ...e, id: re(e.id), center: re(e.center) };
       }

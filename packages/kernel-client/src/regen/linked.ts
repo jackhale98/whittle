@@ -221,6 +221,10 @@ export function projectSketchEntity(
     }
     case 'ellipse':
       return { error: 'Ellipses cannot be projected yet' };
+    case 'ellipticArc':
+      return { error: 'Elliptic arcs cannot be projected yet' };
+    case 'bspline':
+      return { error: 'Splines cannot be projected yet' };
   }
 }
 

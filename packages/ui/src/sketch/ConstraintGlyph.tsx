@@ -12,6 +12,7 @@ export const constraintLabels: Record<SketchConstraintKind, string> = {
   parallel: 'Parallel',
   perpendicular: 'Perpendicular',
   tangent: 'Tangent',
+  curvature: 'Curvature',
   equal: 'Equal',
   midpoint: 'Midpoint',
   concentric: 'Concentric',
@@ -105,6 +106,8 @@ const glyphs: Record<SketchConstraintKind, ReactNode> = {
       <path d="M3 15h18" />
     </>
   ),
+  // M3.5 placeholder glyph (ADR-046): a smooth S-join; the UI workstream may redraw it.
+  curvature: <path d="M3 17c5 0 6-10 9-10s4 10 9 10" />,
   equal: <path d="M6 9h12M6 15h12" />,
   midpoint: (
     <>

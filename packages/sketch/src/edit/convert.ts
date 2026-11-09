@@ -393,7 +393,11 @@ export function unlinkEntities(
         ? [e.center, e.start, e.end]
         : e.kind === 'point'
           ? []
-          : [e.center];
+          : e.kind === 'ellipticArc'
+            ? [e.center, e.start, e.end]
+            : e.kind === 'bspline'
+              ? [...e.poles]
+              : [e.center];
   for (const e of targets) for (const p of pointsOf(e)) unlink.add(p);
   // Points another still-linked curve needs stay linked.
   for (const e of k.entities) {

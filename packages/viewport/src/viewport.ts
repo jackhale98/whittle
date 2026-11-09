@@ -15,11 +15,14 @@ import type {
   InputPolicy,
   Marker,
   MeshBuffers,
+  NavigationOptions,
   PickHit,
   PickKind,
   PickOptions,
   PreviewSpec,
+  RectPickOptions,
   RenderBackend,
+  ScreenRect,
   SectionPlane,
   SketchOverlay,
   StandardView,
@@ -29,6 +32,7 @@ import type {
   ViewportOptions,
   ViewportStats,
 } from '@wren-cad/contracts';
+import { DEFAULT_NAVIGATION } from '@wren-cad/contracts';
 import CameraControls from 'camera-controls';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js';
@@ -2404,6 +2408,23 @@ class ViewportImpl implements ViewportEngine {
       (m[10] as number) * p[2] +
       (m[14] as number)
     );
+  }
+
+  // ---------------------------------------------------------------- M3.5: navigation
+
+  // M3.5 placeholders (ADR-046): the viewport workstream implements these.
+  private navigation: NavigationOptions = { ...DEFAULT_NAVIGATION };
+
+  setNavigation(options: Partial<NavigationOptions>): void {
+    this.navigation = { ...this.navigation, ...options };
+  }
+
+  getNavigation(): NavigationOptions {
+    return { ...this.navigation };
+  }
+
+  pickRect(_rect: ScreenRect, _options: RectPickOptions): PickHit[] {
+    return [];
   }
 
   // ---------------------------------------------------------------- M2: markers

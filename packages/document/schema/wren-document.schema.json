@@ -1379,6 +1379,31 @@
               "$ref": "#/definitions/Id"
             },
             "kind": {
+              "const": "curvature",
+              "type": "string"
+            }
+          },
+          "required": [
+            "a",
+            "b",
+            "id",
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "a": {
+              "$ref": "#/definitions/Id"
+            },
+            "b": {
+              "$ref": "#/definitions/Id"
+            },
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
               "const": "equal",
               "type": "string"
             }
@@ -2877,6 +2902,78 @@
       ],
       "type": "object"
     },
+    "SketchBSpline": {
+      "additionalProperties": false,
+      "description": "M3.5. A B-spline curve by its control points (`poles`, point entities, so they can be dragged, dimensioned and constrained). Non-periodic splines are clamped: they start at the first pole and end at the last, so a line or arc can share an end point with them. `knots`/`multiplicities` omitted = uniform clamped (or uniform periodic) knots for `degree`. `weights` omitted = all 1 (non-rational). A spline drawn **through points** stores the poles that interpolate them, plus the through points as point entities held on the curve by `pointOn` constraints, so moving a through point reshapes the curve (ADR-046).",
+      "properties": {
+        "construction": {
+          "description": "Construction geometry is solved and constrainable but never forms profiles.",
+          "type": "boolean"
+        },
+        "degree": {
+          "type": "number"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "kind": {
+          "const": "bspline",
+          "type": "string"
+        },
+        "knots": {
+          "items": {
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "multiplicities": {
+          "items": {
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "periodic": {
+          "type": "boolean"
+        },
+        "poles": {
+          "items": {
+            "$ref": "#/definitions/Id"
+          },
+          "type": "array"
+        },
+        "source": {
+          "additionalProperties": false,
+          "description": "M3 Convert Entities: a **linked** entity whose geometry is the projection of model geometry onto the sketch plane, recomputed by the regen engine every time (points, lines, arcs and circles; other curves project as an approximating chain of lines marked `approximate`). Linked entities are fixed (no DOF) and can be dimensioned and constrained to. If `ref` no longer resolves, the sketch is \"needs attention\" (never re-picked silently). Removing `source` unlinks the entity into ordinary geometry.",
+          "properties": {
+            "approximate": {
+              "type": "boolean"
+            },
+            "ref": {
+              "$ref": "#/definitions/EntityRef"
+            }
+          },
+          "required": [
+            "ref"
+          ],
+          "type": "object"
+        },
+        "weights": {
+          "items": {
+            "type": "number"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "construction",
+        "degree",
+        "id",
+        "kind",
+        "periodic",
+        "poles"
+      ],
+      "type": "object"
+    },
     "SketchCircle": {
       "additionalProperties": false,
       "properties": {
@@ -2988,6 +3085,69 @@
       ],
       "type": "object"
     },
+    "SketchEllipticArc": {
+      "additionalProperties": false,
+      "description": "M3.5. Counter-clockwise from `start` to `end` on the ellipse given by `center`, the radii and `rotation` (major axis direction, radians). `start` and `end` lie on the ellipse (the solver keeps them there).",
+      "properties": {
+        "center": {
+          "$ref": "#/definitions/Id"
+        },
+        "construction": {
+          "description": "Construction geometry is solved and constrainable but never forms profiles.",
+          "type": "boolean"
+        },
+        "end": {
+          "$ref": "#/definitions/Id"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "kind": {
+          "const": "ellipticArc",
+          "type": "string"
+        },
+        "majorRadius": {
+          "type": "number"
+        },
+        "minorRadius": {
+          "type": "number"
+        },
+        "rotation": {
+          "type": "number"
+        },
+        "source": {
+          "additionalProperties": false,
+          "description": "M3 Convert Entities: a **linked** entity whose geometry is the projection of model geometry onto the sketch plane, recomputed by the regen engine every time (points, lines, arcs and circles; other curves project as an approximating chain of lines marked `approximate`). Linked entities are fixed (no DOF) and can be dimensioned and constrained to. If `ref` no longer resolves, the sketch is \"needs attention\" (never re-picked silently). Removing `source` unlinks the entity into ordinary geometry.",
+          "properties": {
+            "approximate": {
+              "type": "boolean"
+            },
+            "ref": {
+              "$ref": "#/definitions/EntityRef"
+            }
+          },
+          "required": [
+            "ref"
+          ],
+          "type": "object"
+        },
+        "start": {
+          "$ref": "#/definitions/Id"
+        }
+      },
+      "required": [
+        "center",
+        "construction",
+        "end",
+        "id",
+        "kind",
+        "majorRadius",
+        "minorRadius",
+        "rotation",
+        "start"
+      ],
+      "type": "object"
+    },
     "SketchEntity": {
       "anyOf": [
         {
@@ -3004,6 +3164,12 @@
         },
         {
           "$ref": "#/definitions/SketchEllipse"
+        },
+        {
+          "$ref": "#/definitions/SketchEllipticArc"
+        },
+        {
+          "$ref": "#/definitions/SketchBSpline"
         }
       ]
     },

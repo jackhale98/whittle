@@ -71,6 +71,16 @@ export function strokeFragment(
     }
     case 'polyline':
       return polylineFragment(shape.points, shape.closed, implied, opts, nextId);
+    case 'ellipse':
+    case 'spline':
+      // M3.5 placeholder (ADR-046): the sketch workstream replaces this (ellipse and spline tools).
+      return polylineFragment(
+        shape.kind === 'spline' ? shape.points : [shape.center],
+        shape.kind === 'spline' && shape.closed,
+        implied,
+        opts,
+        nextId,
+      );
   }
 }
 

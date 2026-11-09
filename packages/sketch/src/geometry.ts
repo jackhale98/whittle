@@ -197,6 +197,10 @@ export function sampleEntity(
       out[n] = out[0] as Vec2;
       return out;
     }
+    case 'ellipticArc':
+    case 'bspline':
+      // M3.5 placeholder (ADR-046): the sketch workstream replaces this with exact sampling.
+      return (e.kind === 'bspline' ? e.poles : [e.start, e.end]).map((id) => pointPos(index, id));
   }
 }
 
@@ -298,6 +302,9 @@ export function closestOnEntity(index: EntityIndex, e: SketchEntity, p: Vec2): V
       }
       return best;
     }
+    case 'ellipticArc':
+    case 'bspline':
+      return null; // M3.5 placeholder (ADR-046): the sketch workstream replaces this.
   }
 }
 
