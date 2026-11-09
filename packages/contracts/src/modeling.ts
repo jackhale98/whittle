@@ -58,13 +58,19 @@ export interface AttentionCause {
   /** The upstream feature whose output no longer contains the entity, or that failed or vanished. */
   featureId: Id;
   /**
-   * `changed`: its inputs or values changed this regen and the entity is gone from its output;
+   * `changed`: it changed since the reference last resolved (edited, or added, unsuppressed or moved
+   * above the consumer; `detail` says which) and the entity is gone from its output;
    * `suppressed` / `deleted` / `reordered`: the feature that produced the entity is suppressed,
    * deleted or now after the consumer; `failed`: it errored, so its output is missing.
    */
   kind: 'changed' | 'suppressed' | 'deleted' | 'reordered' | 'failed';
   /** Optional human detail, e.g. which parameter changed ("depth 10 → 4 mm"). */
   detail?: string;
+  /**
+   * The feature that produced the entity, when the cause is further up its chain ("the pocket's
+   * floor is gone because the plate changed": `featureId` = plate, `via` = pocket).
+   */
+  via?: Id;
 }
 
 export interface FeatureStatus {

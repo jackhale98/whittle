@@ -1658,7 +1658,7 @@ Scope approved by the owner from the UX research report (`docs/ux-research/repor
 - **`AttentionCause`** on `UnresolvedRef` and `FeatureStatus`: the upstream feature whose change, suppression, deletion, reordering or failure broke the reference or the feature. Reported only when the engine can tell, never guessed (the SolidWorks 2023 Top Ten #1 and #5 requests and the UIST 2024 DeCAD finding).
 - **Placeholders.** So every workstream starts from a green tree, the lead added minimal cases for the new union members (control-polygon sampling, `null` closest points, "cannot be projected yet", no-op gestures, stub `setNavigation` / `pickRect`), each marked "M3.5 placeholder (ADR-046)". The workstreams replace them; the gate checks none remain.
 
-## ADR-pending — M3.5 error causes: how the regen engine names the upstream feature (2026-11-09)
+## ADR-047 — M3.5 error causes: how the regen engine names the upstream feature (2026-11-09)
 
 Modeling workstream (packages/kernel-client `src/regen/cause.ts`; README "Error causes").
 
@@ -1680,7 +1680,7 @@ Modeling workstream (packages/kernel-client `src/regen/cause.ts`; README "Error 
 - **Deps** come from three sources: reference name tags, copied features, and the last writer of each body that a feature acts on or whose content key it hashes (`Plan.reads` for implicit scopes).
 - **Cost**: one canonical-JSON snapshot of each definition per regen, about 20 µs per feature.
 
-## ADR-pending — M3.5 regen of the new curves: knot conventions, sampling, exact projections (2026-11-09)
+## ADR-048 — M3.5 regen of the new curves: knot conventions, sampling, exact projections (2026-11-09)
 
 Modeling workstream. The kernel and sketch workstreams should confirm or amend this (ADR-046).
 

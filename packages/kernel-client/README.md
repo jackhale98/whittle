@@ -269,7 +269,7 @@ kernel bench, 60 features ≈ 1.3 ms); causes themselves are computed only for f
   the middle or quarter points deviate more than 0.9 × the tolerance (≤ 10 levels, ≤ 4096
   samples); knots are always samples; periodic splines close exactly. An invalid definition shows
   its control polygon (the kernel reports why).
-- **Knots** (shared with the kernel and sketch workstreams, ADR-pending "M3.5 regen of the new
+- **Knots** (shared with the kernel and sketch workstreams, ADR-048, "M3.5 regen of the new
   curves"): `knots` are distinct values and `multiplicities` theirs (OCCT); omitted = clamped
   `i/(n−p)` with end multiplicity p+1, or periodic `i/n` all 1, domain [0, 1]; periodic flat
   knots as `BSplCLib::KnotSequence`.
