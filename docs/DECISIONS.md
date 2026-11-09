@@ -1581,3 +1581,48 @@ know its copies' placements); a hole's through-all tool keeps the kernel's 10 m 
    pick goes to the point where the app itself (`resolveAt`) picks the named entity without a
    "Which one?" tie, nudging a few px off seams as a person would. Stages are the baseline with only that stage's
    dimensions changed (the README's definition), so the previous stage is reset first.
+
+## ADR-pending — Imports through the kernel `import` feature; IGES end to end
+
+**Context.** M1 placed and named imported B-rep bodies in TypeScript because the façade had no
+transform or naming call: the engine exported the raw shapes as BREP, appended the placement to
+the file's `Locations` table, read it back, and named the topology with a no-op `intersect`
+against an enclosing box under the tag `<id>:face`, then translated the kernel's
+`F<id>:face:unnamed#k` to `F<id>:face#k` in every name it received. M3 added the kernel `import`
+feature (ADR-039 item 11) and an IGES reader, but the engine still used the workaround and
+refused IGES (M3 gate blocker B1).
+
+**Decision.**
+
+1. **Placement and naming in the kernel.** The engine passes the raw `importFile` handles as
+   `shapes["source:<k>"]` (k zero-padded, file order) and the frame it validated, orthonormalised
+   from `frameMatrix`, to the kernel `import` feature with `op: "new"`. Bodies come back in
+   geometric-key order: `shape` first, then `bodies` keyed `body#k`, which become `B<id>#k`.
+2. **Names unchanged, checked against a golden.** The kernel names faces `F<id>:face#k` per body
+   by the same geometric key (`finalizeNamed`) and derives edges and vertices the same way, so
+   these are exactly the M1 names. `import-naming.test.ts` holds every face, edge and vertex name
+   (with its centroid) and every body id to a golden recorded with the M1 engine before the switch:
+   in place, moved, tilted, three solids in place and moved, cut, and add. No document migration
+   or resolver fallback is needed, because stored references resolve by name as before. The name
+   translation layer (`translateName`) and `placeBrep` are removed. A file whose box intersect
+   failed in M1 (invalid geometry) had face-only names, and now also gets edge and vertex names.
+   That only adds names.
+3. **Body ops stay in the engine.** `add | cut | intersect` use the kernel-placed bodies as tools
+   of one kernel `boolean` per target, as before. Tool faces are `F<id>:face(F<id>:face#k)`, the
+   same as the kernel `import` op would give. The kernel's own body op fuses every scoped body into
+   one for `add`, but the engine's rule (merge into the oldest touched body, warn about the rest)
+   and its default-scope bbox prefilter must not change.
+4. **IGES like STEP.** `importShapes(bytes, 'iges')`: loose faces are sewn, closed shells become
+   solids, and the result is cached by sha256, placed, named and usable as a tool. A file that is
+   not IGES is the reader's `INVALID_INPUT`.
+5. **Open surfaces are never passed off as solids.** An IGES surface model that does not close
+   comes in as a surface body, and GProp still reports a "volume" for it. A body whose edge names
+   include a free edge `edge(F<id>:face#k)` (naming.ts: a closed solid has none) gets an
+   `OPERATION_FAILED` warning on `new` ("open surfaces, not closed solids", with the body ids). As
+   the tool of add/cut/intersect it is refused (`INVALID_INPUT`) rather than left to OCCT's
+   "boolean failed".
+6. **Meshes keep TS placement.** STL/OBJ/3MF/GLB are parsed in TS (`@wren-cad/io`), so they are
+   still placed with `placeMesh` and handed to the kernel as STL. The kernel `import` feature's
+   mesh path keeps source order rather than the engine's geometric order of placed bbox centres.
+7. **App.** The pickers offer `.igs` / `.iges`, drag and drop accepts them, and the PWA
+   `file_handlers` list `model/iges`.

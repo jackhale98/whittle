@@ -203,29 +203,33 @@ until then: pattern of holes, mirrored boss and shell after fillet edit-upstream
 
 ## Imports (`src/regen/imports.ts`, `planImport` in the engine)
 
-- **STEP / BREP** → `kernel.importShapes` (one shape per solid). IGES → `UNSUPPORTED_FEATURE`
-  ("export it as STEP"): the kernel has no IGES reader. The raw shapes are cached per part by
-  sha256 (attachments used by the latest regen plus 8 spare, LRU); `closePart` releases them.
-- **Placement** (`frame`, mm; default identity): the frame becomes a rigid 3×4 matrix (x is
-  orthogonalised against z; degenerate frames are an `error`). The kernel has no transform call, so
-  the shapes are written as BREP, the matrix is appended to the file's `Locations` table and the root
-  shape pointed at it (`placeBrep`), and the text is read back — exact, no re-meshing.
-- **Naming**: the kernel names topology only during operations, so the engine runs a no-op
-  `intersect` of the solids with an enclosing box under the feature tag `<id>:face`. Every imported
-  face then gets the kernel's history-less fallback `F<id>:face:unnamed#k` (k = geometric key:
-  centroid x, then y, then z, rounded 1e-6 mm) and edges/vertices are derived from adjacent faces by
-  the kernel; the engine translates `:face:unnamed` → `:face` in **every** kernel name it receives
-  (`translateName`, stateless). Result: `F<id>:face#k`, `edge(F<id>:face#i|F<id>:face#j)`,
-  `vertex(…)` — and because the kernel's shape records carry these names, downstream fillets,
-  chamfers and booleans keep naming by history (`F<fillet>:fillet(edge(F<id>:face#i|…))`). The no-op
-  is verified (same volume, face and edge counts); otherwise the solid is used as read, faces named
-  `F<id>:face#k` by the engine, edges/vertices unnamed, with a warning.
+- **STEP / IGES / BREP** → `kernel.importShapes` (STEP/BREP: one shape per solid; IGES: solids,
+  loose faces sewn, closed shells made solids, open shells kept as shell bodies). The raw, unplaced
+  and unnamed shapes are cached per part by sha256 (attachments used by the latest regen plus 8
+  spare, LRU); `closePart` releases them.
+- **Placement and naming** in the kernel's `import` feature (ADR-039 item 11, M3): the engine
+  validates the `frame` (mm; default identity; x orthogonalised against z, degenerate frames are an
+  `error`) and passes the orthonormal frame with the raw shapes as `shapes["source:<k>"]` (file
+  order). The kernel moves them (a shared-geometry location, exact, no re-import) and names every
+  face `F<id>:face#k` (k = geometric key: centroid x, then y, then z, rounded 1e-6 mm, per body),
+  edges `edge(F<id>:face#i|F<id>:face#j)` and vertices `vertex(…)` from their adjacent faces. The
+  kernel's shape records carry these names, so downstream fillets, chamfers and booleans keep
+  naming by history (`F<fillet>:fillet(edge(F<id>:face#i|…))`). These are exactly the names of the
+  M1 workaround it replaces (a BREP location rewrite plus a no-op intersect with an enclosing box,
+  whose `F<id>:face:unnamed` names the engine translated): `import-naming.test.ts` checks every face,
+  edge and vertex name and body id against a golden recorded with the M1 engine.
+- **Open surfaces** (an IGES surface model that does not close, loose faces): a body with a free
+  edge `edge(F<id>:face#k)` gets an `OPERATION_FAILED` warning on `new` (its "volume" means
+  nothing) and is refused as an add/cut/intersect tool (`INVALID_INPUT`), never passed off as a
+  solid.
 - **Bodies**: one solid → `B<id>`; several → `B<id>#k` ordered by the geometric key of their volume
   centroids. Faces are numbered per body (as the kernel does for every body).
 - **Ops** `add | cut | intersect` (B-rep only) use the scope rules of other solid features (bbox
-  prefilter for the default scope); the kernel `boolean` with the imported solids as tools, so their
-  faces are boolean tool faces `F<id>:face(F<id>:face#k)` (naming.ts boolean rule). `add` merges into
-  the oldest touched body only (warning when it touches more).
+  prefilter for the default scope); the placed, named bodies from the kernel `import` (run as
+  `new`) are the tools of a kernel `boolean` per target, so their faces are boolean tool faces
+  `F<id>:face(F<id>:face#k)` (naming.ts boolean rule, the same names the kernel `import` op gives).
+  `add` merges into the oldest touched body only (warning when it touches more); the kernel's own
+  `import` add would fuse every scoped body into one, so the engine keeps the per-target booleans.
 - **Mesh formats** (STL/OBJ/3MF/GLB) → `@wren-cad/io` `importMesh`, placed in TS, handed to the kernel
   as STL: one mesh-only body per object (`B<id>` / `B<id>#k`), one face `F<id>:face`, no edges.
   Displayed, exported (STL/STEP of a mesh face), with mesh-based mass properties; never part of an
@@ -297,12 +301,9 @@ names). Timings are printed as `[regen timing]` lines.
 
 ## Kernel gaps and contract notes
 
-- **Kernel**: no façade call to transform a shape (worked around by BREP location rewriting) and
-  none to name a shape's topology (worked around by the no-op intersect + `translateName`). A
-  kernel `import` feature — `execFeature({type:'import', …}, {shapes:{source}, frames:{placement}})`
-  naming faces `F<id>:face#k` via `finalizeNamed` and applying the op via `applyBodyOp` (so tool
-  faces keep `F<id>:face#k` instead of the nested boolean form) — would replace both. No IGES
-  reader.
+- **Kernel**: the M1 gaps (no transform call, no naming call, no IGES reader) are closed by the M3
+  kernel `import` feature and IGES reader; the engine uses both. Mesh imports are still placed in
+  TS (`placeMesh`) because OBJ/3MF/GLB are parsed in TS.
 - **Contracts** (applied): `FeatureStatus.rebound[]` carries `fingerprint?`, `UnresolvedRef` has
   `lastKnown?`, `ModelingApi` has `configureRegen` and (M2) `measure`, `naming.ts` documents the
   import names and the M2 push/pull seam merge (existing > moved > wall), and `kernel.ts`

@@ -16,11 +16,19 @@ describe('import', () => {
     expect(importFormat('noext')).toBeNull();
   });
 
-  it('pickers offer only formats the engine reads (IGES is recognised, not offered)', () => {
+  it('pickers offer every format the engine reads, IGES included (M3)', () => {
     expect(IMPORT_EXTENSIONS).toContain('.step');
     expect(IMPORT_EXTENSIONS).toContain('.stl');
-    expect(IMPORT_EXTENSIONS).not.toContain('.igs');
-    expect(IMPORT_EXTENSIONS).not.toContain('.iges');
+    expect(IMPORT_EXTENSIONS).toContain('.igs');
+    expect(IMPORT_EXTENSIONS).toContain('.iges');
+    expect(importFormat('part.IGES')).toBe('iges');
+  });
+
+  it('an IGES file becomes an import feature with an .iges attachment', async () => {
+    const made = await importFeature({ features: [] }, 'housing.igs', new Uint8Array([1]));
+    expect(made?.feature.source.format).toBe('iges');
+    expect(made?.feature.name).toBe('housing');
+    expect(made?.path).toBe(`imports/${made?.feature.id}.iges`);
   });
 
   it('hashes with WebCrypto and builds an import feature with its attachment path', async () => {
