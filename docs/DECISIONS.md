@@ -1582,7 +1582,7 @@ know its copies' placements); a hole's through-all tool keeps the kernel's 10 m 
    "Which one?" tie, nudging a few px off seams as a person would. Stages are the baseline with only that stage's
    dimensions changed (the README's definition), so the previous stage is reset first.
 
-## ADR-pending — Imports through the kernel `import` feature; IGES end to end
+## ADR-044 — Imports through the kernel `import` feature; IGES end to end
 
 **Context.** M1 placed and named imported B-rep bodies in TypeScript because the façade had no
 transform or naming call: the engine exported the raw shapes as BREP, appended the placement to
