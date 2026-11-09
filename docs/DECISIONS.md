@@ -1184,6 +1184,42 @@ git, raised choices ADR-029 leaves open.
     A stray or bookmarked `?code=` is left as it is (the platform plumbing spec relies on this)
     and doesn't load the sync chunk.
 
+## ADR-032 — Renamed from Whittle to Wren (Wren CAD) (2026-11-09)
+
+**Context.** An unrelated open-source parametric CAD project on OpenCascade, also called Whittle
+(MPL-2.0, browser and desktop), launched on GitHub on 2026-10-14, a month before this one. Sharing
+a name in the same category would confuse users, search and issue reports. The owner chose
+**Wren**, matching the bird mark, with **Wren CAD** where the name must be unique: the repository
+`wren-cad`, the Pages path `/wren-cad/`, and the install name.
+
+**Decision.** `scripts/rename-to-wren.py` rewrites the tracked files in one repeatable pass. It runs
+on any branch that predates the rename before that branch is merged.
+
+- **Renamed.**
+  - Product and UI text: "Wren", or "Wren CAD" for the install name, title and README.
+  - Package scope `@wren-cad/*` and type names (`WrenDoc`, ...).
+  - Test hooks (`__wren*`) and environment variables (`WREN_*`).
+  - The file format: `.wrencad` archives, `wren.project.json` with `format: "wren-project"`, and the
+    `.wren/` cache and `.wren-history/` folders.
+  - Schema files, `$id` URLs and docs.
+  - Previous ADRs and CHANGELOG entries are rewritten as well, so the record reads consistently.
+- **Kept, on purpose:**
+  - Browser storage names and keys (IndexedDB databases such as `whittle-library`, localStorage and
+    sessionStorage keys such as `whittle.theme` and `whittle:links`, service-worker cache names),
+    and the OPFS library file names (`<id>.whittle`). The new Pages path is on the same origin, so
+    existing libraries and settings survive the move.
+  - Material library ids inside documents (`whittle:aluminium-6061-t6`), which are stable data ids.
+  - The kernel's internal C++ and Wasm names (`whittle_*.cpp`, `whittle::`, `WhittleKernelModule`,
+    `whittle-kernel*` artefacts). Renaming them would force a full kernel rebuild for no
+    user-visible change; they may be renamed later.
+- **Old files still open.** `.whittle` archives, `whittle.project.json`, `format: "whittle-project"`
+  and a `.whittle/` cache folder are all read; files are always written with the new names.
+- **Pages base path.** CI derives the base from the repository name
+  (`/${{ github.event.repository.name }}/`), so the deploy works before and after the owner
+  renames the repository on GitHub. After the rename, sign-in redirect URIs must change to
+  `https://jackhale98.github.io/wren-cad/` (docs/SYNC_SETUP.md), and installed home-screen copies
+  need reinstalling from the new address.
+
 ## ADR-033 — Offset dimension: solver rows and sign (sketch editing, M3)
 
 1. **Sign (contracts, lead's convention).** Positive = right of the source's direction (outward
@@ -1341,42 +1377,6 @@ from ASME B18.2.8, B18.3 counterbores and B18.6.3 82° countersinks.
 3. **Tool groups.** Sweep and loft join Solid, shell, draft and thread join Modify, and Hole stays a direct button (so existing `data-tool="hole"` e2e keeps working). Pattern (mirror, linear, circular) and Reference (plane, axis, point) are new categories. The old catch-all `pattern` ToolId is gone and `comingIn` hints are removed (the field remains for future milestones). Shortcuts: W sweep, ⇧W loft, T shell, ⇧T draft, O hole, ⇧O thread, I mirror, N linear, ⇧N circular, G plane, ⇧G axis, ⇧P point. They avoid the PLAN 9.4 keys and H, L, A, D, X, Space and 0–7 (test-enforced). The phone is a viewer and shows none of these.
 4. **Sketch edit tools** sit behind one "Edit" menu button in the sketch toolbar, so the bar and the tablet rail keep their length. Sketch-mode shortcuts: O offset, V convert, T trim, E extend, F fillet, ⇧F chamfer, M mirror. Sketch mode has its own keymap, so these do not clash with the modelling shortcuts. The chrome panels (`OffsetPanel`, `ConvertPanel`, `LinkedEntityPanel`, `TrimExtendPanel`, `SketchCornerPanel`, `SketchMirrorPanel`) are controlled and presentational; the host draws the previews. `linkedEntityStyle` gives the overlay stroke styling.
 5. **Cut tools and touch discoverability.** `extrudeCut` (⇧E) and `revolveCut` (⇧R) sit in Solid beside Extrude and Revolve; the host creates the same feature with `op: 'cut'`. Pattern `/Extrude/` no longer identifies Extrude alone (it also matches "Extruded cut"). The tablet rail's group buttons show a tool-count pill with a chevron instead of the tiny corner triangle, and the flyout lists every tool by label. `SketchToolbar` gains `density="touch"`: a short text label under every icon, 56 px targets, wrapping in a bar. Tapping the active sketch tool deselects it for every tool.
-
-## ADR-032 — Renamed from Whittle to Wren (Wren CAD) (2026-11-09)
-
-**Context.** An unrelated open-source parametric CAD project on OpenCascade, also called Whittle
-(MPL-2.0, browser and desktop), launched on GitHub on 2026-10-14, a month before this one. Sharing
-a name in the same category would confuse users, search and issue reports. The owner chose
-**Wren**, matching the bird mark, with **Wren CAD** where the name must be unique: the repository
-`wren-cad`, the Pages path `/wren-cad/`, and the install name.
-
-**Decision.** `scripts/rename-to-wren.py` rewrites the tracked files in one repeatable pass. It runs
-on any branch that predates the rename before that branch is merged.
-
-- **Renamed.**
-  - Product and UI text: "Wren", or "Wren CAD" for the install name, title and README.
-  - Package scope `@wren-cad/*` and type names (`WrenDoc`, ...).
-  - Test hooks (`__wren*`) and environment variables (`WREN_*`).
-  - The file format: `.wrencad` archives, `wren.project.json` with `format: "wren-project"`, and the
-    `.wren/` cache and `.wren-history/` folders.
-  - Schema files, `$id` URLs and docs.
-  - Previous ADRs and CHANGELOG entries are rewritten as well, so the record reads consistently.
-- **Kept, on purpose:**
-  - Browser storage names and keys (IndexedDB databases such as `whittle-library`, localStorage and
-    sessionStorage keys such as `whittle.theme` and `whittle:links`, service-worker cache names),
-    and the OPFS library file names (`<id>.whittle`). The new Pages path is on the same origin, so
-    existing libraries and settings survive the move.
-  - Material library ids inside documents (`whittle:aluminium-6061-t6`), which are stable data ids.
-  - The kernel's internal C++ and Wasm names (`whittle_*.cpp`, `whittle::`, `WhittleKernelModule`,
-    `whittle-kernel*` artefacts). Renaming them would force a full kernel rebuild for no
-    user-visible change; they may be renamed later.
-- **Old files still open.** `.whittle` archives, `whittle.project.json`, `format: "whittle-project"`
-  and a `.whittle/` cache folder are all read; files are always written with the new names.
-- **Pages base path.** CI derives the base from the repository name
-  (`/${{ github.event.repository.name }}/`), so the deploy works before and after the owner
-  renames the repository on GitHub. After the rename, sign-in redirect URIs must change to
-  `https://jackhale98.github.io/wren-cad/` (docs/SYNC_SETUP.md), and installed home-screen copies
-  need reinstalling from the new address.
 
 ## ADR-039 — M3 kernel features: inputs, naming and semantics the contracts leave open
 

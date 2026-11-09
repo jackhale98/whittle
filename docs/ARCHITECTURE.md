@@ -267,20 +267,16 @@ suites. The Pages deploy runs only on `main`, after all of them pass.
 
 These are in the plan but not wired in this build. The contract types may exist.
 
-- **Push and pull in the app.** The kernel moves planar faces (prism + fuse/cut + seam merge,
-  ADR-013) and the viewport draws a same-frame preview (ADR-014); the app tool arrives with the M2
-  integration.
-- **IGES import.** The import formats include IGES, but the engine rejects it with "export it as
-  STEP".
 - **BREP export from the UI.** The kernel and the `ExportFormat` type support BREP. The export menu
   does not offer it.
-- **Shell, pattern and hole tools.** Listed in the command bar flyouts as disabled ("Coming in M3").
-- **Draft on extrude.** The field exists, but a non-zero draft is rejected by the kernel.
-- **Measure and section in the app.** The kernel measures exactly (`ModelingApi.measure`) and the
-  viewport clips with filled caps (`setSection`); the phone and tablet panels exist in
-  `packages/ui`. They are wired into the app with the M2 integration, together with the tablet and
-  phone shells, gestures, the Pencil and the tutorial (ADR-009 to ADR-014).
-- **Sync, version history, drawings, assemblies.** Planned for M2.5 to M6.
+- **Draft on extrude.** The field exists, but a non-zero draft is rejected by the kernel; use the
+  Draft feature (M3) instead.
+- **Loft guide curves.** Ignored with a warning (OCCT ThruSections has no guide input, ADR-039).
+- **`propagate: false` across tangent chains.** OCCT cannot stop at a tangent neighbour, so the
+  fillet or chamfer refuses and names the edges it would pull in (ADR-040).
+- **Datum display.** Reference planes, axes and points regenerate and are pickable from the
+  reference chips, but `RegenResult` carries no datum geometry for the viewport to draw (ADR-036).
+- **Drawings, MBD/PMI, assemblies.** Planned for M4 to M6.
 
 ## 13. Decisions
 
