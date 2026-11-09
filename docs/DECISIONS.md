@@ -1626,3 +1626,14 @@ refused IGES (M3 gate blocker B1).
    mesh path keeps source order rather than the engine's geometric order of placed bbox centres.
 7. **App.** The pickers offer `.igs` / `.iges`, drag and drop accepts them, and the PWA
    `file_handlers` list `model/iges`.
+
+## ADR-045 — Kernel perf gates scale on CI like the web perf budgets (2026-11-09)
+
+The first M3 run on CI failed one assertion: the 10 × 10 hole pattern took 326 ms against a 300 ms
+budget (best of five warm runs, single-threaded Wasm, shared 2-vCPU runner). Locally it is well
+inside. PLAN §10 budgets are for real hardware, and ADR-010 already scales the web perf budgets on
+CI (`PERF_FACTOR`, 3 for software-rendered main-thread work). The kernel gates
+(`packages/kernel/test/m3-copies.golden.test.ts`, `packages/kernel-client/test/regen/cache.test.ts`)
+now use the same rule with a factor of 2 on CI (pure CPU, no software GL) and 1 elsewhere,
+overridable with `WREN_PERF_FACTOR`. The measured times are still logged on every run, so a slow
+creep shows up in the logs before it reaches the scaled gate.

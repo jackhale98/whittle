@@ -298,3 +298,10 @@ export function meshShape(
     md.delete();
   }
 }
+
+/**
+ * CI factor for time budgets (ADR-010, ADR-045): PLAN §10 budgets are stated for real hardware;
+ * GitHub's shared 2-vCPU runners are slower for single-threaded Wasm, so CI multiplies the budget.
+ * Override with WREN_PERF_FACTOR (1 on real hardware).
+ */
+export const PERF_FACTOR = Number(process.env.WREN_PERF_FACTOR ?? (process.env.CI ? 2 : 1));

@@ -17,6 +17,7 @@ import {
   fid,
   loadApi,
   makeDoc,
+  PERF_FACTOR,
   region,
   relClose,
   Sk,
@@ -117,7 +118,7 @@ describe.skipIf(!built)(`regen golden: cache and handles${skipNote}`, () => {
         `edit last (coarse) median ${ms(median)} [${edits.map(ms).join(', ')}], ` +
         `edit last (fine) ${ms(fine.totalMs)}; last-feature kernel time ${ms(last.features[49]?.ms ?? 0)}`,
     );
-    expect(median).toBeLessThan(300);
+    expect(median).toBeLessThan(300 * PERF_FACTOR);
   }, 60_000); // cold 50-feature regen is ~2 s alone, ~4 s on a loaded 2-vCPU CI runner
 
   it('bracket timings (cold full regen, warm, one-dimension edit)', async () => {

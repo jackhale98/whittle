@@ -17,6 +17,7 @@ import {
   loadVariant,
   names,
   ok,
+  PERF_FACTOR,
   type RawFeatureResult,
   relClose,
   Session,
@@ -577,7 +578,7 @@ for (const { variant } of VARIANTS) {
         relClose(ss.mass(last?.shape ?? 0).volume, 400000 - 100 * PI * 6.25 * 10, REL);
         expect(ss.mass(last?.shape ?? 0).faceCount).toBe(106);
         relClose(ss.mass(holes[0]?.r.shape ?? 0).volume, 400000 - 100 * PI * 6.25 * 10, REL);
-        expect(best).toBeLessThan(300);
+        expect(best).toBeLessThan(300 * PERF_FACTOR);
         // Beyond 100 instances (logged, not gated): 15 × 15 at 12 mm on the same plate.
         const big = timed(() =>
           ss.exec(
