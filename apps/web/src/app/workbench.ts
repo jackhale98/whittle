@@ -55,14 +55,12 @@ import {
   type FeatureTool,
   type ModelTool,
   newSketch,
-  TOOL_NEEDS,
 } from '../features/factories';
 import { bootEngine, type EngineBoot } from '../model/engine';
 import type { FaceInfo, SectionSettings } from '../model/faces';
 import { isOriginPlane, ORIGIN_FRAMES, type PlaneFrame, toPlaneFrame } from '../model/frames';
 import { foldHeals, type Heal } from '../model/heal';
 import { type Attachment, createRegenLoop, type Modeling, type RegenLoop } from '../model/modeling';
-import { sketchShown, type VisibilityContext } from '../model/sketch-visibility';
 import { getDiagnostics } from '../platform/diagnostics';
 import { policyFor, type TierPolicy } from '../platform/tier-policy';
 import type { Accepts } from '../selection/pick';
@@ -81,6 +79,7 @@ import * as sync from './project-sync';
 import { PushPullTool } from './push-pull';
 import * as regenView from './regen-view';
 import type { SketchSession } from './sketch-session';
+import * as sketchVis from './sketch-visibility-sync';
 import { type EngineState, initialUi, type RegenView, type SectionUi, type UiState } from './state';
 import * as hooks from './test-hooks';
 import { failBoot, mark, markOnce } from './timing';
@@ -663,42 +662,7 @@ export class Workbench {
    * set (`shownSketchIds`), so it matches the viewport exactly.
    */
   refreshSketchVisibility(): void {
-    const part = this.part;
-    const u = this.ui.get();
-    const pickKinds = this.pickAccepts()?.kinds ?? [];
-    // Regions, sketch curves (sweep paths) and sketch points (hole centres) are picked on sketches.
-    const wantRegions =
-      (u.prompt !== null && TOOL_NEEDS[u.prompt.tool].kinds.includes('region')) ||
-      pickKinds.some((k) => k === 'region' || k === 'sketchCurve' || k === 'sketchPoint');
-    const features = part?.features ?? [];
-    const ctx: VisibilityContext = {
-      features,
-      rollback: this.preview.get() ?? part?.rollbackIndex ?? features.length,
-      activeSketch: u.sketch?.featureId,
-      editing: u.featureId ? features.find((f) => f.id === u.featureId) : undefined,
-      wantRegions,
-    };
-    const ids = new Set<Id>();
-    for (const f of features) if (f.type === 'sketch' && sketchShown(f, ctx)) ids.add(f.id);
-    const prev = this.shownSketchIds.get();
-    if (prev.size !== ids.size || [...ids].some((id) => !prev.has(id)))
-      this.shownSketchIds.set(ids);
-
-    const v = this.viewport;
-    const view = this.regen.get();
-    if (!v || !view) return;
-    const next = new Set<string>();
-    for (const s of view.result.sketches) {
-      if (u.sketch?.featureId === s.featureId) {
-        next.add(s.featureId);
-        continue; // the sketch session owns the active overlay
-      }
-      if (!ids.has(s.featureId)) continue;
-      v.setSketch(s.featureId, { sketch: s, active: false });
-      next.add(s.featureId);
-    }
-    for (const id of this.shownSketches) if (!next.has(id)) v.setSketch(id, null);
-    this.shownSketches = next;
+    sketchVis.refreshSketchVisibility(this);
   }
 
   /** Selection + preselection highlights (sketch mode adds its own). */
