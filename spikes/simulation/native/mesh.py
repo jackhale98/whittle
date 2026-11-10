@@ -92,9 +92,11 @@ def main():
     o("Mesh.Optimize", 1)
     o("Mesh.MaxNumThreads3D", args.threads)
 
+    rss_before_mesh_mb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024.0
     t1 = time.perf_counter()
     gmsh.model.mesh.generate(3)
     t_mesh = time.perf_counter() - t1
+    rss_after_mesh_mb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024.0
 
     node_tags, coords, _ = gmsh.model.mesh.getNodes()
     index = {int(t): i for i, t in enumerate(node_tags)}
@@ -127,6 +129,8 @@ def main():
         "importS": round(t_import, 4),
         "meshS": round(t_mesh, 3),
         "peakRssMB": round(peak_rss_mb, 1),
+        "rssBeforeMeshMB": round(rss_before_mesh_mb, 1),
+        "rssAfterMeshMB": round(rss_after_mesh_mb, 1),
         "minSICN": round(min(q), 4) if len(q) else None,
         "meanSICN": round(sum(q) / len(q), 4) if len(q) else None,
         "tagOrderIsTopExp": tag_is_topexp,

@@ -69,6 +69,9 @@ function checkOrder(nodes: number[], conn: number[], count: number): void {
   }
 }
 
+/** CalculiX reads at most 20 characters per number field: 12 significant digits, exponent form. */
+const num = (v: number) => v.toExponential(11);
+
 function lines(ids: number[], perLine = 16): string {
   const out: string[] = [];
   for (let i = 0; i < ids.length; i += perLine) out.push(ids.slice(i, i + perLine).join(', '));
@@ -102,7 +105,7 @@ export function writeDeck(mesh: TetMesh, study: Study, title: string): DeckInfo 
   const out: string[] = [`*HEADING\n${title}`, '*NODE'];
   for (let i = 0; i < nodes.length / 3; i++) {
     const [x, y, z] = at(nodes, i);
-    out.push(`${i + 1}, ${x}, ${y}, ${z}`);
+    out.push(`${i + 1}, ${num(x)}, ${num(y)}, ${num(z)}`);
   }
   out.push('*ELEMENT, TYPE=C3D10, ELSET=SOLID');
   for (let e = 0; e < nTets; e++) {
@@ -157,7 +160,7 @@ export function writeDeck(mesh: TetMesh, study: Study, title: string): DeckInfo 
   out.push('*CLOAD');
   for (const [n, f] of [...force].sort((a, b) => a[0] - b[0])) {
     f.forEach((v, d) => {
-      if (v !== 0) out.push(`${n}, ${d + 1}, ${v}`);
+      if (v !== 0) out.push(`${n}, ${d + 1}, ${num(v)}`);
     });
   }
   out.push('*NODE FILE', 'U', '*EL FILE', 'S', '*END STEP', '');
