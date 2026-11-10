@@ -20,6 +20,8 @@ const KIND_LABEL: Record<SketchEntity['kind'], string> = {
   circle: 'Circle',
   arc: 'Arc',
   ellipse: 'Ellipse',
+  ellipticArc: 'Elliptic arc',
+  bspline: 'Spline',
 };
 
 const CONSTRAINT_LABEL: Record<SketchConstraint['kind'], string> = {
@@ -32,6 +34,7 @@ const CONSTRAINT_LABEL: Record<SketchConstraint['kind'], string> = {
   parallel: 'Parallel',
   perpendicular: 'Perpendicular',
   tangent: 'Tangent',
+  curvature: 'Curvature',
   equal: 'Equal',
   midpoint: 'Midpoint',
   concentric: 'Concentric',
@@ -62,12 +65,23 @@ function trim(v: number): string {
 
 export class Namer {
   private names = new Map<Id, string>();
+  private kinds = new Map<Id, SketchEntity['kind']>();
   constructor(entities: readonly SketchEntity[]) {
     const counts: Record<string, number> = {};
     for (const e of entities) {
       counts[e.kind] = (counts[e.kind] ?? 0) + 1;
       this.names.set(e.id, `${KIND_LABEL[e.kind]} ${counts[e.kind]}`);
+      this.kinds.set(e.id, e.kind);
     }
+  }
+  /** An entity's kind (undefined for the reference geometry and unknown ids). */
+  kind(id: Id): SketchEntity['kind'] | undefined {
+    return this.kinds.get(id);
+  }
+  /** An ellipse or elliptic arc (their radius is the major one, M3.5). */
+  isConic(id: Id): boolean {
+    const k = this.kinds.get(id);
+    return k === 'ellipse' || k === 'ellipticArc';
   }
   /** "Line 2"; the reference geometry by name ("the origin", "the horizontal axis"). */
   entity(id: Id): string {
@@ -114,7 +128,8 @@ export function constraintLabel(
   namer: Namer,
   values: Record<Id, number>,
 ): string {
-  const base = CONSTRAINT_LABEL[c.kind];
+  const minor = (c.kind === 'radius' || c.kind === 'diameter') && c.axis === 'minor';
+  const base = minor ? `Minor ${CONSTRAINT_LABEL[c.kind].toLowerCase()}` : CONSTRAINT_LABEL[c.kind];
   if (c.kind === 'offset') {
     const v = values[c.id];
     return `${base}${v === undefined ? '' : ` ${formatLength(v)}`} (${offsetRefs(c, namer)})`;
@@ -191,6 +206,8 @@ export function describeFor(
       return `perpendicular to ${other(c.a, c.b)}`;
     case 'tangent':
       return `tangent to ${other(c.a, c.b)}`;
+    case 'curvature':
+      return `curvature-continuous with ${other(c.a, c.b)}`;
     case 'equal':
       return `equal to ${other(c.a, c.b)}`;
     case 'midpoint':
@@ -208,9 +225,10 @@ export function describeFor(
     case 'length':
       return v === undefined ? 'a fixed length' : `${formatLength(v)} long`;
     case 'radius':
-      return v === undefined ? 'a fixed radius' : `radius ${formatLength(v)}`;
-    case 'diameter':
-      return v === undefined ? 'a fixed diameter' : `diameter ${formatLength(v)}`;
+    case 'diameter': {
+      const what = `${namer.isConic(c.curve) ? `${c.axis ?? 'major'} ` : ''}${c.kind}`;
+      return v === undefined ? `a fixed ${what}` : `${what} ${formatLength(v)}`;
+    }
     case 'distance':
       return `${v === undefined ? 'a set distance' : formatLength(v)} from ${other(c.a, c.b)}`;
     case 'hDistance':

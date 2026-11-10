@@ -6,8 +6,8 @@
  * when its edge changed kind, and re-fits approximate (polyline) chains by length fraction.
  *
  * Sources the sketch package doesn't model keep the engine's built-in fallback: reference geometry
- * seen as an infinite line (axes, plane traces), and sources that project to several curves (a
- * face outline stored as one reference).
+ * seen as an infinite line (axes, plane traces), sources that project to several curves (a
+ * face outline stored as one reference), and the M3.5 exact ellipses, elliptic arcs and splines.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
@@ -28,6 +28,9 @@ function asProjectedEdge(s: LinkedSource): ProjectedEdge | null {
   if (s.curves.length !== 1 || !c) return null;
   if (c.kind === 'point') return { ref: s.ref, curve: { kind: 'line', a: c.p, b: c.p } };
   if (c.kind === 'line' && 'infinite' in c) return null;
+  // M3.5 exact ellipses / elliptic arcs / splines: re-projected by the engine's fallback until
+  // packages/sketch's `ProjectedCurve` has them (ADR-046).
+  if (c.kind === 'ellipse' || c.kind === 'ellipticArc' || c.kind === 'bspline') return null;
   return { ref: s.ref, curve: c };
 }
 

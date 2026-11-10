@@ -19,12 +19,14 @@ import type {
   RevolveFeature,
   SketchFeature,
 } from '@wren-cad/contracts';
-import { CircleAlert, PenLine, RefreshCw, TriangleAlert } from 'lucide-react';
+import { Ban, CircleAlert, PenLine, RefreshCw, TriangleAlert } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Field, Section, Segmented, Switch } from '../components/controls';
 import { Button, cn } from '../components/primitives';
 import { featureMeta } from '../features/featureMeta';
 import type { FormatValue } from '../format';
+import { attentionSentences } from './attentionMessage';
+import { CauseSentence } from './CauseSentence';
 import { type Ctx, dirOptions, type Edit, ExprField, Pick, ScopeFields, without } from './fieldKit';
 import { HoleFields } from './HoleWizard';
 import {
@@ -58,8 +60,13 @@ export interface FeatureInspectorProps {
   /** One-click re-pick of the first unresolved reference (needs-attention banner). */
   onRepick?(): void;
   describeRef?(ref: EntityRef): string;
-  /** Display name for a feature id (mirror / pattern sources). */
+  /** Display name for a feature id (mirror / pattern sources, and the cause in error messages). */
   describeFeature?(id: string): string;
+  /**
+   * Errors at their cause (ADR-046): called with the upstream feature named in a
+   * "<feature> lost its edge because <cause> changed" message. The app selects that feature.
+   */
+  onSelectFeature?(id: string): void;
   /** Hole and thread standards tables (data comes from packages/document). */
   holeTables?: Partial<Record<HoleStandard, HoleTable>>;
   onEditSketch?(): void;
@@ -485,7 +492,52 @@ function ImportFields({ f, c, edit }: { f: ImportFeature; c: Ctx; edit: Edit<Imp
 
 /* ------------------------------------------------------------------------- component */
 
-function StatusBanner({ status, onRepick }: { status: FeatureStatus; onRepick?: () => void }) {
+function StatusBanner({
+  status,
+  featureName,
+  nameOf,
+  onRepick,
+  onSelectFeature,
+}: {
+  status: FeatureStatus;
+  featureName: string;
+  nameOf(id: string): string | undefined;
+  onRepick?: () => void;
+  onSelectFeature?: (id: string) => void;
+}) {
+  const sentences =
+    status.state === 'needsAttention' || status.state === 'error' || status.state === 'blocked'
+      ? attentionSentences({
+          feature: featureName,
+          state: status.state,
+          ...(status.unresolved ? { unresolved: status.unresolved } : {}),
+          ...(status.cause ? { cause: status.cause } : {}),
+          nameOf,
+        })
+      : [];
+  const causes = sentences.length ? (
+    <ul className="m-0 mt-1 flex list-none flex-col gap-0.5 p-0" data-testid="attention-causes">
+      {sentences.map((s) => (
+        <li key={s.text} className="text-ui">
+          <CauseSentence sentence={s} {...(onSelectFeature ? { onSelectFeature } : {})} />
+        </li>
+      ))}
+    </ul>
+  ) : null;
+  if (status.state === 'blocked' && causes) {
+    return (
+      <div
+        role="status"
+        className="mx-4 mt-3 flex gap-2 rounded-control bg-surface-2 p-2.5 text-ui text-fg-muted"
+      >
+        <Ban className="mt-0.5 size-4 shrink-0" aria-hidden />
+        <div className="min-w-0 flex-1">
+          <p className="font-medium">Waiting on an earlier feature.</p>
+          {causes}
+        </div>
+      </div>
+    );
+  }
   if (status.state === 'error') {
     return (
       <div
@@ -497,6 +549,7 @@ function StatusBanner({ status, onRepick }: { status: FeatureStatus; onRepick?: 
           <p className="font-medium">
             {status.error?.message ?? 'This feature failed to rebuild.'}
           </p>
+          {causes}
           {status.error?.hint ? <p className="mt-0.5 text-xs">{status.error.hint}</p> : null}
         </div>
       </div>
@@ -515,6 +568,7 @@ function StatusBanner({ status, onRepick }: { status: FeatureStatus; onRepick?: 
           <p className="font-medium">
             {n === 1 ? 'A reference needs your attention.' : `${n} references need your attention.`}
           </p>
+          {causes}
           <p className="mt-0.5 text-xs">
             {ambiguous
               ? 'It now matches more than one entity. Wren will not guess: choose which one.'
@@ -554,6 +608,7 @@ export function FeatureInspector({
   onRepick,
   describeRef,
   describeFeature,
+  onSelectFeature,
   holeTables,
   onEditSketch,
   onDone,
@@ -667,7 +722,18 @@ export function FeatureInspector({
           </Button>
         ) : null}
       </header>
-      {status ? <StatusBanner status={status} {...(onRepick ? { onRepick } : {})} /> : null}
+      {status ? (
+        <StatusBanner
+          status={status}
+          featureName={feature.name}
+          nameOf={(id) => {
+            const n = describeFeature?.(id);
+            return n && n !== id ? n : undefined; // an id echoed back means "unknown"
+          }}
+          {...(onRepick ? { onRepick } : {})}
+          {...(onSelectFeature ? { onSelectFeature } : {})}
+        />
+      ) : null}
       {body}
     </div>
   );

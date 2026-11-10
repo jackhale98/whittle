@@ -33,6 +33,7 @@ describe('ConstraintGlyph', () => {
       'parallel',
       'perpendicular',
       'tangent',
+      'curvature',
       'equal',
       'midpoint',
       'concentric',
@@ -93,7 +94,7 @@ describe('ConflictPanel', () => {
     expect(onFix).toHaveBeenCalledWith(sampleConflicts[0]?.fixes[0], 0);
     await userEvent.click(within(panel).getByRole('button', { name: 'Set D2 to 38.5 mm' }));
     expect(onFix).toHaveBeenLastCalledWith(sampleConflicts[1]?.fixes[0], 1);
-    fireEvent.mouseEnter(panel.querySelectorAll('li')[1] as HTMLElement);
+    fireEvent.mouseEnter(within(panel).getAllByTestId('conflict-card')[1] as HTMLElement);
     expect(onHighlight).toHaveBeenLastCalledWith(['C9']);
   });
 

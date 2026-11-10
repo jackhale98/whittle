@@ -10,6 +10,31 @@
  */
 
 export {
+  type AnnotationArc,
+  type AnnotationArrow,
+  type AnnotationOptions,
+  type DimensionAnnotation,
+  dimensionAnnotation,
+  dragDimensionLabel,
+} from './annotation';
+export {
+  closestSplineParam,
+  DEFAULT_SPLINE_DEGREE,
+  defaultKnots,
+  type Interpolation,
+  interpolate,
+  reverseSpline,
+  type SplineDef,
+  type SplineGeom,
+  sampleParams,
+  splineAreaIntegral,
+  splineAt,
+  splineDefError,
+  splinePoint,
+  splitSpline,
+  subSpline,
+} from './bspline';
+export {
   createSketchSolverClient,
   type SketchSolverClient,
   type SketchSolverClientOptions,
@@ -32,14 +57,24 @@ export {
   circumcircle,
   closestOnEntity,
   closestOnSegment,
+  closestParam,
+  type EllipseGeom,
+  type EllipticArcGeom,
+  ellipseGeom,
+  ellipseParam,
+  ellipsePoint,
+  ellipticArcGeom,
   indexEntities,
   type LineGeom,
   lineGeom,
+  type ParamCurve,
+  paramCurve,
   projectOnLine,
   type SampleOptions,
   sampleEntity,
   sampleSketch,
   sketchBounds,
+  splineGeom,
 } from './geometry';
 export {
   ANGLE_TOLERANCE,
@@ -65,11 +100,22 @@ export {
   Y_AXIS_END,
 } from './references';
 export {
+  loopPolygon,
+  type RegionEdge,
+  type RegionLoop,
+  type RegionOptions,
+  type SketchRegion,
+  sketchRegions,
+} from './regions';
+export {
   arc3PointTool,
   arcCenterTool,
   arcTangentTool,
   circle3PointTool,
   circleCenterTool,
+  ellipseFromRadii,
+  ellipseTool,
+  ellipticArcTool,
   lineTool,
   mergeFragment,
   newId,
@@ -79,7 +125,10 @@ export {
   rectangleCenterTool,
   rectangleCornerTool,
   type SketchFragment,
+  type SplineToolOptions,
   setConstruction,
   slotTool,
+  splineControlTool,
+  splineThroughTool,
   type ToolOptions,
 } from './tools';

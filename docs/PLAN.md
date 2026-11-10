@@ -32,7 +32,7 @@
 5. **Yours.** Local-first. No account is required. Files are open and documented (`.wrencad`). It works offline.
 6. **Beautiful.** It has a calm, modern visual language and polished motion. The viewport looks like a product render, not a debug view.
 
-**Non-goals for v1:** real-time multi-user collaboration (prepare for it, don't build it), CAM, FEA, rendering beyond the high-quality viewport, sheet-metal, and surfacing beyond loft/sweep/fill.
+**Non-goals for v1:** real-time multi-user collaboration (prepare for it, don't build it), CAM, FEA in v1.0 itself (simulation is a post-v1.0 track, §12B, with an early meshing spike), rendering beyond the high-quality viewport, sheet-metal, and surfacing beyond loft/sweep/fill.
 
 ---
 
@@ -67,7 +67,7 @@ Priority: **P0** = MVP (M1–M2), **P1** = v1.0 (M3–M6), **P2** = after v1.0.
 | Reference planes, axes and points; measure; mass properties; section view; interference check                                                            | P1                        |
 | **Materials:** assign a material per part from a built-in library (steels, aluminium alloys, brass, titanium, common plastics such as ABS/PLA/PETG/nylon, wood) or a custom one; editable density with units (`2.70 g/cm^3`); appearance colour; mass, centre of mass and inertia in mass properties; material and density written to STEP (XCAF `XCAFDoc_MaterialTool`) and shown in BOMs | P0 (assign + density, M1) / P1 (mass properties, STEP, BOM; M3–M6) |
 | Variable fillet, face fillet, split body, thicken, offset/replace face, move face, delete face (defeature)                                               | P2                        |
-| Configurations (parameter tables), derived parts                                                                                                         | P2                        |
+| Configurations: part configurations (parameter values, feature suppression, material) in M3.7; assembly configurations in M6. Derived parts stay P2.     | P1 (M3.7 / M6)            |
 
 ### 2.3 Assemblies (M6)
 
@@ -553,7 +553,7 @@ Wren can do better because its source format is text-based parametric data (§8A
 **Phone:**
 
 - The viewer comes first.
-- A bottom sheet holds parts, parameters, measure, section, explode and export.
+- A bottom sheet holds parts, parameters, measure, section, explode and export, and (M3.6) the feature tree with a step-through control (previous / next feature, scrubbing the rollback position) so a design can be reviewed feature by feature.
 - Editing is limited to parameters and simple features.
 
 ### 9.2 Interaction rules
@@ -658,6 +658,7 @@ Wren can do better because its source format is text-based parametric data (§8A
 - **M2:** ui-engineer (tablet shell) ∥ viewport-engineer (gestures, Pencil, preview path) ∥ modeling-engineer (push/pull feature). sync-engineer can start the M2.5 provider spike in parallel, because it only depends on the M1 document format.
 - **M2.5:** sync-engineer (providers, sync, HistoryStore, merge) ∥ kernel-engineer (geometric diff booleans) ∥ ui-engineer (connections, versions and compare/merge UI) ∥ platform-engineer (proxy + token-exchange Worker).
 - **M3:** sketch-engineer (offset, convert entities, trim/extend, sketch fillet/chamfer, mirror) first ∥ kernel-engineer (shell, draft, sweep, loft, pattern/mirror tool shapes, hole, propagate toggle, kernel `import`, IGES) ∥ modeling-engineer (regen for the new types, reference axes/points/planes, linked-entity projection, hole tables) ∥ ui-engineer (inspectors, tools, Reference group, hole wizard). Then integration and the reference parts (§12A).
+- **M3.5:** viewport-engineer (pivot-at-cursor orbit, presets, button mapping, `pickRect`, pivot marker) ∥ ui-engineer (radial menu, Which-one chooser, keymap editor and overlay, navigation settings) ∥ sketch-engineer (splines, ellipses, elliptic arcs, tangent/G2, Pencil ovals and splines, conflict sets) ∥ kernel-engineer (exact spline and elliptic edges, golden tests) ∥ modeling-engineer (`AttentionCause`, regen of the new curves). Then integration in apps/web and the E2E acceptance.
 - **M4–M6:** as in §12.
 
 ---
@@ -720,6 +721,54 @@ Each milestone ends with a reviewer gate. "Done" means every criterion is demons
   - The reference parts start the **certification-style suite** (§12A). Each has an original spec drawing, a material, and an expected mass checked in an independent CAD tool (FreeCAD).
   - The E2E builds each part from the spec and checks the mass within 0.1 %. CSWP-style stages then change named dimensions and re-check the mass.
 
+### M3.5 — Navigation, input and sketch curves
+
+Owner-approved 2026-11-09 from the research report `docs/ux-research/reports/CAD UI feedback and lessons.md` (ADR-046). The goal: the tool and the orbit pivot come to the cursor, errors point at their cause, and sketches get free-form curves.
+
+- **Orbit and navigation** (contracts: `NavigationOptions`, `setNavigation`, `pickRect`, the `contextMenu` / `setPivot` gestures):
+  - Orbit turns about the surface point under the cursor when the drag starts, falling back to the centre of the visible bodies; never a stale or off-screen point. A pivot marker shows while orbiting. Touch orbit uses the first finger's point.
+  - Left drag is never navigation: it picks and box-selects (left → right = window, right → left = crossing). Default preset `rightOrbit`: right drag orbits, middle drag pans, wheel zooms to the cursor, a right click opens the radial menu. Presets named by behaviour: `middleOrbit` (middle-click on geometry sets the pivot), `middlePan`, `rightOrbitRepeat` (quick right click repeats the last command). Turntable (default, +Z up) or trackball; invert zoom; orbit speed. No smoothing while dragging (1 : 1 with the pointer); easing only for programmatic moves.
+- **Radial menu:** a right click (mouse), long-press (touch) or held key opens a radial menu of ≤ 8 items chosen by what is selected, at the cursor. It accepts a flick before it draws (direction + distance threshold); the same layout on every surface; a fixed "repeat last" slot (Space repeats too). It never opens under the next click: it appears only on release and ignores clicks that started before it drew.
+- **Which one?** Overlapping candidates are listed in a stable order (kind, then depth, then id), highlight on hover, and Tab / Shift+Tab cycles the preselection under a still pointer.
+- **Keyboard:** shortcuts bind `KeyboardEvent.code` (layout-independent), a keymap editor flags conflicts with the browser's own shortcuts, and holding Ctrl/Cmd/Alt for 600 ms shows an overlay of the shortcuts available now.
+- **Errors at their cause:** `needsAttention`, `error` and `blocked` features name the upstream feature whose change broke them (`AttentionCause`), and selecting the message selects that feature. Sketch conflicts highlight the conflicting set on the canvas and in the list and propose removing the most recently added constraint; no bare constraint numbers anywhere.
+- **Owner additions (2026-11-09):**
+  - **Sketch dimensions like other CAD sketchers:** a dimension's label is draggable after placement (mouse, touch, Pencil; a drag moves only the label), and it is drawn with extension lines and a dimension line with arrows (a leader for radius/diameter, an arc for angles) that show what it measures.
+  - **Feature lineage:** selecting a face, edge or vertex shows "Made by <feature>" (the latest feature that created or modified it, and its sketch) with Edit buttons; selecting a feature in the tree shows its parents (what it references) and children (what references it).
+  - **Bug:** a sketch on a part face was invisible after leaving the sketch on desktop Edge (only the centre point showed). Coplanar overlays must stay visible on WebGPU as well as WebGL2.
+  - **Bug fixed now:** the tutorial card covered an open tool flyout; flyouts truncated command names ("Extruded …").
+  - **Tablet (owner, 2026-11-10):** a visible way to drop the active sketch tool (a Select tool, plus a ✕ on the active tool for touch and pen); a visible "Clear selection" control and tap-on-empty clears the selection; a sketch consumed by a cut-revolve (and every consuming feature) hides once the feature is no longer being edited.
+  - **Pencil grab (owner, 2026-11-10):** with no tool selected, press-and-hold (~0.3 s) on a sketch node or curve grabs it: corners and end points move, a circle's centre moves the circle, its edge sets the diameter. Pressing and moving at once draws a freehand stroke that starts snapped to the node. Pencil hover highlights what a hold would grab.
+- **Sketch curves:** B-splines by control points and through points (degree 3 default, open or closed), ellipses and elliptic arcs; tangent constraints between any curves (G1 at shared ends), a curvature-continuous (G2) constraint where the solver can express it (otherwise an `unsupported` conflict, never dropped); the Pencil recognises ovals as ellipses and smooth strokes as splines; offset, trim/extend, mirror and convert work on the new curves where OCCT can (otherwise a clear refusal). The kernel builds exact B-spline and elliptic edges for profiles. Conics beyond ellipses are deferred.
+- **Accept:**
+  - E2E: orbiting from a point on a face keeps that point under the cursor within 2 px; panning then orbiting never pivots in empty space; the pivot marker is visible during the drag. Each preset's mapping is exercised (left box-select window and crossing, right/middle orbit and pan, right click opens the radial menu).
+  - E2E: a flick on the radial menu runs its command before the menu draws; Space repeats; the menu is reachable with touch (long-press) and Pencil.
+  - E2E: Tab cycles overlapping candidates; the chooser order is identical across runs.
+  - E2E: with a non-QWERTY layout emulated, shortcuts still fire by physical key; the keymap editor flags Ctrl+W / Ctrl+T as browser shortcuts.
+  - E2E: shortening an extrude so a fillet loses its edge shows "needs attention" naming the extrude; selecting the message selects the extrude. An over-constrained sketch highlights the set and proposes the last-added constraint.
+  - Golden tests: a profile bounded by a spline and an elliptic arc extrudes to the volume of a numerically integrated reference (≤ 1e-6 relative); splines survive save → load → regen byte-identically; Pencil recognition tests for ellipses and splines.
+  - E2E: a spline through 5 points, closed with a line, extrudes; moving a through point updates the solid.
+  - E2E: a dimension's label drags without changing its value and shows extension and dimension lines; selecting a face shows the feature that made it and Edit opens it; the tree shows a feature's parents and children.
+  - Render test on the WebGPU backend (or the closest available) shows a circle sketched on a face after finishing the sketch.
+  - All existing suites, the 10 reference parts and `pnpm perf` stay green; orbit start (pick under cursor) ≤ 2 ms on the 1M-triangle probe.
+
+### M3.6 — Review on the phone, sketch visibility
+
+Owner request 2026-11-10. Small; follows the M3.5 gate.
+
+- **Phone feature tree:** the phone sheet gains the feature tree (read-only apart from what phones already edit) with step-through: previous / next feature and a scrubber that moves the rollback position, so a design can be reviewed feature by feature. The model shows the state at that step; leaving the tree restores the full model unless the user chose to keep the rollback.
+- **Show or hide any sketch, including one inside a feature:** a sketch consumed by a feature is hidden by default (as now), and its eye toggle in the tree (nested or flat) overrides that per sketch, persisted in the document; "Show all sketches" / "Hide all sketches" commands. Works on every shell.
+- **Accept:** E2E on a phone steps through the demo bracket's features and the viewport shows each intermediate state; E2E shows a consumed sketch via its eye toggle, the setting survives save → reload, and hiding it again restores the default.
+
+### M3.7 — Part configurations
+
+Owner request 2026-11-10 (moved up from P2): before drawings and assemblies, so both can be built configuration-aware.
+
+- **Model:** a part has named configurations; each sets parameter values (expressions with units), feature suppression, material and optional custom properties (part number, description), over a default. The active configuration is a document setting; every regen is of one configuration. Stored in the document format with a migration; structural merge (M2.5) merges configurations keyed by id, a conflict per (configuration, parameter).
+- **UI:** a configuration switcher in the top bar / tree; a configuration table (parameters × configurations) edited inline with expressions, no modal dialogs; "suppress in this configuration only" vs "all configurations" when suppressing a feature; the Params tab shows which values the active configuration overrides.
+- **Use:** export STEP/STL per configuration (or all, one file each); mass properties per configuration; versions/compare work across configurations; drawings (M4) pick a configuration per view; assemblies (M6) pick a configuration per instance.
+- **Accept:** golden tests regenerate each configuration of a reference part and match the expected masses (FreeCAD-checked like §12A); E2E creates two configurations from the UI, switches between them, suppresses a feature in one only, exports both, and save → reload keeps everything; a merge test resolves edits to different configurations without conflict and flags the same cell edited on both sides.
+
 ### M4 — Drawings
 
 - Sheets and templates; base, projected, iso, section and detail views with exact HLR; centre marks; dimensions with tolerances; GD&T frames, datums, notes and a BOM placeholder; associativity; PDF, SVG and DXF export.
@@ -749,6 +798,7 @@ Each milestone ends with a reviewer gate. "Done" means every criterion is demons
 ### M6 — Assemblies
 
 - Multi-part documents, instances, mates and DOF, exploded views, BOM, assembly drawings, assembly STEP (with PMI per part).
+- **Assembly configurations** (owner request 2026-11-10): per configuration, which instances are suppressed, each instance's part configuration, and mate values (distances, angles); BOM and exports per configuration.
 - **Accept:** a 25-part assembly reference model can be built, moved through its DOF, exploded, drawn and exported. The certification-style suite gains assembly stages: build from parts plus mates, then check the assembly mass and centre of mass.
 
 ### M7 — v1.0 hardening & polish
@@ -770,6 +820,20 @@ A capability check modelled on the SolidWorks CSWA/CSWP exams, which test exactl
 - **Human run.** The real practice exams are run by a person in Wren, timed, for M7, and the findings are fed back as issues. Nothing from those exams is stored in the repo.
 
 ---
+
+### 12B. Simulation track (after v1.0; spike now)
+
+Owner direction 2026-11-10 (ADR-058). Wren is the pre- and post-processor; the user's own installed solvers do the heavy computation on their desktop. Wren meshes in the app.
+
+- **Architecture:**
+  - **Built-in mesher:** Gmsh compiled to Wasm against the kernel's OCCT build, in its own lazily loaded worker (never the kernel worker, never the main thread). It meshes the exact BRep handed over by the kernel together with the face names, so mesh physical groups are named after Wren's persistent names. Quadratic tetrahedra for solids, triangles/quads for shells, size controls (global, per face/edge, curvature), quality metrics, preview in the viewport. Fallback if Gmsh resists the port: Netgen (LGPL). Very large meshes: "Mesh on this computer" writes the same Gmsh settings for a local Gmsh.
+  - **Solvers run locally, two ways:** (1) **file handoff** — Wren writes a complete case folder (input deck plus `run.sh` / `run.bat`) into the project folder, the user runs it, and Wren imports the results when they appear (local-folder mode already watches the folder); (2) the optional **Wren Runner**, a small open-source localhost service paired with a one-time code that launches only the configured solver executables, streams progress and returns results. No Wren-hosted compute.
+  - **Loads on persistent names:** loads, constraints, contacts and mesh controls reference faces/edges by persistent name; a lost reference makes the study "needs attention", never a silent move.
+  - **Studies are document data** (versioned, branched, merged like features); results live in `results/`, excluded from history by default, readable on every device (review a desktop solve on an iPad).
+- **S0 — spike (now):** Gmsh → Wasm against the kernel's OCCT; mesh the demo bracket in a worker; measure download size, mesh time and memory (desktop and iPad-class limits); write a CalculiX `.inp`, solve it with a locally installed CalculiX, read the `.frd`, and match an analytic cantilever and the bracket's tip deflection from an independent solve. Report: `docs/spikes/simulation-mesh.md`.
+- **S1 — structural for single parts:** study model, materials with E, ν, yield, density and thermal properties, load/constraint/mesh-control tools, built-in mesher with preview and quality, CalculiX by file handoff then the Runner, linear static, modal and steady thermal, results viewer (colour maps, deformed shape, mode animation, probes, sections, report). **Accept:** NAFEMS LE1/LE10 and FV52-class benchmarks and analytic cases within published tolerances, as golden tests running the real solver in CI.
+- **S2 —** the Runner on all desktop OSes; nonlinear material; bonded and contact assemblies (after M6).
+- **S3 —** CFD through OpenFOAM (one distribution first): Wren prepares the fluid domain, named surface patches and the case; `snappyHexMesh` meshes locally; Wren reads the VTK output (streamlines, pressure, velocity). FEniCSx for custom physics with the built-in mesh. Optional in-browser lattice-Boltzmann flow preview on WebGPU.
 
 ## 13. Hosting roadmap
 

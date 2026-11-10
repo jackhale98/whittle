@@ -7,7 +7,17 @@
 
 import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js';
 import { LineSegments2 } from 'three/addons/lines/webgpu/LineSegments2.js';
-import { float, length, mix, smoothstep, color as tslColor, uv } from 'three/tsl';
+import {
+  cameraProjectionMatrix,
+  float,
+  length,
+  mix,
+  smoothstep,
+  color as tslColor,
+  uniform,
+  uv,
+  vec4,
+} from 'three/tsl';
 import {
   type BufferGeometry,
   Color,
@@ -21,6 +31,41 @@ import {
   Sprite,
   SpriteNodeMaterial,
 } from 'three/webgpu';
+
+/**
+ * View-space distance (world units) by which coplanar overlays are pulled toward the camera. The
+ * viewport sets it every frame (see `overlayBiasFor`).
+ *
+ * Why not `polygonOffset`: WebGPU only applies it to triangle lists, in raw depth-buffer units
+ * (about 1e-7 of the range on a float depth buffer) and with a slope term that is zero for a
+ * coplanar surface, so on the WebGPU backend a sketch on a face lost the depth test and
+ * vanished. A clip-space z shift in the vertex stage behaves the same on both backends.
+ */
+export const overlayDepthBias = uniform(0);
+
+/** The bias for a camera `distance` from its target: 0.2 % of it, never below a scene epsilon. */
+export function overlayBiasFor(distance: number, sceneRadius: number): number {
+  return Math.max(distance * 2e-3, sceneRadius * 1e-4, 1e-6);
+}
+
+/**
+ * Pull a material's geometry toward the camera by `overlayDepthBias` (view-space units) without
+ * moving it on screen: only clip-space z changes (z += P[2][2] * bias, w and xy untouched).
+ * Replaces `polygonOffset` for surfaces that lie exactly on a body face or edge.
+ */
+export function applyDepthBias<M extends Material>(material: M): M {
+  const m = material as unknown as {
+    setupVertex: (builder: unknown) => ReturnType<typeof vec4>;
+  };
+  const base = m.setupVertex;
+  m.setupVertex = function (this: unknown, builder: unknown) {
+    const clip = base.call(this, builder);
+    const a = cameraProjectionMatrix.mul(vec4(0, 0, 1, 0)).z;
+    return vec4(clip.x, clip.y, clip.z.add(a.mul(overlayDepthBias)), clip.w);
+  };
+  material.needsUpdate = true;
+  return material;
+}
 
 export interface LineStyle {
   color: string;
@@ -91,11 +136,7 @@ export function makeLines(segments: Float32Array, style: LineStyle): LineSegment
     m.depthTest = !style.onTop;
     m.depthFunc = LessEqualDepth;
     m.depthWrite = false;
-    if (!style.onTop) {
-      m.polygonOffset = true;
-      m.polygonOffsetFactor = -2;
-      m.polygonOffsetUnits = -2;
-    }
+    if (!style.onTop) applyDepthBias(m);
     return m;
   });
   const lines = new LineSegments2(geometry, material);
@@ -123,11 +164,7 @@ export function makeFill(
     });
     m.depthTest = !onTop;
     m.depthFunc = LessEqualDepth;
-    if (!onTop) {
-      m.polygonOffset = true;
-      m.polygonOffsetFactor = -2;
-      m.polygonOffsetUnits = -2;
-    }
+    if (!onTop) applyDepthBias(m);
     return m;
   });
   const mesh = new Mesh(geometry, material);

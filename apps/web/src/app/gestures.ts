@@ -39,6 +39,9 @@ export function gestureAction(g: ViewportGesture, mode: GestureMode): GestureAct
       return 'undo';
     case 'threeFingerTap':
       return 'redo';
+    case 'contextMenu':
+    case 'setPivot':
+      return null; // M3.5 placeholder (ADR-046): the integration wires the radial menu.
   }
 }
 

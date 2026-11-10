@@ -27,6 +27,8 @@ export interface HarnessApi {
   /** Show the synthetic rectangle + circle sketch on top of the box (id `F02`). */
   showSketch(active?: boolean): void;
   hideSketch(): void;
+  /** The synthetic sketch at height `z` (id `F02`): the top face of the box is at z = 20. */
+  showSketchAt(z: number): void;
   /** Translucent mesh preview: a box at `origin` (kind 'mesh'); `null` removes it. */
   previewBox(id: string, origin: [number, number, number] | null): void;
   /** The synthetic sketch plus `SketchResult.points` entries (id `F03`, z = 20). */
@@ -124,6 +126,9 @@ async function main() {
         id,
         origin ? { kind: 'mesh', mesh: boxMesh(12, 12, 12, { origin }) } : null,
       );
+    },
+    showSketchAt(z) {
+      viewport.setSketch('F02', { sketch: sketchFixture(z, 'F02'), active: false, dof: DOF });
     },
     hideSketch() {
       viewport.setSketch('F02', null);

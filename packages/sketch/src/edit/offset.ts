@@ -120,8 +120,15 @@ export function offsetEntities(
   const curves: SketchEntity[] = [];
   for (const id of selection) {
     const e = k.get(id);
-    if (!e) return refuse(`Unknown entity ${id}`);
-    if (e.kind === 'ellipse') return refuse('Ellipses cannot be offset yet');
+    if (!e) return refuse('That entity is not in the sketch');
+    if (e.kind === 'ellipse' || e.kind === 'ellipticArc')
+      return refuse(
+        `Ellipses and elliptic arcs can't be offset (${k.name(id)}): the offset of an ellipse is not an ellipse, and Wren doesn't approximate it`,
+      );
+    if (e.kind === 'bspline')
+      return refuse(
+        `Splines can't be offset (${k.name(id)}): the offset of a spline is not a spline, and Wren doesn't approximate it`,
+      );
     if (e.kind !== 'point') curves.push(e);
   }
   if (curves.length === 0) return refuse('Pick a line, arc or circle to offset');
