@@ -142,12 +142,8 @@ describe('RadialMenu: flick and timing', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
-  it('draws nothing for 250 ms, then a labelled menu with Repeat in the north slot', () => {
+  it('draws at once by default (ADR-076): a labelled menu with Repeat in the north slot', () => {
     setup();
-    expect(screen.queryByRole('menu')).toBeNull();
-    wait(249);
-    expect(screen.queryByRole('menu')).toBeNull();
-    wait(2);
     const menu = screen.getByRole('menu', { name: 'Commands' });
     const names = within(menu)
       .getAllByRole('menuitem')
@@ -157,12 +153,48 @@ describe('RadialMenu: flick and timing', () => {
     expect(menu.querySelector('[data-slot="ne"]')).toHaveAttribute('data-item', 'extrude');
   });
 
-  it('a flick before it has drawn selects the item in that direction', () => {
-    const { onSelect } = setup();
+  it('an optional drawDelay defers drawing; a flick before it has drawn still selects', () => {
+    const a = setup({ drawDelay: 250 });
+    expect(screen.queryByRole('menu')).toBeNull();
+    wait(249);
+    expect(screen.queryByRole('menu')).toBeNull();
+    wait(2);
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+    a.unmount();
+    const { onSelect } = setup({ drawDelay: 250 });
     wait(100);
     move(400 + 41, 300); // east, past the 40 px threshold
     expect(onSelect).toHaveBeenCalledExactlyOnceWith('fillet');
     expect(screen.queryByRole('menu')).toBeNull();
+  });
+
+  it('a flick right after it has drawn selects; after the 250 ms window it does not', () => {
+    const a = setup();
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+    wait(200);
+    move(400 + 60, 300);
+    expect(a.onSelect).toHaveBeenCalledExactlyOnceWith('fillet');
+    a.unmount();
+    const b = setup();
+    wait(251);
+    move(400 + 60, 300);
+    expect(b.onSelect).not.toHaveBeenCalled();
+  });
+
+  it('flickWindow 0 turns flicks off; keyboard and touch never flick', () => {
+    const a = setup({ flickWindow: 0 });
+    move(400 + 60, 300);
+    expect(a.onSelect).not.toHaveBeenCalled();
+    a.unmount();
+    const b = setup({ source: 'keyboard' });
+    move(400 + 60, 300);
+    expect(b.onSelect).not.toHaveBeenCalled();
+  });
+
+  it('a menu pushed in from a screen edge takes no flick once drawn', () => {
+    const { onSelect } = setup({ at: { x: 5, y: 300 } });
+    move(5 + 60, 300);
+    expect(onSelect).not.toHaveBeenCalled();
   });
 
   it('flicks north for Repeat, north-east for the first item', () => {

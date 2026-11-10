@@ -438,7 +438,7 @@ test.describe('presets', () => {
 // ---------------------------------------------------------------------------------------------
 
 test.describe('radial menu', () => {
-  test('a flick runs its command before the menu draws; Space repeats; a held key opens it', async ({
+  test('it draws at once; a quick flick runs its command; Space repeats; a held key opens it', async ({
     page,
   }) => {
     const s = await boxSetup(page);
@@ -446,23 +446,30 @@ test.describe('radial menu', () => {
     // Empty space left of the box, at mid height (below it sits the command bar).
     const { x, y } = s.empty;
 
-    // Right click on empty space, then flick north-east at once: Sketch (first item).
+    // The menu draws without a delay (ADR-076): visible well inside the old 250 ms wait.
+    const t0 = Date.now();
+    await page.mouse.click(x, y, { button: 'right' });
+    await expect(page.getByTestId('radial-menu')).toBeVisible({ timeout: 2000 });
+    test.info().annotations.push({ type: 'radial-open-ms', description: String(Date.now() - t0) });
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('radial-menu')).toBeHidden();
+
+    // Right click on empty space, then flick north-east at once: Sketch (first item). The flick
+    // window is 250 ms from opening; a slow CI frame can miss it, hence the retries.
     let ran = false;
     for (let i = 0; i < 6 && !ran; i++) {
       await page.mouse.click(x, y, { button: 'right' });
-      // A flick: quick moves toward north-east (the menu mounts during the first of them).
       for (let k = 1; k <= 4; k++) await page.mouse.move(x + k * 16, y - k * 16);
-      // Nothing was drawn when the command ran (the draw delay is 250 ms).
-      const drawn = (await page.getByTestId('radial-menu').count()) > 0;
+      const open = (await page.getByTestId('radial-menu').count()) > 0;
       const prompt = (await a.ui()).prompt;
-      if (!drawn && prompt === 'sketch') ran = true;
+      if (!open && prompt === 'sketch') ran = true;
       else {
         await page.keyboard.press('Escape');
         await page.waitForTimeout(100);
         await page.mouse.move(x, y);
       }
     }
-    expect(ran, 'no flick ran before the menu drew').toBe(true);
+    expect(ran, 'no flick ran inside the flick window').toBe(true);
     await page.keyboard.press('Escape');
     await expect.poll(async () => (await a.ui()).prompt).toBeNull();
 
@@ -480,6 +487,7 @@ test.describe('radial menu', () => {
     await expect(menu).toBeVisible();
     // Repeat sits at the fixed north slot and names the last command.
     await expect(menu.locator('[data-slot="n"]')).toHaveAttribute('aria-label', /Repeat.*Sketch/i);
+    await page.waitForTimeout(350); // past the flick window
     await page.mouse.move(x + 70, y + 5, { steps: 4 });
     await page.waitForTimeout(100);
     await expect(menu).toBeVisible();

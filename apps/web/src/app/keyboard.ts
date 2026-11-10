@@ -183,8 +183,10 @@ export async function openRadial(
   held: boolean,
 ): Promise<void> {
   const u = wb.ui.get();
+  // The selection is set synchronously (the menu's items follow it); its persistent reference
+  // resolves in the kernel afterwards. The menu never waits for that round trip (ADR-076).
   if (!u.sketch && hit && !u.selection.some((s) => s.key === hitKey(hit)))
-    await wb.selectHit(hit, false);
+    void wb.track(wb.selectHit(hit, false));
   const r = wb.canvas?.getBoundingClientRect();
   wb.patchUi({
     bubble: null,
