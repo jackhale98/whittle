@@ -63,7 +63,8 @@ export const setParam = (doc: WrenDoc, cid: string, pid: string, expr: string | 
 export const setSuppressed = (doc: WrenDoc, cid: string, fid: string, v: boolean | undefined) =>
   editConfig(doc, cid, (c) => {
     c.features ??= {};
-    const o = (c.features[fid] ??= {});
+    c.features[fid] ??= {};
+    const o = c.features[fid];
     if (v === undefined) delete o.suppressed;
     else o.suppressed = v;
   });
@@ -77,7 +78,8 @@ export const setField = (
 ) =>
   editConfig(doc, cid, (c) => {
     c.features ??= {};
-    const o = (c.features[fid] ??= {});
+    c.features[fid] ??= {};
+    const o = c.features[fid];
     o.fields ??= {};
     if (v === undefined) delete o.fields[pointer];
     else o.fields[pointer] = v;
