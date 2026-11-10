@@ -167,7 +167,10 @@ export function configStatusOf(
       return { status: 'attention', message: `${nameOf(s.featureId)} needs attention` };
     }
     if (s.state === 'blocked') {
-      return { status: 'attention', message: `${nameOf(s.featureId)} is waiting on a failed feature` };
+      return {
+        status: 'attention',
+        message: `${nameOf(s.featureId)} is waiting on a failed feature`,
+      };
     }
   }
   return { status: 'ok' };
@@ -299,7 +302,8 @@ export function planFeatureEdit(
   const implied: string[] = [];
   for (const p of changed) {
     const to = readAt(next, p);
-    const routed = configurable.has(p) && (owned.has(p) || chip) && (!to.has || isConfigured(to.value));
+    const routed =
+      configurable.has(p) && (owned.has(p) || chip) && (!to.has || isConfigured(to.value));
     if (!routed) {
       toDefault.push(p);
     } else if (!to.has) {
@@ -347,7 +351,11 @@ export interface TableModel {
   optionValues: Map<string, Map<string, ConfiguredValue>>;
 }
 
-const cellOf = (target: ConfigTarget, v: unknown, optionKey?: Map<string, ConfiguredValue>): CellValue => {
+const cellOf = (
+  target: ConfigTarget,
+  v: unknown,
+  optionKey?: Map<string, ConfiguredValue>,
+): CellValue => {
   if (v === undefined) return undefined;
   if (target.kind === 'field' && optionKey && isConfigured(v)) return stringOption(v);
   return v as CellValue;
@@ -414,7 +422,11 @@ export function buildTableModel(doc: WrenDoc, part: Part, lengthUnit: string): T
   defaults[configTargetKey(color)] = part.color ?? '';
   for (const key of ['partNumber', 'description'] as const) {
     const target: ConfigTarget = { kind: 'property', key };
-    columns.push({ target, label: key === 'partNumber' ? 'Part number' : 'Description', kind: 'text' });
+    columns.push({
+      target,
+      label: key === 'partNumber' ? 'Part number' : 'Description',
+      kind: 'text',
+    });
     defaults[configTargetKey(target)] = part.properties?.[key] ?? '';
   }
   placeholders[configTargetKey({ kind: 'property', key: 'partNumber' })] = partNumberFor(
@@ -431,7 +443,11 @@ export function buildTableModel(doc: WrenDoc, part: Part, lengthUnit: string): T
       const key = configTargetKey(col.target);
       if (o.has) overrides[key] = cellOf(col.target, o.value, optionValues.get(key));
     }
-    ph[configTargetKey({ kind: 'property', key: 'partNumber' })] = partNumberFor(doc, part.id, c.id);
+    ph[configTargetKey({ kind: 'property', key: 'partNumber' })] = partNumberFor(
+      doc,
+      part.id,
+      c.id,
+    );
     return { id: c.id, name: c.name, status: 'unbuilt', overrides, placeholders: ph };
   });
 
@@ -473,7 +489,10 @@ export function configurationFromEdits(
         const cur = c.features?.[t.featureId] ?? {};
         c.features = {
           ...c.features,
-          [t.featureId]: { ...cur, fields: { ...cur.fields, [t.path]: e.value as ConfiguredValue } },
+          [t.featureId]: {
+            ...cur,
+            fields: { ...cur.fields, [t.path]: e.value as ConfiguredValue },
+          },
         };
         break;
       }

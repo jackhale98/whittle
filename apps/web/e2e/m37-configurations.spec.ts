@@ -70,9 +70,7 @@ async function bodyMass(page: Page): Promise<number> {
 const openParams = (page: Page) => page.getByRole('tab', { name: 'Params' }).click();
 const openFeatures = (page: Page) => page.getByRole('tab', { name: 'Features' }).click();
 
-test('golden masses: every configuration regenerates to its closed-form mass', async ({
-  page,
-}) => {
+test('golden masses: every configuration regenerates to its closed-form mass', async ({ page }) => {
   test.slow();
   await open(page, configPartDoc());
   const a = app(page);
@@ -185,7 +183,8 @@ test('create two configurations, switch, suppress in one only, export both, save
   await a.flushSave();
   await page.reload();
   await page.waitForFunction(
-    () => window.crossOriginIsolated === true && !!(window as unknown as { __wren?: unknown }).__wren,
+    () =>
+      window.crossOriginIsolated === true && !!(window as unknown as { __wren?: unknown }).__wren,
   );
   await expect.poll(async () => (await part(page)).configurations?.length).toBe(2);
   const after = await part(page);
@@ -299,9 +298,10 @@ test('scope: editing an inherited feature field edits Default and shows the noti
   expect(
     d2.parts[0]?.configurations?.find((c) => c.id === CFG_LONG)?.features?.[HOLE]?.fields,
   ).toEqual({ '/radius': '2 mm' });
-  await expect(
-    page.getByTestId('config-edit-scope').getByTestId('scope-chip'),
-  ).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.getByTestId('config-edit-scope').getByTestId('scope-chip')).toHaveAttribute(
+    'aria-pressed',
+    'false',
+  );
 });
 
 test('paste a 3 × 4 block into the table: the configurations appear', async ({ page }) => {
@@ -315,9 +315,11 @@ test('paste a 3 × 4 block into the table: the configurations appear', async ({ 
   await expect(panel.getByTestId('configuration-table')).toBeVisible();
   // Focus a cell, then paste: header row (three columns), two configurations.
   await panel.locator('[data-cell]').first().focus();
-  const tsv = ['Name\tlength\tthick\tPart number', 'Long\t60 mm\t\tPL-60', 'Tall\t\t14 mm\tPL-T'].join(
-    '\n',
-  );
+  const tsv = [
+    'Name\tlength\tthick\tPart number',
+    'Long\t60 mm\t\tPL-60',
+    'Tall\t\t14 mm\tPL-T',
+  ].join('\n');
   await page.evaluate((text) => {
     const dt = new DataTransfer();
     dt.setData('text/plain', text);
@@ -426,9 +428,11 @@ test('merge: edits to different configurations merge cleanly; the same cell on b
   const longHead = (await state()).branches.find((b) => b.name === 'long-edit')?.head as string;
 
   await call('switchBranch', mainName);
-  await expect.poll(async () => (await configs(page)).find((c) => c.id === CFG_LONG)?.params).toEqual({
-    [P_LENGTH]: '60 mm',
-  });
+  await expect
+    .poll(async () => (await configs(page)).find((c) => c.id === CFG_LONG)?.params)
+    .toEqual({
+      [P_LENGTH]: '60 mm',
+    });
   await setParam(CFG_THICK, P_THICK, '18 mm');
   await call('saveVersion', 'Thick is 18');
 
@@ -451,9 +455,11 @@ test('merge: edits to different configurations merge cleanly; the same cell on b
   await call('saveVersion', 'Long is 80');
   const head80 = (await state()).branches.find((b) => b.name === 'long-80')?.head as string;
   await call('switchBranch', mainName);
-  await expect.poll(async () => (await configs(page)).find((c) => c.id === CFG_LONG)?.params).toEqual({
-    [P_LENGTH]: '70 mm',
-  });
+  await expect
+    .poll(async () => (await configs(page)).find((c) => c.id === CFG_LONG)?.params)
+    .toEqual({
+      [P_LENGTH]: '70 mm',
+    });
   await setParam(CFG_LONG, P_LENGTH, '90 mm');
   await call('saveVersion', 'Long is 90');
   await call('mergeDiverged', head80);
@@ -491,11 +497,17 @@ test('a missing active configuration is "needs attention", never a silent Defaul
   // It is not exported as if it were Default.
   await page.getByRole('button', { name: 'Export' }).click();
   await page.getByTestId('export-form').getByRole('radio', { name: /STEP/ }).click();
-  await page.getByTestId('export-form').getByRole('button', { name: /^Export STEP/ }).click();
+  await page
+    .getByTestId('export-form')
+    .getByRole('button', { name: /^Export STEP/ })
+    .click();
   await expect(page.getByText(/needs attention: it no longer exists/i)).toBeVisible();
   // The way out is explicit.
   await page.keyboard.press('Escape');
-  await page.getByTestId('config-missing').getByRole('button', { name: 'Switch to Default' }).click();
+  await page
+    .getByTestId('config-missing')
+    .getByRole('button', { name: 'Switch to Default' })
+    .click();
   await a.idle();
   expect((await a.configurations()).missing).toBe(false);
   await expect(page.getByTestId('config-missing')).toHaveCount(0);
@@ -510,7 +522,10 @@ test('an override that no longer applies marks the feature "needs attention" in 
   const thick = part0?.configurations?.find((c) => c.id === CFG_THICK);
   if (!thick) throw new Error('no configuration');
   // A field of the hole that cannot be configured: kept and reported, never dropped.
-  thick.features = { ...thick.features, [HOLE]: { fields: { '/radius': '6 mm', '/nope': '1 mm' } } };
+  thick.features = {
+    ...thick.features,
+    [HOLE]: { fields: { '/radius': '6 mm', '/nope': '1 mm' } },
+  };
   await open(page, doc);
   const a = app(page);
   await a.configurationsBuilt();
@@ -523,9 +538,9 @@ test('an override that no longer applies marks the feature "needs attention" in 
   await hole.click();
   await expect(page.getByTestId('config-issue')).toContainText(/In Thick/);
   // The override is still in the file.
-  expect((await configs(page)).find((c) => c.id === CFG_THICK)?.features?.[HOLE]?.fields).toHaveProperty(
-    '/nope',
-  );
+  expect(
+    (await configs(page)).find((c) => c.id === CFG_THICK)?.features?.[HOLE]?.fields,
+  ).toHaveProperty('/nope');
 });
 
 test('part properties: part number and description; the part number names the exports', async ({
@@ -545,14 +560,19 @@ test('part properties: part number and description; the part number names the ex
   await page.getByTestId('prop-description').fill('Base plate');
   await page.getByTestId('prop-description').press('Enter');
   await a.idle();
-  expect((await part(page)).properties).toEqual({ partNumber: 'PL-100', description: 'Base plate' });
+  expect((await part(page)).properties).toEqual({
+    partNumber: 'PL-100',
+    description: 'Base plate',
+  });
 
   // Two configurations with the same part number: a warning, nothing is written.
   await page.getByRole('button', { name: 'Export' }).click();
   const form = page.getByTestId('export-form');
   await form.getByRole('radio', { name: /STEP/ }).click();
   await form.getByRole('radio', { name: /^All \(3\)/ }).click();
-  await expect(form.getByTestId('export-collisions')).toContainText(/would both be written to PL-100/);
+  await expect(form.getByTestId('export-collisions')).toContainText(
+    /would both be written to PL-100/,
+  );
   let downloads = 0;
   page.on('download', () => downloads++);
   await form.getByRole('button', { name: /^Export STEP/ }).click();

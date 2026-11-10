@@ -3,9 +3,9 @@ import { GripVertical, Plus, Trash2, Variable } from 'lucide-react';
 import { m } from 'motion/react';
 import { type KeyboardEvent, type PointerEvent, useRef, useState } from 'react';
 import { ExpressionInput } from '../components/ExpressionInput';
+import { Button, cn, IconButton } from '../components/primitives';
 import { OverrideMarker, ScopeChip, useOneShotScope } from '../config/markers';
 import type { EditScope } from '../config/model';
-import { Button, cn, IconButton } from '../components/primitives';
 import type { MoveResult } from '../features/FeatureTree';
 import { defaultFormatValue, type FormatValue } from '../format';
 import { useSpring } from '../motion';
@@ -239,7 +239,11 @@ function ParamRow({
             size={touch ? 'touch' : 'md'}
             onCommit={(expr) =>
               cfg && !activeIsDefault
-                ? onUpdate?.(param.id, { expr }, oneShot.consume() === 'configuration' || overridden ? 'configuration' : 'all')
+                ? onUpdate?.(
+                    param.id,
+                    { expr },
+                    oneShot.consume() === 'configuration' || overridden ? 'configuration' : 'all',
+                  )
                 : onUpdate?.(param.id, { expr })
             }
           />

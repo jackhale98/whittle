@@ -62,9 +62,7 @@ export default function FeatureInspectorPane({
   }, [focus, f.id, wb]);
 
   const optionOverrides = active
-    ? configurableFields(f).filter(
-        (c) => c.kind === 'option' && Object.hasOwn(owned, c.pointer),
-      )
+    ? configurableFields(f).filter((c) => c.kind === 'option' && Object.hasOwn(owned, c.pointer))
     : [];
 
   return (

@@ -19,12 +19,12 @@ import {
 } from '@wren-cad/ui';
 import { FolderOpen, Library, Plus, Save } from 'lucide-react';
 import { lazy, Suspense, useEffect, useState, useSyncExternalStore } from 'react';
+import { overrideIn } from '../app/config-model';
 import { useObservable } from '../app/observable';
 import type { Workbench } from '../app/workbench';
 import type { FeatureTool, ModelTool } from '../features/factories';
 import { selectionLineage } from '../model/lineage';
 import { selectionKind } from '../selection/pick';
-import { overrideIn } from '../app/config-model';
 import { useConfigurationView } from './config-view';
 
 // The feature inspector (and the hole and thread fields behind it) is fetched when a feature is

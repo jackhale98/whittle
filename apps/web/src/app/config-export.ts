@@ -9,8 +9,8 @@ import type { ExportFormat, Id } from '@wren-cad/contracts';
 import { exportFileNames, resolveConfiguration } from '@wren-cad/document';
 import type { ExportRequest } from '@wren-cad/ui';
 import { activeIdOf, isMissingActive } from './config-model';
-import { fileBase } from './workbench-util';
 import type { Workbench } from './workbench';
+import { fileBase } from './workbench-util';
 
 /** The base name (no extension) of the active configuration's export. */
 export function exportBase(wb: Workbench): string {

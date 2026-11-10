@@ -12,8 +12,8 @@ import type {
 } from '@wren-cad/contracts';
 import { Field, Segmented } from '../components/controls';
 import { ExpressionInput } from '../components/ExpressionInput';
-import type { FormatValue } from '../format';
 import { OverrideMarker } from '../config/markers';
+import type { FormatValue } from '../format';
 import { PickField } from './PickField';
 
 /**

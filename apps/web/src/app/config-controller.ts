@@ -32,13 +32,13 @@ import type { ConfigTableEdit, EditScope, PastePlan } from '@wren-cad/ui';
 import { ConfigBuilds } from './config-builds';
 import {
   activeIdOf,
+  buildTableModel,
   configurationFromEdits,
   inheritCount,
   overrideIn,
   planFeatureEdit,
-  typedOption,
-  buildTableModel,
   type TableModel,
+  typedOption,
 } from './config-model';
 import { type Observable, observable } from './observable';
 import type { Workbench } from './workbench';
@@ -174,7 +174,11 @@ export class ConfigController {
     );
     if (!ok) return null;
     this.switching = { id, at: performance.now() };
-    this.wb.apply({ kind: 'setActiveConfiguration', partId: part.id, configurationId: id }, undefined, key);
+    this.wb.apply(
+      { kind: 'setActiveConfiguration', partId: part.id, configurationId: id },
+      undefined,
+      key,
+    );
     this.wb.commit();
     return id;
   }
@@ -221,7 +225,9 @@ export class ConfigController {
     this.state.set((s) => ({ ...s, notice: { count, seq: ++this.seq } }));
   }
 
-  private overrideCommand(edits: { target: ConfigTarget; value?: ConfiguredValue | Material | null }[]): Command | null {
+  private overrideCommand(
+    edits: { target: ConfigTarget; value?: ConfiguredValue | Material | null }[],
+  ): Command | null {
     const part = this.wb.part;
     const id = this.active?.id;
     if (!part || id === undefined || edits.length === 0) return null;
@@ -319,9 +325,7 @@ export class ConfigController {
   ): void {
     const wb = this.wb;
     if (patch.expr !== undefined && scope === 'configuration') {
-      const cmd = this.overrideCommand([
-        { target: { kind: 'param', paramId }, value: patch.expr },
-      ]);
+      const cmd = this.overrideCommand([{ target: { kind: 'param', paramId }, value: patch.expr }]);
       if (cmd) wb.apply(cmd);
       wb.commit();
       return;
@@ -416,7 +420,12 @@ export class ConfigController {
       }
       case 'suppressed':
         return [
-          { kind: 'setSuppressed', partId: part.id, featureId: t.featureId, suppressed: value === true },
+          {
+            kind: 'setSuppressed',
+            partId: part.id,
+            featureId: t.featureId,
+            suppressed: value === true,
+          },
         ];
       case 'material':
         return [{ kind: 'setMaterial', partId: part.id, material: value as Material | null }];
@@ -430,7 +439,13 @@ export class ConfigController {
                 ? part.color === undefined
                   ? []
                   : [{ op: 'remove', path: '/parts/0/color' }]
-                : [{ op: part.color === undefined ? 'add' : 'replace', path: '/parts/0/color', value: c }],
+                : [
+                    {
+                      op: part.color === undefined ? 'add' : 'replace',
+                      path: '/parts/0/color',
+                      value: c,
+                    },
+                  ],
           },
         ];
       }
@@ -491,7 +506,8 @@ export class ConfigController {
         target: e.target,
         ...(e.value !== undefined ? { value: e.value } : {}),
       };
-      for (const c of this.tableCommands(model, edit)) wb.apply(c, 'Paste into configurations', key);
+      for (const c of this.tableCommands(model, edit))
+        wb.apply(c, 'Paste into configurations', key);
     }
     wb.commit();
     wb.syncViewport();

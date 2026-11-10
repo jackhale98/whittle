@@ -223,13 +223,13 @@ export {
   attentionSentences,
 } from './inspector/attentionMessage';
 export { CauseSentence, type CauseSentenceProps } from './inspector/CauseSentence';
-export type { FieldConfigCtx } from './inspector/fieldKit';
 export {
   FeatureInspector,
   type FeatureInspectorProps,
   HoleWizard,
 } from './inspector/FeatureInspector';
 export { FeatureLineage, type FeatureLineageProps } from './inspector/FeatureLineage';
+export type { FieldConfigCtx } from './inspector/fieldKit';
 export {
   type ResolvedDim,
   resolveHole,
@@ -238,13 +238,13 @@ export {
 } from './inspector/holeResolve';
 export { type MaterialLibraryItem, SWATCHES, toMaterial } from './inspector/materials';
 export {
+  type ConfigMassRow,
   defaultMassFormat,
   type MassFormat,
   MassReadout,
   type MassSummary,
-  type ConfigMassRow,
-  PartInspector,
   type PartConfigurationProps,
+  PartInspector,
   type PartInspectorProps,
   type PartPropertiesProps,
 } from './inspector/PartInspector';
@@ -373,8 +373,8 @@ export {
 export { type PartListItem, PartsPanel, type PartsPanelProps } from './panels/PartsPanel';
 export { type SectionAxis, SectionPanel, type SectionPanelProps } from './panels/SectionPanel';
 export {
-  ParamsTable,
   type ParamsConfiguration,
+  ParamsTable,
   type ParamsTableProps,
 } from './params/ParamsTable';
 export { AppShell, type AppShellProps } from './shells/AppShell';

@@ -91,9 +91,8 @@ import * as view from './view-actions';
 import * as docView from './view-doc';
 import { freshDocument, readLastDoc, writeLastDoc } from './workbench-util';
 
-export { freshDocument };
-
 export type { MassSummaryView };
+export { freshDocument };
 
 export class Workbench {
   readonly store: DocumentStoreImpl;

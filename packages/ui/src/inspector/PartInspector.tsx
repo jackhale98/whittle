@@ -1,11 +1,11 @@
 import type { EvalResult, Expr, Material, Vec3 } from '@wren-cad/contracts';
 import { ChevronDown, Scale } from 'lucide-react';
 import { lazy, type ReactNode, Suspense, useState } from 'react';
+import { Field, Section } from '../components/controls';
+import { Button, cn } from '../components/primitives';
 import { ConfigStatusLabel } from '../config/ConfigurationPill';
 import { OverrideMarker, ScopeChip, useOneShotScope } from '../config/markers';
 import type { ConfigStatus, EditScope } from '../config/model';
-import { Field, Section } from '../components/controls';
-import { Button, cn } from '../components/primitives';
 import { type FormatValue, fmtNumber, prettyUnits } from '../format';
 import type { MaterialLibraryItem } from './materials';
 
@@ -337,11 +337,7 @@ export function PartInspector({
             {mat ? 'Change material' : 'Assign material'}
           </Button>
           {mat ? (
-            <Button
-              variant="ghost"
-              size={touch ? 'touch' : 'md'}
-              onClick={() => setMaterial(null)}
-            >
+            <Button variant="ghost" size={touch ? 'touch' : 'md'} onClick={() => setMaterial(null)}>
               Remove
             </Button>
           ) : null}

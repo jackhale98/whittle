@@ -492,7 +492,12 @@ export function ViewportOverlays({ wb, touch }: { wb: Workbench; touch: boolean 
         </div>
       ) : null}
 
-      {!sk && editing?.type === 'extrude' ? <ExtrudeDepth wb={wb} f={(wb.config.effectiveFeature(editing.id) as ExtrudeFeature | undefined) ?? editing} /> : null}
+      {!sk && editing?.type === 'extrude' ? (
+        <ExtrudeDepth
+          wb={wb}
+          f={(wb.config.effectiveFeature(editing.id) as ExtrudeFeature | undefined) ?? editing}
+        />
+      ) : null}
       {!sk && ui.measure ? <MeasureLabel wb={wb} /> : null}
 
       {ui.chooser ? (

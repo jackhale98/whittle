@@ -2,17 +2,17 @@ import type { Expr } from '@wren-cad/contracts';
 import { lazy, type ReactNode, Suspense, useState } from 'react';
 import {
   ChangedInAllNotice,
-  ExportPanel,
-  FeatureInspector,
-  ParamsTable,
-  PartInspector,
   type ConfigGroupId,
   type ConfigTableRow,
   ConfigurationPill,
   configTargetKey,
+  ExportPanel,
+  FeatureInspector,
   FeatureTree,
   type FeatureTreeItem,
   OverrideMarker,
+  ParamsTable,
+  PartInspector,
   ScopeChip,
   useOneShotScope,
 } from '../src';
@@ -349,7 +349,10 @@ function Wiring({ tier }: { tier: Tier }) {
       </section>
       <section className="w-[296px] max-w-full overflow-hidden rounded-panel bg-surface shadow-pop">
         <PartInspector
-          part={{ name: 'Bracket', material: sampleLibrary[0] ? { name: 'Steel', density: '7.85 g/cm^3' } : undefined }}
+          part={{
+            name: 'Bracket',
+            material: sampleLibrary[0] ? { name: 'Steel', density: '7.85 g/cm^3' } : undefined,
+          }}
           library={sampleLibrary}
           density={density}
           evaluate={(e) => makeEvaluator([])(e, 'density')}
@@ -382,7 +385,9 @@ function Wiring({ tier }: { tier: Tier }) {
           configurations={{
             activeName: 'Long',
             count: 3,
-            warnings: ['Default and Steel would both be written to PL-100. Give them different part numbers.'],
+            warnings: [
+              'Default and Steel would both be written to PL-100. Give them different part numbers.',
+            ],
           }}
         />
       </section>

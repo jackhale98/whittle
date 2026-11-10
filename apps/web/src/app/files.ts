@@ -9,9 +9,9 @@ import type { OpenedFile, ProjectBundle } from '../doc/library';
 import { pruneAttachments as pruneAttachmentFiles, savedExtra } from '../model/attachments';
 import { IMPORT_EXTENSIONS, importFeature, importFormat } from '../model/import';
 import type { Attachment } from '../model/modeling';
+import { exportAll, exportBase, refuseMissing } from './config-export';
 import { initialSection } from './state';
 import type { Workbench } from './workbench';
-import { exportAll, exportBase, refuseMissing } from './config-export';
 import { fileBase, freshDocument, THUMB_EVERY_MS, writeLastDoc } from './workbench-util';
 
 export function setProjectFiles(

@@ -23,10 +23,10 @@ import {
 } from '../doc/mesh-cache';
 import { attentionItems, attentionMarkers, partDiagonal } from '../model/attention';
 import { explainStatus, followBlockedCauses } from '../model/explain';
-import { mergeIssueStatuses } from './config-model';
 import { type FaceInfo, faceInfo } from '../model/faces';
 import { healsFrom } from '../model/heal';
 import { hitKey, pickVertices, toHighlight, vertexAt } from '../selection/pick';
+import { mergeIssueStatuses } from './config-model';
 import type { RegenView, SelectionItem } from './state';
 import { failBoot, mark, markOnce } from './timing';
 import type { Workbench } from './workbench';
@@ -64,7 +64,8 @@ export function onRegen(wb: Workbench, raw: RegenView): void {
   wb.syncSection();
   if (current && outcome.source === 'live') {
     wb.config.onRegenResult(outcome.result.totalMs, outcome.result.cache.misses === 0);
-    if (outcome.quality === wb.policy.meshQuality || outcome.quality === 'fine') wb.config.onSettled();
+    if (outcome.quality === wb.policy.meshQuality || outcome.quality === 'fine')
+      wb.config.onSettled();
   }
 }
 

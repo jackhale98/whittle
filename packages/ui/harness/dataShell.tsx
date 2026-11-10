@@ -3,8 +3,8 @@ import { ArrowUpFromLine, EyeOff, PenLine, Trash2 } from 'lucide-react';
 import { lazy, Suspense, useMemo, useState } from 'react';
 import {
   AppShell,
-  ConfigurationPill,
   bracketTutorial,
+  ConfigurationPill,
   type ExportRequest,
   FeatureInspector,
   type Measurement,
