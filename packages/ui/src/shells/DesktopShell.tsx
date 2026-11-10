@@ -121,6 +121,11 @@ export function DesktopShell(props: ShellProps) {
             <Separator orientation="vertical" className="mx-1.5" />
             <UndoRedo onUndo={onUndo} onRedo={onRedo} />
             <div className="flex-1" />
+            {props.configurationBar ? (
+              <div className="mr-1 flex items-center" data-testid="configuration-bar">
+                {props.configurationBar}
+              </div>
+            ) : null}
             {props.projectBar ? (
               <div className="flex items-center gap-1.5" data-testid="project-bar">
                 {props.projectBar}

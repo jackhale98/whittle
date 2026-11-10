@@ -1,7 +1,10 @@
 import type { EvalResult, Expr, Material, Vec3 } from '@wren-cad/contracts';
 import { ChevronDown, Scale } from 'lucide-react';
-import { lazy, Suspense, useState } from 'react';
-import { Section } from '../components/controls';
+import { lazy, type ReactNode, Suspense, useState } from 'react';
+import { ConfigStatusLabel } from '../config/ConfigurationPill';
+import { OverrideMarker, ScopeChip, useOneShotScope } from '../config/markers';
+import type { ConfigStatus, EditScope } from '../config/model';
+import { Field, Section } from '../components/controls';
 import { Button, cn } from '../components/primitives';
 import { type FormatValue, fmtNumber, prettyUnits } from '../format';
 import type { MaterialLibraryItem } from './materials';
@@ -34,8 +37,46 @@ export const defaultMassFormat: MassFormat = {
   length: (mm) => `${fmtNumber(mm)} mm`,
 };
 
+/** Part properties (M3.7): what exports, title blocks (M4) and the BOM (M6) read. */
+export interface PartPropertiesProps {
+  /** The values as the active configuration sees them (its own, else Default's). */
+  partNumber: string;
+  description: string;
+  /** Shown while the part number is empty: the generated one ("Bracket-Long"). */
+  generatedPartNumber: string;
+  /** Which of the two the active configuration overrides (markers with Reset). */
+  overridden?: { partNumber?: boolean; description?: boolean };
+  /** `scope` is given while a configuration is active. */
+  onChange(patch: { partNumber?: string; description?: string }, scope?: EditScope): void;
+  onReset?(key: 'partNumber' | 'description'): void;
+}
+
+/** One row of "Mass per configuration". */
+export interface ConfigMassRow {
+  id: string | null;
+  name: string;
+  active: boolean;
+  status: ConfigStatus;
+  /** Formatted ("1.24 kg"), or empty while not built / without a material. */
+  mass?: string;
+}
+
+/** Configuration awareness of the part inspector (M3.7). */
+export interface PartConfigurationProps {
+  /** The active configuration's name; `null` = Default is active. */
+  activeName: string | null;
+  /** The active configuration overrides the material (marker with Reset). */
+  materialOverridden: boolean;
+  onResetMaterial(): void;
+  /** Mass of every configuration, from the background builds. */
+  masses: readonly ConfigMassRow[];
+  properties: PartPropertiesProps;
+}
+
 export interface PartInspectorProps {
   part: { name: string; material?: Material; color?: string };
+  /** M3.7: part properties and the active configuration. */
+  configuration?: PartConfigurationProps;
   /** Built-in library (passed in so the UI package ships no data). */
   library: readonly MaterialLibraryItem[];
   mass?: MassSummary;
@@ -43,7 +84,8 @@ export interface PartInspectorProps {
   /** Density/other expression evaluation for the custom-material form. */
   evaluate(expr: Expr): EvalResult;
   formatValue?: FormatValue;
-  onSetMaterial(material: Material | null): void;
+  /** `scope` (M3.7) is given while a configuration is active. */
+  onSetMaterial(material: Material | null, scope?: EditScope): void;
   density?: 'compact' | 'touch';
   className?: string;
 }
@@ -110,8 +152,114 @@ export function MassReadout({
 }
 
 /** Right-panel content for a part: material (assign / change / custom density) and mass. */
+function PropertyInput({
+  label,
+  value,
+  placeholder,
+  touch,
+  testId,
+  marker,
+  onCommit,
+}: {
+  label: string;
+  value: string;
+  placeholder?: string;
+  touch: boolean;
+  testId: string;
+  marker?: ReactNode;
+  onCommit(v: string): void;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+  return (
+    <Field label={label} adornment={marker}>
+      <input
+        aria-label={label}
+        data-testid={testId}
+        value={draft ?? value}
+        placeholder={placeholder}
+        autoComplete="off"
+        spellCheck={false}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={() => {
+          if (draft !== null && draft !== value) onCommit(draft);
+          setDraft(null);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') e.currentTarget.blur();
+          else if (e.key === 'Escape') {
+            setDraft(null);
+            e.currentTarget.blur();
+          }
+        }}
+        className={cn(
+          'w-full min-w-0 rounded-control bg-surface-2 px-2.5 text-ui text-fg shadow-[inset_0_0_0_1px_var(--color-border)] outline-none placeholder:text-fg-subtle focus-visible:shadow-[inset_0_0_0_2px_var(--color-accent)]',
+          touch ? 'h-11' : 'h-8',
+        )}
+      />
+    </Field>
+  );
+}
+
+/** Part number and description (the active configuration's, with the scope rule of every edit). */
+function PropertiesSection({ cfg, touch }: { cfg: PartConfigurationProps; touch: boolean }) {
+  const p = cfg.properties;
+  const activeIsDefault = cfg.activeName === null;
+  const oneShot = useOneShotScope(activeIsDefault, cfg.activeName);
+  const commit = (key: 'partNumber' | 'description', v: string) => {
+    if (activeIsDefault) {
+      p.onChange({ [key]: v });
+      return;
+    }
+    const chip = oneShot.consume() === 'configuration';
+    p.onChange({ [key]: v }, chip || p.overridden?.[key] ? 'configuration' : 'all');
+  };
+  const marker = (key: 'partNumber' | 'description') =>
+    !activeIsDefault && cfg.activeName !== null ? (
+      <OverrideMarker
+        overridden={!!p.overridden?.[key]}
+        configurationName={cfg.activeName}
+        fieldLabel={key === 'partNumber' ? 'Part number' : 'Description'}
+        onReset={() => p.onReset?.(key)}
+        size={touch ? 'touch' : 'md'}
+      />
+    ) : undefined;
+  return (
+    <Section title="Properties">
+      {!activeIsDefault && cfg.activeName !== null ? (
+        <div>
+          <ScopeChip
+            configurationName={cfg.activeName}
+            activeIsDefault={false}
+            scope={oneShot.scope}
+            onScopeChange={oneShot.setScope}
+            size={touch ? 'touch' : 'md'}
+          />
+        </div>
+      ) : null}
+      <PropertyInput
+        label="Part number"
+        value={p.partNumber}
+        placeholder={p.generatedPartNumber}
+        touch={touch}
+        testId="prop-part-number"
+        marker={marker('partNumber')}
+        onCommit={(v) => commit('partNumber', v)}
+      />
+      <PropertyInput
+        label="Description"
+        value={p.description}
+        touch={touch}
+        testId="prop-description"
+        marker={marker('description')}
+        onCommit={(v) => commit('description', v)}
+      />
+    </Section>
+  );
+}
+
 export function PartInspector({
   part,
+  configuration,
   library,
   mass,
   format,
@@ -124,6 +272,16 @@ export function PartInspector({
   const [picking, setPicking] = useState(false);
   const mat = part.material;
   const touch = density === 'touch';
+  const activeIsDefault = !configuration || configuration.activeName === null;
+  const matScope = useOneShotScope(activeIsDefault, configuration?.activeName);
+  const setMaterial = (m: Material | null) => {
+    if (!configuration || activeIsDefault) {
+      onSetMaterial(m);
+      return;
+    }
+    const chip = matScope.consume() === 'configuration';
+    onSetMaterial(m, chip || configuration.materialOverridden ? 'configuration' : 'all');
+  };
 
   return (
     <div className={cn('flex min-h-0 flex-col', className)} data-testid="part-inspector">
@@ -132,6 +290,24 @@ export function PartInspector({
         <p className="text-2xs text-fg-muted">Part</p>
       </header>
       <Section title="Material">
+        {configuration && configuration.activeName !== null ? (
+          <div className="flex items-center gap-1.5">
+            <OverrideMarker
+              overridden={configuration.materialOverridden}
+              configurationName={configuration.activeName}
+              fieldLabel="Material"
+              onReset={configuration.onResetMaterial}
+              size={touch ? 'touch' : 'md'}
+            />
+            <ScopeChip
+              configurationName={configuration.activeName}
+              activeIsDefault={false}
+              scope={matScope.scope}
+              onScopeChange={matScope.setScope}
+              size={touch ? 'touch' : 'md'}
+            />
+          </div>
+        ) : null}
         {mat ? (
           <div className="flex items-center gap-2.5">
             <Swatch color={part.color ?? mat.appearance} className="size-7" />
@@ -164,7 +340,7 @@ export function PartInspector({
             <Button
               variant="ghost"
               size={touch ? 'touch' : 'md'}
-              onClick={() => onSetMaterial(null)}
+              onClick={() => setMaterial(null)}
             >
               Remove
             </Button>
@@ -181,7 +357,7 @@ export function PartInspector({
               formatValue={formatValue}
               size={touch ? 'touch' : 'md'}
               onSelect={(m) => {
-                onSetMaterial(m);
+                setMaterial(m);
                 setPicking(false);
               }}
               onClose={() => setPicking(false)}
@@ -189,8 +365,40 @@ export function PartInspector({
           </Suspense>
         ) : null}
       </Section>
+      {configuration ? <PropertiesSection cfg={configuration} touch={touch} /> : null}
       <Section title="Mass properties">
         <MassReadout mass={mass} format={format} hasMaterial={!!mat} />
+        {configuration && configuration.masses.length > 1 ? (
+          <div className="mt-3">
+            <h4 className="pb-1 text-2xs font-semibold tracking-wider text-fg-muted uppercase">
+              Mass per configuration
+            </h4>
+            <ul
+              className="m-0 flex list-none flex-col gap-0.5 p-0 text-ui"
+              data-testid="mass-per-configuration"
+            >
+              {configuration.masses.map((r) => (
+                <li
+                  key={r.id ?? 'default'}
+                  data-config-id={r.id ?? 'default'}
+                  className="flex items-center gap-2"
+                >
+                  <span className={cn('min-w-0 flex-1 truncate', r.active && 'font-semibold')}>
+                    {r.name}
+                    {r.active ? <span className="sr-only"> (active)</span> : null}
+                  </span>
+                  {r.mass ? (
+                    <span className="tnum font-medium" data-prop="config-mass">
+                      {r.mass}
+                    </span>
+                  ) : (
+                    <ConfigStatusLabel status={r.status} />
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
       </Section>
     </div>
   );

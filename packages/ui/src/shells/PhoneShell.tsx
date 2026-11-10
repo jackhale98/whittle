@@ -122,7 +122,15 @@ export function PhoneShell(props: ShellProps) {
                     {documentName}
                   </h1>
                 </div>
-                <div className="flex shrink-0 items-start gap-2">
+                <div className="flex min-w-0 shrink items-start gap-2">
+                  {props.configurationBar ? (
+                    <div
+                      className="pointer-events-auto flex min-w-0 items-center"
+                      data-testid="configuration-bar"
+                    >
+                      {props.configurationBar}
+                    </div>
+                  ) : null}
                   {props.projectBar ? (
                     <div
                       className="pointer-events-auto flex items-center gap-1"
@@ -201,6 +209,7 @@ export function PhoneShell(props: ShellProps) {
                       <ExportPanel
                         onExport={onExportRequest}
                         bodies={props.exportBodies}
+                        configurations={props.exportConfigurations}
                         unavailable={props.exportUnavailable}
                         notes={props.exportNotes}
                         onTargetChange={props.onExportTargetChange}

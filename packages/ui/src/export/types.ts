@@ -21,6 +21,21 @@ export interface ExportRequest {
   options: ExportOptions;
   /** The preset behind the deflections, for tessellated targets. */
   quality?: TessellationQuality;
+  /**
+   * M3.7: which configurations to export. `all` writes one file per configuration (named by part
+   * number); absent or `active` is the active one.
+   */
+  configurations?: 'active' | 'all';
+}
+
+/** What the export form says about the part's configurations (M3.7). */
+export interface ExportConfigurations {
+  /** The active configuration's name. */
+  activeName: string;
+  /** How many configurations there are, Default included. */
+  count: number;
+  /** Plain-language collision warnings: files that two configurations would both write. */
+  warnings?: readonly string[];
 }
 
 export interface ExportBody {
@@ -49,6 +64,7 @@ export function buildExportRequest(c: {
   quality: TessellationQuality;
   bodies?: readonly string[];
   allBodies?: number;
+  configurations?: 'active' | 'all';
 }): ExportRequest {
   const q = QUALITY_PRESETS[c.quality];
   const options: ExportOptions = {};
@@ -63,7 +79,16 @@ export function buildExportRequest(c: {
   if (c.target === 'stl' || c.target === '3mf' || c.target === 'glb') {
     options.linearDeflection = q.linearDeflection;
     options.angularDeflection = q.angularDeflection;
-    return { target: c.target, options, quality: c.quality };
+    return {
+      target: c.target,
+      options,
+      quality: c.quality,
+      ...(c.configurations ? { configurations: c.configurations } : {}),
+    };
   }
-  return { target: c.target, options };
+  return {
+    target: c.target,
+    options,
+    ...(c.configurations ? { configurations: c.configurations } : {}),
+  };
 }

@@ -346,7 +346,7 @@ export class PushPullTool {
     }
     this.wb.commit();
     // The preview stays until the regen with the feature replaces it.
-    this.committedAt = this.wb.doc;
+    this.committedAt = this.wb.config.resolved().doc;
     this.wb.viewport?.setHandle(HANDLE, null);
     this.wb.patchUi({ pushPull: null, selection: [], hover: null });
     this.wb.pushHighlights();

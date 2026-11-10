@@ -91,6 +91,12 @@ export interface RegenLoop {
   request(): void;
   /** Resolves when nothing is running or queued and the latest result has been delivered. */
   whenIdle(): Promise<void>;
+  /**
+   * Runs `fn` with the engine to itself: waits for the loop to go idle, holds back every regen
+   * meanwhile, then regenerates the current document again (the live model may have been
+   * re-regenerated in `fn`, e.g. to export another configuration).
+   */
+  exclusive<T>(fn: () => Promise<T>): Promise<T>;
   /** Number of regenerate calls made (diagnostics/tests). */
   readonly calls: number;
   /** `<partId>:<sha256>` of every attachment already sent to this engine. */
@@ -220,6 +226,20 @@ export function createRegenLoop(options: RegenLoopOptions): RegenLoop {
     whenIdle() {
       if (!busy && !dirty && !finePendingFor) return Promise.resolve();
       return new Promise((resolve) => waiters.push(resolve));
+    },
+    async exclusive(fn) {
+      while (busy || dirty || finePendingFor) {
+        await new Promise<void>((resolve) => waiters.push(resolve));
+        if (disposed) break;
+      }
+      busy = true;
+      try {
+        return await fn();
+      } finally {
+        busy = false;
+        dirty = true;
+        pump();
+      }
     },
     get calls() {
       return calls;

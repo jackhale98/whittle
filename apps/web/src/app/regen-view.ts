@@ -23,6 +23,7 @@ import {
 } from '../doc/mesh-cache';
 import { attentionItems, attentionMarkers, partDiagonal } from '../model/attention';
 import { explainStatus, followBlockedCauses } from '../model/explain';
+import { mergeIssueStatuses } from './config-model';
 import { type FaceInfo, faceInfo } from '../model/faces';
 import { healsFrom } from '../model/heal';
 import { hitKey, pickVertices, toHighlight, vertexAt } from '../selection/pick';
@@ -32,11 +33,15 @@ import type { Workbench } from './workbench';
 
 export function onRegen(wb: Workbench, raw: RegenView): void {
   // Errors the app can explain better (propagate: false naming its tangent edges, ADR-040).
-  const features = followBlockedCauses(raw.result.features.map((s) => explainStatus(raw.doc, s)));
+  const current = wb.config.isCurrent(raw.doc);
+  const explained = followBlockedCauses(raw.result.features.map((s) => explainStatus(raw.doc, s)));
+  // M3.7: an override that no longer applies makes that feature "needs attention" here.
+  const features = current
+    ? mergeIssueStatuses(explained, wb.config.resolved().issues, wb.config.activeName)
+    : explained;
   const outcome = features.some((s, i) => s !== raw.result.features[i])
     ? { ...raw, result: { ...raw.result, features } }
     : raw;
-  const current = outcome.doc === wb.store.getDoc();
   if (current || !wb.ui.get().picking) wb.treeStatuses.set(outcome.result.features);
   if (current) {
     wb.heals = healsFrom(outcome.result.features);
@@ -57,6 +62,10 @@ export function onRegen(wb: Workbench, raw: RegenView): void {
   wb.pushPull.onRegen();
   wb.measure.onRegen();
   wb.syncSection();
+  if (current && outcome.source === 'live') {
+    wb.config.onRegenResult(outcome.result.totalMs, outcome.result.cache.misses === 0);
+    if (outcome.quality === wb.policy.meshQuality || outcome.quality === 'fine') wb.config.onSettled();
+  }
 }
 
 export function keepInView(wb: Workbench, view: RegenView): void {
@@ -113,7 +122,9 @@ export function markCachedFrame(wb: Workbench): void {
 }
 
 export function updateMeshCache(wb: Workbench, view: RegenView): void {
-  const key = docKey(view.doc);
+  // Keyed by the stored document (what a reload reads), not the resolved one (M3.7); only the
+  // current document is ever cached, so the stored one is the view's own.
+  const key = docKey(wb.doc);
   if (key === wb.cacheKey) return;
   const geometry: CachedGeometry = {
     key,

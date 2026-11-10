@@ -66,6 +66,8 @@ import { policyFor, type TierPolicy } from '../platform/tier-policy';
 import type { Accepts } from '../selection/pick';
 import type { SyncController, SyncHost } from '../sync/controller';
 import * as attention from './attention-actions';
+import { ConfigController } from './config-controller';
+import { activeIdOf, type MassSummaryView } from './config-model';
 import * as fileOps from './files';
 import type { BubbleActionId } from './gestures';
 import { commandFor, type InputSettings, loadInput } from './input';
@@ -91,12 +93,7 @@ import { freshDocument, readLastDoc, writeLastDoc } from './workbench-util';
 
 export { freshDocument };
 
-export interface MassSummaryView {
-  volume: number;
-  area: number;
-  mass?: number;
-  centroid: [number, number, number];
-}
+export type { MassSummaryView };
 
 export class Workbench {
   readonly store: DocumentStoreImpl;
@@ -125,6 +122,8 @@ export class Workbench {
   /** "Take the tour" requests (welcome card, ⌘K); the app runs the tutorial on a new part. */
   readonly tourRequests = observable(0);
   readonly pushPull: PushPullTool;
+  /** Part configurations (M3.7): what is regenerated, edit scope, the table, background builds. */
+  readonly config: ConfigController = new ConfigController(this);
   readonly sectionTool: SectionTool;
   readonly measure: MeasureTool;
   loop: RegenLoop | null = null;
@@ -473,6 +472,8 @@ export class Workbench {
   /** `loaded`: the document was replaced (open/new), not edited: nothing to autosave yet. */
   private onDocChange(doc: WrenDoc, loaded: boolean): void {
     this.syncCollapsed();
+    if (loaded) this.config.reset();
+    else this.config.builds.cancel();
     if (!this.ui.get().ready) return;
     this.loop?.request();
     if (!loaded && !this.applyingRemote) this.autosaver.schedule(doc);
@@ -492,7 +493,7 @@ export class Workbench {
     // Stale reference names the engine rebound ride along with this edit (ADR-008).
     // Heals from a regen of another version (before an undo/redo/load) would rename references
     // that version had: drop them; the next regen of this version computes its own.
-    const heals = this.healsFor === this.store.getDoc() ? this.heals : new Map<Id, Heal[]>();
+    const heals = this.healsFor === this.config.resolved().doc ? this.heals : new Map<Id, Heal[]>();
     const folded = foldHeals(command, this.part ?? undefined, heals, (c) =>
       compileCommand(this.store.getDoc(), c),
     );
@@ -1021,7 +1022,14 @@ export class Workbench {
     tree.editFeature(this, id);
   }
 
-  updateFeature(feature: Feature, mode: 'commit' | 'preview'): void {
+  /** `chip`: the one-shot "This configuration only" choice for this edit (M3.7). */
+  updateFeature(feature: Feature, mode: 'commit' | 'preview', chip = false): void {
+    if (activeIdOf(this.part) !== null) this.config.updateFeature(feature, mode, chip);
+    else tree.updateFeature(this, feature, mode);
+  }
+
+  /** The feature edit that always writes the stored (Default) feature. */
+  updateFeatureRaw(feature: Feature, mode: 'commit' | 'preview'): void {
     tree.updateFeature(this, feature, mode);
   }
 

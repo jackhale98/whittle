@@ -30,8 +30,12 @@ const describe = (value: unknown, c: MergeConflict) =>
       ? conflictValueText(value, c)
       : defaultDescribeValue(value);
 
-/** Folder and sketch-visibility conflicts read in words ("shown", "Mounting (3 features)"). */
-const isStructural = (c: MergeConflict) => /\/(folders|visibility)(\/|$)/.test(c.path);
+/**
+ * Folder, sketch-visibility and configuration conflicts read in words ("shown", "Mounting (3
+ * features)", "45 mm"): the merge's own text for each side, not raw JSON.
+ */
+const isStructural = (c: MergeConflict) =>
+  /\/(folders|visibility|configurations|activeConfigurationId|properties)(\/|$)/.test(c.path);
 
 /** "Sketch 2 visibility": the subject and the field inside it. */
 function conflictTitle(c: MergeConflict): string {

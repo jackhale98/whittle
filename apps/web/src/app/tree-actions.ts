@@ -6,7 +6,8 @@ import type { Feature, Id, Material, SketchVisibility } from '@wren-cad/contract
 import { ulid } from '@wren-cad/document';
 import { canFolder, computeNesting, runWithNested } from '@wren-cad/ui';
 import { nextFolderName, readCollapsedFolders, writeCollapsedFolders } from '../model/folders';
-import type { MassSummaryView, Workbench } from './workbench';
+import { type MassSummaryView, summarizeMass } from './config-model';
+import type { Workbench } from './workbench';
 
 export function selectFeature(wb: Workbench, id: Id | null): void {
   // A tree click while a mirror / pattern picks its sources adds that feature.
@@ -155,24 +156,5 @@ export function renameDocument(wb: Workbench, name: string): void {
 }
 
 export function massSummary(wb: Workbench): MassSummaryView | undefined {
-  const bodies = wb.regen.get()?.result.bodies ?? [];
-  const props = bodies.flatMap((b) => (b.massProperties ? [b.massProperties] : []));
-  if (props.length === 0) return undefined;
-  let volume = 0;
-  let area = 0;
-  let mass = 0;
-  let hasMass = false;
-  const c: [number, number, number] = [0, 0, 0];
-  for (const p of props) {
-    volume += p.volume;
-    area += p.area;
-    if (p.mass !== undefined) {
-      mass += p.mass;
-      hasMass = true;
-    }
-    for (let k = 0; k < 3; k++) c[k] = (c[k] as number) + (p.centroid[k] as number) * p.volume;
-  }
-  const centroid: [number, number, number] =
-    volume > 0 ? [c[0] / volume, c[1] / volume, c[2] / volume] : [0, 0, 0];
-  return { volume, area, centroid, ...(hasMass ? { mass } : {}) };
+  return summarizeMass(wb.regen.get()?.result.bodies ?? []);
 }

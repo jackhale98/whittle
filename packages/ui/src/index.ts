@@ -142,6 +142,7 @@ export {
   buildExportRequest,
   EXPORT_TARGETS,
   type ExportBody,
+  type ExportConfigurations,
   type ExportRequest,
   type ExportTarget,
   QUALITY_PRESETS,
@@ -222,6 +223,7 @@ export {
   attentionSentences,
 } from './inspector/attentionMessage';
 export { CauseSentence, type CauseSentenceProps } from './inspector/CauseSentence';
+export type { FieldConfigCtx } from './inspector/fieldKit';
 export {
   FeatureInspector,
   type FeatureInspectorProps,
@@ -240,8 +242,11 @@ export {
   type MassFormat,
   MassReadout,
   type MassSummary,
+  type ConfigMassRow,
   PartInspector,
+  type PartConfigurationProps,
   type PartInspectorProps,
+  type PartPropertiesProps,
 } from './inspector/PartInspector';
 export {
   defaultDescribeRef,
@@ -367,7 +372,11 @@ export {
 } from './panels/NavigationSettings';
 export { type PartListItem, PartsPanel, type PartsPanelProps } from './panels/PartsPanel';
 export { type SectionAxis, SectionPanel, type SectionPanelProps } from './panels/SectionPanel';
-export { ParamsTable, type ParamsTableProps } from './params/ParamsTable';
+export {
+  ParamsTable,
+  type ParamsConfiguration,
+  type ParamsTableProps,
+} from './params/ParamsTable';
 export { AppShell, type AppShellProps } from './shells/AppShell';
 export { BottomSheet, type BottomSheetProps } from './shells/BottomSheet';
 export { DesktopShell } from './shells/DesktopShell';
