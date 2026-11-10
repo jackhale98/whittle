@@ -6,6 +6,7 @@ import type { ToolId } from '../components/tools';
 import type { ValueChipProps } from '../components/ValueChip';
 import type { ExportBody, ExportRequest, ExportTarget } from '../export/types';
 import type { FeatureTreeProps } from '../features/FeatureTree';
+import type { PhoneFeatureTreeProps } from '../features/PhoneFeatureTree';
 import type { SheetSnap } from '../logic/sheet';
 import type { MeasurePanelProps } from '../panels/MeasurePanel';
 import type { PartsPanelProps } from '../panels/PartsPanel';
@@ -15,7 +16,7 @@ import type { ThemeSetting } from '../theme';
 import type { TutorialProps } from '../tutorial/TutorialLazy';
 
 export type TabletSheetTab = 'history' | 'params' | 'inspector';
-export type PhoneSheetTab = 'parts' | 'params' | 'measure' | 'section' | 'export';
+export type PhoneSheetTab = 'parts' | 'history' | 'params' | 'measure' | 'section' | 'export';
 export type SheetTabId = TabletSheetTab | PhoneSheetTab;
 
 /** Props every shell accepts. The shell never touches Wasm or the kernel: it only renders state. */
@@ -71,11 +72,16 @@ export interface ShellProps {
   sheetSnap?: SheetSnap;
   onSheetSnapChange?(snap: SheetSnap): void;
   /**
-   * Controlled sheet section: tablet `history` | `params` | `inspector`, phone `parts` | `params` |
+   * Controlled sheet section: tablet `history` | `params` | `inspector`, phone `parts` | `history` | `params` |
    * `measure` | `section` | `export`. Omit to let the shell keep it.
    */
   sheetTab?: SheetTabId;
   onSheetTabChange?(tab: SheetTabId): void;
+  /**
+   * Phone Features tab (M3.6): the feature tree with a step-through bar. Without it the tab shows
+   * its empty state. Tablet and desktop use `featureTree`.
+   */
+  phoneFeatureTree?: PhoneFeatureTreeProps;
   /** Phone Parts tab. */
   parts?: PartsPanelProps;
   /** Phone Measure tab. */

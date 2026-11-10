@@ -39,12 +39,12 @@ import {
   type BlockStep,
   canFolder,
   effectiveSketchShown,
-  folderAtGap,
   folderOf,
   folderRange,
   membershipAfterMove,
   planBlockMove,
   planFolderMove,
+  runWithNested,
   type SketchVisibilityMode,
   type TreeFolder,
   toggledVisibility,
@@ -401,12 +401,12 @@ export function FeatureTree({
 
   // Selecting a nested sketch (from the viewport, or while sketching) shows it; so does a
   // selection inside a closed folder.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: opens once per selection change
   useEffect(() => {
     const parent = selectedId ? nesting.parentOf.get(selectedId) : undefined;
     if (parent) setExpanded((e) => (e.has(parent) ? e : new Set(e).add(parent)));
     const f = selectedId ? folderOf(folders, selectedId) : undefined;
     if (f && collapsed.has(f.id)) setCollapsed(f.id, false);
-    // biome-ignore lint/correctness/useExhaustiveDependencies: opens once per selection change
   }, [selectedId, nesting]);
 
   // A rollback position inside a folder opens it, so the bar is visible where it sits.
@@ -768,14 +768,7 @@ export function FeatureTree({
     effective.length > 1 && effective.includes(id) ? [...effective] : [id];
 
   /** Ids to group: the picks plus the sketches nested under them, in history order. */
-  function folderIdsFor(ids: readonly Id[]): Id[] {
-    const all = new Set<Id>();
-    for (const id of ids) {
-      all.add(id);
-      for (const k of nesting.childrenOf.get(id) ?? []) all.add(k);
-    }
-    return [...all].sort((a, b) => (indexOf.get(a) ?? 0) - (indexOf.get(b) ?? 0));
-  }
+  const folderIdsFor = (ids: readonly Id[]) => runWithNested(features, nesting, ids);
   function addFolder(ids: readonly Id[]) {
     const run = folderIdsFor(ids);
     if (!onAddFolder || !canFolder(features, folders, run).ok) return;

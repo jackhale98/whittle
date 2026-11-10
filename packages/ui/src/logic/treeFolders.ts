@@ -7,6 +7,7 @@
  */
 
 import type { Id } from '@wren-cad/contracts';
+import type { TreeNesting } from './treeNesting';
 
 /** Structural twin of the contracts' `FeatureFolder`: a named, contiguous run of feature ids. */
 export interface TreeFolder {
@@ -84,6 +85,25 @@ export function canFolder(
     };
   }
   return { ok: true };
+}
+
+/**
+ * The features to group for a selection: the picks plus the sketches nested under them (a feature
+ * and its sketch travel together, ADR-015), in history order. Use it before `canFolder` and
+ * `addFolder` so a selected Extrude brings its sketch along.
+ */
+export function runWithNested(
+  features: readonly { id: Id }[],
+  nesting: TreeNesting,
+  ids: readonly Id[],
+): Id[] {
+  const index = new Map(features.map((f, i) => [f.id, i]));
+  const all = new Set<Id>();
+  for (const id of ids) {
+    all.add(id);
+    for (const k of nesting.childrenOf.get(id) ?? []) all.add(k);
+  }
+  return [...all].sort((a, b) => (index.get(a) ?? 0) - (index.get(b) ?? 0));
 }
 
 /* ------------------------------------------------------------------ moving */

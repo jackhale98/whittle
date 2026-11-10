@@ -103,7 +103,21 @@ export {
   readNestSketches,
   writeNestSketches,
 } from './features/FeatureTree';
+export { FolderRow, type FolderRowProps } from './features/FolderRow';
 export { featureMeta } from './features/featureMeta';
+export {
+  FeatureStepper,
+  type FeatureStepperProps,
+  PhoneFeatureTree,
+  type PhoneFeatureTreeProps,
+  type PhoneTreeData,
+} from './features/PhoneFeatureTree';
+export { SketchEye, type SketchEyeProps } from './features/SketchEye';
+export {
+  folderCommands,
+  sketchVisibilityCommands,
+  TREE_COMMAND_IDS,
+} from './features/treeCommands';
 export {
   defaultFormatValue,
   type FormatValue,
@@ -238,12 +252,32 @@ export {
   stepSnap,
 } from './logic/sheet';
 export {
+  type BlockStep,
+  type CanFolder,
+  canFolder,
+  effectiveSketchShown,
+  type FolderMovePlan,
+  folderAtGap,
+  folderOf,
+  folderRange,
+  type Membership,
+  membershipAfterMove,
+  planBlockMove,
+  planFolderMove,
+  runWithNested,
+  type SketchVisibilityMode,
+  type TreeFolder,
+  toggledVisibility,
+} from './logic/treeFolders';
+export {
   allowedRollbacks,
   computeNesting,
   type MoveStep,
   planUnitMove,
   type TreeNesting,
 } from './logic/treeNesting';
+export { buildRows, type TreeRow } from './logic/treeRows';
+export { buildSteps, type Step, stepAt, stepLabel } from './logic/treeSteps';
 export {
   initialTutorial,
   type TutorialAction,
