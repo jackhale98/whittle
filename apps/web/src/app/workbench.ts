@@ -36,7 +36,6 @@ import {
   compileCommand,
   createDocumentStore,
   type DocumentStoreImpl,
-  entityRefs,
   expressionEngine,
   scopeOf,
 } from '@wren-cad/document';
@@ -51,13 +50,6 @@ import {
 import { type Autosaver, createAutosaver } from '../doc/autosave';
 import type { DocLibrary, OpenedFile, ProjectBundle } from '../doc/library';
 import {
-  type CachedGeometry,
-  decodeCache,
-  docKey,
-  encodeCache,
-  withoutMeshes,
-} from '../doc/mesh-cache';
-import {
   contextFeatureTools,
   contextTools,
   type FeatureTool,
@@ -65,17 +57,15 @@ import {
   newSketch,
   TOOL_NEEDS,
 } from '../features/factories';
-import { attentionItems, attentionMarkers, partDiagonal } from '../model/attention';
 import { bootEngine, type EngineBoot } from '../model/engine';
-import { explainStatus, followBlockedCauses } from '../model/explain';
-import { type FaceInfo, faceInfo, type SectionSettings } from '../model/faces';
+import type { FaceInfo, SectionSettings } from '../model/faces';
 import { isOriginPlane, ORIGIN_FRAMES, type PlaneFrame, toPlaneFrame } from '../model/frames';
-import { foldHeals, type Heal, healsFrom } from '../model/heal';
+import { foldHeals, type Heal } from '../model/heal';
 import { type Attachment, createRegenLoop, type Modeling, type RegenLoop } from '../model/modeling';
 import { sketchShown, type VisibilityContext } from '../model/sketch-visibility';
 import { getDiagnostics } from '../platform/diagnostics';
 import { policyFor, type TierPolicy } from '../platform/tier-policy';
-import { type Accepts, hitKey, pickVertices, toHighlight, vertexAt } from '../selection/pick';
+import type { Accepts } from '../selection/pick';
 import type { SyncController, SyncHost } from '../sync/controller';
 import * as attention from './attention-actions';
 import * as fileOps from './files';
@@ -88,15 +78,9 @@ import * as pointer from './pointer';
 import { PointerDowns } from './pointers';
 import * as sync from './project-sync';
 import { PushPullTool } from './push-pull';
+import * as regenView from './regen-view';
 import type { SketchSession } from './sketch-session';
-import {
-  type EngineState,
-  initialUi,
-  type RegenView,
-  type SectionUi,
-  type SelectionItem,
-  type UiState,
-} from './state';
+import { type EngineState, initialUi, type RegenView, type SectionUi, type UiState } from './state';
 import * as hooks from './test-hooks';
 import { failBoot, mark, markOnce } from './timing';
 import * as tools from './tools';
@@ -147,10 +131,10 @@ export class Workbench {
   autosaver: Autosaver;
   shownBodies = new Set<string>();
   shownSketches = new Set<string>();
-  private ghosts = new Set<string>();
+  ghosts = new Set<string>();
   markers = new Set<string>();
   /** Faces looked at for bubbles, push/pull and sections, per mesh (meshes are immutable). */
-  private faceCache = new WeakMap<MeshBuffers, Map<number, FaceInfo | null>>();
+  faceCache = new WeakMap<MeshBuffers, Map<number, FaceInfo | null>>();
   /** Project files outside the document model (attachments, previews/, releases/). */
   extra: ProjectFiles = new Map();
   /** `.wren/` cache of the open project (mesh cache, other regenerable files). */
@@ -164,16 +148,16 @@ export class Workbench {
   /** Rebound reference names waiting to be folded into the next user edit (ADR-008). */
   heals = new Map<Id, Heal[]>();
   /** The document the pending heals were computed for: only that exact version may take them. */
-  private healsFor: WrenDoc | null = null;
+  healsFor: WrenDoc | null = null;
   /** Auto-fit once per opened document, then leave the camera to the user. */
   fitPending = true;
   private initialBundle: Promise<ProjectBundle | null> | null = null;
-  private lastGood = new Map<string, MeshBuffers>();
-  private firstRendered = false;
+  lastGood = new Map<string, MeshBuffers>();
+  firstRendered = false;
   lastThumbAt = 0;
   private toastSeq = 0;
   private toastTimer: ReturnType<typeof setTimeout> | undefined;
-  private cleanup: Array<() => void> = [];
+  cleanup: Array<() => void> = [];
   /** Presses by pointer id (a pen and a finger, or two fingers, can be down at once). */
   readonly downs = new PointerDowns();
   sketch: SketchSession | null = null;
@@ -316,7 +300,7 @@ export class Workbench {
     this.sketch?.dispose();
   }
 
-  private listen(target: EventTarget, type: string, fn: (e: Event) => void, capture = false) {
+  listen(target: EventTarget, type: string, fn: (e: Event) => void, capture = false) {
     target.addEventListener(type, fn, capture);
     return () => target.removeEventListener(type, fn, capture);
   }
@@ -380,7 +364,7 @@ export class Workbench {
    * Lazy tiers show the document without the kernel (cached meshes, or nothing to show): that
    * first frame is the "first body" for the boot timing marks.
    */
-  private markViewerShown(): void {
+  markViewerShown(): void {
     const v = this.viewport;
     if (this.boot || this.firstRendered || !v || !this.ui.get().ready) return;
     this.firstRendered = true;
@@ -502,7 +486,7 @@ export class Workbench {
     }
   }
 
-  private recordPreviewStep(outcome: RegenView): void {
+  recordPreviewStep(outcome: RegenView): void {
     if (this.preview.get() === null || outcome.doc !== this.viewDoc()) return;
     const idx = outcome.doc.parts[0]?.rollbackIndex;
     const at = this.previewSteps.findIndex((x) => x.index === idx);
@@ -644,33 +628,7 @@ export class Workbench {
   // ------------------------------------------------------------------ regeneration → viewport
 
   private onRegen(raw: RegenView): void {
-    // Errors the app can explain better (propagate: false naming its tangent edges, ADR-040).
-    const features = followBlockedCauses(raw.result.features.map((s) => explainStatus(raw.doc, s)));
-    const outcome = features.some((s, i) => s !== raw.result.features[i])
-      ? { ...raw, result: { ...raw.result, features } }
-      : raw;
-    const current = outcome.doc === this.store.getDoc();
-    if (current || !this.ui.get().picking) this.treeStatuses.set(outcome.result.features);
-    if (current) {
-      this.heals = healsFrom(outcome.result.features);
-      this.healsFor = outcome.doc;
-    }
-    this.regen.set(outcome);
-    this.remapSelection(outcome.result);
-    this.syncViewport();
-    this.sketch?.onRegen(outcome.result);
-    this.keepInView(outcome);
-    this.recordPreviewStep(outcome);
-    if (!this.firstRendered && this.viewport && outcome.source === 'live') {
-      this.firstRendered = true;
-      void this.viewport.nextFrame().then(() => mark('firstBodyMs'));
-    }
-    // The cache holds the tier's settled quality (phones: coarse; the fine pass never runs there).
-    if (current && (outcome.quality === 'fine' || outcome.quality === this.policy.meshQuality))
-      this.updateMeshCache(outcome);
-    this.pushPull.onRegen();
-    this.measure.onRegen();
-    this.syncSection();
+    regenView.onRegen(this, raw);
   }
 
   /**
@@ -678,20 +636,8 @@ export class Workbench {
    * that started empty, when its first body would not be fully visible — then leaves the camera to
    * the user.
    */
-  private keepInView(view: RegenView): void {
-    const v = this.viewport;
-    if (!v || !this.fitPending || this.ui.get().sketch) return;
-    const bodies = view.result.bodies;
-    if (bodies.length === 0) return;
-    this.fitPending = false;
-    const outside = bodies.some((b) => {
-      const { min, max } = b.mesh.bbox;
-      for (const x of [min[0], max[0]])
-        for (const y of [min[1], max[1]])
-          for (const z of [min[2], max[2]]) if (!v.worldToScreen([x, y, z]).visible) return true;
-      return false;
-    });
-    if (this.fitOnFirstGeometry || outside) v.fitAll(false);
+  keepInView(view: RegenView): void {
+    regenView.keepInView(this, view);
   }
 
   /** Set by document loads (the first geometry always fits); a fresh empty document fits only if needed. */
@@ -699,247 +645,73 @@ export class Workbench {
 
   /** Shows the document's cached meshes until the live regen replaces them (PLAN §4). */
   showCached(doc: WrenDoc): void {
-    const geometry = decodeCache(this.cache, docKey(doc));
-    if (!geometry) return;
-    this.cacheKey = geometry.key;
-    this.savedCacheKey = geometry.key;
-    const part = doc.parts[0];
-    const current = this.regen.get();
-    // Never replace live geometry of this very part (only a previous document's, or nothing).
-    if (!part || (current?.source === 'live' && current.result.partId === part.id)) return;
-    const view: RegenView = {
-      source: 'cache',
-      quality: 'fine',
-      doc,
-      result: {
-        partId: part.id,
-        revision: -1,
-        features: [],
-        bodies: geometry.bodies.map((b) => ({ id: b.id, shape: 0, mesh: b.mesh })),
-        sketches: geometry.sketches,
-        totalMs: 0,
-        cache: { hits: 0, misses: 0 },
-      },
-    };
-    this.regen.set(view);
-    this.syncViewport();
-    this.keepInView(view);
-    this.markCachedFrame();
+    regenView.showCached(this, doc);
   }
 
-  private markCachedFrame(): void {
-    const v = this.viewport;
-    if (!v || this.regen.get()?.source !== 'cache' || !this.regen.get()?.result.bodies.length)
-      return;
-    void v.nextFrame().then(() => {
-      if (this.regen.get()?.source === 'cache') markOnce('cachedBodyMs');
-    });
+  markCachedFrame(): void {
+    regenView.markCachedFrame(this);
   }
 
   /** Keeps the latest fine meshes in the project's `.wren/` cache (saved with the document). */
-  private updateMeshCache(view: RegenView): void {
-    const key = docKey(view.doc);
-    if (key === this.cacheKey) return;
-    const geometry: CachedGeometry = {
-      key,
-      bodies: view.result.bodies.map((b) => ({ id: b.id, mesh: b.mesh })),
-      sketches: view.result.sketches,
-    };
-    this.cache = new Map([...withoutMeshes(this.cache), ...encodeCache(geometry)]);
-    this.cacheKey = key;
-    // A save already queued for this document picks the cache up; otherwise save it shortly.
-    if (!this.inLibrary || this.autosaver.pending) return;
-    this.scheduleCacheSave();
+  updateMeshCache(view: RegenView): void {
+    regenView.updateMeshCache(this, view);
   }
 
   /** Saves the document again shortly so a mesh cache newer than the stored one reaches it. */
   scheduleCacheSave(): void {
-    clearTimeout(this.cacheTimer);
-    this.cacheTimer = setTimeout(() => {
-      if (this.cacheKey !== this.savedCacheKey && docKey(this.doc) === this.cacheKey)
-        void this.autosaver.flush().then(() => this.saveToLibrary(this.doc));
-    }, 600);
+    regenView.scheduleCacheSave(this);
   }
 
   /** Body pick indices change between regens: re-find selected faces/edges by name. */
-  private remapSelection(result: RegenResult): void {
-    const u = this.ui.get();
-    const selection = u.selection.flatMap((s): SelectionItem[] => {
-      const k = s.hit.kind;
-      if ((k !== 'face' && k !== 'edge' && k !== 'vertex') || !s.ref) return [s];
-      const body = result.bodies.find((b) => b.id === s.hit.bodyId);
-      const names =
-        k === 'face' ? body?.mesh.faceNames : k === 'edge' ? body?.mesh.edgeNames : undefined;
-      // Vertices have no names in the mesh: re-find them by position (dropped if they moved).
-      const i =
-        k === 'vertex'
-          ? vertexAt(pickVertices(body?.mesh), s.hit.point)
-          : s.ref && names
-            ? names.indexOf(s.ref.name)
-            : -1;
-      if (i < 0) return [];
-      const hit = { ...s.hit, index: i };
-      return [{ ...s, hit, key: hitKey(hit) }];
-    });
-    this.patchUi({ selection, hover: null });
+  remapSelection(result: RegenResult): void {
+    regenView.remapSelection(this, result);
   }
 
   attachViewport(viewport: TouchViewport, canvas: HTMLCanvasElement): void {
-    markOnce('viewportReadyMs');
-    this.viewport = viewport;
-    this.canvas = canvas;
-    const host = canvas.parentElement ?? canvas;
-    this.cleanup.push(
-      this.listen(host, 'pointermove', (e) => this.onPointerMove(e as PointerEvent)),
-      this.listen(host, 'pointerdown', (e) => this.onPointerDown(e as PointerEvent), true),
-      // Pencil presses anywhere (tool buttons too) mark the Pencil as in use; never handled here.
-      this.listen(
-        host.ownerDocument,
-        'pointerdown',
-        (e) => {
-          if ((e as PointerEvent).pointerType === 'pen') this.lastPenAt = performance.now();
-        },
-        true,
-      ),
-      this.listen(host, 'pointerup', (e) => this.onPointerUp(e as PointerEvent), true),
-      this.listen(host, 'pointercancel', (e) => this.onPointerCancel(e as PointerEvent), true),
-      this.listen(host, 'pointerleave', () => {
-        this.forgetPick();
-        this.setHover(null);
-      }),
-      this.listen(host, 'dblclick', (e) => this.sketch?.onDoubleClick(e as MouseEvent), true),
-      this.listen(host, 'dragover', (e) => this.onDragOver(e as DragEvent)),
-      this.listen(host, 'drop', (e) => void this.onDrop(e as DragEvent)),
-      // The app decides what discrete gestures mean (PLAN §9.3); the viewport keeps navigation.
-      viewport.onGesture((g) => this.onGesture(g)),
-      viewport.onCamera((c) => this.onCamera(c)),
-    );
-    viewport.setNavigation(this.input.get().navigation);
-    // Touch tiers: the Pencil draws or selects and never orbits; fingers keep navigating, and
-    // touch taps right after a pen contact are palm rejected.
-    if (this.tier !== 'desktop') viewport.setInputPolicy({ penDraws: true });
-    this.syncViewport();
-    this.syncSection();
-    const view = this.regen.get();
-    if (view) this.keepInView(view);
-    if (view?.source === 'live' && !this.firstRendered) {
-      this.firstRendered = true;
-      void viewport.nextFrame().then(() => mark('firstBodyMs'));
-    }
-    this.markCachedFrame();
-    this.markViewerShown();
+    regenView.attachViewport(this, viewport, canvas);
   }
 
-  private onCamera(c: CameraChange): void {
-    this.cameraTick.set((n) => n + 1);
-    const cur = this.camera.get();
-    if (c.moving !== cur.moving)
-      this.camera.set({ moving: c.moving, rest: c.moving ? cur.rest : cur.rest + 1 });
+  onCamera(c: CameraChange): void {
+    regenView.onCamera(this, c);
   }
 
   /** Projects a world point to stage px (canvas-relative), or null when off screen. */
   project(p: Vec3): { x: number; y: number } | null {
-    const s = this.viewport?.worldToScreen(p);
-    return s?.visible ? { x: s.x, y: s.y } : null;
+    return regenView.project(this, p);
   }
 
   /** Face geometry (centroid, normal, planar) of a body face in the current regen; cached. */
   face(bodyId: string, index: number): FaceInfo | null {
-    const mesh = this.regen.get()?.result.bodies.find((b) => b.id === bodyId)?.mesh;
-    if (!mesh) return null;
-    let m = this.faceCache.get(mesh);
-    if (!m) {
-      m = new Map();
-      this.faceCache.set(mesh, m);
-    }
-    if (!m.has(index)) m.set(index, faceInfo(mesh, index));
-    return m.get(index) ?? null;
+    return regenView.face(this, bodyId, index);
   }
 
-  private onDragOver(e: DragEvent): void {
-    if (!e.dataTransfer?.types.includes('Files')) return;
-    e.preventDefault(); // allow the drop
-    e.dataTransfer.dropEffect = 'copy';
+  onDragOver(e: DragEvent): void {
+    regenView.onDragOver(this, e);
   }
 
   /** Files dropped on the viewport: a `.wrencad` opens, CAD/mesh files import into the part. */
-  private async onDrop(e: DragEvent): Promise<void> {
-    const list = [...(e.dataTransfer?.files ?? [])];
-    if (list.length === 0) return;
-    e.preventDefault();
-    const files = await Promise.all(
-      list.map(async (f) => ({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) })),
-    );
-    const project = files.find((f) => /\.(wrencad|whittle)$/i.test(f.name));
-    if (project) await this.openBytes(project.name, project.bytes);
-    else await this.importFiles(files, 'current');
+  onDrop(e: DragEvent): Promise<void> {
+    return regenView.onDrop(this, e);
   }
 
   viewportFailed(message: string): void {
-    failBoot(`viewport: ${message}`);
+    regenView.viewportFailed(this, message);
   }
 
   bodyColor(): string | undefined {
-    const part = this.part;
-    return part?.color ?? part?.material?.appearance ?? undefined;
+    return regenView.bodyColor(this);
   }
 
   syncViewport(): void {
-    const v = this.viewport;
-    const view = this.regen.get();
-    if (!v || !view) return;
-    const { result } = view;
-    const color = this.bodyColor();
-    const visible = this.partVisible(result.partId);
-    const next = new Set<string>();
-    for (const b of result.bodies) {
-      v.setBody(b.id, b.mesh, { ...(color ? { color } : {}), visible });
-      next.add(b.id);
-    }
-    for (const id of this.shownBodies) if (!next.has(id)) v.removeBody(id);
-    this.shownBodies = next;
-
-    // Ghosts: last good geometry while something is in error (PLAN §9.2). The engine reports
-    // them (`RegenResult.ghosts`); engines that don't get the app's own last-all-ok fallback.
-    const broken = result.features.some(
-      (s) => s.state === 'error' || s.state === 'needsAttention' || s.state === 'blocked',
-    );
-    const ghosts = new Map<string, MeshBuffers>();
-    if (!broken) this.lastGood = new Map(result.bodies.map((b) => [b.id, b.mesh]));
-    else if (result.ghosts) for (const g of result.ghosts) ghosts.set(g.id, g.mesh);
-    else
-      for (const [id, mesh] of this.lastGood)
-        if (result.bodies.find((b) => b.id === id)?.mesh !== mesh) ghosts.set(id, mesh);
-    for (const id of this.ghosts) if (!ghosts.has(id)) v.setGhost(id, null);
-    for (const [id, mesh] of ghosts) v.setGhost(id, mesh);
-    this.ghosts = new Set(ghosts.keys());
-    this.syncAttentionMarkers();
-    this.refreshSketchVisibility();
-    this.pushHighlights();
+    regenView.syncViewport(this);
   }
 
   /**
    * The old location of every unresolved reference (PLAN §7.3 rule 4): dashed warning markers at
    * the stored fingerprint, until the user re-picks it.
    */
-  private syncAttentionMarkers(): void {
-    const v = this.viewport;
-    if (!v) return;
-    const items = attentionItems(this.treeStatuses.get());
-    const size = Math.max(partDiagonal(this.regen.get()?.result) * 0.05, 0.5);
-    const next = new Map<string, ReturnType<typeof attentionMarkers>>();
-    for (const it of items) {
-      // The stored fingerprint, else the engine's last known location of the reference.
-      const { ref, lastKnown } = it.unresolved;
-      const markers = attentionMarkers(
-        ref.fingerprint || !lastKnown ? ref : { ...ref, fingerprint: lastKnown },
-        size,
-      );
-      if (markers) next.set(`attention:${it.featureId}:${it.unresolved.path}`, markers);
-    }
-    for (const id of this.markers) if (!next.has(id)) v.setMarkers(id, null);
-    for (const [id, markers] of next) v.setMarkers(id, markers);
-    this.markers = new Set(next.keys());
+  syncAttentionMarkers(): void {
+    regenView.syncAttentionMarkers(this);
   }
 
   /** The ids of the sketches the viewport shows (what the tree's eye draws). */
@@ -991,54 +763,11 @@ export class Workbench {
 
   /** Selection + preselection highlights (sketch mode adds its own). */
   pushHighlights(): void {
-    const v = this.viewport;
-    if (!v) return;
-    const u = this.ui.get();
-    if (u.sketch) {
-      this.sketch?.pushHighlights();
-      return;
-    }
-    const view = this.regen.get();
-    const fix = (h: HighlightItem): HighlightItem => {
-      if (h.kind !== 'region' || !view) return h;
-      const s = view.result.sketches.find((x) => x.featureId === h.bodyId);
-      const i = s?.regions.findIndex((r) => r.name === h.entity) ?? -1;
-      return i >= 0 ? { ...h, index: i } : h;
-    };
-    const selected = u.selection.map((s) => fix(toHighlight(s.hit)));
-    // Measure picks are highlighted like a selection.
-    for (const p of u.measure?.picks ?? [])
-      if ('bodyId' in p.target)
-        selected.push({ bodyId: p.target.bodyId, kind: p.target.kind, index: p.target.index });
-    // Refs of the feature being edited show as selected too.
-    const editing = u.featureId ? this.part?.features.find((f) => f.id === u.featureId) : null;
-    if (editing && view) selected.push(...this.highlightsForRefs(editing, view.result));
-    v.setHighlights({ selected, preselected: u.hover ? [fix(toHighlight(u.hover))] : [] });
+    regenView.pushHighlights(this);
   }
 
-  private highlightsForRefs(f: Feature, result: RegenResult): HighlightItem[] {
-    const out: HighlightItem[] = [];
-    // Every reference of the feature (M3 features too), except its sketch plane.
-    const refs: EntityRef[] = f.type === 'sketch' ? [] : entityRefs(f);
-    for (const ref of refs) {
-      if (ref.kind === 'region') {
-        for (const s of result.sketches) {
-          const i = s.regions.findIndex((r) => r.name === ref.name);
-          if (i >= 0) out.push({ bodyId: s.featureId, kind: 'region', index: i, entity: ref.name });
-        }
-      } else if (ref.kind === 'edge') {
-        for (const b of result.bodies) {
-          const i = b.mesh.edgeNames.indexOf(ref.name);
-          if (i >= 0) out.push({ bodyId: b.id, kind: 'edge', index: i });
-        }
-      } else if (ref.kind === 'face') {
-        for (const b of result.bodies) {
-          const i = b.mesh.faceNames.indexOf(ref.name);
-          if (i >= 0) out.push({ bodyId: b.id, kind: 'face', index: i });
-        }
-      }
-    }
-    return out;
+  highlightsForRefs(f: Feature, result: RegenResult): HighlightItem[] {
+    return regenView.highlightsForRefs(this, f, result);
   }
 
   // ------------------------------------------------------------------ pointer input
@@ -1092,7 +821,7 @@ export class Workbench {
     return pointer.penRecentlyUsed(this);
   }
 
-  private onPointerMove(e: PointerEvent): void {
+  onPointerMove(e: PointerEvent): void {
     pointer.onPointerMove(this, e);
   }
 
@@ -1148,15 +877,15 @@ export class Workbench {
     pointer.setHover(this, hit);
   }
 
-  private onPointerDown(e: PointerEvent): void {
+  onPointerDown(e: PointerEvent): void {
     pointer.onPointerDown(this, e);
   }
 
-  private onPointerUp(e: PointerEvent): void {
+  onPointerUp(e: PointerEvent): void {
     pointer.onPointerUp(this, e);
   }
 
-  private onPointerCancel(e: PointerEvent): void {
+  onPointerCancel(e: PointerEvent): void {
     pointer.onPointerCancel(this, e);
   }
 
@@ -1170,7 +899,7 @@ export class Workbench {
   }
 
   /** Discrete viewport gestures (PLAN §9.3): see `gestureAction` for the mapping. */
-  private onGesture(g: ViewportGesture): void {
+  onGesture(g: ViewportGesture): void {
     pointer.onGesture(this, g);
   }
 
