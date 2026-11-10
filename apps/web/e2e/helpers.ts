@@ -114,6 +114,7 @@ export const app = (page: Page) => ({
   doc: () => page.evaluate(() => (window as unknown as W).__wrenApp.doc()),
   regen: () => page.evaluate(() => (window as unknown as W).__wrenApp.regen()),
   idle: () => page.evaluate(() => (window as unknown as W).__wrenApp.idle()),
+  shownSketches: () => page.evaluate(() => (window as unknown as W).__wrenApp.shownSketches()),
   flushSave: () => page.evaluate(() => (window as unknown as W).__wrenApp.flushSave()),
   sketch: () => page.evaluate(() => (window as unknown as W).__wrenApp.sketch()),
   settled: () => page.evaluate(() => (window as unknown as W).__wrenApp.sketchSettled()),

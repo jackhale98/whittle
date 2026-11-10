@@ -416,18 +416,18 @@ test.describe('presets', () => {
       hasTouch: true,
     });
     test('the phone shell reaches Settings from the command palette', async ({ page }) => {
-    await boot(page);
-    await page.getByRole('button', { name: 'Close welcome' }).click();
-    await palette(page, 'Settings');
-    const panel = page.getByTestId('settings-panel');
-    await expect(panel).toBeVisible();
-    const b = await panel.boundingBox();
-    expect(b?.x ?? -1).toBeGreaterThanOrEqual(0);
-    expect((b?.x ?? 0) + (b?.width ?? 0)).toBeLessThanOrEqual(390.5);
-    await panel.getByRole('radio', { name: /Right click repeats/ }).check();
-    expect((await probe(page).navigation()).preset).toBe('rightOrbitRepeat');
-    await page.getByTestId('settings-close').click();
-    await expect(panel).toBeHidden();
+      await boot(page);
+      await page.getByRole('button', { name: 'Close welcome' }).click();
+      await palette(page, 'Settings');
+      const panel = page.getByTestId('settings-panel');
+      await expect(panel).toBeVisible();
+      const b = await panel.boundingBox();
+      expect(b?.x ?? -1).toBeGreaterThanOrEqual(0);
+      expect((b?.x ?? 0) + (b?.width ?? 0)).toBeLessThanOrEqual(390.5);
+      await panel.getByRole('radio', { name: /Right click repeats/ }).check();
+      expect((await probe(page).navigation()).preset).toBe('rightOrbitRepeat');
+      await page.getByTestId('settings-close').click();
+      await expect(panel).toBeHidden();
     });
   });
 });

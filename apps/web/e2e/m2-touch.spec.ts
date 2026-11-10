@@ -244,7 +244,10 @@ test('Pencil: strokes are recognised live and committed; fingers never draw whil
   await cameraStill(page);
   // Entered by finger, so the line tool is selected; tapping it again leaves no tool, and the
   // Pencil draws freehand shapes that are recognised.
-  await expect(tools.getByRole('button', { name: 'Line', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(tools.getByRole('button', { name: 'Line', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
   await tools.getByRole('button', { name: 'Line', exact: true }).tap();
   await expect.poll(async () => (await a.ui()).sketch?.tool ?? null).toBeNull();
 

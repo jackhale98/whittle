@@ -1,6 +1,6 @@
 import * as RToolbar from '@radix-ui/react-toolbar';
-import { m } from 'motion/react';
 import { X } from 'lucide-react';
+import { m } from 'motion/react';
 import { type ReactNode, useRef } from 'react';
 import type { Rect, Side } from '../logic/bubble';
 import { useSpring } from '../motion';

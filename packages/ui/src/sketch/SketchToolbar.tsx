@@ -358,8 +358,8 @@ export function SketchToolbar({
   const activeCurve = curveTools.find((t) => t.id === activeTool);
   const touch = density === 'touch';
   const activeToolLabel = activeTool
-    ? ([...sketchTools, ...curveTools, ...sketchEditTools].find((t) => t.id === activeTool)?.label ??
-      null)
+    ? ([...sketchTools, ...curveTools, ...sketchEditTools].find((t) => t.id === activeTool)
+        ?.label ?? null)
     : null;
   const size = touch ? 'h-14 w-16 flex-col gap-0.5' : rail ? 'size-11' : 'size-10';
   const wide = touch ? size : rail ? size : 'h-10 w-12 gap-0.5';

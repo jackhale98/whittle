@@ -84,6 +84,11 @@ The wheel zooms toward the cursor in every preset. Under **Orbit** you can also 
 
 The settings are kept on this device (`wren.navigation`).
 
+### Clearing a selection
+
+Tap or click empty space to clear the selection. On a tablet, the context bubble and the selection
+inspector also have a ✕ **Clear selection** button, so you never need Esc.
+
 ### Box select
 
 Drag with the left button on empty space (or on the model) to draw a box.
@@ -197,6 +202,13 @@ dimension from. On touch devices every tool has a text label under its icon.
 Press **X** to toggle construction geometry. Construction lines guide the sketch but do not make
 regions. While you draw, Wren snaps to horizontal, vertical, parallel, perpendicular and tangent
 directions, and to existing points.
+
+### Leaving a tool
+
+The **Select** tool (arrow) is the first button of the sketch toolbar. It is pressed when no drawing tool
+is active, and tapping it drops the current tool and returns to selecting. On a touch screen the active
+tool also shows a ✕ **Done with <tool>** beside it. With no tool active, the Pencil draws freehand
+strokes that Wren recognises.
 
 ### Editing sketches
 
