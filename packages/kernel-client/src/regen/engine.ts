@@ -26,7 +26,6 @@ import type {
   AttentionCause,
   AxisFeature,
   BodyResult,
-  BodyScope,
   ChamferFeature,
   CircularPatternFeature,
   DraftFeature,
@@ -39,7 +38,6 @@ import type {
   FeatureInputs,
   FeatureResult,
   FilletFeature,
-  Fingerprint,
   Frame,
   HoleFeature,
   Id,
@@ -63,7 +61,6 @@ import type {
   ResolvedRef,
   Result,
   RevolveFeature,
-  ShapeFingerprints,
   ShapeHandle,
   ShellFeature,
   SketchConstraint,
@@ -131,7 +128,6 @@ import {
 } from './datums';
 import {
   add,
-  type Box3,
   boxDiagonal,
   boxesOverlap,
   cross,
@@ -164,7 +160,6 @@ import {
   frameMatrix,
   isIdentity,
   type Matrix34,
-  mentionsImport,
   placeMesh,
   sha256Hex,
 } from './imports';
@@ -178,7 +173,23 @@ import {
   projectPoint,
   projectSketchEntity,
 } from './linked';
-import { type Candidate, type ResolvedTarget, resolveRef, type SubKind } from './resolve';
+import {
+  AXIS_NAME,
+  fingerprintOf,
+  PLANE_NAME,
+  POINT_NAME,
+  partDiag,
+  refKeyOf,
+  resolveAxis,
+  resolveBody,
+  resolveLineOrPlane,
+  resolvePlane,
+  resolvePoint,
+  resolveSub,
+  SKETCH_TAG,
+  scopeBodies,
+} from './refs';
+import type { ResolvedTarget } from './resolve';
 import {
   capitalise,
   DEFAULT_VERSION_SLOTS,
@@ -204,12 +215,10 @@ import {
 import type {
   ExportResult,
   ImportResult,
-  ReboundRef,
   RegenEngineDeps,
   RegenEngineOptions,
   RegenFeatureStatus,
   RegenOutput,
-  RegenUnresolvedRef,
 } from './types';
 
 export {
@@ -262,15 +271,6 @@ const FIELD_LABELS: Record<string, string> = {
   '/thread/depth': 'Thread depth',
   '/length': 'Thread length',
 };
-
-const SKETCH_TAG = /^S([0-9A-Za-z]+):/;
-const PLANE_NAME = /^F([0-9A-Za-z]+):plane$/;
-const AXIS_NAME = /^F([0-9A-Za-z]+):axis$/;
-const POINT_NAME = /^F([0-9A-Za-z]+):point$/;
-
-function refKind(ref: EntityRef): SubKind | 'body' {
-  return ref.kind === 'region' ? 'face' : ref.kind;
-}
 
 // ---------------------------------------------------------------------------------------------
 // Engine
@@ -1060,167 +1060,6 @@ export class RegenEngine {
   }
 
   // -------------------------------------------------------------------------------------------
-  // Reference resolution against the walk state
-  // -------------------------------------------------------------------------------------------
-
-  private async partDiag(ctx: WalkContext): Promise<number> {
-    if (ctx.diag && ctx.diag.version === ctx.state.version) return ctx.diag.value;
-    const box: Box3 = emptyBox();
-    const shapes =
-      ctx.state.bodies.size > 0
-        ? [...ctx.state.bodies.values()].map((b) => b.shape)
-        : [...ctx.state.sketches.values()].map((s) => s.shape);
-    for (const s of shapes) {
-      const fp = await this.core.fingerprints(s);
-      for (const v of fp?.vertices ?? []) extendBox(box, v.point);
-      for (const f of fp?.faces ?? []) extendBox(box, f.centroid);
-    }
-    const d = boxDiagonal(box);
-    const value = d > 1e-9 ? d : 100;
-    ctx.diag = { version: ctx.state.version, value };
-    return value;
-  }
-
-  private candidates(ctx: WalkContext, ref: EntityRef, kind: SubKind): Candidate[] {
-    const fromMap = (shape: ShapeHandle, naming: NamingMap, owner: string): Candidate[] =>
-      naming
-        .filter((n) => n.kind === kind)
-        .map((n) => ({ shape, kind, index: n.index, name: n.name, owner }));
-    const sk = SKETCH_TAG.exec(ref.name);
-    if (sk || ref.kind === 'region') {
-      const id = sk?.[1];
-      const s = id === undefined ? undefined : ctx.state.sketches.get(id);
-      return s ? fromMap(s.shape, s.naming, `sketch:${s.id}`) : [];
-    }
-    const pl = PLANE_NAME.exec(ref.name);
-    if (pl) {
-      const p = ctx.state.planes.get(pl[1] as string);
-      return p ? fromMap(p.shape, p.naming, `plane:${p.id}`) : [];
-    }
-    const out: Candidate[] = [];
-    for (const b of ctx.state.bodies.values()) out.push(...fromMap(b.shape, b.naming, b.id));
-    return out;
-  }
-
-  /** Resolves a face/edge/vertex/region ref; records unresolved refs under `path`. */
-  private async resolveSub(
-    ctx: WalkContext,
-    ref: EntityRef,
-    path: string,
-    unresolved: UnresolvedRef[],
-    planeLike = false,
-  ): Promise<ResolvedTarget | null> {
-    const kind = refKind(ref);
-    if (kind === 'body') {
-      unresolved.push({ path, ref, reason: 'missing' });
-      return null;
-    }
-    const cands = this.candidates(ctx, ref, kind);
-    const r = await resolveRef(ref, cands, {
-      diag: await this.partDiag(ctx),
-      planeLike,
-      fingerprints: (s) => this.core.fingerprints(s),
-      weak: (name) => mentionsImport(name, ctx.importIds),
-    });
-    const memo = `${ctx.current.featureId}|${path}`;
-    if (r.ok) {
-      const t = r.target;
-      ctx.pc.lastResolved.set(memo, { shape: t.shape, kind: t.kind, index: t.index });
-      if (t.name === ref.name && t.via === 'name') return t;
-      const fp = await this.core.fingerprints(t.shape);
-      const now = fp ? fingerprintOf(fp, t.kind, t.index) : undefined;
-      // Rebound: the name changed, or fingerprint evidence picked it and the stored fingerprint
-      // is out of date (the app heals both).
-      const stale = !ref.fingerprint || !now || !sameFingerprint(ref.fingerprint, now);
-      if (t.name !== ref.name || stale) {
-        const rebound: ReboundRef = { path, name: t.name };
-        if (now) rebound.fingerprint = now;
-        ctx.current.rebound.push(rebound);
-      }
-      return t;
-    }
-    const u: RegenUnresolvedRef = { path, ref, reason: r.reason };
-    if (r.candidates) u.candidates = r.candidates;
-    const last = ctx.pc.lastResolved.get(memo);
-    if (last && !ref.fingerprint && this.core.ownedHandles.has(last.shape)) {
-      const fp = await this.core.fingerprints(last.shape);
-      const lastKnown = fp ? fingerprintOf(fp, last.kind, last.index) : undefined;
-      if (lastKnown) u.lastKnown = lastKnown;
-    }
-    unresolved.push(u);
-    return null;
-  }
-
-  private resolveBody(
-    ctx: WalkContext,
-    ref: EntityRef,
-    path: string,
-    unresolved: UnresolvedRef[],
-  ): BodyState | null {
-    const b = ctx.state.bodies.get(ref.name);
-    if (b) return b;
-    unresolved.push({ path, ref, reason: 'missing' });
-    return null;
-  }
-
-  /** A resolved planar face/plane ref → deterministic frame (see `planeFrame`). */
-  private async frameOfTarget(t: ResolvedTarget): Promise<Frame | KernelError> {
-    if (t.kind !== 'face')
-      return kerr('INVALID_INPUT', 'Pick a flat face or a plane', { entityRefs: [t.name] });
-    const fp = await this.core.fingerprints(t.shape);
-    const face = fp?.faces[t.index];
-    if (!face?.normal) {
-      return kerr('INVALID_INPUT', 'The selected face is not flat', {
-        hint: 'Pick a planar face or a plane.',
-        entityRefs: [t.name],
-      });
-    }
-    return planeFrame(face.centroid, face.normal);
-  }
-
-  /**
-   * A plane-like ref (sketch `on`, plane `from`, extrude up-to): origin planes and construction
-   * planes by name, faces by planeLike resolution. Returns the frame, or null when unresolved.
-   */
-  private async resolvePlane(
-    ctx: WalkContext,
-    ref: EntityRef,
-    path: string,
-    unresolved: UnresolvedRef[],
-  ): Promise<{ frame: Frame; target?: ResolvedTarget; shapeKey: string } | KernelError | null> {
-    const origin = ORIGIN_PLANES[ref.name];
-    if (origin) return { frame: origin, shapeKey: ref.name };
-    const pl = PLANE_NAME.exec(ref.name);
-    if (pl) {
-      const p = ctx.state.planes.get(pl[1] as string);
-      if (p) {
-        return {
-          frame: p.frame,
-          target: {
-            shape: p.shape,
-            kind: 'face',
-            index: 0,
-            name: ref.name,
-            owner: `plane:${p.id}`,
-            via: 'name',
-          },
-          shapeKey: p.key,
-        };
-      }
-    }
-    const t = await this.resolveSub(ctx, ref, path, unresolved, true);
-    if (!t) return null;
-    if (t.owner.startsWith('plane:')) {
-      // Construction planes carry their own frame.
-      const p = ctx.state.planes.get(t.owner.slice('plane:'.length));
-      if (p) return { frame: p.frame, target: t, shapeKey: p.key };
-    }
-    const frame = await this.frameOfTarget(t);
-    if ('code' in frame) return frame;
-    return { frame, target: t, shapeKey: ctx.state.keyOf(t.shape) ?? '' };
-  }
-
-  // -------------------------------------------------------------------------------------------
   // Planning per feature type
   // -------------------------------------------------------------------------------------------
 
@@ -1277,17 +1116,13 @@ export class RegenEngine {
     }
   }
 
-  private refKeyOf(ctx: WalkContext, t: ResolvedTarget): [string, string, number] {
-    return [ctx.state.keyOf(t.shape) ?? '', t.kind, t.index];
-  }
-
   private async planSketch(
     ctx: WalkContext,
     f: SketchFeature,
     values: Record<string, number>,
   ): Promise<Planned> {
     const unresolved: UnresolvedRef[] = [];
-    const plane = await this.resolvePlane(ctx, f.on, '/on', unresolved);
+    const plane = await resolvePlane(this.core, ctx, f.on, '/on', unresolved);
     if (plane === null) return { unresolved, taint: [] };
     if ('code' in plane) return { unresolved, taint: [], error: plane };
     const owner = plane.target?.owner;
@@ -1363,29 +1198,6 @@ export class RegenEngine {
     };
   }
 
-  /** Body scope of a solid feature: explicit bodies, all, or the default "touched" scope. */
-  private scopeBodies(
-    ctx: WalkContext,
-    scope: BodyScope | undefined,
-    unresolved: UnresolvedRef[],
-  ): { bodies: BodyState[]; mode: 'default' | 'all' | 'bodies'; error?: KernelError } {
-    if (scope?.kind === 'bodies') {
-      const bodies: BodyState[] = [];
-      scope.bodies.forEach((ref, i) => {
-        const b = this.resolveBody(ctx, ref, `/scope/bodies/${i}`, unresolved);
-        if (b) bodies.push(b);
-      });
-      const mesh = bodies.find((b) => b.meshOnly);
-      if (mesh) return { bodies, mode: 'bodies', error: meshOnlyError('changed', mesh.id) };
-      return { bodies, mode: 'bodies' };
-    }
-    // Mesh reference bodies are never part of an implicit scope.
-    return {
-      bodies: [...ctx.state.bodies.values()].filter((b) => !b.meshOnly),
-      mode: scope?.kind === 'all' ? 'all' : 'default',
-    };
-  }
-
   private async planSolid(
     ctx: WalkContext,
     f: ExtrudeFeature | RevolveFeature | PrimitiveFeature,
@@ -1398,12 +1210,13 @@ export class RegenEngine {
     const involved = new Set<string>();
     const note = (path: string, t: ResolvedTarget) => {
       refs[path] = { shape: t.shape, kind: t.kind, index: t.index };
-      refKeys[path] = this.refKeyOf(ctx, t);
+      refKeys[path] = refKeyOf(ctx, t);
       if (ctx.state.bodies.has(t.owner)) involved.add(t.owner);
     };
     if (f.type !== 'primitive') {
       for (let i = 0; i < f.profile.length; i++) {
-        const t = await this.resolveSub(
+        const t = await resolveSub(
+          this.core,
           ctx,
           f.profile[i] as EntityRef,
           `/profile/${i}`,
@@ -1413,7 +1226,7 @@ export class RegenEngine {
       }
     }
     if (f.type === 'extrude' && f.end.kind === 'upTo') {
-      const p = await this.resolvePlane(ctx, f.end.target, '/end/target', unresolved);
+      const p = await resolvePlane(this.core, ctx, f.end.target, '/end/target', unresolved);
       if (p && !('code' in p)) {
         if (p.target) note('/end/target', p.target);
         else {
@@ -1434,14 +1247,14 @@ export class RegenEngine {
         if (d?.kind === 'axis') frames.axis = d.frame;
         else unresolved.push({ path: '/axis', ref: f.axis, reason: 'missing' });
       } else {
-        const t = await this.resolveSub(ctx, f.axis, '/axis', unresolved);
+        const t = await resolveSub(this.core, ctx, f.axis, '/axis', unresolved);
         if (t) note('/axis', t);
       }
     }
     const scoped =
       f.op === 'new'
         ? { bodies: [] as BodyState[], mode: 'bodies' as const }
-        : this.scopeBodies(ctx, f.scope, unresolved);
+        : scopeBodies(ctx, f.scope, unresolved);
     if ('error' in scoped && scoped.error) {
       return { unresolved, taint: scoped.bodies.map((b) => b.id), error: scoped.error };
     }
@@ -1743,18 +1556,24 @@ export class RegenEngine {
         groups.set(body.id, g);
       }
       g.refs[path] = { shape: t.shape, kind: t.kind, index: t.index };
-      refKeys[path] = this.refKeyOf(ctx, t);
+      refKeys[path] = refKeyOf(ctx, t);
       return null;
     };
     for (let i = 0; i < f.edges.length; i++) {
-      const t = await this.resolveSub(ctx, f.edges[i] as EntityRef, `/edges/${i}`, unresolved);
+      const t = await resolveSub(
+        this.core,
+        ctx,
+        f.edges[i] as EntityRef,
+        `/edges/${i}`,
+        unresolved,
+      );
       if (t) {
         const e = add(`/edges/${i}`, t);
         if (e) return { unresolved, taint: [t.owner], error: e };
       }
     }
     if (f.type === 'chamfer' && f.mode.kind === 'distanceAngle' && f.mode.face) {
-      const t = await this.resolveSub(ctx, f.mode.face, '/mode/face', unresolved);
+      const t = await resolveSub(this.core, ctx, f.mode.face, '/mode/face', unresolved);
       if (t) {
         const e = add('/mode/face', t);
         if (e) return { unresolved, taint: [t.owner], error: e };
@@ -1811,10 +1630,10 @@ export class RegenEngine {
     values: Record<string, number>,
   ): Promise<Planned> {
     const unresolved: UnresolvedRef[] = [];
-    const target = this.resolveBody(ctx, f.target, '/target', unresolved);
+    const target = resolveBody(ctx, f.target, '/target', unresolved);
     const tools: BodyState[] = [];
     f.tools.forEach((ref, i) => {
-      const b = this.resolveBody(ctx, ref, `/tools/${i}`, unresolved);
+      const b = resolveBody(ctx, ref, `/tools/${i}`, unresolved);
       if (b) tools.push(b);
     });
     const involved = [...(target ? [target.id] : []), ...tools.map((t) => t.id)];
@@ -1901,7 +1720,7 @@ export class RegenEngine {
         }),
       );
     if (d.kind === 'offset') {
-      const p = await this.resolvePlane(ctx, d.from, '/definition/from', unresolved);
+      const p = await resolvePlane(this.core, ctx, d.from, '/definition/from', unresolved);
       if (p === null) return { unresolved, taint: [] };
       if ('code' in p) return fail(p);
       frames.from = p.frame;
@@ -1910,7 +1729,8 @@ export class RegenEngine {
     } else if (d.kind === 'threePoints') {
       const pts: Vec3[] = [];
       for (let i = 0; i < 3; i++) {
-        const p = await this.resolvePoint(
+        const p = await resolvePoint(
+          this.core,
           ctx,
           d.points[i] as EntityRef,
           `/definition/points/${i}`,
@@ -1927,8 +1747,8 @@ export class RegenEngine {
       if (isGeoError(g)) return geoError(g.error, d.points);
       computed = g;
     } else if (d.kind === 'angle') {
-      const p = await this.resolvePlane(ctx, d.from, '/definition/from', unresolved);
-      const a = await this.resolveAxis(ctx, d.axis, '/definition/axis', unresolved, false);
+      const p = await resolvePlane(this.core, ctx, d.from, '/definition/from', unresolved);
+      const a = await resolveAxis(this.core, ctx, d.axis, '/definition/axis', unresolved, false);
       if (p && 'code' in p) return fail(p);
       if (a && 'code' in a) return fail(a);
       if (!p || !a) return { unresolved, taint: [] };
@@ -1944,8 +1764,8 @@ export class RegenEngine {
       noteOwner(r.owner);
       computed = r.frame;
     } else if (d.kind === 'midplane') {
-      const a = await this.resolvePlane(ctx, d.a, '/definition/a', unresolved);
-      const b = await this.resolvePlane(ctx, d.b, '/definition/b', unresolved);
+      const a = await resolvePlane(this.core, ctx, d.a, '/definition/a', unresolved);
+      const b = await resolvePlane(this.core, ctx, d.b, '/definition/b', unresolved);
       if (a && 'code' in a) return fail(a);
       if (b && 'code' in b) return fail(b);
       if (!a || !b) return { unresolved, taint: [] };
@@ -1955,8 +1775,8 @@ export class RegenEngine {
       if (isGeoError(g)) return geoError(g.error, [d.a, d.b]);
       computed = g;
     } else if (d.kind === 'throughPoint') {
-      const p = await this.resolvePlane(ctx, d.from, '/definition/from', unresolved);
-      const q = await this.resolvePoint(ctx, d.point, '/definition/point', unresolved);
+      const p = await resolvePlane(this.core, ctx, d.from, '/definition/from', unresolved);
+      const q = await resolvePoint(this.core, ctx, d.point, '/definition/point', unresolved);
       if (p && 'code' in p) return fail(p);
       if (q && 'code' in q) return fail(q);
       if (!p || !q) return { unresolved, taint: [] };
@@ -2028,10 +1848,10 @@ export class RegenEngine {
     values: Record<string, number>,
     unresolved: UnresolvedRef[],
   ): Promise<{ frame: Frame; owner?: string } | KernelError | null> {
-    const t = await this.resolveSub(ctx, d.curve, '/definition/curve', unresolved);
+    const t = await resolveSub(this.core, ctx, d.curve, '/definition/curve', unresolved);
     let at: Vec3 | null = null;
     if (!('t' in d.at)) {
-      const p = await this.resolvePoint(ctx, d.at, '/definition/at', unresolved);
+      const p = await resolvePoint(this.core, ctx, d.at, '/definition/at', unresolved);
       if (p && 'code' in p) return p;
       if (p) at = p.point;
     }
@@ -2094,10 +1914,10 @@ export class RegenEngine {
           }),
         };
       }
-      const t = await this.resolveSub(ctx, ref, `/faces/${i}`, unresolved);
+      const t = await resolveSub(this.core, ctx, ref, `/faces/${i}`, unresolved);
       if (t) {
         refs[`/faces/${i}`] = { shape: t.shape, kind: t.kind, index: t.index };
-        refKeys[`/faces/${i}`] = this.refKeyOf(ctx, t);
+        refKeys[`/faces/${i}`] = refKeyOf(ctx, t);
         owners.add(t.owner);
         picked.push(t.name);
       }
@@ -2264,120 +2084,6 @@ export class RegenEngine {
   // M3: geometry probes, axes, points (reference geometry)
   // -------------------------------------------------------------------------------------------
 
-  /**
-   * An axis-like reference → a line: origin axes, axis features (`F…:axis`), straight edges (in
-   * their geometric-key direction), circular edges and cylindrical faces (their axis, canonical
-   * direction). With `planeNormal` (linear pattern directions) planes and flat faces give their
-   * normal, and circular edges are refused (no direction).
-   */
-  private async resolveAxis(
-    ctx: WalkContext,
-    ref: EntityRef,
-    path: string,
-    unresolved: UnresolvedRef[],
-    planeNormal: boolean,
-  ): Promise<{ line: Line; owner?: string } | KernelError | null> {
-    const origin = ORIGIN_AXES[ref.name];
-    if (origin) return { line: frameLine(origin) };
-    const ax = AXIS_NAME.exec(ref.name);
-    if (ax) {
-      const d = ctx.state.datums.get(ax[1] as string);
-      if (d?.kind === 'axis') return { line: frameLine(d.frame) };
-      unresolved.push({ path, ref, reason: 'missing' });
-      return null;
-    }
-    const bad = (message: string) =>
-      kerr('INVALID_INPUT', message, {
-        hint: planeNormal
-          ? 'Pick a straight edge, an axis, a plane or a flat face.'
-          : 'Pick an axis, a straight or circular edge, or a cylindrical face.',
-        entityRefs: [ref.name],
-      });
-    if (ORIGIN_PLANES[ref.name] || PLANE_NAME.test(ref.name)) {
-      if (!planeNormal) return bad('A plane is not an axis');
-      const p = await this.resolvePlane(ctx, ref, path, unresolved);
-      if (!p || 'code' in p) return p;
-      const out: { line: Line; owner?: string } = { line: frameLine(p.frame) };
-      if (p.target?.owner) out.owner = p.target.owner;
-      return out;
-    }
-    const t = await this.resolveSub(ctx, ref, path, unresolved);
-    if (!t) return null;
-    if (t.kind === 'edge') {
-      const l = await this.core.lineOfEdge(t);
-      if (l) return { line: { origin: l.a, dir: normalize(sub(l.b, l.a)) }, owner: t.owner };
-      const c = await this.core.circleOfEdge(t);
-      if (c) {
-        if (planeNormal) return bad('A circular edge has no direction; pick a straight edge');
-        return { line: { origin: c.centre, dir: c.normal }, owner: t.owner };
-      }
-      return bad('This edge is neither straight nor circular');
-    }
-    if (t.kind === 'face') {
-      const fp = await this.core.fingerprints(t.shape);
-      const face = fp?.faces[t.index];
-      if (face?.normal) {
-        if (!planeNormal) return bad('A flat face has no axis');
-        return { line: { origin: face.centroid, dir: normalize(face.normal) }, owner: t.owner };
-      }
-      const a = await this.core.axisOfFace(t);
-      if (a) return { line: { origin: a.origin, dir: a.dir }, owner: t.owner };
-      return bad('This face has no axis');
-    }
-    return bad('A vertex has no direction');
-  }
-
-  /**
-   * A point-like reference → a world point: `origin:O`, point features (`F…:point`), vertices and
-   * sketch points (`S…:p(id)`), and circular edges (their centre).
-   */
-  private async resolvePoint(
-    ctx: WalkContext,
-    ref: EntityRef,
-    path: string,
-    unresolved: UnresolvedRef[],
-  ): Promise<{ point: Vec3; owner?: string } | KernelError | null> {
-    if (ref.name === 'origin:O') return { point: [0, 0, 0] };
-    const pm = POINT_NAME.exec(ref.name);
-    if (pm) {
-      const d = ctx.state.datums.get(pm[1] as string);
-      if (d?.kind === 'point') return { point: d.frame.origin };
-      unresolved.push({ path, ref, reason: 'missing' });
-      return null;
-    }
-    const t = await this.resolveSub(ctx, ref, path, unresolved);
-    if (!t) return null;
-    if (t.kind === 'vertex') {
-      const fp = await this.core.fingerprints(t.shape);
-      const v = fp?.vertices[t.index];
-      if (v) return { point: v.point, owner: t.owner };
-    }
-    if (t.kind === 'edge') {
-      const c = await this.core.circleOfEdge(t);
-      if (c) return { point: c.centre, owner: t.owner };
-    }
-    return kerr('INVALID_INPUT', 'Pick a point, a vertex or a circular edge (its centre)', {
-      entityRefs: [ref.name],
-    });
-  }
-
-  /** A line or a plane (for intersection points). */
-  private async resolveLineOrPlane(
-    ctx: WalkContext,
-    ref: EntityRef,
-    path: string,
-    unresolved: UnresolvedRef[],
-  ): Promise<{ line: Line } | { plane: Frame } | KernelError | null> {
-    if (ORIGIN_PLANES[ref.name] || PLANE_NAME.test(ref.name) || ref.kind === 'face') {
-      const p = await this.resolvePlane(ctx, ref, path, unresolved);
-      if (!p || 'code' in p) return p;
-      return { plane: p.frame };
-    }
-    const a = await this.resolveAxis(ctx, ref, path, unresolved, false);
-    if (!a || 'code' in a) return a;
-    return { line: a.line };
-  }
-
   private datumPlan(
     f: AxisFeature | PointFeature,
     frame: Frame,
@@ -2421,8 +2127,8 @@ export class RegenEngine {
     const d = f.definition;
     let line: Line | null = null;
     if (d.kind === 'twoPoints') {
-      const a = await this.resolvePoint(ctx, d.a, '/definition/a', unresolved);
-      const b = await this.resolvePoint(ctx, d.b, '/definition/b', unresolved);
+      const a = await resolvePoint(this.core, ctx, d.a, '/definition/a', unresolved);
+      const b = await resolvePoint(this.core, ctx, d.b, '/definition/b', unresolved);
       if (a && 'code' in a) return fail(a);
       if (b && 'code' in b) return fail(b);
       if (a && b) {
@@ -2432,7 +2138,7 @@ export class RegenEngine {
         line = { origin: a.point, dir: normalize(sub(b.point, a.point)) };
       }
     } else if (d.kind === 'edge') {
-      const t = await this.resolveSub(ctx, d.edge, '/definition/edge', unresolved);
+      const t = await resolveSub(this.core, ctx, d.edge, '/definition/edge', unresolved);
       if (t) {
         note(t.owner);
         const l = t.kind === 'edge' ? await this.core.lineOfEdge(t) : null;
@@ -2440,15 +2146,15 @@ export class RegenEngine {
         line = { origin: l.a, dir: normalize(sub(l.b, l.a)) };
       }
     } else if (d.kind === 'cylinder') {
-      const a = await this.resolveAxis(ctx, d.face, '/definition/face', unresolved, false);
+      const a = await resolveAxis(this.core, ctx, d.face, '/definition/face', unresolved, false);
       if (a && 'code' in a) return fail(a);
       if (a) {
         note(a.owner);
         line = a.line;
       }
     } else if (d.kind === 'twoPlanes') {
-      const a = await this.resolvePlane(ctx, d.a, '/definition/a', unresolved);
-      const b = await this.resolvePlane(ctx, d.b, '/definition/b', unresolved);
+      const a = await resolvePlane(this.core, ctx, d.a, '/definition/a', unresolved);
+      const b = await resolvePlane(this.core, ctx, d.b, '/definition/b', unresolved);
       if (a && 'code' in a) return fail(a);
       if (b && 'code' in b) return fail(b);
       if (a && b) {
@@ -2459,8 +2165,8 @@ export class RegenEngine {
         line = g;
       }
     } else if (d.kind === 'pointNormal') {
-      const p = await this.resolvePoint(ctx, d.point, '/definition/point', unresolved);
-      const pl = await this.resolvePlane(ctx, d.plane, '/definition/plane', unresolved);
+      const p = await resolvePoint(this.core, ctx, d.point, '/definition/point', unresolved);
+      const pl = await resolvePlane(this.core, ctx, d.plane, '/definition/plane', unresolved);
       if (p && 'code' in p) return fail(p);
       if (pl && 'code' in pl) return fail(pl);
       if (p && pl) {
@@ -2504,14 +2210,14 @@ export class RegenEngine {
         values['/definition/z'] ?? 0,
       ];
     } else if (d.kind === 'vertex') {
-      const p = await this.resolvePoint(ctx, d.vertex, '/definition/vertex', unresolved);
+      const p = await resolvePoint(this.core, ctx, d.vertex, '/definition/vertex', unresolved);
       if (p && 'code' in p) return fail(p);
       if (p) {
         note(p.owner);
         point = p.point;
       }
     } else if (d.kind === 'center') {
-      const t = await this.resolveSub(ctx, d.of, '/definition/of', unresolved);
+      const t = await resolveSub(this.core, ctx, d.of, '/definition/of', unresolved);
       if (t) {
         note(t.owner);
         if (t.kind === 'edge') point = (await this.core.circleOfEdge(t))?.centre ?? null;
@@ -2523,7 +2229,7 @@ export class RegenEngine {
         if (!point) return geoError('Pick a circular edge or a spherical face', [d.of]);
       }
     } else if (d.kind === 'alongEdge') {
-      const t = await this.resolveSub(ctx, d.edge, '/definition/edge', unresolved);
+      const t = await resolveSub(this.core, ctx, d.edge, '/definition/edge', unresolved);
       if (t) {
         note(t.owner);
         const l = t.kind === 'edge' ? await this.core.lineOfEdge(t) : null;
@@ -2537,12 +2243,12 @@ export class RegenEngine {
         point = add(l.a, scale(sub(l.b, l.a), values['/definition/t'] ?? 0));
       }
     } else if (d.kind === 'intersection') {
-      const a = await this.resolveLineOrPlane(ctx, d.a, '/definition/a', unresolved);
-      const b = await this.resolveLineOrPlane(ctx, d.b, '/definition/b', unresolved);
+      const a = await resolveLineOrPlane(this.core, ctx, d.a, '/definition/a', unresolved);
+      const b = await resolveLineOrPlane(this.core, ctx, d.b, '/definition/b', unresolved);
       if (a && 'code' in a) return fail(a);
       if (b && 'code' in b) return fail(b);
       if (a && b) {
-        const tol = Math.max(1e-6, 1e-6 * (await this.partDiag(ctx)));
+        const tol = Math.max(1e-6, 1e-6 * (await partDiag(this.core, ctx)));
         const g =
           'line' in a && 'line' in b
             ? lineLineIntersection(a.line, b.line, tol)
@@ -2584,7 +2290,7 @@ export class RegenEngine {
     for (let i = 0; i < refsIn.length; i++) {
       const ref = refsIn[i] as EntityRef;
       const path = `${base}/${i}`;
-      const t = await this.resolveSub(ctx, ref, path, unresolved);
+      const t = await resolveSub(this.core, ctx, ref, path, unresolved);
       if (!t) continue;
       if (t.kind !== 'face') {
         return {
@@ -2595,7 +2301,7 @@ export class RegenEngine {
         };
       }
       refs[path] = { shape: t.shape, kind: t.kind, index: t.index };
-      refKeys[path] = this.refKeyOf(ctx, t);
+      refKeys[path] = refKeyOf(ctx, t);
       owners.add(t.owner);
       picked.push(t.name);
     }
@@ -2665,7 +2371,7 @@ export class RegenEngine {
           error: kerr('INVALID_INPUT', 'Pick the faces to remove, or the body to hollow'),
         };
       }
-      body = this.resolveBody(ctx, f.body, '/body', unresolved) ?? undefined;
+      body = resolveBody(ctx, f.body, '/body', unresolved) ?? undefined;
       if (body?.meshOnly) {
         return { unresolved, taint: [body.id], error: meshOnlyError('shelled', body.id) };
       }
@@ -2715,7 +2421,7 @@ export class RegenEngine {
     const unresolved: UnresolvedRef[] = [];
     const g = await this.facesOfOneBody(ctx, f.faces, '/faces', unresolved, 'drafted');
     if (g.error) return { unresolved, taint: g.taint, error: g.error };
-    const p = await this.resolvePlane(ctx, f.neutral, '/neutral', unresolved);
+    const p = await resolvePlane(this.core, ctx, f.neutral, '/neutral', unresolved);
     if (p && 'code' in p) return { unresolved, taint: g.taint, error: p };
     if (unresolved.length > 0 || !p || !g.body) return { unresolved, taint: g.taint };
     if (f.faces.length === 0) {
@@ -2732,7 +2438,7 @@ export class RegenEngine {
     // plane feature's face (origin planes have no shape).
     if (p.target) {
       refs['/neutral'] = { shape: p.target.shape, kind: p.target.kind, index: p.target.index };
-      refKeys['/neutral'] = [p.shapeKey, ...this.refKeyOf(ctx, p.target).slice(1)];
+      refKeys['/neutral'] = [p.shapeKey, ...refKeyOf(ctx, p.target).slice(1)];
     }
     const frames = { neutral: p.frame };
     const key = hashKey({
@@ -2765,7 +2471,7 @@ export class RegenEngine {
     const involved = new Set<string>();
     const note = (path: string, t: ResolvedTarget) => {
       refs[path] = { shape: t.shape, kind: t.kind, index: t.index };
-      refKeys[path] = this.refKeyOf(ctx, t);
+      refKeys[path] = refKeyOf(ctx, t);
       if (ctx.state.bodies.has(t.owner)) involved.add(t.owner);
     };
     const taintNew = f.op === 'new' ? [`B${f.id}`] : [];
@@ -2777,7 +2483,8 @@ export class RegenEngine {
     let feature: SweepFeature | LoftFeature = f;
     if (f.type === 'sweep') {
       for (let i = 0; i < f.profile.length; i++) {
-        const t = await this.resolveSub(
+        const t = await resolveSub(
+          this.core,
           ctx,
           f.profile[i] as EntityRef,
           `/profile/${i}`,
@@ -2788,10 +2495,12 @@ export class RegenEngine {
       if (f.profile.length === 0) return fail('Select the profile to sweep');
       const path: (ResolvedTarget | null)[] = [];
       for (let i = 0; i < f.path.length; i++) {
-        path.push(await this.resolveSub(ctx, f.path[i] as EntityRef, `/path/${i}`, unresolved));
+        path.push(
+          await resolveSub(this.core, ctx, f.path[i] as EntityRef, `/path/${i}`, unresolved),
+        );
       }
       if (unresolved.length === 0) {
-        const tol = Math.max(1e-6, 1e-6 * (await this.partDiag(ctx)));
+        const tol = Math.max(1e-6, 1e-6 * (await partDiag(this.core, ctx)));
         const ends: Vec3[][] = [];
         for (const t of path as ResolvedTarget[]) {
           if (t.kind !== 'edge')
@@ -2813,7 +2522,7 @@ export class RegenEngine {
       if (f.sections.length < 2) return fail('A loft needs at least two sections');
       for (let i = 0; i < f.sections.length; i++) {
         const ref = f.sections[i] as EntityRef;
-        const t = await this.resolveSub(ctx, ref, `/sections/${i}`, unresolved);
+        const t = await resolveSub(this.core, ctx, ref, `/sections/${i}`, unresolved);
         if (!t) continue;
         if (t.kind === 'vertex' && i > 0 && i < f.sections.length - 1) {
           return fail('Only the first and the last loft section can be a point', [ref.name]);
@@ -2823,7 +2532,8 @@ export class RegenEngine {
         note(`/sections/${i}`, t);
       }
       for (let i = 0; i < (f.guides ?? []).length; i++) {
-        const t = await this.resolveSub(
+        const t = await resolveSub(
+          this.core,
           ctx,
           (f.guides as EntityRef[])[i] as EntityRef,
           `/guides/${i}`,
@@ -2835,7 +2545,7 @@ export class RegenEngine {
     const scoped =
       f.op === 'new'
         ? { bodies: [] as BodyState[], mode: 'bodies' as const }
-        : this.scopeBodies(ctx, f.scope, unresolved);
+        : scopeBodies(ctx, f.scope, unresolved);
     if ('error' in scoped && scoped.error) {
       return { unresolved, taint: scoped.bodies.map((b) => b.id), error: scoped.error };
     }
@@ -2920,21 +2630,22 @@ export class RegenEngine {
 
     // 1. Where the copies go.
     if (f.type === 'mirror') {
-      const p = await this.resolvePlane(ctx, f.plane, '/plane', unresolved);
+      const p = await resolvePlane(this.core, ctx, f.plane, '/plane', unresolved);
       if (p && 'code' in p) return fail(p);
       if (p) {
         frames.plane = p.frame;
         noteOwner(p.target?.owner);
       }
     } else if (f.type === 'linearPattern') {
-      const a = await this.resolveAxis(ctx, f.direction, '/direction', unresolved, true);
+      const a = await resolveAxis(this.core, ctx, f.direction, '/direction', unresolved, true);
       if (a && 'code' in a) return fail(a);
       if (a) {
         frames.axis = lineFrame(a.line);
         noteOwner(a.owner);
       }
       if (f.second) {
-        const b = await this.resolveAxis(
+        const b = await resolveAxis(
+          this.core,
           ctx,
           f.second.direction,
           '/second/direction',
@@ -2948,7 +2659,7 @@ export class RegenEngine {
         }
       }
     } else {
-      const a = await this.resolveAxis(ctx, f.axis, '/axis', unresolved, false);
+      const a = await resolveAxis(this.core, ctx, f.axis, '/axis', unresolved, false);
       if (a && 'code' in a) return fail(a);
       if (a) {
         frames.axis = lineFrame(a.line);
@@ -3054,7 +2765,7 @@ export class RegenEngine {
     } else {
       if (src.bodies.length === 0) return fail(kerr('INVALID_INPUT', 'Select the bodies to copy'));
       for (const [i, ref] of src.bodies.entries()) {
-        const b = this.resolveBody(ctx, ref, `/source/bodies/${i}`, unresolved);
+        const b = resolveBody(ctx, ref, `/source/bodies/${i}`, unresolved);
         if (!b) continue;
         if (b.meshOnly) return fail(meshOnlyError('copied', b.id), [b.id]);
         refs[`/source/bodies/${i}`] = { shape: b.shape, kind: 'body', index: 0 };
@@ -3240,10 +2951,16 @@ export class RegenEngine {
         }),
       );
     }
-    const ft = await this.resolveSub(ctx, f.face, '/face', unresolved);
+    const ft = await resolveSub(this.core, ctx, f.face, '/face', unresolved);
     const points: (Vec3 | null)[] = [];
     for (let i = 0; i < f.points.length; i++) {
-      const p = await this.resolvePoint(ctx, f.points[i] as EntityRef, `/points/${i}`, unresolved);
+      const p = await resolvePoint(
+        this.core,
+        ctx,
+        f.points[i] as EntityRef,
+        `/points/${i}`,
+        unresolved,
+      );
       if (p && 'code' in p) return fail(p);
       points.push(p?.point ?? null);
     }
@@ -3263,11 +2980,11 @@ export class RegenEngine {
     const refKeys: Record<string, unknown> = {};
     const frames: Record<string, Frame> = {};
     if (f.end.kind === 'upTo') {
-      const p = await this.resolvePlane(ctx, f.end.target, '/end/target', unresolved);
+      const p = await resolvePlane(this.core, ctx, f.end.target, '/end/target', unresolved);
       if (p && 'code' in p) return fail(p, body ? [body.id] : []);
       if (p?.target) {
         refs['/end/target'] = { shape: p.target.shape, kind: p.target.kind, index: p.target.index };
-        refKeys['/end/target'] = this.refKeyOf(ctx, p.target);
+        refKeys['/end/target'] = refKeyOf(ctx, p.target);
       } else if (p) {
         frames.upTo = p.frame;
         refKeys['/end/target'] = p.shapeKey;
@@ -3288,7 +3005,7 @@ export class RegenEngine {
     }
     const n = normalize(face.normal);
     const facePlane: Frame = { origin: face.centroid, z: n, x: planeFrame(face.centroid, n).x };
-    const tol = Math.max(1e-6, 1e-6 * (await this.partDiag(ctx)));
+    const tol = Math.max(1e-6, 1e-6 * (await partDiag(this.core, ctx)));
     const into = scale(n, -1);
     for (let i = 0; i < points.length; i++) {
       const p = points[i] as Vec3;
@@ -3382,7 +3099,7 @@ export class RegenEngine {
     values: Record<string, number>,
   ): Promise<Planned> {
     const unresolved: UnresolvedRef[] = [];
-    const t = await this.resolveSub(ctx, f.face, '/face', unresolved);
+    const t = await resolveSub(this.core, ctx, f.face, '/face', unresolved);
     if (!t) return { unresolved, taint: [] };
     const fp = await this.core.fingerprints(t.shape);
     const surface = t.kind === 'face' ? fp?.faces[t.index]?.surface : undefined;
@@ -3424,7 +3141,7 @@ export class RegenEngine {
       }
     }
     const owner = ctx.state.bodies.has(t.owner) ? [t.owner] : [];
-    const key = hashKey({ t: 'thread', def: definition(f), values, face: this.refKeyOf(ctx, t) });
+    const key = hashKey({ t: 'thread', def: definition(f), values, face: refKeyOf(ctx, t) });
     return {
       unresolved,
       taint: [],
@@ -3544,24 +3261,24 @@ export class RegenEngine {
     const op = ORIGIN_PLANES[ref.name];
     if (op) return one(projectPlaneTrace(plane, op));
     if (AXIS_NAME.test(ref.name)) {
-      const a = await this.resolveAxis(ctx, ref, path, unresolved, false);
+      const a = await resolveAxis(this.core, ctx, ref, path, unresolved, false);
       if (!a || 'code' in a) return a;
       return one(projectAxis(plane, a.line));
     }
     if (POINT_NAME.test(ref.name)) {
-      const p = await this.resolvePoint(ctx, ref, path, unresolved);
+      const p = await resolvePoint(this.core, ctx, ref, path, unresolved);
       if (!p || 'code' in p) return p;
       return one(projectPoint(plane, p.point));
     }
     if (PLANE_NAME.test(ref.name)) {
-      const p = await this.resolvePlane(ctx, ref, path, unresolved);
+      const p = await resolvePlane(this.core, ctx, ref, path, unresolved);
       if (!p || 'code' in p) return p;
       return one(projectPlaneTrace(plane, p.frame));
     }
     if (SKETCH_TAG.exec(ref.name)?.[1] === f.id) {
       return fail('A sketch cannot link to its own geometry');
     }
-    const t = await this.resolveSub(ctx, ref, path, unresolved);
+    const t = await resolveSub(this.core, ctx, ref, path, unresolved);
     if (!t) return null;
     if (t.owner.startsWith('sketch:')) {
       // Another sketch's curve or point: exact, from its solved entities.
@@ -3595,7 +3312,7 @@ export class RegenEngine {
       const circle = await this.core.circleOfEdge(t);
       if (circle?.full) return one(projectCircle(plane, circle), t.owner);
       if (circle) {
-        const tol = Math.max(1e-7, 1e-7 * (await this.partDiag(ctx)));
+        const tol = Math.max(1e-7, 1e-7 * (await partDiag(this.core, ctx)));
         const ends = await this.core.endpointsOf(t, tol);
         const fp = await this.core.fingerprints(t.shape);
         const mid = fp?.edges[t.index]?.centroid;
@@ -3660,7 +3377,7 @@ export class RegenEngine {
     const scoped =
       f.op === 'new'
         ? { bodies: [] as BodyState[], mode: 'bodies' as const }
-        : this.scopeBodies(ctx, f.scope, unresolved);
+        : scopeBodies(ctx, f.scope, unresolved);
     if ('error' in scoped && scoped.error) {
       return { unresolved, taint: scoped.bodies.map((b) => b.id), error: scoped.error };
     }
@@ -4130,27 +3847,6 @@ function namesByIndex(naming: NamingMap, kind: 'face' | 'edge', count: number): 
   return out;
 }
 
-/** The fingerprint stored with a ref to sub-shape `index` of `kind`. */
-function fingerprintOf(
-  fp: ShapeFingerprints,
-  kind: SubKind,
-  index: number,
-): Fingerprint | undefined {
-  if (kind === 'face') {
-    const f = fp.faces[index];
-    if (!f) return undefined;
-    return f.normal
-      ? { centroid: f.centroid, normal: f.normal, area: f.area }
-      : { centroid: f.centroid, area: f.area };
-  }
-  if (kind === 'edge') {
-    const e = fp.edges[index];
-    return e ? { centroid: e.centroid, length: e.length } : undefined;
-  }
-  const v = fp.vertices[index];
-  return v ? { centroid: v.point } : undefined;
-}
-
 const MESH_FORMATS: ReadonlySet<ImportFeature['source']['format']> = new Set([
   'stl',
   'obj',
@@ -4159,18 +3855,3 @@ const MESH_FORMATS: ReadonlySet<ImportFeature['source']['format']> = new Set([
 ]);
 
 const IDENTITY_FRAME: Frame = { origin: [0, 0, 0], z: [0, 0, 1], x: [1, 0, 0] };
-
-/** Equal up to float noise (1e-6 mm, 1e-9 relative). */
-function sameFingerprint(a: Fingerprint, b: Fingerprint): boolean {
-  const close = (x: number, y: number) => Math.abs(x - y) <= 1e-6 + 1e-9 * Math.abs(x);
-  const vec = (x: Vec3 | undefined, y: Vec3 | undefined) =>
-    x === undefined || y === undefined ? x === y : x.every((v, i) => close(v, y[i] as number));
-  const num = (x: number | undefined, y: number | undefined) =>
-    x === undefined || y === undefined ? x === y : close(x, y);
-  return (
-    vec(a.centroid, b.centroid) &&
-    vec(a.normal, b.normal) &&
-    num(a.area, b.area) &&
-    num(a.length, b.length)
-  );
-}
