@@ -17,6 +17,7 @@ import type {
   Vec2,
   WrenDoc,
 } from '@wren-cad/contracts';
+import { fromFiles, toFiles } from '@wren-cad/document';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { ellipsePoint, evalBSpline, prepareBSpline } from '../../src/regen/curves';
 import {
@@ -165,6 +166,46 @@ describe.skipIf(!built)('regen golden (M3.5): spline and elliptic-arc profiles',
     const r = await regen(makeDoc({}, extruded(sketch, 'ea,sp'), PART));
     expect(states(r), describeFailures(r)).toEqual(['ok', 'ok']);
     relClose(totalVolume(r.bodies), 5 * area, 1e-6);
+  });
+
+  it('save → load → regen is byte-identical: files, names and meshes', async (t) => {
+    if (!supported) t.skip(SKIP);
+    const { sketch } = arcAndSpline();
+    // Explicit OCCT-form knots and a minor-axis radius ride along as data (they must round-trip).
+    const withKnots: SketchFeature = {
+      ...sketch,
+      entities: sketch.entities.map((e) =>
+        e.kind === 'bspline' ? { ...e, knots: [0, 1], multiplicities: [4, 4] } : e,
+      ),
+    };
+    const doc = makeDoc({}, extruded(withKnots, 'ea,sp'), PART);
+    const files = toFiles(doc);
+    const loaded = fromFiles(files);
+    const again = toFiles(loaded);
+    expect([...again.keys()].sort()).toEqual([...files.keys()].sort());
+    for (const [k, v] of files) {
+      expect(Buffer.from(again.get(k) as Uint8Array).equals(Buffer.from(v)), k).toBe(true);
+    }
+    const a = await regen(doc);
+    await (api as Api).closePart(PART); // cold regen of the reloaded document: no cache reuse
+    const b = await regen(loaded);
+    expect(states(b), describeFailures(b)).toEqual(['ok', 'ok']);
+    expect(b.bodies.map((x) => x.id)).toEqual(a.bodies.map((x) => x.id));
+    for (const [i, body] of a.bodies.entries()) {
+      const other = b.bodies[i];
+      expect(other?.mesh.faceNames).toEqual(body.mesh.faceNames);
+      expect(other?.mesh.edgeNames).toEqual(body.mesh.edgeNames);
+      for (const key of ['positions', 'indices', 'faceRanges', 'edgePositions'] as const) {
+        const x = Buffer.from(
+          body.mesh[key].buffer,
+          body.mesh[key].byteOffset,
+          body.mesh[key].byteLength,
+        );
+        const m = other?.mesh[key];
+        expect(m && Buffer.from(m.buffer, m.byteOffset, m.byteLength).equals(x), key).toBe(true);
+      }
+    }
+    relClose(totalVolume(b.bodies), totalVolume(a.bodies), 1e-12);
   });
 
   it('moving a pole updates the solid', async (t) => {

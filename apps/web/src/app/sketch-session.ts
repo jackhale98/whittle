@@ -1183,7 +1183,7 @@ export class SketchSession {
     }
     const hit = this.pickSketch(e);
     const at = this.toSketch(e);
-    if (!hit?.entity || !at) return; // empty space: orbit
+    if (!hit?.entity || !at) return; // empty space: the viewport navigates (touch) or nothing (left mouse)
     // The origin and axes are selectable (on release) but never dragged.
     if (isSketchReference(hit.entity)) return;
     withhold();

@@ -1658,6 +1658,8 @@ Scope approved by the owner from the UX research report (`docs/ux-research/repor
 - **`AttentionCause`** on `UnresolvedRef` and `FeatureStatus`: the upstream feature whose change, suppression, deletion, reordering or failure broke the reference or the feature. Reported only when the engine can tell, never guessed (the SolidWorks 2023 Top Ten #1 and #5 requests and the UIST 2024 DeCAD finding).
 - **Placeholders.** So every workstream starts from a green tree, the lead added minimal cases for the new union members (control-polygon sampling, `null` closest points, "cannot be projected yet", no-op gestures, stub `setNavigation` / `pickRect`), each marked "M3.5 placeholder (ADR-046)". The workstreams replace them; the gate checks none remain.
 
+- **Gate additions (2026-11-10):** `ViewportGesture.pointerId` (set on `longPress` and on a `contextMenu` raised while the pointer is down, so the radial menu can track a touch long-press until lift) and `PickHit.depth` (camera-ray distance, mm; the "Which one?" chooser's stable tie-break, kind then depth then id). ADR-049 (UI) and ADR-059 (integration) carry the implementation details of the radial menu, keymap, chooser and settings; read with this ADR.
+- **Known limit (gate N6):** inside a sketch the radial menu opens with the mouse (right click) or the held key (Q) only: a touch long-press and a Pencil hold already mean other things there (selection and, ADR-061, grab). Revisit in M3.6 (e.g. a two-finger long-press).
 
 ## ADR-047 — M3.5 error causes: how the regen engine names the upstream feature (2026-11-09)
 

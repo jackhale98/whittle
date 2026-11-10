@@ -186,6 +186,72 @@ describe('project folder', () => {
     expect(fromFiles(files)).toEqual(doc);
   });
 
+  it('M3.5 curves round-trip exactly: splines (weights, knots, through), elliptic arcs, minor-axis radius', () => {
+    const curved = structuredClone(doc);
+    const part = curved.parts[0];
+    if (!part) throw new Error('no part');
+    const pt = (n: number, x: number, y: number) => ({
+      id: id(900 + n),
+      kind: 'point' as const,
+      x,
+      y,
+      construction: false,
+    });
+    part.features.push({
+      id: id(950),
+      type: 'sketch',
+      name: 'Curves',
+      suppressed: false,
+      on: { name: 'origin:XY', kind: 'face' },
+      entities: [
+        pt(1, 0, 0),
+        pt(2, 10, 0),
+        pt(3, 0, 4),
+        pt(4, -6, 8),
+        pt(5, -9, -3),
+        pt(6, -4.5, 1.25),
+        {
+          id: id(960),
+          kind: 'ellipticArc',
+          center: id(901),
+          start: id(902),
+          end: id(903),
+          majorRadius: 10,
+          minorRadius: 4,
+          rotation: 0.25,
+          construction: false,
+        },
+        {
+          id: id(961),
+          kind: 'bspline',
+          poles: [id(903), id(904), id(905), id(902)],
+          degree: 3,
+          periodic: false,
+          weights: [1, 1.5, 0.75, 1],
+          knots: [0, 1],
+          multiplicities: [4, 4],
+          through: [id(906)],
+          construction: false,
+        },
+      ],
+      constraints: [
+        {
+          id: id(970),
+          kind: 'radius',
+          curve: id(960),
+          axis: 'minor',
+          value: '4 mm',
+          driving: true,
+        },
+      ],
+    });
+    const f1 = toFiles(curved);
+    const back = fromFiles(f1);
+    expect(back).toEqual(curved);
+    const f2 = toFiles(back);
+    for (const [k, v] of f1) expect(f2.get(k), k).toEqual(v);
+  });
+
   it('is byte-identical for equal documents (even deep clones)', () => {
     const again = toFiles(structuredClone(doc));
     expect([...again.keys()]).toEqual([...files.keys()]);

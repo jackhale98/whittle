@@ -1344,7 +1344,7 @@ export class Workbench {
     // One path per input: touch taps select through `onGesture` (with palm rejection and
     // double-tap handling); mouse and Pencil clicks come through here.
     if (d.type === 'touch') return;
-    if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > 5) return; // it was an orbit drag
+    if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > 5) return; // a drag (box select or navigation), not a click
     this.onClick(e);
   }
 

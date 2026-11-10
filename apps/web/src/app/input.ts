@@ -35,9 +35,13 @@ export const APP_COMMANDS: readonly KeymapCommand[] = [...DEFAULT_COMMANDS, RADI
 
 export function sanitizeOverrides(raw: unknown): KeymapOverrides {
   if (!raw || typeof raw !== 'object') return {};
-  const out: Record<string, string[]> = {};
+  // A null-prototype map and an allow-list of known command ids: a stored `__proto__` (or any
+  // unknown key) is dropped, never written onto an object prototype.
+  const known = new Set(APP_COMMANDS.map((c) => c.id));
+  const out: Record<string, string[]> = Object.create(null);
   for (const [id, v] of Object.entries(raw as Record<string, unknown>))
-    if (Array.isArray(v)) out[id] = v.filter((b): b is string => typeof b === 'string');
+    if (known.has(id) && Array.isArray(v))
+      out[id] = v.filter((b): b is string => typeof b === 'string');
   return out;
 }
 

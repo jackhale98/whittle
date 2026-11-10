@@ -55,7 +55,16 @@ describe('app keymap', () => {
 
   it('sanitises stored overrides and applies new ones', () => {
     expect(sanitizeOverrides(null)).toEqual({});
-    expect(sanitizeOverrides({ a: ['KeyA', 3], b: 'x' })).toEqual({ a: ['KeyA'] });
+    expect(sanitizeOverrides({ 'view:front': ['KeyA', 3], 'view:top': 'x' })).toEqual({
+      'view:front': ['KeyA'],
+    });
+    // Unknown ids and prototype keys are dropped, never assigned onto a prototype.
+    const hostile = JSON.parse(
+      '{"__proto__": ["KeyZ"], "constructor": ["KeyY"], "nope": ["KeyX"]}',
+    );
+    const clean = sanitizeOverrides(hostile);
+    expect(Object.keys(clean)).toEqual([]);
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
     const next = withKeymap(settings(), { 'tool:extrude': ['KeyJ'] });
     expect(commandFor(next, 'KeyJ', false)?.id).toBe('tool:extrude');
   });

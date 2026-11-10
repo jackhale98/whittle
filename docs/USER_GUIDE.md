@@ -120,6 +120,8 @@ unselected face, edge or region it is selected first, so the ring fits it:
 | A sketch region | Extrude, Cut, Revolve, Sweep |
 | In a sketch | Line, Circle, Arc, Rectangle, Dimension, Spline, Finish sketch |
 
+Inside a sketch the ring opens with a right click or a held Q; a finger long-press or a Pencil hold there selects or grabs geometry instead.
+
 Items sit in fixed places, so you can learn them: Repeat is at the top, the rest fill clockwise from the
 upper right. **Flick** toward an item right after the click, before the ring is drawn (a quarter of a
 second), and the command runs without the ring ever showing. Once it is drawn, moving the mouse only

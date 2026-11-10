@@ -158,9 +158,12 @@ relaxed on CI).
 - **Renderer.** `WebGPURenderer`, which falls back to WebGL2 automatically. The backend in use is
   reported in the runtime diagnostics. Rendering is on demand: the loop runs while the camera moves
   or a pointer is down, and otherwise sleeps.
-- **Camera.** `camera-controls`. Mouse: left drag orbits, right or middle drag pans, the wheel
-  zooms toward the cursor. Touch: one finger orbits, two fingers pinch and pan, three fingers pan.
-  Double-click or double-tap fits the view.
+- **Camera.** Navigation presets (ADR-046, ADR-057; default `rightOrbit`): right drag orbits
+  about the surface point under the cursor (pivot marker shown), middle drag pans, the wheel zooms
+  toward the cursor, a right click opens the radial menu; left drag never navigates (it picks and
+  box-selects). Touch: one finger orbits about the point under it, two fingers pinch and pan,
+  three fingers pan. Double-click or double-tap fits the view. `camera-controls` handles only the
+  wheel, multi-touch and programmatic moves.
 - **Edges.** Fat lines (`LineSegments2`), so edges have a constant screen width.
 - **Picking.** Faces are picked from a GPU ID buffer. It is rendered and read back asynchronously
   when it matches the current camera. When it is stale, the viewport falls back to a
