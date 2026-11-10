@@ -65,7 +65,7 @@ import {
   newSketch,
   TOOL_NEEDS,
 } from '../features/factories';
-import { attentionItems, attentionMarkers, locateName, partDiagonal } from '../model/attention';
+import { attentionItems, attentionMarkers, partDiagonal } from '../model/attention';
 import { bootEngine, type EngineBoot } from '../model/engine';
 import { explainStatus, followBlockedCauses } from '../model/explain';
 import { type FaceInfo, faceInfo, type SectionSettings } from '../model/faces';
@@ -75,15 +75,9 @@ import { type Attachment, createRegenLoop, type Modeling, type RegenLoop } from 
 import { sketchShown, type VisibilityContext } from '../model/sketch-visibility';
 import { getDiagnostics } from '../platform/diagnostics';
 import { policyFor, type TierPolicy } from '../platform/tier-policy';
-import {
-  type Accepts,
-  applyPick,
-  hitKey,
-  pickVertices,
-  toHighlight,
-  vertexAt,
-} from '../selection/pick';
+import { type Accepts, hitKey, pickVertices, toHighlight, vertexAt } from '../selection/pick';
 import type { SyncController, SyncHost } from '../sync/controller';
+import * as attention from './attention-actions';
 import * as fileOps from './files';
 import type { BubbleActionId } from './gestures';
 import { commandFor, type InputSettings, loadInput } from './input';
@@ -1736,28 +1730,7 @@ export class Workbench {
    * chooser lists them at the reference's old location.
    */
   repick(featureId: Id, path?: string): void {
-    const status = this.treeStatuses.get()?.find((s) => s.featureId === featureId);
-    const u = path ? status?.unresolved?.find((x) => x.path === path) : status?.unresolved?.[0];
-    const target = u?.path ?? path;
-    if (!target) return;
-    this.patchUi({ featureId, picking: { featureId, path: target }, selection: [], prompt: null });
-    this.refreshSketchVisibility();
-    this.pushHighlights();
-    if (u?.reason === 'ambiguous' && u.candidates?.length) {
-      const fp = u.ref.fingerprint?.centroid;
-      const s = fp && this.viewport ? this.viewport.worldToScreen(fp) : null;
-      const r = this.canvas?.getBoundingClientRect();
-      this.patchUi({
-        candidates: {
-          featureId,
-          path: target,
-          kind: u.ref.kind,
-          names: [...u.candidates],
-          x: (r?.left ?? 0) + (s?.visible ? s.x : (r?.width ?? 0) / 2),
-          y: (r?.top ?? 0) + (s?.visible ? s.y : (r?.height ?? 0) / 2),
-        },
-      });
-    } else this.patchUi({ candidates: null });
+    attention.repick(this, featureId, path);
   }
 
   /** UI actions still in flight (they await the engine before editing the document). */
@@ -1765,67 +1738,26 @@ export class Workbench {
 
   /** Registers an in-flight UI action so `idle()` waits for it. */
   track<T>(p: Promise<T>): Promise<T> {
-    this.actions.add(p);
-    const done = () => this.actions.delete(p);
-    p.then(done, done);
-    return p;
+    return attention.track(this, p);
   }
 
   /** A candidate from the "Which one?" list for an ambiguous reference. */
   chooseCandidate(name: string | null): Promise<void> {
-    return this.track(this.applyCandidate(name));
+    return attention.chooseCandidate(this, name);
   }
 
-  private async applyCandidate(name: string | null): Promise<void> {
-    const c = this.ui.get().candidates;
-    this.patchUi({ candidates: null });
-    if (!c || name === null) return;
-    // The picking view (rolled back to the feature's input) holds the candidates.
-    await this.loop?.whenIdle();
-    const at = locateName(this.regen.get()?.result, name, c.kind);
-    const part = this.part;
-    const f = part?.features.find((x) => x.id === c.featureId);
-    if (!part || !f) return;
-    const ref = at ? await this.modeling?.refFor(part.id, at) : null;
-    const next = applyPick(f, c.path, ref ?? { name, kind: c.kind });
-    this.apply({ kind: 'updateFeature', partId: part.id, featureId: f.id, feature: next });
-    this.commit();
-    this.patchUi({ picking: null });
+  applyCandidate(name: string | null): Promise<void> {
+    return attention.applyCandidate(this, name);
   }
 
   /** Rough centre (mm) of a named face/edge in the current regen, for labels. */
   locate(name: string, kind: EntityRef['kind']): [number, number, number] | null {
-    const result = this.regen.get()?.result;
-    const at = locateName(result, name, kind);
-    const mesh = result?.bodies.find((b) => b.id === at?.bodyId)?.mesh;
-    if (!at || !mesh) return null;
-    const sum: [number, number, number] = [0, 0, 0];
-    let n = 0;
-    const addPoint = (arr: Float32Array, i: number) => {
-      sum[0] += arr[i * 3] as number;
-      sum[1] += arr[i * 3 + 1] as number;
-      sum[2] += arr[i * 3 + 2] as number;
-      n++;
-    };
-    if (at.kind === 'edge') {
-      const first = mesh.edgeRanges[at.index * 2] ?? 0;
-      const count = mesh.edgeRanges[at.index * 2 + 1] ?? 0;
-      for (let i = first; i < first + count; i++) addPoint(mesh.edgePositions, i);
-    } else {
-      const first = mesh.faceRanges[at.index * 2] ?? 0;
-      const count = mesh.faceRanges[at.index * 2 + 1] ?? 0;
-      for (let t = first; t < first + count; t++)
-        for (let k = 0; k < 3; k++) addPoint(mesh.positions, mesh.indices[t * 3 + k] as number);
-    }
-    return n ? [sum[0] / n, sum[1] / n, sum[2] / n] : null;
+    return attention.locate(this, name, kind);
   }
 
   /** Preselect a candidate while hovering it in the chooser. */
   previewCandidate(name: string | null): void {
-    const c = this.ui.get().candidates;
-    const at = c && name ? locateName(this.regen.get()?.result, name, c.kind) : null;
-    this.patchUi({ hover: at ? { ...at, point: [0, 0, 0], distancePx: 0 } : null });
-    this.pushHighlights();
+    attention.previewCandidate(this, name);
   }
 
   // ------------------------------------------------------------------ connections, sync, versions (M2.5)
