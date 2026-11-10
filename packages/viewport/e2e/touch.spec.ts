@@ -374,7 +374,21 @@ test.describe('camera events and zoomTo', () => {
       await t.move([{ x: t.cx + i * 4 + 1, y: t.cy + i, id: 1 }]);
     }
     await t.end();
-    await page.waitForTimeout(400);
+    // Damping settles over a few frames; on a loaded CI runner that can take longer than a fixed
+    // wait, so wait for the camera to report it stopped, then check the event stream.
+    await expect
+      .poll(
+        () =>
+          page.evaluate(() => {
+            const w = window as unknown as { __cam: Array<{ moving: boolean }> };
+            return (
+              !window.__viewport!.viewport.isCameraMoving() &&
+              w.__cam[w.__cam.length - 1]?.moving === false
+            );
+          }),
+        { timeout: 5_000 },
+      )
+      .toBe(true);
     const { cam, renders } = await page.evaluate(() => {
       const w = window as unknown as { __cam: Array<{ moving: boolean }>; __r0: number };
       return { cam: w.__cam, renders: window.__viewport!.viewport.getRenderCount() - w.__r0 };
