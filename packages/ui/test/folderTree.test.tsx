@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
+  AppShell,
   FeatureStepper,
   FeatureTree,
   type FeatureTreeItem,
@@ -475,6 +476,34 @@ describe('drag and drop', () => {
 
 /* ------------------------------------------------------------------ phone */
 
+describe('phone shell Features tab', () => {
+  it('opens the tree with the stepper and restores the model when the tab is left', async () => {
+    const onExit = vi.fn();
+    renderUI(
+      <AppShell
+        tier="phone"
+        documentName="Bracket"
+        kernelStatus={{ state: 'idle' }}
+        viewport={<div />}
+        phoneFeatureTree={{
+          tree: { features, folders: [mounting] },
+          previewIndex: 4,
+          onPreview: () => {},
+          onKeep: () => {},
+          onExit,
+        }}
+      />,
+    );
+    const tabs = screen.getByRole('group', { name: 'Viewer tools' });
+    fireEvent.click(within(tabs).getByRole('button', { name: 'Features' }));
+    expect(await screen.findByRole('slider', { name: 'Feature position' })).toBeInTheDocument();
+    expect(screen.getByRole('treeitem', { name: /^Mounting/ })).toBeInTheDocument();
+    fireEvent.click(within(tabs).getByRole('button', { name: 'Params' }));
+    await waitFor(() => expect(onExit).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole('slider')).toBeNull();
+  });
+});
+
 describe('phone step-through', () => {
   const tree = { features, folders: [mounting] };
   function phone(over: Partial<React.ComponentProps<typeof PhoneFeatureTree>> = {}) {
@@ -545,16 +574,17 @@ describe('phone step-through', () => {
     expect(screen.queryByRole('button', { name: 'Keep this rollback' })).toBeNull();
   });
 
-  it('leaving the tab mid-preview restores the model', () => {
+  it('leaving the tab mid-preview restores the model', async () => {
     const { props, unmount } = phone({ previewIndex: 4 });
     expect(props.onExit).not.toHaveBeenCalled();
     unmount();
-    expect(props.onExit).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(props.onExit).toHaveBeenCalledTimes(1));
   });
 
-  it('does not call exit on unmount when not previewing', () => {
+  it('does not call exit on unmount when not previewing', async () => {
     const { props, unmount } = phone({ previewIndex: null });
     unmount();
+    await new Promise((r) => setTimeout(r, 10));
     expect(props.onExit).not.toHaveBeenCalled();
   });
 

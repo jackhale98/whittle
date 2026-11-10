@@ -78,18 +78,23 @@ export function PhoneFeatureTree({
     [steps, onPreview],
   );
 
-  // Leaving while a preview is open restores the model (the user did not keep it).
+  // Leaving while a preview is open restores the model (the user did not keep it). Deferred one
+  // tick so React StrictMode's mount / unmount / mount probe does not end a preview that is only
+  // being re-mounted.
   const live = useRef({ previewing, onExit });
   live.current = { previewing, onExit };
-  useEffect(
-    () => () => {
-      if (live.current.previewing) live.current.onExit();
-    },
-    [],
-  );
+  const leaving = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => {
+    clearTimeout(leaving.current);
+    return () => {
+      leaving.current = setTimeout(() => {
+        if (live.current.previewing) live.current.onExit();
+      }, 0);
+    };
+  }, []);
 
   return (
-    <div className={cn('flex min-h-0 flex-col', className)} data-testid="phone-feature-tree">
+    <div className={cn('flex min-h-full flex-col', className)} data-testid="phone-feature-tree">
       <FeatureTree
         features={tree.features}
         {...(tree.statuses ? { statuses: tree.statuses } : {})}

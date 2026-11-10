@@ -1460,7 +1460,7 @@ export function FeatureTree({
             aria-hidden
             data-testid="drop-indicator"
             data-kind={activeSlot.kind}
-            className="pointer-events-none absolute right-2 left-2 flex items-center transition-[top] duration-fast"
+            className="pointer-events-none absolute right-2 left-2 z-[4] flex items-center transition-[top] duration-fast"
             style={{
               top: activeSlot.y - 1,
               left: activeSlot.kind === 'into' || activeSlot.kind === 'stay' ? 8 + indentPx : 8,
