@@ -416,7 +416,8 @@ names). Timings are printed as `[regen timing]` lines.
 
 ADR-076: `unify.golden.test.ts` (real kernel: the bracket's back and side faces are one face each,
 14 faces, volume unchanged; a sketch on the absorbed upright back face resolves to the merged face
-as `merged` and returns to its own face when a gap param un-merges it; shells of 1, 2 and 5 mm with
+as `merged` and returns to its own face when a gap param un-merges it; a fillet on the absorbed
+upright back-corner edge name rounds the merged full-height edge; shells of 1, 2 and 5 mm with
 analytic void volumes, closed, top open, back open picked as both absorbed faces, the front open
 between tangent corner fillets, and the precise "too thick" error), `merged-unit.test.ts` (alias
 entries, the walk's merge table, chains).
