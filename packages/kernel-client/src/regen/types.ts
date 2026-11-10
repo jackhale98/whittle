@@ -8,10 +8,12 @@ import type {
   BodyResult,
   FeatureStatus,
   Fingerprint,
+  Id,
   KernelError,
   MeshBuffers,
   MeshQuality,
   RegenResult,
+  RegenSlot,
   ShapeHandle,
   SketchSolveInput,
   SketchSolveResult,
@@ -105,6 +107,53 @@ export type ImportResult =
   | { ok: false; error: KernelError };
 
 export type ExportResult = { ok: true; bytes: Uint8Array } | { ok: false; error: KernelError };
+
+/** Feature-result cache of one slot of a part (`RegenMemoryStats.slots`). */
+export interface RegenSlotStats {
+  partId: Id;
+  slot: RegenSlot;
+  /** Cache entries (feature results and copied tool solids), as `RegenEngine.stats` reports. */
+  entries: number;
+  /** Shape handles those entries own, as `RegenEngine.stats` reports. */
+  handles: number;
+  /** Imported attachments cached by sha256, and the B-rep handles they own. */
+  imports: number;
+  importHandles: number;
+}
+
+/**
+ * Memory guard (PLAN H1): what the regen engine holds and the bounds it holds it to. A snapshot
+ * taken between engine calls (it does not wait for a running regen). Structured-clonable.
+ */
+export interface RegenMemoryStats {
+  /** The configured bounds (`RegenEngineOptions`, `configure`). */
+  limits: {
+    /** Spare cache entries kept per slot beyond those the latest and last all-ok regens use. */
+    maxSpareResults: number;
+    /** Version slots kept per part beside `'main'`. */
+    maxVersionSlots: number;
+    /** Spare imported attachments kept per slot beyond those the latest regen uses. */
+    importSpare: number;
+  };
+  /** One row per part and slot: parts in first-regen order, `'main'` first, then by recency. */
+  slots: RegenSlotStats[];
+  /** Totals over every slot. */
+  entries: number;
+  handles: number;
+  /**
+   * Every shape handle the engine owns (cache entries and cached imports); `handles` plus the
+   * slots' `importHandles`. Callers never release these (`ownsHandle`).
+   */
+  ownedHandles: number;
+  /** Per-handle caches, dropped with their handle: counts, and the cached meshes' bytes. */
+  shapeCaches: {
+    fingerprints: number;
+    massProperties: number;
+    meshes: number;
+    meshBytes: number;
+    geometry: number;
+  };
+}
 
 /** Default viewport deflections: relative chord deviation (× bbox size) and angle (rad). */
 export const MESH_QUALITY: Record<

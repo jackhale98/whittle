@@ -91,6 +91,7 @@ import type {
   RegenEngineDeps,
   RegenEngineOptions,
   RegenFeatureStatus,
+  RegenMemoryStats,
   RegenOutput,
 } from './types';
 
@@ -102,7 +103,9 @@ export {
   type RegenEngineDeps,
   type RegenEngineOptions,
   type RegenFeatureStatus,
+  type RegenMemoryStats,
   type RegenOutput,
+  type RegenSlotStats,
   type RegenUnresolvedRef,
   type SketchSolve,
 } from './types';
@@ -422,6 +425,17 @@ export class RegenEngine {
     let handles = 0;
     for (const e of pc.entries.values()) handles += e.owned.length;
     return { entries: pc.entries.size, handles };
+  }
+
+  /**
+   * Memory guard (PLAN H1): cache entries and owned shape handles of every part and slot, the
+   * per-handle caches and the configured bounds. Stable diagnostics surface: `ownedHandles` must
+   * equal `handles` plus every slot's `importHandles`, and all of them drop to 0 once every part
+   * is closed (`closePart`). Engine-side only; the façade's live handles and Wasm heap are added by
+   * `ModelingApiInternals.memoryStats`.
+   */
+  memoryStats(): RegenMemoryStats {
+    return { ...this.cache.memoryStats(), shapeCaches: this.core.shapeCacheStats() };
   }
 
   /** Diagnostics: the slots a part holds, `'main'` first, then version slots by recency. */

@@ -20,7 +20,12 @@ import type {
 import { edgeCircle, edgeEndpoints, edgeLine, faceAxis, type GeoQuery } from './datums';
 import { type ReprojectLinked, reprojectLinkedFallback } from './linked';
 import type { CacheEntry, RawImport } from './state';
-import { MESH_QUALITY, type RegenEngineDeps, type SketchSolve } from './types';
+import {
+  MESH_QUALITY,
+  type RegenEngineDeps,
+  type RegenMemoryStats,
+  type SketchSolve,
+} from './types';
 
 export class EngineCore {
   readonly kernel: RegenEngineDeps['kernel'];
@@ -132,5 +137,20 @@ export class EngineCore {
     return this.memo(t.shape, `ends:${t.index}:${tol}`, () =>
       edgeEndpoints(this.geo(), t.shape, t.index, tol),
     );
+  }
+
+  /** Memory guard: sizes of the per-handle caches (`RegenMemoryStats.shapeCaches`). */
+  shapeCacheStats(): RegenMemoryStats['shapeCaches'] {
+    let meshBytes = 0;
+    for (const m of this.meshes.values()) {
+      for (const v of Object.values(m)) if (ArrayBuffer.isView(v)) meshBytes += v.byteLength;
+    }
+    return {
+      fingerprints: this.fps.size,
+      massProperties: this.mass.size,
+      meshes: this.meshes.size,
+      meshBytes,
+      geometry: this.geoMemo.size,
+    };
   }
 }

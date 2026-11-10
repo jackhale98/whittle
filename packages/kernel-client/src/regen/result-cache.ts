@@ -9,6 +9,7 @@
 import type { Id, RegenSlot } from '@wren-cad/contracts';
 import type { EngineCore } from './core';
 import type { PartCache } from './state';
+import type { RegenMemoryStats, RegenSlotStats } from './types';
 
 export class ResultCache {
   private readonly core: EngineCore;
@@ -100,6 +101,44 @@ export class ResultCache {
       await this.core.releaseEntry(e);
       pc.entries.delete(e.key);
     }
+  }
+
+  /**
+   * Memory guard: entries and handles per part and slot, with the bounds they are evicted to
+   * (`RegenMemoryStats` without the per-handle caches).
+   */
+  memoryStats(): Omit<RegenMemoryStats, 'shapeCaches'> {
+    const slots: RegenSlotStats[] = [];
+    for (const [partId, bySlot] of this.parts) {
+      const ordered = [...bySlot.values()].sort((x, y) =>
+        x.slot === 'main' ? -1 : y.slot === 'main' ? 1 : y.used - x.used,
+      );
+      for (const pc of ordered) {
+        let handles = 0;
+        for (const e of pc.entries.values()) handles += e.owned.length;
+        let importHandles = 0;
+        for (const raw of pc.imports.values()) importHandles += raw.shapes.length;
+        slots.push({
+          partId,
+          slot: pc.slot,
+          entries: pc.entries.size,
+          handles,
+          imports: pc.imports.size,
+          importHandles,
+        });
+      }
+    }
+    return {
+      limits: {
+        maxSpareResults: this.maxSpare,
+        maxVersionSlots: this.maxSlots,
+        importSpare: IMPORT_SPARE,
+      },
+      slots,
+      entries: slots.reduce((n, s) => n + s.entries, 0),
+      handles: slots.reduce((n, s) => n + s.handles, 0),
+      ownedHandles: this.core.ownedHandles.size,
+    };
   }
 }
 
