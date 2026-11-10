@@ -434,6 +434,10 @@ export function DiagnosticsList({
       0,
       ['Shape handles', memory && memory.handles >= 0 ? String(memory.handles) : '—'],
       ['Wasm heap', memory && memory.heapBytes >= 0 ? formatMiB(memory.heapBytes) : '—'],
+      [
+        'Regen cache',
+        memory ? `${memory.cacheEntries} entries · ${memory.cacheHandles} handles` : '—',
+      ],
     );
   }
   return (

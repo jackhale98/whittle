@@ -165,7 +165,10 @@ export type KernelWorkerApi = KernelApi & KernelLowLevelApi;
 export interface KernelApiInternals {
   /** Live façade handle count (leak checks). `-1` when not initialised. */
   liveHandleCount(): number;
-  /** Byte length of the Wasm linear memory (the heap high-water mark). `-1` when unavailable. */
+  /**
+   * Bytes of the kernel's Wasm linear memory (its heap; grows on demand, never shrinks). `-1`
+   * when not initialised or the build does not export its memory.
+   */
   wasmHeapBytes(): number;
 }
 
@@ -700,12 +703,9 @@ export function createKernelApi(
     },
 
     wasmHeapBytes(): number {
-      if (kernel === null) return -1;
-      try {
-        return kernel.wasmMemory?.buffer.byteLength ?? -1;
-      } catch {
-        return -1;
-      }
+      // `wasmMemory` is not among the checked façade entry points: guard against its absence.
+      const memory: WebAssembly.Memory | undefined = kernel?.wasmMemory;
+      return memory ? memory.buffer.byteLength : -1;
     },
   };
   return api;

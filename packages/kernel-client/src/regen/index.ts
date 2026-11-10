@@ -41,7 +41,9 @@ export {
   type RegenEngineDeps,
   type RegenEngineOptions,
   type RegenFeatureStatus,
+  type RegenMemoryStats,
   type RegenOutput,
+  type RegenSlotStats,
   type RegenUnresolvedRef,
   type SketchSolve,
 } from './engine';

@@ -25,6 +25,9 @@ export interface KernelMemory {
   handles: number;
   /** Wasm linear memory in bytes. */
   heapBytes: number;
+  /** Regen cache: entries and the shape handles they own. */
+  cacheEntries: number;
+  cacheHandles: number;
 }
 
 /** Props every shell accepts. The shell never touches Wasm or the kernel: it only renders state. */

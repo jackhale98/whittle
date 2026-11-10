@@ -56,18 +56,7 @@ export type ModelingWorkerApi = Omit<ModelingApi, 'regenerate' | 'compare'> &
      * next regen, a lower `maxVersionSlots` (proposed for the contract) releases slots at once.
      */
     configureRegen(options: RegenWorkerOptions): Promise<void>;
-    /**
-     * Diagnostics: live kernel shape handles (the regen cache's owned handles included) and the
-     * Wasm heap size in bytes; `-1` for either when the kernel is not initialised.
-     */
-    memoryStats(): Promise<KernelMemoryStats>;
   };
-
-/** Live kernel memory figures for the diagnostics view and the soak test. */
-export interface KernelMemoryStats {
-  handles: number;
-  heapBytes: number;
-}
 
 /** Runtime-configurable regen engine options (structured-clonable). */
 export type RegenWorkerOptions = Pick<RegenEngineOptions, 'maxSpareResults' | 'maxVersionSlots'>;
@@ -85,9 +74,22 @@ export interface ModelingApiDeps extends KernelApiDeps {
   regen?: RegenEngineOptions;
 }
 
+/**
+ * Memory guard (PLAN H1): the kernel worker's memory in one structured-clonable snapshot, for
+ * diagnostics and soak tests. Proposed for the contract as `ModelingApi.memoryStats()`.
+ */
+import type { KernelMemoryStats } from '@wren-cad/contracts';
+
+export type { KernelMemoryStats };
+
 /** Extra surface for tests and diagnostics; not part of the Comlink contract. */
 export interface ModelingApiInternals extends KernelApiInternals {
   readonly engine: RegenEngine;
+  /**
+   * Memory guard snapshot (see `KernelMemoryStats`). With every part closed, `liveHandles` is back
+   * to its baseline and `regen` holds no entries or handles.
+   */
+  memoryStats(): Promise<KernelMemoryStats>;
 }
 
 /** What `createModelingApi` returns: the Comlink surface plus test/diagnostic internals. */
@@ -124,11 +126,12 @@ export function createModelingApi(deps: ModelingApiDeps): ModelingApiImpl {
     projectFaceOutline: (shape, face, plane) => kernel.projectFaceOutline(shape, face, plane),
     liveHandleCount: () => kernel.liveHandleCount(),
     wasmHeapBytes: () => kernel.wasmHeapBytes(),
-    memoryStats: async () => ({
-      handles: kernel.liveHandleCount(),
-      heapBytes: kernel.wasmHeapBytes(),
-    }),
     engine,
+    memoryStats: async () => ({
+      liveHandles: kernel.liveHandleCount(),
+      wasmHeapBytes: kernel.wasmHeapBytes(),
+      regen: engine.memoryStats(),
+    }),
 
     async regenerate(request) {
       const result = await engine.regenerate(request);

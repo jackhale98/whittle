@@ -29,7 +29,14 @@ const EDITS = 100;
 const CYCLES = 10;
 const MiB = 1024 * 1024;
 
-type Kernel = { memory(): Promise<{ handles: number; heapBytes: number } | null> };
+type Kernel = {
+  memory(): Promise<{
+    handles: number;
+    heapBytes: number;
+    cacheEntries: number;
+    cacheHandles: number;
+  } | null>;
+};
 const kernelMemory = (page: Page) =>
   page.evaluate(() => (window as unknown as { __wrenKernel: Kernel }).__wrenKernel.memory());
 
@@ -235,7 +242,13 @@ test('100 edits and 10 close/reopen cycles: handles back to baseline, memory bou
     .toBe(Array(9).fill('ok').join(','));
 
   // Close and reopen, 10 times.
-  const cycles: { handles: number; wasm: number; js: number; tree: number | null }[] = [];
+  const cycles: {
+    handles: number;
+    cache: number;
+    wasm: number;
+    js: number;
+    tree: number | null;
+  }[] = [];
   for (let c = 0; c < CYCLES; c++) {
     if (c > 0) {
       await palette(page, 'Welcome');
@@ -247,6 +260,7 @@ test('100 edits and 10 close/reopen cycles: handles back to baseline, memory bou
     const mem = await kernelMemory(page);
     cycles.push({
       handles,
+      cache: (mem?.cacheEntries ?? -1) + (mem?.cacheHandles ?? -1),
       wasm: mem?.heapBytes ?? -1,
       js: await jsHeapBytes(page),
       tree: await processTreeBytes(page),
@@ -268,6 +282,8 @@ test('100 edits and 10 close/reopen cycles: handles back to baseline, memory bou
 
   // Handles: every close returns to the baseline (settleHandles already polled for it).
   for (const c of cycles) expect(c.handles).toBe(baseline);
+  // ...and the regen cache holds nothing for a closed part (0 entries, 0 handles).
+  for (const c of cycles) expect(c.cache).toBe(0);
   // The regen cache is an LRU with a tier budget (desktop 128 results): bounded while editing.
   expect(maxHandles).toBeLessThanOrEqual(500);
 

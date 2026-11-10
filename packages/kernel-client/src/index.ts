@@ -29,6 +29,8 @@ export type { CompareOutput } from './regen/compare';
 export type {
   ReboundRef,
   RegenFeatureStatus,
+  RegenMemoryStats,
   RegenOutput,
+  RegenSlotStats,
   RegenUnresolvedRef,
 } from './regen/engine';
