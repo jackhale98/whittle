@@ -18,7 +18,7 @@ import {
   WrenLoader,
 } from '@wren-cad/ui';
 import { Library } from 'lucide-react';
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import { useObservable } from '../app/observable';
 import type { SketchSession } from '../app/sketch-session';
 import type { SketchUi, UiState } from '../app/state';
@@ -45,7 +45,8 @@ const ABOVE_BOTTOM = { bottom: 'calc(var(--chrome-bottom, 80px) + 12px)' };
 const TOAST_BOTTOM = { bottom: 'calc(var(--chrome-bottom, 68px) + 12px)' };
 const Welcome = lazy(() => import('./Welcome'));
 // M3.5: the radial menu, the settings panel and the shortcut overlay load on first use.
-const RadialLayer = lazy(() => import('./RadialLayer'));
+const loadRadial = () => import('./RadialLayer');
+const RadialLayer = lazy(loadRadial);
 const SettingsPanel = lazy(() => import('./SettingsPanel'));
 const SketchLayer = lazy(() => import('./SketchLayer'));
 const SketchToolbarPane = lazy(() => import('./SketchToolbarPane'));
@@ -328,6 +329,12 @@ export function ViewportOverlays({ wb, touch }: { wb: Workbench; touch: boolean 
   const part = doc.parts[0];
   const session = wb.sketch;
   const sk = ui.sketch;
+  // Fetch the radial menu's chunk once the app is idle so a first flick is not lost to a download.
+  useEffect(() => {
+    if (!ui.ready) return;
+    const t = setTimeout(() => void loadRadial(), 1500);
+    return () => clearTimeout(t);
+  }, [ui.ready]);
 
   const editing = ui.featureId ? part?.features.find((f) => f.id === ui.featureId) : undefined;
   const verb = touch ? 'Tap' : 'Click';

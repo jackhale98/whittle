@@ -1,4 +1,4 @@
-import { expect, type Page, test } from '@playwright/test';
+import { devices, expect, type Page, test } from '@playwright/test';
 import type { DimensionConstraint, EntityRef, SketchFeature, WrenDoc } from '@wren-cad/contracts';
 import { docWith, edgeName, extrude, fid, region, Sk, side } from './fixtures';
 import {
@@ -131,7 +131,7 @@ async function boxSetup(page: Page) {
   const cv = await page.getByTestId('viewport-canvas').boundingBox();
   if (!cv) throw new Error('no canvas');
   const empty = {
-    x: Math.max(Math.max(...xs) + 40, cv.x + cv.width - 90),
+    x: Math.max(Math.max(...xs) + 40, cv.x + cv.width - 200),
     y: cv.y + cv.height / 2,
   };
   return {
@@ -387,7 +387,7 @@ test.describe('presets', () => {
     await page.mouse.up();
     const cv = await page.getByTestId('viewport-canvas').boundingBox();
     if (!cv) throw new Error('no canvas');
-    const ex = cv.x + cv.width - 150;
+    const ex = cv.x + cv.width - 250;
     const ey = cv.y + 120;
     await page.mouse.move(ex, ey);
     await page.mouse.down();
@@ -407,8 +407,15 @@ test.describe('presets', () => {
     expect(await selection(page)).toBe(1);
   });
 
-  test('the phone shell reaches Settings from the command palette', async ({ page }) => {
-    await page.setViewportSize({ width: 390, height: 844 });
+  test.describe('phone', () => {
+    test.use({
+      viewport: { width: 390, height: 844 },
+      userAgent: devices['iPhone 13'].userAgent,
+      deviceScaleFactor: 2,
+      isMobile: true,
+      hasTouch: true,
+    });
+    test('the phone shell reaches Settings from the command palette', async ({ page }) => {
     await boot(page);
     await page.getByRole('button', { name: 'Close welcome' }).click();
     await palette(page, 'Settings');
@@ -421,6 +428,7 @@ test.describe('presets', () => {
     expect((await probe(page).navigation()).preset).toBe('rightOrbitRepeat');
     await page.getByTestId('settings-close').click();
     await expect(panel).toBeHidden();
+    });
   });
 });
 
@@ -439,22 +447,21 @@ test.describe('radial menu', () => {
 
     // Right click on empty space, then flick north-east at once: Sketch (first item).
     let ran = false;
-    for (let i = 0; i < 5 && !ran; i++) {
-      const t0 = Date.now();
+    for (let i = 0; i < 6 && !ran; i++) {
       await page.mouse.click(x, y, { button: 'right' });
-      await page.mouse.move(x + 50, y - 50, { steps: 2 });
-      const fast = Date.now() - t0 < 200;
-      await page.waitForTimeout(400);
-      if (fast) {
-        expect(await page.getByTestId('radial-menu').count()).toBe(0);
-        await expect.poll(async () => (await a.ui()).prompt).toBe('sketch');
-        ran = true;
-      } else {
+      // A flick: quick moves toward north-east (the menu mounts during the first of them).
+      for (let k = 1; k <= 4; k++) await page.mouse.move(x + k * 16, y - k * 16);
+      // Nothing was drawn when the command ran (the draw delay is 250 ms).
+      const drawn = (await page.getByTestId('radial-menu').count()) > 0;
+      const prompt = (await a.ui()).prompt;
+      if (!drawn && prompt === 'sketch') ran = true;
+      else {
         await page.keyboard.press('Escape');
+        await page.waitForTimeout(100);
         await page.mouse.move(x, y);
       }
     }
-    expect(ran, 'the machine was too slow for a flick before 250 ms').toBe(true);
+    expect(ran, 'no flick ran before the menu drew').toBe(true);
     await page.keyboard.press('Escape');
     await expect.poll(async () => (await a.ui()).prompt).toBeNull();
 
