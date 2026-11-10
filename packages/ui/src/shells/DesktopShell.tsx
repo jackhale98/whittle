@@ -54,6 +54,7 @@ export function DesktopShell(props: ShellProps) {
     kernelStatus,
     viewport,
     diagnostics,
+    kernelMemory,
     onUndo,
     onRedo,
     featureTree,
@@ -65,6 +66,7 @@ export function DesktopShell(props: ShellProps) {
   const [leftWidth, setLeftWidth] = useState(LEFT_DEFAULT);
   const [dragging, setDragging] = useState(false);
   const [tab, setTab] = useState('features');
+  const [runtimeOpen, setRuntimeOpen] = useState(false);
   const drag = useRef<{ x: number; w: number } | null>(null);
   const spring = useSpring('standard');
   const clamp = (w: number) => Math.min(LEFT_MAX, Math.max(LEFT_MIN, w));
@@ -282,6 +284,7 @@ export function DesktopShell(props: ShellProps) {
                     <details
                       className="group shrink-0 border-t border-border"
                       data-testid="runtime-details"
+                      onToggle={(e) => setRuntimeOpen(e.currentTarget.open)}
                     >
                       <summary className="flex cursor-pointer list-none items-center gap-1.5 px-4 py-2.5 text-2xs font-semibold tracking-wider text-fg-muted uppercase select-none hover:text-fg focus-visible:outline-2 focus-visible:outline-accent [&::-webkit-details-marker]:hidden">
                         <ChevronRight
@@ -294,7 +297,11 @@ export function DesktopShell(props: ShellProps) {
                         </span>
                       </summary>
                       <div className="px-4 pb-3">
-                        <DiagnosticsList d={diagnostics} />
+                        <DiagnosticsList
+                          d={diagnostics}
+                          active={runtimeOpen}
+                          {...(kernelMemory ? { kernelMemory } : {})}
+                        />
                       </div>
                     </details>
                   ) : null}

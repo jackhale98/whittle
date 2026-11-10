@@ -23,7 +23,7 @@ export type {
   ProjectedLoopEdge,
   ShapeImportFormat,
 } from './kernel-api';
-export type { ModelingWorkerApi, RegenWorkerOptions } from './modeling-api';
+export type { KernelMemoryStats, ModelingWorkerApi, RegenWorkerOptions } from './modeling-api';
 export { isStatusMessage, STATUS_MESSAGE_TAG, type StatusMessage } from './protocol';
 export type { CompareOutput } from './regen/compare';
 export type {

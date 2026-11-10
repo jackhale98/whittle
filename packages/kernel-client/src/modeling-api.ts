@@ -56,7 +56,18 @@ export type ModelingWorkerApi = Omit<ModelingApi, 'regenerate' | 'compare'> &
      * next regen, a lower `maxVersionSlots` (proposed for the contract) releases slots at once.
      */
     configureRegen(options: RegenWorkerOptions): Promise<void>;
+    /**
+     * Diagnostics: live kernel shape handles (the regen cache's owned handles included) and the
+     * Wasm heap size in bytes; `-1` for either when the kernel is not initialised.
+     */
+    memoryStats(): Promise<KernelMemoryStats>;
   };
+
+/** Live kernel memory figures for the diagnostics view and the soak test. */
+export interface KernelMemoryStats {
+  handles: number;
+  heapBytes: number;
+}
 
 /** Runtime-configurable regen engine options (structured-clonable). */
 export type RegenWorkerOptions = Pick<RegenEngineOptions, 'maxSpareResults' | 'maxVersionSlots'>;
@@ -112,6 +123,11 @@ export function createModelingApi(deps: ModelingApiDeps): ModelingApiImpl {
     projectEdges: (shape, edges, plane) => kernel.projectEdges(shape, edges, plane),
     projectFaceOutline: (shape, face, plane) => kernel.projectFaceOutline(shape, face, plane),
     liveHandleCount: () => kernel.liveHandleCount(),
+    wasmHeapBytes: () => kernel.wasmHeapBytes(),
+    memoryStats: async () => ({
+      handles: kernel.liveHandleCount(),
+      heapBytes: kernel.wasmHeapBytes(),
+    }),
     engine,
 
     async regenerate(request) {

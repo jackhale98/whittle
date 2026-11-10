@@ -165,6 +165,8 @@ export type KernelWorkerApi = KernelApi & KernelLowLevelApi;
 export interface KernelApiInternals {
   /** Live façade handle count (leak checks). `-1` when not initialised. */
   liveHandleCount(): number;
+  /** Byte length of the Wasm linear memory (the heap high-water mark). `-1` when unavailable. */
+  wasmHeapBytes(): number;
 }
 
 interface MeshMeta {
@@ -692,6 +694,15 @@ export function createKernelApi(
       if (kernel === null) return -1;
       try {
         return kernel.liveHandleCount();
+      } catch {
+        return -1;
+      }
+    },
+
+    wasmHeapBytes(): number {
+      if (kernel === null) return -1;
+      try {
+        return kernel.wasmMemory?.buffer.byteLength ?? -1;
       } catch {
         return -1;
       }

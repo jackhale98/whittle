@@ -322,6 +322,7 @@ export { DesktopShell } from './shells/DesktopShell';
 export { PhoneShell } from './shells/PhoneShell';
 export { TabletShell } from './shells/TabletShell';
 export type {
+  KernelMemory,
   PhoneSheetTab,
   SheetTabId,
   ShellProps,
