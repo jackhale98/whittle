@@ -2152,6 +2152,9 @@ Owner decisions D1–D4 are in PLAN §M3.7; the research is `docs/ux-research/re
 - **Part number (D4).** When unset, a part number resolves to "<document name>-<configuration name>". Exports name files after it, and collisions warn, never overwrite.
 - **Merge.** Structural merge (ADR-0xx M2.5) treats configurations as id-keyed records and each override as a cell. Edits to different cells merge cleanly; the same cell edited on both sides conflicts. A delete on one side against an edit on the other conflicts. Two sides adding the same name keep both ids, and the duplicate name is flagged.
 - **Schema.** All additions are optional fields, so `schemaVersion` goes from 2 to 3 with a no-op migration (FILE_FORMAT §7).
+- **Two kinds of "no longer applies"** (clarified at merge time):
+  1. An override whose **feature or parameter is deleted** is removed together with it. This happens in the same undo entry when deleting in the app, and with a plain-language merge note when a merge deletes it ("Overrides of Fillet 3 in Long were removed with the feature"). The target is gone, so there is nothing left to attend to.
+  2. An override whose target still exists but no longer fits (an invalid pointer, a wrong option value, a required expression left empty by a kind change) is **kept** and reported by `resolveConfiguration` as an issue. That configuration's feature shows "needs attention"; it is never silently dropped.
 
 ## ADR-075 — `packages/sketch` is `sideEffects: false`: the barrel stays out of the initial route (2026-11-10)
 
