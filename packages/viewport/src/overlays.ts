@@ -33,8 +33,8 @@ import {
 } from 'three/webgpu';
 
 /**
- * View-space distance (world units) by which coplanar overlays are pulled toward the camera. The
- * viewport sets it every frame (see `overlayBiasFor`).
+ * Relative depth bias: a coplanar overlay is moved toward the camera along its own view ray by a
+ * fraction of its distance (see `overlayBiasFor`, `biasedClipZ`). Set every frame.
  *
  * Why not `polygonOffset`: WebGPU only applies it to triangle lists, in raw depth-buffer units
  * (about 1e-7 of the range on a float depth buffer) and with a slope term that is zero for a
@@ -43,15 +43,30 @@ import {
  */
 export const overlayDepthBias = uniform(0);
 
-/** The bias for a camera `distance` from its target: 0.2 % of it, never below a scene epsilon. */
-export function overlayBiasFor(distance: number, sceneRadius: number): number {
-  return Math.max(distance * 2e-3, sceneRadius * 1e-4, 1e-6);
+/** Fraction of its own distance an overlay is pulled toward the camera (2.5 %: along the iso view ray a plane 0.15 mm lower is 0.26 mm further away, so 0.5 scene radii needs about 2 %). */
+export const OVERLAY_BIAS_FRACTION = 2.5e-2;
+
+/** The uniform value for a fraction `eps`: the factor `eps / (1 - eps)` used by `biasedClipZ`. */
+export function overlayBiasFor(eps: number = OVERLAY_BIAS_FRACTION): number {
+  return eps / (1 - eps);
 }
 
 /**
- * Pull a material's geometry toward the camera by `overlayDepthBias` (view-space units) without
- * moving it on screen: only clip-space z changes (z += P[2][2] * bias, w and xy untouched).
- * Replaces `polygonOffset` for surfaces that lie exactly on a body face or edge.
+ * Clip z of a point moved to p * (1 - eps) in view space, keeping clip x, y, w (so its screen
+ * position) unchanged. For a perspective matrix clip.w = -p.z and clip.z = P22 p.z + P23, so
+ * z' / w = (P22 p.z (1 - eps) + P23) / (-p.z (1 - eps)); with w held at -p.z that is
+ * clip.z + P23 * eps / (1 - eps). `p23` is `projectionMatrix.elements[14]`, `k` = `overlayBiasFor`.
+ * The shift scales with the point's own distance and does not involve the near plane. (The
+ * viewport is perspective only; an orthographic camera would add `P22 * delta` instead.)
+ */
+export function biasedClipZ(clipZ: number, p23: number, k: number): number {
+  return clipZ + p23 * k;
+}
+
+/**
+ * Pull a material's geometry toward the camera by a relative `overlayDepthBias` without moving it
+ * on screen: only clip-space z changes (z += P[2][3] * k; x, y, w untouched). Replaces
+ * `polygonOffset` for surfaces that lie exactly on a body face or edge.
  */
 export function applyDepthBias<M extends Material>(material: M): M {
   const m = material as unknown as {
@@ -60,8 +75,9 @@ export function applyDepthBias<M extends Material>(material: M): M {
   const base = m.setupVertex;
   m.setupVertex = function (this: unknown, builder: unknown) {
     const clip = base.call(this, builder);
-    const a = cameraProjectionMatrix.mul(vec4(0, 0, 1, 0)).z;
-    return vec4(clip.x, clip.y, clip.z.add(a.mul(overlayDepthBias)), clip.w);
+    // P * (0, 0, 0, 1) is the projection's last column; .z is elements[14].
+    const p23 = cameraProjectionMatrix.mul(vec4(0, 0, 0, 1)).z;
+    return vec4(clip.x, clip.y, clip.z.add(p23.mul(overlayDepthBias)), clip.w);
   };
   material.needsUpdate = true;
   return material;

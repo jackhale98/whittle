@@ -3572,7 +3572,7 @@ class ViewportImpl implements ViewportEngine {
       this.camera.far = far;
       this.camera.updateProjectionMatrix();
     }
-    overlayDepthBias.value = overlayBiasFor(this.controls.distance, this.sceneRadius);
+    overlayDepthBias.value = overlayBiasFor();
     const p11 = this.camera.projectionMatrix.elements[5] as number;
     const heightCss = this.canvas.clientHeight;
     sizeDots(
