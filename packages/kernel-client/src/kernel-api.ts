@@ -141,14 +141,15 @@ export interface KernelProjectionApi {
   /**
    * Model edges (TopExp edge ordinals of `shape`) projected onto `plane`, in its local x/y. Lines
    * stay lines, circles and arcs seen face-on stay circles and counter-clockwise arcs, everything
-   * else is a `polyline` (approximated). An edge along the plane normal projects to a point and
+   * else is a `polyline` (approximated); the worker asks for `exact` projections, so conics and
+   * B-splines come back as `ellipse` / `ellipticArc` / `bspline`. An edge along the plane normal projects to a point and
    * comes back with no curves.
    */
   projectEdges(
     shape: ShapeHandle,
     edges: number[],
     plane: Frame,
-  ): Promise<Result<{ edge: number; curves: ProjectedCurve[] }[]>>;
+  ): Promise<Result<ExactProjectedEdge[]>>;
   /**
    * A face's outline projected like `projectEdges`: the outer loop's edges (`loop` 0), then each
    * inner loop's (`loop` 1, 2, …), each loop in wire order.
