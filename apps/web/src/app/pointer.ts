@@ -266,6 +266,12 @@ export function onPointerDown(wb: Workbench, e: PointerEvent): void {
     wb.downs.drop(e.pointerId);
     return;
   }
+  // "Export all" has the engine's live slot to itself for a moment: picks would resolve against
+  // another configuration (M3.7). Refused visibly, not queued.
+  if (wb.config.exportingAll) {
+    wb.config.holdHint();
+    return;
+  }
   if (e.pointerType === 'pen') wb.lastPenAt = performance.now();
   wb.downs.press(e);
   if (wb.ui.get().sketch) {
@@ -476,7 +482,7 @@ export async function refFor(
 ): Promise<EntityRef | null> {
   const part = wb.part;
   const modeling = wb.modeling;
-  if (!part) return null;
+  if (!part || wb.config.exportingAll) return null;
   return refForHit(hit, part.id, (p, q) => modeling?.refFor(p, q) ?? Promise.resolve(null), as);
 }
 

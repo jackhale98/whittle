@@ -1037,7 +1037,8 @@ export class Workbench {
   }
 
   evaluate = (expr: Expr, expected?: NamedDimension): EvalResult => {
-    const scope = scopeOf(this.doc);
+    // Values as the active configuration sees them: previews match the model (M3.7).
+    const scope = scopeOf(this.config.resolved().doc);
     if (expected) return expressionEngine.evaluate(expr, expected, scope);
     const r = expressionEngine.evaluateAny(expr, scope);
     return r.ok ? { ok: true, value: r.value, dimension: r.dimension, dependsOn: r.dependsOn } : r;

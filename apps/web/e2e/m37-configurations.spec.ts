@@ -602,3 +602,93 @@ test('switching between two built configurations stays within the 300 ms regen b
   console.log(`config switch timing ${JSON.stringify(seen)}`);
   for (const s of warm) expect(s.renderMs, JSON.stringify(s)).toBeLessThan(300);
 });
+
+test('export all skips a configuration whose overrides no longer apply and names it; the active one is refused', async ({
+  page,
+}) => {
+  test.slow();
+  const doc = configPartDoc();
+  const thick = doc.parts[0]?.configurations?.find((c) => c.id === CFG_THICK);
+  if (!thick) throw new Error('no configuration');
+  thick.features = {
+    ...thick.features,
+    [HOLE]: { fields: { '/radius': '6 mm', '/nope': '1 mm' } },
+  };
+  await open(page, doc);
+  const names: string[] = [];
+  page.on('download', (d) => names.push(d.suggestedFilename()));
+  await page.getByRole('button', { name: 'Export' }).click();
+  const form = page.getByTestId('export-form');
+  await form.getByRole('radio', { name: /STEP/ }).click();
+  await form.getByRole('radio', { name: /^All \(3\)/ }).click();
+  await form.getByRole('button', { name: /^Export STEP/ }).click();
+  await expect(page.getByText(/Not exported: Thick/)).toBeVisible({ timeout: 60_000 });
+  expect(names.sort()).toEqual(['Plate-Long.step', 'Plate.step']);
+  // The active configuration with issues is refused too.
+  await page.keyboard.press('Escape');
+  await switchTo(page, 'Thick');
+  await page.getByRole('button', { name: 'Export' }).click();
+  await page.getByTestId('export-form').getByRole('radio', { name: /STEP/ }).click();
+  await page
+    .getByTestId('export-form')
+    .getByRole('button', { name: /^Export STEP/ })
+    .click();
+  await expect(page.getByText(/Not exported: Thick needs attention/)).toBeVisible();
+  expect(names).toHaveLength(2);
+});
+
+test('input is held while export-all uses the live slot', async ({ page }) => {
+  test.slow();
+  await open(page, configPartDoc());
+  const a = app(page);
+  await a.holdExport(true);
+  await expect(page.getByTestId('config-export-busy')).toBeVisible();
+  const box = await page.getByTestId('viewport-canvas').boundingBox();
+  if (!box) throw new Error('no canvas');
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  await expect(page.getByText(/model is locked/).first()).toBeVisible();
+  expect((await a.ui()).selection).toEqual([]);
+  await a.holdExport(false);
+  await expect(page.getByTestId('config-export-busy')).toHaveCount(0);
+});
+
+test('Params: an override typed back to Default clears it; previews use the active configuration', async ({
+  page,
+}) => {
+  test.slow();
+  await open(page, configPartDoc());
+  const a = app(page);
+  await switchTo(page, 'Long');
+  // The inspector previews the Plate's `dx = length` as Long sees it (60), not Default (40).
+  await page.getByTestId('feature-tree').getByRole('treeitem', { name: /Plate/ }).click();
+  await expect(page.getByTestId('feature-inspector')).toContainText('60 mm');
+  await openParams(page);
+  const e = page.getByRole('textbox', { name: 'Expression for length' });
+  await e.fill('40 mm');
+  await e.press('Enter');
+  await a.idle();
+  expect((await configs(page)).find((c) => c.id === CFG_LONG)?.params).toBeUndefined();
+});
+
+test('a missing active configuration blocks edits instead of silently changing Default', async ({
+  page,
+}) => {
+  test.slow();
+  await open(page, configPartDoc());
+  const a = app(page);
+  await a.apply({
+    kind: 'patch',
+    ops: [
+      { op: 'add', path: '/parts/0/activeConfigurationId', value: '01JGONE00000000000000000XX' },
+    ],
+  });
+  await a.idle();
+  await page.getByTestId('feature-tree').getByRole('treeitem', { name: /Hole/ }).click();
+  const radius = page.getByTestId('feature-inspector').getByRole('textbox', { name: 'Radius' });
+  await radius.fill('3 mm');
+  await radius.press('Enter');
+  await expect(
+    page.getByText(/Switch to Default or another configuration before editing/),
+  ).toBeVisible();
+  expect((await part(page)).features.find((f) => f.id === HOLE)).toMatchObject({ radius: '4 mm' });
+});

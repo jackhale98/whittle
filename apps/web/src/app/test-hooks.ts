@@ -294,6 +294,8 @@ export function testHooks(wb: Workbench) {
       }
       return false;
     },
+    /** Simulates "Export all" holding the live slot (picks and measurements are refused). */
+    holdExport: (on: boolean) => wb.config.setExportingAll(on),
     /** Number of `regenerate` calls the loop made (the background builds are not counted). */
     regenCalls: () => wb.loop?.calls ?? 0,
     /** Waits until the mesh cache of the current document has reached the library. */

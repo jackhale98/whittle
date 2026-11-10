@@ -32,6 +32,20 @@ export function refuseMissing(wb: Workbench): boolean {
   return true;
 }
 
+/**
+ * The active configuration has overrides that no longer apply: it is not exported (the model on
+ * screen is a partial one). Same rule as "export all".
+ */
+export function refuseIssues(wb: Workbench): boolean {
+  const issues = wb.config.resolved().issues;
+  if (issues.length === 0) return false;
+  wb.toast(
+    `Not exported: ${wb.config.activeName} needs attention (${issues[0]?.reason}). Fix or reset the override first.`,
+    'error',
+  );
+  return true;
+}
+
 const EXT: Record<string, string> = { step: 'step', stl: 'stl', '3mf': '3mf', glb: 'glb' };
 
 /** A plain download (several files in a row cannot each open a save dialog). */
@@ -76,55 +90,85 @@ export async function exportAll(wb: Workbench, request: ExportRequest): Promise<
   if (!modeling || !loop || !live) return wb.toast('The geometry kernel is still loading.', 'info');
   const lib = await import('../doc/library');
   const skipped: string[] = [];
+  const saved: string[] = [];
+  let failed: { name: string; message: string } | null = null;
   let written = 0;
-  await loop.exclusive(async () => {
-    for (const f of files) {
-      const resolved = resolveConfiguration(doc, part.id, f.configurationId);
-      const attachments = Object.fromEntries(
-        wb.attachmentsFor(resolved.doc).map((a) => [a.path, a.bytes] as const),
-      );
-      // The engine exports "the latest regen of main": regenerate this configuration there. The
-      // live model is regenerated again when this block ends (cheap: results are value-cached).
-      const result = await modeling.port.regenerate({
-        doc: resolved.doc,
-        partId: part.id,
-        quality: 'fine',
-        ...(Object.keys(attachments).length ? { attachments } : {}),
-      });
-      if (result.features.some((s) => s.state === 'error' || s.state === 'needsAttention')) {
-        skipped.push(nameOf(f.configurationId));
-        continue;
-      }
-      let bytes: Uint8Array;
-      if (target === 'step' || target === 'stl') {
-        const r = await modeling.exportPart(part.id, target as ExportFormat, request.options);
-        if (!r.ok) {
-          skipped.push(nameOf(f.configurationId));
+  wb.config.setExportingAll(true);
+  try {
+    await loop.exclusive(async () => {
+      for (const f of files) {
+        const resolved = resolveConfiguration(doc, part.id, f.configurationId);
+        // Overrides that no longer apply: the configuration is partial, so it is never exported.
+        if (resolved.issues.length > 0) {
+          skipped.push(`${nameOf(f.configurationId)} (${resolved.issues[0]?.reason})`);
           continue;
         }
-        bytes = r.bytes;
-      } else {
-        const bodies = result.bodies.filter(
-          (b) => !request.options.bodies || request.options.bodies.includes(b.id),
-        );
-        const { meshExporters } = await import('@wren-cad/io');
-        const color = resolved.doc.parts[0]?.color ?? resolved.doc.parts[0]?.material?.appearance;
-        const items = bodies.map((b, i) => ({
-          name: `Body ${i + 1}`,
-          mesh: b.mesh,
-          ...(color ? { color } : {}),
-        }));
-        bytes =
-          target === '3mf' ? meshExporters.to3mf(items, 'millimeter') : meshExporters.toGlb(items);
+        try {
+          const attachments = Object.fromEntries(
+            wb.attachmentsFor(resolved.doc).map((a) => [a.path, a.bytes] as const),
+          );
+          // The engine exports "the latest regen of main": regenerate this configuration there.
+          // The live model is regenerated again when this block ends (value-cached).
+          const result = await modeling.port.regenerate({
+            doc: resolved.doc,
+            partId: part.id,
+            quality: 'fine',
+            ...(Object.keys(attachments).length ? { attachments } : {}),
+          });
+          if (result.features.some((s) => s.state === 'error' || s.state === 'needsAttention')) {
+            skipped.push(nameOf(f.configurationId));
+            continue;
+          }
+          let bytes: Uint8Array;
+          if (target === 'step' || target === 'stl') {
+            const r = await modeling.exportPart(part.id, target as ExportFormat, request.options);
+            if (!r.ok) {
+              skipped.push(nameOf(f.configurationId));
+              continue;
+            }
+            bytes = r.bytes;
+          } else {
+            const bodies = result.bodies.filter(
+              (b) => !request.options.bodies || request.options.bodies.includes(b.id),
+            );
+            const { meshExporters } = await import('@wren-cad/io');
+            const color =
+              resolved.doc.parts[0]?.color ?? resolved.doc.parts[0]?.material?.appearance;
+            const items = bodies.map((b, i) => ({
+              name: `Body ${i + 1}`,
+              mesh: b.mesh,
+              ...(color ? { color } : {}),
+            }));
+            bytes =
+              target === '3mf'
+                ? meshExporters.to3mf(items, 'millimeter')
+                : meshExporters.toGlb(items);
+          }
+          download(bytes, f.fileName, lib.MIME[target as keyof typeof lib.MIME]);
+          saved.push(f.fileName);
+          written++;
+        } catch (e) {
+          failed = {
+            name: nameOf(f.configurationId),
+            message: e instanceof Error ? e.message : String(e),
+          };
+          return;
+        }
       }
-      download(bytes, f.fileName, lib.MIME[target as keyof typeof lib.MIME]);
-      written++;
-    }
-  });
+    });
+  } finally {
+    wb.config.setExportingAll(false);
+  }
   if (written > 0) wb.exports.set((n) => n + 1);
-  if (skipped.length > 0) {
+  const f = failed as { name: string; message: string } | null;
+  if (f) {
     wb.toast(
-      `Not exported: ${skipped.join(', ')} ${skipped.length === 1 ? 'needs' : 'need'} attention or failed to rebuild.`,
+      `Export stopped at ${f.name}: ${f.message}${saved.length ? ` Already saved: ${saved.join(', ')}.` : ''}`,
+      'error',
+    );
+  } else if (skipped.length > 0) {
+    wb.toast(
+      `Not exported: ${skipped.join(', ')}. ${skipped.length === 1 ? 'It needs' : 'They need'} attention or failed to rebuild.${written ? ` Exported: ${saved.join(', ')}.` : ''}`,
       'error',
     );
   } else wb.toast(`Exported ${written} files, one per configuration.`);

@@ -59,10 +59,18 @@ export class ResultCache {
   async evictSlots(partId: Id): Promise<void> {
     const slots = this.parts.get(partId);
     if (!slots) return;
-    const versions = [...slots.values()]
+    // Version slots (compare, merge preview) and configuration slots (M3.7 background builds) have
+    // separate LRU budgets, so a rebuild-all never pushes out a compare in progress.
+    const kind = (pc: PartCache) => (pc.slot.startsWith('config:') ? 'config' : 'version');
+    const others = [...slots.values()]
       .filter((pc) => pc.slot !== 'main')
       .sort((x, y) => y.used - x.used);
-    for (const pc of versions.slice(this.maxSlots)) await this.releaseSlot(partId, pc);
+    for (const pc of others.filter((p) => kind(p) === 'version').slice(this.maxSlots)) {
+      await this.releaseSlot(partId, pc);
+    }
+    for (const pc of others.filter((p) => kind(p) === 'config').slice(DEFAULT_CONFIG_SLOTS)) {
+      await this.releaseSlot(partId, pc);
+    }
   }
 
   async releaseSlot(partId: Id, pc: PartCache): Promise<void> {
@@ -146,18 +154,27 @@ export class ResultCache {
 const IMPORT_SPARE = 8;
 
 export const DEFAULT_VERSION_SLOTS = 2;
+/** Configuration slots kept per part, besides `'main'` (M3.7), their own budget. */
+export const DEFAULT_CONFIG_SLOTS = 8;
 
 export function validSlots(n: number | undefined): number | undefined {
   return n !== undefined && Number.isInteger(n) && n >= 1 ? n : undefined;
 }
 
-/** `'main'` or `version:<non-empty id>` (Comlink callers are not type-checked). */
+/** `'main'`, `version:<id>` or `config:<id>` (non-empty id; Comlink callers are not type-checked). */
 export function isSlot(s: unknown): s is RegenSlot {
-  return s === 'main' || (typeof s === 'string' && s.startsWith('version:') && s.length > 8);
+  return (
+    s === 'main' ||
+    (typeof s === 'string' &&
+      ((s.startsWith('version:') && s.length > 8) || (s.startsWith('config:') && s.length > 7)))
+  );
 }
 
 export function slotLabel(s: RegenSlot): string {
-  return s === 'main' ? 'the live model' : `version ${s.slice('version:'.length)}`;
+  if (s === 'main') return 'the live model';
+  return s.startsWith('config:')
+    ? `configuration ${s.slice('config:'.length)}`
+    : `version ${s.slice('version:'.length)}`;
 }
 
 export function capitalise(s: string): string {
