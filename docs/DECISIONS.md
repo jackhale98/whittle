@@ -2032,3 +2032,14 @@ Owner requests (M3.6).
 - **Bulk suppress.** `setSuppressedMany` gives a folder's "Suppress all" one undo entry and one regeneration.
 - **Schema.** These are additive fields, so `schemaVersion` goes from 1 to 2 with a no-op migration (FILE_FORMAT §7). M3.5's new curve kinds were added under v1 without a bump; this one bump covers both, so an older Wren shows "update" instead of a validation error.
 - **Phone step-through needs no document change.** Stepping previews a rollback position by regenerating a copy of the document with a different `rollbackIndex`, and only "Keep this rollback" writes `setRollback`.
+
+## ADR-067 — Folder rules the document layer had to interpret (M3.6, 2026-11-10)
+
+Implements ADR-066 in `packages/document` (`folders.ts`, `commands.ts`).
+
+- **Strict validation, repairing load.** `validateDoc` reports every folder problem (missing members, non-contiguous run, overlap, out of history order, empty folder). The load path (`migrateDoc`, hence `fromFiles` and `DocumentStore.load`) first runs `normalizeFolders` on parts whose folders are well-typed, so a merge that left a broken run loads repaired. Wrong types (a non-string name, `features` not an array) are load errors.
+- **A feature held by two folders** (each branch added it to a different folder) stays with the folder of the lowest id.
+- **A one-feature folder follows its member.** Moving its only member does not remove the folder.
+- **Raw `patch` commands** are normalised in the same undo entry; `addPart` repairs the folders it is given.
+- **`moveFolder` and the rollback bar:** the run is evaluated iff it lands before the bar of the other features (the `moveFeature` rule for a run). It is refused when a member would cross geometry it uses or that uses it.
+- **Labels for bulk commands** count the features actually changed and name the feature when there is one.
