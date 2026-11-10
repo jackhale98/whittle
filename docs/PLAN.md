@@ -760,6 +760,20 @@ Owner request 2026-11-10. Small; follows the M3.5 gate.
 - **Show or hide any sketch, including one inside a feature:** a sketch consumed by a feature is hidden by default (as now), and its eye toggle in the tree (nested or flat) overrides that per sketch, persisted in the document; "Show all sketches" / "Hide all sketches" commands. Works on every shell.
 - **Accept:** E2E on a phone steps through the demo bracket's features and the viewport shows each intermediate state; E2E shows a consumed sketch via its eye toggle, the setting survives save → reload, and hiding it again restores the default.
 
+### H1 — Codebase health (between M3.6 and M3.7)
+
+Owner-approved 2026-11-10. A deliberate, behaviour-preserving pass so the code stays modular before M3.7, M4 and M6 add more; guarded by the existing suites (no test expectations change except where a test reached into an internal that moved).
+
+- **Split the three largest files by responsibility**, keeping their public APIs:
+  - `packages/kernel-client/src/regen/engine.ts` (~4.7k lines): per-feature-family executors (sketch, solids, copies/patterns, holes/threads, references, imports), reference resolution, caching, cause attribution and the sketch/linked pipeline in their own modules; the engine keeps orchestration only.
+  - `packages/viewport/src/viewport.ts` (~3.6k lines): scene/bodies, picking (point and rect), navigation, sketch overlays, highlights/markers/handles/previews, section and compare in their own modules behind the same `ViewportEngine`.
+  - `apps/web/src/app/workbench.ts` (~3.3k lines): selection, keyboard/command dispatch, tool and prompt state, regen scheduling, file/library actions and test hooks in their own modules.
+- **Guardrails in CI:** a Biome/lint rule (or a small script) warning when a source file passes ~1,500 lines and failing CI past ~2,500 (existing exceptions listed and shrinking); a per-chunk bundle report so every new editor (drawings, configurations, simulation) must lazy-load and the initial route stays under 250 kB gzip with headroom.
+- **Long-session soak test:** an E2E that opens the demo bracket, makes 100 edits (parameters, feature edits, undo/redo, sketch edits), closes and reopens it 10 times, and asserts that kernel shape handles return to baseline, JS heap and worker memory stay within a bound, and frame time does not drift. Runs nightly or on demand, not on every push.
+- **Kernel memory guard:** report live shape-handle counts and the worker's Wasm heap in diagnostics; the LRU shape cache's limits are checked by a test at a large model size.
+- **Test-time hygiene:** identify the slowest 10 E2E specs and cut redundant setup (shared booted documents, fixtures) without losing coverage; keep CI shards under 15 minutes.
+- **Accept:** all suites green with unchanged expectations; no source file over 2,500 lines and the three splits each under ~1,500; the soak test passes with handles back to baseline; bundle report in CI; CI wall-clock not worse.
+
 ### M3.7 — Part configurations
 
 Owner request 2026-11-10 (moved up from P2): before drawings and assemblies, so both can be built configuration-aware.
