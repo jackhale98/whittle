@@ -161,6 +161,9 @@ reference other parameters. Parameters are global; feature-local scopes are a la
 {
   "color": "#9aa4b2",                 // optional; overrides the material's appearance
   "features": [ /* Feature[] in evaluation order */ ],
+  "folders": [                        // optional (v2); absent = none, never written empty
+    { "features": ["01J…", "01J…"], "id": "01J…", "name": "Mounting" }
+  ],
   "id": "01J…",
   "material": { /* §6, optional */ },
   "name": "Bracket",
@@ -170,6 +173,13 @@ reference other parameters. Parameters are global; feature-local scopes are a la
 
 `rollbackIndex` is an integer in `0 … features.length`; `features.length` means fully rolled
 forward.
+
+**Folders** (v2, ADR-066) group features in the tree. `features` lists the member ids and **must be
+a contiguous run of the part's `features` in history order**. Folders never overlap or nest, have
+a non-empty `name` string and an `id` that is unique across the whole document like every other
+id. The order of the `folders` array carries no meaning (a folder sits where its first member
+sits); writers keep the order they were created in. Collapsed/expanded is per-user UI state and is
+not stored.
 
 **Features** all have `id`, `type`, `name`, `suppressed` and optional `annotations` (PMI). Fields
 holding user numbers are **expression strings**; the table in §5.4 gives each one's dimension.
@@ -190,9 +200,20 @@ holding user numbers are **expression strings**; the table in §5.4 gives each o
 `scope` is `{kind:"all"}` or `{kind:"bodies", bodies:[EntityRef…]}`.
 `Frame` = `{origin:[x,y,z], z:[…], x:[…]}` in millimetres, right-handed (Y = Z × X).
 
-**Sketches.** `entities` are points, lines, circles, arcs (and, P1, ellipses) in the sketch's 2D
-frame, numbers in **millimetres/radians** (solver state). Points are entities; lines/arcs/circles
-reference points by id. `constraints` are geometric (`coincident`, `horizontal`, `tangent`, …) or
+**Sketches.** `entities` are points, lines, circles, arcs, ellipses and (M3.5, written under v1 and
+covered by the v2 bump) **elliptic arcs** and **B-splines** in the sketch's 2D frame, numbers in
+**millimetres/radians** (solver state). Points are entities; lines/arcs/circles reference points
+by id.
+- `ellipticArc`: `center`, `start`, `end` (point ids), `majorRadius`, `minorRadius`, `rotation`
+  (major axis direction, radians); counter-clockwise from `start` to `end`.
+- `bspline`: `poles` (point ids), `degree`, `periodic`, and optional `weights`, `knots` with
+  `multiplicities` (both or neither; omitted means the default clamped or periodic knots) and
+  `through` (point ids of the through points of a spline drawn through points). See the doc
+  comment on `SketchBSpline` and ADR-048/056 for the knot conventions.
+
+A sketch may carry `visibility` (v2): `"auto"` (the default when absent: shown until a feature
+uses it, then hidden), `"shown"` or `"hidden"`. The writer omits it for `"auto"`. Only sketches
+have it. `constraints` are geometric (`coincident`, `horizontal`, `tangent`, …) or
 dimensional. A dimension has `value` (an expression), `driving` (true = constrains the solver;
 false = reference dimension whose value is measured after solving) and an optional `label`
 position. See [`sketch.ts`](../packages/contracts/src/sketch.ts) for every kind.
@@ -319,7 +340,7 @@ returns `{ values, errors }` keyed by JSON pointer, in millimetres / radians.
 
 ## 7. Versioning and migrations
 
-`schemaVersion` (manifest and in-memory document) is an integer, currently **1**.
+`schemaVersion` (manifest and in-memory document) is an integer, currently **2**.
 
 - Readers **must** reject a `schemaVersion` greater than they understand, with a message telling
   the user to update ("This file uses document version N, but this copy of Wren understands up
@@ -328,6 +349,13 @@ returns `{ values, errors }` keyed by JSON pointer, in millimetres / radians.
   (`n → n+1`), then validate. A missing `schemaVersion` is treated as 0 (pre-release); the 0→1
   migration only fills missing collections (`params`, `parts`, `assemblies`, `drawings`) with `[]`.
 - Writers always write the current version. Files are not downgraded.
+- **Version history.**
+  - **v1:** the baseline.
+  - **v2 (M3.6):** additive. Adds `Part.folders` and `SketchFeature.visibility` (above). The same bump
+    covers the M3.5 sketch entity kinds `ellipticArc` and `bspline`, which were added under v1
+    without a bump, so a v1 file may contain them. The 1→2 migration changes no data; its purpose
+    is that an older Wren answers "update Wren" instead of a validation error. A file that uses
+    none of these is still valid v1 content, and is rewritten as v2 on the next save.
 - Every bump ships with a migration function in `packages/document/src/migrations.ts` and a test
   with a fixture of the old shape.
 - Within a version, readers ignore unknown *files* but treat unknown *properties* in the files
@@ -338,9 +366,19 @@ returns `{ values, errors }` keyed by JSON pointer, in millimetres / radians.
 
 1. Structural JSON Schema validation with the schemas above (any draft-07 validator, e.g. Ajv).
 2. The reference implementation additionally checks: unique ids across the document, unique
-   parameter names, `rollbackIndex` in range, known feature types, and that every `Expr` field
-   is a string. Semantic problems (an expression that does not evaluate, an unresolved reference)
-   are *not* load errors; they surface in the UI as inline errors / "needs attention".
+   parameter names, `rollbackIndex` in range, known feature types, that every `Expr` field
+   is a string, that `visibility` is `auto`, `shown` or `hidden`, and that folder `name`s are
+   strings with unique ids.
+3. Folder membership has two layers. *Structure* (types, ids) always fails a load. *Semantics*
+   (members exist, each run is contiguous, folders do not overlap, members in history order)
+   are checked by `validateDoc`, but loading a project first repairs them with `normalizeFolders`
+   (ADR-066) instead of failing: a text merge by git can leave a broken run, and the repair is
+   deterministic: members sorted into history order; missing ids and empty folders dropped; a
+   feature in two folders stays with the lower folder id; a broken run is extended over its gap
+   if no other folder's member is in it, otherwise the longest contiguous run is kept (earliest
+   on a tie).
+4. Semantic problems (an expression that does not evaluate, an unresolved reference) are *not*
+   load errors; they surface in the UI as inline errors / "needs attention".
 
 ## 9. Version history (`.wren-history/`)
 

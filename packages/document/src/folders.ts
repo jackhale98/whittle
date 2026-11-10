@@ -113,7 +113,8 @@ export function normalizeFolders(part: Part): NormalizedFolders {
     .filter((k) => (members[k] as number[]).length > 0)
     .sort(
       (a, b) =>
-        (members[a] as number[])[0]! - (members[b] as number[])[0]! || cmp(at(a).id, at(b).id),
+        ((members[a] as number[])[0] as number) - ((members[b] as number[])[0] as number) ||
+        cmp(at(a).id, at(b).id),
     );
   for (const k of live) {
     const idx = members[k] as number[];
@@ -239,7 +240,6 @@ export function foldersAfterPlace(
   const out: FeatureFolder[] = [];
   const at = newOrder.indexOf(featureId);
   for (const f of folders ?? []) {
-    const wasMember = f.features.includes(featureId);
     const others = f.features.filter((m) => m !== featureId);
     if (others.length === 0) {
       out.push(f);
@@ -247,12 +247,11 @@ export function foldersAfterPlace(
     }
     const idx = others.map((m) => newOrder.indexOf(m)).sort((a, b) => a - b);
     const inside = at > (idx[0] as number) && at < (idx[idx.length - 1] as number);
-    if (inside === wasMember) {
-      out.push(f);
-      continue;
-    }
-    const kept = inside ? [...others, featureId] : others;
-    out.push({ ...f, features: kept.sort((a, b) => newOrder.indexOf(a) - newOrder.indexOf(b)) });
+    const kept = (inside ? [...others, featureId] : others).sort(
+      (a, b) => newOrder.indexOf(a) - newOrder.indexOf(b),
+    );
+    const same = kept.length === f.features.length && kept.every((m, n) => m === f.features[n]);
+    out.push(same ? f : { ...f, features: kept });
   }
   return out;
 }

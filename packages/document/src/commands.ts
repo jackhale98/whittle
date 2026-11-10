@@ -503,21 +503,25 @@ function compileMoveFolder(doc: WrenDoc, cmd: Extract<Command, { kind: 'moveFold
   const bar = part.rollbackIndex;
   const activeOthers = part.features.slice(0, bar).filter((f) => !members.has(f.id)).length;
   const newBar = to <= activeOthers ? activeOthers + run.length : activeOthers;
-  // One `move` per member, in tree order, each landing in its final slot.
+  // One `move` per member, each straight to its final slot: top-down when the run moves up,
+  // bottom-up when it moves down, so earlier moves never disturb later targets.
+  const first = part.features.findIndex((f) => members.has(f.id));
   const working = part.features.map((f) => f.id);
   const ops: JsonPatchOp[] = [];
-  run.forEach((f, n) => {
-    const from = working.indexOf(f.id);
+  const sequence = to < first ? run.map((_, n) => n) : run.map((_, n) => run.length - 1 - n);
+  for (const n of sequence) {
+    const id = (run[n] as Feature).id;
+    const from = working.indexOf(id);
     const target = to + n;
-    if (from === target) return;
+    if (from === target) continue;
     working.splice(from, 1);
-    working.splice(target, 0, f.id);
+    working.splice(target, 0, id);
     ops.push({
       op: 'move',
       from: `/parts/${i}/features/${from}`,
       path: `/parts/${i}/features/${target}`,
     });
-  });
+  }
   if (newBar !== bar) ops.push({ op: 'replace', path: `/parts/${i}/rollbackIndex`, value: newBar });
   return { ok: true, label, ops };
 }
