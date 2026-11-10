@@ -19,6 +19,15 @@
  * bodies it would have acted on are tainted; a later feature that references the failed feature
  * (by name tag) or acts on / references a tainted body is `blocked` (and propagates the same way).
  *
+ * Module map (H1): this file keeps orchestration only, i.e. the public API, the regen walk
+ * (`regen`), one feature (`runFeature`) and the per-type dispatch (`planFeature`). Shared services
+ * (kernel, sketch solver, per-handle caches) are in core.ts (`EngineCore`, the explicit context the
+ * executors take), the feature-result cache in result-cache.ts, internal state in state.ts, public
+ * types in types.ts (re-exported here), reference resolution in refs.ts, `AttentionCause`
+ * attribution in attribution.ts, body / sketch outputs in outputs.ts, small helpers (errors, the
+ * open-surface guard) in helpers.ts and the feature executors in exec-sketch.ts, exec-solids.ts,
+ * exec-modify.ts, exec-copies.ts, exec-holes.ts, exec-datums.ts and exec-import.ts.
+ *
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
