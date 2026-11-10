@@ -23,6 +23,13 @@ if [ "$stage" = all ] || [ "$stage" = configure ]; then
   # OCCT 8 headers need C++17 (std::optional, std::in_place); Gmsh 4.15.2 pins C++14 with a plain
   # set(), which -DCMAKE_CXX_STANDARD cannot override. Patch the fetched copy.
   sed -i 's/set(CMAKE_CXX_STANDARD 14)/set(CMAKE_CXX_STANDARD 17)/' /gmsh/CMakeLists.txt
+  # GModelIO_OBJ.cpp includes tinyobjloader unconditionally (even with ENABLE_TINYOBJLOADER=0).
+  sed -i 's|#include <tiny_obj_loader.h>|#include "../../contrib/tinyobjloader/include/tiny_obj_loader.h"|' \
+    /gmsh/src/geo/GModelIO_OBJ.cpp
+  # OCCT 8 removed the Handle_<Class> typedefs and some transitive includes (see the prelude).
+  grep -q gmsh_occt8_prelude /gmsh/src/geo/GModelIO_OCC.cpp ||
+    sed -i 's|^#include <TopTools_ListIteratorOfListOfShape.hxx>|&\n#include <gmsh_occt8_prelude.hxx>|' \
+      /gmsh/src/geo/GModelIO_OCC.cpp
   # Minimal Gmsh: OCC + mesh (Delaunay/Frontal 3D built in, HXT, Netgen frontal), Eigen for
   # linear algebra. No FLTK, PETSc, Fortran, OpenMP (Emscripten has none), MED/CGNS, parser,
   # post-processing or plugins.
@@ -40,7 +47,7 @@ fi
 
 if [ "$stage" = all ] || [ "$stage" = lib ]; then
   start=$(date +%s)
-  emmake make -C /build/gmsh -j"$jobs" lib 2>&1 | tee /build/lib.log | grep -E "error|Error|\[100%\]" || true
+  emmake make -k -C /build/gmsh -j"$jobs" lib 2>&1 | tee /build/lib.log | grep -E "error|Error|\[100%\]" || true
   echo "lib build seconds: $(( $(date +%s) - start ))" | tee /build/lib-time.txt
 fi
 

@@ -104,11 +104,7 @@ void ensureInit() {
 
 extern "C" {
 
-EMSCRIPTEN_KEEPALIVE const char *wm_version() {
-  static std::string v;
-  v = gmsh::GMSH_API_VERSION;
-  return v.c_str();
-}
+EMSCRIPTEN_KEEPALIVE const char *wm_version() { return GMSH_API_VERSION; }
 
 EMSCRIPTEN_KEEPALIVE const char *wm_last_error() { return g_error.c_str(); }
 
