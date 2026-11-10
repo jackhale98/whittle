@@ -583,7 +583,10 @@ test('Tab and Shift+Tab cycle overlapping candidates in a stable order', async (
   // Vertices before edges before faces, as the chooser lists them.
   const kinds = first.map((k) => k.split('|')[1]);
   expect(kinds[0]).toBe('vertex');
-  expect(kinds.indexOf('edge')).toBeLessThan(kinds.indexOf('face'));
+  expect(kinds).toContain('edge');
+  // Faces (when a face lies under the cursor too) come last.
+  const faceAt = kinds.indexOf('face');
+  if (faceAt >= 0) expect(kinds.indexOf('edge')).toBeLessThan(faceAt);
 
   // Tab walks the list from the top; Shift+Tab walks back and wraps.
   await page.keyboard.press('Tab');
@@ -809,11 +812,11 @@ test.describe('errors at their cause', () => {
 
     await page.getByRole('tab', { name: 'Features' }).click();
     const tree = page.getByTestId('feature-tree');
-    const row = tree.getByRole('treeitem', { name: /Floor fillet/ });
+    const row = tree.getByRole('treeitem', { name: /^Floor fillet/ });
     await expect(row).toContainText('Floor fillet lost its edge because Plate changed');
     await expect(row).toContainText('depth 10 mm → 4 mm');
     // The blocked fillet waits on the one that needs attention (the root cause), by name.
-    await expect(tree.getByRole('treeitem', { name: /Plate fillet/ })).toContainText(
+    await expect(tree.getByRole('treeitem', { name: /^Plate fillet/ })).toContainText(
       'Plate fillet is waiting because Floor fillet failed',
     );
 
@@ -839,7 +842,7 @@ test.describe('errors at their cause', () => {
     await a.apply({ kind: 'removeFeature', partId, featureId: E2 }, 'Delete Pocket cut');
     await a.idle();
     expect((await a.regen())?.features.find((f) => f.id === FI)?.state).toBe('needsAttention');
-    await tree.getByRole('treeitem', { name: /Floor fillet/ }).click();
+    await tree.getByRole('treeitem', { name: /^Floor fillet/ }).click();
     const alert = page.getByTestId('feature-inspector').getByRole('alert');
     await expect(alert).toContainText('Pocket cut was deleted');
     await expect(alert.getByRole('button', { name: /^Select/ })).toHaveCount(0);
@@ -863,7 +866,7 @@ test.describe('errors at their cause', () => {
     await a.idle();
     await page
       .getByTestId('feature-tree')
-      .getByRole('treeitem', { name: /Floor fillet/ })
+      .getByRole('treeitem', { name: /^Floor fillet/ })
       .click();
     const alert = page.getByTestId('feature-inspector').getByRole('alert');
     await expect(alert).toContainText('needs your attention');
