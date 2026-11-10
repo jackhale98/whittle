@@ -3,7 +3,6 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   applySteps,
   buildRows,
-  buildSteps,
   canFolder,
   effectiveSketchShown,
   folderCommands,
@@ -13,8 +12,6 @@ import {
   planFolderMove,
   runWithNested,
   sketchVisibilityCommands,
-  stepAt,
-  stepLabel,
   TREE_COMMAND_IDS,
   type TreeFolder,
   toggledVisibility,
@@ -173,36 +170,6 @@ describe('buildRows', () => {
       '3:s2',
       '1:h1',
     ]);
-  });
-});
-
-describe('step-through', () => {
-  const named = features.map((f) => ({ ...f }));
-  it('one step per feature, a feature and its nested sketch together', () => {
-    const steps = buildSteps(named);
-    expect(steps.map((s) => s.index)).toEqual([2, 3, 4, 6, 7]);
-    expect(steps.map((s) => s.label)).toEqual(['E1', 'F1', 'F2', 'E2', 'H1']);
-  });
-  it('an open folder steps through its members', () => {
-    expect(buildSteps(named, [mounting]).map((s) => s.label)).toEqual([
-      'E1',
-      'F1',
-      'F2',
-      'E2',
-      'H1',
-    ]);
-  });
-  it('a collapsed folder is one step named after the folder', () => {
-    const steps = buildSteps(named, [mounting], new Set(['m']));
-    expect(steps.map((s) => s.label)).toEqual(['E1', 'Mounting', 'E2', 'H1']);
-    expect(steps[1]).toMatchObject({ index: 4, folderId: 'm' });
-  });
-  it('labels and locates the step', () => {
-    const steps = buildSteps(named);
-    expect(stepLabel(steps, 2)).toBe('3 of 5 · F2');
-    expect(stepAt(steps, 7)).toBe(4);
-    expect(stepAt(steps, 5)).toBe(2);
-    expect(stepLabel([], 0)).toBe('No features');
   });
 });
 

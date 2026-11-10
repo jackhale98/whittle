@@ -174,22 +174,17 @@ for (const theme of themes) {
       expect(box?.height).toBeGreaterThanOrEqual(tier === 'desktop' ? 24 : 44);
     });
 
-    test(`phone step-through: stepping moves the label and keeps targets 44 px (${theme})`, async ({
+    test(`phone Features tab: the rollback bar is a 44 px grab target (${theme})`, async ({
       page,
     }, info) => {
       const tier = info.project.name as Tier;
       await open(page, tier, theme, 'm36-phone');
-      const stepper = page.getByTestId('feature-stepper').nth(1);
-      await expect(stepper.getByTestId('step-label')).toHaveText('3 of 6 · Fillet 2');
-      await stepper.getByRole('button', { name: 'Previous feature' }).click();
-      await expect(stepper.getByTestId('step-label')).toHaveText('2 of 6 · Fillet 1');
-      for (const name of ['Previous feature', 'Next feature', 'Keep this rollback']) {
-        const b = await stepper.getByRole('button', { name }).boundingBox();
-        expect(b?.height).toBeGreaterThanOrEqual(44);
-        expect(b?.width).toBeGreaterThanOrEqual(44);
-      }
+      const bar = page.getByTestId('g-m36-phone').getByTestId('rollback-bar').first();
+      const b = await bar.boundingBox();
+      expect(b?.height).toBeGreaterThanOrEqual(44);
+      await expect(bar.getByTestId('rollback-grab')).toBeVisible();
       await expect(page.getByTestId('g-m36-phone')).toHaveScreenshot(
-        `m36-${tier}-${theme}-phone-stepped.png`,
+        `m36-${tier}-${theme}-phone-tree.png`,
       );
     });
   });

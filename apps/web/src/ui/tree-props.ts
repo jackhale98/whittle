@@ -1,6 +1,6 @@
 /**
  * The feature tree's props for every shell (desktop panel, tablet sheet, phone Features tab) and
- * its palette commands. Folders, the eye and the step-through preview all route to workbench
+ * its palette commands. Folders and the eye route to workbench
  * methods, each of which is one store command (one undo entry).
  */
 
@@ -12,7 +12,6 @@ import {
   type MoveResult,
   type MoveStep,
   type PaletteCommand,
-  type PhoneFeatureTreeProps,
   sketchVisibilityCommands,
 } from '@wren-cad/ui';
 import { useCallback, useMemo } from 'react';
@@ -31,7 +30,6 @@ export interface TreeOptions {
 
 export interface TreeProps {
   featureTree: FeatureTreeProps | undefined;
-  phoneFeatureTree: PhoneFeatureTreeProps | undefined;
   commands: PaletteCommand[];
 }
 
@@ -43,7 +41,6 @@ export function useTreeProps(wb: Workbench, o: TreeOptions): TreeProps {
   const shownIds = useObservable(wb.shownSketchIds);
   const collapsed = useObservable(wb.collapsedFolders);
   const treeSel = useObservable(wb.treeSelection);
-  const preview = useObservable(wb.preview);
   const selectedId = ui.featureId ?? ui.sketch?.featureId ?? null;
 
   const lineage = useMemo(() => {
@@ -163,40 +160,6 @@ export function useTreeProps(wb: Workbench, o: TreeOptions): TreeProps {
     collapsedLive,
   ]);
 
-  const phoneFeatureTree = useMemo<PhoneFeatureTreeProps | undefined>(() => {
-    if (!part) return undefined;
-    return {
-      tree: {
-        features: items,
-        ...(statuses ? { statuses } : {}),
-        rollbackIndex: part.rollbackIndex,
-        selectedId,
-        ...(lineage ? { lineage } : {}),
-        onSelect: (id) => wb.selectFeature(id),
-        folders: folders ?? [],
-        collapsedFolders: collapsedLive,
-        onCollapsedFoldersChange: (ids) => wb.setCollapsedFolders(ids),
-        nestSketches,
-        onSketchVisibility: (ids, visibility) => wb.setSketchVisibility(ids, visibility),
-      },
-      previewIndex: preview,
-      onPreview: (index) => wb.previewRollback(index),
-      onKeep: () => wb.keepPreview(),
-      onExit: () => wb.endPreview(),
-    };
-  }, [
-    wb,
-    part,
-    items,
-    statuses,
-    nestSketches,
-    selectedId,
-    lineage,
-    folders,
-    collapsedLive,
-    preview,
-  ]);
-
   const commands = useMemo<PaletteCommand[]>(() => {
     const features = part?.features ?? [];
     const selection = wb.folderRunOf(treeSel.length ? treeSel : selectedId ? [selectedId] : []);
@@ -206,5 +169,5 @@ export function useTreeProps(wb: Workbench, o: TreeOptions): TreeProps {
     ];
   }, [wb, part?.features, folders, treeSel, selectedId]);
 
-  return { featureTree, phoneFeatureTree, commands };
+  return { featureTree, commands };
 }

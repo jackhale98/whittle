@@ -54,7 +54,7 @@ has Welcome and samples, the demo bracket, New document, Open library, Open or i
 - The phone is a viewer. You can orbit and zoom, open the library, edit parameters, and export.
 - The bottom sheet has six tabs. **Features**, **Params** and **Export** work. **Parts**, **Measure**
   and **Section** are placeholders.
-- **Features** lists the feature tree and steps through it; see [Reviewing on the phone](#reviewing-on-the-phone).
+- **Features** shows the feature tree with a draggable rollback line; see [Reviewing on the phone](#reviewing-on-the-phone).
 - You cannot create or edit features on a phone yet. Use a desktop or tablet.
 
 ## Navigating and selecting
@@ -501,17 +501,16 @@ that sketch in the viewport whatever the default is, and the choice is saved wit
 
 ### Reviewing on the phone
 
-The phone's **Features** tab shows the feature tree with a step bar at the bottom: **Previous
-feature**, **Next feature** and a scrubber. Each step shows the model as it was after that feature
-(a feature and the sketch under it are one step; a collapsed folder is one step, open it to step
-inside).
+The phone's **Features** tab is just the feature tree, the same as on the tablet: folders, nested
+sketches and the eye on each sketch.
 
-- Stepping is a preview. It never changes the document: no undo step, nothing to save or sync.
-- **Keep this rollback** turns the position you are looking at into the document's rollback bar (one
-  undo step). **Back to full model**, or leaving the tab, restores the full model.
-- If a change arrives while you step (a sync from another device, an undo), the preview ends and the
-  full model comes back.
-- The tree on the phone is read-only apart from the sketch eyes and folder collapse.
+- **Drag the line.** The rollback bar between the rows has a grab handle in the middle and a 44 px
+  touch target. Drag it up to roll the model back to that point and down to bring features back; the
+  model follows your finger. Each stop is an ordinary rollback edit, so **Undo** puts it back (a
+  feature and the sketch under it count as one stop; a collapsed folder is skipped as a unit).
+- **Touch and hold a row** to open its menu: **Suppress** or **Unsuppress** (an undoable edit), plus
+  Rename, Edit and the sketch eye's Show / Hide.
+- A change that arrives while you work (a sync from another device) is applied as usual.
 
 A feature that fails is marked in the tree with a short explanation. Its last good geometry stays
 on screen as a ghost, so you can see what changed.

@@ -9,6 +9,7 @@ import {
   Mark,
   ParamsPanel,
   ShellRoot,
+  TreePanel,
   useSheetSnap,
   useSheetTab,
   ViewportOverlays,
@@ -22,9 +23,6 @@ const PartsPanel = lazy(() =>
 );
 const MeasurePanel = lazy(() =>
   import('../panels/MeasurePanel').then((mod) => ({ default: mod.MeasurePanel })),
-);
-const PhoneFeatureTree = lazy(() =>
-  import('../features/PhoneFeatureTree').then((mod) => ({ default: mod.PhoneFeatureTree })),
 );
 const SectionPanel = lazy(() =>
   import('../panels/SectionPanel').then((mod) => ({ default: mod.SectionPanel })),
@@ -52,7 +50,7 @@ const sheetTabs: Array<{
     label: 'Features',
     Icon: ListTree,
     title: 'No features yet',
-    body: 'Step through the features one by one to see how the part was built.',
+    body: 'The feature history appears here. Drag the line to roll the model back.',
   },
   {
     id: 'params',
@@ -185,8 +183,8 @@ export function PhoneShell(props: ShellProps) {
                 <div className="px-2 pb-4" data-testid="sheet-content">
                   <Suspense fallback={loading}>
                     {tab === 'parts' && props.parts ? <PartsPanel {...props.parts} /> : null}
-                    {tab === 'history' && props.phoneFeatureTree && open ? (
-                      <PhoneFeatureTree {...props.phoneFeatureTree} />
+                    {tab === 'history' && props.featureTree && open ? (
+                      <TreePanel {...props.featureTree} density="touch" />
                     ) : null}
                     {tab === 'measure' && props.measure ? (
                       <MeasurePanel {...props.measure} />
@@ -214,7 +212,7 @@ export function PhoneShell(props: ShellProps) {
                   {sheetTabs.map(({ id, Icon, title, body }) =>
                     id === tab &&
                     !(id === 'parts' && props.parts) &&
-                    !(id === 'history' && props.phoneFeatureTree) &&
+                    !(id === 'history' && props.featureTree) &&
                     !(id === 'params' && paramsTable) &&
                     !(id === 'measure' && props.measure) &&
                     !(id === 'section' && props.section) &&

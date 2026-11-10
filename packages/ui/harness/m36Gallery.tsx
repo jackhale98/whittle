@@ -1,11 +1,5 @@
 import { type ReactNode, useState } from 'react';
-import {
-  FeatureTree,
-  type FeatureTreeItem,
-  type FeatureTreeProps,
-  PhoneFeatureTree,
-  type TreeFolder,
-} from '../src';
+import { FeatureTree, type FeatureTreeItem, type FeatureTreeProps, type TreeFolder } from '../src';
 
 /* M3.6 visual states: folders, the sketch eye, the phone step-through. Interactive states (rename,
    menus, drop indicators, the take-out prompt) are driven by e2e/m36.spec.ts on the live tree. */
@@ -129,37 +123,32 @@ function Eyes({ tier }: { tier: Tier }) {
 }
 
 export function PhoneStates() {
-  const [at, setAt] = useState<number | null>(4);
+  const [at, setAt] = useState<number>(m36Features.length);
   return (
     <div className="flex flex-col gap-4 p-4" data-testid="g-m36-phone">
       <div className={`${card} relative flex h-[520px] flex-col overflow-auto`}>
-        <PhoneFeatureTree
-          className="h-full"
-          tree={{ features: m36Features, folders: m36Folders }}
-          previewIndex={null}
-          onPreview={setAt}
-          onKeep={() => {}}
-          onExit={() => {}}
+        <FeatureTree
+          density="touch"
+          features={m36Features}
+          folders={m36Folders}
+          rollbackIndex={at}
+          onRollback={setAt}
+          onSelect={() => {}}
+          onSuppress={() => {}}
+          onSketchVisibility={() => {}}
         />
       </div>
       <div className={`${card} relative flex h-[520px] flex-col overflow-auto`}>
-        <PhoneFeatureTree
-          className="h-full"
-          tree={{ features: m36Features, folders: m36Folders }}
-          previewIndex={at}
-          onPreview={setAt}
-          onKeep={() => {}}
-          onExit={() => setAt(null)}
-        />
-      </div>
-      <div className={`${card} relative flex h-[520px] flex-col overflow-auto`}>
-        <PhoneFeatureTree
-          className="h-full"
-          tree={{ features: m36Features, folders: m36Folders, collapsedFolders: ['m'] }}
-          previewIndex={4}
-          onPreview={() => {}}
-          onKeep={() => {}}
-          onExit={() => {}}
+        <FeatureTree
+          density="touch"
+          features={m36Features}
+          folders={m36Folders}
+          collapsedFolders={['m']}
+          rollbackIndex={4}
+          onRollback={() => {}}
+          onSelect={() => {}}
+          onSuppress={() => {}}
+          onSketchVisibility={() => {}}
         />
       </div>
     </div>
