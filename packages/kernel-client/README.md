@@ -414,6 +414,13 @@ fake kernel.
 adversarial unit cases (near-equidistant, flipped normals, far moves, vanished pieces, weak
 names). Timings are printed as `[regen timing]` lines.
 
+ADR-076: `unify.golden.test.ts` (real kernel: the bracket's back and side faces are one face each,
+14 faces, volume unchanged; a sketch on the absorbed upright back face resolves to the merged face
+as `merged` and returns to its own face when a gap param un-merges it; shells of 1, 2 and 5 mm with
+analytic void volumes, closed, top open, back open picked as both absorbed faces, the front open
+between tangent corner fillets, and the precise "too thick" error), `merged-unit.test.ts` (alias
+entries, the walk's merge table, chains).
+
 M3.5: `cause.test.ts` (real kernel, one test per cause rule: changed via a chain and by the
 producer, carried over and cleared, added, suppressed, deleted, reordered, failed/blocked, an
 `error` feature, and "never guesses"); `topology.test.ts` / `naming.test.ts` assert the causes of
