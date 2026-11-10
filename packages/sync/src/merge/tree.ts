@@ -28,6 +28,8 @@ export const COLLECTIONS: readonly Segs[] = [
   // Feature tree folders (M3.6). The merge handles them at the part level (`merge.ts` folders()):
   // their order carries no meaning and their member lists merge as sets.
   ['parts', '*', 'folders'],
+  // Part configurations (M3.7, ADR-074): id-keyed records of override cells (`configurations.ts`).
+  ['parts', '*', 'configurations'],
   ['parts', '*', 'features', '*', 'entities'],
   ['parts', '*', 'features', '*', 'constraints'],
   ['parts', '*', 'features', '*', 'annotations'],

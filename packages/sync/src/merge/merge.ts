@@ -32,6 +32,15 @@
  *    that made is reported in plain language in `notes` (`mergeNotes`).
  *  - A sketch's absent `visibility` is the same as `'auto'`, so setting `'auto'` on one side
  *    doesn't conflict with the other side's `'shown'`.
+ *  - Part configurations (`Part.configurations`, M3.7, ADR-074) merge by id like any collection;
+ *    each override is a cell (`configurations.ts`). Edits to different cells merge cleanly (also
+ *    in one configuration, and a rename merges with a cell edit); the same cell set differently
+ *    is `bothModified`, a cell set on one side and reset on the other is `modifiedDeleted`, and a
+ *    configuration deleted against edited is `modifiedDeleted`. `activeConfigurationId` and
+ *    `Part.properties` merge as plain fields. Afterwards `reconcileConfigurations` drops the
+ *    overrides of features and parameters the merge deleted, falls back to Default from an active
+ *    configuration that no longer exists, and flags configurations that now share a name, each
+ *    with a note.
  */
 
 import type {
@@ -48,6 +57,16 @@ import type {
   WrenDoc,
 } from '@wren-cad/contracts';
 import { normalizeFolders, validateDoc } from '@wren-cad/document';
+import {
+  type ConfigurationNote,
+  configurationValueText,
+  isActiveConfigurationPath,
+  isConfigCellPath,
+  isConfigRecordPath,
+  isConfigurationValuePath,
+  reconcileConfigurations,
+  reconcileResolved,
+} from './configurations';
 import {
   type FolderChange,
   isFolderMembersPath,
@@ -75,11 +94,8 @@ import {
 
 type Choice = { take: 'ours' | 'theirs' | 'base' } | { value: unknown };
 
-/**
- * Something the merge did on its own that the user should hear about (the merge report):
- * "Fillet 3 left folder Mounting to keep the folder in one piece".
- */
-export interface MergeNote {
+/** A folder kept whole: "Fillet 3 left folder Mounting to keep the folder in one piece". */
+export interface FolderMergeNote {
   kind: 'folderMembership';
   partId: Id;
   /** The folder (`kind: 'part'` with the part's id until contracts gain a folder subject). */
@@ -88,8 +104,25 @@ export interface MergeNote {
   summary: string;
 }
 
+/**
+ * Something the merge did on its own that the user should hear about (the merge report): a
+ * folder kept whole (M3.6), or a configuration rule (M3.7): "Overrides of Fillet 3 in Long were
+ * removed with the feature".
+ */
+export type MergeNote = FolderMergeNote | ConfigurationNote;
+
+/**
+ * A conflict from `StructuralMerger`. `text` (configuration values, M3.7) holds each side's value
+ * as words read in the version that has it ("45 mm", "default (40 mm)", "Long"), since an id or
+ * an absent override says nothing on its own. Plain data: it survives a structured clone.
+ */
+export interface StructuralMergeConflict extends MergeConflict {
+  text?: { base?: string; ours?: string; theirs?: string };
+}
+
 /** A `MergeResult` from `StructuralMerger`: `notes` is present when there is something to say. */
 export interface StructuralMergeResult extends MergeResult {
+  conflicts: StructuralMergeConflict[];
   notes?: MergeNote[];
 }
 
@@ -132,7 +165,7 @@ const sameOrder = (a: readonly string[], b: readonly string[]): boolean =>
   a.length === b.length && a.every((x, i) => x === b[i]);
 
 class MergeRun {
-  readonly conflicts: MergeConflict[] = [];
+  readonly conflicts: StructuralMergeConflict[] = [];
   readonly notes: MergeNote[] = [];
   autoMerged = 0;
 
@@ -147,6 +180,7 @@ class MergeRun {
     // A copy: the walk returns the inputs' own objects where nothing changed.
     const doc = clone(this.node([], base, ours, theirs)) as WrenDoc;
     this.paramNames(doc);
+    this.notes.push(...reconcileConfigurations(doc, this.sides));
     return doc;
   }
 
@@ -158,15 +192,25 @@ class MergeRun {
   ): Choice | undefined {
     const id = conflictId(kind, segs);
     const { base, ours, theirs } = this.sides;
-    const c: MergeConflict = {
+    const docs = [ours, theirs, base];
+    const c: StructuralMergeConflict = {
       id,
       kind,
       path: toPointer(segs),
-      subject: subjectAt(segs, [ours, theirs, base]),
+      subject: subjectAt(segs, docs),
     };
     if (values.base !== undefined) c.base = clone(values.base);
     if (values.ours !== undefined) c.ours = clone(values.ours);
     if (values.theirs !== undefined) c.theirs = clone(values.theirs);
+    if (isConfigurationValuePath(segs)) {
+      const text: NonNullable<StructuralMergeConflict['text']> = {};
+      for (const side of ['base', 'ours', 'theirs'] as const) {
+        if (side === 'base' && values.base === undefined && kind === 'bothAdded') continue;
+        const t = configurationValueText(segs, values[side], docs);
+        if (t !== undefined) text[side] = t;
+      }
+      if (Object.keys(text).length > 0) c.text = text;
+    }
     this.conflicts.push(c);
     return this.choices.get(id);
   }
@@ -179,6 +223,10 @@ class MergeRun {
 
   private node(segs: Segs, b: unknown, o: unknown, t: unknown): unknown {
     if (isVisibilityPath(segs)) return this.visibility(segs, b, o, t);
+    const objOrNone = (v: unknown) => v === undefined || isObj(v);
+    if (isConfigRecordPath(segs) && objOrNone(b) && objOrNone(o) && objOrNone(t)) {
+      return this.record(segs, b as Obj | undefined, o as Obj | undefined, t as Obj | undefined);
+    }
     if (equal(o, t)) return o;
     if (equal(b, o)) {
       this.autoMerged++;
@@ -208,15 +256,19 @@ class MergeRun {
       const present = po === pt ? po : pb === po ? pt : po;
       return present ? [] : undefined;
     }
-    if (isObj(b) && isObj(o) && isObj(t) && !isAtomicObject(segs, b, o, t)) {
+    const cell = isConfigCellPath(segs);
+    if (isObj(b) && isObj(o) && isObj(t) && !cell && !isAtomicObject(segs, b, o, t)) {
       return this.object(segs, b, o, t);
     }
-    const kind: MergeConflictKind =
+    let kind: MergeConflictKind =
       b === undefined
         ? 'bothAdded'
         : o === undefined || t === undefined
           ? 'modifiedDeleted'
           : 'bothModified';
+    // An absent override inherits Default: two sides setting a cell both modified it. Absent
+    // active configuration = Default, a choice like any other.
+    if ((cell && kind === 'bothAdded') || isActiveConfigurationPath(segs)) kind = 'bothModified';
     return this.pick(this.choose(kind, segs, { base: b, ours: o, theirs: t }), b, o, t);
   }
 
@@ -234,6 +286,22 @@ class MergeRun {
     if (equal(vb, vt)) return o;
     const choice = this.choose('bothModified', segs, { base: vb, ours: vo, theirs: vt });
     return this.pick(choice, b, o, t);
+  }
+
+  /**
+   * A configuration record where absent = empty (`isConfigRecordPath`): compared by meaning and
+   * merged key by key, so cells added on two sides combine. An emptied record is dropped.
+   */
+  private record(segs: Segs, b?: Obj, o?: Obj, t?: Obj): unknown {
+    const [rb, ro, rt] = [b ?? {}, o ?? {}, t ?? {}];
+    if (equal(ro, rt)) return o;
+    if (equal(rb, ro)) {
+      this.autoMerged++;
+      return t;
+    }
+    if (equal(rb, rt)) return o;
+    const out = this.object(segs, rb, ro, rt);
+    return Object.keys(out).length === 0 ? undefined : out;
   }
 
   /** Bookkeeping fields that never conflict. */
@@ -573,9 +641,12 @@ function setAt(doc: Obj, segs: Segs, value: unknown): void {
       : isObj(node)
         ? node[seg]
         : undefined;
-    // An optional collection the merge left out (a part's folders): restoring an item creates it.
+    // An optional collection the merge left out (a part's folders) or an override record it left
+    // empty (a configuration's params): restoring an item creates it.
     if (node === undefined && isObj(parent) && value !== undefined) {
-      if (isCollectionPath(segs.slice(0, i + 1))) parent[seg] = node = [];
+      const at = segs.slice(0, i + 1);
+      if (isCollectionPath(at)) parent[seg] = node = [];
+      else if (isConfigRecordPath(at)) parent[seg] = node = {};
     }
     if (node === undefined) return; // the parent is gone: nothing to set
   }
@@ -624,6 +695,8 @@ function resolveByPath(
       list.splice(0, list.length, ...order.map((id) => items.get(id)));
     } else setAt(doc, segs, value);
   }
+  // Configurations: no override of what the resolution removed, no active one that is gone.
+  reconcileResolved(doc as unknown as WrenDoc, result.doc);
   // Keep every part's rollback bar meaningful after items came and went.
   for (const part of (doc.parts ?? []) as Obj[]) {
     const n = ((part.features ?? []) as unknown[]).length;
