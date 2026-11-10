@@ -6,6 +6,8 @@ const BASE_PATH = process.env.WREN_BASE ?? '/wren-cad/';
 const PWA_SHELL = /pwa-shell\.spec\.ts/;
 /** The M3 reference parts take ~20 min serially: their own project, sharded on CI (ci.yml). */
 const REFERENCE = /m3-reference-parts\.spec\.ts/;
+/** Long-session soak (PLAN H1): its own project, needs WREN_SOAK=1; nightly / on demand in ci.yml. */
+const SOAK = /soak\.spec\.ts/;
 
 export default defineConfig({
   testDir: './e2e',
@@ -34,7 +36,7 @@ export default defineConfig({
     {
       name: 'chromium',
       testMatch: /.*\.spec\.ts/,
-      testIgnore: [PWA_SHELL, REFERENCE],
+      testIgnore: [PWA_SHELL, REFERENCE, SOAK],
       use: { ...devices['Desktop Chrome'] },
     },
     { name: 'chromium-reference', testMatch: REFERENCE, use: { ...devices['Desktop Chrome'] } },
@@ -54,7 +56,7 @@ export default defineConfig({
     {
       name: 'firefox',
       testMatch: /.*\.spec\.ts/,
-      testIgnore: [PWA_SHELL, REFERENCE],
+      testIgnore: [PWA_SHELL, REFERENCE, SOAK],
       use: {
         ...devices['Desktop Firefox'],
         // CI runs Firefox headed under Xvfb (see ci.yml) so it gets Mesa's software GL.
@@ -73,11 +75,17 @@ export default defineConfig({
     {
       name: 'webkit',
       testMatch: /.*\.spec\.ts/,
-      testIgnore: [PWA_SHELL, REFERENCE],
+      testIgnore: [PWA_SHELL, REFERENCE, SOAK],
       use: { ...devices['Desktop Safari'] },
     },
     // WebKit with Playwright's "iPad Pro 11" emulation. Non-gating like the other WebKit job.
     { name: 'webkit-ipad', testMatch: PWA_SHELL, use: { ...devices['iPad Pro 11'] } },
+    {
+      name: 'soak',
+      testMatch: SOAK,
+      fullyParallel: false,
+      use: { ...devices['Desktop Chrome'] },
+    },
     {
       name: 'perf',
       testMatch: /.*\.perf\.ts/,

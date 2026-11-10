@@ -6,7 +6,14 @@
 //
 // Usage: node scripts/bundle-report.mjs [--dist dist] [--md report.md] [--json report.json]
 //   Markdown also goes to $GITHUB_STEP_SUMMARY when set. Exits 1 if the initial route is over budget.
-import { appendFileSync, existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import {
+  appendFileSync,
+  existsSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
@@ -57,7 +64,11 @@ const chunks = [...walk(dist)].map((file) => {
     path,
     raw: buf.length,
     gzip: gzipSync(buf, { level: 9 }).length,
-    kind: initial.has(path) ? 'initial' : /(^|\/)(sw|workbox-)/.test(path) ? 'service worker' : 'lazy',
+    kind: initial.has(path)
+      ? 'initial'
+      : /(^|\/)(sw|workbox-)/.test(path)
+        ? 'service worker'
+        : 'lazy',
   };
 });
 chunks.sort((a, b) => b.gzip - a.gzip);
@@ -88,9 +99,16 @@ const md = [
   '| Chunk | Raw | Gzip | Kind |',
   '| --- | ---: | ---: | --- |',
   ...lazy.map(row),
-  ...chunks.filter((c) => c.kind === 'service worker').length
-    ? ['', '### Service worker', '', '| Chunk | Raw | Gzip | Kind |', '| --- | ---: | ---: | --- |', ...chunks.filter((c) => c.kind === 'service worker').map(row)]
-    : [],
+  ...(chunks.filter((c) => c.kind === 'service worker').length
+    ? [
+        '',
+        '### Service worker',
+        '',
+        '| Chunk | Raw | Gzip | Kind |',
+        '| --- | ---: | ---: | --- |',
+        ...chunks.filter((c) => c.kind === 'service worker').map(row),
+      ]
+    : []),
   '',
 ].join('\n');
 
