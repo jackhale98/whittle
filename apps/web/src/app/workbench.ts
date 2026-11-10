@@ -38,6 +38,8 @@ import {
   type DocumentStoreImpl,
   expressionEngine,
   scopeOf,
+  ulid,
+  validateParamName,
 } from '@wren-cad/document';
 import {
   type ExportRequest,
@@ -498,10 +500,14 @@ export class Workbench {
     );
     this.heals = new Map();
     this.healsFor = null;
-    const lbl = label ?? folded.label;
+    // A joined edit (Make parameter, ADR-080) merges into the step that opened it: keep its label.
+    const joined = this.joinKey !== null;
+    const lbl = joined && this.joinApplied > 0 ? undefined : (label ?? folded.label);
+    const key = this.joinKey ?? coalesceKey;
+    if (joined) this.joinApplied++;
     const r = this.store.apply(folded.command, {
       ...(lbl ? { label: lbl } : {}),
-      ...(coalesceKey ? { coalesceKey } : {}),
+      ...(key ? { coalesceKey: key } : {}),
     });
     if (!r.ok) {
       this.toast(r.error, 'error');
@@ -511,7 +517,42 @@ export class Workbench {
   }
 
   commit(): void {
+    if (this.joinKey !== null) return; // closed by `endMakeParameter`
     this.store.commit();
+  }
+
+  /** While set, every `apply` joins one undo step (Make parameter: the new parameter and the edit that uses it). */
+  private joinKey: string | null = null;
+  private joinApplied = 0;
+
+  /**
+   * "Make parameter" (ADR-080): adds `name = expr` and holds the undo step open, so the field's
+   * next edit (it commits the name) lands in the same step. Returns an error message, or
+   * undefined. Always follow with `endMakeParameter`.
+   */
+  makeParameter(name: string, expr: Expr): string | undefined {
+    const bad = validateParamName(name);
+    if (bad) return bad;
+    if (this.doc.params.some((p) => p.name === name)) return `“${name}” is already used`;
+    this.joinKey = `make-param:${ulid()}`;
+    this.joinApplied = 0;
+    if (
+      !this.apply({ kind: 'addParam', param: { id: ulid(), name, expr } }, `Make parameter ${name}`)
+    ) {
+      this.joinKey = null;
+      return 'The parameter could not be created';
+    }
+    return undefined;
+  }
+
+  /** Closes the step `makeParameter` opened, after a sketch's queued edit (a dimension) has landed. */
+  endMakeParameter(): void {
+    const end = () => {
+      this.joinKey = null;
+      this.store.commit();
+    };
+    if (this.sketch?.busy) void this.track(this.sketch.whenSettled().then(end));
+    else end();
   }
 
   /** Undo/redo wait for sketch edits still being solved (they land first, then are undone). */

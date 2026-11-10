@@ -73,6 +73,12 @@ export function App({ wb }: { wb: Workbench }) {
   const diagnostics = getDiagnostics();
   const theme = useTheme({});
   const doc = useDoc(wb);
+  // "Used by" is computed in a lazy chunk: it is only shown on the Params tab.
+  const [usage, setUsage] = useState<typeof import('./param-usage').paramUsage | null>(null);
+  useEffect(() => {
+    void import('./param-usage').then((m) => setUsage(() => m.paramUsage));
+  }, []);
+  const usedBy = useMemo(() => usage?.(doc), [usage, doc]);
   const ui = useObservable(wb.ui);
   const regen = useObservable(wb.regen);
   const engine = useObservable(wb.engine);
@@ -276,6 +282,11 @@ export function App({ wb }: { wb: Workbench }) {
             wb.apply({ kind: 'removeParam', paramId });
             wb.commit();
           },
+          usedBy,
+          onSelectUse: (use) =>
+            void import('./param-actions').then((m) => m.selectParamUse(wb, use)),
+          onMake: (name, expr) => wb.makeParameter(name, expr),
+          onMakeDone: () => wb.endMakeParameter(),
           density,
         }}
         inspector={<Inspector wb={wb} density={density} measure={measure} section={section} />}

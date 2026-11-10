@@ -31,7 +31,11 @@ export {
 } from './components/floating';
 export { ChamferIcon } from './components/icons';
 export { PromptChip, type PromptChipProps } from './components/PromptChip';
-export { ParamNamesContext } from './components/paramNames';
+export {
+  type ParamLinks,
+  ParamLinksContext,
+  ParamNamesContext,
+} from './components/paramNames';
 export {
   Button,
   type ButtonProps,
@@ -225,6 +229,9 @@ export {
   writeNavigation,
 } from './logic/navigationStorage';
 export { NEST_SKETCHES_KEY, readNestSketches, writeNestSketches } from './logic/nestPref';
+export { beginParamDrag, registerParamDrop } from './logic/paramDrag';
+export { type ParamInfo, paramRefs } from './logic/paramLinks';
+export { RESERVED_WORDS, UNIT_WORDS, validateNewParamName } from './logic/paramName';
 export {
   clampCenter,
   layoutSlots,
@@ -310,7 +317,7 @@ export {
 } from './panels/NavigationSettings';
 export { type PartListItem, PartsPanel, type PartsPanelProps } from './panels/PartsPanel';
 export { type SectionAxis, SectionPanel, type SectionPanelProps } from './panels/SectionPanel';
-export { ParamsTable, type ParamsTableProps } from './params/ParamsTable';
+export { ParamsTable, type ParamsTableProps, type ParamUse } from './params/ParamsTable';
 export { AppShell, type AppShellProps } from './shells/AppShell';
 export { BottomSheet, type BottomSheetProps } from './shells/BottomSheet';
 export { DesktopShell } from './shells/DesktopShell';

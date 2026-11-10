@@ -128,6 +128,20 @@
   }
 }
 
+/* Dropping a parameter on a value (ADR-080): every target hints while one is dragged. */
+html[data-param-dragging] [data-param-drop] {
+  outline: 2px dashed var(--color-accent);
+  outline-offset: 2px;
+}
+html[data-param-dragging] [data-param-drop][data-drop-hot] {
+  outline-style: solid;
+  background: var(--color-accent-soft);
+}
+html[data-param-dragging] body,
+html[data-param-dragging] body * {
+  cursor: grabbing;
+}
+
 /* Transition durations use the motion presets (--duration-fast / --duration-standard). */
 @utility duration-fast {
   transition-duration: var(--duration-fast);

@@ -1,13 +1,46 @@
 import type { EvalResult, Expr, Id, Param } from '@wren-cad/contracts';
-import { GripVertical, Plus, Trash2, Variable } from 'lucide-react';
+import {
+  Box,
+  ChevronRight,
+  GripVertical,
+  Link2,
+  PencilRuler,
+  Plus,
+  Trash2,
+  Variable,
+} from 'lucide-react';
 import { m } from 'motion/react';
-import { type KeyboardEvent, type PointerEvent, useRef, useState } from 'react';
+import {
+  type KeyboardEvent,
+  type PointerEvent,
+  useId,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
+import { createPortal } from 'react-dom';
 import { ExpressionInput } from '../components/ExpressionInput';
 import { Button, cn, IconButton } from '../components/primitives';
 import type { MoveResult } from '../features/FeatureTree';
 import { defaultFormatValue, type FormatValue } from '../format';
+import { beginParamDrag, getParamDrag, subscribeParamDrag } from '../logic/paramDrag';
 import { useSpring } from '../motion';
 import { EmptyState } from '../shells/shared';
+
+/** Something that uses a parameter: a feature's value, a sketch dimension, or another parameter. */
+export interface ParamUse {
+  /** Stable key within one parameter's list. */
+  key: string;
+  kind: 'feature' | 'dimension' | 'param';
+  /** The feature, sketch or parameter that uses it ("Extrude 1"). */
+  label: string;
+  /** Which value ("depth", "diameter dimension"). */
+  detail?: string;
+  featureId?: Id;
+  /** For a sketch dimension: the constraint. */
+  constraintId?: Id;
+  paramId?: Id;
+}
 
 export interface ParamsTableProps {
   params: readonly Param[];
@@ -21,6 +54,14 @@ export interface ParamsTableProps {
   onMove?(id: Id, toIndex: number): MoveResult | Promise<MoveResult> | undefined;
   /** How many expressions reference each param, to warn before deleting it. */
   usage?: Readonly<Record<Id, number>>;
+  /** What uses each param (ADR-080): "Used by N", expandable to the list. Supersedes `usage`. */
+  usedBy?: Readonly<Record<Id, readonly ParamUse[]>>;
+  /** Choose an entry of a "Used by" list: select the feature, open the sketch at the dimension. */
+  onSelectUse?(use: ParamUse): void;
+  /** "Make parameter" from a field's value: create `name = expr` (see `ParamLinks.make`). */
+  onMake?(name: string, expr: Expr): string | undefined;
+  /** The field has committed the new name: close the undo step. */
+  onMakeDone?(): void;
   density?: 'compact' | 'touch';
   className?: string;
 }
@@ -46,6 +87,8 @@ interface RowProps {
   onGripMove(e: PointerEvent<HTMLElement>): void;
   onGripUp(): void;
   onKeyMove(id: Id, to: number): void;
+  onHint(text: string): void;
+  onFocusParam(id: Id): void;
 }
 
 function ParamRow({
@@ -60,6 +103,8 @@ function ParamRow({
   onGripMove,
   onGripUp,
   onKeyMove,
+  onHint,
+  onFocusParam,
 }: RowProps) {
   const { params, evaluate, formatValue, onUpdate, onRemove, onMove, usage, density } = props;
   const touch = density === 'touch';
@@ -71,7 +116,11 @@ function ParamRow({
   const name = nameDraft ?? param.name;
   const nameError = nameDraft !== null ? validateName(nameDraft, param.id, params) : null;
   const result = param.expr.trim() ? evaluate(param.expr) : undefined;
-  const used = usage?.[param.id] ?? 0;
+  const uses = props.usedBy?.[param.id];
+  const used = uses ? uses.length : (usage?.[param.id] ?? 0);
+  const [showUses, setShowUses] = useState(false);
+  const usesId = useId();
+  const hintId = useId();
 
   function commitName() {
     if (nameDraft === null) return;
@@ -152,6 +201,34 @@ function ParamRow({
                 )}
               />
             </div>
+            <button
+              type="button"
+              data-testid="param-drag"
+              data-param-handle={param.name}
+              aria-label={`Use ${param.name}`}
+              aria-describedby={hintId}
+              title={`Drag ${param.name} onto a dimension or a field`}
+              onPointerDown={(e) => {
+                if (e.pointerType === 'mouse' && e.button !== 0) return;
+                e.preventDefault();
+                beginParamDrag(e, param.name);
+              }}
+              onClick={() =>
+                onHint(
+                  `To use ${param.name}, type it in a value field or press Alt+Down in the field and choose it.`,
+                )
+              }
+              className={cn(
+                'flex shrink-0 cursor-grab touch-none items-center justify-center rounded-full text-fg-subtle shadow-[inset_0_0_0_1px_var(--color-border)] hover:bg-surface-3 hover:text-accent-text active:cursor-grabbing',
+                touch ? 'size-11' : 'size-7',
+              )}
+            >
+              <Link2 className="size-4" aria-hidden />
+            </button>
+            <span id={hintId} className="sr-only">
+              Drag onto a dimension or a value field to use it. With the keyboard, type the name in
+              the field or press Alt and Down Arrow there.
+            </span>
             <span
               data-testid="param-value"
               className={cn(
@@ -177,6 +254,66 @@ function ParamRow({
               />
             ) : null}
           </div>
+          {props.usedBy ? (
+            <div>
+              <button
+                type="button"
+                data-testid="param-used-by"
+                aria-expanded={used > 0 ? showUses : undefined}
+                aria-controls={used > 0 ? usesId : undefined}
+                disabled={used === 0}
+                onClick={() => setShowUses((v) => !v)}
+                className={cn(
+                  'flex items-center gap-1 rounded-[7px] px-1.5 text-2xs font-medium text-fg-muted enabled:hover:text-fg',
+                  touch ? 'min-h-11' : 'h-6',
+                )}
+              >
+                {used > 0 ? (
+                  <ChevronRight
+                    className={cn(
+                      'size-3.5 transition-transform duration-fast',
+                      showUses && 'rotate-90',
+                    )}
+                    aria-hidden
+                  />
+                ) : null}
+                {used === 0 ? 'Not used yet' : `Used by ${used}`}
+              </button>
+              {showUses && uses && used > 0 ? (
+                <ul id={usesId} aria-label={`Used by, ${param.name}`} className="m-0 list-none p-0">
+                  {uses.map((u) => (
+                    <li key={u.key}>
+                      <button
+                        type="button"
+                        data-testid="param-use"
+                        onClick={() =>
+                          u.kind === 'param'
+                            ? onFocusParam(u.paramId ?? '')
+                            : props.onSelectUse?.(u)
+                        }
+                        className={cn(
+                          'flex w-full items-center gap-2 rounded-[7px] px-1.5 text-left text-ui hover:bg-surface-3',
+                          touch ? 'min-h-11' : 'min-h-7',
+                        )}
+                      >
+                        {u.kind === 'dimension' ? (
+                          <PencilRuler className="size-3.5 shrink-0 text-fg-subtle" aria-hidden />
+                        ) : u.kind === 'param' ? (
+                          <Variable className="size-3.5 shrink-0 text-fg-subtle" aria-hidden />
+                        ) : (
+                          <Box className="size-3.5 shrink-0 text-fg-subtle" aria-hidden />
+                        )}
+                        <span className="min-w-0 flex-1 truncate">{u.label}</span>
+                        {u.detail ? (
+                          <span className="shrink-0 text-2xs text-fg-muted">{u.detail}</span>
+                        ) : null}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+          ) : null}
           {nameError ? (
             <p role="alert" className="px-1.5 text-2xs text-danger-text">
               {nameError}
@@ -188,6 +325,7 @@ function ParamRow({
             evaluate={evaluate}
             formatValue={formatValue}
             showValue={false}
+            paramLinks="complete"
             size={touch ? 'touch' : 'md'}
             onCommit={(expr) => onUpdate?.(param.id, { expr })}
           />
@@ -259,6 +397,28 @@ function ParamRow({
   );
 }
 
+/** The chip that follows the pointer while a parameter is dragged onto a value (ADR-080). */
+function ParamDragGhost() {
+  const drag = useSyncExternalStore(subscribeParamDrag, getParamDrag, getParamDrag);
+  if (!drag) return null;
+  return createPortal(
+    <div
+      aria-hidden
+      data-testid="param-drag-ghost"
+      data-over={drag.over || undefined}
+      style={{ position: 'fixed', left: drag.x + 12, top: drag.y + 12 }}
+      className={cn(
+        'pointer-events-none z-[var(--z-popover)] flex items-center gap-1 rounded-full px-2.5 py-1 text-ui font-semibold shadow-float',
+        drag.over ? 'bg-accent text-accent-fg' : 'bg-surface text-fg',
+      )}
+    >
+      <Link2 className="size-3.5" />
+      {drag.name}
+    </div>,
+    document.body,
+  );
+}
+
 /**
  * Global parameters (PLAN 2.2): name, expression, live value, description. Expressions validate
  * inline with span underlines; names are checked for syntax and uniqueness before `onUpdate`.
@@ -269,6 +429,7 @@ export function ParamsTable(props: ParamsTableProps) {
   const list = useRef<HTMLUListElement>(null);
   const [shake, setShake] = useState<{ id: Id; key: number } | null>(null);
   const [notice, setNotice] = useState('');
+  const [hint, setHint] = useState('');
   const [drag, setDrag] = useState<{
     id: Id;
     from: number;
@@ -288,6 +449,12 @@ export function ParamsTable(props: ParamsTableProps) {
   }
   const rowsEls = () =>
     Array.from(list.current?.querySelectorAll<HTMLElement>('[data-param-id]') ?? []);
+
+  function focusParam(id: Id) {
+    list.current
+      ?.querySelector<HTMLElement>(`[data-param-id="${id}"] input[aria-label^="Name of"]`)
+      ?.focus();
+  }
 
   function gripDown(e: PointerEvent<HTMLElement>, id: Id, from: number) {
     if (e.button !== 0) return;
@@ -341,6 +508,8 @@ export function ParamsTable(props: ParamsTableProps) {
               onGripMove={gripMove}
               onGripUp={gripUp}
               onKeyMove={requestMove}
+              onHint={setHint}
+              onFocusParam={focusParam}
             />
           ))}
         </ul>
@@ -355,6 +524,14 @@ export function ParamsTable(props: ParamsTableProps) {
       >
         {notice}
       </p>
+      <p
+        aria-live="polite"
+        data-testid="param-hint"
+        className={cn('mx-3 mb-2 text-2xs leading-4 text-fg-muted', !hint && 'sr-only')}
+      >
+        {hint}
+      </p>
+      <ParamDragGhost />
       {onAdd ? (
         <div className="px-3 pt-1 pb-3">
           <Button
