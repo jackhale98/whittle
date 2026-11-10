@@ -34,6 +34,16 @@ or `'webgl2'`), `maxPixelRatio`, `theme`, `reducedMotion` and `viewCube`.
   pure and unit-tested) and applied in `viewport.ts`, so the pivot, the marker and the 1:1 drag are
   ours. See "Navigation (M3.5)" below. Double-click or double-tap fits the view until an app calls
   `onGesture`.
+- **Module map (H1 split).** `src/viewport.ts` holds `ViewportImpl` (state, construction, the
+  public methods as one-line delegates) and `createViewport`. Each responsibility lives in a sibling
+  module of plain functions taking the engine as `vp`: `bodies.ts` (meshes, materials, edges,
+  ghosts, theme), `picking.ts` (ID buffer, point pick, BVH prebuild), `rectPick.ts` (box select),
+  `camera.ts` (controls config, fit, standard views, roll), `wheel.ts` (ADR-069 wheel zoom),
+  `navControl.ts` (NavigationMachine glue, pivot, marker), `input.ts` (pointer gestures, palm
+  rejection, long press), `sketchOverlays.ts`, `adornments.ts` (highlights, markers, handles,
+  previews), `sectionView.ts`, `compareView.ts`, `renderLoop.ts` (wake/sleep, rest work, warm-up,
+  context loss) and `probes.ts` (test diagnostics). Shared types and constants are in `types.ts`
+  (public) and `internal.ts`. New engine behaviour goes in the matching module, not in `viewport.ts`.
 - **Studio light.** The first frame uses a hemisphere fill light. The procedural studio environment is
   built on idle after the first body frame, because its shader passes cost about 1.6 s on software GL
   (ADR-005 §4).
