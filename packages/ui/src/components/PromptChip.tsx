@@ -24,13 +24,14 @@ export function PromptChip({ children, count, onCancel, size = 'md', className }
       aria-live="polite"
       data-testid="prompt-chip"
       className={cn(
-        'w-panel pointer-events-auto inline-flex items-center gap-2 rounded-full pl-3.5 text-ui font-medium',
-        touch ? 'h-12 pr-0.5' : 'h-10 pr-1.5',
+        // Grows with its text: a long prompt wraps inside the chip on a phone, never clipped.
+        'w-panel pointer-events-auto inline-flex max-w-[calc(100vw-2rem)] items-center gap-2 rounded-[1.5rem] py-0.5 pl-3.5 text-ui font-medium',
+        touch ? 'min-h-12 pr-0.5' : 'min-h-10 pr-1.5',
         className,
       )}
     >
       <Crosshair className="w-pulse size-4 shrink-0 text-accent-text" aria-hidden />
-      <span>{children}</span>
+      <span className="min-w-0 py-1 leading-snug">{children}</span>
       {count ? (
         <span className="tnum rounded-full bg-accent px-1.5 text-2xs leading-5 font-semibold text-accent-fg">
           {count}

@@ -528,7 +528,9 @@ export function ViewportOverlays({ wb, touch }: { wb: Workbench; touch: boolean 
       {/* Above the command bar, where the tool was chosen: act-first prompt + plane chooser. */}
       {!sk && promptText ? (
         <div
-          className="absolute left-1/2 flex -translate-x-1/2 flex-col items-center gap-2"
+          // w-max: centred with left 50 %, the box would otherwise shrink to half the screen
+          // and wrap the prompt on a phone.
+          className="absolute left-1/2 flex w-max max-w-[calc(100vw-2rem)] -translate-x-1/2 flex-col items-center gap-2"
           style={ABOVE_BOTTOM}
           data-testid="prompt"
         >
