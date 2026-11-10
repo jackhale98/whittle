@@ -19,6 +19,14 @@ export function ConfigNotices({ wb, touch }: { wb: Workbench; touch: boolean }) 
   const issues = v.missing ? [] : partLevelIssues(wb.config.resolved().issues);
   return (
     <>
+      {state.exportingAll ? (
+        <output
+          data-testid="config-export-busy"
+          className="pointer-events-auto absolute top-16 left-1/2 -translate-x-1/2 rounded-panel bg-surface px-3 py-2 text-ui text-fg shadow-pop"
+        >
+          Exporting every configuration. The model is locked until it is done.
+        </output>
+      ) : null}
       {v.missing ? (
         <div
           role="alert"

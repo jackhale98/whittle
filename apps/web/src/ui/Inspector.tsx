@@ -230,6 +230,16 @@ export function Inspector({
             {f?.type === 'sketch' ? f.constraints.length : 0}
           </dd>
         </dl>
+        {wb.config.active ? (
+          <p
+            data-testid="sketch-config-hint"
+            className="rounded-control bg-warning-soft px-2 py-1.5 text-2xs leading-4 text-warning-text"
+          >
+            Sketch dimensions are not configurable: editing one changes Default, so every
+            configuration sees it. The sketch is solved with {wb.config.active.name}’s parameter
+            values.
+          </p>
+        ) : null}
         <p className="text-2xs leading-4 text-fg-muted">
           Click to place points; the line tool chains until you close a loop or press Esc. Press{' '}
           <Kbd>D</Kbd>, click geometry, then click where the label goes: above or below measures

@@ -135,6 +135,7 @@ export interface AppHooks {
   /** Waits for the live regen and the background builds of the other configurations. */
   configurationsBuilt(): Promise<boolean>;
   regenCalls(): number;
+  holdExport(on: boolean): void;
 }
 
 type W = { __wren: WrenTestHooks; __wrenApp: AppHooks };
@@ -183,6 +184,8 @@ export const app = (page: Page) => ({
   configurationsBuilt: () =>
     page.evaluate(() => (window as unknown as W).__wrenApp.configurationsBuilt()),
   regenCalls: () => page.evaluate(() => (window as unknown as W).__wrenApp.regenCalls()),
+  holdExport: (on: boolean) =>
+    page.evaluate((v) => (window as unknown as W).__wrenApp.holdExport(v), on),
   libraryFiles: (id: string) =>
     page.evaluate((x) => (window as unknown as W).__wrenApp.libraryFiles(x), id),
 });

@@ -470,7 +470,8 @@ export class SketchSession {
 
   private async solveData(next: SketchData): Promise<SketchSolveResult> {
     const f = this.feature();
-    const doc = this.wb.doc;
+    // Solve with the active configuration's parameter values, as the model regenerates (M3.7).
+    const doc = this.wb.config.resolved().doc;
     const cand: SketchFeature = {
       ...(f as SketchFeature),
       entities: [...next.entities],
@@ -1204,7 +1205,7 @@ export class SketchSession {
   }
 
   private values(f: SketchFeature): Record<Id, number> {
-    return sketchSolveValues(f, evaluateFeatureValues(f, this.wb.doc)).values;
+    return sketchSolveValues(f, evaluateFeatureValues(f, this.wb.config.resolved().doc)).values;
   }
 
   private dragTo(at: Vec2, e: PointerEvent): void {

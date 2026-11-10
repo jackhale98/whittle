@@ -35,6 +35,7 @@ import {
   buildTableModel,
   configurationFromEdits,
   inheritCount,
+  isMissingActive,
   overrideIn,
   planFeatureEdit,
   type TableModel,
@@ -50,6 +51,8 @@ export interface ConfigUiState {
   notice: { count: number; seq: number } | null;
   /** The table's double-click: the inspector focuses this field of the open feature. */
   focusField: { featureId: Id; path: string; seq: number } | null;
+  /** "Export all" is regenerating other configurations in the live slot: input is held. */
+  exportingAll: boolean;
 }
 
 /** How the last configuration switch performed (budget: 300 ms, PLAN §10). */
@@ -68,6 +71,7 @@ export class ConfigController {
     panel: false,
     notice: null,
     focusField: null,
+    exportingAll: false,
   });
   readonly builds: ConfigBuilds;
   readonly lastSwitch: Observable<SwitchTiming | null> = observable<SwitchTiming | null>(null);
@@ -145,8 +149,36 @@ export class ConfigController {
 
   reset(): void {
     this.builds.reset();
-    this.state.set({ panel: false, notice: null, focusField: null });
+    this.state.set({ panel: false, notice: null, focusField: null, exportingAll: false });
     this.pendingInherited = null;
+  }
+
+  /** Picks, measurements and tool commits are held while "Export all" uses the live slot. */
+  get exportingAll(): boolean {
+    return this.state.get().exportingAll;
+  }
+
+  setExportingAll(on: boolean): void {
+    this.state.set((s) => (s.exportingAll === on ? s : { ...s, exportingAll: on }));
+  }
+
+  holdHint(): void {
+    this.wb.toast('Exporting every configuration: the model is locked for a moment.', 'info');
+  }
+
+  /**
+   * With the active configuration missing, an edit would silently change Default (trap T2).
+   * Edits are refused until the user chooses a configuration.
+   */
+  private blockedByMissing(announce = true): boolean {
+    if (!isMissingActive(this.wb.part)) return false;
+    if (announce) {
+      this.wb.toast(
+        'This configuration needs attention: it no longer exists. Switch to Default or another configuration before editing.',
+        'error',
+      );
+    }
+    return true;
   }
 
   // ------------------------------------------------------------------ switching and managing
@@ -247,6 +279,7 @@ export class ConfigController {
     const wb = this.wb;
     const part = wb.part;
     if (!part) return;
+    if (this.blockedByMissing(mode === 'commit')) return;
     const raw = part.features.find((f) => f.id === next.id);
     const eff = this.effectiveFeature(next.id);
     if (!raw || !eff || !this.active) {
@@ -283,7 +316,7 @@ export class ConfigController {
     const wb = this.wb;
     const part = wb.part;
     const cfg = this.active;
-    if (!part) return;
+    if (!part || this.blockedByMissing()) return;
     const target: ConfigTarget = { kind: 'suppressed', featureId };
     const key = `suppress:${featureId}`;
     const rawState = part.features.find((f) => f.id === featureId)?.suppressed === true;
@@ -324,8 +357,14 @@ export class ConfigController {
     scope?: EditScope,
   ): void {
     const wb = this.wb;
+    if (patch.expr !== undefined && this.blockedByMissing()) return;
     if (patch.expr !== undefined && scope === 'configuration') {
-      const cmd = this.overrideCommand([{ target: { kind: 'param', paramId }, value: patch.expr }]);
+      // Typed back to Default's value: the override is cleared, overrides stay sparse.
+      const base = wb.doc.params.find((p) => p.id === paramId)?.expr;
+      const same = base !== undefined && base.trim() === patch.expr.trim();
+      const cmd = this.overrideCommand([
+        { target: { kind: 'param', paramId }, ...(same ? {} : { value: patch.expr }) },
+      ]);
       if (cmd) wb.apply(cmd);
       wb.commit();
       return;
@@ -338,7 +377,7 @@ export class ConfigController {
   setMaterial(material: Material | null, scope?: EditScope): void {
     const wb = this.wb;
     const part = wb.part;
-    if (!part) return;
+    if (!part || this.blockedByMissing()) return;
     if (scope === 'configuration') {
       const cmd = this.overrideCommand([{ target: { kind: 'material' }, value: material }]);
       if (cmd) wb.apply(cmd);
@@ -355,7 +394,7 @@ export class ConfigController {
   setProperties(patch: PartProperties, scope?: EditScope): void {
     const wb = this.wb;
     const part = wb.part;
-    if (!part) return;
+    if (!part || this.blockedByMissing()) return;
     if (scope === 'configuration') {
       const cmd = this.overrideCommand(
         (Object.entries(patch) as [keyof PartProperties, string][]).map(([key, value]) => ({
