@@ -34,15 +34,12 @@ import type {
   Vec3,
 } from '@wren-cad/contracts';
 import {
+  type ExactProjectedEdge,
   type ExportShape,
   instantiateKernel,
   type KernelInitModule,
   type KernelModuleOptions,
   type MeasureSubject,
-  type ExactProjectedEdge,
-  type ProjectedCurve,
-  type ProjectedEdge,
-  type ProjectedOutline,
   type RawExportResult,
   type RawImportResult,
   type RawKernelInfo,
