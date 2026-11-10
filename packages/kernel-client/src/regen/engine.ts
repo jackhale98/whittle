@@ -51,7 +51,6 @@ import type {
   MeshQuality,
   MirrorFeature,
   NamingMap,
-  Part,
   PlaneFeature,
   PointFeature,
   PrimitiveFeature,
@@ -72,23 +71,18 @@ import type {
   UnresolvedRef,
   Vec2,
   Vec3,
-  WrenDoc,
 } from '@wren-cad/contracts';
 import {
   evaluateFeatureValues,
-  expressionEngine,
   featureReferences,
   holeRow,
   resolveHoleSize,
-  scopeOf,
   sketchSolveValues,
-  tryResolveDensity,
 } from '@wren-cad/document';
 import { IoError, importMesh, meshToStl } from '@wren-cad/io';
 import { zipSync } from 'fflate';
 import type { MeasureSubject } from '../kernel-api';
 import { attachCauses, FIELD_LABELS, fieldLabel, walkDelta, walkEntry } from './attribution';
-import { copyMesh, faceIndex, faceSubMesh } from './buffers';
 import { newWalk, pushWalk, type WalkEntry } from './cause';
 import { chainOrder } from './chain';
 import { type CompareOutput, type DiffSide, geometricDiff } from './compare';
@@ -128,10 +122,8 @@ import {
   ORIGIN_AXES,
   ORIGIN_PLANES,
   planeFrame,
-  sampleEntity,
   scale,
   sub,
-  toWorld,
 } from './geometry';
 import { hashKey } from './hash';
 import {
@@ -160,6 +152,7 @@ import {
   projectPoint,
   projectSketchEntity,
 } from './linked';
+import { bodyResult, densityOf, sketchResult } from './outputs';
 import {
   AXIS_NAME,
   fingerprintOf,
@@ -618,17 +611,17 @@ export class RegenEngine {
     pc.walk = ctx.walk;
 
     // Outputs.
-    const density = this.densityOf(part, doc);
+    const density = densityOf(part, doc);
     const wantMass = request.massProperties === true || part.material !== undefined;
     const finalBodies = [...ctx.state.bodies.values()];
     const bodies: BodyResult[] = [];
     for (const b of finalBodies) {
-      const out = await this.bodyResult(b, request.quality, wantMass, density);
+      const out = await bodyResult(this.core, b, request.quality, wantMass, density);
       if (out) bodies.push(out);
     }
     const sketches: SketchResult[] = [];
     for (const s of ctx.state.sketches.values()) {
-      sketches.push(await this.sketchResult(s, request.quality));
+      sketches.push(await sketchResult(this.core, s, request.quality));
     }
 
     const allOk = features.every(
@@ -642,7 +635,7 @@ export class RegenEngine {
       for (const g of pc.lastGood.bodies) {
         const now = ctx.state.bodies.get(g.id);
         if (now && now.shape === g.shape) continue;
-        const out = await this.bodyResult(g, request.quality, false, undefined);
+        const out = await bodyResult(this.core, g, request.quality, false, undefined);
         if (out) ghosts.push(out);
       }
     }
@@ -662,74 +655,6 @@ export class RegenEngine {
     };
     if (ghosts && ghosts.length > 0) result.ghosts = ghosts;
     return result;
-  }
-
-  private densityOf(part: Part, doc: WrenDoc): number | undefined {
-    if (!part.material) return undefined;
-    const d = tryResolveDensity(part.material, expressionEngine, scopeOf(doc));
-    return d.ok ? d.value : undefined;
-  }
-
-  private async bodyResult(
-    b: BodyState,
-    quality: MeshQuality,
-    wantMass: boolean,
-    density: number | undefined,
-  ): Promise<BodyResult | null> {
-    const mesh = await this.core.meshOf(b.shape, quality);
-    if (!mesh) return null;
-    const out: BodyResult = { id: b.id, shape: b.shape, mesh: copyMesh(mesh) };
-    // Names from the body's naming map: the kernel's mesh names are its internal ones (imports
-    // are translated, mesh-only bodies are named by the engine).
-    out.mesh.faceNames = namesByIndex(b.naming, 'face', out.mesh.faceRanges.length / 2);
-    out.mesh.edgeNames = namesByIndex(b.naming, 'edge', out.mesh.edgeRanges.length / 2);
-    if (wantMass) {
-      const mp = await this.core.massOf(b.shape, density);
-      if (mp) out.massProperties = mp;
-    }
-    return out;
-  }
-
-  private async sketchResult(s: SketchState, quality: MeshQuality): Promise<SketchResult> {
-    const points = new Map<string, Vec2>();
-    for (const e of s.entities) if (e.kind === 'point') points.set(e.id, [e.x, e.y]);
-    // Chord tolerance from the sketch's extent so display matches the viewport quality.
-    let extent = 0;
-    for (const p of points.values()) extent = Math.max(extent, Math.abs(p[0]), Math.abs(p[1]));
-    for (const e of s.entities) {
-      if (e.kind === 'circle') extent = Math.max(extent, e.radius);
-      if (e.kind === 'ellipse' || e.kind === 'ellipticArc') {
-        extent = Math.max(extent, e.majorRadius, e.minorRadius);
-      }
-    }
-    const chord = Math.max(1e-4, (extent || 10) * this.core.quality[quality].linearDeflection);
-    const curves: SketchResult['curves'] = [];
-    const pts: NonNullable<SketchResult['points']> = [];
-    for (const e of s.entities) {
-      if (e.kind === 'point') {
-        pts.push({ entity: e.id, at: toWorld(s.frame, e.x, e.y), construction: e.construction });
-        continue;
-      }
-      const samples = sampleEntity(e, points, chord);
-      const arr = new Float32Array(samples.length * 3);
-      samples.forEach((uv, i) => {
-        arr.set(toWorld(s.frame, uv[0], uv[1]), 3 * i);
-      });
-      curves.push({ entity: e.id, points: arr, construction: e.construction });
-    }
-    const regions: SketchResult['regions'] = [];
-    const mesh = s.regions.length > 0 ? await this.core.meshOf(s.shape, quality) : null;
-    for (const name of s.regions) {
-      const fi = faceIndex(s.naming, name);
-      if (mesh && fi >= 0) regions.push({ name, mesh: faceSubMesh(mesh, fi, name) });
-    }
-    return {
-      featureId: s.id,
-      curves,
-      points: pts,
-      regions,
-      frame: { origin: s.frame.origin, x: s.frame.x, y: crossY(s.frame), z: s.frame.z },
-    };
   }
 
   // -------------------------------------------------------------------------------------------
@@ -3614,15 +3539,6 @@ export class RegenEngine {
   }
 }
 
-function crossY(f: Frame): Vec3 {
-  const y: Vec3 = [
-    f.z[1] * f.x[2] - f.z[2] * f.x[1],
-    f.z[2] * f.x[0] - f.z[0] * f.x[2],
-    f.z[0] * f.x[1] - f.z[1] * f.x[0],
-  ];
-  return y.map((v) => (v === 0 ? 0 : v)) as Vec3; // no -0
-}
-
 /** Feature types whose tool solid can be copied by mirror / patterns. */
 const TOOL_TYPES: ReadonlySet<Feature['type']> = new Set([
   'extrude',
@@ -3642,16 +3558,6 @@ function opCode(op: ExtrudeFeature['op']): 0 | 1 | 2 {
 function entityName(f: SketchFeature, id: Id): string {
   const e = f.entities.find((x) => x.id === id);
   return `S${f.id}:${e?.kind === 'point' ? 'p' : 'e'}(${id})`;
-}
-
-/** The first name per index of `kind` (aliases come later in a naming map), "" when unnamed. */
-function namesByIndex(naming: NamingMap, kind: 'face' | 'edge', count: number): string[] {
-  const out: string[] = Array(count).fill('');
-  for (let i = naming.length - 1; i >= 0; i--) {
-    const n = naming[i] as NamingMap[number];
-    if (n.kind === kind && n.index < count) out[n.index] = n.name;
-  }
-  return out;
 }
 
 const MESH_FORMATS: ReadonlySet<ImportFeature['source']['format']> = new Set([
