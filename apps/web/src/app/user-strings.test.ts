@@ -8,7 +8,7 @@ import type { Workbench } from './workbench';
 
 describe('user-facing strings', () => {
   it('open-as-copy note says "this document"', async () => {
-    const base = newDoc('Bracket');
+    const base = newDoc({ name: 'Bracket' });
     const doc = { ...base, meta: { ...base.meta, id: 'doc-1' } };
     const toasts: string[] = [];
     const lib = {

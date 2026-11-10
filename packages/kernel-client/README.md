@@ -450,7 +450,7 @@ method.
     chain ("the pocket's floor is gone because the plate changed").
   - `SketchBSpline`: state that `knots` are distinct values with `multiplicities` (both or
     neither), the default knot vectors and the periodic flat-knot convention above, domain [0, 1].
-- **Contracts** (proposed, H1): `ModelingApi.memoryStats(): Promise<KernelMemoryStats>` with
+- **Contracts** (done, H1): `ModelingApi.memoryStats(): Promise<KernelMemoryStats>` with
   `KernelMemoryStats` and `RegenMemoryStats` / `RegenSlotStats` as defined in
   `src/modeling-api.ts` and `src/regen/types.ts`, so the app's diagnostics panel and the soak test
   can read the worker's live handles, Wasm heap and cache state over Comlink. The worker already

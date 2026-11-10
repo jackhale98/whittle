@@ -149,14 +149,21 @@ test('phone: a long press on a row opens its menu; Suppress is one undo entry', 
   await chamfer.scrollIntoViewIfNeeded();
   const box = await chamfer.boundingBox();
   if (!box) throw new Error('row not laid out');
-  // The last row sits on the rollback bar (a 44 px target centred on the line below it): press the
-  // upper part of the row, clear of the bar.
-  const at = { x: box.x + box.width / 2, y: box.y + 8 };
+  // Press the middle of the row (the rollback bar has its own gap below the last row now).
+  const at = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
   const t = await touch(page);
   await t.down([at]);
   const menu = page.getByRole('menu');
   await expect(menu).toBeVisible();
   await t.up();
+  // Review-only: the phone tree suppresses and rolls back, nothing else (no Delete, Edit, ...).
+  const names = await menu.getByRole('menuitem').allTextContents();
+  expect(names.some((n) => /^Suppress/.test(n))).toBe(true);
+  for (const gone of [/Delete/, /Edit/, /Rename/, /folder/i])
+    expect(
+      names.filter((n) => gone.test(n)),
+      `${gone}`,
+    ).toEqual([]);
   await menu.getByRole('menuitem', { name: /^Suppress/ }).tap();
   const feature = doc0.parts[0]?.features.find((f) => f.name === 'Top chamfer');
   await expect

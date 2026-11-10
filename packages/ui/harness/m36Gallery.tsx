@@ -1,7 +1,7 @@
 import { type ReactNode, useState } from 'react';
 import { FeatureTree, type FeatureTreeItem, type FeatureTreeProps, type TreeFolder } from '../src';
 
-/* M3.6 visual states: folders, the sketch eye, the phone step-through. Interactive states (rename,
+/* M3.6 visual states: folders, the sketch eye, the phone review-only tree. Interactive states (rename,
    menus, drop indicators, the take-out prompt) are driven by e2e/m36.spec.ts on the live tree. */
 
 type Tier = 'desktop' | 'tablet' | 'phone';
@@ -129,6 +129,7 @@ export function PhoneStates() {
       <div className={`${card} relative flex h-[520px] flex-col overflow-auto`}>
         <FeatureTree
           density="touch"
+          actions="review"
           features={m36Features}
           folders={m36Folders}
           rollbackIndex={at}
@@ -136,11 +137,22 @@ export function PhoneStates() {
           onSelect={() => {}}
           onSuppress={() => {}}
           onSketchVisibility={() => {}}
+          // Editing handlers a phone app would not pass: `review` drops them regardless.
+          onDelete={() => {}}
+          onEdit={() => {}}
+          onRename={() => {}}
+          onMove={() => ({ ok: true })}
+          onMoveFolder={() => ({ ok: true })}
+          onAddFolder={() => {}}
+          onRenameFolder={() => {}}
+          onRemoveFolder={() => {}}
+          onSuppressMany={() => {}}
         />
       </div>
       <div className={`${card} relative flex h-[520px] flex-col overflow-auto`}>
         <FeatureTree
           density="touch"
+          actions="review"
           features={m36Features}
           folders={m36Folders}
           collapsedFolders={['m']}
@@ -149,6 +161,16 @@ export function PhoneStates() {
           onSelect={() => {}}
           onSuppress={() => {}}
           onSketchVisibility={() => {}}
+          // Editing handlers a phone app would not pass: `review` drops them regardless.
+          onDelete={() => {}}
+          onEdit={() => {}}
+          onRename={() => {}}
+          onMove={() => ({ ok: true })}
+          onMoveFolder={() => ({ ok: true })}
+          onAddFolder={() => {}}
+          onRenameFolder={() => {}}
+          onRemoveFolder={() => {}}
+          onSuppressMany={() => {}}
         />
       </div>
     </div>

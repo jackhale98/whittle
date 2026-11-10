@@ -3,7 +3,7 @@ import { expect, type Locator, type Page, test } from '@playwright/test';
 
 /**
  * M3.6 UI baselines: tree folders (open, collapsed, suppressed, rollback inside / above), the
- * sketch eye in every state, the phone step-through, and the interactive states (inline rename,
+ * sketch eye in every state, the phone review-only tree, and the interactive states (inline rename,
  * folder menu, a disabled "Add to new folder" with its reason, drop indicators in and out of a
  * folder, the take-out prompt). Desktop, tablet and phone, light and dark, each with an axe check.
  */
@@ -172,6 +172,37 @@ for (const theme of themes) {
       const box = await eye.boundingBox();
       expect(box?.width).toBeGreaterThanOrEqual(tier === 'desktop' ? 24 : 44);
       expect(box?.height).toBeGreaterThanOrEqual(tier === 'desktop' ? 24 : 44);
+    });
+
+    test(`phone review-only tree: row menu has no Delete or Edit, folders only collapse (${theme})`, async ({
+      page,
+    }, info) => {
+      const tier = info.project.name as Tier;
+      await open(page, tier, theme, 'm36-phone');
+      const g = page.getByTestId('g-m36-phone');
+      const tree = g.getByRole('tree').first();
+      await tree
+        .getByRole('treeitem', { name: /^Sketch 3/ })
+        .first()
+        .click({ button: 'right' });
+      const menu = page.getByRole('menu');
+      await expect(menu).toBeVisible();
+      const names = await menu.getByRole('menuitem').allTextContents();
+      expect(names.some((n) => /Suppress/.test(n))).toBe(true);
+      expect(names.some((n) => /(Show|Hide) in viewport/.test(n))).toBe(true);
+      for (const bad of [/Delete/, /Edit/, /Rename/, /folder/i, /selection/i])
+        expect(
+          names.filter((n) => bad.test(n)),
+          `${bad}`,
+        ).toEqual([]);
+      await expect(menu).toHaveScreenshot(`m36-${tier}-${theme}-review-menu.png`);
+      await page.keyboard.press('Escape');
+      // A folder row has no actions button and no menu; its grip is gone too.
+      const folder = row(page, /^Mounting/).first();
+      await expect(folder.locator('[data-grip]')).toHaveClass(/invisible/);
+      await expect(folder.getByRole('button', { name: /Actions for folder/ })).toHaveCount(0);
+      await folder.click({ button: 'right' });
+      await expect(page.getByRole('menu')).toHaveCount(0);
     });
 
     test(`phone Features tab: the rollback bar is a 44 px grab target (${theme})`, async ({

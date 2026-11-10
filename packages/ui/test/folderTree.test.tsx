@@ -475,7 +475,7 @@ describe('drag and drop', () => {
 /* ------------------------------------------------------------------ phone */
 
 describe('phone shell Features tab', () => {
-  it('shows the same tree as the tablet, with the rollback bar and no stepper', async () => {
+  it('shows the tree with the rollback bar (review-only) and no stepper', async () => {
     const onRollback = vi.fn();
     renderUI(
       <AppShell
@@ -532,5 +532,55 @@ describe('phone shell Features tab', () => {
     expect(eye.className).toMatch(/size-11/);
     await userEvent.click(eye);
     expect(onSketchVisibility).toHaveBeenCalledWith(['s3'], 'hidden');
+  });
+});
+
+describe('review-only tree (phones)', () => {
+  const menuNames = () =>
+    within(screen.getByRole('menu'))
+      .getAllByRole('menuitem')
+      .map((m) => m.textContent?.replace(/(F2|Del)$/, ''));
+
+  it('the row menu offers Suppress, the eye and Roll to here only', async () => {
+    const { props } = setup({ density: 'touch', actions: 'review' });
+    fireEvent.contextMenu(row(/Sketch 3/));
+    expect(menuNames()).toEqual(['Suppress', 'Hide in viewport', 'Roll to here']);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Suppress' }));
+    expect(props.onSuppress).toHaveBeenCalledWith('s3', true);
+    await waitFor(() => expect(screen.queryByRole('menu')).toBeNull());
+    fireEvent.contextMenu(row(/Extrude 1/));
+    expect(menuNames()).toEqual(['Suppress', 'Roll to here']);
+    for (const gone of ['Delete', 'Edit', 'Rename', 'Add to new folder'])
+      expect(screen.queryByRole('menuitem', { name: gone })).toBeNull();
+  });
+
+  it('a folder only collapses: no menu, no actions button, no live grip, no rename', async () => {
+    const { props } = setup({ density: 'touch', actions: 'review' });
+    const folder = folderRow();
+    expect(within(folder).queryByRole('button', { name: /Actions for folder/ })).toBeNull();
+    expect(folder.querySelector('[data-grip]')).toHaveClass('invisible');
+    fireEvent.contextMenu(folder);
+    expect(screen.queryByRole('menu')).toBeNull();
+    folder.focus();
+    await userEvent.keyboard('{F2}');
+    expect(screen.queryByRole('textbox')).toBeNull();
+    expect(props.onRenameFolder).not.toHaveBeenCalled();
+  });
+
+  it('Delete, F2 and Alt+Arrow do nothing on a feature; the rollback bar still moves', async () => {
+    const { props } = setup({ density: 'touch', actions: 'review', rollbackIndex: 5 });
+    row(/Extrude 1/).focus();
+    await userEvent.keyboard('{Delete}{F2}{Alt>}{ArrowDown}{/Alt}');
+    expect(props.onDelete).not.toHaveBeenCalled();
+    expect(props.onMove).not.toHaveBeenCalled();
+    expect(screen.queryByRole('textbox')).toBeNull();
+    screen.getByRole('separator', { name: 'Rollback bar' }).focus();
+    await userEvent.keyboard('{ArrowUp}');
+    expect(props.onRollback).toHaveBeenCalled();
+  });
+
+  it('drag handles are hidden on every row', () => {
+    setup({ density: 'touch', actions: 'review' });
+    for (const g of document.querySelectorAll('[data-grip]')) expect(g).toHaveClass('invisible');
   });
 });

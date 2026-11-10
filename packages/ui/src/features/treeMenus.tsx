@@ -47,6 +47,8 @@ export interface MenuCtx
   sketchesIn(ids: readonly Id[]): Id[];
   folderIdsFor(ids: readonly Id[]): Id[];
   targetsOf(id: Id): Id[];
+  /** Review-only tree: no extras beyond the visibility toggle. */
+  review?: boolean;
 }
 
 export function folderMenuItems(c: MenuCtx, folder: TreeFolder): MenuItem[] {
@@ -166,7 +168,7 @@ export function menuItems(c: MenuCtx, id: Id, i: number): MenuItem[] {
       icon: shown ? <EyeOff className="size-4" /> : <Eye className="size-4" />,
       onSelect: () => onSketchVisibility([id], toggledVisibility(shown)),
     });
-    if (f.visibility === 'shown' || f.visibility === 'hidden')
+    if (!c.review && (f.visibility === 'shown' || f.visibility === 'hidden'))
       items.push({
         id: 'viewport-auto',
         label: 'Reset to automatic',

@@ -147,6 +147,12 @@ export interface FeatureTreeProps {
 
   /** `touch` = 44px rows and always-visible handles. */
   density?: 'compact' | 'touch';
+  /**
+   * `review` (phones): the tree only reviews history. The row menu offers Suppress / Unsuppress,
+   * Show / Hide for sketches and Roll to here; folders only collapse; no delete, edit, rename,
+   * folders, reordering or nesting toggle. The rollback bar stays draggable. Default `full`.
+   */
+  actions?: 'full' | 'review';
   className?: string;
 }
 
@@ -183,28 +189,44 @@ export function FeatureTree({
   onSelectedIdsChange,
   lineage,
   onSelect,
-  onRename,
+  onRename: onRenameProp,
   onRollback,
-  onMove,
-  onReorder,
-  onEdit,
+  onMove: onMoveProp,
+  onReorder: onReorderProp,
+  onEdit: onEditProp,
   onSuppress,
-  onDelete,
+  onDelete: onDeleteProp,
   nestSketches = true,
-  onNestSketchesChange,
+  onNestSketchesChange: onNestSketchesChangeProp,
   folders = NO_FOLDERS,
   collapsedFolders,
   onCollapsedFoldersChange,
-  onAddFolder,
-  onRenameFolder,
-  onRemoveFolder,
-  onMoveFolder,
-  onSuppressMany,
+  onAddFolder: onAddFolderProp,
+  onRenameFolder: onRenameFolderProp,
+  onRemoveFolder: onRemoveFolderProp,
+  onMoveFolder: onMoveFolderProp,
+  onSuppressMany: onSuppressManyProp,
   onUndo,
   onSketchVisibility,
   density = 'compact',
+  actions = 'full',
   className,
 }: FeatureTreeProps) {
+  // Review-only (phones): history review without editing. Only suppress, the sketch eye, rolling
+  // back and folder collapse remain, so every editing handler is dropped here, once.
+  const review = actions === 'review';
+  const [onRename, onMove, onReorder, onEdit, onDelete, onNestSketchesChange] = review
+    ? [undefined, undefined, undefined, undefined, undefined, undefined]
+    : [onRenameProp, onMoveProp, onReorderProp, onEditProp, onDeleteProp, onNestSketchesChangeProp];
+  const [onAddFolder, onRenameFolder, onRemoveFolder, onMoveFolder, onSuppressMany] = review
+    ? [undefined, undefined, undefined, undefined, undefined]
+    : [
+        onAddFolderProp,
+        onRenameFolderProp,
+        onRemoveFolderProp,
+        onMoveFolderProp,
+        onSuppressManyProp,
+      ];
   const n = features.length;
   const rollback = clampIdx(rollbackIndex ?? n, n);
   const touch = density === 'touch';
@@ -850,6 +872,7 @@ export function FeatureTree({
     sketchesIn,
     folderIdsFor,
     targetsOf,
+    review,
   };
   const barY =
     barDrag ?? (geom.stop[rollback] !== undefined ? geom.stop[rollback] + barOffset : undefined);
@@ -886,6 +909,7 @@ export function FeatureTree({
       return (
         <FolderRow
           key={row.key}
+          noMenu={review}
           folderId={folder.id}
           name={folder.name}
           count={folder.features.length}
@@ -1189,7 +1213,7 @@ export function FeatureTree({
         {dropSay}
       </p>
 
-      {menu && menuRow ? (
+      {menu && menuRow && !(review && menuFolder) ? (
         <Menu
           anchor={menu.anchor}
           label={

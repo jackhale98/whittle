@@ -23,6 +23,8 @@ import { useDoc } from './Inspector';
 
 export interface TreeOptions {
   density: 'compact' | 'touch';
+  /** `review` on phones: suppress, the sketch eye, the rollback bar and folder collapse only. */
+  actions?: 'full' | 'review';
   nestSketches: boolean;
   setNestSketches(nest: boolean): void;
   statuses: readonly FeatureStatus[] | undefined;
@@ -34,7 +36,7 @@ export interface TreeProps {
 }
 
 export function useTreeProps(wb: Workbench, o: TreeOptions): TreeProps {
-  const { density, nestSketches, setNestSketches, statuses } = o;
+  const { density, nestSketches, setNestSketches, statuses, actions = 'full' } = o;
   const doc = useDoc(wb);
   const ui = useObservable(wb.ui);
   const part = doc.parts[0];
@@ -142,9 +144,11 @@ export function useTreeProps(wb: Workbench, o: TreeOptions): TreeProps {
       onUndo: () => wb.undo(),
       onSketchVisibility: (ids, visibility) => wb.setSketchVisibility(ids, visibility),
       density,
+      actions,
     };
   }, [
     wb,
+    actions,
     part,
     items,
     statuses,

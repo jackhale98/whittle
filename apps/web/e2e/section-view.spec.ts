@@ -253,6 +253,9 @@ test('desktop: chip, Edit, typed angles, arc and arrow drags, Shift snap, Esc an
   await expect(chip(page)).toHaveCount(0);
   await expect.poll(async () => (await probe(page)).sectionActive).toBe(false);
   expect((await a.ui()).section.enabled).toBe(false);
+  // Exit leaves the plane level, not tilted behind the scenes (ADR-073).
+  expect((await a.ui()).section.tiltU).toBe(0);
+  expect((await a.ui()).section.tiltV).toBe(0);
   expect(await a.sectionGrips()).toBeNull();
   expect((await probe(page)).capsDrawn).toBe(0);
 
