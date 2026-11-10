@@ -54,3 +54,33 @@ export const PIVOT_RING_PX = 22;
 export const PIVOT_DOT_PX = 8;
 /** How long a `setPivot` click shows the marker without a drag, ms. */
 export const PIVOT_FLASH_MS = 700;
+
+// ---- Wheel zoom (ADR-057 addendum) ------------------------------------------------------------
+
+/** One wheel notch in CSS px of `deltaY` (a mouse notch reports 100). */
+export const WHEEL_NOTCH_PX = 100;
+/** Camera-to-anchor distance after one notch zooming in (0.85 = 15 % closer, every notch). */
+export const WHEEL_ZOOM_PER_NOTCH = 0.85;
+/** A single wheel event never zooms more than this many notches (a fast flick, a free-spin wheel). */
+export const WHEEL_MAX_NOTCHES_PER_EVENT = 3;
+/** `deltaMode` 1 (lines): Firefox reports 3 lines for a notch. */
+export const WHEEL_LINES_PER_NOTCH = 3;
+/**
+ * Time constant of the wheel ease, seconds. The ease is exponential in the log of the distance,
+ * so it is frame-rate independent: 28 % of a notch lands on the first 60 Hz frame and 95 % after
+ * about 3 tau (150 ms). Reduced motion applies a notch at once.
+ */
+export const WHEEL_SMOOTH_TAU_S = 0.05;
+/** The zoom anchor is kept while the cursor stays this close to where it was picked, CSS px ... */
+export const WHEEL_ANCHOR_SLOP_PX = 3;
+/** ... and the wheel was last turned less than this long ago, ms. */
+export const WHEEL_ANCHOR_HOLD_MS = 400;
+/** Closest the camera comes to the anchor, as a fraction of the scene radius (near plane: 0.002). */
+export const WHEEL_MIN_DISTANCE_RADII = 0.005;
+/** Furthest the camera goes from the anchor, in scene radii. */
+export const WHEEL_MAX_DISTANCE_RADII = 200;
+/**
+ * Rest work (ID-buffer refresh, BVH prebuild) waits until the camera has been still this long, so
+ * it never lands between two wheel notches. `whenPickReady()` skips the wait.
+ */
+export const REST_WORK_DEBOUNCE_MS = 220;
