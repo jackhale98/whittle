@@ -33,7 +33,6 @@ import { cn, Tooltip } from '../components/primitives';
 import { type AttentionSentence, attentionSentences } from '../inspector/attentionMessage';
 import { CauseSentence } from '../inspector/CauseSentence';
 import { useLongPress } from '../logic/longPress';
-import { readStored, writeStored } from '../logic/persist';
 import {
   applySteps,
   type BlockStep,
@@ -164,16 +163,6 @@ export interface FeatureTreeProps {
   /** `touch` = 44px rows and always-visible handles. */
   density?: 'compact' | 'touch';
   className?: string;
-}
-
-export const NEST_SKETCHES_KEY = 'whittle.nestSketches';
-
-/** The persisted "nest sketches" view setting (per user, localStorage; default on). */
-export function readNestSketches(): boolean {
-  return readStored(NEST_SKETCHES_KEY) !== 'flat';
-}
-export function writeNestSketches(nest: boolean): void {
-  writeStored(NEST_SKETCHES_KEY, nest ? 'nested' : 'flat');
 }
 
 const clampIdx = (n: number, max: number) => Math.max(0, Math.min(max, n));

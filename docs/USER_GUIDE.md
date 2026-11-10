@@ -52,8 +52,9 @@ has Welcome and samples, the demo bracket, New document, Open library, Open or i
 ### Phone
 
 - The phone is a viewer. You can orbit and zoom, open the library, edit parameters, and export.
-- The bottom sheet has five tabs. **Params** and **Export** work. **Parts**, **Measure** and
-  **Section** are placeholders.
+- The bottom sheet has six tabs. **Features**, **Params** and **Export** work. **Parts**, **Measure**
+  and **Section** are placeholders.
+- **Features** lists the feature tree and steps through it; see [Reviewing on the phone](#reviewing-on-the-phone).
 - You cannot create or edit features on a phone yet. Use a desktop or tablet.
 
 ## Navigating and selecting
@@ -112,6 +113,7 @@ unselected face, edge or region it is selected first, so the ring fits it:
 | Selection | The ring offers |
 | --- | --- |
 | Nothing | Sketch, Measure, Section, Fit view, Isometric, Undo, Redo |
+| Several features picked in the feature tree (nothing selected in the model) | Add to new folder, Measure, Section, Fit view, Isometric, Undo, Redo |
 | One flat face | Sketch, Push/pull, Hole, Shell, Draft, Measure, Section |
 | A curved face | Thread, Shell, Draft, Measure |
 | Several flat faces | Push/pull, Shell, Draft, Measure |
@@ -134,6 +136,10 @@ catches the next click. A press outside it closes it, and that press does not cl
   drag onto an item and lift. Lifting without a direction leaves it open for a tap.
 - **Hold Q**: the ring opens at the pointer; point and release to choose; releasing with no direction
   cancels. Q is a keymap entry (**Radial menu**) and can be moved.
+
+**Add to new folder** only appears when the features you picked in the tree can be grouped (they
+form one run in the history and none is in a folder yet). The ring has no room to say why not; the
+tree's menu and the command palette do.
 
 The **context bubble** on touch is unchanged: it appears after you tap to select. The long press is the
 radial menu.
@@ -447,6 +453,65 @@ The **Features** tab lists your features in order, with an icon and a name for e
 - **Rename.** Press Enter or F2 on a feature, or double-click its name.
 - **Delete.** Choose **Delete** from a feature's actions, or press Delete or Backspace on a selected
   row. Deleting takes effect at once, and you can undo it.
+
+### Folders
+
+Group related features (a bracket's mounting holes, say) into a folder to keep a long tree tidy.
+
+- **Create.** Select two or more features (Ctrl/Cmd-click toggles, Shift-click selects a range), open
+  the menu on one of them and choose **Add to new folder**. The folder is named "Folder 1", "Folder
+  2" and so on, and its name opens for editing at once. A sketch that sits under a selected feature
+  comes with it. On a touch screen, long-press a row for its menu and tap **Add to new folder**.
+  The ⌘K palette has **Add selection to new folder**, and the radial menu offers it when several
+  features are picked in the tree.
+- **A folder holds a run.** Its features are next to each other in the history, because the order of
+  features matters. A feature can be in one folder. If the features you picked are not a run, or one
+  is already in a folder, the item is disabled and says why.
+- **Rename.** Press F2 on the folder or double-click its name; Enter keeps the name, Esc cancels.
+- **Collapse and expand** with the chevron or the Left and Right arrow keys. This is remembered for
+  the document on this device. It is not part of the file and is not an undo step. The rollback bar
+  skips a collapsed folder as one unit.
+- **Move.** Drag the folder's grip, or press **Alt+Up** / **Alt+Down**, to move the whole run. Wren
+  validates the move like any reorder and refuses one that would put a feature before something it
+  depends on.
+- **Take a feature out** by dragging it out of the folder (Wren asks first: "Take Fillet 3 out of
+  Mounting?"). Dropping a feature between two members adds it.
+- **Folder actions** (the folder's menu): **Suppress all** / **Unsuppress all** (one undo step),
+  **Show sketches** / **Hide sketches** for the sketches inside, **Roll back to before folder**,
+  **Ungroup** (the features stay) and **Rename**.
+
+Folders are saved with the document. Versions keep them, and a merge combines a rename on one
+branch with a move on another. If two branches both move features in and out so that a run would be
+split, the merge keeps the folder in one piece and says so in the merge notes.
+
+### Showing and hiding sketches
+
+A sketch that a feature used (an extrude, a cut, a revolve…) is hidden, as before. Every sketch row
+in the tree now has an **eye** (nested under its feature, or in the flat list). It shows or hides
+that sketch in the viewport whatever the default is, and the choice is saved with the document.
+
+- A small dot on the eye means **automatic**: shown until a feature uses it, hidden after. Clicking
+  the eye replaces that with an explicit **shown** or **hidden**.
+- **Reset to automatic** (the sketch's menu) goes back to the default.
+- **Show all sketches**, **Hide all sketches** and **Reset sketch visibility** are in the ⌘K palette,
+  each one undo step. A folder's menu has **Show sketches** / **Hide sketches** for its sketches.
+- A hidden sketch still shows while you pick a profile from it, and the sketch you are editing is
+  always shown.
+- With the rollback bar above a sketch's feature, nothing uses the sketch yet, so it shows.
+
+### Reviewing on the phone
+
+The phone's **Features** tab shows the feature tree with a step bar at the bottom: **Previous
+feature**, **Next feature** and a scrubber. Each step shows the model as it was after that feature
+(a feature and the sketch under it are one step; a collapsed folder is one step, open it to step
+inside).
+
+- Stepping is a preview. It never changes the document: no undo step, nothing to save or sync.
+- **Keep this rollback** turns the position you are looking at into the document's rollback bar (one
+  undo step). **Back to full model**, or leaving the tab, restores the full model.
+- If a change arrives while you step (a sync from another device, an undo), the preview ends and the
+  full model comes back.
+- The tree on the phone is read-only apart from the sketch eyes and folder collapse.
 
 A feature that fails is marked in the tree with a short explanation. Its last good geometry stays
 on screen as a ghost, so you can see what changed.

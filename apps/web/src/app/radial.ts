@@ -16,8 +16,22 @@ export interface RadialSelection {
 
 export const MAX_RADIAL_ITEMS = 7;
 
-/** Model mode, by what is selected. */
-export function modelRadialIds(sel: readonly RadialSelection[]): string[] {
+/** The radial item that groups the features picked in the tree into a new folder (M3.6). */
+export const RADIAL_ADD_FOLDER = 'folder:add';
+
+/**
+ * Model mode, by what is selected. `folderable`: several features are picked in the feature tree
+ * and they can become one folder. Nothing in the viewport is selected then, so the menu leads with
+ * "Add to new folder". The radial has no room for a reason, so when the picks cannot be grouped
+ * (not a contiguous run, already in a folder) the item is left out; the tree's menu and the
+ * palette name the reason.
+ */
+export function modelRadialIds(
+  sel: readonly RadialSelection[],
+  opts: { folderable?: boolean } = {},
+): string[] {
+  if (sel.length === 0 && opts.folderable)
+    return [RADIAL_ADD_FOLDER, 'measure', 'section', 'fit', 'iso', 'undo', 'redo'];
   if (sel.length === 0) return ['sketch', 'measure', 'section', 'fit', 'iso', 'undo', 'redo'];
   const all = (k: PickKind) => sel.every((s) => s.kind === k);
   const planar = sel.every((s) => s.planar === true);

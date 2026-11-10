@@ -3,8 +3,6 @@ import { ulid } from '@wren-cad/document';
 import {
   AppShell,
   type ExportTarget,
-  type MoveResult,
-  type MoveStep,
   type PaletteCommand,
   readNestSketches,
   tools as shellTools,
@@ -22,8 +20,6 @@ import {
   useSyncExternalStore,
 } from 'react';
 import { isFeatureTool } from '../features/factories';
-import { featureLineage } from '../model/lineage';
-import { reorderFeatures } from '../model/tree-edits';
 import { getDiagnostics } from '../platform/diagnostics';
 import { getRuntimeState, subscribeRuntimeState } from '../platform/runtime-state';
 import { applySwUpdate, checkForSwUpdateNow, onSwUpdateAvailable } from '../platform/sw-register';
@@ -36,6 +32,7 @@ import {
   useSectionProps,
   useValueChip,
 } from '../ui/touch-props';
+import { useTreeProps } from '../ui/tree-props';
 import { ViewportOverlays } from '../ui/ViewportOverlays';
 import { useObservable } from './observable';
 import type { EngineState } from './state';
@@ -209,12 +206,8 @@ export function App({ wb }: { wb: Workbench }) {
   const touch = diagnostics.tier !== 'desktop';
   const density = touch ? 'touch' : 'compact';
   const statuses = useObservable(wb.treeStatuses);
-  const selectedId = ui.featureId ?? ui.sketch?.featureId ?? null;
-  const selectedLineage = useMemo(() => {
-    if (!selectedId) return undefined;
-    const l = featureLineage(doc, selectedId);
-    return { parents: l.parents.map((p) => p.id), children: l.children.map((p) => p.id) };
-  }, [doc, selectedId]);
+  const tree = useTreeProps(wb, { density, nestSketches, setNestSketches, statuses });
+  const allCommands = useMemo(() => [...commands, ...tree.commands], [commands, tree.commands]);
   const canUndo = wb.store.canUndo();
   const canRedo = wb.store.canRedo();
   const activeTool: ToolId | null = ui.sketch
@@ -237,21 +230,6 @@ export function App({ wb }: { wb: Workbench }) {
   const engineFailed = engine.error ? 'The geometry kernel failed to start' : undefined;
   const engineNote = kernelLoadingNote(engine);
 
-  /** A feature and its nested sketches move as one undo step; all or nothing. */
-  const reorder = (steps: readonly MoveStep[]): MoveResult => {
-    if (!part) return { ok: false, reason: 'No part' };
-    const last = steps[steps.length - 1];
-    const name = part.features.find((f) => f.id === last?.id)?.name ?? 'feature';
-    return reorderFeatures(wb.store, part.id, steps, `Move ${name}`);
-  };
-
-  const move = (id: Id, toIndex: number): MoveResult => {
-    if (!part) return { ok: false, reason: 'No part' };
-    const r = wb.store.apply({ kind: 'moveFeature', partId: part.id, featureId: id, toIndex });
-    wb.commit();
-    return r.ok ? { ok: true } : { ok: false, reason: r.error };
-  };
-
   return (
     <>
       <AppShell
@@ -259,7 +237,7 @@ export function App({ wb }: { wb: Workbench }) {
         documentName={doc.meta.name}
         kernelStatus={engine.status}
         diagnostics={{ ...diagnostics, ...runtimeOverrides(runtime) }}
-        commands={commands}
+        commands={allCommands}
         projectBar={
           <Suspense fallback={null}>
             <ProjectBar wb={wb} tier={diagnostics.tier} />
@@ -269,64 +247,8 @@ export function App({ wb }: { wb: Workbench }) {
         onThemeChange={theme.setSetting}
         {...(canUndo ? { onUndo: () => wb.undo() } : {})}
         {...(canRedo ? { onRedo: () => wb.redo() } : {})}
-        featureTree={
-          part
-            ? {
-                features: part.features,
-                ...(statuses ? { statuses } : {}),
-                rollbackIndex: part.rollbackIndex,
-                selectedId: ui.featureId ?? ui.sketch?.featureId ?? null,
-                ...(selectedLineage ? { lineage: selectedLineage } : {}),
-                onSelect: (id) => wb.selectFeature(id),
-                onRename: (id, name) => {
-                  const f = part.features.find((x) => x.id === id);
-                  if (f)
-                    wb.apply(
-                      {
-                        kind: 'updateFeature',
-                        partId: part.id,
-                        featureId: id,
-                        feature: { ...f, name },
-                      },
-                      `Rename ${f.name}`,
-                    );
-                  wb.commit();
-                },
-                onRollback: (index) => {
-                  wb.apply({ kind: 'setRollback', partId: part.id, index }, undefined, 'rollback');
-                  wb.commit();
-                },
-                onMove: move,
-                onReorder: reorder,
-                nestSketches,
-                onNestSketchesChange: setNestSketches,
-                onEdit: (id) => wb.editFeature(id),
-                onSuppress: (id, suppressed) => {
-                  wb.apply({ kind: 'setSuppressed', partId: part.id, featureId: id, suppressed });
-                  wb.commit();
-                },
-                onDelete: (id, alsoIds) => {
-                  // One undo step for the feature and the sketches deleted with it.
-                  const key = alsoIds?.length ? `delete:${id}` : undefined;
-                  const name = part.features.find((f) => f.id === id)?.name;
-                  wb.apply(
-                    { kind: 'removeFeature', partId: part.id, featureId: id },
-                    key && name ? `Delete ${name}` : undefined,
-                    key,
-                  );
-                  for (const sketch of alsoIds ?? []) {
-                    wb.apply(
-                      { kind: 'removeFeature', partId: part.id, featureId: sketch },
-                      undefined,
-                      key,
-                    );
-                  }
-                  wb.commit();
-                },
-                density,
-              }
-            : undefined
-        }
+        {...(tree.featureTree ? { featureTree: tree.featureTree } : {})}
+        {...(tree.phoneFeatureTree ? { phoneFeatureTree: tree.phoneFeatureTree } : {})}
         paramsTable={{
           params: doc.params,
           evaluate: (e) => wb.evaluate(e),

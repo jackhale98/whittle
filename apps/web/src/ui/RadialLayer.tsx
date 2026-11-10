@@ -4,9 +4,17 @@
  * right click, long-press or held key, never on the initial route.
  */
 
-import { type RadialItem, RadialMenu, sketchCurveTools, sketchTools, tools } from '@wren-cad/ui';
+import {
+  canFolder,
+  type RadialItem,
+  RadialMenu,
+  sketchCurveTools,
+  sketchTools,
+  tools,
+} from '@wren-cad/ui';
 import {
   CircleMinus,
+  FolderInput,
   Maximize,
   Redo2,
   Scissors,
@@ -16,12 +24,21 @@ import {
 } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useObservable } from '../app/observable';
-import { modelRadialIds, type RadialSelection, sketchRadialIds } from '../app/radial';
+import {
+  modelRadialIds,
+  RADIAL_ADD_FOLDER,
+  type RadialSelection,
+  sketchRadialIds,
+} from '../app/radial';
 import type { Workbench } from '../app/workbench';
 
 const ic = 'size-[18px]';
 
 const EXTRA: Record<string, { label: string; icon: ReactNode }> = {
+  [RADIAL_ADD_FOLDER]: {
+    label: 'Add to new folder',
+    icon: <FolderInput className={ic} aria-hidden />,
+  },
   cut: { label: 'Cut', icon: <CircleMinus className={ic} aria-hidden /> },
   section: { label: 'Section', icon: <Scissors className={ic} aria-hidden /> },
   fit: { label: 'Fit view', icon: <Maximize className={ic} aria-hidden /> },
@@ -54,7 +71,16 @@ export default function RadialLayer({ wb }: { wb: Workbench }) {
       ? { planar: wb.face(s.hit.bodyId, s.hit.index)?.planar === true }
       : {}),
   }));
-  const ids = ui.sketch ? sketchRadialIds() : modelRadialIds(sel);
+  // Several features picked in the tree and none in the viewport: offer "Add to new folder".
+  const picked = wb.treeSelection.get();
+  const part = wb.part;
+  const run = picked.length > 1 ? wb.folderRunOf(picked) : [];
+  const folderable =
+    !!part &&
+    sel.length === 0 &&
+    run.length > 1 &&
+    canFolder(part.features, part.folders ?? [], run).ok;
+  const ids = ui.sketch ? sketchRadialIds() : modelRadialIds(sel, { folderable });
   const last = wb.lastCommandLabel();
   const label = last ? (tools.find((t) => t.id === last)?.label ?? last) : null;
   return (

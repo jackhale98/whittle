@@ -34,6 +34,18 @@ export interface MergePanelProps {
   isExpression?(conflict: MergeConflict): boolean;
   /** Human text of a value. Expressions are shown exactly as typed. */
   describeValue?(value: unknown, conflict: MergeConflict): string;
+  /**
+   * The card heading: the subject and the field inside it ("Sketch 2 visibility"). Default: the
+   * subject's label.
+   */
+  conflictTitle?(conflict: MergeConflict): string;
+  /** One plain sentence for assistive tech and the card's label ("Sketch 2 visibility: shown vs hidden"). */
+  conflictSummary?(conflict: MergeConflict): string;
+  /**
+   * Things the merge did on its own that the user should hear about, one plain line each (a folder
+   * kept in one piece). Shown even when there are no conflicts: `MergeResult.notes` summaries.
+   */
+  notes?: readonly string[];
   finishing?: boolean;
   density?: SyncDensity;
   className?: string;
@@ -99,6 +111,9 @@ export function MergePanel({
   theirsLabel = 'Theirs',
   isExpression = defaultIsExpression,
   describeValue = defaultDescribeValue,
+  conflictTitle,
+  conflictSummary,
+  notes,
   finishing,
   density = 'compact',
   className,
@@ -142,6 +157,17 @@ export function MergePanel({
             />
             {plural(result.autoMerged, 'change')} merged automatically
           </p>
+          {notes && notes.length > 0 ? (
+            <ul
+              aria-label="Notes about this merge"
+              data-testid="merge-notes"
+              className="m-0 flex list-none flex-col gap-0.5 p-0 text-xs text-fg-muted"
+            >
+              {notes.map((n) => (
+                <li key={n}>{n}</li>
+              ))}
+            </ul>
+          ) : null}
         </div>
 
         {conflicts.length > 0 ? (
@@ -157,6 +183,8 @@ export function MergePanel({
                 theirsLabel={theirsLabel}
                 expression={isExpression(c)}
                 show={(v) => describeValue(v, c)}
+                title={conflictTitle ? conflictTitle(c) : c.subject.label}
+                summary={conflictSummary ? conflictSummary(c) : c.subject.label}
                 evaluate={evaluate}
                 density={density}
                 onPreview={onPreview}
@@ -220,6 +248,8 @@ function ConflictCard({
   theirsLabel,
   expression,
   show,
+  title,
+  summary,
   evaluate,
   density,
   onPreview,
@@ -235,6 +265,8 @@ function ConflictCard({
   theirsLabel: string;
   expression: boolean;
   show(v: unknown): string;
+  title: string;
+  summary: string;
   evaluate?(expr: Expr): EvalResult;
   density: SyncDensity;
   onPreview?(id: string, choice: MergeChoice): void;
@@ -274,7 +306,7 @@ function ConflictCard({
     <li
       ref={register}
       tabIndex={-1}
-      aria-label={`Conflict ${index + 1} of ${total}: ${c.subject.label}`}
+      aria-label={`Conflict ${index + 1} of ${total}: ${summary}`}
       data-conflict-id={c.id}
       data-resolved={choice ? 'true' : 'false'}
       className={cn(
@@ -284,7 +316,7 @@ function ConflictCard({
     >
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
-          <h3 className="text-sm font-semibold">{c.subject.label}</h3>
+          <h3 className="text-sm font-semibold">{title}</h3>
           <p className="text-2xs text-fg-muted">{KIND_TEXT[c.kind]}</p>
         </div>
         {decided ? (
@@ -321,7 +353,7 @@ function ConflictCard({
               {onPreview && s.id !== 'base' ? (
                 <button
                   type="button"
-                  aria-label={`Preview ${s.label.toLowerCase()} for ${c.subject.label}`}
+                  aria-label={`Preview ${s.label.toLowerCase()} for ${title}`}
                   onClick={() => onPreview(c.id, s.id)}
                   className={cn(
                     'mt-1 inline-flex items-center gap-1 self-start rounded-control px-1.5 text-2xs font-medium text-accent-text hover:bg-accent-soft',
@@ -337,7 +369,7 @@ function ConflictCard({
       </dl>
 
       <fieldset className="m-0 flex min-w-0 flex-wrap gap-2 border-0 p-0">
-        <legend className="sr-only">{`Decide: ${c.subject.label}`}</legend>
+        <legend className="sr-only">{`Decide: ${title}`}</legend>
         <Button
           size={size}
           variant={choice === 'ours' ? 'primary' : 'secondary'}
@@ -390,7 +422,7 @@ function ConflictCard({
         <div className="flex flex-col gap-1">
           {expression ? (
             <ExpressionInput
-              label={`New value for ${c.subject.label}`}
+              label={`New value for ${title}`}
               value={customValue === 'Not there' ? '' : customValue}
               evaluate={evaluate}
               size={touch ? 'touch' : 'md'}
@@ -402,7 +434,7 @@ function ConflictCard({
             />
           ) : (
             <PlainValue
-              label={`New value for ${c.subject.label}`}
+              label={`New value for ${title}`}
               initial={customValue}
               numeric={typeof c.ours === 'number'}
               density={density}

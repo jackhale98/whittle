@@ -3,7 +3,6 @@ import { type ComponentType, type CSSProperties, lazy, Suspense, useState } from
 import { Button, cn } from '../components/primitives';
 import { StatusChip } from '../components/StatusChip';
 import { ExportPanel } from '../export/ExportMenu';
-import { PhoneFeatureTree } from '../features/PhoneFeatureTree';
 import { BottomSheet } from './BottomSheet';
 import {
   EmptyState,
@@ -23,6 +22,9 @@ const PartsPanel = lazy(() =>
 );
 const MeasurePanel = lazy(() =>
   import('../panels/MeasurePanel').then((mod) => ({ default: mod.MeasurePanel })),
+);
+const PhoneFeatureTree = lazy(() =>
+  import('../features/PhoneFeatureTree').then((mod) => ({ default: mod.PhoneFeatureTree })),
 );
 const SectionPanel = lazy(() =>
   import('../panels/SectionPanel').then((mod) => ({ default: mod.SectionPanel })),

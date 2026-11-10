@@ -99,9 +99,6 @@ export {
   type FeatureTreeItem,
   type FeatureTreeProps,
   type MoveResult,
-  NEST_SKETCHES_KEY,
-  readNestSketches,
-  writeNestSketches,
 } from './features/FeatureTree';
 export { FolderRow, type FolderRowProps } from './features/FolderRow';
 export { featureMeta } from './features/featureMeta';
@@ -233,6 +230,7 @@ export {
   sanitizeNavigation,
   writeNavigation,
 } from './logic/navigationStorage';
+export { NEST_SKETCHES_KEY, readNestSketches, writeNestSketches } from './logic/nestPref';
 export {
   clampCenter,
   layoutSlots,

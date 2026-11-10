@@ -4,7 +4,6 @@ import { Segmented } from '../components/controls';
 import { IconButton, Separator } from '../components/primitives';
 import { StatusChip } from '../components/StatusChip';
 import { ToolRail } from '../components/ToolRail';
-import { FeatureTree } from '../features/FeatureTree';
 import { BottomSheet } from './BottomSheet';
 import {
   EmptyState,
@@ -14,6 +13,7 @@ import {
   ParamsPanel,
   ShellRoot,
   ThemeToggle,
+  TreePanel,
   UndoRedo,
   UnitsChip,
   useSheetSnap,
@@ -153,7 +153,7 @@ export function TabletShell(props: ShellProps) {
                       />
                     </div>
                     {sheetTab === 'history' && featureTree ? (
-                      <FeatureTree {...featureTree} density="touch" />
+                      <TreePanel {...featureTree} density="touch" />
                     ) : null}
                     {sheetTab === 'params' && paramsTable ? (
                       <ParamsPanel {...paramsTable} density="touch" />

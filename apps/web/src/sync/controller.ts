@@ -65,6 +65,7 @@ import {
   hashProjectFiles,
   type LocalGitRepo,
   loadFolderHandle,
+  mergeNotes,
   mergeProjectFiles,
   oauthTokenSource,
   type ProjectSyncEngine,
@@ -1311,7 +1312,12 @@ export class SyncController {
     if (merged.merge.conflicts.length === 0) {
       const v = await commit(merged.files);
       if (!v.ok) this.fail(v);
-      else this.host.toast(`Merged ${merged.merge.autoMerged} change(s) automatically.`);
+      else {
+        const notes = mergeNotes(merged.merge).map((n) => n.summary);
+        this.host.toast(
+          [`Merged ${merged.merge.autoMerged} change(s) automatically.`, ...notes].join(' '),
+        );
+      }
       return;
     }
     this.openMerge(merged.merge, 'This device', 'Other device', (res) =>
