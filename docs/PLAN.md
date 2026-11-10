@@ -785,11 +785,11 @@ Owner request 2026-11-10 (moved up from P2): before drawings and assemblies, so 
 
 ### M4 — Drawings
 
-- Sheets and templates; base, projected, iso, section and detail views with exact HLR; centre marks; dimensions with tolerances; GD&T frames, datums, notes and a BOM placeholder; associativity; PDF, SVG and DXF export.
+- Sheets and templates; base, projected, iso, section and detail views with exact HLR; centre marks; dimensions with tolerances; GD&T frames, datums, notes and a **part properties table** (part number, description, material, mass; optionally one row per configuration; balloons and multi-part BOMs come with M6); associativity; PDF, SVG and DXF export. **Not in M4:** weld symbols (later, with assemblies or on request). Owner decisions 2026-11-10; design input: `docs/ux-research/reports/Drawings and configurations UX.md`.
 - "Import model annotations" places the PMI dimensions (from M5 data structures; start with feature dimensions) onto suitable views automatically.
 - **Accept:**
   - A drawing of the bracket with three views, a section and full dimensions exports to a vector PDF that prints at 1:1 scale exactly (measured).
-  - The DXF opens correctly in LibreCAD and QCAD.
+  - The DXF is valid and opens correctly in LibreCAD, checked automatically in CI (golden tests, an ezdxf structure audit, headless LibreCAD conversion). QCAD compatibility is best effort, not an acceptance criterion (owner, 2026-11-10: QCAD's command-line tools are commercial).
   - Editing the model updates the drawing, and dangling dimensions are flagged.
   - Certification-style suite (§12A): for every reference part, the E2E recreates its spec drawing with Wren's drawing tools. The views requested by the spec must be present and every specified dimension must appear with the same value.
 
