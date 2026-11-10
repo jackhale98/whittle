@@ -19,6 +19,9 @@ export interface AppHooks {
     sketches: { id: string; regions: string[] }[];
   } | null;
   idle(): Promise<void>;
+  /** Ids of the sketches currently drawn in the viewport. */
+  shownSketches(): string[];
+  editFeature(id: string): void;
   flushSave(): Promise<void>;
   sketch(): {
     status: string;
@@ -43,7 +46,10 @@ export interface AppHooks {
       dimPicks: string[];
       editDimension: string | null;
       selected: string[];
+      /** The entity under the pointer (preselect). */
+      hover: string | null;
       highlight: readonly string[] | null;
+      highlightEntities: readonly string[] | null;
       stroke: { shape: string | null; points: number } | null;
       lastStroke: { shape: string; confidence: number } | null;
     } | null;
@@ -64,12 +70,21 @@ export interface AppHooks {
     section: { enabled: boolean; axis: string; offset: number; flipped: boolean; picking: boolean };
     bubble: boolean;
     chooser: string[] | null;
+    /** M3.5: the radial menu request, the box-select band, the settings tab, Tab's order. */
+    radial: { source: string; held: boolean; x: number; y: number } | null;
+    box: { mode: 'window' | 'crossing' } | null;
+    settings: string | null;
+    hoverKey: string | null;
+    tabOrder: string[];
+    lastTool: string | null;
     sheet: { snap: string; tab: string | null };
     kernel: { started: boolean; ready: boolean };
     camera: { moving: boolean; rest: number };
   };
   /** Undo (`past`, oldest first) and redo (`future`) steps with their labels. */
   history(): { past: { label: string }[]; future: { label: string }[] };
+  /** Applies a command as one undo step (not through the UI path). */
+  apply(command: unknown, label?: string): boolean;
   load(doc: WrenDoc): void;
   projectFiles(): {
     extra: string[];
@@ -102,12 +117,20 @@ export const app = (page: Page) => ({
   doc: () => page.evaluate(() => (window as unknown as W).__wrenApp.doc()),
   regen: () => page.evaluate(() => (window as unknown as W).__wrenApp.regen()),
   idle: () => page.evaluate(() => (window as unknown as W).__wrenApp.idle()),
+  shownSketches: () => page.evaluate(() => (window as unknown as W).__wrenApp.shownSketches()),
+  editFeature: (id: string) =>
+    page.evaluate((x) => (window as unknown as W).__wrenApp.editFeature(x), id),
   flushSave: () => page.evaluate(() => (window as unknown as W).__wrenApp.flushSave()),
   sketch: () => page.evaluate(() => (window as unknown as W).__wrenApp.sketch()),
   settled: () => page.evaluate(() => (window as unknown as W).__wrenApp.sketchSettled()),
   ui: () => page.evaluate(() => (window as unknown as W).__wrenApp.ui()),
   marks: () => page.evaluate(() => (window as unknown as W).__wrenApp.marks()),
   history: () => page.evaluate(() => (window as unknown as W).__wrenApp.history()),
+  apply: (command: unknown, label?: string) =>
+    page.evaluate(
+      ([c, l]) => (window as unknown as W).__wrenApp.apply(c, l as string | undefined),
+      [command, label] as const,
+    ),
   load: (doc: WrenDoc) => page.evaluate((d) => (window as unknown as W).__wrenApp.load(d), doc),
   projectFiles: () => page.evaluate(() => (window as unknown as W).__wrenApp.projectFiles()),
   sentAttachments: () => page.evaluate(() => (window as unknown as W).__wrenApp.sentAttachments()),

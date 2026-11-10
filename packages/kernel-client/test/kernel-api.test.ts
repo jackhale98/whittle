@@ -289,6 +289,40 @@ describe.skipIf(!built)(`kernel worker low-level M1 API (Node, direct)${skipNote
     expect(api.liveHandleCount()).toBe(0);
   }, 60_000);
 
+  it('M3.5: projections ask the kernel for exact curves (a circle seen obliquely is an ellipse)', async () => {
+    const api = createKernelApi({ variants });
+    unwrap(await api.init({ variant: 'single' }));
+    const cyl = unwrap(
+      await api.execFeature(
+        { ...feature, shape: 'cylinder', radius: '5', height: '10' } as PrimitiveFeature,
+        { values: { '/radius': 5, '/height': 10 } },
+      ),
+    );
+    const fp = unwrap(await api.fingerprints(cyl.shape));
+    // A plane tilted 45 degrees about X: the cylinder's two circular rims are no longer circles.
+    const s = Math.SQRT1_2;
+    const plane: Frame = { origin: [0, 0, 0], z: [0, -s, s], x: [1, 0, 0] };
+    const edges = unwrap(
+      await api.projectEdges(
+        cyl.shape,
+        fp.edges.map((_, i) => i),
+        plane,
+      ),
+    );
+    const kinds = new Set(edges.flatMap((e) => e.curves.map((c) => c.kind)));
+    expect(kinds.has('ellipse') || kinds.has('ellipticArc')).toBe(true);
+    expect(kinds.has('polyline')).toBe(false);
+    const ell = edges
+      .flatMap((e) => e.curves)
+      .find((c) => c.kind === 'ellipse' || c.kind === 'ellipticArc');
+    if (ell && 'majorRadius' in ell) {
+      expect(ell.majorRadius).toBeCloseTo(5, 6);
+      expect(ell.minorRadius).toBeCloseTo(5 * s, 6);
+    }
+    await api.release(cyl.shape);
+    expect(api.liveHandleCount()).toBe(0);
+  }, 60_000);
+
   it('rejects a bad thread count for the threaded kernel', async () => {
     const api = createKernelApi({ variants });
     const r = await api.init({ variant: 'threaded', threads: 0 });

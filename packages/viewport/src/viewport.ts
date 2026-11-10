@@ -506,6 +506,8 @@ class ViewportImpl implements ViewportEngine {
   // ---- M3.5 navigation
   private navigation: NavigationOptions = { ...DEFAULT_NAVIGATION };
   private readonly navMachine = new NavigationMachine();
+  /** A touch / pen press waiting to reach the window's bubble phase (see `attachInput`). */
+  private lateNavDown: NavSample | null = null;
   private nav: {
     mode: 'orbit' | 'pan';
     pivot: Vec3;
@@ -2149,7 +2151,13 @@ class ViewportImpl implements ViewportEngine {
       }
       this.dispatch(this.recognizer.handle(s));
       this.armLongPress();
-      if (!blocked) {
+      if (!blocked && s.pointerType !== 'mouse') {
+        // Touch and pen: the app may keep the press for itself (sketch drawing and dimensioning
+        // stop its propagation on the canvas). The navigation machine therefore sees it only if
+        // it reaches the window's bubble phase (`navDownLate`), never in this capture hook.
+        this.navButton = e.button;
+        this.lateNavDown = navSample('down', e);
+      } else if (!blocked) {
         this.navButton = e.button;
         this.dispatchNav(this.navMachine.handle(navSample('down', e)));
         if (s.pointerType === 'mouse' && this.navMachine.tracking()) {
@@ -2160,6 +2168,12 @@ class ViewportImpl implements ViewportEngine {
           }
         }
       }
+    };
+    const navDownLate = (e: PointerEvent) => {
+      const late = this.lateNavDown;
+      this.lateNavDown = null;
+      if (this.disposed || !late || late.id !== e.pointerId) return;
+      this.dispatchNav(this.navMachine.handle(late));
     };
     const move = (e: PointerEvent) => {
       if (this.disposed) return;
@@ -2192,6 +2206,7 @@ class ViewportImpl implements ViewportEngine {
     const leave = () => this.setHoveredHandle(null);
     window.addEventListener('pointerdown', down, true);
     window.addEventListener('pointerdown', restore, false);
+    window.addEventListener('pointerdown', navDownLate, false);
     window.addEventListener('pointermove', move, true);
     window.addEventListener('pointerup', up, true);
     window.addEventListener('pointercancel', cancel, true);
@@ -2210,6 +2225,7 @@ class ViewportImpl implements ViewportEngine {
       clearTimeout(this.pivotFlashTimer);
       window.removeEventListener('pointerdown', down, true);
       window.removeEventListener('pointerdown', restore, false);
+      window.removeEventListener('pointerdown', navDownLate, false);
       window.removeEventListener('pointermove', move, true);
       window.removeEventListener('pointerup', up, true);
       window.removeEventListener('pointercancel', cancel, true);

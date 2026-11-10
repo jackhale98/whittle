@@ -203,8 +203,15 @@ describe('strokeFragment for ellipses and splines', () => {
     const rng = seeded(360);
     const strokes = [genEllipse(rng), genWave(rng), genBlob(rng)].map((g) => g.samples);
     for (const s of strokes) for (let i = 0; i < 5; i++) recognize(s);
-    const t0 = performance.now();
-    for (let i = 0; i < 30; i++) recognize(strokes[i % 3] as StrokeSample[]);
-    expect((performance.now() - t0) / 30).toBeLessThan(process.env.CI ? 6 : 2);
+    // Median per stroke, like the other timing tests: one GC pause must not fail the budget.
+    const times: number[] = [];
+    for (let i = 0; i < 30; i++) {
+      const t0 = performance.now();
+      recognize(strokes[i % 3] as StrokeSample[]);
+      times.push(performance.now() - t0);
+    }
+    times.sort((a, b) => a - b);
+    const median = times[15] as number;
+    expect(median).toBeLessThan(process.env.CI ? 6 : 2);
   });
 });

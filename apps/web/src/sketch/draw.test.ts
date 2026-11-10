@@ -4,6 +4,7 @@ import {
   cancel,
   click,
   type DrawState,
+  finishShape,
   move,
   preview,
   type SketchData,
@@ -145,5 +146,88 @@ describe('sketch drawing', () => {
     expect(kinds(onAxis.data.constraints)).toEqual(['pointOn']);
     const again = run(startDraw('point'), free.data, [[12, 7]]);
     expect(again.data.entities).toHaveLength(1);
+  });
+});
+
+describe('curve tools (M3.5)', () => {
+  const empty: SketchData = { entities: [], constraints: [] };
+  const far = (p: Vec2): Vec2 => [p[0] + 100, p[1] + 100]; // clear of the origin and the axes
+
+  it('ellipse: centre, axis end, minor point', () => {
+    const { data } = run(startDraw('ellipse'), empty, [
+      [100, 100],
+      [130, 100],
+      [130, 112],
+    ]);
+    const e = data.entities.find((x) => x.kind === 'ellipse');
+    expect(e).toMatchObject({ kind: 'ellipse', majorRadius: 30, minorRadius: 12 });
+  });
+
+  it('ellipse preview: a guide line after two points, the ellipse itself with a third', () => {
+    let s = startDraw('ellipse');
+    s = move(s, empty, far([0, 0]), 1);
+    s = click(s, empty).state;
+    s = move(s, empty, far([30, 0]), 1);
+    const two = preview(s, empty);
+    expect(two?.entities.some((e) => e.kind === 'line')).toBe(true);
+    s = click(s, empty).state;
+    s = move(s, empty, far([30, 10]), 1);
+    const three = preview(s, empty);
+    expect(three?.entities.find((e) => e.kind === 'ellipse')).toMatchObject({ majorRadius: 30 });
+    expect(three?.entities.every((e) => e.id.startsWith('preview:'))).toBe(true);
+  });
+
+  it('elliptic arc: five clicks; the ellipse is previewed (dashed) before the arc', () => {
+    let s = startDraw('ellipticArc');
+    const pts: Vec2[] = [far([0, 0]), far([25, 0]), far([25, 12]), far([25, 0]), far([0, 12])];
+    for (const p of pts.slice(0, 3)) {
+      s = move(s, empty, p, 1);
+      s = click(s, empty).state;
+    }
+    s = move(s, empty, far([10, 5]), 1);
+    const pre = preview(s, empty);
+    expect(pre?.entities.find((e) => e.kind === 'ellipse')?.construction).toBe(true);
+    const { data } = run(startDraw('ellipticArc'), empty, pts);
+    expect(data.entities.some((e) => e.kind === 'ellipticArc')).toBe(true);
+  });
+
+  it('through-point spline: taps, then Enter ends it open; a repeated tap adds no point', () => {
+    const pts: Vec2[] = [
+      [100, 100],
+      [110, 114],
+      [120, 106],
+      [130, 115],
+    ];
+    const { state, data } = run(startDraw('splineThrough'), empty, pts);
+    expect(state.anchors).toHaveLength(4);
+    expect(data.entities).toHaveLength(0); // nothing made yet
+    const again = click(move(state, data, pts[3] as Vec2, 1), data);
+    expect(again.state.anchors).toHaveLength(4);
+    const done = finishShape(state);
+    const spline = done?.edit?.entities.find((e) => e.kind === 'bspline');
+    expect(spline).toMatchObject({ kind: 'bspline', periodic: false });
+    expect(spline?.kind === 'bspline' && spline.through).toHaveLength(2); // the inner ones
+    expect(done?.state.anchors).toHaveLength(0);
+    // Nothing to end for a line, and one point is not a curve.
+    expect(finishShape(startDraw('line'))).toBeNull();
+    const one = run(startDraw('splineControl'), empty, [[100, 100]]).state;
+    expect(finishShape(one)?.edit).toBeNull();
+  });
+
+  it('tapping the first point closes a spline into a periodic one', () => {
+    const { state, data } = run(startDraw('splineControl'), empty, [
+      [100, 100],
+      [120, 100],
+      [120, 120],
+      [100, 120],
+    ]);
+    const s = move(state, data, [100.2, 100.2], 1);
+    // The preview shows the closed curve before the tap.
+    expect(preview(s, data)?.entities.find((e) => e.kind === 'bspline')).toMatchObject({
+      periodic: true,
+    });
+    const r = click(s, data);
+    expect(r.edit?.entities.find((e) => e.kind === 'bspline')).toMatchObject({ periodic: true });
+    expect(r.state.anchors).toHaveLength(0);
   });
 });
