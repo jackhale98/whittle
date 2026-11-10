@@ -826,13 +826,28 @@ Owner feedback 2026-11-10. Small; right after M3.7, before M4 (drawings dimensio
 
 ### M4 — Drawings
 
+Order decision (owner, 2026-11-10; ADR-081): drawings stay before MBD, but M4 builds the **shared annotation core** that M5 exports. A drawing's dimensions and GD&T are semantic annotations on the 3D model that drawing views display. They are not 2D-only objects, so M5 reuses them instead of rebuilding.
+
+- **Shared annotation core (first, in the M4 contracts step):**
+  - **Where annotations live.** A part-level, id-keyed set (`Part.annotations`) replaces the per-feature `FeatureBase.annotations`, with a migration. A dimension placed on a drawing measures the finished part, so no feature owns it.
+  - **What an annotation is.** Each one is semantic: its kind (linear, diameter, radius, angle, datum, geometric tolerance, note), its value or measured flag, its tolerance or fit, and its GD&T characteristic, zone, modifiers and datums. It points at model faces, edges and vertices through `EntityRef`s, never at lines in a 2D view.
+  - **Driving dimensions.** An annotation can be bound to a driving sketch or feature dimension (`source`) and then shows its live value.
+  - **On a drawing.** A view displays an annotation through a per-view placement (text position, leader, witness-line side). That placement, not a copy of the annotation, is what a drawing stores. A dimension drawn on a view creates an annotation, marked as a drawing annotation.
+  - **One code path.** Tolerance, fit and GD&T formatting, and the symbol and text layout, are written once and used by drawing views (M4) and later by 3D display and STEP export (M5).
+  - **References.** An annotation whose references no longer resolve is **needs attention**, exactly like a feature reference. It is never re-attached to a guessed face.
+  - **Configuration overrides.** Overrides on annotations are keyed by annotation id, not by list position (M3.7 gate finding; this closes that item before PMI editing exists).
 - Sheets and templates; base, projected, iso, section and detail views with exact HLR; centre marks; dimensions with tolerances; GD&T frames, datums, notes and a **part properties table** (part number, description, material, mass; optionally one row per configuration; balloons and multi-part BOMs come with M6); associativity; PDF, SVG and DXF export. **Not in M4:** weld symbols (later, with assemblies or on request). Owner decisions 2026-11-10; design input: `docs/ux-research/reports/Drawings and configurations UX.md`.
-- "Import model annotations" places the PMI dimensions (from M5 data structures; start with feature dimensions) onto suitable views automatically.
+- **Import model annotations** places annotations onto suitable views automatically: driving sketch and feature dimensions (promoted in one tap) and any annotations the part already has. It picks the view where the measured geometry is seen true-length, and it never places a dimension twice.
 - **Accept:**
   - A drawing of the bracket with three views, a section and full dimensions exports to a vector PDF that prints at 1:1 scale exactly (measured).
   - The DXF is valid and opens correctly in LibreCAD, checked automatically in CI (golden tests, an ezdxf structure audit, headless LibreCAD conversion). QCAD compatibility is best effort, not an acceptance criterion (owner, 2026-11-10: QCAD's command-line tools are commercial).
   - Editing the model updates the drawing, and dangling dimensions are flagged.
   - Certification-style suite (§12A): for every reference part, the E2E recreates its spec drawing with Wren's drawing tools. The views requested by the spec must be present and every specified dimension must appear with the same value.
+  - **Annotation core:**
+    - Every dimension and GD&T frame on the bracket drawing is a part-level annotation with resolved `EntityRef`s (unit test).
+    - Deleting or reordering annotations never retargets a configuration override (test).
+    - A promoted driving dimension updates on the drawing when its value changes.
+    - A document saved before M4 migrates per-feature annotations to the part set without loss.
 
 ### M4.5 — 3D mice and CAD mice
 
@@ -857,20 +872,29 @@ Owner request 2026-11-10, from `docs/ux-research/reports/CAD UI feedback and les
 
 ### M5 — STEP AP242 with model dimensions (MBD/PMI)
 
-- **MBD mode:** users annotate the 3D model with dimensions, tolerances, datums and geometric tolerances. Driving sketch and feature dimensions can be promoted to PMI in one tap.
+M5 builds on M4's annotation core (ADR-081). The annotations, their tolerance and GD&T semantics, their references and their formatting already exist. M5 adds showing them in 3D and exchanging them in STEP.
+
+- **MBD mode (3D display and editing):**
+  - Users annotate the 3D model directly on **annotation planes** (by face, view or saved view), with the same tools and the same annotation objects as drawings. An annotation made on a drawing can also be shown in 3D, and the reverse.
+  - Saved views ("model views") group annotations, like drawing views do.
+  - Text is screen-readable, leaders are drawn in the viewport, and annotations are pickable. They can be filtered by kind or saved view and hidden per view.
+  - Driving sketch and feature dimensions can still be promoted in one tap (shared with M4).
 - **Export pipeline** (in the kernel façade, through XDE/XCAF):
   1. Build an XCAF document: shapes with names, colours, units and the product structure.
-  2. For each `PmiAnnotation`, resolve its `EntityRef`s to sub-shape labels. Create semantic entities with `XCAFDoc_DimTolTool` (`AddDimension` / `SetDimension` / `AddGeomTolerance` / `AddDatum`). Fill in the type, value, tolerance or fit, the annotation plane and the points through `XCAFDimTolObjects_*Object`.
-  3. Generate **presentation PMI**: tessellated annotation geometry (lines plus stroked text), attached with `XCAFDoc_DimTolTool::SetGDTPresentations`. Viewers that only display presentation PMI then show the annotations. Without this step, the export contains only semantic PMI.
+  2. For each annotation, resolve its `EntityRef`s to sub-shape labels. Create semantic entities with `XCAFDoc_DimTolTool` (`AddDimension` / `SetDimension` / `AddGeomTolerance` / `AddDatum`). Fill in the type, value, tolerance or fit, the annotation plane and the points through `XCAFDimTolObjects_*Object`. An annotation that needs attention is not exported, and the export lists it.
+  3. Generate **presentation PMI**: tessellated annotation geometry (lines plus stroked text) from M4's layout code, attached with `XCAFDoc_DimTolTool::SetGDTPresentations`. Viewers that only display presentation PMI then show the annotations. Without this step, the export contains only semantic PMI.
   4. Configure the writer for the AP242 schema (check the exact parameter API in the OCCT 8 data-exchange docs) and write with `STEPCAFControl_Writer`.
   5. Optionally write user-defined attributes: model parameters as properties.
 - Follow the CAx-IF _Recommended Practices for the Representation and Presentation of PMI (AP242)_, which OCCT's XDE GD&T processing is based on.
+- **Import:**
+  - Read semantic PMI from STEP into part annotations, with references resolved to the imported body's faces.
+  - Read presentation-only PMI as display geometry.
+  - Anything OCCT cannot read is reported per annotation, never dropped silently.
 - **Validation:**
   - Node round-trip tests with `STEPCAFControl_Reader`: dimension and tolerance counts, types, values and referenced faces all match.
   - Import the NIST MBE PMI test models (`test-fixtures/step/nist/`) and display their PMI. Note that OCCT has known gaps reading some third-party tolerance values; document what fails.
   - Manually validate the exports with the NIST _STEP File Analyzer and Viewer_ and at least one third-party CAD tool. Record the results in `docs/PMI_VALIDATION.md`.
-- **Configuration overrides on annotations must be id-keyed first** (M3.7 gate finding). Configurable pointers currently include array indices (`/annotations/<i>/…`, `packages/document/src/features.ts`). Once PMI can be edited, deleting or reordering an annotation would silently retarget overrides, and `changedPointers`' whole-array diff (`apps/web/src/app/config-model.ts`) could write an override's value into Default. Before PMI editing ships, key annotation pointers by annotation id, with a migration, and add a test that reorders annotations under an override.
-- **Accept:** the bracket exports with ≥ 15 semantic dimensions or tolerances plus presentation. The round-trip is lossless in Wren. The NIST analyzer reports no structural errors in the PMI entities.
+- **Accept:** the bracket exports with ≥ 15 semantic dimensions or tolerances plus presentation, and they are the same annotations its M4 drawing shows. The round-trip is lossless in Wren. The NIST analyzer reports no structural errors in the PMI entities.
 
 ### M6 — Assemblies
 

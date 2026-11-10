@@ -2235,3 +2235,30 @@ Owner: "Faces don't seem to merge properly. On the demo bracket the back face is
   - "Export all" holds the viewport while it uses `main` for other configurations: picks, `refFor` and measurements are refused with a visible "model is locked" state, because `EntityQuery` is an ordinal mesh index and would otherwise resolve against the wrong configuration. A configuration with resolved issues is skipped and named (the active one is refused on a single export too); a failed regen stops the export with a toast naming it and the files already saved.
   - Previews and sketch solves evaluate against the resolved active configuration. Sketch dimensions are not configurable (D2): editing one changes Default, and the sketch panel says so. A missing active configuration blocks edits (it would otherwise change Default silently); the Params tab clears an override typed back to Default's value.
   - **The golden configuration part is synthetic.** It is a plate, boss and hole built from primitives (`apps/web/e2e/support/config-part.ts`) with closed-form masses, not a §12A reference part checked in FreeCAD. It tests the configuration machinery (resolution, slots, masses per configuration), not modelling capability, and its volumes are exact sums and differences of boxes and a cylinder, so an independent solver would only repeat the formula. Configuring the real reference parts, FreeCAD-checked, is left to the certification-style suite.
+
+## ADR-081 — Drawings before MBD, on one shared 3D annotation core (owner, 2026-11-10)
+
+**Context.** The owner asked whether M5 (STEP AP242 MBD/PMI) should come before M4 (drawings). Modern CAD defines annotations once on the 3D model and lets drawings reuse them. Building drawings first risks a drawing-only dimension model that has to be rebuilt for MBD. On the other side:
+- Wren's users (makers, small shops, engineers working alone) get parts made from PDF and DXF drawings. Few of the tools those shops use consume semantic PMI.
+- M5 is harder to verify: OCCT has gaps with third-party PMI, and acceptance needs the NIST analyzer and third-party CAD.
+- M4's acceptance is concrete: 1:1 PDF prints, and DXF opened in LibreCAD in CI.
+- Most of what M5 needs is drawing work anyway: tolerance and fit formatting, GD&T frames, text and leader layout, attachment and dangling detection.
+
+**Decision.** Keep M4 before M5, but M4 builds the **shared annotation core** first:
+- **Storage.** A part-level, id-keyed `Part.annotations` set replaces `FeatureBase.annotations` (with a migration).
+- **Semantics.** Annotations reference model geometry by `EntityRef`. They are optionally bound to a driving dimension (`source`). Drawing views store only per-view placements.
+- **Shared code.** Formatting and layout are written once.
+- **References.** Unresolved references are "needs attention".
+- **Configuration overrides.** Overrides on annotations are id-keyed, which closes the M3.7 gate finding.
+
+M5 then becomes:
+- 3D display and editing on annotation planes, with saved views;
+- the XCAF semantic plus presentation export, reusing M4's layout code;
+- PMI import;
+- validation.
+
+**Consequences.**
+- The M4 contracts step changes `document.ts` (`Part.annotations`, an annotation `source`, drawing view placements) and needs a schema bump with a migration. The lead owns this.
+- M4 is slightly larger. M5 is smaller and less risky.
+- Drawings and the STEP export can never disagree about a dimension, because they show the same object.
+
