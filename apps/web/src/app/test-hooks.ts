@@ -245,7 +245,10 @@ export function testHooks(wb: Workbench) {
       const part = doc.parts[0];
       const active = part?.activeConfigurationId ?? null;
       const live = wb.regen.get();
-      const out: Record<string, { status: string; mass: number | null; ms: number | null }> = {};
+      const out: Record<
+        string,
+        { status: string; mass: number | null; ms: number | null; message?: string }
+      > = {};
       const statuses = wb.treeStatuses.get();
       for (const id of [null, ...(part?.configurations ?? []).map((c) => c.id)] as (Id | null)[]) {
         const key = keyOf(id);
@@ -263,7 +266,12 @@ export function testHooks(wb: Workbench) {
           continue;
         }
         const e = wb.config.builds.entry(doc, id);
-        out[key] = { status: e?.status ?? 'unbuilt', mass: e?.mass?.mass ?? null, ms: e?.ms ?? null };
+        out[key] = {
+          status: e?.status ?? 'unbuilt',
+          mass: e?.mass?.mass ?? null,
+          ms: e?.ms ?? null,
+          ...(e?.message ? { message: e.message } : {}),
+        };
       }
       return {
         active,

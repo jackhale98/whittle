@@ -9,7 +9,7 @@
  * meshes are dropped.
  */
 
-import type { Id, WrenDoc } from '@wren-cad/contracts';
+import type { Id, RegenRequest, RegenResult, RegenSlot, WrenDoc } from '@wren-cad/contracts';
 import { resolveConfiguration } from '@wren-cad/document';
 import type { ConfigStatus } from '@wren-cad/ui';
 import { defaultIdle } from '../model/modeling';
@@ -41,6 +41,30 @@ export interface BuildsView {
   entries: Readonly<Record<string, BuildEntry>>;
   /** Key of the configuration being built right now. */
   building: string | null;
+}
+
+/**
+ * Regenerates in the configuration's own slot, `config:<id>` (contracts `RegenSlot`). A kernel
+ * client that predates that slot kind rejects it (`Invalid regen slot`); the build then uses a
+ * `version:` slot of the same name, which every client accepts. Decided once per session.
+ */
+let slotStyle: 'config' | 'version' = 'config';
+export async function regenerateInConfigSlot(
+  port: NonNullable<Workbench['modeling']>['port'],
+  id: Id | null,
+  request: Omit<RegenRequest, 'slot'>,
+): Promise<RegenResult> {
+  const slot = (): RegenSlot =>
+    slotStyle === 'config' ? slotOf(id) : (`version:config-${keyOf(id)}` as RegenSlot);
+  try {
+    return await port.regenerate({ ...request, slot: slot() });
+  } catch (e) {
+    if (slotStyle === 'config' && e instanceof Error && /Invalid regen slot/.test(e.message)) {
+      slotStyle = 'version';
+      return await port.regenerate({ ...request, slot: slot() });
+    }
+    throw e;
+  }
 }
 
 const hashOf = (doc: WrenDoc, partId: Id, id: Id | null): { hash: string; issues: string[] } => {
@@ -154,12 +178,11 @@ export class ConfigBuilds {
           const attachments = Object.fromEntries(
             wb.attachmentsFor(resolved.doc).map((a) => [a.path, a.bytes] as const),
           );
-          const result = await modeling.port.regenerate({
+          const result = await regenerateInConfigSlot(modeling.port, id, {
             doc: resolved.doc,
             partId: part.id,
             quality: 'coarse',
             massProperties: true,
-            slot: slotOf(id),
             ...(Object.keys(attachments).length ? { attachments } : {}),
           });
           const names = new Map(part.features.map((f) => [f.id, f.name]));
