@@ -8,7 +8,7 @@
  */
 
 import { type Part, SCHEMA_VERSION, type WrenDoc } from '@wren-cad/contracts';
-import { exprFields, FEATURE_TYPES } from './features';
+import { exprFields, KNOWN_FEATURE_TYPES } from './features';
 import { folderProblems, normalizeFolders } from './folders';
 import { getAt } from './patch';
 
@@ -257,7 +257,7 @@ function validatePart(
       }
     }
     if (typeof f.suppressed !== 'boolean') errs.push(`${fa}.suppressed must be a boolean`);
-    if (!(FEATURE_TYPES as readonly unknown[]).includes(f.type)) {
+    if (!(KNOWN_FEATURE_TYPES as readonly unknown[]).includes(f.type)) {
       errs.push(`${fa}.type ‘${String(f.type)}’ is not a known feature type`);
       return;
     }

@@ -45,6 +45,29 @@ export const FEATURE_TYPES = [
   'import',
 ] as const satisfies readonly Feature['type'][];
 
+/**
+ * Every feature type the contracts define, for load validation. `FEATURE_TYPES` above is the M1
+ * set the evaluation fixtures cover; the M3 types were missing here, so a saved document with a
+ * hole, thread, shell, pattern (and the rest) failed validation on load. Compile-time exhaustive.
+ */
+export const KNOWN_FEATURE_TYPES = [
+  ...FEATURE_TYPES,
+  'axis',
+  'point',
+  'shell',
+  'draft',
+  'sweep',
+  'loft',
+  'mirror',
+  'linearPattern',
+  'circularPattern',
+  'hole',
+  'thread',
+] as const satisfies readonly Feature['type'][];
+
+type MissingFeatureTypes = Exclude<Feature['type'], (typeof KNOWN_FEATURE_TYPES)[number]>;
+export const _allFeatureTypesListed: [MissingFeatureTypes] extends [never] ? true : never = true;
+
 export interface ExprField {
   /** JSON pointer into the feature, e.g. `/constraints/3/value`. */
   pointer: string;

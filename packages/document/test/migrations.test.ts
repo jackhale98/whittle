@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-import { SCHEMA_VERSION } from '@wren-cad/contracts';
+import { SCHEMA_VERSION, type WrenDoc } from '@wren-cad/contracts';
 import { describe, expect, it } from 'vitest';
 import {
   createDocumentStore,
@@ -9,6 +9,7 @@ import {
   newDoc,
   validateDoc,
 } from '../src';
+import { KNOWN_FEATURE_TYPES } from '../src/features';
 import { id, req, sampleDoc } from './fixtures';
 
 describe('migration framework', () => {
@@ -165,5 +166,26 @@ describe('validateDoc', () => {
       ],
     };
     expect(validateDoc(weird).join('\n')).toMatch(/malformed|must be/);
+  });
+});
+
+describe('validateDoc knows every feature type', () => {
+  it('accepts the M3 types (a saved hole, thread, shell or pattern must reload)', () => {
+    const doc = newDoc();
+    const features = KNOWN_FEATURE_TYPES.map((type, i) => ({
+      id: `01J0000000000000000000F${String(i).padStart(3, '0')}`,
+      type,
+      name: type,
+      suppressed: false,
+    }));
+    const withAll = {
+      ...doc,
+      parts: [{ id: '01J0000000000000000000P001', name: 'P', features, rollbackIndex: 0 }],
+    } as unknown as WrenDoc;
+    const unknown = validateDoc(withAll).filter((e) => e.includes('not a known feature type'));
+    expect(unknown).toEqual([]);
+    for (const t of ['hole', 'thread', 'shell', 'linearPattern', 'mirror', 'point'] as const) {
+      expect(KNOWN_FEATURE_TYPES).toContain(t);
+    }
   });
 });
