@@ -283,8 +283,7 @@ class DiffRun {
     }
     const bm = byId(old.features);
     const am = byId(part.features);
-    const moved = this.moves([...segs, 'features'], old.features, part.features, (f) => f.name);
-    const folderMoves = this.folderMoves(old, part, moved);
+    const { moved, folderMoves } = this.featureMoves(old, part);
     for (const f of part.features) {
       const prev = bm.get(f.id) as Feature | undefined;
       const fsegs = [...segs, 'features', f.id];
@@ -327,35 +326,68 @@ class DiffRun {
   }
 
   /**
-   * A folder whose members all moved (and that kept the same members) moved as a whole: one
-   * "Moved folder" line replaces its members' "Moved" lines, which are taken out of `moved`.
+   * Feature and folder moves. A folder that kept its members is one item in the comparison, so
+   * moving it reads as one "Moved folder" line, never one per member (which members a plain
+   * comparison would call "moved" depends on ties); moves inside it are compared among its
+   * members.
    */
-  private folderMoves(
+  private featureMoves(
     old: Part,
     part: Part,
-    moved: Map<string, DiffChange>,
-  ): Map<string, DiffChange> {
-    const out = new Map<string, DiffChange>();
+  ): { moved: Map<string, DiffChange>; folderMoves: Map<string, DiffChange> } {
     const before = byId(old.folders ?? []);
+    const holder = new Map<string, string>();
+    const stable = new Map<string, FeatureFolder>();
     for (const f of part.folders ?? []) {
       const prev = before.get(f.id) as FeatureFolder | undefined;
-      if (!prev || f.features.length === 0) continue;
-      const same =
-        prev.features.length === f.features.length &&
-        f.features.every((x) => prev.features.includes(x));
-      if (!same || !f.features.every((x) => moved.has(x))) continue;
-      for (const x of f.features) moved.delete(x);
-      const at = part.features.findIndex((x) => x.id === f.features[0]);
-      const prevFeature = at > 0 ? part.features[at - 1] : undefined;
-      out.set(f.id, {
+      if (!prev || prev.features.length !== f.features.length) continue;
+      if (!f.features.every((x) => prev.features.includes(x))) continue;
+      stable.set(f.id, f);
+      for (const x of f.features) holder.set(x, f.id);
+    }
+    const tokens = (features: readonly Feature[]): string[] => {
+      const out: string[] = [];
+      for (const f of features) {
+        const t = holder.get(f.id) ?? f.id;
+        if (out[out.length - 1] !== t) out.push(t);
+      }
+      return out;
+    };
+    const after = part.features;
+    const index = new Map(after.map((f, i) => [f.id, i]));
+    const placed = (firstId: string): string => {
+      const prev = after[(index.get(firstId) ?? 0) - 1];
+      return prev ? `after ${prev.name}` : 'to the top';
+    };
+    const moved = new Map<string, DiffChange>();
+    const featureMove = (id: string): void => {
+      const f = after[index.get(id) as number] as Feature;
+      moved.set(id, {
         kind: 'moved',
-        subject: this.subject(['parts', part.id, 'folders', f.id]),
-        summary: prevFeature
-          ? `Moved folder ${f.name} after ${prevFeature.name}`
-          : `Moved folder ${f.name} to the top`,
+        subject: this.subject(['parts', part.id, 'features', id]),
+        summary: `Moved ${f.name} ${placed(id)}`,
+      });
+    };
+    const folderMoves = new Map<string, DiffChange>();
+    for (const t of movedIds(tokens(old.features), tokens(after))) {
+      const f = stable.get(t);
+      if (f === undefined) {
+        featureMove(t);
+        continue;
+      }
+      const first = after.find((x) => holder.get(x.id) === t) as Feature;
+      folderMoves.set(t, {
+        kind: 'moved',
+        subject: this.subject(['parts', part.id, 'folders', t]),
+        summary: `Moved folder ${f.name} ${placed(first.id)}`,
       });
     }
-    return out;
+    for (const fid of stable.keys()) {
+      const members = (features: readonly Feature[]) =>
+        features.filter((x) => holder.get(x.id) === fid).map((x) => x.id);
+      for (const id of movedIds(members(old.features), members(after))) featureMove(id);
+    }
+    return { moved, folderMoves };
   }
 
   /** Folder lines: added, removed, renamed, members joining or leaving, moved. */

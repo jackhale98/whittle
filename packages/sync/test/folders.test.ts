@@ -1,23 +1,23 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 /**
  * M3.6 (ADR-066): feature tree folders and sketch visibility in the structural merge, the merge
- * notes and the version compare. Folder edits are built with `support/folders.ts` while the
- * document package's folder commands land.
+ * notes and the version compare. Folder edits go through the document commands
+ * (`support/folders.ts`); normalisation is the document package's `normalizeFolders`.
  */
 
 import type { MergeResult, SketchFeature, WrenDoc } from '@wren-cad/contracts';
-import { canonicalJson, fromFiles, toFiles } from '@wren-cad/document';
+import { canonicalJson, fromFiles, normalizeFolders, toFiles } from '@wren-cad/document';
 import { describe, expect, it, vi } from 'vitest';
 import {
   conflictSummary,
   docDiffer,
   docMerger,
+  folderChangeSummary,
   mergeNotes,
   mergeProjectFiles,
   type NormalizeFolders,
   StructuralMerger,
 } from '../src';
-import { normalizeFolders } from '../src/merge/folders';
 import {
   apply,
   baseDoc,
@@ -52,7 +52,8 @@ import {
 // Bracket: Sketch 1, Extrude 2, Fillet 3, Chamfer 4, Plane 5.
 const MOUNTING = id(60);
 const EDGES = id(61);
-const featureIds = (d: WrenDoc) => (d.parts.find((p) => p.id === PART)?.features ?? []).map((f) => f.id);
+const featureIds = (d: WrenDoc) =>
+  (d.parts.find((p) => p.id === PART)?.features ?? []).map((f) => f.id);
 const valid = (r: MergeResult | WrenDoc) => {
   const doc = 'doc' in r ? r.doc : r;
   expect(problems(doc)).toEqual([]);
@@ -69,65 +70,42 @@ const setDim = (doc: WrenDoc, value: string) => {
   return apply(doc, { kind: 'updateFeature', partId: PART, featureId: SKETCH, feature: s });
 };
 
-describe('normalizeFolders (local stand-in for the document package, ADR-066)', () => {
-  const features = ['a', 'b', 'c', 'd', 'e', 'f'].map((x) => ({ id: x }) as never);
-
-  it('sorts members into history order, drops missing ids and removes empty folders', () => {
-    const r = normalizeFolders({
-      features,
-      folders: [folder('F', 'F', ['c', 'zz', 'b']), folder('G', 'G', ['gone'])],
-    });
-    expect(r.folders).toEqual([folder('F', 'F', ['b', 'c'])]);
-    expect(r.changes).toEqual([
-      { kind: 'left', folderId: 'F', featureId: 'zz', reason: 'missing' },
-      { kind: 'left', folderId: 'G', featureId: 'gone', reason: 'missing' },
-      { kind: 'removed', folderId: 'G', reason: 'empty' },
-    ]);
+describe('merge report text for normalizeFolders changes', () => {
+  const names: Record<string, string> = {
+    a: 'Fillet 3',
+    b: 'Chamfer 4',
+    F: 'Mounting',
+    G: 'Edges',
+  };
+  const name = (x: string) => names[x] ?? x;
+  const change = (
+    kind: 'missing' | 'shared' | 'extended' | 'trimmed' | 'removed',
+    featureIds: string[],
+  ) => ({
+    folderId: 'G',
+    folderName: 'Edges',
+    kind,
+    featureIds,
   });
 
-  it('extends a broken run over a gap no other folder holds', () => {
-    const r = normalizeFolders({ features, folders: [folder('F', 'F', ['b', 'e'])] });
-    expect(r.folders).toEqual([folder('F', 'F', ['b', 'c', 'd', 'e'])]);
-    expect(r.changes.map((c) => c.kind === 'joined' && c.featureId)).toEqual(['c', 'd']);
-  });
-
-  it('otherwise keeps the longest contiguous run, the earliest on a tie', () => {
-    const longest = normalizeFolders({
-      features,
-      folders: [folder('F', 'F', ['a', 'c', 'd']), folder('G', 'G', ['b'])],
-    });
-    expect(longest.folders).toEqual([folder('F', 'F', ['c', 'd']), folder('G', 'G', ['b'])]);
-    expect(longest.changes).toEqual([{ kind: 'left', folderId: 'F', featureId: 'a', reason: 'split' }]);
-    const tie = normalizeFolders({
-      features,
-      folders: [folder('F', 'F', ['a', 'c']), folder('G', 'G', ['b'])],
-    });
-    expect(tie.folders[0]).toEqual(folder('F', 'F', ['a']));
-  });
-
-  it('a feature in two folders stays in the one that starts first', () => {
-    const r = normalizeFolders({
-      features,
-      folders: [folder('G', 'G', ['c', 'd']), folder('F', 'F', ['b', 'c'])],
-    });
-    expect(r.folders).toEqual([folder('G', 'G', ['d']), folder('F', 'F', ['b', 'c'])]);
-    expect(r.changes).toEqual([
-      { kind: 'left', folderId: 'G', featureId: 'c', reason: 'shared', keptBy: 'F' },
-    ]);
-  });
-
-  it('does not depend on the order of the folders array', () => {
-    const fs = [folder('F', 'F', ['a', 'c', 'e']), folder('G', 'G', ['b', 'd']), folder('H', 'H', ['d', 'f'])];
-    const a = normalizeFolders({ features, folders: fs });
-    const b = normalizeFolders({ features, folders: fs.slice().reverse() });
-    const sorted = (x: typeof a) => x.folders.slice().sort((p, q) => (p.id < q.id ? -1 : 1));
-    expect(sorted(a)).toEqual(sorted(b));
-    expect(folderProblems({ ...baseDoc(), parts: [{ ...baseDoc().parts[0], features, folders: a.folders } as never] })).toEqual([]);
-  });
-
-  it('leaves valid folders alone', () => {
-    const fs = [folder('F', 'F', ['b', 'c']), folder('G', 'G', ['e'])];
-    expect(normalizeFolders({ features, folders: fs })).toEqual({ folders: fs, changes: [] });
+  it('reads in plain language, one line per change', () => {
+    expect(folderChangeSummary(change('trimmed', ['a']), name)).toBe(
+      'Fillet 3 left folder Edges to keep the folder in one piece',
+    );
+    expect(folderChangeSummary(change('extended', ['a', 'b']), name)).toBe(
+      'Fillet 3 and Chamfer 4 joined folder Edges to keep the folder in one piece',
+    );
+    expect(folderChangeSummary(change('shared', ['a']), name, () => 'F')).toBe(
+      'Fillet 3 left folder Edges: it is already in folder Mounting',
+    );
+    expect(
+      folderChangeSummary(change('shared', ['a', 'b']), name, (x) => (x === 'a' ? 'F' : 'H')),
+    ).toBe('Fillet 3 and Chamfer 4 left folder Edges: they are already in another folder');
+    expect(folderChangeSummary(change('removed', []), name)).toBe(
+      'Folder Edges was removed: no features were left in it',
+    );
+    // Deleted members are already listed as removed features.
+    expect(folderChangeSummary(change('missing', ['a']), name)).toBeNull();
   });
 });
 
@@ -160,11 +138,19 @@ describe('DocMerger: folders', () => {
 
   it('survives a part-level edit on both sides (the folder is merged, not just copied)', () => {
     const base = mounted();
-    const ours = renameFolder(apply(base, { kind: 'renamePart', partId: PART, name: 'Bracket A' }), MOUNTING, 'M');
-    const theirs = moveFolder(apply(base, { kind: 'setRollback', partId: PART, index: 4 }), MOUNTING, 0);
+    const ours = renameFolder(
+      apply(base, { kind: 'renamePart', partId: PART, name: 'Bracket A' }),
+      MOUNTING,
+      'M',
+    );
+    const theirs = moveFolder(
+      apply(base, { kind: 'setRollback', partId: PART, index: 4 }),
+      MOUNTING,
+      3,
+    );
     const r = docMerger.merge(base, ours, theirs);
     expect(r.conflicts).toEqual([]);
-    expect(featureIds(r.doc)).toEqual([FILLET, CHAMFER, SKETCH, EXTRUDE, PLANE]);
+    expect(featureIds(r.doc)).toEqual([SKETCH, EXTRUDE, PLANE, FILLET, CHAMFER]);
     expect(foldersOf(r.doc)).toEqual([folder(MOUNTING, 'M', [FILLET, CHAMFER])]);
     expect(r.doc.parts[0]?.name).toBe('Bracket A');
     valid(r);
@@ -173,11 +159,11 @@ describe('DocMerger: folders', () => {
   it('add-member on one side and remove-member on the other both apply', () => {
     const base = mounted();
     const ours = setMembers(base, MOUNTING, [FILLET, CHAMFER, PLANE]); // Plane 5 joins at the end
-    const theirs = moveFeatureF(base, FILLET, 1); // Fillet 3 moves before Extrude 2: leaves
+    const theirs = moveFeatureF(base, FILLET, 4); // Fillet 3 moves to the end: leaves
     expect(folderById(theirs, MOUNTING)?.features).toEqual([CHAMFER]);
     const r = docMerger.merge(base, ours, theirs);
     expect(r.conflicts).toEqual([]);
-    expect(featureIds(r.doc)).toEqual([SKETCH, FILLET, EXTRUDE, CHAMFER, PLANE]);
+    expect(featureIds(r.doc)).toEqual([SKETCH, EXTRUDE, CHAMFER, PLANE, FILLET]);
     expect(folderById(r.doc, MOUNTING)?.features).toEqual([CHAMFER, PLANE]);
     expect(mergeNotes(r)).toEqual([]);
     valid(r);
@@ -215,8 +201,12 @@ describe('DocMerger: folders', () => {
     expect(conflictSummary(r.conflicts[0] as never)).toBe('Folder Edges name: Edges vs Finishing');
     expect(folderById(r.doc, MOUNTING)?.name).toBe('Edges');
     const c = r.conflicts[0]?.id as string;
-    expect(folderById(docMerger.resolve(r, [{ conflictId: c, take: 'theirs' }]), MOUNTING)?.name).toBe('Finishing');
-    expect(folderById(docMerger.resolve(r, [{ conflictId: c, value: 'Trim' }]), MOUNTING)?.name).toBe('Trim');
+    expect(
+      folderById(docMerger.resolve(r, [{ conflictId: c, take: 'theirs' }]), MOUNTING)?.name,
+    ).toBe('Finishing');
+    expect(
+      folderById(docMerger.resolve(r, [{ conflictId: c, value: 'Trim' }]), MOUNTING)?.name,
+    ).toBe('Trim');
   });
 
   it('concurrent folders over overlapping runs: the earlier one keeps the shared feature, reported', () => {
@@ -234,7 +224,7 @@ describe('DocMerger: folders', () => {
       kind: 'folderMembership',
       partId: PART,
       subject: { kind: 'part', id: PART, label: 'Folder Edges' },
-      change: { kind: 'left', folderId: EDGES, featureId: FILLET, reason: 'shared', keptBy: MOUNTING },
+      change: { kind: 'shared', folderId: EDGES, folderName: 'Edges', featureIds: [FILLET] },
     });
     valid(r);
     const s = docMerger.merge(base, theirs, ours);
@@ -283,10 +273,11 @@ describe('DocMerger: folders', () => {
     const theirs = moveFeatureF(base, FILLET, 4);
     const r = docMerger.merge(base, ours, theirs);
     expect(r.conflicts).toEqual([]);
-    expect(foldersOf(r.doc)).toEqual([folder(MOUNTING, 'Mounting', [EXTRUDE, CHAMFER, PLANE, FILLET])]);
+    expect(foldersOf(r.doc)).toEqual([
+      folder(MOUNTING, 'Mounting', [EXTRUDE, CHAMFER, PLANE, FILLET]),
+    ]);
     expect(notes(r)).toEqual([
-      'Chamfer 4 joined folder Mounting to keep the folder in one piece',
-      'Plane 5 joined folder Mounting to keep the folder in one piece',
+      'Chamfer 4 and Plane 5 joined folder Mounting to keep the folder in one piece',
     ]);
     valid(r);
   });
@@ -318,7 +309,9 @@ describe('DocMerger: folders', () => {
         theirs: folder(MOUNTING, 'Edges', [FILLET, CHAMFER]),
       },
     ]);
-    expect(conflictSummary(r.conflicts[0] as never)).toBe('Folder Edges: deleted vs Edges (2 features)');
+    expect(conflictSummary(r.conflicts[0] as never)).toBe(
+      'Folder Edges: deleted vs Edges (2 features)',
+    );
     expect(foldersOf(r.doc)).toEqual([]);
     valid(r);
     const c = r.conflicts[0]?.id as string;
@@ -337,7 +330,9 @@ describe('DocMerger: folders', () => {
     const r = docMerger.merge(base, ours, theirs);
     expect(r.conflicts.map((c) => c.kind)).toEqual(['modifiedDeleted']);
     expect(foldersOf(r.doc)).toEqual([folder(MOUNTING, 'Mounting', [FILLET, CHAMFER, PLANE])]);
-    const gone = docMerger.resolve(r, [{ conflictId: r.conflicts[0]?.id as string, take: 'theirs' }]);
+    const gone = docMerger.resolve(r, [
+      { conflictId: r.conflicts[0]?.id as string, take: 'theirs' },
+    ]);
     expect(foldersOf(gone)).toEqual([]);
     valid(gone);
   });
@@ -378,12 +373,15 @@ describe('DocMerger: folders', () => {
     const r = docMerger.merge(base, ours, theirs);
     expect(r.conflicts.map((c) => c.kind)).toEqual(['modifiedDeleted']);
     const c = r.conflicts[0]?.id as string;
-    for (const res of [r, structuredClone(r)]) {
-      const doc = docMerger.resolve(res, [{ conflictId: c, take: 'theirs' }]);
-      expect(featureIds(doc)).toEqual([SKETCH, EXTRUDE, FILLET, CHAMFER, PLANE]);
-      expect(folderById(doc, MOUNTING)?.features).toEqual([EXTRUDE, FILLET, CHAMFER]);
-      valid(doc);
-    }
+    const doc = docMerger.resolve(r, [{ conflictId: c, take: 'theirs' }]);
+    expect(featureIds(doc)).toEqual([SKETCH, EXTRUDE, FILLET, CHAMFER, PLANE]);
+    expect(folderById(doc, MOUNTING)?.features).toEqual([EXTRUDE, FILLET, CHAMFER]);
+    valid(doc);
+    // Without the merge inputs the feature comes back at the end, outside the folder: still valid.
+    const byPath = docMerger.resolve(structuredClone(r), [{ conflictId: c, take: 'theirs' }]);
+    expect(featureIds(byPath)).toEqual([SKETCH, EXTRUDE, CHAMFER, PLANE, FILLET]);
+    expect(folderById(byPath, MOUNTING)?.features).toEqual([EXTRUDE, CHAMFER]);
+    valid(byPath);
   });
 
   it('the folders array order never conflicts and is symmetric when both changed it', () => {
@@ -392,7 +390,10 @@ describe('DocMerger: folders', () => {
       folder(EDGES, 'Edges', [CHAMFER]),
     ]);
     const ours = renameFolder(
-      withFolders(base, [folder(EDGES, 'Edges', [CHAMFER]), folder(MOUNTING, 'Mounting', [EXTRUDE])]),
+      withFolders(base, [
+        folder(EDGES, 'Edges', [CHAMFER]),
+        folder(MOUNTING, 'Mounting', [EXTRUDE]),
+      ]),
       EDGES,
       'E',
     );
@@ -420,12 +421,10 @@ describe('DocMerger: folders', () => {
     const spy: NormalizeFolders = vi.fn((part) => normalizeFolders(part));
     const merger = new StructuralMerger({ normalizeFolders: spy });
     const base = mounted();
-    const r = merger.merge(base, renameFolder(base, MOUNTING, 'A'), moveFolder(base, MOUNTING, 0));
+    const r = merger.merge(base, renameFolder(base, MOUNTING, 'A'), moveFolder(base, MOUNTING, 3));
     expect(spy).toHaveBeenCalled();
     expect(foldersOf(r.doc)).toEqual([folder(MOUNTING, 'A', [FILLET, CHAMFER])]);
-    const none = new StructuralMerger({
-      normalizeFolders: (part) => ({ folders: [...(part.folders ?? [])], changes: [] }),
-    });
+    const none = new StructuralMerger({ normalizeFolders: (part) => ({ part, changes: [] }) });
     const broken = reorder(base, [SKETCH, EXTRUDE, FILLET, PLANE, CHAMFER]);
     expect(mergeNotes(none.merge(base, renameFolder(base, MOUNTING, 'B'), broken))).toEqual([]);
   });
@@ -436,7 +435,9 @@ describe('DocMerger: folders', () => {
     const theirs = addFolder(base, folder(EDGES, 'Edges', [FILLET, CHAMFER]));
     const m = await mergeProjectFiles(toFiles(base), toFiles(ours), toFiles(theirs));
     expect(m.merge.conflicts).toEqual([]);
-    expect(notes(m.merge)).toEqual(['Fillet 3 left folder Edges: it is already in folder Mounting']);
+    expect(notes(m.merge)).toEqual([
+      'Fillet 3 left folder Edges: it is already in folder Mounting',
+    ]);
     expect(foldersOf(fromFiles(m.files))).toHaveLength(2);
   });
 });
@@ -449,7 +450,9 @@ describe('DocMerger: sketch visibility', () => {
     const r = docMerger.merge(base, ours, theirs);
     expect(r.conflicts).toEqual([]);
     expect(sketchOf(r.doc).visibility).toBe('shown');
-    expect(sketchOf(r.doc).constraints.find((c) => c.id === sk(23))).toMatchObject({ value: '35mm' });
+    expect(sketchOf(r.doc).constraints.find((c) => c.id === sk(23))).toMatchObject({
+      value: '35mm',
+    });
     valid(r);
   });
 
@@ -463,7 +466,11 @@ describe('DocMerger: sketch visibility', () => {
 
   it('shown against hidden is a conflict that reads well', () => {
     const base = baseDoc();
-    const r = docMerger.merge(base, setVisibility(base, SKETCH, 'shown'), setVisibility(base, SKETCH, 'hidden'));
+    const r = docMerger.merge(
+      base,
+      setVisibility(base, SKETCH, 'shown'),
+      setVisibility(base, SKETCH, 'hidden'),
+    );
     const ptr = `/parts/${PART}/features/${SKETCH}/visibility`;
     expect(r.conflicts).toEqual([
       {
@@ -478,30 +485,47 @@ describe('DocMerger: sketch visibility', () => {
     ]);
     expect(conflictSummary(r.conflicts[0] as never)).toBe('Sketch 1 visibility: shown vs hidden');
     const c = r.conflicts[0]?.id as string;
-    expect(sketchOf(docMerger.resolve(r, [{ conflictId: c, take: 'theirs' }])).visibility).toBe('hidden');
+    expect(sketchOf(docMerger.resolve(r, [{ conflictId: c, take: 'theirs' }])).visibility).toBe(
+      'hidden',
+    );
     const back = docMerger.resolve(r, [{ conflictId: c, take: 'base' }]);
     expect(sketchOf(back).visibility ?? 'auto').toBe('auto');
     valid(back);
-    expect(sketchOf(docMerger.resolve(structuredClone(r), [{ conflictId: c, take: 'theirs' }])).visibility).toBe(
-      'hidden',
-    );
+    expect(
+      sketchOf(docMerger.resolve(structuredClone(r), [{ conflictId: c, take: 'theirs' }]))
+        .visibility,
+    ).toBe('hidden');
   });
 
   it('absent and auto are the same value', () => {
     const shown = setVisibility(baseDoc(), SKETCH, 'shown');
     // Base shown; ours resets with 'auto', theirs by removing the field: no conflict.
-    const r = docMerger.merge(shown, setVisibility(shown, SKETCH, 'auto'), setVisibility(shown, SKETCH, undefined));
+    const r = docMerger.merge(
+      shown,
+      setVisibility(shown, SKETCH, 'auto'),
+      setVisibility(shown, SKETCH, undefined),
+    );
     expect(r.conflicts).toEqual([]);
     expect(sketchOf(r.doc).visibility ?? 'auto').toBe('auto');
     // Base absent; ours writes 'auto' (no change of meaning), theirs hides: theirs wins cleanly.
     const base = baseDoc();
-    const s = docMerger.merge(base, setVisibility(base, SKETCH, 'auto'), setVisibility(base, SKETCH, 'hidden'));
+    const s = docMerger.merge(
+      base,
+      setVisibility(base, SKETCH, 'auto'),
+      setVisibility(base, SKETCH, 'hidden'),
+    );
     expect(s.conflicts).toEqual([]);
     expect(sketchOf(s.doc).visibility).toBe('hidden');
     // 'auto' against hidden from a shown base is a real conflict, shown as automatic.
-    const t = docMerger.merge(shown, setVisibility(shown, SKETCH, undefined), setVisibility(shown, SKETCH, 'hidden'));
+    const t = docMerger.merge(
+      shown,
+      setVisibility(shown, SKETCH, undefined),
+      setVisibility(shown, SKETCH, 'hidden'),
+    );
     expect(t.conflicts.map((c) => [c.ours, c.theirs])).toEqual([['auto', 'hidden']]);
-    expect(conflictSummary(t.conflicts[0] as never)).toBe('Sketch 1 visibility: automatic vs hidden');
+    expect(conflictSummary(t.conflicts[0] as never)).toBe(
+      'Sketch 1 visibility: automatic vs hidden',
+    );
   });
 
   it('deleting a sketch the other side showed is the usual feature conflict', () => {
@@ -540,13 +564,20 @@ describe('DocDiffer: folders and sketch visibility', () => {
     ]);
     const grown = setMembers(added, MOUNTING, [EXTRUDE, FILLET, CHAMFER, PLANE]);
     expect(summaries(added, grown)).toEqual(['Folder Mounting: added Plane 5']);
-    const moved = moveFeatureF(added, EXTRUDE, 0);
-    expect(summaries(added, moved)).toEqual([
-      'Moved Extrude 2 to the top',
-      'Folder Mounting: removed Extrude 2',
+    const moved = moveFeatureF(added, CHAMFER, 4); // to the end: leaves the folder
+    expect(folderById(moved, MOUNTING)?.features).toEqual([EXTRUDE, FILLET]);
+    const lines = summaries(added, moved);
+    expect(lines).toHaveLength(2);
+    expect(lines.filter((x) => x.startsWith('Moved '))).toHaveLength(1);
+    expect(lines).toContain('Folder Mounting: removed Chamfer 4');
+    const both = renameFolder(
+      setMembers(added, MOUNTING, [FILLET, CHAMFER, PLANE]),
+      MOUNTING,
+      'Edges',
+    );
+    expect(summaries(added, both)).toEqual([
+      'Renamed folder Mounting → Edges, added Plane 5, removed Extrude 2',
     ]);
-    const both = renameFolder(setMembers(added, MOUNTING, [FILLET, CHAMFER, PLANE]), MOUNTING, 'Edges');
-    expect(summaries(added, both)).toEqual(['Renamed folder Mounting → Edges, added Plane 5, removed Extrude 2']);
     expect(summaries(added, removeFolder(added, MOUNTING))).toEqual(['Removed folder Mounting']);
   });
 
@@ -556,12 +587,33 @@ describe('DocDiffer: folders and sketch visibility', () => {
   });
 
   it('a folder moved as a whole is one line', () => {
-    const before = mounted();
-    expect(summaries(before, moveFolder(before, MOUNTING, 0))).toEqual(['Moved folder Mounting to the top']);
-    const twoAfter = withFolders(baseDoc(), [folder(MOUNTING, 'Mounting', [EXTRUDE, FILLET])]);
-    expect(summaries(twoAfter, moveFolder(twoAfter, MOUNTING, 3))).toEqual([
-      'Moved folder Mounting after Plane 5',
+    const planes = withFolders(baseDoc(), [folder(MOUNTING, 'Datums', [PLANE])]);
+    expect(docDiffer.diff(planes, moveFolder(planes, MOUNTING, 0))).toEqual([
+      {
+        kind: 'moved',
+        subject: { kind: 'part', id: PART, label: 'Folder Datums' },
+        summary: 'Moved folder Datums to the top',
+      },
     ]);
+    // Fillet 3 and Chamfer 4 after Plane 5: one line, never one per member. (Which of the folder
+    // and Plane 5 "moved" is a tie, as for any two items swapping places.)
+    const before = mounted();
+    const lines = summaries(before, moveFolder(before, MOUNTING, 3));
+    expect(lines).toHaveLength(1);
+    expect(['Moved folder Mounting after Plane 5', 'Moved Plane 5 after Extrude 2']).toContain(
+      lines[0],
+    );
+  });
+
+  it('a move inside a folder is a feature move, not a folder move', () => {
+    const before = withFolders(baseDoc(), [
+      folder(MOUNTING, 'Mounting', [EXTRUDE, FILLET, CHAMFER]),
+    ]);
+    const after = moveFeatureF(before, CHAMFER, 2); // between Extrude 2 and Fillet 3
+    expect(folderById(after, MOUNTING)?.features).toEqual([EXTRUDE, CHAMFER, FILLET]);
+    const lines = summaries(before, after);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatch(/^Moved (Chamfer 4|Fillet 3) after /);
   });
 
   it('sketch visibility reads as a field, absent = automatic', () => {
@@ -585,6 +637,8 @@ describe('DocDiffer: folders and sketch visibility', () => {
       featureId: SKETCH,
       feature: { ...sketchOf(setVisibility(base, SKETCH, 'hidden')), name: 'Profile' },
     });
-    expect(summaries(base, renamed)).toEqual(['Renamed Sketch 1 → Profile, visibility automatic → hidden']);
+    expect(summaries(base, renamed)).toEqual([
+      'Renamed Sketch 1 → Profile, visibility automatic → hidden',
+    ]);
   });
 });

@@ -47,14 +47,13 @@ import type {
   Part,
   WrenDoc,
 } from '@wren-cad/contracts';
-import { validateDoc } from '@wren-cad/document';
+import { normalizeFolders, validateDoc } from '@wren-cad/document';
 import {
   type FolderChange,
   isFolderMembersPath,
   isVisibilityPath,
   mergeMembers,
   type NormalizeFolders,
-  normalizeFolders,
   visibilityOf,
 } from './folders';
 import { folderChangeSummary, subjectAt } from './labels';
@@ -102,8 +101,8 @@ export function mergeNotes(result: MergeResult): MergeNote[] {
 
 export interface StructuralMergerOptions {
   /**
-   * Restores the folder invariant after a merge. Default: the local `normalizeFolders` (ADR-066);
-   * at integration, the document package's `normalizeFolders`.
+   * Restores the folder invariant after a merge. Default: `normalizeFolders` from
+   * `@wren-cad/document` (ADR-066).
    */
   normalizeFolders?: NormalizeFolders;
 }
@@ -292,8 +291,9 @@ class MergeRun {
       raw = this.folderList(fsegs, bl ?? [], ol ?? [], tl ?? [], part);
     }
     if (raw === undefined) return undefined;
-    const { folders, changes } = this.normalize({ features: part.features, folders: raw });
-    this.report(part, raw, changes);
+    const normalized = this.normalize({ ...part, folders: raw });
+    const folders = normalized.part.folders?.slice() ?? [];
+    this.report(part, raw, folders, normalized.changes);
     if (folders.length === 0) return raw.length === 0 ? raw : undefined;
     if (!both) return folders;
     // Both sides changed the list: order by place in the tree, so the result is symmetric.
@@ -353,6 +353,7 @@ class MergeRun {
   private report(
     part: Part,
     raw: readonly FeatureFolder[],
+    folders: readonly FeatureFolder[],
     changes: readonly FolderChange[],
   ): void {
     const names = new Map<string, string>();
@@ -364,8 +365,10 @@ class MergeRun {
     for (const f of part.features) names.set(f.id, f.name);
     for (const f of raw) names.set(f.id, f.name);
     const name = (id: string) => names.get(id) ?? id;
+    const holder = new Map<string, string>();
+    for (const f of folders) for (const x of f.features) holder.set(x, f.id);
     for (const change of changes) {
-      const summary = folderChangeSummary(change, name);
+      const summary = folderChangeSummary(change, name, (x) => holder.get(x));
       if (summary === null) continue;
       this.notes.push({
         kind: 'folderMembership',
@@ -630,9 +633,9 @@ function resolveByPath(
     part.rollbackIndex = Math.max(0, Math.min(n, r));
     // And its folders whole: a restored feature or folder may have broken a run.
     if (Array.isArray(part.folders)) {
-      const { folders } = normalize(part as unknown as Part);
-      if (folders.length > 0 || part.folders.length === 0) part.folders = folders;
-      else delete part.folders;
+      const folders = normalize(part as unknown as Part).part.folders;
+      if (folders !== undefined) part.folders = folders.slice();
+      else if (part.folders.length > 0) delete part.folders;
     }
   }
   return doc as unknown as WrenDoc;

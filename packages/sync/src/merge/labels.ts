@@ -18,7 +18,7 @@ import type {
 } from '@wren-cad/contracts';
 import { constraintLabel, Namer } from '@wren-cad/sketch';
 import type { FolderChange } from './folders';
-import { formatValue, plural } from './format';
+import { formatValue, listText, plural } from './format';
 import { fromPointer, getAtSegs, isObj, type Segs } from './tree';
 
 const META_LABEL: Record<string, string> = {
@@ -166,26 +166,34 @@ export function visibilityText(v: unknown): string {
 }
 
 /**
- * The merge report's line for one normalisation change, or `null` when it needs none (a member
- * that was deleted). `name` gives a feature's or folder's display name by id.
+ * The merge report's line for one `normalizeFolders` change, or `null` when it needs none (members
+ * that were deleted are already listed as removed features). `name` gives a feature's or
+ * folder's display name by id; `holder` the folder that holds a feature after the merge.
  */
 export function folderChangeSummary(
   change: FolderChange,
   name: (id: string) => string,
+  holder: (featureId: string) => string | undefined = () => undefined,
 ): string | null {
-  const folder = name(change.folderId);
-  if (change.kind === 'removed')
-    return `Folder ${folder} was removed: no features were left in it`;
-  const feature = name(change.featureId);
-  if (change.kind === 'joined') {
-    return `${feature} joined folder ${folder} to keep the folder in one piece`;
+  const folder = change.folderName || name(change.folderId);
+  const features = listText(change.featureIds.map(name));
+  const many = change.featureIds.length > 1;
+  switch (change.kind) {
+    case 'missing':
+      return null;
+    case 'removed':
+      return `Folder ${folder} was removed: no features were left in it`;
+    case 'extended':
+      return `${features} joined folder ${folder} to keep the folder in one piece`;
+    case 'trimmed':
+      return `${features} left folder ${folder} to keep the folder in one piece`;
+    case 'shared': {
+      const keepers = [...new Set(change.featureIds.map(holder))];
+      const keeper = keepers.length === 1 ? keepers[0] : undefined;
+      const where = keeper === undefined ? 'another folder' : `folder ${name(keeper)}`;
+      return `${features} left folder ${folder}: ${many ? 'they are' : 'it is'} already in ${where}`;
+    }
   }
-  if (change.reason === 'split')
-    return `${feature} left folder ${folder} to keep the folder in one piece`;
-  if (change.reason === 'shared') {
-    return `${feature} left folder ${folder}: it is already in folder ${name(change.keptBy)}`;
-  }
-  return null;
 }
 
 /** Number of segments that select a conflict's subject (the rest is the field inside it). */

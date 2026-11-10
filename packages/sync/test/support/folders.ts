@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 /**
- * Feature tree folder states for merge tests (M3.6, ADR-066). The document package's folder
- * commands are being written in parallel, so these build folder edits directly, following the
- * membership rules in `Command` (contracts/store.ts): removing a feature drops it from its folder
- * (an emptied folder goes); a member moved outside its run leaves; a non-member moved or added
- * strictly inside a run joins.
+ * Feature tree folder states for merge tests (M3.6, ADR-066). Edits a user can make go through the
+ * document commands (`addFolder`, `renameFolder`, `removeFolder`, `moveFolder`, `moveFeature`,
+ * `setSketchVisibility`, …), so membership follows edits exactly as in the app. `setMembers`,
+ * `reorder` and `withFolders` are plain data edits for states no single command makes (another
+ * tool's edit, or a precondition).
  */
 
 import type {
@@ -51,35 +51,14 @@ export const foldersOf = (doc: WrenDoc, pid = PART): FeatureFolder[] =>
 export const folderById = (doc: WrenDoc, fid: string, pid = PART): FeatureFolder | undefined =>
   foldersOf(doc, pid).find((f) => f.id === fid);
 
-export const renameFolder = (doc: WrenDoc, fid: string, name: string, pid = PART): WrenDoc =>
-  editPart(
-    doc,
-    (p) => {
-      const f = p.folders?.find((x) => x.id === fid);
-      if (!f) throw new Error(`no folder ${fid}`);
-      f.name = name;
-    },
-    pid,
-  );
+export const renameFolder = (doc: WrenDoc, folderId: string, name: string, pid = PART): WrenDoc =>
+  apply(doc, { kind: 'renameFolder', partId: pid, folderId, name });
 
-export const removeFolder = (doc: WrenDoc, fid: string, pid = PART): WrenDoc =>
-  editPart(
-    doc,
-    (p) => {
-      p.folders = (p.folders ?? []).filter((f) => f.id !== fid);
-      if (p.folders.length === 0) delete p.folders;
-    },
-    pid,
-  );
+export const removeFolder = (doc: WrenDoc, folderId: string, pid = PART): WrenDoc =>
+  apply(doc, { kind: 'removeFolder', partId: pid, folderId });
 
 export const addFolder = (doc: WrenDoc, f: FeatureFolder, pid = PART): WrenDoc =>
-  editPart(
-    doc,
-    (p) => {
-      p.folders = [...(p.folders ?? []), structuredClone(f)];
-    },
-    pid,
-  );
+  apply(doc, { kind: 'addFolder', partId: pid, folder: structuredClone(f) });
 
 export const setMembers = (doc: WrenDoc, fid: string, features: string[], pid = PART): WrenDoc =>
   editPart(
@@ -107,81 +86,47 @@ export const reorder = (doc: WrenDoc, order: string[], pid = PART): WrenDoc =>
  * The `moveFolder` command: the run moves so its first member sits at `toIndex` of the features
  * with the run taken out. Throws when that lands inside another folder's run.
  */
-export function moveFolder(doc: WrenDoc, fid: string, toIndex: number, pid = PART): WrenDoc {
-  return editPart(
-    doc,
-    (p) => {
-      const f = p.folders?.find((x) => x.id === fid);
-      if (!f) throw new Error(`no folder ${fid}`);
-      const run = new Set(f.features);
-      const rest = p.features.filter((x) => !run.has(x.id));
-      const members = p.features.filter((x) => run.has(x.id));
-      const at = Math.max(0, Math.min(rest.length, toIndex));
-      for (const g of p.folders ?? []) {
-        if (g.id === fid) continue;
-        const idx = g.features.map((x) => rest.findIndex((r) => r.id === x));
-        if (Math.min(...idx) < at && at <= Math.max(...idx)) throw new Error('inside another folder');
-      }
-      p.features = [...rest.slice(0, at), ...members, ...rest.slice(at)];
-    },
-    pid,
-  );
-}
+/**
+ * The `moveFolder` command: the run moves so its first member sits at `toIndex` of the features
+ * with the run taken out.
+ */
+export const moveFolder = (doc: WrenDoc, folderId: string, toIndex: number, pid = PART): WrenDoc =>
+  apply(doc, { kind: 'moveFolder', partId: pid, folderId, toIndex });
 
-/** Membership follows a feature that moved, was added or was removed (the `Command` rules). */
-function follow(part: Part, moved: string | null, removed: string | null): void {
-  const at = new Map(part.features.map((f, i) => [f.id, i]));
-  const out: FeatureFolder[] = [];
-  for (const f of part.folders ?? []) {
-    let members = f.features.filter((x) => x !== removed);
-    if (moved !== null) {
-      const others = members.filter((x) => x !== moved);
-      const pos = others.map((x) => at.get(x) as number);
-      const lo = Math.min(...pos);
-      const hi = Math.max(...pos);
-      const m = at.get(moved) as number;
-      if (members.includes(moved)) {
-        if (others.length > 0 && (m < lo - 1 || m > hi + 1)) members = others;
-      } else if (others.length > 1 && lo < m && m < hi) members = [...others, moved];
-    }
-    members.sort((a, b) => (at.get(a) as number) - (at.get(b) as number));
-    if (members.length > 0) out.push({ ...f, features: members });
-  }
-  if (out.length > 0) part.folders = out;
-  else delete part.folders;
-}
+export const moveFeatureF = (doc: WrenDoc, featureId: string, toIndex: number, pid = PART) =>
+  apply(doc, { kind: 'moveFeature', partId: pid, featureId, toIndex });
 
-export function moveFeatureF(doc: WrenDoc, fid: string, toIndex: number, pid = PART): WrenDoc {
-  const next = apply(doc, { kind: 'moveFeature', partId: pid, featureId: fid, toIndex });
-  return editPart(next, (p) => follow(p, fid, null), pid);
-}
+export const removeFeatureF = (doc: WrenDoc, featureId: string, pid = PART) =>
+  apply(doc, { kind: 'removeFeature', partId: pid, featureId });
 
-export function removeFeatureF(doc: WrenDoc, fid: string, pid = PART): WrenDoc {
-  const next = apply(doc, { kind: 'removeFeature', partId: pid, featureId: fid });
-  return editPart(next, (p) => follow(p, null, fid), pid);
-}
+export const addFeatureF = (doc: WrenDoc, feature: Feature, index: number, pid = PART) =>
+  apply(doc, { kind: 'addFeature', partId: pid, feature, index });
 
-export function addFeatureF(doc: WrenDoc, feature: Feature, index: number, pid = PART): WrenDoc {
-  const next = apply(doc, { kind: 'addFeature', partId: pid, feature, index });
-  return editPart(next, (p) => follow(p, feature.id, null), pid);
-}
-
-export const setVisibility = (
+/** `setSketchVisibility`; `undefined` removes the field (an older file, or another tool's edit). */
+export function setVisibility(
   doc: WrenDoc,
   sketchId: string,
   visibility: SketchVisibility | undefined,
   pid = PART,
-): WrenDoc =>
-  editPart(
+): WrenDoc {
+  if (visibility !== undefined) {
+    return apply(doc, {
+      kind: 'setSketchVisibility',
+      partId: pid,
+      featureIds: [sketchId],
+      visibility,
+    });
+  }
+  return editPart(
     doc,
     (p) => {
       const s = p.features.find((f) => f.id === sketchId) as SketchFeature | undefined;
       if (s?.type !== 'sketch') throw new Error(`no sketch ${sketchId}`);
-      if (visibility === undefined) delete s.visibility;
-      else s.visibility = visibility;
+      delete s.visibility;
     },
     pid,
   );
+}
 
 /** Breaks of the folder invariant (ADR-066) in every part of `doc`; empty when it holds. */
 export function folderProblems(doc: WrenDoc): string[] {
