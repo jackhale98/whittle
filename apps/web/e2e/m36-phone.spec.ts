@@ -57,7 +57,7 @@ async function openDemo(page: Page) {
 /** Undo with the keyboard until the history is back at `past` entries. */
 async function undoTo(page: Page, a: ReturnType<typeof app>, past: number) {
   for (let k = 0; k < 20 && (await a.history()).past.length > past; k++) {
-    await page.keyboard.press('Control+z');
+    await page.keyboard.press('Meta+z');
     await a.idle();
   }
   expect((await a.history()).past.length).toBe(past);
@@ -138,13 +138,14 @@ test('phone: a long press on a row opens its menu; Suppress is one undo entry', 
   await chamfer.scrollIntoViewIfNeeded();
   const box = await chamfer.boundingBox();
   if (!box) throw new Error('row not laid out');
-  const at = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  // The last row sits on the rollback bar (a 44 px target centred on the line below it): press the
+  // upper part of the row, clear of the bar.
+  const at = { x: box.x + box.width / 2, y: box.y + 8 };
   const t = await touch(page);
   await t.down([at]);
-  await page.waitForTimeout(700);
-  await t.up();
   const menu = page.getByRole('menu');
   await expect(menu).toBeVisible();
+  await t.up();
   await menu.getByRole('menuitem', { name: /^Suppress/ }).tap();
   const feature = doc0.parts[0]?.features.find((f) => f.name === 'Top chamfer');
   await expect
@@ -158,7 +159,7 @@ test('phone: a long press on a row opens its menu; Suppress is one undo entry', 
   expect(r?.bodies[0]?.volume).toBeGreaterThan(full?.bodies[0]?.volume ?? 0);
   expect(r?.features.find((f) => f.id === feature?.id)?.state).toBe('suppressed');
   // One undo brings it back.
-  await page.keyboard.press('Control+z');
+  await page.keyboard.press('Meta+z');
   await expect
     .poll(
       async () => (await a.doc()).parts[0]?.features.find((f) => f.id === feature?.id)?.suppressed,
