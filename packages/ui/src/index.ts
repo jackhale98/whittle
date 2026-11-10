@@ -252,6 +252,7 @@ export {
   stepSnap,
 } from './logic/sheet';
 export {
+  applySteps,
   type BlockStep,
   type CanFolder,
   canFolder,

@@ -745,7 +745,7 @@ export function FeatureTree({
 
   function clickFeature(e: MouseEvent, id: Id) {
     if (e.ctrlKey || e.metaKey) {
-      const base = effective;
+      const base = effective.length ? effective : anchorId ? [anchorId] : [];
       setPicked(base.includes(id) ? base.filter((x) => x !== id) : [...base, id]);
       setAnchorId(id);
       return;
