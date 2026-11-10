@@ -70,7 +70,7 @@ export async function saveToLibrary(wb: Workbench, doc: WrenDoc): Promise<void> 
     if (first) void wb.syncCtl?.openProject(doc.meta.id);
     wb.savedCacheKey = files.key;
     writeLastDoc(doc.meta.id);
-    // Finer meshes that arrived while wb save ran (e.g. the first save of a new document,
+    // Finer meshes that arrived while this save ran (e.g. the first save of a new document,
     // when updateMeshCache could not schedule one yet) still need to reach the library.
     if (wb.cacheKey !== files.key && !wb.autosaver.pending) wb.scheduleCacheSave();
   }
@@ -283,7 +283,7 @@ export async function openProject(wb: Workbench, bundle: ProjectBundle): Promise
       const names = new Set((await lib.list()).map((e) => e.name));
       const name = copyName(doc.meta.name, names);
       doc = { ...doc, meta: { ...doc.meta, id: ulid(), name } };
-      note = `Opened as “${name}”: your library already has a different version of wb document, and it is unchanged.`;
+      note = `Opened as “${name}”: your library already has a different version of this document, and it is unchanged.`;
     }
   }
   if (!wb.loadDocument({ ...bundle, doc }, inLibrary)) return;
