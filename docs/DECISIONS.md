@@ -2004,3 +2004,31 @@ On a loaded phone run (E2E `m2-phone`, failing 10–30% on the M3.5 branch, neve
 - **Cost:** under load a genuine long-press can come up to 60 ms later.
 - **Evidence:** `m2-phone` passes 20/20 with its original 5 s budget (before the fix: 2–3 failures in 10). `touch.spec.ts` gains a stall test as a guard; on its own it does not reproduce the race, since Chromium happened to deliver the lift first there.
 - **Follow-up (not a blocker):** the radial menu could open in tap mode, not held mode, when its pointer has already lifted before the lazily loaded menu mounts.
+
+## ADR-066 — Feature tree folders and per-sketch visibility are document data (M3.6, 2026-11-10)
+
+Owner requests (M3.6).
+
+- **Folders.**
+  - **Structure.** `Part.folders` holds `FeatureFolder { id, name, features }`. The members are explicit ids forming a contiguous run in history order. Folders do not nest and never overlap.
+  - **Explicit membership, not first/last bounds.** Folders merge cleanly by id: a rename on one branch and a move on another combine, and membership is a plain set to three-way merge. Collapsed/expanded is per-user UI state and is not stored, so toggling it never creates undo entries or history noise.
+  - **Edits keep the run contiguous by construction** (rules in `Command`):
+    - removing a feature drops it from its folder, and an emptied folder disappears;
+    - moving a member outside its run takes it out of the folder;
+    - a non-member moved or inserted strictly inside a run joins the folder;
+    - landing just before the first or after the last member does not join.
+
+    So no edit can split a run. The UI's "this will take Fillet 3 out of Mounting" confirmation is a courtesy, not a guard.
+  - **Merges that produce a non-contiguous run** (each side moved features independently) are normalised deterministically:
+    1. sort the members into history order;
+    2. if the run is broken, extend it over the gap when that overlaps no other folder;
+    3. otherwise keep the longest contiguous run, taking the earliest on a tie, and drop the rest from the folder.
+
+    The merge report lists any membership change made this way.
+- **Sketch visibility.** `SketchFeature.visibility` is `'auto' | 'shown' | 'hidden'`, with absent meaning `'auto'`.
+  - `'auto'` keeps ADR-060: shown until consumed, then hidden.
+  - The eye toggle in the tree (nested or flat) writes `'shown'` or `'hidden'`. "Show all / Hide all sketches" and a folder's "Show/Hide sketches" write them in one undo entry (`setSketchVisibility` with several ids). "Reset sketch visibility" writes `'auto'`.
+  - It is document data rather than view state because a reviewer opening a shared file should see what the author chose to show (SOLIDWORKS stores it the same way).
+- **Bulk suppress.** `setSuppressedMany` gives a folder's "Suppress all" one undo entry and one regeneration.
+- **Schema.** These are additive fields, so `schemaVersion` goes from 1 to 2 with a no-op migration (FILE_FORMAT §7). M3.5's new curve kinds were added under v1 without a bump; this one bump covers both, so an older Wren shows "update" instead of a validation error.
+- **Phone step-through needs no document change.** Stepping previews a rollback position by regenerating a copy of the document with a different `rollbackIndex`, and only "Keep this rollback" writes `setRollback`.
