@@ -142,7 +142,8 @@ import {
   type SelectionItem,
   type UiState,
 } from './state';
-import { failBoot, mark, markOnce, marks } from './timing';
+import * as hooks from './test-hooks';
+import { failBoot, mark, markOnce } from './timing';
 
 const LAST_DOC_KEY = 'whittle:last-document';
 const LINKS_KEY = 'whittle:links';
@@ -259,28 +260,28 @@ export class Workbench {
   readonly tourRequests = observable(0);
   readonly pushPull: PushPullTool;
   readonly measure: MeasureTool;
-  private loop: RegenLoop | null = null;
-  private boot: EngineBoot | null = null;
+  loop: RegenLoop | null = null;
+  boot: EngineBoot | null = null;
   private libraryPromise: Promise<DocLibrary | null> | null = null;
-  private autosaver: Autosaver;
-  private shownBodies = new Set<string>();
-  private shownSketches = new Set<string>();
+  autosaver: Autosaver;
+  shownBodies = new Set<string>();
+  shownSketches = new Set<string>();
   private ghosts = new Set<string>();
-  private markers = new Set<string>();
+  markers = new Set<string>();
   /** Faces looked at for bubbles, push/pull and sections, per mesh (meshes are immutable). */
   private faceCache = new WeakMap<MeshBuffers, Map<number, FaceInfo | null>>();
   /** Project files outside the document model (attachments, previews/, releases/). */
-  private extra: ProjectFiles = new Map();
+  extra: ProjectFiles = new Map();
   /** `.wren/` cache of the open project (mesh cache, other regenerable files). */
-  private cache: ProjectFiles = new Map();
+  cache: ProjectFiles = new Map();
   /** Document key of the meshes in `cache` and of the last cache that reached the library. */
-  private cacheKey: string | null = null;
-  private savedCacheKey: string | null = null;
+  cacheKey: string | null = null;
+  savedCacheKey: string | null = null;
   private cacheTimer: ReturnType<typeof setTimeout> | undefined;
   /** The open document has a library entry (saved or opened from it). */
   private inLibrary = false;
   /** Rebound reference names waiting to be folded into the next user edit (ADR-008). */
-  private heals = new Map<Id, Heal[]>();
+  heals = new Map<Id, Heal[]>();
   /** The document the pending heals were computed for: only that exact version may take them. */
   private healsFor: WrenDoc | null = null;
   /** Auto-fit once per opened document, then leave the camera to the user. */
@@ -302,7 +303,7 @@ export class Workbench {
     branch: null,
   });
   /** Connections, sync and versions (lazy chunk with `@wren-cad/sync` and isomorphic-git). */
-  private syncCtl: SyncController | null = null;
+  syncCtl: SyncController | null = null;
   private syncLoad: Promise<SyncController> | null = null;
   /** Library writes run one at a time (saves and sync's compare-and-swap writes). */
   private libChain: Promise<unknown> = Promise.resolve();
@@ -641,7 +642,7 @@ export class Workbench {
 
   /** Step timings for the budget check: when a step was asked for, and when its result showed. */
   private previewSteps: { index: number; t0: number }[] = [];
-  private previewTimings: { index: number; ms: number; cached: boolean }[] = [];
+  previewTimings: { index: number; ms: number; cached: boolean }[] = [];
   private lastPickKey = '';
   /** Feature statuses of the last regen of the real (not rolled-back-for-picking) document. */
   readonly treeStatuses = observable<RegenResult['features'] | undefined>(undefined);
@@ -1168,7 +1169,7 @@ export class Workbench {
   }
 
   /** Kinds selectable right now (model mode). */
-  private pickKinds(): PickKind[] {
+  pickKinds(): PickKind[] {
     const u = this.ui.get();
     if (u.section.picking) return ['face'];
     if (u.measure?.active) return ['face', 'edge', 'vertex'];
@@ -1562,7 +1563,7 @@ export class Workbench {
   }
 
   /** Picks applied (tests: one tap = one pick, whichever input path delivered it). */
-  private choices = 0;
+  choices = 0;
 
   private async applyChoice(hit: PickHit | null, additive: boolean): Promise<void> {
     this.choices++;
@@ -2520,7 +2521,7 @@ export class Workbench {
   }
 
   /** The candidates under the pointer at its last move, in the chooser's stable order. */
-  private lastPick: Array<{
+  lastPick: Array<{
     id: string;
     kind: 'face' | 'edge' | 'vertex' | 'body';
     depth?: number;
@@ -2678,7 +2679,7 @@ export class Workbench {
   }
 
   /** Replaces the open document (history cleared). */
-  private loadDocument(
+  loadDocument(
     bundle: { doc: WrenDoc; extra?: ProjectFiles; cache?: ProjectFiles },
     inLibrary: boolean,
   ): boolean {
@@ -3002,7 +3003,7 @@ export class Workbench {
   }
 
   /** UI actions still in flight (they await the engine before editing the document). */
-  private actions = new Set<Promise<unknown>>();
+  actions = new Set<Promise<unknown>>();
 
   /** Registers an in-flight UI action so `idle()` waits for it. */
   track<T>(p: Promise<T>): Promise<T> {
@@ -3275,242 +3276,7 @@ export class Workbench {
 
   /** Test hooks: document, regen summary, idle. */
   testHooks() {
-    return {
-      doc: () => this.doc,
-      regen: () => {
-        const view = this.regen.get();
-        const r = view?.result;
-        return r && view
-          ? {
-              revision: r.revision,
-              source: view.source,
-              quality: view.quality,
-              rollback: view.doc.parts[0]?.rollbackIndex ?? null,
-              bodies: r.bodies.map((b) => ({
-                id: b.id,
-                volume: b.massProperties?.volume ?? null,
-                faces: b.mesh.faceNames.length,
-                bbox: b.mesh.bbox,
-              })),
-              features: r.features.map((f) => ({
-                id: f.featureId,
-                state: f.state,
-                ...(f.unresolved ? { unresolved: f.unresolved } : {}),
-                ...(f.rebound ? { rebound: f.rebound } : {}),
-                ...(f.error ? { error: f.error.message } : {}),
-              })),
-              sketches: r.sketches.map((s) => ({
-                id: s.featureId,
-                regions: s.regions.map((x) => x.name),
-              })),
-            }
-          : null;
-      },
-      shownSketches: () => [...this.shownSketches],
-      /** Ids of the bodies the viewport holds (what is on screen). */
-      shownBodies: () => [...this.shownBodies],
-      /** The phone step-through: the previewed rollback position (null when not previewing). */
-      preview: () => this.preview.get(),
-      previewTimings: () => [...this.previewTimings],
-      /** Collapsed folders of the open document (UI state, per document). */
-      collapsedFolders: () => [...this.collapsedFolders.get()],
-      /** Opens a feature for editing (a sketch enters sketch mode). */
-      editFeature: (id: Id) => this.editFeature(id),
-      idle: async () => {
-        await this.sketch?.whenSettled();
-        await this.boot?.modeling;
-        // (Phones may not have started the kernel at all: then there is nothing to wait for.)
-        for (let i = 0; i < 50 && this.boot && !this.loop; i++)
-          await new Promise((r) => setTimeout(r, 20));
-        // Settled = no UI action in flight, the regen loop idle, and the last live result is of
-        // the document as displayed now (not of the version before the last edit).
-        for (let i = 0; i < 200; i++) {
-          while (this.actions.size > 0) await Promise.allSettled([...this.actions]);
-          await this.sketch?.whenSettled();
-          await this.loop?.whenIdle();
-          const r = this.regen.get();
-          if (!this.loop || (r?.source === 'live' && r.doc === this.viewDoc())) break;
-          if (this.actions.size === 0 && !this.ui.get().ready) break;
-          await new Promise((res) => setTimeout(res, 25));
-        }
-        await this.viewport?.nextFrame();
-      },
-      flushSave: () => this.flushSave(),
-      /**
-       * What a mouse click at canvas px would pick in the current mode, as the click itself
-       * resolves it (`pickAt` + `resolvePick`): the best hit and how many tie ("Which one?").
-       */
-      resolveAt: (x: number, y: number) => {
-        const r = resolvePick(this.pickAt(x, y, 'mouse', this.pickKinds()), {
-          pointerType: 'mouse',
-        });
-        return {
-          best: r.best
-            ? {
-                bodyId: r.best.bodyId,
-                kind: r.best.kind,
-                index: r.best.index,
-                ...(r.best.entity !== undefined ? { entity: r.best.entity } : {}),
-                point: r.best.point,
-                distancePx: r.best.distancePx,
-              }
-            : null,
-          ties: r.ties.length,
-        };
-      },
-      /** The persistent name of a viewport hit's face or edge (read only; E2E pick checks). */
-      hitName: (bodyId: string, kind: string, index: number): string | null => {
-        const mesh = this.regen.get()?.result.bodies.find((b) => b.id === bodyId)?.mesh;
-        if (kind === 'face') return mesh?.faceNames[index] ?? null;
-        if (kind === 'edge') return mesh?.edgeNames[index] ?? null;
-        return null;
-      },
-      sketch: () => {
-        const solve = this.ui.get().sketch?.solve;
-        return solve ? { ...solve, busy: this.sketch?.busy ?? false } : null;
-      },
-      sketchSettled: () => this.sketch?.whenSettled() ?? Promise.resolve(),
-      marks: () => marks(),
-      ui: () => {
-        const u = this.ui.get();
-        return {
-          featureId: u.featureId,
-          picking: u.picking,
-          candidates: u.candidates?.names ?? null,
-          toast: u.toast?.text ?? null,
-          sketch: u.sketch
-            ? {
-                featureId: u.sketch.featureId,
-                plane: u.sketch.frame,
-                edit: u.sketch.edit
-                  ? {
-                      tool: u.sketch.edit.tool,
-                      picks: u.sketch.edit.picks.length,
-                      model: u.sketch.edit.model.length,
-                      busy: u.sketch.edit.busy,
-                    }
-                  : null,
-                tool: u.sketch.tool,
-                dimPicks: u.sketch.dimPicks,
-                editDimension: u.sketch.editDimension,
-                frame: u.sketch.frame !== null,
-                highlight: u.sketch.highlightConstraints,
-                highlightEntities: u.sketch.highlightEntities,
-                selected: u.sketch.selected,
-                hover: u.sketch.hoverEntity,
-                stroke: u.sketch.stroke
-                  ? { shape: u.sketch.stroke.shape, points: u.sketch.stroke.points.length }
-                  : null,
-                lastStroke: u.sketch.lastStroke,
-              }
-            : null,
-          selection: u.selection.map((x) => x.hit.kind),
-          selectionKeys: u.selection.map((x) => x.key),
-          hover: u.hover?.kind ?? null,
-          choices: this.choices,
-          prompt: u.prompt?.tool ?? null,
-          pushPull: u.pushPull
-            ? {
-                faces: u.pushPull.faces.length,
-                distance: u.pushPull.distance,
-                expr: u.pushPull.expr,
-                dragging: u.pushPull.dragging,
-              }
-            : null,
-          measure: u.measure
-            ? {
-                active: u.measure.active,
-                picks: u.measure.picks.map((p) => p.kind),
-                results: u.measure.results,
-                busy: u.measure.busy,
-                error: u.measure.error,
-              }
-            : null,
-          section: {
-            enabled: u.section.enabled,
-            axis: u.section.axis,
-            offset: u.section.offset,
-            flipped: u.section.flipped,
-            picking: u.section.picking,
-          },
-          bubble: u.bubble !== null,
-          chooser: u.chooser?.hits.map((h) => h.kind) ?? null,
-          radial: u.radial
-            ? {
-                source: u.radial.source,
-                held: u.radial.held === true,
-                x: u.radial.x,
-                y: u.radial.y,
-              }
-            : null,
-          box: u.box ? { mode: u.box.mode } : null,
-          settings: u.settings,
-          hoverKey: u.hover ? hitKey(u.hover) : null,
-          tabOrder: this.lastPick.map((c) => c.id),
-          lastTool: u.lastTool,
-          sheet: { snap: u.sheetSnap, tab: u.sheetTab },
-          kernel: { started: this.boot !== null, ready: this.engine.get().ready },
-          camera: this.camera.get(),
-        };
-      },
-      /** The undo and redo stacks, oldest first (labels of the steps; read only). */
-      history: () => this.store.history(),
-      /** Applies a command as one undo step (E2E edits that aren't about the UI path). */
-      apply: (command: Command, label?: string) => {
-        const ok = this.apply(command, label);
-        this.commit();
-        return ok;
-      },
-      /** M2.5: the sync controller's state (loads the sync chunk). */
-      sync: async () => {
-        const c = await this.syncController();
-        await c.idle();
-        return c.testState();
-      },
-      /** M2.5: sync the open project now and wait for it to settle. */
-      syncNow: async () => {
-        const c = await this.syncController();
-        await c.syncNow();
-        await c.idle();
-      },
-      syncLoaded: () => this.syncCtl !== null,
-      /** The sync controller itself (only usable inside page.evaluate). */
-      syncController: () => this.syncController(),
-      projectBar: () => this.projectBar.get(),
-      /** Replaces the document (fixtures for E2E scenarios), saved to the library. */
-      load: (doc: WrenDoc) => {
-        if (this.loadDocument({ doc }, false)) this.autosaver.schedule(doc);
-      },
-      projectFiles: () => ({
-        extra: [...this.extra.keys()].sort(),
-        cache: [...this.cache.keys()].sort(),
-        cacheKey: this.cacheKey,
-        savedCacheKey: this.savedCacheKey,
-      }),
-      sentAttachments: () => [...(this.loop?.sentAttachments ?? [])],
-      /** Ghost markers at the old location of unresolved references. */
-      attentionMarkers: () => [...this.markers],
-      pendingHeals: () => Object.fromEntries(this.heals),
-      library: async () => {
-        const lib = await this.library();
-        return (await lib?.list())?.map((e) => ({ id: e.id, name: e.name })) ?? [];
-      },
-      libraryFiles: async (id: string) => {
-        const lib = await this.library();
-        const b = await lib?.open(id);
-        return [...(b?.extra?.keys() ?? [])].sort();
-      },
-      /** Waits until the mesh cache of the current document has reached the library. */
-      cacheSaved: async () => {
-        for (let i = 0; i < 200; i++) {
-          await this.loop?.whenIdle();
-          await this.autosaver.flush();
-          if (this.cacheKey && this.cacheKey === this.savedCacheKey) return true;
-          await new Promise((r) => setTimeout(r, 50));
-        }
-        return false;
-      },
-    };
+    return hooks.testHooks(this);
   }
 }
 
