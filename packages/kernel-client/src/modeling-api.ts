@@ -30,6 +30,7 @@ import type { CompareOutput } from './regen/compare';
 import {
   RegenEngine,
   type RegenEngineOptions,
+  type RegenMemoryStats,
   type RegenOutput,
   type SketchSolve,
 } from './regen/engine';
@@ -74,9 +75,27 @@ export interface ModelingApiDeps extends KernelApiDeps {
   regen?: RegenEngineOptions;
 }
 
+/**
+ * Memory guard (PLAN H1): the kernel worker's memory in one structured-clonable snapshot, for
+ * diagnostics and soak tests. Proposed for the contract as `ModelingApi.memoryStats()`.
+ */
+export interface KernelMemoryStats {
+  /** Live façade shape handles of every owner (regen cache, imports, callers); `-1` before init. */
+  liveHandles: number;
+  /** Bytes of the kernel's Wasm linear memory (grows on demand, never shrinks); `-1` if unknown. */
+  wasmHeapBytes: number;
+  /** What the regen engine holds (cache entries, owned handles, per-handle caches) and its bounds. */
+  regen: RegenMemoryStats;
+}
+
 /** Extra surface for tests and diagnostics; not part of the Comlink contract. */
 export interface ModelingApiInternals extends KernelApiInternals {
   readonly engine: RegenEngine;
+  /**
+   * Memory guard snapshot (see `KernelMemoryStats`). With every part closed, `liveHandles` is back
+   * to its baseline and `regen` holds no entries or handles.
+   */
+  memoryStats(): Promise<KernelMemoryStats>;
 }
 
 /** What `createModelingApi` returns: the Comlink surface plus test/diagnostic internals. */
@@ -112,7 +131,13 @@ export function createModelingApi(deps: ModelingApiDeps): ModelingApiImpl {
     projectEdges: (shape, edges, plane) => kernel.projectEdges(shape, edges, plane),
     projectFaceOutline: (shape, face, plane) => kernel.projectFaceOutline(shape, face, plane),
     liveHandleCount: () => kernel.liveHandleCount(),
+    wasmHeapBytes: () => kernel.wasmHeapBytes(),
     engine,
+    memoryStats: async () => ({
+      liveHandles: kernel.liveHandleCount(),
+      wasmHeapBytes: kernel.wasmHeapBytes(),
+      regen: engine.memoryStats(),
+    }),
 
     async regenerate(request) {
       const result = await engine.regenerate(request);
