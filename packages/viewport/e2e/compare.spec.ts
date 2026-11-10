@@ -257,11 +257,11 @@ test.describe('compare overlay', () => {
     test.info().annotations.push({ type: 'compare-perf', description: JSON.stringify(summary) });
     expect(result.rebuilt).toBe(30); // re-setting with new buffers rebuilds geometry...
     expect(result.materialsGrew).toBe(0); // ...but never creates new shared materials
-    expect(summary.toggleHandlerP95).toBeLessThanOrEqual(16);
-    expect(summary.resetHandlerP95).toBeLessThanOrEqual(16);
-    // Render CPU time per frame (PLAN §10: <= 16 ms interaction). Wall latency to the next frame
-    // on SwiftShader is dominated by software rasterisation of the whole lit scene (a plain
-    // camera move costs the same), so it is reported, not gated.
+    expect(summary.toggleHandlerP95).toBeLessThanOrEqual(16 * PERF_FACTOR);
+    expect(summary.resetHandlerP95).toBeLessThanOrEqual(16 * PERF_FACTOR);
+    // Render CPU time per frame (PLAN §10: <= 16 ms interaction) is gated below. Wall latency to
+    // the next frame on SwiftShader is dominated by software rasterisation of the whole lit scene
+    // (a plain camera move costs the same), so that latency is reported, not gated.
     if (process.env.WREN_PERF_ASSERT) {
       // Software GL: the 16 ms budget times the CI factor (ADR-010); WREN_FRAME_BUDGET_MS overrides.
       const budget = Number(process.env.WREN_FRAME_BUDGET_MS ?? 16 * PERF_FACTOR);

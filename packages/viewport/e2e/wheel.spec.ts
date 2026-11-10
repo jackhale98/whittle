@@ -1,6 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import type { NavigationPreset } from '@wren-cad/contracts';
 import { open, settle } from './helpers';
+import { PERF_FACTOR } from './perf-budget';
 
 /**
  * Wheel zoom (ADR-057 addendum): the camera moves toward the surface under the cursor, every notch
@@ -94,9 +95,10 @@ test('perf probe: wheel burst on a 1M-triangle model has no long task and a stea
     `[perf] 1M tris wheel burst: ${notches} notches, long tasks ${r.longs.length} (max ${Math.max(0, ...r.longs).toFixed(0)} ms), ` +
       `ratio median ${med.toFixed(3)} (min ${Math.min(...ratios.slice(1)).toFixed(3)}, max ${Math.max(...ratios.slice(1)).toFixed(3)})`,
   );
-  expect(Math.max(0, ...r.longs), 'no long task over 50 ms during the burst').toBeLessThanOrEqual(
-    50,
-  );
+  expect(
+    Math.max(0, ...r.longs),
+    'no long task over 50 ms (x PERF_FACTOR) in the burst',
+  ).toBeLessThanOrEqual(50 * PERF_FACTOR);
   for (const x of ratios.slice(1)) expect(Math.abs(x / med - 1)).toBeLessThanOrEqual(0.1);
 });
 

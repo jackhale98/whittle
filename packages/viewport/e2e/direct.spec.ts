@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
 import { boxMesh } from '@wren-cad/test-fixtures';
 import { camera, countColor, dist, frame, open, samplePoints, touchDriver } from './helpers';
+import { PERF_FACTOR } from './perf-budget';
 
 const Q = '?backend=webgl2&reducedMotion=1';
 const here = dirname(fileURLToPath(import.meta.url));
@@ -197,8 +198,8 @@ test.describe('push/pull preview', () => {
       expect(l.frames).toBe(1);
       expect(l.presentedAt).toBe(1);
     }
-    // ...and within the 16 ms budget (PLAN §10).
-    expect(pct('handlerToRender', 0.95)).toBeLessThanOrEqual(16);
+    // ...and within the 16 ms budget (PLAN §10), times the CI factor (ADR-010).
+    expect(pct('handlerToRender', 0.95)).toBeLessThanOrEqual(16 * PERF_FACTOR);
   });
 
   test('mesh preview is a translucent accent solid; prism of an unknown body is ignored', async ({
