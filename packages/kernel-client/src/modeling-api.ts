@@ -76,7 +76,7 @@ export interface ModelingApiDeps extends KernelApiDeps {
 
 /**
  * Memory guard (PLAN H1): the kernel worker's memory in one structured-clonable snapshot, for
- * diagnostics and soak tests. Proposed for the contract as `ModelingApi.memoryStats()`.
+ * diagnostics and soak tests. In the contract as `ModelingApi.memoryStats()`.
  */
 import type { KernelMemoryStats } from '@wren-cad/contracts';
 

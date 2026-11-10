@@ -209,7 +209,13 @@ export function App({ wb }: { wb: Workbench }) {
   const touch = diagnostics.tier !== 'desktop';
   const density = touch ? 'touch' : 'compact';
   const statuses = useObservable(wb.treeStatuses);
-  const tree = useTreeProps(wb, { density, nestSketches, setNestSketches, statuses });
+  const tree = useTreeProps(wb, {
+    density,
+    nestSketches,
+    setNestSketches,
+    statuses,
+    actions: diagnostics.tier === 'phone' ? 'review' : 'full',
+  });
   const allCommands = useMemo(() => [...commands, ...tree.commands], [commands, tree.commands]);
   const canUndo = wb.store.canUndo();
   const canRedo = wb.store.canRedo();

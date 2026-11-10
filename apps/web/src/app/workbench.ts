@@ -426,6 +426,7 @@ export class Workbench {
   readonly treeStatuses = observable<RegenResult['features'] | undefined>(undefined);
 
   private onUiChange(): void {
+    this.sectionTool.onUiChange();
     if (this.syncDeferred && !this.midEdit()) {
       // The sketch or drag that held back a synced change is over: merge it in now.
       this.syncDeferred = false;

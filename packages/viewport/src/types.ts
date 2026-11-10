@@ -97,6 +97,8 @@ export interface TouchStats {
   sectionOffset: number | null;
   /** Bodies whose stencil cap quad is drawn right now (caps filled). */
   capsDrawn: number;
+  /** The drawn caps' fill colour (`#rrggbb`, the darkened body colour); null when none is drawn. */
+  capColor: string | null;
 }
 
 export interface NavigationState {

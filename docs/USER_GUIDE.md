@@ -51,11 +51,14 @@ has Welcome and samples, the demo bracket, New document, Open library, Open or i
 
 ### Phone
 
-- The phone is a viewer. You can orbit and zoom, open the library, edit parameters, and export.
-- The bottom sheet has six tabs. **Features**, **Params** and **Export** work. **Parts**, **Measure**
-  and **Section** are placeholders.
-- **Features** shows the feature tree with a draggable rollback line; see [Reviewing on the phone](#reviewing-on-the-phone).
-- You cannot create or edit features on a phone yet. Use a desktop or tablet.
+- The phone is a viewer. You can orbit and zoom, open the library, edit parameters, measure, cut a
+  section, review the history, and export.
+- The bottom sheet has six tabs, and all of them work: **Parts**, **Features**, **Params**,
+  **Measure**, **Section** and **Export**.
+- **Features** shows the feature tree with a draggable rollback line, for review only; see
+  [Reviewing on the phone](#reviewing-on-the-phone).
+- You cannot create or edit features on a phone (no sketching, push/pull, delete, rename or
+  reordering). Use a desktop or tablet.
 
 ## Navigating and selecting
 
@@ -501,16 +504,19 @@ that sketch in the viewport whatever the default is, and the choice is saved wit
 
 ### Reviewing on the phone
 
-The phone's **Features** tab is just the feature tree, the same as on the tablet: folders, nested
-sketches and the eye on each sketch.
+The phone's **Features** tab is a review-only feature tree: just the tree and the line that sets
+what is suppressed and rolled back to. It shows folders (tap to collapse or expand), nested
+sketches and the eye on each sketch. It cannot delete, edit, rename, reorder or add to folders;
+the tablet and desktop trees can.
 
 - **Drag the line.** The rollback bar sits in its own row-height gap between the rows (it never
   covers the row above, so tapping a row's middle always selects that row). It has a grab handle in
   the middle and a 44 px touch target. Drag it up to roll the model back to that point and down to bring features back; the
   model follows your finger. Each stop is an ordinary rollback edit, so **Undo** puts it back (a
   feature and the sketch under it count as one stop; a collapsed folder is skipped as a unit).
-- **Touch and hold a row** to open its menu: **Suppress** or **Unsuppress** (an undoable edit), plus
-  Rename, Edit and the sketch eye's Show / Hide.
+- **Touch and hold a row** to open its menu: **Suppress** or **Unsuppress** (an undoable edit),
+  **Roll to here**, and, on a sketch, **Show** or **Hide** in the viewport (also the eye on the row).
+  There is no Delete, Edit or Rename on the phone, and a folder has no menu.
 - A change that arrives while you work (a sync from another device) is applied as usual.
 
 A feature that fails is marked in the tree with a short explanation. Its last good geometry stays
@@ -903,6 +909,5 @@ Wren also stops page-level pinch zoom and double-tap zoom, so only the model and
 
 - Pencil drawing, with pen input for sketching and primitive recognition
 - Push and pull (dragging a face to change a feature)
-- Measure and section on the phone
 - Two- or three-finger tap for undo and redo
 - A guided bracket tutorial for new users

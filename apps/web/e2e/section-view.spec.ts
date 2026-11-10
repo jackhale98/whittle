@@ -1,5 +1,5 @@
 import { devices, expect, type Locator, type Page, test } from '@playwright/test';
-import { addBox, app, boot, cameraStill, palette, touch, touchStats } from './helpers';
+import { addBox, app, boot, cameraStill, palette, topCenter, touch, touchStats } from './helpers';
 import { expectTouchTarget } from './targets';
 
 /**
@@ -35,6 +35,41 @@ async function expectPlane(page: Page, tiltU: number, tiltV: number) {
     })
     .toBeLessThan(1e-6);
   expect((await probe(page)).capsDrawn).toBeGreaterThan(0); // the cut is capped
+}
+
+/**
+ * Canvas pixels (device px) within `tol` of the cap colour the probe reports: the cut face is
+ * really filled, not just flagged as drawn.
+ */
+async function capPixels(page: Page, tol = 14): Promise<number> {
+  const color = (await probe(page)).capColor;
+  if (!color) return 0;
+  const png = await page.getByTestId('viewport-canvas').screenshot();
+  return page.evaluate(
+    async ({ data, hex, t }) => {
+      const img = new Image();
+      img.src = `data:image/png;base64,${data}`;
+      await img.decode();
+      const c = document.createElement('canvas');
+      c.width = img.width;
+      c.height = img.height;
+      const ctx = c.getContext('2d') as CanvasRenderingContext2D;
+      ctx.drawImage(img, 0, 0);
+      const px = ctx.getImageData(0, 0, c.width, c.height).data;
+      const target = [1, 3, 5].map((i) => Number.parseInt(hex.slice(i, i + 2), 16));
+      let n = 0;
+      for (let i = 0; i < px.length; i += 4) {
+        const d = Math.hypot(
+          (px[i] as number) - (target[0] as number),
+          (px[i + 1] as number) - (target[1] as number),
+          (px[i + 2] as number) - (target[2] as number),
+        );
+        if (d <= t) n++;
+      }
+      return n;
+    },
+    { data: png.toString('base64'), hex: color, t: tol },
+  );
 }
 
 /** Types an angle expression into a tilt field of the panel. */
@@ -218,14 +253,31 @@ test('desktop: chip, Edit, typed angles, arc and arrow drags, Shift snap, Esc an
   await expect(chip(page)).toHaveCount(0);
   await expect.poll(async () => (await probe(page)).sectionActive).toBe(false);
   expect((await a.ui()).section.enabled).toBe(false);
+  // Exit leaves the plane level, not tilted behind the scenes (ADR-073).
+  expect((await a.ui()).section.tiltU).toBe(0);
+  expect((await a.ui()).section.tiltV).toBe(0);
   expect(await a.sectionGrips()).toBeNull();
   expect((await probe(page)).capsDrawn).toBe(0);
 
   // Again, and out through the chip's button.
+  const top = await topCenter(page);
+  await page.mouse.click(top.x, top.y); // a face to push/pull, picked before the cut hides it
+  await a.idle();
+  expect((await a.ui()).selection).toEqual(['face']);
   await palette(page, 'Section view');
   await panel(page).getByRole('switch', { name: 'Section view' }).click();
   await expect(chip(page)).toBeVisible();
   expect((await a.ui()).section.tiltU).toBe(0); // a new section starts level
+  await expect.poll(async () => Object.keys((await a.sectionGrips()) ?? {})).toHaveLength(3);
+
+  // Push/pull and sketch mode own the viewport: the section handles go away and come back.
+  await palette(page, 'Push/pull');
+  await expect.poll(async () => (await a.ui()).pushPull?.faces).toBe(1);
+  await expect.poll(async () => await a.sectionGrips()).toBeNull();
+  expect((await probe(page)).sectionActive).toBe(true); // the cut itself stays
+  await page.keyboard.press('Escape');
+  await expect.poll(async () => (await a.ui()).pushPull).toBeNull();
+  await expect.poll(async () => Object.keys((await a.sectionGrips()) ?? {})).toHaveLength(3);
   await chip(page).getByRole('button', { name: 'Exit section' }).click();
   await expect(chip(page)).toHaveCount(0);
   await expect(panel(page)).toHaveCount(0);
@@ -289,7 +341,9 @@ test.describe('phone', () => {
     hasTouch: true,
   });
 
-  test('phone: chip above the sheet, typed angle in the sheet, Edit, Exit', async ({ page }) => {
+  test('phone: chip above the sheet, typed angle, cap filled, finger drag of arc and arrow, Exit', async ({
+    page,
+  }) => {
     test.slow();
     await boot(page);
     const a = app(page);
@@ -309,6 +363,54 @@ test.describe('phone', () => {
     await typeTilt(page, 'v', '15deg');
     await expect.poll(async () => (await a.ui()).section.tiltV).toBeCloseTo(15 * D, 9);
     await expectPlane(page, 0, 15 * D);
+    await chipIsClear(page);
+    // The cut face is filled with the cap colour over a real area (not just "a cap is drawn").
+    await expect.poll(() => capPixels(page), { timeout: 10_000 }).toBeGreaterThan(2000);
+
+    // A finger on the manipulator (the part of the view above the sheet): an arc rotates the
+    // plane, the offset arrow slides it.
+    await a.idle();
+    const t = await touch(page);
+    // The part sits behind the chip: a two-finger pan lifts it into the clear part of the view.
+    await t.down([
+      { x: 40, y: 330 },
+      { x: 90, y: 330 },
+    ]);
+    for (let i = 1; i <= 10; i++)
+      await t.move([
+        { x: 40, y: 330 - i * 18 },
+        { x: 90, y: 330 - i * 18 },
+      ]);
+    await t.up();
+    await cameraStill(page);
+    await a.idle();
+    const n0 = (await probe(page)).sectionNormal;
+    const arc = (await a.sectionGrips())?.['sec:arc-u'];
+    if (!arc) throw new Error('no manipulator on the phone');
+    const chipBox = await chip(page).boundingBox();
+    expect(arc.y, 'the arc is clear of the chip').toBeLessThan((chipBox?.y ?? 0) - 10);
+    const from = await pagePoint(page, arc);
+    await t.drag(from, { x: from.x + arc.dx * 50, y: from.y + arc.dy * 50 }, 10);
+    await a.idle();
+    const s1 = (await a.ui()).section;
+    expect(Math.abs(s1.tiltU), 'the arc drag rotated the plane').toBeGreaterThan(0.1);
+    expect(s1.tiltV).toBeCloseTo(15 * D, 6);
+    await expectPlane(page, s1.tiltU, s1.tiltV);
+    const n1 = (await probe(page)).sectionNormal;
+    expect(Math.hypot(...(n1 ?? [0, 0, 0]).map((v, i) => v - (n0?.[i] ?? 0)))).toBeGreaterThan(
+      0.05,
+    );
+
+    const off0 = (await probe(page)).sectionOffset;
+    const arrow = (await a.sectionGrips())?.['sec:offset'];
+    if (!arrow) throw new Error('no offset arrow on the phone');
+    const fo = await pagePoint(page, arrow);
+    await t.drag(fo, { x: fo.x + arrow.dx * 30, y: fo.y + arrow.dy * 30 }, 8);
+    await a.idle();
+    const off1 = (await probe(page)).sectionOffset;
+    expect(Math.abs((off1 ?? 0) - (off0 ?? 0)), 'the arrow slid the plane').toBeGreaterThan(0.5);
+    await expectPlane(page, s1.tiltU, s1.tiltV);
+    await expect.poll(() => capPixels(page), { timeout: 10_000 }).toBeGreaterThan(500);
     await chipIsClear(page);
 
     await chip(page).getByRole('button', { name: 'Flip' }).tap();

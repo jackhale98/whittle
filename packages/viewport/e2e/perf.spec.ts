@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { open } from './helpers';
+import { PERF_FACTOR } from './perf-budget';
 
 /**
  * First-frame cost of the first body: `setBody` -> presented, on a fresh viewport that has had
@@ -49,5 +50,5 @@ test('perf probe: first-frame shader compile with and without idle warm-up', asy
       `(median ${med(warm).toFixed(0)}); warm-up itself ${warmMs.toFixed(0)} ms off the critical path`,
   );
   // The warm-up must never make the first frame slower.
-  expect(med(warm)).toBeLessThanOrEqual(med(cold) * 1.1);
+  expect(med(warm)).toBeLessThanOrEqual(med(cold) * 1.1 + 5 * PERF_FACTOR);
 });

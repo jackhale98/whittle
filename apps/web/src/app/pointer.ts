@@ -540,7 +540,7 @@ export function addSourceFeature(wb: Workbench, id: Id): void {
   const at = part.features.findIndex((x) => x.id === id);
   const self = part.features.findIndex((x) => x.id === f.id);
   if (id === f.id || at < 0 || at > self) {
-    wb.toast('Only features before wb one can be copied.', 'info');
+    wb.toast('Only features before this one can be copied.', 'info');
     return;
   }
   if (f.source.features.includes(id)) return;

@@ -36,6 +36,8 @@ export interface FolderRowProps {
   };
   onToggle(): void;
   onMenu(anchor: HTMLElement): void;
+  /** No actions button (review-only tree: a folder only collapses). */
+  noMenu?: boolean;
   onStartRename(): void;
   onCommitRename(name: string): void;
   onCancelRename(): void;
@@ -179,24 +181,26 @@ export function FolderRow(p: FolderRowProps) {
             {p.count}
           </span>
         ) : null}
-        <button
-          type="button"
-          tabIndex={-1}
-          aria-hidden
-          aria-label={`Actions for folder ${p.name}`}
-          onClick={(e) => {
-            e.stopPropagation();
-            p.onMenu(e.currentTarget);
-          }}
-          className={cn(
-            'flex shrink-0 items-center justify-center rounded-[7px] text-fg-muted hover:bg-surface-3 hover:text-fg',
-            p.touch
-              ? 'size-11'
-              : 'mt-0.5 size-7 opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100',
-          )}
-        >
-          <Ellipsis className="size-4" aria-hidden />
-        </button>
+        {p.noMenu ? null : (
+          <button
+            type="button"
+            tabIndex={-1}
+            aria-hidden
+            aria-label={`Actions for folder ${p.name}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              p.onMenu(e.currentTarget);
+            }}
+            className={cn(
+              'flex shrink-0 items-center justify-center rounded-[7px] text-fg-muted hover:bg-surface-3 hover:text-fg',
+              p.touch
+                ? 'size-11'
+                : 'mt-0.5 size-7 opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100',
+            )}
+          >
+            <Ellipsis className="size-4" aria-hidden />
+          </button>
+        )}
       </div>
     </div>
   );

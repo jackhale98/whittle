@@ -82,7 +82,7 @@ export function showCached(wb: Workbench, doc: WrenDoc): void {
   wb.savedCacheKey = geometry.key;
   const part = doc.parts[0];
   const current = wb.regen.get();
-  // Never replace live geometry of wb very part (only a previous document's, or nothing).
+  // Never replace live geometry of this very part (only a previous document's, or nothing).
   if (!part || (current?.source === 'live' && current.result.partId === part.id)) return;
   const view: RegenView = {
     source: 'cache',
@@ -122,7 +122,7 @@ export function updateMeshCache(wb: Workbench, view: RegenView): void {
   };
   wb.cache = new Map([...withoutMeshes(wb.cache), ...encodeCache(geometry)]);
   wb.cacheKey = key;
-  // A save already queued for wb document picks the cache up; otherwise save it shortly.
+  // A save already queued for this document picks the cache up; otherwise save it shortly.
   if (!wb.inLibrary || wb.autosaver.pending) return;
   wb.scheduleCacheSave();
 }

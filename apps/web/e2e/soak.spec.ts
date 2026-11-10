@@ -6,7 +6,7 @@ import { PERF_FACTOR } from './perf/budgets';
 
 /**
  * Long-session soak (PLAN H1). Not part of the per-push suites: it has its own Playwright project
- * (`soak`) and needs WREN_SOAK=1 (nightly / workflow_dispatch job "Soak" in ci.yml; locally
+ * (`soak`) and needs WREN_SOAK=1 (nightly / workflow_dispatch job "Soak" in .github/workflows/soak.yml; locally
  * `WREN_SOAK=1 pnpm --filter @wren-cad/web exec playwright test --project=soak --trace off`).
  *
  * The session: open the demo bracket; make 100 edits (a fixed cycle of ten kinds, ten rounds:
@@ -16,7 +16,9 @@ import { PERF_FACTOR } from './perf/budgets';
  *    viewport release everything), and stay bounded while editing;
  *  - the main-thread JS heap (after a forced GC), the kernel worker's Wasm heap and the browser
  *    process tree stay within a bound of the first cycle;
- *  - regen time does not drift: the first and last 10 edits are the same ten kinds, compared as sums.
+ *  - regen time does not drift: the first and last 10 edits are the same ten kinds, compared as sums;
+ *  - frame time does not drift: the viewport's render CPU per frame over a short scripted orbit,
+ *    sampled with the demo open in the first and in the last cycle.
  *
  * Hooks used: `__wrenApp` (apply, idle, doc, regen, history), `__wren`, and `__wrenKernel.memory()`
  * (apps/web/src/app/kernel-memory.ts: live handles and Wasm heap from the kernel worker).
@@ -101,6 +103,27 @@ const paramId = (doc: WrenDoc, name: string): Id => {
   if (!p) throw new Error(`no param "${name}"`);
   return p.id;
 };
+
+/** Average render CPU ms per frame (viewport probe, last 60 frames) over a scripted 90-frame orbit. */
+async function orbitFrameMs(page: Page): Promise<number> {
+  return page.evaluate(async () => {
+    const vp = (
+      window as unknown as {
+        __wrenViewport: {
+          setViewDirection(d: [number, number, number], animate?: boolean): void;
+          nextFrame(): Promise<void>;
+          stats(): { frameMs: number };
+        };
+      }
+    ).__wrenViewport;
+    for (let i = 0; i < 90; i++) {
+      const t = (i / 90) * 2 * Math.PI;
+      vp.setViewDirection([Math.cos(t), Math.sin(t), 0.6], false);
+      await vp.nextFrame();
+    }
+    return vp.stats().frameMs;
+  });
+}
 
 const median = (xs: number[]) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)] as number;
 const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
@@ -249,12 +272,14 @@ test('100 edits and 10 close/reopen cycles: handles back to baseline, memory bou
     js: number;
     tree: number | null;
   }[] = [];
+  const frameMs: number[] = [];
   for (let c = 0; c < CYCLES; c++) {
     if (c > 0) {
       await palette(page, 'Welcome');
       await openDemo();
     }
     await kinds[c % 3]?.(c); // one edit in each cycle
+    if (c === 0 || c === CYCLES - 1) frameMs.push(await orbitFrameMs(page));
     await closeDoc();
     const handles = await settleHandles(page, baseline);
     const mem = await kernelMemory(page);
@@ -272,6 +297,7 @@ test('100 edits and 10 close/reopen cycles: handles back to baseline, memory bou
   const mb = (n: number | null) => (n === null ? 'n/a' : `${(n / MiB).toFixed(1)}`);
   const report =
     `baseline handles=${baseline} sessionStart=${sessionStart} maxDuringSession=${maxHandles}; ` +
+    `frame CPU first/last cycle ${frameMs.map((v) => v.toFixed(2)).join('/')} ms; ` +
     `regen first10=${first10} ms last10=${last10} ms (median ${median(times.slice(0, 10))}/${median(times.slice(-10))} ms); ` +
     `after close: handles ${cycles.map((c) => c.handles).join('/')}; ` +
     `wasm MiB ${cycles.map((c) => mb(c.wasm)).join('/')}; ` +
@@ -302,5 +328,10 @@ test('100 edits and 10 close/reopen cycles: handles back to baseline, memory bou
   // No drift: the last ten edits (the same ten kinds as the first ten) cost about the same.
   expect(last10, 'regen time of the last 10 edits vs the first 10').toBeLessThanOrEqual(
     first10 * 1.5 + 500 * PERF_FACTOR,
+  );
+
+  // No frame-time drift: render CPU per frame over the same orbit, first cycle vs the last.
+  expect(frameMs[1], 'render CPU per frame, last cycle vs the first').toBeLessThanOrEqual(
+    (frameMs[0] as number) * 1.5 + 5 * PERF_FACTOR,
   );
 });

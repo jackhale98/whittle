@@ -53,6 +53,11 @@ export function setSection(wb: Workbench, patch: Partial<SectionUi>): void {
     if (patch.tiltU === undefined) next.tiltU = 0;
     if (patch.tiltV === undefined) next.tiltV = 0;
   }
+  // Turning the section off (the switch, the chip's Exit, Esc) leaves the plane level (ADR-073).
+  if (patch.enabled === false && cur.enabled) {
+    if (patch.tiltU === undefined) next.tiltU = 0;
+    if (patch.tiltV === undefined) next.tiltV = 0;
+  }
   if (restart && patch.offset === undefined) {
     const r = faceSectionRange(next, wb.bounds());
     // A face plane starts halfway into the part (behind the face), an axis mid-part.
