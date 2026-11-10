@@ -365,7 +365,9 @@ test.describe('phone', () => {
     await expectPlane(page, 0, 15 * D);
     await chipIsClear(page);
     // The cut face is filled with the cap colour over a real area (not just "a cap is drawn").
-    await expect.poll(() => capPixels(page), { timeout: 10_000 }).toBeGreaterThan(2000);
+    // CI (software GL, phone emulation) renders ~1,990 cap pixels where local runs render more; an
+    // unfilled cut gives ~0, so 1,000 still proves a filled face without depending on the renderer.
+    await expect.poll(() => capPixels(page), { timeout: 10_000 }).toBeGreaterThan(1000);
 
     // A finger on the manipulator (the part of the view above the sheet): an arc rotates the
     // plane, the offset arrow slides it.
