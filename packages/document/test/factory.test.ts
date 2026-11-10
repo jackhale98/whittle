@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { SCHEMA_VERSION } from '@wren-cad/contracts';
 import { describe, expect, it } from 'vitest';
 import { isUlid, newDoc, newPart, ulid, validateDoc } from '../src';
 
@@ -40,7 +42,7 @@ describe('factories', () => {
   it('newDoc is valid, current-version and has sensible defaults', () => {
     const d = newDoc();
     expect(validateDoc(d)).toEqual([]);
-    expect(d.schemaVersion).toBe(1);
+    expect(d.schemaVersion).toBe(SCHEMA_VERSION);
     expect(d.units).toEqual({ length: 'mm', angle: 'deg' });
     expect(d.meta.name).toBe('Untitled');
     expect(d.meta.created).toBe(d.meta.modified);

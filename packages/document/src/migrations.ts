@@ -33,6 +33,15 @@ export const MIGRATIONS: readonly Migration[] = [
       return doc;
     },
   },
+  {
+    from: 1,
+    to: 2,
+    description:
+      'Additive (M3.6): optional Part.folders and SketchFeature.visibility. Also marks files that may hold the M3.5 sketch curves (ellipticArc, bspline) written under v1. No data changes.',
+    migrate(doc) {
+      return doc;
+    },
+  },
 ];
 
 export interface MigrateOptions {

@@ -23,7 +23,7 @@ export type Vec2 = [number, number];
 export type LengthUnit = 'mm' | 'cm' | 'm' | 'in' | 'ft';
 export type AngleUnit = 'deg' | 'rad';
 
-export const SCHEMA_VERSION = 1 as const;
+export const SCHEMA_VERSION = 2 as const;
 
 export interface WrenDoc {
   schemaVersion: number;
@@ -67,6 +67,23 @@ export interface Part {
   material?: Material;
   /** CSS hex colour, e.g. `"#9aa4b2"`. Overrides the material's appearance colour. */
   color?: string;
+  /**
+   * Feature tree folders (M3.6, ADR-066). Absent = none. Each folder groups a **contiguous run** of
+   * `features` in history order; folders never overlap and do not nest. The array's order carries
+   * no meaning (a folder sits in the tree where its first member sits). The document layer keeps
+   * the invariant after every edit and merge (`normalizeFolders`): deleted members drop out, empty
+   * folders are removed, and members are kept in history order; an edit that would split a run is
+   * refused by the command layer (the UI asks first).
+   */
+  folders?: FeatureFolder[];
+}
+
+/** A named group of consecutive features in a part's tree (M3.6). UI state such as collapsed is not stored. */
+export interface FeatureFolder {
+  id: Id;
+  name: string;
+  /** Member feature ids in history order: a contiguous run of `Part.features`. Never empty. */
+  features: Id[];
 }
 
 /**
@@ -181,7 +198,16 @@ export interface SketchFeature extends FeatureBase {
   on: EntityRef;
   entities: SketchEntity[];
   constraints: SketchConstraint[];
+  /**
+   * Viewport visibility (M3.6). Absent or `'auto'`: shown while no feature uses it, hidden once one
+   * consumes it (profile, path, axis; ADR-060). `'shown'` / `'hidden'` override that for this
+   * sketch, on every shell, and persist in the document.
+   */
+  visibility?: SketchVisibility;
 }
+
+/** See `SketchFeature.visibility`. */
+export type SketchVisibility = 'auto' | 'shown' | 'hidden';
 
 /**
  * Which existing bodies a solid feature with op add/cut/intersect acts on. Default (`undefined`) =

@@ -10,6 +10,7 @@ import type {
   SketchFeature,
   WrenDoc,
 } from '@wren-cad/contracts';
+import { SCHEMA_VERSION } from '@wren-cad/contracts';
 import { applyPatch, compileCommand, validateDoc } from '@wren-cad/document';
 import { Ajv, type ValidateFunction } from 'ajv';
 
@@ -119,7 +120,7 @@ export function bracket(): Part {
 
 export function baseDoc(): WrenDoc {
   return {
-    schemaVersion: 1,
+    schemaVersion: SCHEMA_VERSION,
     units: { length: 'mm', angle: 'deg' },
     params: [
       { id: P_WIDTH, name: 'width', expr: '40mm', description: 'Overall width' },

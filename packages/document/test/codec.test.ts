@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import type { ProjectFiles, WrenDoc } from '@wren-cad/contracts';
+import { SCHEMA_VERSION } from '@wren-cad/contracts';
 import { strFromU8, strToU8, zipSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
 import {
@@ -160,7 +161,7 @@ describe('project folder', () => {
     const manifest = JSON.parse(text(files, MANIFEST_FILE));
     expect(manifest).toMatchObject({
       format: 'wren-project',
-      schemaVersion: 1,
+      schemaVersion: SCHEMA_VERSION,
       units: { length: 'mm', angle: 'deg' },
       meta: { name: 'Bracket', app: 'wren/test' },
     });
@@ -309,12 +310,12 @@ describe('project folder', () => {
     m.drawings = undefined;
     old.set(MANIFEST_FILE, strToU8(JSON.stringify(m)));
     const d = fromFiles(old);
-    expect(d.schemaVersion).toBe(1);
+    expect(d.schemaVersion).toBe(SCHEMA_VERSION);
     expect(d.drawings).toEqual([]);
     const future = new Map(files);
     m.schemaVersion = 99;
     future.set(MANIFEST_FILE, strToU8(JSON.stringify(m)));
-    expect(() => fromFiles(future)).toThrow(/understands up to version 1/);
+    expect(() => fromFiles(future)).toThrow(/understands up to version 2/);
   });
 });
 

@@ -30,7 +30,7 @@ describe('migration framework', () => {
     expect(r.ok && r.doc).not.toBe(doc);
   });
 
-  it('migrates an unversioned pre-release document to v1', () => {
+  it('migrates an unversioned pre-release document to the current version', () => {
     const raw = {
       units: { length: 'mm', angle: 'deg' },
       parts: [],
@@ -39,16 +39,26 @@ describe('migration framework', () => {
     const r = migrateDoc(raw);
     expect(r.ok).toBe(true);
     if (r.ok) {
-      expect(r.applied).toEqual([1]);
-      expect(r.doc).toMatchObject({ schemaVersion: 1, params: [], assemblies: [], drawings: [] });
+      expect(r.applied).toEqual([1, 2]);
+      expect(r.doc).toMatchObject({ schemaVersion: 2, params: [], assemblies: [], drawings: [] });
     }
     expect((raw as Record<string, unknown>).schemaVersion).toBeUndefined(); // input untouched
   });
 
+  it('migrates a v1 document (M3.5 shape) to v2 unchanged apart from the version', () => {
+    const v1 = { ...newDoc({ name: 'v1' }), schemaVersion: 1 };
+    const r = migrateDoc(v1);
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.applied).toEqual([2]);
+      expect(r.doc).toEqual({ ...v1, schemaVersion: 2 });
+    }
+  });
+
   it('chains synthetic migrations in order (what a future v2/v3 bump looks like)', () => {
-    const v1to2: Migration = {
-      from: 1,
-      to: 2,
+    const v2to3: Migration = {
+      from: 2,
+      to: 3,
       description: 'rename meta.name → meta.title',
       migrate(d) {
         const meta = d.meta as Record<string, unknown>;
@@ -57,9 +67,9 @@ describe('migration framework', () => {
         return d;
       },
     };
-    const v2to3: Migration = {
-      from: 2,
-      to: 3,
+    const v3to4: Migration = {
+      from: 3,
+      to: 4,
       description: 'upper-case the title',
       migrate(d) {
         const meta = d.meta as Record<string, unknown>;
@@ -67,32 +77,32 @@ describe('migration framework', () => {
         return d;
       },
     };
-    const migrations = [...MIGRATIONS, v1to2, v2to3];
-    const r = migrateDoc(newDoc({ name: 'hello' }), { migrations, target: 3, validate: false });
+    const migrations = [...MIGRATIONS, v2to3, v3to4];
+    const r = migrateDoc(newDoc({ name: 'hello' }), { migrations, target: 4, validate: false });
     expect(r.ok).toBe(true);
     if (r.ok) {
-      expect(r.applied).toEqual([2, 3]);
-      expect(r.doc.schemaVersion).toBe(3);
+      expect(r.applied).toEqual([3, 4]);
+      expect(r.doc.schemaVersion).toBe(4);
       expect((r.doc.meta as unknown as Record<string, unknown>).title).toBe('HELLO');
     }
   });
 
   it('reports missing steps, failing steps and newer versions', () => {
-    const noStep = migrateDoc(newDoc(), { migrations: MIGRATIONS, target: 2, validate: false });
-    expect(noStep).toEqual({ ok: false, error: 'No migration from document version 1' });
+    const noStep = migrateDoc(newDoc(), { migrations: MIGRATIONS, target: 3, validate: false });
+    expect(noStep).toEqual({ ok: false, error: 'No migration from document version 2' });
     const boom: Migration = {
-      from: 1,
-      to: 2,
+      from: 2,
+      to: 3,
       description: 'fails',
       migrate() {
         throw new Error('kaboom');
       },
     };
-    const failing = migrateDoc(newDoc(), { migrations: [...MIGRATIONS, boom], target: 2 });
-    expect(failing).toEqual({ ok: false, error: 'Migration 1→2 failed: kaboom' });
+    const failing = migrateDoc(newDoc(), { migrations: [...MIGRATIONS, boom], target: 3 });
+    expect(failing).toEqual({ ok: false, error: 'Migration 2→3 failed: kaboom' });
     const newer = migrateDoc({ ...newDoc(), schemaVersion: 7 });
     expect(newer.ok).toBe(false);
-    expect(!newer.ok && newer.error).toMatch(/version 7.*up to version 1/);
+    expect(!newer.ok && newer.error).toMatch(/version 7.*up to version 2/);
     expect(migrateDoc({ schemaVersion: -1 }).ok).toBe(false);
     expect(migrateDoc({ schemaVersion: 1.5 }).ok).toBe(false);
     expect(migrateDoc([]).ok).toBe(false);

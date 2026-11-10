@@ -1073,6 +1073,31 @@
         }
       ]
     },
+    "FeatureFolder": {
+      "additionalProperties": false,
+      "description": "A named group of consecutive features in a part's tree (M3.6). UI state such as collapsed is not stored.",
+      "properties": {
+        "features": {
+          "description": "Member feature ids in history order: a contiguous run of `Part.features`. Never empty.",
+          "items": {
+            "$ref": "#/definitions/Id"
+          },
+          "type": "array"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "features"
+      ],
+      "type": "object"
+    },
     "FilletFeature": {
       "additionalProperties": false,
       "properties": {
@@ -2057,6 +2082,13 @@
         "features": {
           "items": {
             "$ref": "#/definitions/Feature"
+          },
+          "type": "array"
+        },
+        "folders": {
+          "description": "Feature tree folders (M3.6, ADR-066). Absent = none. Each folder groups a **contiguous run** of `features` in history order; folders never overlap and do not nest. The array's order carries no meaning (a folder sits in the tree where its first member sits). The document layer keeps the invariant after every edit and merge (`normalizeFolders`): deleted members drop out, empty folders are removed, and members are kept in history order; an edit that would split a run is refused by the command layer (the UI asks first).",
+          "items": {
+            "$ref": "#/definitions/FeatureFolder"
           },
           "type": "array"
         },
@@ -3232,6 +3264,10 @@
         "type": {
           "const": "sketch",
           "type": "string"
+        },
+        "visibility": {
+          "$ref": "#/definitions/SketchVisibility",
+          "description": "Viewport visibility (M3.6). Absent or `'auto'`: shown while no feature uses it, hidden once one consumes it (profile, path, axis; ADR-060). `'shown'` / `'hidden'` override that for this sketch, on every shell, and persist in the document."
         }
       },
       "required": [
@@ -3336,6 +3372,15 @@
         "y"
       ],
       "type": "object"
+    },
+    "SketchVisibility": {
+      "description": "See `SketchFeature.visibility`.",
+      "enum": [
+        "auto",
+        "shown",
+        "hidden"
+      ],
+      "type": "string"
     },
     "SweepFeature": {
       "additionalProperties": false,
