@@ -182,6 +182,9 @@ describe.skipIf(!built)(`regen golden: cache and handles${skipNote}`, () => {
   }, 120_000);
 
   it('memoryStats reports the live handles and the Wasm heap (diagnostics)', async () => {
+    // Start from a closed part: an earlier test may leave this bracket cached, and a cache hit
+    // would add no handles (seen in a serial run: 19 vs 19).
+    await api.closePart(PART);
     const m0 = await api.memoryStats();
     expect(m0.liveHandles).toBe(api.liveHandleCount());
     expect(m0.wasmHeapBytes).toBeGreaterThan(0);
