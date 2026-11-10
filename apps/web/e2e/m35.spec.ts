@@ -918,7 +918,10 @@ test.describe('lineage', () => {
     await expect(lin.locator('[data-lineage-group="parents"]')).toContainText('Pocket profile');
     await expect(lin.locator('[data-lineage-group="children"]')).toContainText('Floor fillet');
     // The tree marks them (the nested parent sketch shows once its owner is expanded).
-    await tree.getByRole('button', { name: /^Expand Pocket cut/ }).click();
+    await tree
+      .getByRole('treeitem', { name: /^Pocket cut/ })
+      .getByTestId('nest-toggle')
+      .click();
     await expect(tree.locator(`[data-lineage="parent"]`)).toContainText('Pocket profile');
     await expect(tree.locator(`[data-lineage="child"]`)).toContainText('Floor fillet');
     // A chip selects that feature.
@@ -1057,6 +1060,8 @@ test.describe('sketch', () => {
     expect(v0).toBeGreaterThan(1000);
 
     // Moving a through point reshapes the curve and the solid follows.
+    // The sketch nests under the extrude that uses it: expand, then select it.
+    await page.getByTestId('feature-tree').getByTestId('nest-toggle').first().click();
     await page
       .getByTestId('feature-tree')
       .getByRole('treeitem', { name: /Sketch/ })

@@ -246,3 +246,175 @@ test('a sketch drawn and finished in the app hides after its cut-revolve is done
   await expect.poll(async () => (await a.ui()).featureId).toBeNull();
   await expect.poll(async () => await a.shownSketches()).not.toContain(sk.id);
 });
+
+// ---------------------------------------------------------------------------------------------
+// Pencil press-and-hold grabs sketch geometry (no tool selected)
+// ---------------------------------------------------------------------------------------------
+
+test.describe('Pencil hold to grab', () => {
+  /** A sketch with a 40 × 20 rectangle at the origin and a circle (r 8) at (30, 30). */
+  async function setup(page: Page) {
+    const { docWith, fid, Sk } = await import('./fixtures');
+    await openTablet(page);
+    const a = app(page);
+    const S = fid('SP');
+    const sk = new Sk();
+    sk.rect('r', 'rl', 0, 0, 40, 20);
+    sk.point('cc', 30, 30);
+    sk.entities.push({ id: 'circ', kind: 'circle', center: 'cc', radius: 8, construction: false });
+    await a.load(docWith('pencil-grab', {}, [sk.feature(S, 'Sketch')]));
+    await a.idle();
+    await page
+      .getByTestId('feature-tree')
+      .getByRole('treeitem', { name: /Sketch/ })
+      .first()
+      .tap();
+    await page.getByRole('button', { name: 'Edit sketch' }).tap();
+    await expect.poll(async () => (await a.ui()).sketch?.featureId).toBe(S);
+    await cameraStill(page);
+    await page
+      .getByRole('toolbar', { name: 'Sketch tools' })
+      .getByRole('button', { name: 'Select', exact: true })
+      .tap();
+    await expect.poll(async () => (await a.ui()).sketch?.tool ?? null).toBeNull();
+    const t = await touch(page);
+    const feature = async () => {
+      const f = (await a.doc()).parts[0]?.features[0];
+      if (f?.type !== 'sketch') throw new Error('no sketch');
+      return f;
+    };
+    const pt = async (id: string) => {
+      const e = (await feature()).entities.find((x) => x.id === id);
+      if (e?.kind !== 'point') throw new Error(`no point ${id}`);
+      return e;
+    };
+    return { a, t, feature, pt };
+  }
+
+  const at = (page: Page, x: number, y: number) => toPage(page, [x, y, 0]);
+
+  test('hold on a rectangle corner then move: the corner moves, the rectangle stays connected, one undo', async ({
+    page,
+  }) => {
+    test.slow();
+    const { a, t, pt } = await setup(page);
+    const before = await pt('rc');
+    const from = await at(page, 40, 20);
+    const undoDepth = (await a.history()).past.length;
+    await t.pen.hover(from);
+    await expect.poll(async () => (await a.ui()).sketch?.hover).toBe('rc');
+    await t.pen.down(from);
+    await expect
+      .poll(async () => (await a.ui()).sketch?.highlightEntities, { timeout: 4000 })
+      .toEqual(['rc']);
+    const to = await at(page, 48, 26);
+    for (let k = 1; k <= 6; k++)
+      await t.pen.move({
+        x: from.x + ((to.x - from.x) * k) / 6,
+        y: from.y + ((to.y - from.y) * k) / 6,
+      });
+    await t.pen.up(to);
+    await a.settled();
+    const after = await pt('rc');
+    expect(after.x).toBeGreaterThan(before.x + 4);
+    expect(after.y).toBeGreaterThan(before.y + 3);
+    // Connected: the neighbours moved along (the rectangle's horizontal/vertical constraints hold).
+    expect((await pt('rb')).x).toBeCloseTo(after.x, 3);
+    expect((await pt('rd')).y).toBeCloseTo(after.y, 3);
+    expect((await a.history()).past.length).toBe(undoDepth + 1);
+    await page.keyboard.press('ControlOrMeta+z');
+    await a.settled();
+    expect((await pt('rc')).x).toBeCloseTo(before.x, 6);
+  });
+
+  test('hold on a circle edge then move: the radius changes', async ({ page }) => {
+    test.slow();
+    const { a, t, feature } = await setup(page);
+    const radius = async () => {
+      const c = (await feature()).entities.find((x) => x.id === 'circ');
+      return c?.kind === 'circle' ? c.radius : NaN;
+    };
+    const r0 = await radius();
+    const from = await at(page, 38, 30); // on the curve, east of the centre
+    await t.pen.down(from);
+    await expect
+      .poll(async () => (await a.ui()).sketch?.highlightEntities, { timeout: 4000 })
+      .toEqual(['circ']);
+    const to = await at(page, 44, 30);
+    for (let k = 1; k <= 6; k++)
+      await t.pen.move({ x: from.x + ((to.x - from.x) * k) / 6, y: from.y });
+    await t.pen.up(to);
+    await a.settled();
+    expect(await radius()).toBeGreaterThan(r0 + 3);
+  });
+
+  test('hold on a circle centre then move: the circle moves', async ({ page }) => {
+    test.slow();
+    const { a, t, pt } = await setup(page);
+    const before = await pt('cc');
+    const from = await at(page, 30, 30);
+    await t.pen.down(from);
+    await expect
+      .poll(async () => (await a.ui()).sketch?.highlightEntities, { timeout: 4000 })
+      .toEqual(['cc']);
+    const to = await at(page, 22, 36);
+    for (let k = 1; k <= 6; k++)
+      await t.pen.move({
+        x: from.x + ((to.x - from.x) * k) / 6,
+        y: from.y + ((to.y - from.y) * k) / 6,
+      });
+    await t.pen.up(to);
+    await a.settled();
+    const after = await pt('cc');
+    expect(after.x).toBeLessThan(before.x - 4);
+    expect(after.y).toBeGreaterThan(before.y + 3);
+  });
+
+  test('a quick stroke starting at a corner draws a line from it; the corner does not move', async ({
+    page,
+  }) => {
+    test.slow();
+    const { a, t, feature, pt } = await setup(page);
+    const before = await pt('ra');
+    const from = await at(page, 0, 0);
+    const to = await at(page, -25, -12);
+    const lines0 = (await feature()).entities.filter((e) => e.kind === 'line').length;
+    await t.pen.down(from);
+    for (let k = 1; k <= 10; k++)
+      await t.pen.move({
+        x: from.x + ((to.x - from.x) * k) / 10,
+        y: from.y + ((to.y - from.y) * k) / 10,
+      });
+    await t.pen.up(to);
+    await a.settled();
+    const f = await feature();
+    expect(f.entities.filter((e) => e.kind === 'line').length).toBe(lines0 + 1);
+    const line = f.entities.filter((e) => e.kind === 'line').at(-1);
+    if (line?.kind !== 'line') throw new Error('no line');
+    // Its start is the existing corner (shared point or a coincident constraint), unmoved.
+    const startIsCorner =
+      line.start === 'ra' ||
+      line.end === 'ra' ||
+      f.constraints.some(
+        (c) =>
+          c.kind === 'coincident' &&
+          [c.a, c.b].includes('ra') &&
+          ([c.a, c.b].includes(line.start) || [c.a, c.b].includes(line.end)),
+      );
+    expect(startIsCorner).toBe(true);
+    const after = await pt('ra');
+    expect(after.x).toBeCloseTo(before.x, 6);
+    expect(after.y).toBeCloseTo(before.y, 6);
+  });
+
+  test('hovering with the pen preselects what a hold would grab', async ({ page }) => {
+    test.slow();
+    const { a, t } = await setup(page);
+    await t.pen.hover(await at(page, 40, 0));
+    await expect.poll(async () => (await a.ui()).sketch?.hover).toBe('rb');
+    await t.pen.hover(await at(page, 30, 30));
+    await expect.poll(async () => (await a.ui()).sketch?.hover).toBe('cc');
+    await t.pen.hover(await at(page, -30, 40));
+    await expect.poll(async () => (await a.ui()).sketch?.hover ?? null).toBeNull();
+  });
+});

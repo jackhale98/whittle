@@ -3176,6 +3176,7 @@ export class Workbench {
                 highlight: u.sketch.highlightConstraints,
                 highlightEntities: u.sketch.highlightEntities,
                 selected: u.sketch.selected,
+                hover: u.sketch.hoverEntity,
                 stroke: u.sketch.stroke
                   ? { shape: u.sketch.stroke.shape, points: u.sketch.stroke.points.length }
                   : null,

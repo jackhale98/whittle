@@ -98,6 +98,9 @@ const DRAW_TOOLS = new Set<string>([
 const DOUBLE_TAP_MS = 450;
 const DOUBLE_TAP_PX = 14;
 
+/** A Pencil press held still this long on sketch geometry grabs it (a solver drag). */
+const GRAB_HOLD_MS = 300;
+
 /** A pen press that moves less than this (CSS px) is a tap (a click for the tool), not a stroke. */
 const STROKE_SLOP_PX = 6;
 /** A finger drag longer than this starts a shape at the press (touch drag-to-draw). */
@@ -110,6 +113,8 @@ interface Stroke {
   /** Recognition tolerance (mm): about twice the pen pick radius at the current zoom. */
   tolerance: number;
   moved: boolean;
+  /** Pen down on grabbable geometry: held still for `GRAB_HOLD_MS` it grabs it instead. */
+  grab?: { entity: Id; timer: ReturnType<typeof setTimeout> };
 }
 
 interface DragState {
@@ -914,6 +919,53 @@ export class SketchSession {
     if (this.fingers.size === 0) this.navigating = false;
   }
 
+  private armGrab(st: Stroke, entity: Id, e: PointerEvent): void {
+    const pointerId = e.pointerId;
+    const start = { x: e.clientX, y: e.clientY };
+    const at = this.toSketch(e);
+    st.grab = {
+      entity,
+      timer: setTimeout(() => {
+        if (this.stroke !== st || st.moved || !at) return;
+        // Held still: the stroke becomes a grab. The target pulses and follows the Pencil as a
+        // normal solver drag (one undo step); the release ends it.
+        this.stroke = null;
+        st.grab = undefined;
+        this.patch({ stroke: null, highlightEntities: [entity] });
+        this.pushHighlights();
+        this.scheduleOverlay();
+        this.startDrag(entity, at, start, pointerId);
+      }, GRAB_HOLD_MS),
+    };
+  }
+
+  private disarmGrab(st: Stroke | null): void {
+    if (st?.grab) clearTimeout(st.grab.timer);
+    if (st) st.grab = undefined;
+  }
+
+  /** Begins a solver drag of `entity` from `at` (mouse, finger, or a Pencil grab). */
+  private startDrag(entity: Id, at: Vec2, start: { x: number; y: number }, _pointerId: number) {
+    const f = this.feature();
+    if (!f) return;
+    const input = {
+      entities: [...f.entities],
+      constraints: [...f.constraints],
+      values: this.values(f),
+    };
+    this.drag = {
+      session: solver()
+        .api.beginDrag(input, entity, at)
+        .then((r) => r.session),
+      entity,
+      key: `drag:${newId()}`,
+      inFlight: false,
+      pending: null,
+      moved: false,
+      start,
+    };
+  }
+
   private beginStroke(e: PointerEvent): void {
     const at = this.toSketch(e);
     if (!at) return;
@@ -938,6 +990,7 @@ export class SketchSession {
     if (!st.moved && Math.hypot(e.clientX - st.start.x, e.clientY - st.start.y) < STROKE_SLOP_PX)
       return;
     st.moved = true;
+    this.disarmGrab(st);
     // Live feedback: the ink plus what it is recognised as so far (pure, ≈ 0.2 ms).
     const rec = recognizeStroke(st.samples, { tolerance: st.tolerance });
     this.patch({
@@ -991,6 +1044,10 @@ export class SketchSession {
     const d = this.drag;
     if (!d) return;
     this.drag = null;
+    if (this.ui()?.highlightEntities?.includes(d.entity)) {
+      this.patch({ highlightEntities: null });
+      this.pushHighlights();
+    }
     void this.serial(async () => {
       const session = await d.session;
       // Let an in-flight drag step land first.
@@ -1007,6 +1064,7 @@ export class SketchSession {
     // The system took the pointer (e.g. a gesture): never leave a drag running behind it.
     this.endDrag();
     if (this.stroke?.pointerId === e.pointerId) {
+      this.disarmGrab(this.stroke);
       this.stroke = null;
       this.patch({ stroke: null });
       this.scheduleOverlay();
@@ -1079,11 +1137,14 @@ export class SketchSession {
       // drags it.
       if (!u.draw && u.tool !== 'dimension') {
         const picked = this.pickSketch(e)?.entity;
-        const onSelected = picked && !isSketchReference(picked) && u.selected.includes(picked);
+        const grabbable = picked && !isSketchReference(picked) ? picked : null;
+        const onSelected = grabbable !== null && u.selected.includes(grabbable);
         if (!onSelected) {
           e.stopPropagation();
           e.preventDefault();
           this.beginStroke(e);
+          // Held still on geometry: grab it. Moving first is a stroke (snapping to a node).
+          if (grabbable && this.stroke) this.armGrab(this.stroke, grabbable, e);
           return;
         }
       }
@@ -1126,26 +1187,9 @@ export class SketchSession {
     // The origin and axes are selectable (on release) but never dragged.
     if (isSketchReference(hit.entity)) return;
     withhold();
-    const f = this.feature();
-    if (!f) return;
-    const entity = hit.entity;
+    if (!this.feature()) return;
     (e.target as Element | null)?.setPointerCapture?.(e.pointerId);
-    const input = {
-      entities: [...f.entities],
-      constraints: [...f.constraints],
-      values: this.values(f),
-    };
-    this.drag = {
-      session: solver()
-        .api.beginDrag(input, entity, at)
-        .then((r) => r.session),
-      entity,
-      key: `drag:${newId()}`,
-      inFlight: false,
-      pending: null,
-      moved: false,
-      start: { x: e.clientX, y: e.clientY },
-    };
+    this.startDrag(hit.entity, at, { x: e.clientX, y: e.clientY }, e.pointerId);
   }
 
   private values(f: SketchFeature): Record<Id, number> {
@@ -1201,6 +1245,7 @@ export class SketchSession {
     if (!u) return;
     const st = this.stroke;
     if (st && st.pointerId === e.pointerId) {
+      this.disarmGrab(st);
       this.stroke = null;
       e.stopPropagation();
       if (st.moved) {

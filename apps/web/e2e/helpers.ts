@@ -45,6 +45,8 @@ export interface AppHooks {
       dimPicks: string[];
       editDimension: string | null;
       selected: string[];
+      /** The entity under the pointer (preselect). */
+      hover: string | null;
       highlight: readonly string[] | null;
       highlightEntities: readonly string[] | null;
       stroke: { shape: string | null; points: number } | null;
