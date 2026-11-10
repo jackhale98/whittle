@@ -122,13 +122,15 @@ test('touch taps select once; bubble; double-tap zoom; long-press; 2/3-finger un
   await cameraStill(page);
   expect((await cameraState(page)).distance).toBeGreaterThan(near * 1.1);
 
-  // Long-press on empty space: the view actions.
+  // Long-press on empty space: the radial menu (M3.5; the bubble stays on tap-select). It offers
+  // the view actions among others and stays open when lifted without a direction.
+  const radial = page.getByTestId('radial-menu');
   await t.down([{ x: 1100, y: 600 }]);
-  await expect(bubble(page).locator('[data-action="fit"]')).toBeVisible();
+  await expect(radial.locator('[data-item="fit"]')).toBeVisible();
   await t.up();
-  await expect(bubble(page).locator('[data-action="undo"]')).toBeVisible();
-  await bubble(page).locator('[data-action="fit"]').tap();
-  await expect(bubble(page)).toHaveCount(0);
+  await expect(radial.locator('[data-item="undo"]')).toBeVisible();
+  await radial.locator('[data-item="fit"]').tap();
+  await expect(radial).toHaveCount(0);
 
   // Two-finger tap = undo (the box goes), three-finger tap = redo.
   await t.tap([

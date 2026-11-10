@@ -30,8 +30,8 @@ has Welcome and samples, the demo bracket, New document, Open library, Open or i
 
 ### Desktop
 
-- **Top bar.** The feature-panel toggle, the document name, undo and redo, an export menu, the theme
-  toggle, and the inspector toggle. A version menu is shown but disabled until M2.5.
+- **Top bar.** The feature-panel toggle, the document name, undo and redo, the version menu, an export
+  menu, **Settings** (the gear), the theme toggle, and the inspector toggle.
 - **Left panel.** Two tabs: **Features** (the feature tree with its rollback bar) and **Params**. Drag
   the edge to resize it.
 - **Viewport (centre).** The 3D view. The units chip and the kernel status are at the top left. The
@@ -55,6 +55,90 @@ has Welcome and samples, the demo bracket, New document, Open library, Open or i
 - The bottom sheet has five tabs. **Params** and **Export** work. **Parts**, **Measure** and
   **Section** are placeholders.
 - You cannot create or edit features on a phone yet. Use a desktop or tablet.
+
+## Navigating and selecting
+
+### The mouse
+
+The left button **never moves the camera**. It picks and box-selects. Navigation is on the other buttons,
+and you choose the layout in **Settings** (the gear in the top bar, or ⌘K, **Settings**). Settings opens as a
+panel over the view, not as a dialog: the model stays live behind it, and Esc or **Close** dismisses it.
+On a phone, open it from ⌘K (the More button).
+
+| Preset (named by what it does) | Orbit | Pan | Right click |
+| --- | --- | --- | --- |
+| **Right button orbits** (default) | Right-drag | Middle-drag | Radial menu |
+| **Middle button orbits** | Middle-drag | Ctrl + middle-drag, or right-drag | Radial menu. A middle click on the model sets the pivot. |
+| **Middle button pans** | Right-drag, or Shift + middle-drag | Middle-drag | Radial menu |
+| **Right click repeats** | Right-drag | Middle-drag | A quick click repeats the last command. Hold it for the radial menu. |
+
+The wheel zooms toward the cursor in every preset. Under **Orbit** you can also choose:
+
+- **Turntable** (the +Z axis stays up) or **Trackball** (free rotation);
+- the pivot: the **surface point under the cursor** when the drag starts (default), or always the
+  centre of the model. Orbiting turns the view about that point, so the point you grabbed stays under
+  the cursor. If you start on empty space it falls back to the centre of what is on screen, never to a
+  stale point off screen;
+- whether the **pivot marker** (a dot at the pivot) shows while you orbit;
+- invert zoom, and orbit speed. A drag follows the pointer one to one: there is no smoothing.
+
+The settings are kept on this device (`wren.navigation`).
+
+### Box select
+
+Drag with the left button on empty space (or on the model) to draw a box.
+
+- **Left to right** is a **window**: it selects what lies entirely inside the box. The box has a solid
+  edge.
+- **Right to left** is a **crossing**: it selects everything the box touches. The box has a dashed
+  edge.
+- A plain drag replaces the selection, **Shift** adds to it, and **Ctrl** (⌘ on a Mac) toggles what the
+  box covers. A drag over nothing clears the selection.
+
+Box select is for the mouse and the Pencil. A finger drag still orbits. A click still picks one item,
+and dragging a push/pull arrow or a sketch point is not a box.
+
+### The radial menu
+
+A **right click** (mouse), a **long press** (finger or Pencil), or a **held Q** opens a ring of up to seven
+commands for what is under the pointer, with **Repeat** always at the top. If you right-click an
+unselected face, edge or region it is selected first, so the ring fits it:
+
+| Selection | The ring offers |
+| --- | --- |
+| Nothing | Sketch, Measure, Section, Fit view, Isometric, Undo, Redo |
+| One flat face | Sketch, Push/pull, Hole, Shell, Draft, Measure, Section |
+| A curved face | Thread, Shell, Draft, Measure |
+| Several flat faces | Push/pull, Shell, Draft, Measure |
+| Edges | Fillet, Chamfer, Measure |
+| A vertex | Measure, Plane, Axis, Point |
+| A sketch region | Extrude, Cut, Revolve, Sweep |
+| In a sketch | Line, Circle, Arc, Rectangle, Dimension, Spline, Finish sketch |
+
+Items sit in fixed places, so you can learn them: Repeat is at the top, the rest fill clockwise from the
+upper right. **Flick** toward an item right after the click, before the ring is drawn (a quarter of a
+second), and the command runs without the ring ever showing. Once it is drawn, moving the mouse only
+highlights; click an item, or use the arrow keys and Enter, or the digits 1 to 8, to choose. The ring
+appears when you release the button and ignores a click that started before it appeared, so it never
+catches the next click. A press outside it closes it, and that press does not click through.
+
+- **Space** repeats the last command (unless a button or list row has focus: Space then activates that, as usual). In a sketch it brings back the last sketch tool.
+- With a finger or the Pencil, hold on the spot for half a second; the ring draws at once, and you can
+  drag onto an item and lift. Lifting without a direction leaves it open for a tap.
+- **Hold Q**: the ring opens at the pointer; point and release to choose; releasing with no direction
+  cancels. Q is a keymap entry (**Radial menu**) and can be moved.
+
+The **context bubble** on touch is unchanged: it appears after you tap to select. The long press is the
+radial menu.
+
+### Which one?
+
+When several things overlap under the pointer (a vertex, the edges meeting there, the faces around it), a
+click on a close tie lists them in a **Which one?** list: vertices first, then edges, faces and bodies, nearest
+first, with a fixed order for equal distances. Hover a row to see it highlighted. With a still pointer
+over overlapping geometry you can also press **Tab** and **Shift+Tab** to step the highlight through the
+same list, and **Enter** (or a click) to pick it. Tab only does this when no control has focus, so
+keyboard navigation of the panels is unchanged.
 
 ## Sketching
 
@@ -83,9 +167,32 @@ open its menu with the arrow key or a long press.
 | Polygon | none | none |
 | Point | P | none |
 | Dimension | D | none |
+| Spline (control points) | B | Open or closed |
+| Spline (through points) | Shift+B | Open or closed |
+| Ellipse | Shift+E | none |
+| Elliptic arc | Shift+A | none |
+
+The four curve tools are under **Curves** on the toolbar.
 
 **Point** places a lone sketch point: a hole centre for the hole wizard, or a reference to
 dimension from. On touch devices every tool has a text label under its icon.
+
+### Ellipses and splines
+
+- **Ellipse** (Shift+E): click the centre, click the end of an axis, then click a point whose distance
+  from that axis sets the other radius. The axis can be either one: the longer radius becomes the major
+  axis.
+- **Elliptic arc** (Shift+A): the same three clicks for the ellipse (it is drawn dashed), then click the
+  start and the end of the arc. The arc runs counter-clockwise from the start.
+- **Spline, control points** (B) and **through points** (Shift+B): click the points. The curve shows as you
+  go. **Enter**, a **double-click** or a **double-tap** ends the open curve; clicking the **first point
+  again** closes it. A through-point spline passes through every point you clicked, and dragging one of
+  those points reshapes the curve. A control-point spline is pulled by its poles (shown as construction
+  points). Both are cubic.
+- The Pencil turns an oval into an ellipse and a smooth stroke into a spline. Dimension, constrain and
+  extrude them like any other geometry. Tangent works between any two curves; a curvature-continuous
+  constraint that the solver cannot hold is reported as unsupported rather than dropped.
+- Inference and snapping work as for the other tools: the cursor snaps to points, midpoints and curves.
 
 Press **X** to toggle construction geometry. Construction lines guide the sketch but do not make
 regions. While you draw, Wren snaps to horizontal, vertical, parallel, perpendicular and tangent
@@ -131,6 +238,15 @@ Choose **Dimension** (D), then:
 Dimension values accept expressions and units, such as `25mm + 1/8in` or a parameter name. Click a
 dimension and press Enter to edit it.
 
+A dimension is drawn the way other sketchers draw it: **extension lines** from the measured geometry, a
+**dimension line with arrows** between them, a **leader** for a radius or diameter, and an **arc** for an
+angle, so you can see what it measures. They highlight when you hover them and when the dimension is
+selected, and a reference dimension is dashed.
+
+**Drag a label** (mouse, finger or Pencil) to move the dimension line where you want it. A drag only moves
+the label: the value never changes, a plain tap still edits it, and the move is one undo step, "Move
+dimension".
+
 Each dimension label has small toggles:
 
 - **Driving** or **(Reference)**. A driving dimension sets the geometry. A reference dimension
@@ -152,6 +268,10 @@ When constraints conflict, a panel appears at the top right. It names the constr
 hold and says why, in plain words, for example "Line 2 can't be both horizontal and at 30 degrees".
 Each conflict has suggested fixes. Click a fix to apply it, or dismiss the panel and fix the sketch
 by hand. Wren lists a minimal set of conflicting constraints, so you can usually remove just one.
+
+Constraints and geometry are named ("Line 2", "Angle 30° (Line 1, Line 2)"), never numbered. Hovering or
+focusing a conflict highlights the whole set on the canvas. The first fix is marked **Suggested**: it
+removes the constraint you added last, which is usually the one that broke the sketch.
 
 ## Building features
 
@@ -358,6 +478,12 @@ What you see:
 - The old location of the reference is drawn as a translucent ghost in the viewport, so you can see
   where it used to be.
 - If several things match, the **Which one?** list shows them. Choose the right one.
+- When Wren can tell which upstream change did it, the message says so: **"Fillet 2 lost its edge because
+  Extrude 1 changed (depth 10 mm → 4 mm)."** The name of the cause is a button: click it, in the tree or in
+  the inspector, to select that feature and fix it there. A feature that is waiting on a broken one
+  follows the chain to the root ("Fillet 3 is waiting because Fillet 2 failed"). If the cause was deleted,
+  the message says **"Extrude 1 was deleted"** and the inspector offers **Undo**. When Wren cannot tell what
+  caused it, it says only that a reference needs attention; it never invents a cause.
 
 What to do:
 
@@ -367,6 +493,17 @@ What to do:
 
 If Wren can match the reference again by its name and location, it updates the reference quietly
 with your next edit, in the same undo step. You do not need to do anything.
+
+## Where geometry came from
+
+Select a face, an edge or a vertex and the inspector shows **Made by**: the latest feature that created
+or changed it, and that feature's sketch, each with an **Edit** button (a fillet's face names the fillet;
+an extrude's side names the extrude and its sketch). **Edit** opens the feature in the inspector, or the
+sketch for editing.
+
+Select a feature in the history and the inspector lists **Built from** (the sketch and the features whose
+geometry it uses) and **Used by** (the features that use it). The history marks them with a coloured edge
+on the left, and the chips select those features.
 
 ## Import and export
 
@@ -525,7 +662,19 @@ every 30 minutes. To check now, choose **Check for updates** in the palette.
 
 ## Keyboard shortcuts
 
-These are the shortcuts in the code. On a Mac, ⌘ is the Command key. On Windows and Linux, use Ctrl.
+These are the default shortcuts. On a Mac, ⌘ is the Command key. On Windows and Linux, use Ctrl.
+
+**Shortcuts follow the physical key**, not the letter on it: **S** is whichever key sits where QWERTY's S is,
+so the layout (AZERTY, Dvorak, ...) does not move them, and the editor labels each one with what that key
+types on your keyboard where the browser says so (Chrome and Edge).
+
+**Change them in Settings → Keyboard.** Press **Add shortcut** next to a command and press the keys. The
+editor warns you when the key is already another command's in the same mode, and when the browser owns
+it: Ctrl+W, Ctrl+T, Ctrl+N and a few others never reach a web page and cannot be assigned; others (Ctrl+P,
+F5, Ctrl+F ...) can be used if you choose **Use anyway**, and then the browser's own action is lost
+while Wren has focus. **Reset** puts a command back, and the keymap is kept on this device
+(`wren.keymap`). Esc and Space (repeat) are fixed. Keep Ctrl and Alt off sketch tool keys: the sketch
+toolbar reads plain letters and Shift.
 
 ### Anywhere
 
@@ -536,7 +685,10 @@ These are the shortcuts in the code. On a Mac, ⌘ is the Command key. On Window
 | ⇧⌘Z or ⌘Y | Redo |
 | ⌘O | Open or import a file |
 | ⌘S | Save as a `.wrencad` file |
-| Esc | Cancel the innermost thing: a chooser, a pick, a prompt, the selection, the open feature, the library or the welcome card |
+| Esc | Cancel the innermost thing: the radial menu, settings, a chooser, a pick, a prompt, the selection, the open feature, the library or the welcome card |
+| Space | Repeat the last command |
+| Q (hold) | Radial menu at the pointer; flick or point, then release |
+| Hold Ctrl, ⌘ or Alt for 0.6 s | Show the shortcuts available right now |
 
 ### Model (when no sketch is open and no text field has focus)
 
@@ -556,8 +708,8 @@ These are the shortcuts in the code. On a Mac, ⌘ is the Command key. On Window
 | G / Shift+G / Shift+P | Plane / axis / point |
 | Shift+E / Shift+R | Extruded / revolved cut |
 | M | Measure |
-| Enter | Done with the field being picked: on to the tool's next one |
-| Space | Repeat the last tool |
+| Enter | Done with the field being picked: on to the tool's next one; or pick Tab's highlighted candidate |
+| Tab / Shift+Tab | Step the highlight through the overlapping candidates under a still pointer |
 | 0 or 7 | Isometric view |
 | 1 | Front view |
 | 2 | Back view |
@@ -577,6 +729,10 @@ Shift with a letter gives the second tool of a pair (see above).
 | Shift+C | Circle |
 | P | Point |
 | D | Dimension |
+| B / Shift+B | Spline: control points / through points |
+| Shift+E / Shift+A | Ellipse / elliptic arc |
+| Enter | End the open spline being drawn |
+| Space | Bring back the last sketch tool |
 | O, V, T, E, F, Shift+F, M | Edit tools: offset, convert, trim, extend, fillet, chamfer, mirror |
 | X | Toggle construction geometry |
 | Delete or Backspace | Delete the selected sketch entities |
@@ -596,7 +752,7 @@ Shift with a letter gives the second tool of a pair (see above).
 ### Selection
 
 Hold **Shift**, **Ctrl** or **⌘** while you click to add to the selection. A click on empty space
-clears it.
+clears it. Drag a box to select several things at once (see **Box select**).
 
 Keys are ignored while you type in a field.
 
@@ -615,6 +771,8 @@ These gestures work today on a touch device.
 | Tap a face, edge or vertex | Select it. A tap on a face picks the face unless an edge or vertex is very close. |
 | Tap empty space | Clear the selection |
 | Double-tap | Fit the whole model in view |
+| Long press (half a second) | The radial menu. Drag onto an item and lift, or lift and tap one. |
+| Pencil, hold still | The radial menu |
 
 Several things are close together? A **Which one?** list appears. Choose the one you mean.
 
@@ -626,5 +784,5 @@ Wren also stops page-level pinch zoom and double-tap zoom, so only the model and
 - Pencil drawing, with pen input for sketching and primitive recognition
 - Push and pull (dragging a face to change a feature)
 - Measure and section on the phone
-- Context menus on long press, and two- or three-finger tap for undo and redo
+- Two- or three-finger tap for undo and redo
 - A guided bracket tutorial for new users

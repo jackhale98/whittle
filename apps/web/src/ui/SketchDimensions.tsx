@@ -109,8 +109,10 @@ function Dimension({
           hovered={hovered}
           selected={selected}
           conflicting={conflicting}
-          onHover={setHovered}
-          onSelect={() => session.selectConstraint(c.id)}
+          // A drawing or dimension tool owns the clicks: the strokes only react with no tool.
+          {...(ui.tool === null
+            ? { onHover: setHovered, onSelect: () => session.selectConstraint(c.id) }
+            : {})}
         />
       ) : null}
       <DimensionLabel

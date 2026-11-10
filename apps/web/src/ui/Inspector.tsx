@@ -3,12 +3,10 @@
  * the viewport selection with context tools, or the part (material, mass) and document.
  */
 
-import type { EntityRef, Feature, Material, WrenDoc } from '@wren-cad/contracts';
+import type { EntityRef, Material, WrenDoc } from '@wren-cad/contracts';
 import { MATERIALS } from '@wren-cad/document';
 import {
   Button,
-  FeatureInspector,
-  FeatureLineage,
   Kbd,
   type MaterialLibraryItem,
   type MeasurePanelProps,
@@ -24,9 +22,12 @@ import { lazy, Suspense, useEffect, useState, useSyncExternalStore } from 'react
 import { useObservable } from '../app/observable';
 import type { Workbench } from '../app/workbench';
 import type { FeatureTool, ModelTool } from '../features/factories';
-import { featureLineage, selectionLineage } from '../model/lineage';
+import { selectionLineage } from '../model/lineage';
 import { selectionKind } from '../selection/pick';
 
+// The feature inspector (and the hole and thread fields behind it) is fetched when a feature is
+// first selected: it is a sizeable part of the app and not on the first screen.
+const FeatureInspectorPane = lazy(() => import('./FeatureInspectorPane'));
 const MeasureView = lazy(() => import('./InspectPanels').then((m) => ({ default: m.MeasureView })));
 const SectionView = lazy(() => import('./InspectPanels').then((m) => ({ default: m.SectionView })));
 
@@ -243,43 +244,18 @@ export function Inspector({
     const f = part.features.find((x) => x.id === ui.featureId);
     if (f) {
       const status = regen?.result.features.find((s) => s.featureId === f.id);
-      const lineage = featureLineage(doc, f.id);
       return (
-        <>
-          <FeatureInspector
-            key={f.id}
-            feature={f}
+        <Suspense fallback={null}>
+          <FeatureInspectorPane
+            wb={wb}
+            doc={doc}
+            f={f}
             {...(status ? { status } : {})}
-            evaluate={(e, d) => wb.evaluate(e, d)}
-            onChange={(next: Feature) => wb.updateFeature(next, 'commit')}
-            onPreview={(next: Feature) => wb.updateFeature(next, 'preview')}
-            onPick={(path) =>
-              status?.unresolved?.some((u) => u.path === path)
-                ? wb.repick(f.id, path)
-                : wb.startPicking(f.id, path)
-            }
-            {...(status?.state === 'needsAttention' ? { onRepick: () => wb.repick(f.id) } : {})}
             pickingPath={ui.picking?.featureId === f.id ? ui.picking.path : null}
-            describeRef={(r) => describeRef(doc, r)}
-            describeFeature={(id) =>
-              part.features.find((x) => x.id === id)?.name ?? wb.rememberedName(id) ?? id
-            }
-            onSelectFeature={(id) => wb.selectFeature(id)}
-            onUndo={() => wb.undo()}
-            {...(tables ? { holeTables: tables } : {})}
-            {...(f.type === 'sketch' ? { onEditSketch: () => wb.editFeature(f.id) } : {})}
-            onDone={() => wb.selectFeature(null)}
-            units={{ length: doc.units.length, angle: doc.units.angle === 'deg' ? '°' : 'rad' }}
+            {...(tables ? { tables } : {})}
             density={density}
           />
-          {f.type !== 'sketch' || lineage.children.length > 0 || lineage.parents.length > 0 ? (
-            <FeatureLineage
-              parents={lineage.parents}
-              dependents={lineage.children}
-              onSelect={(id) => wb.selectFeature(id)}
-            />
-          ) : null}
-        </>
+        </Suspense>
       );
     }
   }

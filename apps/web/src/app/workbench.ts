@@ -202,6 +202,14 @@ const isTyping = (t: EventTarget | null) => {
 /** Left-drag past this many px is a box selection, not a click. */
 const BOX_DRAG_PX = 5;
 
+const SPACE_ACTIVATES =
+  'button, a[href], summary, [role="button"], [role="menuitem"], [role="menuitemcheckbox"], [role="option"], [role="tab"], [role="switch"], [role="checkbox"], [role="radio"], [role="treeitem"]';
+
+/** Space belongs to a focused control that Space activates; elsewhere it repeats the last command. */
+function activatesOnSpace(t: EventTarget | null): boolean {
+  return t instanceof Element && t.closest(SPACE_ACTIVATES) !== null;
+}
+
 /** The "Which one?" kind of a pick: sketch points and curves count as vertices and edges. */
 function candidateKind(h: PickHit): 'face' | 'edge' | 'vertex' | 'body' {
   if (h.kind === 'sketchPoint') return 'vertex';
@@ -813,7 +821,10 @@ export class Workbench {
       ),
       this.listen(host, 'pointerup', (e) => this.onPointerUp(e as PointerEvent), true),
       this.listen(host, 'pointercancel', (e) => this.onPointerCancel(e as PointerEvent), true),
-      this.listen(host, 'pointerleave', () => this.setHover(null)),
+      this.listen(host, 'pointerleave', () => {
+        this.forgetPick();
+        this.setHover(null);
+      }),
       this.listen(host, 'dblclick', (e) => this.sketch?.onDoubleClick(e as MouseEvent), true),
       this.listen(host, 'dragover', (e) => this.onDragOver(e as DragEvent)),
       this.listen(host, 'drop', (e) => void this.onDrop(e as DragEvent)),
@@ -1135,7 +1146,10 @@ export class Workbench {
   private onPointerMove(e: PointerEvent): void {
     this.lastPointer = { x: e.clientX, y: e.clientY };
     if (this.pushPull.onPointerMove(e)) return;
-    if (!this.onCanvas(e)) return;
+    if (!this.onCanvas(e)) {
+      this.forgetPick(); // over a panel or button: Tab keeps its normal job
+      return;
+    }
     if (this.ui.get().sketch) {
       this.sketch?.onPointerMove(e);
       return;
@@ -1237,6 +1251,9 @@ export class Workbench {
     }));
   }
 
+  /** The Pencil whose long press opened the radial menu: its lift must not also be a click. */
+  private penOpened: number | null = null;
+
   private endPenHold(): void {
     if (this.penHold) clearTimeout(this.penHold.timer);
     this.penHold = null;
@@ -1249,6 +1266,7 @@ export class Workbench {
     const timer = setTimeout(() => {
       this.penHold = null;
       this.boxDown = null;
+      this.penOpened = id; // its lift is the end of the long press, not a click
       const at = this.local({ clientX: x, clientY: y });
       const hit = resolvePick(this.pickAt(at.x, at.y, 'pen', this.pickKinds()), {
         pointerType: 'pen',
@@ -1303,6 +1321,10 @@ export class Workbench {
     if (e.pointerType === 'pen') this.lastPenAt = performance.now();
     if (this.pushPull.onPointerUp(e)) return;
     if (this.penHold?.id === e.pointerId) this.endPenHold();
+    if (this.penOpened === e.pointerId) {
+      this.penOpened = null;
+      return;
+    }
     if (!this.ui.get().sketch && this.boxEnd(e)) return;
     this.boxDown = null;
     if (this.ui.get().sketch) {
@@ -2158,6 +2180,8 @@ export class Workbench {
         if (!sketching && this.cancel()) e.preventDefault();
         return;
       case 'repeat':
+        // Space on a focused control activates that control (buttons, tree rows, menu items).
+        if (activatesOnSpace(e.target)) return;
         e.preventDefault();
         this.repeatLast();
         return;
@@ -2285,6 +2309,11 @@ export class Workbench {
   }> = [];
   /** Tab's current preselection (a hit of `lastPick`), valid while the pointer stays put. */
   private tabHit: PickHit | null = null;
+
+  private forgetPick(): void {
+    this.lastPick = [];
+    this.tabHit = null;
+  }
 
   private rememberPick(hits: readonly PickHit[]): void {
     this.lastPick = sortCandidates(

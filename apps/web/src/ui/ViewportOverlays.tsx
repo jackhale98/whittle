@@ -5,38 +5,26 @@
  * `worldToScreen`). Non-modal throughout (PLAN §1, §9.2).
  */
 
-import type {
-  EntityRef,
-  ExtrudeFeature,
-  Id,
-  PickHit,
-  SketchConstraint,
-  SketchFeature,
-  Vec3,
-  WrenDoc,
-} from '@wren-cad/contracts';
-import { constraintLabel, isSketchReference, Namer } from '@wren-cad/sketch';
+import type { EntityRef, ExtrudeFeature, PickHit, Vec3, WrenDoc } from '@wren-cad/contracts';
+import { constraintLabel, Namer } from '@wren-cad/sketch';
 import {
   ConflictPanel,
-  ConstraintGlyph,
   cn,
   ExpressionInput,
   type PickCandidate,
   PromptChip,
   SketchStatusChip,
-  SketchToolbar,
   WhichOneChooser,
   WrenLoader,
 } from '@wren-cad/ui';
 import { Library } from 'lucide-react';
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { lazy, Suspense } from 'react';
 import { useObservable } from '../app/observable';
 import type { SketchSession } from '../app/sketch-session';
 import type { SketchUi, UiState } from '../app/state';
 import type { Workbench } from '../app/workbench';
 import { ORIGIN_FRAMES, type OriginPlane } from '../model/frames';
 import { measureLabel } from '../model/measure';
-import { entityAnchor } from '../sketch/overlay';
 import { describeRef, useDoc } from './Inspector';
 
 const LibraryPanel = lazy(() => import('./LibraryPanel'));
@@ -59,17 +47,9 @@ const Welcome = lazy(() => import('./Welcome'));
 // M3.5: the radial menu, the settings panel and the shortcut overlay load on first use.
 const RadialLayer = lazy(() => import('./RadialLayer'));
 const SettingsPanel = lazy(() => import('./SettingsPanel'));
-const SketchDimensions = lazy(() => import('./SketchDimensions'));
+const SketchLayer = lazy(() => import('./SketchLayer'));
+const SketchToolbarPane = lazy(() => import('./SketchToolbarPane'));
 const ShortcutOverlayLayer = lazy(() => import('./ShortcutOverlayLayer'));
-
-function useCameraTick(session: SketchSession | null): number {
-  const [, force] = useState(0);
-  useEffect(() => {
-    if (!session) return;
-    return session.camera.subscribe(() => force((n) => n + 1));
-  }, [session]);
-  return session ? session.camera.get() : 0;
-}
 
 const PLANES: { id: OriginPlane; label: string; hint: string }[] = [
   { id: 'origin:XY', label: 'Top', hint: 'XY' },
@@ -239,130 +219,6 @@ function ExtrudeDepth({ wb, f }: { wb: Workbench; f: ExtrudeFeature }) {
   );
 }
 
-const GLYPH_KINDS = new Set([
-  'horizontal',
-  'vertical',
-  'parallel',
-  'perpendicular',
-  'tangent',
-  'equal',
-  'midpoint',
-  'concentric',
-  'symmetric',
-  'fix',
-]);
-
-/** The entity a constraint's glyph sits on: never the origin or an axis (ADR-017). */
-function glyphHost(c: SketchConstraint): Id | null {
-  const user = (...ids: Id[]) => ids.find((id) => !isSketchReference(id)) ?? null;
-  switch (c.kind) {
-    case 'horizontal':
-    case 'vertical':
-      return c.line;
-    case 'midpoint':
-      return user(c.point, c.line);
-    case 'fix':
-      return c.entity;
-    case 'symmetric':
-      return user(c.about, c.a, c.b);
-    default:
-      return 'a' in c && typeof c.a === 'string' && typeof c.b === 'string' ? user(c.a, c.b) : null;
-  }
-}
-
-function SketchLayer({
-  wb,
-  session,
-  ui,
-  doc,
-}: {
-  wb: Workbench;
-  session: SketchSession;
-  ui: SketchUi;
-  doc: WrenDoc;
-}) {
-  useCameraTick(session);
-  const v = wb.viewport;
-  const f = doc.parts[0]?.features.find((x) => x.id === ui.featureId) as SketchFeature | undefined;
-  if (!v || !f || f.type !== 'sketch' || !ui.frame) return null;
-  const screen = (p: [number, number]) => {
-    const w = session.world(p);
-    return w ? v.worldToScreen(w) : null;
-  };
-  const namer = new Namer(f.entities);
-  const driven = ui.solve?.driven ?? {};
-  const conflicting = new Set(ui.solve?.conflicts.flatMap((c) => c.constraints) ?? []);
-
-  // Constraint glyphs, stacked per host entity.
-  const perHost = new Map<Id, number>();
-  const glyphs = f.constraints.flatMap((c) => {
-    if (!GLYPH_KINDS.has(c.kind)) return [];
-    const host = glyphHost(c);
-    const at = host ? entityAnchor(f.entities, host) : null;
-    const p = at ? screen(at) : null;
-    if (!host || !p?.visible) return [];
-    const k = perHost.get(host) ?? 0;
-    perHost.set(host, k + 1);
-    return [{ c, x: p.x + 10 + k * 22, y: p.y - 22 }];
-  });
-
-  const cursor = ui.draw?.cursor ? screen(ui.draw.cursor) : null;
-
-  return (
-    <>
-      {glyphs.map(({ c, x, y }) => (
-        <button
-          key={c.id}
-          type="button"
-          aria-label={constraintLabel(c, namer, driven)}
-          aria-pressed={ui.selectedConstraint === c.id}
-          onClick={() => session.selectConstraint(ui.selectedConstraint === c.id ? null : c.id)}
-          className={cn(
-            'pointer-events-auto absolute rounded-[7px] transition-shadow',
-            ui.selectedConstraint === c.id && 'shadow-[0_0_0_2px_var(--color-accent)]',
-          )}
-          style={{ left: x, top: y }}
-          data-testid="constraint-glyph"
-          data-kind={c.kind}
-        >
-          <ConstraintGlyph
-            kind={c.kind}
-            size={20}
-            tone={
-              conflicting.has(c.id)
-                ? 'conflict'
-                : ui.selectedConstraint === c.id
-                  ? 'selected'
-                  : 'placed'
-            }
-          />
-        </button>
-      ))}
-      <Suspense fallback={null}>
-        <SketchDimensions
-          wb={wb}
-          session={session}
-          ui={ui}
-          f={f}
-          driven={driven}
-          conflicting={conflicting}
-        />
-      </Suspense>
-      {cursor?.visible && ui.draw?.glyphs.length ? (
-        <div
-          className="pointer-events-none absolute flex gap-1"
-          style={{ left: cursor.x + 14, top: cursor.y + 12 }}
-          data-testid="inference-glyphs"
-        >
-          {ui.draw.glyphs.map((k) => (
-            <ConstraintGlyph key={k} kind={k} size={20} tone="hint" labelled />
-          ))}
-        </div>
-      ) : null}
-    </>
-  );
-}
-
 /**
  * The whittling loader in the middle of the view while the kernel streams in and the document has
  * geometry that isn't on screen yet (no cached meshes). Gone with the first body.
@@ -505,22 +361,9 @@ export function ViewportOverlays({ wb, touch }: { wb: Workbench; touch: boolean 
     >
       {sk && session ? (
         <div className="absolute left-1/2 -translate-x-1/2" style={ABOVE_BOTTOM}>
-          <SketchToolbar
-            activeTool={sk.tool}
-            variants={sk.variants}
-            onTool={(tool, variant) => {
-              if (tool === null && session.escapeTool()) return;
-              session.setTool(tool, variant);
-            }}
-            construction={sk.construction}
-            onToggleConstruction={() => session.toggleConstruction()}
-            onConstraint={(k) => session.constrain(k)}
-            enabledConstraints={session.enabledConstraints()}
-            onFinish={() => session.finish()}
-            onEscape={() => session.finish()}
-            matchShortcut={wb.sketchShortcut}
-            density={touch ? 'touch' : 'compact'}
-          />
+          <Suspense fallback={null}>
+            <SketchToolbarPane wb={wb} session={session} sk={sk} touch={touch} />
+          </Suspense>
         </div>
       ) : null}
       {/* Above the command bar, where the tool was chosen: act-first prompt + plane chooser. */}
@@ -546,7 +389,9 @@ export function ViewportOverlays({ wb, touch }: { wb: Workbench; touch: boolean 
 
       {sk && session ? (
         <>
-          <SketchLayer wb={wb} session={session} ui={sk} doc={doc} />
+          <Suspense fallback={null}>
+            <SketchLayer wb={wb} session={session} ui={sk} doc={doc} />
+          </Suspense>
           <div
             className="pointer-events-auto absolute left-1/2 -translate-x-1/2"
             style={{ top: 'var(--chrome-top, 3.5rem)' }}
