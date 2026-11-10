@@ -102,17 +102,23 @@ jobs:
           retention-days: 7
 
   e2e:
-    name: E2E (${{ matrix.browser }})
+    name: E2E (${{ matrix.browser }}, shard ${{ matrix.shard }}/${{ matrix.shards }})
     needs: build
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # Sharded: the chromium suite outgrew one 30-minute runner with M3.6 (job cancelled at 30:00).
+    timeout-minutes: 40
     # Firefox/WebKit are reported but do not gate deploys yet (ADR-005 §7): headless Firefox on
     # CI has not rendered the box, and Playwright WebKit cannot reload offline with a SW.
     continue-on-error: ${{ matrix.browser != 'chromium' }}
     strategy:
       fail-fast: false
       matrix:
-        browser: [chromium, firefox, webkit]
+        include:
+          - { browser: chromium, shard: 1, shards: 2 }
+          - { browser: chromium, shard: 2, shards: 2 }
+          - { browser: firefox, shard: 1, shards: 1 }
+          - { browser: webkit, shard: 1, shards: 2 }
+          - { browser: webkit, shard: 2, shards: 2 }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
@@ -138,17 +144,17 @@ jobs:
         run: |
           case "${{ matrix.browser }}" in
             firefox)
-              WREN_HEADED=1 xvfb-run -a pnpm --filter @wren-cad/web exec playwright test --trace retain-on-failure --project=firefox ;;
+              WREN_HEADED=1 xvfb-run -a pnpm --filter @wren-cad/web exec playwright test --trace retain-on-failure --project=firefox --shard=${{ matrix.shard }}/${{ matrix.shards }} ;;
             chromium)
-              pnpm --filter @wren-cad/web exec playwright test --trace retain-on-failure --project=chromium --project=chromium-touch ;;
+              pnpm --filter @wren-cad/web exec playwright test --trace retain-on-failure --project=chromium --project=chromium-touch --shard=${{ matrix.shard }}/${{ matrix.shards }} ;;
             webkit)
-              pnpm --filter @wren-cad/web exec playwright test --trace retain-on-failure --project=webkit --project=webkit-ipad ;;
+              pnpm --filter @wren-cad/web exec playwright test --trace retain-on-failure --project=webkit --project=webkit-ipad --shard=${{ matrix.shard }}/${{ matrix.shards }} ;;
           esac
       - name: Upload Playwright report
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: playwright-report-${{ matrix.browser }}
+          name: playwright-report-${{ matrix.browser }}-${{ matrix.shard }}
           path: |
             apps/web/playwright-report
             apps/web/test-results
