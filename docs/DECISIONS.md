@@ -1972,3 +1972,24 @@ M3.5 gate blocker B1. The first bias (ADR-057 era) added `P[2][2] * bias` to cli
 - **`polygonOffset` is not used for overlays.** WebGPU applies it only to triangle lists, in raw depth units, with a slope term that is zero for coplanar geometry, so the same scene would draw differently on the two backends. Replacing it with a vertex-stage shift gives one behaviour on WebGPU and WebGL2.
 - **The shift is relative: the overlay moves to `p * (1 - eps)` in view space.** Screen x, y are unchanged (the ray is the same) and only clip z changes: with `clip.w = -p.z` held, `clip.z += P[2][3] * eps / (1 - eps)` (`projectionMatrix.elements[14]`; in TSL `cameraProjectionMatrix * (0,0,0,1)` `.z`). The near plane cancels out: the pull is exactly `eps * distance` for any near/far. Unit-tested against three 0.187 `PerspectiveCamera` matrices (`packages/viewport/test/overlays.test.ts`). The viewport is perspective only; an orthographic camera would need `clip.z += P[2][2] * delta` with `delta` proportional to the visible depth range.
 - **`eps` is 0.5 % (lead, at the gate).** A sketch on a face is exactly coplanar and OCCT body edges share the face triangulation's boundary vertices, so the bias only has to beat depth precision, not a geometric gap. Every extra percent lets hidden geometry through thin walls: the workstream's first choice, 2.5 % (sized to keep a sketch 0.15 mm *below* a face visible at 0.5 scene radii), bled through a 1 mm wall at the iso fit (4,248 pixels). `coplanar.spec.ts` pins both sides at the iso fit, 1 x and 0.5 x radius, on WebGL2 and WebGL2 with `polygonOffset` stubbed: 0.03 mm below the face is drawn; 1 mm (a thin wall) and 3 mm stay hidden. The remaining cost: geometry closer than 0.5 % of the camera distance behind a face can show through.
+
+## ADR-064 — Simulation: CalculiX in the browser for small models (2026-11-10)
+
+Owner direction. This amends ADR-058, which kept every solve on the user's desktop partly because CalculiX "needs Fortran → Wasm and hits the 4 GB memory ceiling". The Fortran part is now shown to be solvable: freecad-web runs CalculiX 2.22 in the browser (f2c → Emscripten, SPOOLES + ARPACK, about 4.8 MB of Wasm, within 1% of beam theory on its tests, single-threaded, contact still broken). The memory ceiling remains, so the browser path is for **small models only**.
+
+- **Why:** installing CalculiX and running a script is the biggest friction in the S1 flow. In-browser solving gives a zero-install first study, works on locked-down machines (schools, company laptops), and allows quick checks that re-solve as the design changes. Instant results are what Onshape users praise most.
+- **Same backend, different executor:** the CalculiX deck writer, result reader, pre-run checks, failure classification and Results checks are shared. Only where `ccx` runs changes: a lazily loaded solver worker, file handoff or the Runner. The solver-backend interface gains an `executor` choice, not a second backend.
+- **Routing by estimated size:** Wren estimates unknowns and SPOOLES memory (the manual's rule is about 32 GB per 1M equations) before each solve. Under the per-study-type limit measured in S0b (expected roughly 100k unknowns in wasm32) the model solves in the tab; above it, Wren says so plainly and offers the local solver. The user can always choose the local solver.
+- **Costs accepted:**
+  - Wren maintains its own CalculiX build for each release.
+  - CI runs the benchmark suite on both the Wasm and the native builds, and their results must match.
+  - Routines that are not ported must fail loudly.
+  - Distributing the GPL Wasm requires publishing the build scripts and corresponding source.
+  - A solve dies if the tab closes.
+  - Expect native speed at best and slower in practice, single-threaded unless the pthreads build proves out.
+- **Gate:** the S0b spike (PLAN §12B). If the Wasm build gives wrong answers or too small a limit, S1 ships with local solving only. Nothing else in S1 depends on it.
+
+Alternatives considered:
+- **Desktop-only solving (ADR-058 as written):** rejected for the first-run friction.
+- **Hosted cloud solving:** rejected; it conflicts with free and local-first, and Fusion's per-solve credits are a top complaint.
+- **Rewriting a small solver in Rust or TypeScript:** rejected; CalculiX is verified, and a new solver would need its own validation.
