@@ -620,6 +620,37 @@ describe('MergePanel', () => {
     expect(within(second).getByText('Not there')).toBeInTheDocument();
   });
 
+  it('shows the merge notes as plain lines, even with no conflicts', () => {
+    renderUI(
+      <MergePanel
+        result={{ doc: conflictsForTest(0, 0).doc, conflicts: [], autoMerged: 2 }}
+        resolutions={[]}
+        onResolve={() => {}}
+        onFinish={() => {}}
+        notes={['Fillet 3 left folder Mounting to keep the folder in one piece.']}
+      />,
+    );
+    const notes = screen.getByRole('list', { name: 'Notes about this merge' });
+    expect(within(notes).getAllByRole('listitem')).toHaveLength(1);
+    expect(notes).toHaveTextContent('Fillet 3 left folder Mounting');
+  });
+
+  it('names a conflict by its subject and field when the app supplies them', () => {
+    renderUI(
+      <MergePanel
+        result={conflictsForTest(1, 0)}
+        resolutions={[]}
+        onResolve={() => {}}
+        onFinish={() => {}}
+        conflictTitle={(c) => `${c.subject.label} visibility`}
+        conflictSummary={(c) => `${c.subject.label} visibility: shown vs hidden`}
+      />,
+    );
+    const card = screen.getAllByRole('listitem')[0] as HTMLElement;
+    expect(card).toHaveAccessibleName(/Conflict 1 of 1: .* visibility: shown vs hidden/);
+    expect(within(card).getByRole('heading', { level: 3 })).toHaveTextContent(/ visibility$/);
+  });
+
   it('shows the auto-merged count and progress', () => {
     renderUI(<MergeHost />);
     expect(screen.getByTestId('merge-summary')).toHaveTextContent('0 of 3 conflicts decided');

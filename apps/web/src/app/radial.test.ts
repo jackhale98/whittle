@@ -1,10 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_RADIAL_ITEMS, modelRadialIds, sketchRadialIds, sketchToolOf } from './radial';
+import {
+  MAX_RADIAL_ITEMS,
+  modelRadialIds,
+  RADIAL_ADD_FOLDER,
+  sketchRadialIds,
+  sketchToolOf,
+} from './radial';
 
 describe('radial contents', () => {
   it('never exceeds seven items (Repeat is the eighth slot)', () => {
     const sets = [
       modelRadialIds([]),
+      modelRadialIds([], { folderable: true }),
       modelRadialIds([{ kind: 'face', planar: true }]),
       modelRadialIds([{ kind: 'face', planar: false }]),
       modelRadialIds([
@@ -29,6 +36,18 @@ describe('radial contents', () => {
     expect(modelRadialIds([{ kind: 'edge' }])).toEqual(['fillet', 'chamfer', 'measure']);
     expect(modelRadialIds([{ kind: 'region' }])).toContain('extrude');
     expect(modelRadialIds([])).toContain('fit');
+  });
+
+  it('offers Add to new folder only when several tree features can be grouped', () => {
+    expect(modelRadialIds([], { folderable: true })[0]).toBe(RADIAL_ADD_FOLDER);
+    expect(modelRadialIds([], { folderable: false })).not.toContain(RADIAL_ADD_FOLDER);
+    expect(modelRadialIds([])).not.toContain(RADIAL_ADD_FOLDER);
+    // A viewport selection wins: the menu stays about the selected geometry.
+    expect(modelRadialIds([{ kind: 'edge' }], { folderable: true })).toEqual([
+      'fillet',
+      'chamfer',
+      'measure',
+    ]);
   });
 
   it('maps sketch ids to tools', () => {
