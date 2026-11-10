@@ -1,3 +1,4 @@
+import { GripHorizontal } from 'lucide-react';
 import type { KeyboardEvent, PointerEvent } from 'react';
 import { cn } from '../components/primitives';
 import type { Slot } from './treeDrag';
@@ -88,10 +89,10 @@ export function RollbackBar({
       data-testid="rollback-bar"
       className={cn(
         'group/bar absolute right-0 left-0 z-[3] flex cursor-row-resize touch-none items-center outline-none',
-        touch ? 'h-6' : 'h-3.5',
+        touch ? 'h-11' : 'h-3.5',
         !dragging && 'transition-[top] duration-fast',
       )}
-      style={{ top: y - (touch ? 12 : 7) }}
+      style={{ top: y - (touch ? 22 : 7) }}
     >
       <span
         aria-hidden
@@ -108,6 +109,18 @@ export function RollbackBar({
           rollback < count ? 'bg-warning' : 'bg-accent',
         )}
       />
+      {touch ? (
+        <span
+          aria-hidden
+          data-testid="rollback-grab"
+          className={cn(
+            'pointer-events-none absolute left-1/2 flex h-6 w-12 -translate-x-1/2 items-center justify-center rounded-full text-accent-fg shadow-float',
+            rollback < count ? 'bg-warning' : 'bg-accent',
+          )}
+        >
+          <GripHorizontal className="size-4" />
+        </span>
+      ) : null}
     </div>
   );
 }

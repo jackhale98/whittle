@@ -47,7 +47,6 @@ export function onRegen(wb: Workbench, raw: RegenView): void {
   wb.syncViewport();
   wb.sketch?.onRegen(outcome.result);
   wb.keepInView(outcome);
-  wb.recordPreviewStep(outcome);
   if (!wb.firstRendered && wb.viewport && outcome.source === 'live') {
     wb.firstRendered = true;
     void wb.viewport.nextFrame().then(() => mark('firstBodyMs'));

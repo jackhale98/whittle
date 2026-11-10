@@ -248,7 +248,6 @@ export function App({ wb }: { wb: Workbench }) {
         {...(canUndo ? { onUndo: () => wb.undo() } : {})}
         {...(canRedo ? { onRedo: () => wb.redo() } : {})}
         {...(tree.featureTree ? { featureTree: tree.featureTree } : {})}
-        {...(tree.phoneFeatureTree ? { phoneFeatureTree: tree.phoneFeatureTree } : {})}
         paramsTable={{
           params: doc.params,
           evaluate: (e) => wb.evaluate(e),

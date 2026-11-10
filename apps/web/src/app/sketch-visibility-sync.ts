@@ -18,7 +18,7 @@ export function refreshSketchVisibility(wb: Workbench): void {
   const features = part?.features ?? [];
   const ctx: VisibilityContext = {
     features,
-    rollback: wb.preview.get() ?? part?.rollbackIndex ?? features.length,
+    rollback: part?.rollbackIndex ?? features.length,
     activeSketch: u.sketch?.featureId,
     editing: u.featureId ? features.find((f) => f.id === u.featureId) : undefined,
     wantRegions,

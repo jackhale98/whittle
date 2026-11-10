@@ -553,7 +553,7 @@ Wren can do better because its source format is text-based parametric data (§8A
 **Phone:**
 
 - The viewer comes first.
-- A bottom sheet holds parts, parameters, measure, section, explode and export, and (M3.6) the feature tree with a step-through control (previous / next feature, scrubbing the rollback position) so a design can be reviewed feature by feature.
+- A bottom sheet holds parts, parameters, measure, section, explode and export, and (M3.6) the feature tree with a touch-draggable rollback bar and a long-press menu (suppress), as on the tablet.
 - Editing is limited to parameters and simple features.
 
 ### 9.2 Interaction rules
@@ -756,7 +756,7 @@ Owner-approved 2026-11-09 from the research report `docs/ux-research/reports/CAD
 
 Owner request 2026-11-10. Small; follows the M3.5 gate.
 
-- **Phone feature tree:** the phone sheet gains the feature tree (read-only apart from what phones already edit) with step-through: previous / next feature and a scrubber that moves the rollback position, so a design can be reviewed feature by feature. The model shows the state at that step; leaving the tree restores the full model unless the user chose to keep the rollback.
+- **Phone feature tree:** the phone sheet gains the same feature tree as the tablet. The rollback bar is draggable by touch (a 44 px target; a real, undoable rollback edit) and a long press on a row opens its menu (suppress / unsuppress). Owner decision 2026-11-10: no previous / next stepper and no preview mode (ADR-068 amendment).
 - **Show or hide any sketch, including one inside a feature:** a sketch consumed by a feature is hidden by default (as now), and its eye toggle in the tree (nested or flat) overrides that per sketch, persisted in the document; "Show all sketches" / "Hide all sketches" commands. Works on every shell.
 - **Feature tree folders** (owner, 2026-11-10): select features → "Add to new folder" (tree context menu or radial menu); rename inline, collapse/expand. A folder holds a **contiguous run** of features (history order matters): dragging a folder moves the run (validated like any reorder), dragging a feature out removes it, a reorder that would split a folder asks first. Folder actions: suppress/unsuppress all, show/hide the sketches inside, roll back to before it. Folders are document data with ids (versioned, merged keyed by id: a rename on one branch and a move on another merge cleanly). Desktop drag-and-drop, tablet long-press-and-drag; the phone tree shows folders and steps through them.
 - **Accept:** E2E on a phone steps through the demo bracket's features and the viewport shows each intermediate state; E2E creates a folder from three features, renames, collapses, drags it to a new valid position, suppresses it (all three suppressed), and the folder survives save → reload and a merge of a rename against a move; E2E shows a consumed sketch via its eye toggle, the setting survives save → reload, and hiding it again restores the default.

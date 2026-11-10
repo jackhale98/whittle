@@ -42,9 +42,6 @@ export function testHooks(wb: Workbench) {
     shownSketches: () => [...wb.shownSketches],
     /** Ids of the bodies the viewport holds (what is on screen). */
     shownBodies: () => [...wb.shownBodies],
-    /** The phone step-through: the previewed rollback position (null when not previewing). */
-    preview: () => wb.preview.get(),
-    previewTimings: () => [...wb.previewTimings],
     /** Collapsed folders of the open document (UI state, per document). */
     collapsedFolders: () => [...wb.collapsedFolders.get()],
     /** Opens a feature for editing (a sketch enters sketch mode). */

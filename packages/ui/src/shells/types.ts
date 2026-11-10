@@ -6,7 +6,6 @@ import type { ToolId } from '../components/tools';
 import type { ValueChipProps } from '../components/ValueChip';
 import type { ExportBody, ExportRequest, ExportTarget } from '../export/types';
 import type { FeatureTreeProps } from '../features/FeatureTree';
-import type { PhoneFeatureTreeProps } from '../features/PhoneFeatureTree';
 import type { SheetSnap } from '../logic/sheet';
 import type { MeasurePanelProps } from '../panels/MeasurePanel';
 import type { PartsPanelProps } from '../panels/PartsPanel';
@@ -40,7 +39,7 @@ export interface ShellProps {
   onExport?(): void;
 
   /* ---- M1 data-driven panels (all optional; shells fall back to their empty states) ---- */
-  /** Feature history for the left panel's Features tab / tablet history sheet. */
+  /** Feature history for the left panel's Features tab / tablet and phone history sheets. */
   featureTree?: FeatureTreeProps;
   /** Parameters for the left panel's Params tab / tablet + phone sheets. */
   paramsTable?: ParamsTableProps;
@@ -77,11 +76,6 @@ export interface ShellProps {
    */
   sheetTab?: SheetTabId;
   onSheetTabChange?(tab: SheetTabId): void;
-  /**
-   * Phone Features tab (M3.6): the feature tree with a step-through bar. Without it the tab shows
-   * its empty state. Tablet and desktop use `featureTree`.
-   */
-  phoneFeatureTree?: PhoneFeatureTreeProps;
   /** Phone Parts tab. */
   parts?: PartsPanelProps;
   /** Phone Measure tab. */

@@ -74,7 +74,6 @@ import { MeasureTool } from './measure-tool';
 import { type Observable, observable } from './observable';
 import * as pointer from './pointer';
 import { PointerDowns } from './pointers';
-import * as stepPreview from './preview-step';
 import * as sync from './project-sync';
 import { PushPullTool } from './push-pull';
 import * as regenView from './regen-view';
@@ -86,6 +85,7 @@ import { failBoot, mark, markOnce } from './timing';
 import * as tools from './tools';
 import * as tree from './tree-actions';
 import * as view from './view-actions';
+import * as docView from './view-doc';
 import { freshDocument, readLastDoc, writeLastDoc } from './workbench-util';
 
 export { freshDocument };
@@ -414,39 +414,10 @@ export class Workbench {
    * feature's *input* geometry, never its own output.
    */
   viewDoc(): WrenDoc {
-    return stepPreview.viewDoc(this);
+    return docView.viewDoc(this);
   }
 
   viewMemo: { doc: WrenDoc; index: number; out: WrenDoc } | null = null;
-  previewMemo: { doc: WrenDoc; index: number; out: WrenDoc } | null = null;
-  /**
-   * The phone's step-through preview (M3.6): the rollback position being shown, or null. View
-   * state only: it never writes the document (no undo entry, autosave, sync or dirty flag).
-   */
-  readonly preview = observable<number | null>(null);
-
-  /** Shows the model after the first `index` features without changing the document. */
-  previewRollback(index: number): void {
-    stepPreview.previewRollback(this, index);
-  }
-
-  /** Back to the full model (the document was never changed). */
-  endPreview(): void {
-    stepPreview.endPreview(this);
-  }
-
-  /** "Keep this rollback": the one write a preview makes. */
-  keepPreview(): void {
-    stepPreview.keepPreview(this);
-  }
-
-  recordPreviewStep(outcome: RegenView): void {
-    stepPreview.recordPreviewStep(this, outcome);
-  }
-
-  /** Step timings for the budget check: when a step was asked for, and when its result showed. */
-  previewSteps: { index: number; t0: number }[] = [];
-  previewTimings: { index: number; ms: number; cached: boolean }[] = [];
   private lastPickKey = '';
   /** Feature statuses of the last regen of the real (not rolled-back-for-picking) document. */
   readonly treeStatuses = observable<RegenResult['features'] | undefined>(undefined);
@@ -498,12 +469,6 @@ export class Workbench {
   /** `loaded`: the document was replaced (open/new), not edited: nothing to autosave yet. */
   private onDocChange(doc: WrenDoc, loaded: boolean): void {
     this.syncCollapsed();
-    // An edit that arrives during a step-through (sync, undo, a load) ends the preview: what it
-    // showed is no longer a view of this document.
-    if (this.preview.get() !== null) {
-      this.preview.set(null);
-      this.previewMemo = null;
-    }
     if (!this.ui.get().ready) return;
     this.loop?.request();
     if (!loaded && !this.applyingRemote) this.autosaver.schedule(doc);

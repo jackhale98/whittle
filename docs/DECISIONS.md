@@ -2058,6 +2058,14 @@ Implements ADR-060, ADR-066 and ADR-067 in `apps/web`.
 - **Measured** (demo bracket, 6 steps, Chromium with software GL, phone viewport, coarse meshes): a step is on screen in 13 to 51 ms when the shape was shown before, 250 to 440 ms the first time a position is meshed (the regen results themselves are cached from the full-model regen).
 - **The feature tree is its own chunk.** With the M3.6 tree (folders, prompts, step bar) in the shell, the initial route was 255.3 kB gzip (247.0 before M3.6, budget 250). `FeatureTree` and `PhoneFeatureTree` are now `React.lazy` in the shells (`TreePanel`, like `ParamsPanel`), and the nest-sketches preference moved to `logic/nestPref.ts` so the app can read it without importing the tree. Initial route: 243.3 kB gzip (sum of the `index.html` script chunks). The tree shows "Loading features…" for the moment its chunk takes on a cold visit.
 
+### Amendment to ADR-068 (2026-11-10, owner request): the phone uses the real rollback bar
+
+The phone's Features tab no longer has a step-through. Owner: "we don't need the next and back buttons ... just the tree and the drag line that lets the user change what's suppressed and rolled back to. The current view is too busy and confusing."
+
+- The Features tab renders the same `FeatureTree` as the tablet sheet (`density="touch"`, via `TreePanel`). The rollback bar is draggable by touch: on touch density it is a 44 px target with a grab handle, and dragging writes `setRollback` as on desktop and tablet (an ordinary undoable edit; the regen follows live).
+- A long press on a row opens its menu (Suppress / Unsuppress, Rename, Edit, the eye); suppression is a normal undoable edit.
+- **Removed** (not kept as dead code): the document-neutral preview mode (`Workbench.preview`, `viewDoc()`'s preview copy, `previewRollback` / `keepPreview` / `endPreview`, the step timings and the `preview` / `previewTimings` test hooks), `PhoneFeatureTree` / `FeatureStepper` and `treeSteps` (`buildSteps`, `stepAt`, `stepLabel`) in `packages/ui`. The sketch-visibility resolver now reads `part.rollbackIndex` only, and "any document change ends the preview" no longer applies. The first bullets of ADR-068 about the preview are superseded by this note.
+
 ## ADR-069 — Addendum to ADR-057: wheel zoom is ours, anchored on the surface under the cursor (2026-11-10)
 
 Owner report: desktop wheel zoom "very laggy, doesn't control well". Measured on the viewport harness and the demo bracket (Chromium, software GL), M3 (437f8a0) against the M3.5 head (836867c).

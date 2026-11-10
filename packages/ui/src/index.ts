@@ -102,13 +102,6 @@ export {
 } from './features/FeatureTree';
 export { FolderRow, type FolderRowProps } from './features/FolderRow';
 export { featureMeta } from './features/featureMeta';
-export {
-  FeatureStepper,
-  type FeatureStepperProps,
-  PhoneFeatureTree,
-  type PhoneFeatureTreeProps,
-  type PhoneTreeData,
-} from './features/PhoneFeatureTree';
 export { SketchEye, type SketchEyeProps } from './features/SketchEye';
 export {
   folderCommands,
@@ -276,7 +269,6 @@ export {
   type TreeNesting,
 } from './logic/treeNesting';
 export { buildRows, type TreeRow } from './logic/treeRows';
-export { buildSteps, type Step, stepAt, stepLabel } from './logic/treeSteps';
 export {
   initialTutorial,
   type TutorialAction,

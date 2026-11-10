@@ -4,16 +4,14 @@ import { useState } from 'react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
   AppShell,
-  FeatureStepper,
   FeatureTree,
   type FeatureTreeItem,
   type FeatureTreeProps,
-  PhoneFeatureTree,
   type TreeFolder,
 } from '../src';
 import { renderUI } from './helpers';
 
-/* M3.6: folders, sketch eye, drag outcomes and the phone step-through in the tree component. */
+/* M3.6: folders, sketch eye, drag outcomes and the phone Features tab in the tree component. */
 
 const region = (s: string) => ({ name: `S${s}:region(e1)`, kind: 'region' as const });
 type Item = FeatureTreeItem & { profile?: unknown };
@@ -477,149 +475,62 @@ describe('drag and drop', () => {
 /* ------------------------------------------------------------------ phone */
 
 describe('phone shell Features tab', () => {
-  it('opens the tree with the stepper and restores the model when the tab is left', async () => {
-    const onExit = vi.fn();
+  it('shows the same tree as the tablet, with the rollback bar and no stepper', async () => {
+    const onRollback = vi.fn();
     renderUI(
       <AppShell
         tier="phone"
         documentName="Bracket"
         kernelStatus={{ state: 'idle' }}
         viewport={<div />}
-        phoneFeatureTree={{
-          tree: { features, folders: [mounting] },
-          previewIndex: 4,
-          onPreview: () => {},
-          onKeep: () => {},
-          onExit,
-        }}
+        featureTree={{ features, folders: [mounting], onRollback, onSuppress: vi.fn() }}
       />,
     );
     const tabs = screen.getByRole('group', { name: 'Viewer tools' });
     fireEvent.click(within(tabs).getByRole('button', { name: 'Features' }));
-    expect(await screen.findByRole('slider', { name: 'Feature position' })).toBeInTheDocument();
-    expect(screen.getByRole('treeitem', { name: /^Mounting/ })).toBeInTheDocument();
-    fireEvent.click(within(tabs).getByRole('button', { name: 'Params' }));
-    await waitFor(() => expect(onExit).toHaveBeenCalledTimes(1));
+    expect(await screen.findByRole('treeitem', { name: /^Mounting/ })).toBeInTheDocument();
+    expect(screen.getByRole('separator', { name: 'Rollback bar' })).toBeInTheDocument();
     expect(screen.queryByRole('slider')).toBeNull();
-  });
-});
-
-describe('phone step-through', () => {
-  const tree = { features, folders: [mounting] };
-  function phone(over: Partial<React.ComponentProps<typeof PhoneFeatureTree>> = {}) {
-    const props = {
-      tree,
-      previewIndex: null,
-      onPreview: vi.fn(),
-      onKeep: vi.fn(),
-      onExit: vi.fn(),
-      ...over,
-    };
-    const view = renderUI(<PhoneFeatureTree {...props} />);
-    return { props, ...view };
-  }
-
-  it('shows the folder and labels the step', () => {
-    phone({ previewIndex: 4 });
-    expect(screen.getByRole('treeitem', { name: /^Mounting/ })).toBeInTheDocument();
-    // steps: E1 F1 F2 E2 H1 S3; position 4 = after Fillet 2 -> step 3
-    expect(screen.getByTestId('step-label')).toHaveTextContent('3 of 6 · Fillet 2');
-  });
-
-  it('Previous and Next preview the neighbouring rollback positions', async () => {
-    const { props } = phone({ previewIndex: 4 });
-    await userEvent.click(screen.getByRole('button', { name: 'Previous feature' }));
-    expect(props.onPreview).toHaveBeenLastCalledWith(3);
-    await userEvent.click(screen.getByRole('button', { name: 'Next feature' }));
-    expect(props.onPreview).toHaveBeenLastCalledWith(6);
-  });
-
-  it('the scrubber is a slider over the steps with a spoken label', () => {
-    const { props } = phone({ previewIndex: 4 });
-    const slider = screen.getByRole('slider', { name: 'Feature position' });
-    expect(slider).toHaveAttribute('max', '5');
-    expect(slider).toHaveValue('2');
-    expect(slider).toHaveAttribute('aria-valuetext', '3 of 6 · Fillet 2');
-    fireEvent.change(slider, { target: { value: '0' } });
-    expect(props.onPreview).toHaveBeenLastCalledWith(2);
-  });
-
-  it('Previous / Next stop at the ends', () => {
-    phone({ previewIndex: null });
-    expect(screen.getByRole('button', { name: 'Next feature' })).toBeDisabled();
-    expect(screen.getByTestId('step-label')).toHaveTextContent('6 of 6 · Sketch 3');
-  });
-
-  it('a collapsed folder is one step; opening it steps inside', async () => {
-    const { rerender, props } = phone({
-      previewIndex: 2,
-      tree: { ...tree, collapsedFolders: ['m'] },
-    });
-    expect(screen.getByTestId('step-label')).toHaveTextContent('1 of 5 · Extrude 1');
-    await userEvent.click(screen.getByRole('button', { name: 'Next feature' }));
-    expect(props.onPreview).toHaveBeenLastCalledWith(4);
-    expect(screen.getByRole('slider')).toHaveAttribute('max', '4');
-    rerender(<PhoneFeatureTree {...props} tree={{ ...tree, collapsedFolders: [] }} />);
-    expect(screen.getByRole('slider')).toHaveAttribute('max', '5');
-  });
-
-  it('Keep and Exit appear only while previewing', async () => {
-    const { props, unmount } = phone({ previewIndex: 4 });
-    await userEvent.click(screen.getByRole('button', { name: 'Keep this rollback' }));
-    expect(props.onKeep).toHaveBeenCalled();
-    await userEvent.click(screen.getByRole('button', { name: 'Back to full model' }));
-    expect(props.onExit).toHaveBeenCalledTimes(1);
-    unmount();
-    phone({ previewIndex: null });
+    expect(screen.queryByRole('button', { name: 'Next feature' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Keep this rollback' })).toBeNull();
   });
 
-  it('leaving the tab mid-preview restores the model', async () => {
-    const { props, unmount } = phone({ previewIndex: 4 });
-    expect(props.onExit).not.toHaveBeenCalled();
-    unmount();
-    await waitFor(() => expect(props.onExit).toHaveBeenCalledTimes(1));
+  it('the touch rollback bar is a 44 px target with a grab handle', () => {
+    setup({ density: 'touch' });
+    const bar = screen.getByRole('separator', { name: 'Rollback bar' });
+    expect(bar.className).toMatch(/h-11/);
+    expect(within(bar).getByTestId('rollback-grab')).toBeInTheDocument();
   });
 
-  it('does not call exit on unmount when not previewing', async () => {
-    const { props, unmount } = phone({ previewIndex: null });
-    unmount();
-    await new Promise((r) => setTimeout(r, 10));
-    expect(props.onExit).not.toHaveBeenCalled();
+  it('the compact (desktop) rollback bar has no grab handle', () => {
+    setup({ density: 'compact' });
+    const bar = screen.getByRole('separator', { name: 'Rollback bar' });
+    expect(within(bar).queryByTestId('rollback-grab')).toBeNull();
   });
 
-  it('is read-only: no grips with a move handler, no reorder, the eye still works', async () => {
+  it('a long press on a row offers Suppress, which suppresses it', async () => {
+    const { props } = setup({ density: 'touch' });
+    const row = screen.getByRole('treeitem', { name: /Extrude 1/ });
+    fireEvent(
+      row,
+      Object.assign(new MouseEvent('pointerdown', { bubbles: true, clientX: 40, clientY: 40 }), {
+        pointerType: 'touch',
+        pointerId: 1,
+      }),
+    );
+    const item = await screen.findByRole('menuitem', { name: /^Suppress/ }, { timeout: 2000 });
+    fireEvent.click(item);
+    expect(props.onSuppress).toHaveBeenCalledWith('e1', true);
+  });
+
+  it('keeps the eye on touch targets', async () => {
     const onSketchVisibility = vi.fn();
-    phone({ tree: { ...tree, onSketchVisibility } });
-    expect(
-      screen.getAllByTestId('feature-tree')[0]?.querySelector('[data-grip].cursor-grab'),
-    ).toBeNull();
+    setup({ density: 'touch', onSketchVisibility });
     const eye = within(screen.getByRole('treeitem', { name: /Sketch 3/ })).getByTestId(
       'sketch-eye',
     );
     expect(eye.className).toMatch(/size-11/);
     await userEvent.click(eye);
     expect(onSketchVisibility).toHaveBeenCalledWith(['s3'], 'hidden');
-  });
-
-  it('stepper buttons are at least 44 px', () => {
-    renderUI(
-      <FeatureStepper
-        steps={[{ index: 1, label: 'A' }]}
-        at={0}
-        previewing
-        onStep={() => {}}
-        onKeep={() => {}}
-        onExit={() => {}}
-      />,
-    );
-    for (const name of [
-      'Previous feature',
-      'Next feature',
-      'Keep this rollback',
-      'Back to full model',
-    ]) {
-      expect(screen.getByRole('button', { name }).className).toMatch(/h-11/);
-    }
   });
 });

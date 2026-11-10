@@ -30,9 +30,6 @@ export interface AppHooks {
   shownSketches(): string[];
   /** Ids of the bodies the viewport holds. */
   shownBodies(): string[];
-  /** The phone step-through's previewed rollback position (null when not previewing). */
-  preview(): number | null;
-  previewTimings(): { index: number; ms: number; cached: boolean }[];
   /** Folders the user has collapsed in the open document. */
   collapsedFolders(): string[];
   editFeature(id: string): void;
@@ -133,8 +130,6 @@ export const app = (page: Page) => ({
   idle: () => page.evaluate(() => (window as unknown as W).__wrenApp.idle()),
   shownSketches: () => page.evaluate(() => (window as unknown as W).__wrenApp.shownSketches()),
   shownBodies: () => page.evaluate(() => (window as unknown as W).__wrenApp.shownBodies()),
-  preview: () => page.evaluate(() => (window as unknown as W).__wrenApp.preview()),
-  previewTimings: () => page.evaluate(() => (window as unknown as W).__wrenApp.previewTimings()),
   collapsedFolders: () =>
     page.evaluate(() => (window as unknown as W).__wrenApp.collapsedFolders()),
   editFeature: (id: string) =>
