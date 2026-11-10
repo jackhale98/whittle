@@ -773,6 +773,7 @@ Owner-approved 2026-11-10. A deliberate, behaviour-preserving pass so the code s
 - **Long-session soak test:** an E2E that opens the demo bracket, makes 100 edits (parameters, feature edits, undo/redo, sketch edits), closes and reopens it 10 times, and asserts that kernel shape handles return to baseline, JS heap and worker memory stay within a bound, and frame time does not drift. Runs nightly or on demand, not on every push.
 - **Kernel memory guard:** report live shape-handle counts and the worker's Wasm heap in diagnostics; the LRU shape cache's limits are checked by a test at a large model size.
 - **Test-time hygiene:** identify the slowest 10 E2E specs and cut redundant setup (shared booted documents, fixtures) without losing coverage; keep CI shards under 15 minutes.
+- **Perf budgets enforced in CI:** the viewport perf probes (orbit-start pick ≤ 2 ms, full-screen box select ≤ 16 ms, 1M-triangle orbit, compare toggle) run in CI with `WREN_PERF_ASSERT=1` and a CI factor, and are no longer `continue-on-error`. Fix or delete the "Execution context was destroyed" failure noted in ci.yml. Today these numbers are only measured by hand (M3.5 gate B2).
 - **Accept:** all suites green with unchanged expectations; no source file over 2,500 lines and the three splits each under ~1,500; the soak test passes with handles back to baseline; bundle report in CI; CI wall-clock not worse.
 
 ### M3.7 — Part configurations

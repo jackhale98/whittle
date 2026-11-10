@@ -214,28 +214,67 @@ test('sketch mode: a one-finger drag on empty space orbits; presses the sketch k
     const after = (await cameraState(page)).position as number[];
     return Math.hypot(...after.map((v, i) => v - (before[i] ?? 0)));
   };
-  const penDrag = async () => {
-    await t.pen.down(from);
+  const penDrag = async (a0: { x: number; y: number }, b0: { x: number; y: number }) => {
+    await t.pen.down(a0);
     for (let k = 1; k <= 8; k++)
       await t.pen.move({
-        x: from.x + ((to.x - from.x) * k) / 8,
-        y: from.y + ((to.y - from.y) * k) / 8,
+        x: a0.x + ((b0.x - a0.x) * k) / 8,
+        y: a0.y + ((b0.y - a0.y) * k) / 8,
       });
-    await t.pen.up(to);
+    await t.pen.up(b0);
   };
 
-  // The line tool is active: a finger drag and a Pencil drag draw, they never orbit.
-  expect((await a.ui()).sketch?.tool).toBe('line');
-  expect(await moved(() => t.drag(from, to)), 'finger drag with the line tool').toBeLessThan(1e-6);
-  await page.keyboard.press('Escape'); // end the chain
-  expect(await moved(penDrag), 'Pencil drag with the line tool').toBeLessThan(1e-6);
+  const total = async () => {
+    const c = await counts(page);
+    return c.lines + c.points;
+  };
+  const tools = page.getByRole('toolbar', { name: 'Sketch tools' });
+  const lineTool = tools.getByRole('button', { name: 'Line', exact: true });
 
-  // No tool, nothing under the finger: the drag orbits.
-  await page.keyboard.press('Escape');
-  await page.keyboard.press('Escape');
-  await a.idle();
-  const orbit = await moved(() => t.drag(from, to));
+  // 1. No tool, before any Pencil input (the Pencil hands later fingers to the camera), on a spot
+  //    with nothing drawn: a one-finger drag orbits and the sketch stays open.
+  await lineTool.tap();
+  await expect.poll(async () => (await a.ui()).sketch?.tool ?? null).toBeNull();
+  expect((await a.ui()).sketch, 'still sketching').not.toBeNull();
+  // Up and right, like the line strokes below: from the straight-down sketch view a downward drag
+  // would push a turntable orbit over the pole (clamped, it only spins about the view axis).
+  const empty = { x: box.x + box.width - 300, y: box.y + 320 };
+  const emptyTo = { x: empty.x + 90, y: empty.y - 60 };
+  expect(await total(), 'nothing drawn yet').toBe(0);
+  const orbit = await moved(() => t.drag(empty, emptyTo));
   expect(orbit, 'one-finger drag on empty space in select mode').toBeGreaterThan(1);
-  // The Pencil with no tool draws a stroke instead of navigating.
-  expect(await moved(penDrag), 'Pencil drag with no tool').toBeLessThan(1e-6);
+  expect((await a.ui()).sketch, 'orbiting keeps the sketch open').not.toBeNull();
+  expect(await total(), 'orbiting draws nothing').toBe(0);
+  // Back to the plane view, so the next strokes land on the sketch plane where expected.
+  await page.keyboard.press('Digit5'); // Top view
+  await cameraStill(page);
+
+  // 2. The line tool: a finger drag draws a line and never orbits.
+  await lineTool.tap();
+  await expect.poll(async () => (await a.ui()).sketch?.tool ?? null).toBe('line');
+  const lines0 = (await counts(page)).lines;
+  expect(await moved(() => t.drag(from, to)), 'finger drag with the line tool').toBeLessThan(1e-6);
+  expect((await counts(page)).lines, 'the finger drag drew a line').toBe(lines0 + 1);
+  await page.keyboard.press('Escape'); // end the chain, keep the tool
+  await expect.poll(async () => (await a.ui()).sketch?.tool ?? null).toBe('line');
+
+  // 3. The Pencil with the line tool draws too, and never orbits.
+  const from2 = { x: from.x, y: from.y - 120 };
+  const to2 = { x: to.x, y: to.y - 120 };
+  const lines1 = (await counts(page)).lines;
+  expect(await moved(() => penDrag(from2, to2)), 'Pencil drag with the line tool').toBeLessThan(
+    1e-6,
+  );
+  expect((await counts(page)).lines, 'the Pencil drag drew a line').toBe(lines1 + 1);
+
+  // 4. No tool: the Pencil draws a recognised stroke instead of navigating.
+  await page.keyboard.press('Escape');
+  await lineTool.tap();
+  await expect.poll(async () => (await a.ui()).sketch?.tool ?? null).toBeNull();
+  expect((await a.ui()).sketch, 'still sketching').not.toBeNull();
+  const from3 = { x: from.x, y: from.y - 240 };
+  const to3 = { x: to.x, y: to.y - 240 };
+  const before = await total();
+  expect(await moved(() => penDrag(from3, to3)), 'Pencil drag with no tool').toBeLessThan(1e-6);
+  expect(await total(), 'the Pencil stroke drew geometry').toBeGreaterThan(before);
 });

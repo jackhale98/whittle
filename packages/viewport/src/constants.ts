@@ -23,8 +23,12 @@ export const TWIST_START_RAD = (5 * Math.PI) / 180;
 export const HANDLE_LENGTH_PX = 84;
 /** Extra pick tolerance around a handle arrow (it is thick), CSS px. */
 export const HANDLE_PICK_PAD_PX = 8;
-/** A long-press timer this late means the main thread stalled; queued pointer moves get a chance first. */
-export const LONG_PRESS_JANK_MS = 80;
+/**
+ * A long-press timer later than this means the main thread was busy at the deadline: queued
+ * pointer input (a lift, a move) gets a chance first. A little above normal timer jitter; 80 ms
+ * let a timer 28 ms late beat a queued lift on a loaded phone.
+ */
+export const LONG_PRESS_JANK_MS = 12;
 /** How long to wait for them (once). */
 export const LONG_PRESS_GRACE_MS = 60;
 

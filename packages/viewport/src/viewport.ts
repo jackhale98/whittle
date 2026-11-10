@@ -2241,9 +2241,11 @@ class ViewportImpl implements ViewportEngine {
     this.longPressTimer = window.setTimeout(
       () => {
         const now = performance.now();
-        // A badly late timer means the main thread was stalled; pointer moves that queued up
-        // behind the stall have not been seen yet. Give them one short chance to cancel the press.
-        if (!graceUsed && now - at > LONG_PRESS_JANK_MS) {
+        // A late timer means the main thread was busy at the deadline: a lift or move that queued
+        // behind that work has not been seen yet (on a loaded phone a 50 ms tap fired as a
+        // long-press, opened the radial menu and the menu then ate the next tap). Give queued input
+        // one short chance to end or move the press first; Chromium also reports it directly.
+        if (!graceUsed && (now - at > LONG_PRESS_JANK_MS || inputPending())) {
           this.armLongPressAfter(LONG_PRESS_GRACE_MS);
           return;
         }
@@ -3621,6 +3623,15 @@ class ViewportImpl implements ViewportEngine {
  * and double-tap timing right when the main thread stalls and events queue up. Falls back to
  * `performance.now()` for events with an implausible timestamp.
  */
+function inputPending(): boolean {
+  const s = (navigator as Navigator & { scheduling?: { isInputPending?(): boolean } }).scheduling;
+  try {
+    return s?.isInputPending?.() === true;
+  } catch {
+    return false;
+  }
+}
+
 function eventTime(e: Event): number {
   const now = performance.now();
   const t = e.timeStamp;

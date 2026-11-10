@@ -690,7 +690,10 @@ test('perf probe: orbit start and full-screen box select on a 1M-triangle model'
     await page.mouse.move(cx + i * 7, cy + 10);
     await page.mouse.down({ button: 'right' });
     await page.mouse.move(cx + i * 7 + 20, cy + 10, { steps: 3 });
-    starts.push((await state(page)).lastPivotMs);
+    const st = await state(page);
+    // Measuring a fallback (scene centre) would time nothing: the pick must hit the dense face.
+    expect(st.pivotSource, 'orbit-start pick hit the surface').toBe('surface');
+    starts.push(st.lastPivotMs);
     await page.mouse.up({ button: 'right' });
   }
   const med = (a: number[]) => [...a].sort((x, y) => x - y)[Math.floor(a.length / 2)] as number;

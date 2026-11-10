@@ -1993,3 +1993,14 @@ Alternatives considered:
 - **Desktop-only solving (ADR-058 as written):** rejected for the first-run friction.
 - **Hosted cloud solving:** rejected; it conflicts with free and local-first, and Fusion's per-solve credits are a top complaint.
 - **Rewriting a small solver in Rust or TypeScript:** rejected; CalculiX is verified, and a new solver would need its own validation.
+
+## ADR-065 — Long-press yields to queued input after a busy main thread (2026-11-10)
+
+M3.5 gate finding. The gesture recogniser times presses from event timestamps (`eventTime`), which is correct when the main thread stalls: a press is as long as the finger was really down. But its long-press deadline is enforced by a timer. When work started by the press (a pick, a lazy chunk, a regen) keeps the main thread busy past the deadline, the timer and the queued lift become runnable together. Chromium could run the timer first, so a 50 ms tap fired as a long-press.
+
+On a loaded phone run (E2E `m2-phone`, failing 10–30% on the M3.5 branch, never on main) that opened the radial menu in "held" mode. The user's next tap, on the context bubble's Measure, then counted as a press outside the menu: it cancelled the menu, and the menu's one-shot click guard swallowed the click.
+
+- **Decision:** a long-press timer that fires more than `LONG_PRESS_JANK_MS` = 12 ms late (was 80 ms) gives queued input one `LONG_PRESS_GRACE_MS` (60 ms) chance first. So does a timer that fires while Chromium's `navigator.scheduling.isInputPending()` reports input waiting. 12 ms is a little above normal timer jitter.
+- **Cost:** under load a genuine long-press can come up to 60 ms later.
+- **Evidence:** `m2-phone` passes 20/20 with its original 5 s budget (before the fix: 2–3 failures in 10). `touch.spec.ts` gains a stall test as a guard; on its own it does not reproduce the race, since Chromium happened to deliver the lift first there.
+- **Follow-up (not a blocker):** the radial menu could open in tap mode, not held mode, when its pointer has already lifted before the lazily loaded menu mounts.

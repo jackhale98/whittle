@@ -113,6 +113,37 @@ test.describe('touch gestures (CDP touch)', () => {
     expect(dist((await camera(page)).position, before.position)).toBeLessThan(0.5);
   });
 
+  test('a tap whose lift is queued behind a stall past 500 ms stays a tap (M3.5 gate)', async ({
+    page,
+  }) => {
+    await open(page, Q);
+    const t = await touchDriver(page);
+    const g = await collectGestures(page);
+    // The press starts ~560 ms of main-thread work (a pick, a lazy chunk, a regen). The lift is
+    // created a few ms after the press but queues behind it, and the long-press timer comes due
+    // while it runs: when the stall ends the timer must not win against the queued lift (it did
+    // on a loaded phone run, opening the radial menu, which then ate the next tap).
+    await page.evaluate(() => {
+      const c = document.querySelector('canvas') as HTMLCanvasElement;
+      c.addEventListener(
+        'pointerdown',
+        (e) => {
+          const t0 = e.timeStamp;
+          setTimeout(() => {
+            while (performance.now() < t0 + 560) {
+              /* stall */
+            }
+          }, 0);
+        },
+        { once: true },
+      );
+    });
+    await t.start([{ x: t.cx, y: t.cy, id: 1 }]);
+    await t.end();
+    await page.waitForTimeout(900);
+    expect(await g.kinds()).not.toContain('longPress');
+  });
+
   test('a press that moves > 8 px before 500 ms is a drag, not a long-press', async ({ page }) => {
     await open(page, Q);
     const t = await touchDriver(page);
