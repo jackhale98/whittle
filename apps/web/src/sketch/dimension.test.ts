@@ -1,6 +1,8 @@
-import { rectangleCornerTool } from '@wren-cad/sketch';
+import type { DimensionConstraint, SketchEntity } from '@wren-cad/contracts';
+import { circleCenterTool, rectangleCornerTool } from '@wren-cad/sketch';
 import { describe, expect, it } from 'vitest';
 import {
+  carryLabels,
   convertRadiusDiameter,
   dimensionAt,
   dimensionFor,
@@ -114,5 +116,67 @@ describe('dimension tool', () => {
     expect(convertRadiusDiameter('2 * (r) + (gap)', false)).toBe('(2 * (r) + (gap))/2');
     expect(convertRadiusDiameter('((a + b))/2', true)).toBe('(a + b)');
     expect(convertRadiusDiameter('2 * (a * (b + c))', false)).toBe('a * (b + c)');
+  });
+});
+
+describe('placed labels follow their geometry (owner bug: the leader swung round a fixed label)', () => {
+  const circle = circleCenterTool([10, 10], 15, {
+    id: (() => {
+      let n = 0;
+      return () => `c${++n}`;
+    })(),
+  });
+  // ids: c1 the centre point, c2 the circle
+  const dia: DimensionConstraint = {
+    id: 'd1',
+    kind: 'diameter',
+    curve: 'c2',
+    value: '30',
+    driving: true,
+    label: [35, 20],
+  };
+  const before = { entities: circle.entities, constraints: [dia] };
+  const moveTo = (x: number, y: number, r = 15) => ({
+    entities: circle.entities.map(
+      (e): SketchEntity =>
+        e.kind === 'point' ? { ...e, x, y } : e.kind === 'circle' ? { ...e, radius: r } : e,
+    ),
+    constraints: [dia],
+  });
+
+  it('a moved circle carries its diameter label by the same amount', () => {
+    const out = carryLabels(before, moveTo(30, 5));
+    expect(out[0]).toMatchObject({ id: 'd1', label: [55, 15] });
+  });
+
+  it('a resize alone does not move the label; nothing moved returns the same array', () => {
+    const same = moveTo(10, 10, 20);
+    expect(carryLabels(before, same)).toBe(same.constraints);
+  });
+
+  it('labels never placed (auto position) and non-dimension constraints are left alone', () => {
+    const auto: DimensionConstraint = { ...dia, label: undefined } as DimensionConstraint;
+    const after = { ...moveTo(30, 5), constraints: [auto] };
+    expect(carryLabels({ ...before, constraints: [auto] }, after)).toBe(after.constraints);
+  });
+
+  it('a length label moves with its line midpoint', () => {
+    const len: DimensionConstraint = {
+      id: 'd2',
+      kind: 'length',
+      line: 'e5',
+      value: '40',
+      driving: true,
+      label: [20, -8],
+    };
+    const shifted = {
+      entities: rect.entities.map(
+        (e): SketchEntity => (e.kind === 'point' ? { ...e, x: e.x + 5, y: e.y + 2 } : e),
+      ),
+      constraints: [len],
+    };
+    expect(carryLabels({ entities: rect.entities, constraints: [len] }, shifted)[0]).toMatchObject({
+      label: [25, -6],
+    });
   });
 });

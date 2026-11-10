@@ -35,6 +35,7 @@ import type { GeometricConstraintKind, SketchToolId } from '@wren-cad/ui';
 import { toWorld } from '../model/frames';
 import { toleranceFor } from '../selection/pick';
 import {
+  carryLabels,
   convertRadiusDiameter,
   dimensionAt,
   initialExpr,
@@ -536,7 +537,9 @@ export class SketchSession {
       if (next.entities === f.entities && next.constraints === f.constraints) return;
       const res = await this.solveData(next);
       const entities = res.status === 'solved' ? res.entities : [...next.entities];
-      const feature: SketchFeature = { ...f, entities, constraints: [...next.constraints] };
+      // Placed labels follow the geometry the solve moved.
+      const constraints = carryLabels(next, { entities, constraints: next.constraints });
+      const feature: SketchFeature = { ...f, entities, constraints: [...constraints] };
       this.wb.apply(
         { kind: 'updateFeature', partId: part.id, featureId: f.id, feature },
         typeof label === 'function' ? label() : label,
@@ -640,15 +643,7 @@ export class SketchSession {
     const f = this.feature();
     if (!u || !f) return;
     if (u.selectedConstraint) {
-      const id = u.selectedConstraint;
-      this.patch({ selectedConstraint: null });
-      void this.commitEdit(
-        (cur) => ({
-          entities: cur.entities,
-          constraints: cur.constraints.filter((c) => c.id !== id),
-        }),
-        'Delete constraint',
-      );
+      this.deleteConstraint(u.selectedConstraint);
       return;
     }
     // The origin and axes can be selected but never deleted.
@@ -656,6 +651,22 @@ export class SketchSession {
     if (ids.length === 0) return;
     this.patch({ selected: [] });
     void this.commitEdit((cur) => removeEntities(cur, ids), 'Delete sketch geometry');
+  }
+
+  /** Removes one constraint or dimension (one undo step). */
+  deleteConstraint(id: Id): void {
+    const u = this.ui();
+    if (!u) return;
+    if (u.selectedConstraint === id || u.editDimension === id)
+      this.patch({ selectedConstraint: null, editDimension: null });
+    void this.commitEdit(
+      // Already gone (a second Delete): unchanged, so no empty undo step.
+      (cur) =>
+        cur.constraints.some((c) => c.id === id)
+          ? { entities: cur.entities, constraints: cur.constraints.filter((c) => c.id !== id) }
+          : cur,
+      'Delete constraint',
+    );
   }
 
   selectConstraint(id: Id | null): void {
@@ -1228,7 +1239,12 @@ export class SketchSession {
         kind: 'updateFeature',
         partId: part.id,
         featureId: f.id,
-        feature: { ...f, entities: res.entities },
+        feature: {
+          ...f,
+          entities: res.entities,
+          // Placed labels follow the dragged geometry.
+          constraints: [...carryLabels(f, { entities: res.entities, constraints: f.constraints })],
+        },
       },
       'Drag sketch geometry',
       key,

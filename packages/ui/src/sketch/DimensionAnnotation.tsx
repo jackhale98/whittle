@@ -19,6 +19,49 @@ export interface DimensionGeometry {
   leader?: { a: P; b: P };
   /** Angle arc about `center` from angle `start` to `end` (radians, screen y down), radius px. */
   arc?: { center: P; radius: number; start: number; end: number };
+  /**
+   * Points the hit area keeps clear (by `HIT_CLEAR` px): the sketch geometry a stroke crosses,
+   * e.g. a diameter leader over its circle's centre point, so that point can still be grabbed.
+   */
+  clear?: readonly P[];
+}
+
+/** Radius (px) around a `clear` point inside which the annotation takes no pointer events. */
+export const HIT_CLEAR = 10;
+
+/**
+ * The pieces of segment a-b that stay outside every `clear` disc (radius `r`). Exported for tests.
+ */
+export function clipSegment(
+  s: { a: P; b: P },
+  clear: readonly P[],
+  r = HIT_CLEAR,
+): { a: P; b: P }[] {
+  const dx = s.b.x - s.a.x;
+  const dy = s.b.y - s.a.y;
+  const L = Math.hypot(dx, dy);
+  if (L < 1e-9 || clear.length === 0) return L < 1e-9 ? [] : [s];
+  const ux = dx / L;
+  const uy = dy / L;
+  const cuts: [number, number][] = [];
+  for (const p of clear) {
+    const t = (p.x - s.a.x) * ux + (p.y - s.a.y) * uy;
+    const d = Math.abs((p.x - s.a.x) * uy - (p.y - s.a.y) * ux);
+    if (d >= r) continue;
+    const h = Math.sqrt(r * r - d * d);
+    cuts.push([t - h, t + h]);
+  }
+  cuts.sort((m, n) => m[0] - n[0]);
+  const out: { a: P; b: P }[] = [];
+  let from = 0;
+  const at = (t: number) => ({ x: s.a.x + ux * t, y: s.a.y + uy * t });
+  for (const [c0, c1] of cuts) {
+    if (c0 > from + 0.5) out.push({ a: at(from), b: at(Math.min(c0, L)) });
+    from = Math.max(from, c1);
+    if (from >= L) break;
+  }
+  if (from < L - 0.5) out.push({ a: at(from), b: at(L) });
+  return out;
 }
 
 export interface DimensionAnnotationProps {
@@ -92,11 +135,18 @@ export function DimensionAnnotation({
   for (const e of geometry.extensions ?? []) strokes.push(seg(e));
   // Only the dimension line, leader and arc take hover and clicks: an extension line starts a
   // hair from the geometry it measures, and a fat hit area there would steal that geometry's picks.
+  // The hit area also leaves the `clear` points (geometry under the strokes) free.
   const hit: string[] = [];
-  if (geometry.line) hit.push(seg(geometry.line));
-  if (geometry.leader) hit.push(seg(geometry.leader));
-  if (geometry.arc) hit.push(arcPath(geometry.arc));
-  strokes.push(...hit);
+  const clear = geometry.clear ?? [];
+  for (const l of [geometry.line, geometry.leader]) {
+    if (!l) continue;
+    strokes.push(seg(l));
+    for (const piece of clipSegment(l, clear)) hit.push(seg(piece));
+  }
+  if (geometry.arc) {
+    strokes.push(arcPath(geometry.arc));
+    hit.push(arcPath(geometry.arc));
+  }
   const d = strokes.join('');
   const a11y = label ? { role: 'img', 'aria-label': label } : { 'aria-hidden': true as const };
   return (

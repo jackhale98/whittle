@@ -117,7 +117,7 @@ test('a rectangle dimensioned from the origin is fully constrained without fix',
 
   // Edit the 10 mm: the rectangle moves with it.
   await page.keyboard.press('Escape'); // select tool
-  await page.locator('button[data-kind="hDistance"]').click();
+  await page.locator('button[data-kind="hDistance"]').dblclick(); // a click selects, a double-click edits
   const editor = page.getByTestId('dimension-editor').getByRole('textbox');
   await expect(editor).toBeFocused();
   await editor.fill('25 mm');

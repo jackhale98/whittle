@@ -185,7 +185,7 @@ test('dimension tool: horizontal/vertical by placement, Ø ↔ R, driving ↔ re
 
   // Driving → reference (shown in parentheses), and back to driving from the selected label.
   await page.keyboard.press('Escape');
-  await page.locator('button[data-kind="hDistance"]').click();
+  await page.locator('button[data-kind="hDistance"]').dblclick(); // a click selects, a second click (or double-click) edits
   await expect(editor).toBeFocused();
   await page.getByTestId('dimension-toggle-driving').click();
   await expect.poll(async () => (await dims())[0]?.driving).toBe(false);

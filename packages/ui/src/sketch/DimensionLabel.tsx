@@ -1,4 +1,5 @@
 import type { EvalResult, Expr, SketchConstraintKind } from '@wren-cad/contracts';
+import { Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { ExpressionInput } from '../components/ExpressionInput';
 import { cn } from '../components/primitives';
@@ -31,8 +32,13 @@ export interface DimensionLabelProps {
   onPreview?(expr: Expr): void;
   /** Esc / blur without change. */
   onCancel?(): void;
-  /** Click on a driven dimension: offer to make it driving. */
+  /**
+   * Select the dimension. When given, a click selects and a click on the selected label (or a
+   * double-click, or Enter) edits, as in other CAD sketchers; without it a click edits at once.
+   */
   onSelect?(): void;
+  /** Delete the dimension: Delete / Backspace on the label, or the Delete chip when selected. */
+  onDelete?(): void;
   /** Driving ↔ reference (shown while editing, or when the label is selected). */
   onToggleDriving?(): void;
   /** Radius ↔ diameter, for circles and arcs. */
@@ -55,15 +61,17 @@ function LabelActions({
   driving,
   onToggleDriving,
   onToggleKind,
+  onDelete,
   onDone,
 }: {
   kind: DimKind;
   driving: boolean;
   onToggleDriving?: () => void;
   onToggleKind?: () => void;
+  onDelete?: () => void;
   onDone?: () => void;
 }) {
-  if (!onToggleDriving && !onToggleKind) return null;
+  if (!onToggleDriving && !onToggleKind && !onDelete) return null;
   const chip =
     'pointer-events-auto inline-flex h-6 items-center rounded-full bg-surface px-2 text-2xs font-semibold text-fg-muted shadow-[inset_0_0_0_1px_var(--color-border-strong)] hover:text-fg';
   return (
@@ -100,6 +108,20 @@ function LabelActions({
           {driving ? '(Reference)' : 'Driving'}
         </button>
       ) : null}
+      {onDelete ? (
+        <button
+          type="button"
+          className={cn(chip, 'hover:text-danger-text')}
+          data-testid="dimension-delete"
+          aria-label="Delete dimension"
+          onClick={() => {
+            onDone?.();
+            onDelete();
+          }}
+        >
+          <Trash2 className="size-3.5" aria-hidden />
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -107,8 +129,9 @@ function LabelActions({
 const prefix: Partial<Record<DimKind, string>> = { radius: 'R', diameter: 'Ø' };
 
 /**
- * HTML label for a sketch dimension, positioned over the canvas by the host. Click / Enter edits
- * the expression inline (units and params allowed). Reference dimensions are shown in
+ * HTML label for a sketch dimension, positioned over the canvas by the host. Click selects; a
+ * second click, double-click or Enter edits the expression inline (units and params allowed);
+ * Delete removes it. Reference dimensions are shown in
  * parentheses, muted, and are not editable (their value is measured).
  */
 export function DimensionLabel({
@@ -127,6 +150,7 @@ export function DimensionLabel({
   onPreview,
   onCancel,
   onSelect,
+  onDelete,
   onToggleDriving,
   onToggleKind,
   onMove,
@@ -197,6 +221,7 @@ export function DimensionLabel({
           driving={driving}
           {...(onToggleDriving ? { onToggleDriving } : {})}
           {...(onToggleKind ? { onToggleKind } : {})}
+          {...(onDelete ? { onDelete } : {})}
           onDone={() => setEditing(false)}
         />
         {/* Esc with nothing to revert, or a click away: close without committing. */}
@@ -250,8 +275,21 @@ export function DimensionLabel({
           justDragged.current = false; // the click that ends a drag is not a tap
           return;
         }
-        if (driving) setEditing(true);
+        // Click selects; a click on the selected label edits (no selection model: click edits).
+        if (driving && (selected || !onSelect)) setEditing(true);
         else onSelect?.();
+      }}
+      onDoubleClick={() => {
+        if (driving) setEditing(true);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' && driving) {
+          e.preventDefault();
+          setEditing(true);
+        } else if ((e.key === 'Delete' || e.key === 'Backspace') && onDelete) {
+          e.preventDefault();
+          onDelete();
+        }
       }}
       className={cn(
         'tnum pointer-events-auto absolute z-[1] h-6 touch-none rounded-[8px] px-2 text-xs font-semibold whitespace-nowrap transition-colors duration-fast',
@@ -281,7 +319,7 @@ export function DimensionLabel({
       {driving ? null : ')'}
     </button>
   );
-  if (!selected || (!onToggleDriving && !onToggleKind)) return label;
+  if (!selected || (!onToggleDriving && !onToggleKind && !onDelete)) return label;
   return (
     <>
       {label}
@@ -294,6 +332,7 @@ export function DimensionLabel({
           driving={driving}
           {...(onToggleDriving ? { onToggleDriving } : {})}
           {...(onToggleKind ? { onToggleKind } : {})}
+          {...(onDelete ? { onDelete } : {})}
         />
       </div>
     </>
