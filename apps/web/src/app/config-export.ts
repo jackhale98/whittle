@@ -65,7 +65,7 @@ export async function exportAll(wb: Workbench, request: ExportRequest): Promise<
   if (collisions.length > 0) {
     const c = collisions[0];
     wb.toast(
-      `Nothing was exported: ${c?.configurationIds.map(nameOf).join(' and ')} would both be written to ${c?.fileName}. Give them different part numbers.`,
+      `Nothing was exported: ${(c?.configurationIds.map(nameOf) ?? []).join(', ')} would both be written to ${c?.fileName}. Give them different part numbers.`,
       'error',
     );
     return;

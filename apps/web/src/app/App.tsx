@@ -69,6 +69,10 @@ function kernelLoadingNote(engine: EngineState): string | undefined {
   return undefined;
 }
 
+/** "Default, Long and Thick". */
+const joinNames = (names: string[]): string =>
+  names.length < 2 ? (names[0] ?? '') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
+
 /** Every tool of the command bar and rail (M3: all of them work). */
 const ENABLED_TOOLS: readonly ToolId[] = shellTools.map((t) => t.id);
 
@@ -255,7 +259,7 @@ export function App({ wb }: { wb: Workbench }) {
       count: ids.length,
       warnings: collisions.map(
         (c) =>
-          `${c.configurationIds.map(nameOf).join(' and ')} would both be written to ${c.fileName}. Give them different part numbers.`,
+          `${joinNames(c.configurationIds.map(nameOf))} would both be written to ${c.fileName}. Give them different part numbers.`,
       ),
     };
     // biome-ignore lint/correctness/useExhaustiveDependencies: `doc` carries the configurations
