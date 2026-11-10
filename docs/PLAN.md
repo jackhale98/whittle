@@ -776,6 +776,12 @@ Owner-approved 2026-11-10. A deliberate, behaviour-preserving pass so the code s
 - **Perf budgets enforced in CI:** the viewport perf probes (orbit-start pick ≤ 2 ms, full-screen box select ≤ 16 ms, 1M-triangle orbit, compare toggle) run in CI with `WREN_PERF_ASSERT=1` and a CI factor, and are no longer `continue-on-error`. Fix or delete the "Execution context was destroyed" failure noted in ci.yml. Today these numbers are only measured by hand (M3.5 gate B2).
 - **Accept:** all suites green with unchanged expectations; no source file over 2,500 lines and the three splits each under ~1,500; the soak test passes with handles back to baseline; bundle report in CI; CI wall-clock not worse.
 
+### Section view fixes (owner, 2026-11-10; right after H1)
+
+- **Easy exit.** While a section is active, a persistent floating chip in the viewport (every shell) shows "Section" with **Exit section**, **Flip** and **Edit**. Closing the section panel no longer leaves an invisible cut active without the chip. Esc also exits when nothing else is active.
+- **Rotate the cut plane.** An in-viewport manipulator on the plane has an offset arrow and two rotation arcs about the plane's in-plane axes, with touch-sized targets. The panel takes inline tilt angles (expressions with units) and a numeric offset. A face-based plane can be tilted too. Snapping goes to 15° steps with a modifier or held finger, and to the X/Y/Z axes.
+- **Accept:** E2E enters a section, rotates the plane by dragging an arc and by typing an angle (caps stay filled), and exits it from the chip on desktop, tablet and phone. A unit test covers the plane maths.
+
 ### M3.7 — Part configurations
 
 Owner request 2026-11-10 (moved up from P2): before drawings and assemblies, so both can be built configuration-aware.
@@ -800,6 +806,27 @@ Owner request 2026-11-10 (moved up from P2): before drawings and assemblies, so 
   - The DXF is valid and opens correctly in LibreCAD, checked automatically in CI (golden tests, an ezdxf structure audit, headless LibreCAD conversion). QCAD compatibility is best effort, not an acceptance criterion (owner, 2026-11-10: QCAD's command-line tools are commercial).
   - Editing the model updates the drawing, and dangling dimensions are flagged.
   - Certification-style suite (§12A): for every reference part, the E2E recreates its spec drawing with Wren's drawing tools. The views requested by the spec must be present and every specified dimension must appear with the same value.
+
+### M4.5 — 3D mice and CAD mice
+
+Owner request 2026-11-10, from `docs/ux-research/reports/CAD UI feedback and lessons.md` (items 16 and 22). Placed after drawings and before assemblies, where 6-DoF navigation matters most. About 1–2 weeks.
+
+- **Navigation-input contract** (lead): one device-independent 6-DoF motion event (translation and rotation rates, buttons), consumed by the same navigation code as mouse, touch and Pencil. The puck orbits about the **same cursor pivot** as the mouse (ADR-046/057), zooms toward the surface like the wheel (ADR-069) and never fights an in-flight gesture.
+- **Adapters, feature-detected and layered:**
+  1. **WebHID** (desktop Chrome/Edge 89+), with HID report parsing in Wren's own GPL code. Vendor and product ids are plain data. Pairing is a one-time permission prompt from Settings. Note that the browser gets no reports while 3DxWare holds the device; the diagnostics panel says so and links the fix.
+  2. **Optional 3DconnexionJS adapter**, loaded at runtime from the user's own installed driver and never bundled. P2, and only after the licence is checked against GPL and the self-hosting rule.
+  3. **Documented localhost WebSocket protocol** for a spacenavd bridge (Linux). P2.
+- **Buttons map in Wren**, not through vendor per-app profiles: fit, standard views, the radial menu and Repeat by default, rebindable in the keymap editor. Sensitivity, per-axis invert and dominant-axis settings live in Settings.
+- **2D CAD mice:** any mouse button (including side buttons 3 and 4) can be bound to the radial menu or Repeat. High-resolution and inertial wheels are handled (ADR-069 wheel normalisation).
+- **Diagnostics:** which path is live (WebHID, driver, bridge or none), the device name and live axis values. Silent failure is the main complaint about browser CAD and 3D mice.
+- **Safari / iPad:** no WebHID, so no 6-DoF path. The UI says so plainly.
+- **Accept:**
+  - unit tests parse recorded HID reports from at least two device models into motion events;
+  - E2E with an injected motion source shows orbit about the cursor pivot, zoom toward the surface and no conflict with mouse drags;
+  - button remapping persists;
+  - the diagnostics panel shows each state.
+  - A manual check with a real device is on the owner's checklist.
+- **Names:** "3D mouse" / "6-DoF controller". Vendor product names are used only in compatibility statements.
 
 ### M5 — STEP AP242 with model dimensions (MBD/PMI)
 
