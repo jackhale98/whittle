@@ -21,7 +21,7 @@ import type {
 } from '@wren-cad/contracts';
 import { fromFiles, MANIFEST_FILE, toFiles } from '@wren-cad/document';
 import { isVersionedPath, sameBytes, sha256Hex } from '../history/hash';
-import { docMerger } from './merge';
+import { docMerger, mergeNotes, type StructuralMergeResult } from './merge';
 import { escapeSeg } from './tree';
 
 /** Pointer prefix of whole-file conflicts (not part of the document). */
@@ -108,11 +108,13 @@ export async function mergeProjectFiles(
     }
     if (take !== undefined) files.set(path, take);
   }
-  const result: MergeResult = {
+  const result: StructuralMergeResult = {
     doc: merge.doc,
     conflicts: [...merge.conflicts, ...conflicts],
     autoMerged,
   };
+  const notes = mergeNotes(merge);
+  if (notes.length > 0) result.notes = notes;
   CONTEXT.set(result, { sides: { base, ours, theirs }, files, docResult: merge });
   return { merge: result, files };
 }

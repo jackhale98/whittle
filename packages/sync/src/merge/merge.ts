@@ -22,19 +22,41 @@
  *    features added on both sides stay rolled forward.
  *  - Two parameters can't share a name: a name only "theirs" introduced that clashes with one in
  *    the merge is a conflict on theirs' parameter.
+ *  - Feature tree folders (`Part.folders`, M3.6, ADR-066) merge by id after the features, so they
+ *    see the merged feature order: a name merges as a field (`bothModified` when both renamed);
+ *    the member ids merge as a set (`mergeMembers`) and never conflict; the folders' array order
+ *    carries no meaning and never conflicts. A folder deleted on one side and renamed or given
+ *    new members on the other is `modifiedDeleted`; one the other side only lost members from
+ *    (features moved out or deleted) goes quietly, since that is part of what deleting it did. The
+ *    merged folders are then normalised (`NormalizeFolders`, injected) and every membership change
+ *    that made is reported in plain language in `notes` (`mergeNotes`).
+ *  - A sketch's absent `visibility` is the same as `'auto'`, so setting `'auto'` on one side
+ *    doesn't conflict with the other side's `'shown'`.
  */
 
 import type {
+  DiffSubject,
   DocMerger,
+  FeatureFolder,
+  Id,
   MergeConflict,
   MergeConflictKind,
   MergeResolution,
   MergeResult,
   Param,
+  Part,
   WrenDoc,
 } from '@wren-cad/contracts';
-import { validateDoc } from '@wren-cad/document';
-import { subjectAt } from './labels';
+import { normalizeFolders, validateDoc } from '@wren-cad/document';
+import {
+  type FolderChange,
+  isFolderMembersPath,
+  isVisibilityPath,
+  mergeMembers,
+  type NormalizeFolders,
+  visibilityOf,
+} from './folders';
+import { folderChangeSummary, subjectAt } from './labels';
 import {
   barIdOf,
   barIndex,
@@ -52,6 +74,38 @@ import {
 } from './tree';
 
 type Choice = { take: 'ours' | 'theirs' | 'base' } | { value: unknown };
+
+/**
+ * Something the merge did on its own that the user should hear about (the merge report):
+ * "Fillet 3 left folder Mounting to keep the folder in one piece".
+ */
+export interface MergeNote {
+  kind: 'folderMembership';
+  partId: Id;
+  /** The folder (`kind: 'part'` with the part's id until contracts gain a folder subject). */
+  subject: DiffSubject;
+  change: FolderChange;
+  summary: string;
+}
+
+/** A `MergeResult` from `StructuralMerger`: `notes` is present when there is something to say. */
+export interface StructuralMergeResult extends MergeResult {
+  notes?: MergeNote[];
+}
+
+/** The merge report's notes of any `MergeResult` (none for results from other mergers). */
+export function mergeNotes(result: MergeResult): MergeNote[] {
+  const notes = (result as StructuralMergeResult).notes;
+  return Array.isArray(notes) ? notes : [];
+}
+
+export interface StructuralMergerOptions {
+  /**
+   * Restores the folder invariant after a merge. Default: `normalizeFolders` from
+   * `@wren-cad/document` (ADR-066).
+   */
+  normalizeFolders?: NormalizeFolders;
+}
 
 interface Sides {
   base: WrenDoc;
@@ -79,11 +133,13 @@ const sameOrder = (a: readonly string[], b: readonly string[]): boolean =>
 
 class MergeRun {
   readonly conflicts: MergeConflict[] = [];
+  readonly notes: MergeNote[] = [];
   autoMerged = 0;
 
   constructor(
     private readonly sides: Sides,
     private readonly choices: ReadonlyMap<string, Choice>,
+    private readonly normalize: NormalizeFolders,
   ) {}
 
   run(): WrenDoc {
@@ -122,6 +178,7 @@ class MergeRun {
   }
 
   private node(segs: Segs, b: unknown, o: unknown, t: unknown): unknown {
+    if (isVisibilityPath(segs)) return this.visibility(segs, b, o, t);
     if (equal(o, t)) return o;
     if (equal(b, o)) {
       this.autoMerged++;
@@ -129,6 +186,11 @@ class MergeRun {
     }
     if (equal(b, t)) return o;
     // Both sides changed this value, differently.
+    const ids = (v: unknown) =>
+      v === undefined || (Array.isArray(v) && v.every((x) => typeof x === 'string'));
+    if (isFolderMembersPath(segs) && ids(b) && ids(o) && ids(t)) {
+      return mergeMembers(b as Id[] | undefined, o as Id[] | undefined, t as Id[] | undefined);
+    }
     if (segs.length === 2 && segs[0] === 'meta') {
       const special = this.meta(segs[1] as string, o, t);
       if (special !== undefined) return special;
@@ -158,6 +220,22 @@ class MergeRun {
     return this.pick(this.choose(kind, segs, { base: b, ours: o, theirs: t }), b, o, t);
   }
 
+  /**
+   * A sketch's visibility, where absent = `'auto'`: compared by meaning, each side's own value
+   * kept. A conflict shows the meanings (`'auto'`, not "not there").
+   */
+  private visibility(segs: Segs, b: unknown, o: unknown, t: unknown): unknown {
+    const [vb, vo, vt] = [visibilityOf(b), visibilityOf(o), visibilityOf(t)];
+    if (equal(vo, vt)) return o;
+    if (equal(vb, vo)) {
+      this.autoMerged++;
+      return t;
+    }
+    if (equal(vb, vt)) return o;
+    const choice = this.choose('bothModified', segs, { base: vb, ours: vo, theirs: vt });
+    return this.pick(choice, b, o, t);
+  }
+
   /** Bookkeeping fields that never conflict. */
   private meta(key: string, o: unknown, t: unknown): unknown {
     if (typeof o !== 'string' || typeof t !== 'string') return undefined;
@@ -181,13 +259,125 @@ class MergeRun {
     const keys = new Set([...Object.keys(b), ...Object.keys(o), ...Object.keys(t)]);
     const out: Obj = {};
     for (const k of [...keys].sort()) {
-      if (isPart && k === 'rollbackIndex') continue;
+      if (isPart && (k === 'rollbackIndex' || k === 'folders')) continue;
       const v = this.node([...segs, k], b[k], o[k], t[k]);
       if (v !== undefined) out[k] = v;
     }
-    if (isPart)
-      out.rollbackIndex = this.rollback(segs, b, o, t, (out.features ?? []) as Identified[]);
+    if (isPart) {
+      const features = (out.features ?? []) as Identified[];
+      const folders = this.folders(segs, b, o, t, out as unknown as Part);
+      if (folders !== undefined) out.folders = folders;
+      out.rollbackIndex = this.rollback(segs, b, o, t, features);
+    }
     return out;
+  }
+
+  /**
+   * A part's folders, merged by id against the merged `part.features`, then normalised. Only
+   * reached when both sides changed the part, so each side's own folders are already valid.
+   */
+  private folders(segs: Segs, b: Obj, o: Obj, t: Obj, part: Part): FeatureFolder[] | undefined {
+    const fsegs = [...segs, 'folders'];
+    const [bl, ol, tl] = [b.folders, o.folders, t.folders] as (FeatureFolder[] | undefined)[];
+    let raw: FeatureFolder[] | undefined;
+    let both = false;
+    if (equal(ol, tl)) raw = ol;
+    else if (equal(bl, ol)) {
+      this.autoMerged++;
+      raw = tl;
+    } else if (equal(bl, tl)) raw = ol;
+    else {
+      both = true;
+      raw = this.folderList(fsegs, bl ?? [], ol ?? [], tl ?? [], part);
+    }
+    if (raw === undefined) return undefined;
+    const normalized = this.normalize({ ...part, folders: raw });
+    const folders = normalized.part.folders?.slice() ?? [];
+    this.report(part, raw, folders, normalized.changes);
+    if (folders.length === 0) return raw.length === 0 ? raw : undefined;
+    if (!both) return folders;
+    // Both sides changed the list: order by place in the tree, so the result is symmetric.
+    const at = new Map(part.features.map((f, i) => [f.id, i]));
+    const first = (f: FeatureFolder) => at.get(f.features[0] as Id) ?? 0;
+    return folders.sort((x, y) => first(x) - first(y));
+  }
+
+  private folderList(
+    segs: Segs,
+    bl: FeatureFolder[],
+    ol: FeatureFolder[],
+    tl: FeatureFolder[],
+    part: Part,
+  ): FeatureFolder[] {
+    const [bm, om, tm] = [byId(bl), byId(ol), byId(tl)];
+    const live = new Set(part.features.map((f) => f.id));
+    const out: FeatureFolder[] = [];
+    for (const fid of new Set([...idsOf(ol), ...idsOf(tl), ...idsOf(bl)])) {
+      const v = this.folder(
+        [...segs, fid],
+        bm.get(fid) as FeatureFolder | undefined,
+        om.get(fid) as FeatureFolder | undefined,
+        tm.get(fid) as FeatureFolder | undefined,
+        live,
+      );
+      if (v !== undefined) out.push(v as FeatureFolder);
+    }
+    return out;
+  }
+
+  private folder(
+    segs: Segs,
+    b: FeatureFolder | undefined,
+    o: FeatureFolder | undefined,
+    t: FeatureFolder | undefined,
+    live: ReadonlySet<string>,
+  ): unknown {
+    if (b !== undefined && (o === undefined) !== (t === undefined)) {
+      const kept = (o ?? t) as FeatureFolder;
+      if (!equal(kept, b)) {
+        // Deleted against changed. Losing members (moved out, deleted) is part of what deleting
+        // the folder did; so is a folder whose features are all gone. Anything else conflicts.
+        const before = new Set(b.features);
+        const shrunk = kept.name === b.name && kept.features.every((x) => before.has(x));
+        const empty = !kept.features.some((x) => live.has(x));
+        if (shrunk || empty) {
+          if (t === undefined) this.autoMerged++;
+          return undefined;
+        }
+      }
+    }
+    return this.node(segs, b, o, t);
+  }
+
+  /** Merge notes for the membership changes normalisation made (a deleted member needs none). */
+  private report(
+    part: Part,
+    raw: readonly FeatureFolder[],
+    folders: readonly FeatureFolder[],
+    changes: readonly FolderChange[],
+  ): void {
+    const names = new Map<string, string>();
+    for (const side of [this.sides.base, this.sides.theirs, this.sides.ours]) {
+      const p = side.parts.find((x) => x.id === part.id);
+      for (const f of p?.features ?? []) names.set(f.id, f.name);
+      for (const f of p?.folders ?? []) names.set(f.id, f.name);
+    }
+    for (const f of part.features) names.set(f.id, f.name);
+    for (const f of raw) names.set(f.id, f.name);
+    const name = (id: string) => names.get(id) ?? id;
+    const holder = new Map<string, string>();
+    for (const f of folders) for (const x of f.features) holder.set(x, f.id);
+    for (const change of changes) {
+      const summary = folderChangeSummary(change, name, (x) => holder.get(x));
+      if (summary === null) continue;
+      this.notes.push({
+        kind: 'folderMembership',
+        partId: part.id,
+        subject: { kind: 'part', id: part.id, label: `Folder ${name(change.folderId)}` },
+        change,
+        summary,
+      });
+    }
   }
 
   /** The rollback bar as "before feature X", mapped back to an index in the merged features. */
@@ -377,11 +567,16 @@ function setAt(doc: Obj, segs: Segs, value: unknown): void {
   let node: unknown = doc;
   for (let i = 0; i < segs.length - 1; i++) {
     const seg = segs[i] as string;
+    const parent = node;
     node = Array.isArray(node)
       ? node.find((x) => (x as Identified).id === seg)
       : isObj(node)
         ? node[seg]
         : undefined;
+    // An optional collection the merge left out (a part's folders): restoring an item creates it.
+    if (node === undefined && isObj(parent) && value !== undefined) {
+      if (isCollectionPath(segs.slice(0, i + 1))) parent[seg] = node = [];
+    }
     if (node === undefined) return; // the parent is gone: nothing to set
   }
   const last = segs[segs.length - 1] as string;
@@ -397,7 +592,11 @@ function setAt(doc: Obj, segs: Segs, value: unknown): void {
   }
 }
 
-function resolveByPath(result: MergeResult, choices: ReadonlyMap<string, Choice>): WrenDoc {
+function resolveByPath(
+  result: MergeResult,
+  choices: ReadonlyMap<string, Choice>,
+  normalize: NormalizeFolders,
+): WrenDoc {
   const doc = clone(result.doc) as unknown as Obj;
   const counts = new Map<Obj, number>();
   for (const part of (doc.parts ?? []) as Obj[]) {
@@ -432,6 +631,12 @@ function resolveByPath(result: MergeResult, choices: ReadonlyMap<string, Choice>
     let r = typeof part.rollbackIndex === 'number' ? part.rollbackIndex : n;
     if (before !== undefined && r === before) r = n; // was fully rolled forward: stays so
     part.rollbackIndex = Math.max(0, Math.min(n, r));
+    // And its folders whole: a restored feature or folder may have broken a run.
+    if (Array.isArray(part.folders)) {
+      const folders = normalize(part as unknown as Part).part.folders;
+      if (folders !== undefined) part.folders = folders.slice();
+      else if (part.folders.length > 0) delete part.folders;
+    }
   }
   return doc as unknown as WrenDoc;
 }
@@ -441,11 +646,22 @@ function resolveByPath(result: MergeResult, choices: ReadonlyMap<string, Choice>
 // ---------------------------------------------------------------------------------------------
 
 export class StructuralMerger implements DocMerger {
-  merge(base: WrenDoc, ours: WrenDoc, theirs: WrenDoc): MergeResult {
+  private readonly normalize: NormalizeFolders;
+
+  constructor(options: StructuralMergerOptions = {}) {
+    this.normalize = options.normalizeFolders ?? normalizeFolders;
+  }
+
+  merge(base: WrenDoc, ours: WrenDoc, theirs: WrenDoc): StructuralMergeResult {
     const sides = { base: clone(base), ours: clone(ours), theirs: clone(theirs) };
-    const run = new MergeRun(sides, new Map());
+    const run = new MergeRun(sides, new Map(), this.normalize);
     const doc = run.run();
-    const result: MergeResult = { doc, conflicts: run.conflicts, autoMerged: run.autoMerged };
+    const result: StructuralMergeResult = {
+      doc,
+      conflicts: run.conflicts,
+      autoMerged: run.autoMerged,
+    };
+    if (run.notes.length > 0) result.notes = run.notes;
     CONTEXT.set(result, sides);
     return result;
   }
@@ -471,8 +687,8 @@ export class StructuralMerger implements DocMerger {
       choices.size === 0
         ? clone(result.doc)
         : sides
-          ? new MergeRun(sides, choices).run()
-          : resolveByPath(result, choices);
+          ? new MergeRun(sides, choices, this.normalize).run()
+          : resolveByPath(result, choices, this.normalize);
     const errors = validateDoc(doc);
     if (errors.length > 0) {
       throw new MergeResolutionError(

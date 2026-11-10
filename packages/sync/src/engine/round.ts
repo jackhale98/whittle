@@ -36,6 +36,7 @@ import type {
   WrenDoc,
 } from '@wren-cad/contracts';
 import { fromFiles, MANIFEST_FILE, newDoc, toFiles } from '@wren-cad/document';
+import { mergeNotes, type StructuralMergeResult } from '../merge/merge';
 import { documentPaths, pushRank, syncable, toAbsolute, toRelative } from '../paths';
 import { fail, forward, ok, pool } from '../providers/common';
 import { bytesEqual, sha256Hex } from './hash';
@@ -153,11 +154,14 @@ export function combineConflicts(
   files: FileConflictContext[],
   local: ProjectFiles,
 ): MergeResult {
-  return {
+  const result: StructuralMergeResult = {
     doc: doc ? doc.result.doc : docForDisplay(local),
     conflicts: [...(doc?.result.conflicts ?? []), ...files.map(fileConflict)],
     autoMerged: doc?.result.autoMerged ?? 0,
   };
+  const notes = doc ? mergeNotes(doc.result) : [];
+  if (notes.length > 0) result.notes = notes;
+  return result;
 }
 
 export async function syncRound(

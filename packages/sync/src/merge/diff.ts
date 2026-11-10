@@ -4,7 +4,10 @@
  * the same id-keyed tree as the merge (`tree.ts`). Each change has a one-line summary:
  * "Fillet 3: radius 2 mm → 3 mm", "Added Hole 2", "Sketch 1: Length (Line 1) 40 mm → 45 mm",
  * "Moved Fillet 2 after Extrude 3". Sketch geometry changes are summarised per sketch (a solve
- * moves many points), while sketch dimension edits are listed one by one.
+ * moves many points), while sketch dimension edits are listed one by one. Feature tree folders
+ * (M3.6) get their own lines: "Added folder Mounting with Extrude 2 and Fillet 3", "Renamed
+ * folder Mounting → Mounts", "Folder Mounting: added Chamfer 4", "Moved folder Mounting after
+ * Plane 5"; a sketch's visibility reads "Sketch 1: visibility automatic → shown".
  */
 
 import type {
@@ -12,6 +15,7 @@ import type {
   DiffSubject,
   DocDiffer,
   Feature,
+  FeatureFolder,
   FieldChange,
   NamedDimension,
   Param,
@@ -23,8 +27,9 @@ import type {
 } from '@wren-cad/contracts';
 import { isDimension } from '@wren-cad/contracts';
 import { Namer } from '@wren-cad/sketch';
+import { visibilityOf } from './folders';
 import { featureDims, formatValue, listText, plural, type Units } from './format';
-import { constraintText, fieldLabel, subjectAt } from './labels';
+import { constraintText, fieldLabel, subjectAt, visibilityText } from './labels';
 import { barIdOf, byId, equal, idsOf, isAtomicObject, isObj, type Segs, toPointer } from './tree';
 
 /** Ids of `after` that changed place relative to the others (complement of a longest kept run). */
@@ -278,7 +283,7 @@ class DiffRun {
     }
     const bm = byId(old.features);
     const am = byId(part.features);
-    const moved = this.moves([...segs, 'features'], old.features, part.features, (f) => f.name);
+    const { moved, folderMoves } = this.featureMoves(old, part);
     for (const f of part.features) {
       const prev = bm.get(f.id) as Feature | undefined;
       const fsegs = [...segs, 'features', f.id];
@@ -298,6 +303,7 @@ class DiffRun {
         summary: `Removed ${f.name}`,
       });
     }
+    this.folders(old, part, folderMoves);
     const [bb, ab] = [barIdOf(old), barIdOf(part)];
     if (bb !== ab) {
       const to = ab === null ? undefined : (am.get(ab) as Feature | undefined);
@@ -315,6 +321,139 @@ class DiffRun {
         summary: to
           ? `${part.name}: rolled back to before ${to.name}`
           : `${part.name}: rolled forward to the end`,
+      });
+    }
+  }
+
+  /**
+   * Feature and folder moves. A folder that kept its members is one item in the comparison, so
+   * moving it reads as one "Moved folder" line, never one per member (which members a plain
+   * comparison would call "moved" depends on ties); moves inside it are compared among its
+   * members.
+   */
+  private featureMoves(
+    old: Part,
+    part: Part,
+  ): { moved: Map<string, DiffChange>; folderMoves: Map<string, DiffChange> } {
+    const before = byId(old.folders ?? []);
+    const holder = new Map<string, string>();
+    const stable = new Map<string, FeatureFolder>();
+    for (const f of part.folders ?? []) {
+      const prev = before.get(f.id) as FeatureFolder | undefined;
+      if (!prev || prev.features.length !== f.features.length) continue;
+      if (!f.features.every((x) => prev.features.includes(x))) continue;
+      stable.set(f.id, f);
+      for (const x of f.features) holder.set(x, f.id);
+    }
+    const tokens = (features: readonly Feature[]): string[] => {
+      const out: string[] = [];
+      for (const f of features) {
+        const t = holder.get(f.id) ?? f.id;
+        if (out[out.length - 1] !== t) out.push(t);
+      }
+      return out;
+    };
+    const after = part.features;
+    const index = new Map(after.map((f, i) => [f.id, i]));
+    const placed = (firstId: string): string => {
+      const prev = after[(index.get(firstId) ?? 0) - 1];
+      return prev ? `after ${prev.name}` : 'to the top';
+    };
+    const moved = new Map<string, DiffChange>();
+    const featureMove = (id: string): void => {
+      const f = after[index.get(id) as number] as Feature;
+      moved.set(id, {
+        kind: 'moved',
+        subject: this.subject(['parts', part.id, 'features', id]),
+        summary: `Moved ${f.name} ${placed(id)}`,
+      });
+    };
+    const folderMoves = new Map<string, DiffChange>();
+    for (const t of movedIds(tokens(old.features), tokens(after))) {
+      const f = stable.get(t);
+      if (f === undefined) {
+        featureMove(t);
+        continue;
+      }
+      const first = after.find((x) => holder.get(x.id) === t) as Feature;
+      folderMoves.set(t, {
+        kind: 'moved',
+        subject: this.subject(['parts', part.id, 'folders', t]),
+        summary: `Moved folder ${f.name} ${placed(first.id)}`,
+      });
+    }
+    for (const fid of stable.keys()) {
+      const members = (features: readonly Feature[]) =>
+        features.filter((x) => holder.get(x.id) === fid).map((x) => x.id);
+      for (const id of movedIds(members(old.features), members(after))) featureMove(id);
+    }
+    return { moved, folderMoves };
+  }
+
+  /** Folder lines: added, removed, renamed, members joining or leaving, moved. */
+  private folders(old: Part, part: Part, moves: ReadonlyMap<string, DiffChange>): void {
+    const names = new Map<string, string>();
+    for (const f of old.features) names.set(f.id, f.name);
+    for (const f of part.features) names.set(f.id, f.name);
+    const live = new Set(part.features.map((f) => f.id));
+    const name = (id: string) => names.get(id) ?? id;
+    const bm = byId(old.folders ?? []);
+    const am = byId(part.folders ?? []);
+    const segs = ['parts', part.id, 'folders'];
+    for (const f of part.folders ?? []) {
+      const prev = bm.get(f.id) as FeatureFolder | undefined;
+      const fsegs = [...segs, f.id];
+      if (!prev) {
+        this.push({
+          kind: 'added',
+          subject: this.subject(fsegs),
+          fields: [{ path: '/features', label: 'features', after: f.features.slice() }],
+          summary: `Added folder ${f.name} with ${listText(f.features.map(name))}`,
+        });
+        continue;
+      }
+      const joined = f.features.filter((x) => !prev.features.includes(x));
+      // A member that was deleted is already listed as removed: not again here.
+      const left = prev.features.filter((x) => !f.features.includes(x) && live.has(x));
+      const texts: string[] = [];
+      if (joined.length) texts.push(`added ${listText(joined.map(name))}`);
+      if (left.length) texts.push(`removed ${listText(left.map(name))}`);
+      const fields: FieldChange[] = [];
+      if (prev.name !== f.name) {
+        fields.push({ path: '/name', label: 'name', before: prev.name, after: f.name });
+      }
+      if (!equal(prev.features, f.features)) {
+        fields.push({
+          path: '/features',
+          label: 'features',
+          before: prev.features.slice(),
+          after: f.features.slice(),
+        });
+      }
+      if (prev.name !== f.name) {
+        this.push({
+          kind: 'renamed',
+          subject: this.subject(fsegs),
+          fields,
+          summary: [`Renamed folder ${prev.name} → ${f.name}`, ...texts].join(', '),
+        });
+      } else if (texts.length > 0) {
+        this.push({
+          kind: 'modified',
+          subject: this.subject(fsegs),
+          fields,
+          summary: `Folder ${f.name}: ${texts.join('; ')}`,
+        });
+      }
+      const m = moves.get(f.id);
+      if (m) this.push(m);
+    }
+    for (const f of old.folders ?? []) {
+      if (am.has(f.id)) continue;
+      this.push({
+        kind: 'removed',
+        subject: this.subject([...segs, f.id], true),
+        summary: `Removed folder ${f.name}`,
       });
     }
   }
@@ -355,11 +494,19 @@ class DiffRun {
     if (prev.type !== f.type) {
       fs.push({ path: '/type', label: 'type', before: prev.type, after: f.type });
     } else {
-      const skip = new Set(['id', 'name', 'suppressed', 'entities', 'constraints']);
+      const skip = new Set(['id', 'name', 'suppressed', 'entities', 'constraints', 'visibility']);
       fields(segs, [], prev, f, skip, fs);
     }
     const dims = new Map([...featureDims(prev), ...featureDims(f)]);
     const texts = fs.map((fc) => fieldText(fc, units, dims));
+    // Sketch visibility: absent and 'auto' are the same, so only a change of meaning is a line.
+    if (prev.type === 'sketch' && f.type === 'sketch') {
+      const [vb, va] = [visibilityOf(prev.visibility), visibilityOf(f.visibility)];
+      if (vb !== va) {
+        fs.push({ path: '/visibility', label: 'visibility', before: vb, after: va });
+        texts.push(`visibility ${visibilityText(vb)} → ${visibilityText(va)}`);
+      }
+    }
     const suppression =
       prev.suppressed === f.suppressed ? null : f.suppressed ? 'suppressed' : 'unsuppressed';
     const all = fs.slice();

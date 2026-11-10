@@ -8,6 +8,8 @@
 import type {
   DiffSubject,
   Feature,
+  FeatureFolder,
+  MergeConflict,
   Param,
   Part,
   SketchConstraint,
@@ -15,7 +17,9 @@ import type {
   WrenDoc,
 } from '@wren-cad/contracts';
 import { constraintLabel, Namer } from '@wren-cad/sketch';
-import { getAtSegs, type Segs } from './tree';
+import type { FolderChange } from './folders';
+import { formatValue, listText, plural } from './format';
+import { fromPointer, getAtSegs, isObj, type Segs } from './tree';
 
 const META_LABEL: Record<string, string> = {
   name: 'Document name',
@@ -71,6 +75,12 @@ export function subjectAt(segs: Segs, docs: readonly (WrenDoc | undefined)[]): D
     const partName = part?.name ?? id;
     if (sub === 'material')
       return { kind: 'material', partId: id, label: `Material of ${partName}` };
+    if (sub === 'folders') {
+      // Contracts have no folder subject yet: a folder is shown as part of its part.
+      if (fid === undefined) return { kind: 'part', id, label: `Folders in ${partName}` };
+      const folder = find<FeatureFolder>(docs, ['parts', id, 'folders', fid]);
+      return { kind: 'part', id, label: `Folder ${folder?.name ?? fid}` };
+    }
     if (sub !== 'features') return { kind: 'part', id, label: partName };
     if (fid === undefined) return { kind: 'part', id, label: `Feature order in ${partName}` };
     const feature = find<Feature>(docs, ['parts', id, 'features', fid]);
@@ -145,3 +155,87 @@ const FIELD_LABEL: Record<string, string> = {
   equalSpacing: 'equal spacing',
   tipAngle: 'tip angle',
 };
+
+// ---------------------------------------------------------------------------------------------
+// Folders and sketch visibility (M3.6)
+// ---------------------------------------------------------------------------------------------
+
+/** "automatic", "shown", "hidden" (absent = automatic). */
+export function visibilityText(v: unknown): string {
+  return v === undefined || v === 'auto' ? 'automatic' : String(v);
+}
+
+/**
+ * The merge report's line for one `normalizeFolders` change, or `null` when it needs none (members
+ * that were deleted are already listed as removed features). `name` gives a feature's or
+ * folder's display name by id; `holder` the folder that holds a feature after the merge.
+ */
+export function folderChangeSummary(
+  change: FolderChange,
+  name: (id: string) => string,
+  holder: (featureId: string) => string | undefined = () => undefined,
+): string | null {
+  const folder = change.folderName || name(change.folderId);
+  const features = listText(change.featureIds.map(name));
+  const many = change.featureIds.length > 1;
+  switch (change.kind) {
+    case 'missing':
+      return null;
+    case 'removed':
+      return `Folder ${folder} was removed: no features were left in it`;
+    case 'extended':
+      return `${features} joined folder ${folder} to keep the folder in one piece`;
+    case 'trimmed':
+      return `${features} left folder ${folder} to keep the folder in one piece`;
+    case 'shared': {
+      const keepers = [...new Set(change.featureIds.map(holder))];
+      const keeper = keepers.length === 1 ? keepers[0] : undefined;
+      const where = keeper === undefined ? 'another folder' : `folder ${name(keeper)}`;
+      return `${features} left folder ${folder}: ${many ? 'they are' : 'it is'} already in ${where}`;
+    }
+  }
+}
+
+/** Number of segments that select a conflict's subject (the rest is the field inside it). */
+function subjectDepth(segs: Segs): number {
+  const [top, , sub, , coll] = segs;
+  if (top === 'parts') {
+    if (sub === 'features') return coll === 'entities' || coll === 'constraints' ? 6 : 4;
+    if (sub === 'folders') return 4;
+    if (sub === 'material') return 3;
+    return 2;
+  }
+  if (top === 'params' || top === 'drawings' || top === 'assemblies') return 2;
+  return segs.length; // document fields: the subject's label already names the field
+}
+
+/** The field a conflict is about inside its subject ("visibility", "radius"), or `''`. */
+export function conflictField(c: Pick<MergeConflict, 'path' | 'file'>): string {
+  if (c.file !== undefined) return '';
+  const segs = fromPointer(c.path);
+  const rel = segs.slice(subjectDepth(segs));
+  return rel.length === 0 ? '' : fieldLabel(rel);
+}
+
+/** One side's value of a conflict as short text: "shown", "2 mm", "Mounting (3 features)". */
+export function conflictValueText(value: unknown, c: Pick<MergeConflict, 'path' | 'file'>): string {
+  const segs = c.file === undefined ? fromPointer(c.path) : [];
+  const leaf = segs[segs.length - 1];
+  if (segs.length === 5 && segs[2] === 'features' && leaf === 'visibility') {
+    return visibilityText(value);
+  }
+  if (value === undefined) return 'deleted';
+  if (segs.length === 4 && segs[2] === 'folders' && isObj(value)) {
+    const f = value as Partial<FeatureFolder>;
+    const n = Array.isArray(f.features) ? f.features.length : 0;
+    return `${f.name ?? 'Folder'} (${plural(n, 'feature')})`;
+  }
+  return formatValue(value) ?? 'changed';
+}
+
+/** One line for a conflict: "Sketch 2 visibility: shown vs hidden", "Folder Mounting name: A vs B". */
+export function conflictSummary(c: MergeConflict): string {
+  const field = conflictField(c);
+  const what = field ? `${c.subject.label} ${field}` : c.subject.label;
+  return `${what}: ${conflictValueText(c.ours, c)} vs ${conflictValueText(c.theirs, c)}`;
+}
