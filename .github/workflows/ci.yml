@@ -129,7 +129,9 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     # Sharded: the chromium suite outgrew one 30-minute runner with M3.6 (job cancelled at 30:00).
-    timeout-minutes: 40
+    # H1 measurement: ~57 min of serial test time for the chromium project (114 tests), so four
+    # chromium shards of ~14 min; the limit below fails a shard that drifts well past 15 minutes.
+    timeout-minutes: 25
     # Firefox/WebKit are reported but do not gate deploys yet (ADR-005 §7): headless Firefox on
     # CI has not rendered the box, and Playwright WebKit cannot reload offline with a SW.
     continue-on-error: ${{ matrix.browser != 'chromium' }}
@@ -137,11 +139,16 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { browser: chromium, shard: 1, shards: 2 }
-          - { browser: chromium, shard: 2, shards: 2 }
-          - { browser: firefox, shard: 1, shards: 1 }
-          - { browser: webkit, shard: 1, shards: 2 }
-          - { browser: webkit, shard: 2, shards: 2 }
+          - { browser: chromium, shard: 1, shards: 4 }
+          - { browser: chromium, shard: 2, shards: 4 }
+          - { browser: chromium, shard: 3, shards: 4 }
+          - { browser: chromium, shard: 4, shards: 4 }
+          - { browser: firefox, shard: 1, shards: 3 }
+          - { browser: firefox, shard: 2, shards: 3 }
+          - { browser: firefox, shard: 3, shards: 3 }
+          - { browser: webkit, shard: 1, shards: 3 }
+          - { browser: webkit, shard: 2, shards: 3 }
+          - { browser: webkit, shard: 3, shards: 3 }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
