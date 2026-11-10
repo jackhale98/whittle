@@ -76,6 +76,7 @@ import { MeasureTool } from './measure-tool';
 import { type Observable, observable } from './observable';
 import * as pointer from './pointer';
 import { PointerDowns } from './pointers';
+import * as stepPreview from './preview-step';
 import * as sync from './project-sync';
 import { PushPullTool } from './push-pull';
 import * as regenView from './regen-view';
@@ -414,35 +415,11 @@ export class Workbench {
    * feature's *input* geometry, never its own output.
    */
   viewDoc(): WrenDoc {
-    const doc = this.store.getDoc();
-    const p = this.ui.get().picking;
-    const part = doc.parts[0];
-    const pv = this.preview.get();
-    if (pv !== null && part) {
-      // Phone step-through (M3.6): a copy of the document at another rollback position. The
-      // document itself is untouched; the copy is memoised so the regen loop sees a stable value.
-      const idx = Math.max(0, Math.min(part.features.length, pv));
-      if (idx === part.rollbackIndex) return doc;
-      const memo = this.previewMemo;
-      if (memo && memo.doc === doc && memo.index === idx) return memo.out;
-      const out = { ...doc, parts: [{ ...part, rollbackIndex: idx }, ...doc.parts.slice(1)] };
-      this.previewMemo = { doc, index: idx, out };
-      return out;
-    }
-    if (!p || !part) return doc;
-    const kinds = this.pickAccepts()?.kinds ?? [];
-    if (!kinds.some((k) => k === 'edge' || k === 'face' || k === 'vertex')) return doc;
-    const idx = part.features.findIndex((f) => f.id === p.featureId);
-    if (idx < 0 || idx >= part.rollbackIndex) return doc;
-    const memo = this.viewMemo;
-    if (memo && memo.doc === doc && memo.index === idx) return memo.out;
-    const out = { ...doc, parts: [{ ...part, rollbackIndex: idx }, ...doc.parts.slice(1)] };
-    this.viewMemo = { doc, index: idx, out };
-    return out;
+    return stepPreview.viewDoc(this);
   }
 
-  private viewMemo: { doc: WrenDoc; index: number; out: WrenDoc } | null = null;
-  private previewMemo: { doc: WrenDoc; index: number; out: WrenDoc } | null = null;
+  viewMemo: { doc: WrenDoc; index: number; out: WrenDoc } | null = null;
+  previewMemo: { doc: WrenDoc; index: number; out: WrenDoc } | null = null;
   /**
    * The phone's step-through preview (M3.6): the rollback position being shown, or null. View
    * state only: it never writes the document (no undo entry, autosave, sync or dirty flag).
@@ -451,62 +428,25 @@ export class Workbench {
 
   /** Shows the model after the first `index` features without changing the document. */
   previewRollback(index: number): void {
-    const part = this.part;
-    if (!part) return;
-    const idx = Math.max(0, Math.min(part.features.length, Math.round(index)));
-    if (this.preview.get() === idx) return;
-    this.ensureKernel(); // a phone viewer boots the kernel on the first step
-    this.previewSteps.push({ index: idx, t0: performance.now() });
-    this.preview.set(idx);
-    this.refreshSketchVisibility();
-    this.loop?.request();
+    stepPreview.previewRollback(this, index);
   }
 
   /** Back to the full model (the document was never changed). */
   endPreview(): void {
-    if (this.preview.get() === null) return;
-    this.preview.set(null);
-    this.previewMemo = null;
-    this.refreshSketchVisibility();
-    this.loop?.request();
+    stepPreview.endPreview(this);
   }
 
   /** "Keep this rollback": the one write a preview makes. */
   keepPreview(): void {
-    const part = this.part;
-    const idx = this.preview.get();
-    if (!part || idx === null) return;
-    this.preview.set(null);
-    this.previewMemo = null;
-    if (idx !== part.rollbackIndex) {
-      this.apply({ kind: 'setRollback', partId: part.id, index: idx }, undefined, 'rollback');
-      this.commit();
-    } else {
-      this.loop?.request();
-    }
+    stepPreview.keepPreview(this);
   }
 
   recordPreviewStep(outcome: RegenView): void {
-    if (this.preview.get() === null || outcome.doc !== this.viewDoc()) return;
-    const idx = outcome.doc.parts[0]?.rollbackIndex;
-    const at = this.previewSteps.findIndex((x) => x.index === idx);
-    if (at < 0) return;
-    const [step] = this.previewSteps.splice(at, 1);
-    if (!step) return;
-    const cached = outcome.result.features.every(
-      (f) => f.cached || f.state === 'rolledBack' || f.state === 'suppressed',
-    );
-    void (this.viewport?.nextFrame() ?? Promise.resolve()).then(() => {
-      this.previewTimings.push({
-        index: step.index,
-        ms: Math.round(performance.now() - step.t0),
-        cached,
-      });
-    });
+    stepPreview.recordPreviewStep(this, outcome);
   }
 
   /** Step timings for the budget check: when a step was asked for, and when its result showed. */
-  private previewSteps: { index: number; t0: number }[] = [];
+  previewSteps: { index: number; t0: number }[] = [];
   previewTimings: { index: number; ms: number; cached: boolean }[] = [];
   private lastPickKey = '';
   /** Feature statuses of the last regen of the real (not rolled-back-for-picking) document. */
