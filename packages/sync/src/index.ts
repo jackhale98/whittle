@@ -127,13 +127,27 @@ export {
   type ProjectMerge,
   resolveProjectFiles,
 } from './merge/files';
+// The merge's folder normaliser is a stand-in for the document package's `normalizeFolders`
+// (ADR-066) and is not exported; inject another with `new StructuralMerger({ normalizeFolders })`.
+export type { FolderChange, FolderNormalization, NormalizeFolders } from './merge/folders';
 export { formatValue, prettyExpr } from './merge/format';
-export { subjectAt } from './merge/labels';
+export {
+  conflictField,
+  conflictSummary,
+  conflictValueText,
+  folderChangeSummary,
+  subjectAt,
+  visibilityText,
+} from './merge/labels';
 export {
   conflictId,
   docMerger,
+  type MergeNote,
   MergeResolutionError,
+  mergeNotes,
+  type StructuralMergeResult,
   StructuralMerger,
+  type StructuralMergerOptions,
   weave,
 } from './merge/merge';
 export { COLLECTIONS, fromPointer, getAtSegs, isCollectionPath, toPointer } from './merge/tree';

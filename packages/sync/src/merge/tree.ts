@@ -16,7 +16,8 @@ export type Obj = Record<string, unknown>;
 /**
  * Every array in document.ts / sketch.ts whose items carry a stable `id`. `*` matches one item id.
  * Everything else that is an array (EntityRef lists, Vec3, frames, `skip`, `CopySource.features`)
- * is a leaf and merges as a whole.
+ * is a leaf and merges as a whole, except a folder's member ids (`FeatureFolder.features`), which
+ * merge as a set.
  */
 export const COLLECTIONS: readonly Segs[] = [
   ['params'],
@@ -24,6 +25,9 @@ export const COLLECTIONS: readonly Segs[] = [
   ['drawings'],
   ['assemblies'],
   ['parts', '*', 'features'],
+  // Feature tree folders (M3.6). The merge handles them at the part level (`merge.ts` folders()):
+  // their order carries no meaning and their member lists merge as sets.
+  ['parts', '*', 'folders'],
   ['parts', '*', 'features', '*', 'entities'],
   ['parts', '*', 'features', '*', 'constraints'],
   ['parts', '*', 'features', '*', 'annotations'],
