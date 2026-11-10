@@ -48,15 +48,12 @@ import {
 import {
   canFolder,
   computeNesting,
-  cyclePreselection,
   type ExportRequest,
   eventBindingId,
   type KeymapOverrides,
   runWithNested,
   type SheetSnap,
   type SheetTabId,
-  type SketchToolId,
-  sortCandidates,
   type ToolId,
 } from '@wren-cad/ui';
 import { type Autosaver, createAutosaver } from '../doc/autosave';
@@ -127,7 +124,8 @@ import {
 } from '../selection/pick';
 import type { SyncController, SyncHost } from '../sync/controller';
 import { type BubbleActionId, gestureAction } from './gestures';
-import { commandFor, type InputSettings, loadInput, withKeymap, withNavigation } from './input';
+import { commandFor, type InputSettings, loadInput } from './input';
+import * as keys from './keyboard';
 import { MeasureTool } from './measure-tool';
 import { type Observable, observable } from './observable';
 import { PointerDowns, replayedPointerDowns } from './pointers';
@@ -200,28 +198,9 @@ export function freshDocument(): WrenDoc {
   return { ...doc, meta: { ...doc.meta, id: ulid() } };
 }
 
-const isTyping = (t: EventTarget | null) => {
-  const el = t as HTMLElement | null;
-  return !!el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));
-};
-
 /** Left-drag past this many px is a box selection, not a click. */
 const BOX_DRAG_PX = 5;
 
-const SPACE_ACTIVATES =
-  'button, a[href], summary, [role="button"], [role="menuitem"], [role="menuitemcheckbox"], [role="option"], [role="tab"], [role="switch"], [role="checkbox"], [role="radio"], [role="treeitem"]';
-
-/** Space belongs to a focused control that Space activates; elsewhere it repeats the last command. */
-function activatesOnSpace(t: EventTarget | null): boolean {
-  return t instanceof Element && t.closest(SPACE_ACTIVATES) !== null;
-}
-
-/** The "Which one?" kind of a pick: sketch points and curves count as vertices and edges. */
-function candidateKind(h: PickHit): 'face' | 'edge' | 'vertex' | 'body' {
-  if (h.kind === 'sketchPoint') return 'vertex';
-  if (h.kind === 'sketchCurve') return 'edge';
-  return h.kind === 'region' || h.kind === 'handle' ? 'face' : h.kind;
-}
 /** A Pencil press held still this long opens the radial menu (touch has the viewport's long-press). */
 const PEN_LONG_PRESS_MS = 500;
 
@@ -1393,7 +1372,7 @@ export class Workbench {
     this.penHold = { id, x, y, timer };
   }
 
-  private setHover(hit: PickHit | null): void {
+  setHover(hit: PickHit | null): void {
     const u = this.ui.get();
     if (u.sketch) {
       this.sketch?.setHover(null);
@@ -1705,7 +1684,7 @@ export class Workbench {
     this.commit();
   }
 
-  private async selectHit(hit: PickHit, additive: boolean): Promise<void> {
+  async selectHit(hit: PickHit, additive: boolean): Promise<void> {
     const key = hitKey(hit);
     const u = this.ui.get();
     const exists = u.selection.some((s) => s.key === key);
@@ -2336,92 +2315,7 @@ export class Workbench {
    * keymap (`sketchShortcut`); here are the global, model and view commands.
    */
   private onKey(e: KeyboardEvent): void {
-    if (e.defaultPrevented) return;
-    const id = eventBindingId(e);
-    if (!id) return;
-    const u = this.ui.get();
-    const sketching = u.sketch !== null;
-    const cmd = commandFor(this.input.get(), id, sketching);
-    const typing = isTyping(e.target);
-    if (!cmd) {
-      // Tab: cycle the preselection under a still pointer (focus is on the page, not a control).
-      if (e.code === 'Tab' && !sketching && this.tabCycle(e)) return;
-      // Enter ends a spline being drawn (open); closing is a tap on its first point.
-      if (sketching && e.key === 'Enter' && !typing && this.sketch?.finishShape()) {
-        e.preventDefault();
-        return;
-      }
-      // Enter while a list field is being picked: done with it, on to the tool's next field.
-      if (e.key === 'Enter' && !sketching && !typing && this.ui.get().picking && !this.tabHit) {
-        e.preventDefault();
-        this.advancePicking();
-        return;
-      }
-      // Enter takes Tab's preselection (the highlighted candidate) as the pick.
-      if (e.key === 'Enter' && !sketching && !typing && this.tabHit) {
-        e.preventDefault();
-        const hit = this.tabHit;
-        this.tabHit = null;
-        void this.choose(hit, e.shiftKey);
-        return;
-      }
-      if (sketching && (e.key === 'Delete' || e.key === 'Backspace') && !typing) {
-        e.preventDefault();
-        this.sketch?.deleteSelected();
-      }
-      return;
-    }
-    // Chords with the platform modifier run even in a text field when they are the file commands;
-    // undo / redo belong to the field there.
-    const chord = id.startsWith('Mod+');
-    switch (cmd.id) {
-      case 'undo':
-      case 'redo':
-        if (typing) return;
-        e.preventDefault();
-        if (cmd.id === 'redo') this.redo();
-        else this.undo();
-        return;
-      case 'save':
-        e.preventDefault();
-        void this.exportWren();
-        return;
-      case 'open':
-        e.preventDefault();
-        void this.openFromDisk();
-        return;
-      case 'palette':
-        return; // the shell's command palette handles its own key
-    }
-    if (typing || chord || e.altKey) return;
-    switch (cmd.id) {
-      case 'cancel':
-        if (!sketching && this.cancel()) e.preventDefault();
-        return;
-      case 'repeat':
-        // Space on a focused control activates that control (buttons, tree rows, menu items).
-        if (activatesOnSpace(e.target)) return;
-        e.preventDefault();
-        this.repeatLast();
-        return;
-      case 'radial':
-        e.preventDefault();
-        if (!e.repeat && !u.radial) {
-          const p = this.lastPointer ?? this.canvasCentre();
-          this.patchUi({ radial: { x: p.x, y: p.y, source: 'keyboard', holdCode: e.code } });
-        }
-        return;
-    }
-    if (sketching) return; // the sketch toolbar owns the sketch tool keys
-    if (cmd.id.startsWith('tool:')) {
-      e.preventDefault();
-      const tool = cmd.id.slice('tool:'.length) as ModelTool | FeatureTool;
-      if (tool === 'sketch') this.sketchTool();
-      else void this.runTool(tool);
-    } else if (cmd.id.startsWith('view:')) {
-      const name = cmd.id.slice('view:'.length) as Parameters<TouchViewport['setView']>[0];
-      this.viewport?.setView(name, true);
-    }
+    keys.onKey(this, e);
   }
 
   /** The sketch toolbar's tool keys from the keymap: a tool id, `construction`, or null. */
@@ -2438,59 +2332,43 @@ export class Workbench {
   readonly input: Observable<InputSettings> = observable(loadInput());
 
   setNavigationSettings(navigation: InputSettings['navigation']): void {
-    this.input.set((s) => withNavigation(s, navigation));
-    this.viewport?.setNavigation(navigation);
+    keys.setNavigationSettings(this, navigation);
   }
 
   setKeymapOverrides(overrides: KeymapOverrides): void {
-    this.input.set((s) => withKeymap(s, overrides));
+    keys.setKeymapOverrides(this, overrides);
   }
 
   openSettings(tab: 'navigation' | 'keyboard' = 'navigation'): void {
-    this.patchUi({ settings: tab, radial: null, chooser: null });
+    keys.openSettings(this, tab);
   }
 
   closeSettings(): void {
-    this.patchUi({ settings: null });
+    keys.closeSettings(this);
   }
 
   /** Last pointer position over the page (client px): where a held key opens the radial menu. */
-  private lastPointer: { x: number; y: number } | null = null;
+  lastPointer: { x: number; y: number } | null = null;
 
-  private canvasCentre(): { x: number; y: number } {
-    const r = this.canvas?.getBoundingClientRect();
-    return r ? { x: r.left + r.width / 2, y: r.top + r.height / 2 } : { x: 0, y: 0 };
+  canvasCentre(): { x: number; y: number } {
+    return keys.canvasCentre(this);
   }
 
   // ------------------------------------------------------------------ repeat, radial, Tab cycling
 
   /** Space, a quick right click under `rightOrbitRepeat`, the radial's Repeat slot. */
   repeatLast(): void {
-    if (this.ui.get().sketch) {
-      this.sketch?.repeatTool();
-      return;
-    }
-    const last = this.ui.get().lastTool;
-    if (!last) return;
-    if (last === 'sketch') this.sketchTool();
-    else void this.runTool(last);
+    keys.repeatLast(this);
   }
 
   /** The label of what Repeat would run now, for the radial menu's fixed slot. */
   lastCommandLabel(): string | null {
-    if (this.ui.get().sketch) return this.sketch?.lastToolLabel() ?? null;
-    return this.ui.get().lastTool;
+    return keys.lastCommandLabel(this);
   }
 
   /** A radial item was chosen (see `radial.ts` for the ids). */
   radialAction(id: string): void {
-    this.patchUi({ radial: null });
-    if (id === 'repeat') this.repeatLast();
-    else if (id === 'sketch:finish') this.sketch?.finish();
-    else if (id.startsWith('sketch:')) this.sketch?.setTool(id.slice(7) as SketchToolId);
-    else if (id === 'iso') this.viewport?.setView('iso', true);
-    else if (id === 'folder:add') void this.addFolder(this.folderRunOf(this.treeSelection.get()));
-    else this.bubbleAction(id as BubbleActionId);
+    keys.radialAction(this, id);
   }
 
   /**
@@ -2498,26 +2376,12 @@ export class Workbench {
    * first (right-click on an unselected face selects it), so the menu's contents match what the
    * user pointed at; on empty space the current selection (or the general set) decides.
    */
-  private async openRadial(
+  private openRadial(
     g: { x: number; y: number; pointerType: 'mouse' | 'pen' | 'touch'; pointerId?: number },
     hit: PickHit | null,
     held: boolean,
   ): Promise<void> {
-    const u = this.ui.get();
-    if (!u.sketch && hit && !u.selection.some((s) => s.key === hitKey(hit)))
-      await this.selectHit(hit, false);
-    const r = this.canvas?.getBoundingClientRect();
-    this.patchUi({
-      bubble: null,
-      chooser: null,
-      radial: {
-        x: g.x + (r?.left ?? 0),
-        y: g.y + (r?.top ?? 0),
-        source: g.pointerType,
-        ...(held ? { held: true } : {}),
-        ...(g.pointerId !== undefined ? { pointerId: g.pointerId } : {}),
-      },
-    });
+    return keys.openRadial(this, g, hit, held);
   }
 
   /** The candidates under the pointer at its last move, in the chooser's stable order. */
@@ -2528,40 +2392,19 @@ export class Workbench {
     hit: PickHit;
   }> = [];
   /** Tab's current preselection (a hit of `lastPick`), valid while the pointer stays put. */
-  private tabHit: PickHit | null = null;
+  tabHit: PickHit | null = null;
 
   private forgetPick(): void {
-    this.lastPick = [];
-    this.tabHit = null;
+    keys.forgetPick(this);
   }
 
   private rememberPick(hits: readonly PickHit[]): void {
-    this.lastPick = sortCandidates(
-      hits.map((h) => ({
-        id: hitKey(h),
-        kind: candidateKind(h),
-        ...(h.depth !== undefined ? { depth: h.depth } : {}),
-        hit: h,
-      })),
-    );
-    this.tabHit = null;
+    keys.rememberPick(this, hits);
   }
 
   /** Tab / Shift+Tab with a still pointer over overlapping geometry; false when it does not apply. */
-  private tabCycle(e: KeyboardEvent): boolean {
-    const t = e.target as HTMLElement | null;
-    const onPage =
-      !t || t === document.body || t === this.canvas || t === this.canvas?.parentElement;
-    if (!onPage || this.lastPick.length === 0 || this.ui.get().chooser) return false;
-    const ids = this.lastPick.map((c) => c.id);
-    const cur = this.tabHit ? hitKey(this.tabHit) : null;
-    const next = cyclePreselection(ids, cur, e.shiftKey ? -1 : 1);
-    const hit = this.lastPick.find((c) => c.id === next)?.hit ?? null;
-    if (!hit) return false;
-    e.preventDefault();
-    this.tabHit = hit;
-    this.setHover(hit);
-    return true;
+  tabCycle(e: KeyboardEvent): boolean {
+    return keys.tabCycle(this, e);
   }
 
   // ------------------------------------------------------------------ library & files
