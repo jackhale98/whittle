@@ -917,7 +917,8 @@ test.describe('lineage', () => {
     const lin = page.getByTestId('feature-lineage');
     await expect(lin.locator('[data-lineage-group="parents"]')).toContainText('Pocket profile');
     await expect(lin.locator('[data-lineage-group="children"]')).toContainText('Floor fillet');
-    // The tree marks them.
+    // The tree marks them (the nested parent sketch shows once its owner is expanded).
+    await tree.getByRole('button', { name: /^Expand Pocket cut/ }).click();
     await expect(tree.locator(`[data-lineage="parent"]`)).toContainText('Pocket profile');
     await expect(tree.locator(`[data-lineage="child"]`)).toContainText('Floor fillet');
     // A chip selects that feature.

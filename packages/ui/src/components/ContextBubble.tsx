@@ -121,7 +121,7 @@ export function ContextBubble({
             <RToolbar.Button
               onClick={onClear}
               aria-label="Clear selection"
-              data-action="clear-selection"
+              data-testid="bubble-clear"
               className="flex h-14 min-w-11 items-center justify-center rounded-control text-fg-muted transition-colors duration-fast select-none hover:bg-surface-2 active:bg-surface-3"
             >
               <X className="size-5" aria-hidden />

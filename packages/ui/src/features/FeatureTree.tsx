@@ -258,17 +258,6 @@ export function FeatureTree({
     if (parent) setExpanded((e) => (e.has(parent) ? e : new Set(e).add(parent)));
   }, [selectedId, nesting]);
 
-  // What the selected feature is built from is marked in the list, so a nested parent sketch shows.
-  const lineageParents = lineage?.parents;
-  useEffect(() => {
-    if (!lineageParents?.length) return;
-    const owners = lineageParents
-      .map((p) => nesting.parentOf.get(p))
-      .filter((o): o is Id => o !== undefined);
-    if (owners.length)
-      setExpanded((e) => (owners.every((o) => e.has(o)) ? e : new Set([...e, ...owners])));
-  }, [lineageParents, nesting]);
-
   const toggle = useCallback((id: Id, open?: boolean) => {
     setExpanded((e) => {
       const isOpen = e.has(id);
