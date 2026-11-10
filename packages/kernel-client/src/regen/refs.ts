@@ -2,7 +2,9 @@
  * Reference resolution against the walk state (PLAN §7.3): the candidates of a stored
  * `EntityRef` among the bodies, sketches and planes built so far, resolved by resolve.ts
  * (exact name, then name + fingerprint, then fingerprint, else unresolved: never guessed),
- * with rebound refs and `lastKnown` fingerprints recorded for the app. Also the plane-, axis-
+ * with rebound refs and `lastKnown` fingerprints recorded for the app. Names a boolean merged into
+ * another face resolve to it through the kernel's merge aliases, reported as `merged` (ADR-076).
+ * Also the plane-, axis-
  * and point-like references of the M3 reference geometry, and body scopes.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
@@ -92,7 +94,7 @@ function candidates(ctx: WalkContext, ref: EntityRef, kind: SubKind): Candidate[
 
 /**
  * A ref whose name no body has any more, but which a boolean merged into another sub-shape
- * (ADR-074): resolve the survivor's name instead (nearest in the merge chain first), keeping the
+ * (ADR-076): resolve the survivor's name instead (nearest in the merge chain first), keeping the
  * ref's fingerprint for split survivors. Construction history, not a guess; the caller reports
  * it as `merged`. Null when the name was never merged or no survivor resolves.
  */
@@ -132,7 +134,7 @@ export async function resolveSub(
     fingerprints: (s: ShapeHandle) => core.fingerprints(s),
     weak: (name: string) => mentionsImport(name, ctx.importIds),
   };
-  // Order (PLAN §7.3, ADR-074): exact name, then a merge alias (history evidence), then the
+  // Order (PLAN §7.3, ADR-076): exact name, then a merge alias (history evidence), then the
   // name family and fingerprints (resolve.ts).
   const merged = await resolveMerged(ref, kind, cands, ctx, rc);
   const r = merged ? ({ ok: true, target: merged } as const) : await resolveRef(ref, cands, rc);

@@ -347,6 +347,15 @@ kernel bench, 60 features ≈ 1.3 ms); causes themselves are computed only for f
 geometry when there are no bodies). The **family** of a name is the name with every `#k` removed
 (`edge(F:end#0|…)` and `edge(F:end|…)` are one family). Final rule:
 
+0. **Merged name** (ADR-076). Body naming maps list, after their primary names, the names a
+   boolean merged away (an alias entry with the same kind and index as the surviving sub-shape);
+   aliases are never candidates themselves. The engine collects them per walk
+   (`ModelState.merged`, absorbed → survivor), because the kernel lists them only on the merging
+   feature's result. A ref whose exact name no body has, but which was merged, resolves to the
+   survivor's name (nearest in the merge chain first; the ref's fingerprint is kept for a split
+   survivor), `via: 'merged'`. It is reported in `FeatureStatus.merged` (`{path, name, into}`) and
+   **not healed**: the stored name stays, so if an edit un-merges the faces the ref is back on its
+   own face by exact name. Construction history, not a guess: an unrelated face is never picked.
 1. **Exact name**, exactly one match → resolved, except for a `#k` (or imported) name whose family
    has several members when the ref has a fingerprint: then disambiguation (2) runs first and a
    clear winner overrides the index. Without a clear winner the exact name stands only if it is
@@ -450,6 +459,17 @@ method.
     chain ("the pocket's floor is gone because the plate changed").
   - `SketchBSpline`: state that `knots` are distinct values with `multiplicities` (both or
     neither), the default knot vectors and the periodic flat-knot convention above, domain [0, 1].
+- **Contracts** (proposed, ADR-076, merged faces):
+  - `naming.ts`: "Booleans merge the same-domain faces they leave side by side (a tool face next
+    to any face on one surface, pieces of one face; never two faces that were already on the
+    body). The merged face keeps the name of the earliest-created face: a face of the body before
+    the operation beats one it created, then the smaller name. Each absorbed face name, and each
+    edge and vertex name the merge changed, is listed as an alias: a further `NamingEntry` with the
+    same `kind` and `index`, after every primary entry. The first entry per index is the
+    sub-shape's name."
+  - `FeatureStatus.merged?: { path: string; name: string; into: string }[]`: refs whose stored name
+    was merged into another sub-shape and resolved to it by that alias. Not a heal: the stored
+    name is kept, so an upstream edit that un-merges the faces brings the ref back to its own face.
 - **Contracts** (done, H1): `ModelingApi.memoryStats(): Promise<KernelMemoryStats>` with
   `KernelMemoryStats` and `RegenMemoryStats` / `RegenSlotStats` as defined in
   `src/modeling-api.ts` and `src/regen/types.ts`, so the app's diagnostics panel and the soak test

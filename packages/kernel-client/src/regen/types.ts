@@ -74,7 +74,7 @@ export interface ReboundRef {
 }
 
 /**
- * A reference whose stored name a boolean merged into another face, edge or vertex (ADR-074):
+ * A reference whose stored name a boolean merged into another face, edge or vertex (ADR-076):
  * the kernel listed `name` as an alias of the surviving sub-shape `into`, so the ref resolved to
  * it by construction history, not by a guess. The stored name is kept (it is not healed): if an
  * upstream edit un-merges the faces, the ref goes back to its own face. Proposed contract field
@@ -104,7 +104,7 @@ export interface RegenFeatureStatus extends FeatureStatus {
   warnings?: KernelError[];
   unresolved?: RegenUnresolvedRef[];
   rebound?: ReboundRef[];
-  /** Refs resolved through a merge alias (ADR-074). */
+  /** Refs resolved through a merge alias (ADR-076). */
   merged?: MergedRef[];
 }
 

@@ -163,7 +163,7 @@ export class ModelState {
   /** Tool solids of the solid features evaluated so far (by feature id), for copies. */
   tools = new Map<Id, ToolSpec>();
   /**
-   * Names a boolean merged away (ADR-074), `${kind}|${absorbed}` → the name of the sub-shape that
+   * Names a boolean merged away (ADR-076), `${kind}|${absorbed}` → the name of the sub-shape that
    * absorbed it, gathered from the alias entries of every body naming map seen in this walk (the
    * kernel lists them only on the merging feature's result, so later features need this table).
    */

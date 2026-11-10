@@ -57,7 +57,7 @@ export interface Candidate {
 export interface ResolvedTarget extends Candidate {
   /**
    * How it was resolved (for diagnostics / healing stale refs). `merged`: a boolean merged the
-   * stored name's face (edge, vertex) into another one, which it resolved to (refs.ts, ADR-074).
+   * stored name's face (edge, vertex) into another one, which it resolved to (refs.ts, ADR-076).
    */
   via: 'name' | 'name+fingerprint' | 'fingerprint' | 'merged';
 }

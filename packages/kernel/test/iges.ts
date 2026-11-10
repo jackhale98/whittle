@@ -41,9 +41,17 @@ const hollerith = (s: string): string => `${s.length}H${s}`;
 
 /**
  * IGES text of the box [0,dx]×[0,dy]×[0,dz] (mm). `faceCount` < 6 writes only the first faces
- * (x min, x max, y min, y max, z min, z max): an open surface model.
+ * (x min, x max, y min, y max, z min, z max): an open surface model. `splitTopAt` (0 < x < dx)
+ * writes the top as two coplanar faces split at that x (the y faces get the split vertex), a body
+ * no boolean makes any more since they merge coplanar faces (ADR-076).
  */
-export function igesBox(dx: number, dy: number, dz: number, faceCount = 6): string {
+export function igesBox(
+  dx: number,
+  dy: number,
+  dz: number,
+  faceCount = 6,
+  splitTopAt?: number,
+): string {
   const entities: Entity[] = [];
   const add = (e: Entity): number => {
     entities.push(e);
@@ -105,7 +113,31 @@ export function igesBox(dx: number, dy: number, dz: number, faceCount = 6): stri
       ],
     },
   ];
-  for (const f of faces.slice(0, faceCount)) {
+  const written = faces.slice(0, faceCount);
+  if (splitTopAt !== undefined && faceCount === 6) {
+    const s = splitTopAt;
+    (written[2] as (typeof faces)[number]).loop.splice(3, 0, [s, 0, dz]);
+    (written[3] as (typeof faces)[number]).loop.splice(2, 0, [s, dy, dz]);
+    written[5] = {
+      plane: [0, 0, 1, dz],
+      loop: [
+        [0, 0, dz],
+        [s, 0, dz],
+        [s, dy, dz],
+        [0, dy, dz],
+      ],
+    };
+    written.push({
+      plane: [0, 0, 1, dz],
+      loop: [
+        [s, 0, dz],
+        [dx, 0, dz],
+        [dx, dy, dz],
+        [s, dy, dz],
+      ],
+    });
+  }
+  for (const f of written) {
     const lines = f.loop.map((a, i) => {
       const b = f.loop[(i + 1) % f.loop.length] as Vec3;
       return add({ type: 110, form: 0, params: [...a, ...b].map(real), subordinate: true });

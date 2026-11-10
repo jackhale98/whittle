@@ -1,5 +1,5 @@
 /**
- * Golden tests for merging same-domain faces after booleans (ADR-074): face, edge and vertex
+ * Golden tests for merging same-domain faces after booleans (ADR-076): face, edge and vertex
  * counts, areas and volumes of fused / cut / intersected boxes and cylinders whose faces end up
  * flush, the naming rule (the earliest-created face keeps its name; absorbed names stay as
  * aliases of the surviving sub-shape) and patterns of bosses whose tops are coplanar. Every

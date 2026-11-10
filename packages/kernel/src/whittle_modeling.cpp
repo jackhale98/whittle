@@ -61,7 +61,7 @@ void carryFaceNames(BRepBuilderAPI_MakeShape& algo, const NamedInput& input, con
 // the threaded build runs the General Fuse in parallel.
 //
 // Same-domain faces the operation leaves side by side (a tool face flush with a body face, pieces
-// of one face) are merged, and absorbed names stay as aliases (whittle_unify.cpp, ADR-074).
+// of one face) are merged, and absorbed names stay as aliases (whittle_unify.cpp, ADR-076).
 NamedShape booleanNamed(BOPAlgo_Operation op, const std::vector<NamedInput>& objects,
                         const std::vector<NamedInput>& tools,
                         const std::function<std::string(const std::string&)>& toolRename,

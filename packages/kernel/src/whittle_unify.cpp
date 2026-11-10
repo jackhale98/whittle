@@ -1,4 +1,4 @@
-// Whittle kernel façade — merging same-domain faces after a boolean (ADR-074).
+// Whittle kernel façade — merging same-domain faces after a boolean (ADR-076).
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // Part of the amalgamated façade translation unit (see whittle_core.cpp); not compiled alone.
@@ -264,7 +264,7 @@ NamedShape unifyBooleanResult(const TopoDS_Shape& shape, std::vector<std::string
   }
 
   // 4. Unify; a merge that changes the solid count, breaks validity or changes the volume is
-  //    dropped (the seams stay, as before ADR-074).
+  //    dropped (the seams stay, as before ADR-076).
   TopoDS_Shape unified;
   occ::handle<BRepTools_History> history;
   try {

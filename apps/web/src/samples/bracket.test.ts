@@ -75,4 +75,82 @@ describe('demo bracket', () => {
     },
     60_000,
   );
+
+  it.skipIf(!built)(
+    'has one back face (the upright merges into the plate) and shells 1 and 2 mm (ADR-076)',
+    async () => {
+      const api = createModelingApi({
+        variants: {
+          single: {
+            load: () =>
+              import(pathToFileURL(`${dist}init.single.js`).href) as Promise<KernelInitModule>,
+          },
+          threaded: {
+            load: () =>
+              import(pathToFileURL(`${dist}init.multi.js`).href) as Promise<KernelInitModule>,
+          },
+        },
+      });
+      expect((await api.init({ variant: 'single' })).ok).toBe(true);
+      const doc = demoBracket();
+      const part = doc.parts[0];
+      if (!part) throw new Error('no part');
+      const partId = part.id;
+      const r = await api.regenerate({ doc, partId, quality: 'coarse', massProperties: true });
+      expect(r.features.map((f) => f.state)).toEqual(Array(9).fill('ok'));
+      const body = r.bodies[0];
+      // Plate 6 + 4 holes + upright top, front, chamfer + bend and 2 corner fillets; the back and
+      // both sides of plate and upright are one face each (19 before the merge).
+      expect(body?.mesh.faceNames).toHaveLength(16);
+      const fp = await api.fingerprints(body?.shape ?? 0);
+      if (!fp.ok) throw new Error('fingerprints');
+      const back = fp.value.faces.filter(
+        (f) => f.normal?.[1] === 1 && Math.abs((f.centroid[1] ?? 0) - DIMS.depth) < 1e-6,
+      );
+      expect(back).toHaveLength(1);
+      expect(back[0]?.area).toBeCloseTo(DIMS.width * (DIMS.thickness + DIMS.height), 6);
+
+      // Shell with the upright's top open: analytic volume (sharp joins; the void is the body
+      // eroded by t, open at the top; see packages/kernel-client/test/regen/unify.golden.test.ts).
+      const upright = part.features[5];
+      if (upright?.type !== 'extrude') throw new Error('upright');
+      const k = 1 - Math.PI / 4;
+      const voidAt = (t: number) => {
+        const { width: W, depth: D, thickness: T, height: H } = DIMS;
+        const c = DIMS.chamfer_d;
+        const profile =
+          (D - 2 * t) * (T - 2 * t) +
+          (T - 2 * t) * (H + t) -
+          0.5 * (c - t + t * Math.SQRT2) ** 2 +
+          k * (DIMS.bend_r + t) ** 2;
+        return (
+          (W - 2 * t) * profile -
+          2 * k * (DIMS.corner_r - t) ** 2 * (T - 2 * t) -
+          4 * Math.PI * (DIMS.hole_d / 2 + t) ** 2 * (T - 2 * t)
+        );
+      };
+      for (const t of [1, 2]) {
+        const shelled = structuredClone(doc);
+        const p = shelled.parts[0];
+        if (!p) throw new Error('no part');
+        p.features.push({
+          id: `01JSHELL${t}`.padEnd(26, '0'),
+          type: 'shell',
+          name: 'Shell',
+          suppressed: false,
+          openFaces: [{ name: `F${upright.id}:end`, kind: 'face' }],
+          thickness: `${t} mm`,
+          direction: 'inward',
+        });
+        p.rollbackIndex = p.features.length;
+        const s = await api.regenerate({ doc: shelled, partId, quality: 'coarse', massProperties: true });
+        expect(s.features.map((f) => f.state)).toEqual(Array(10).fill('ok'));
+        const v = s.bodies[0]?.massProperties?.volume ?? 0;
+        const want = demoBracketVolume(DIMS) - voidAt(t);
+        expect(Math.abs(v - want) / want).toBeLessThan(1e-6);
+      }
+      await api.closePart(partId);
+    },
+    60_000,
+  );
 });
