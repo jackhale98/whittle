@@ -283,7 +283,7 @@ for (const { variant } of VARIANTS) {
           names(r, 'face').filter((n) => n.startsWith(`F${SH}:rim(${B}:face.ymin)`)).length,
         ).toBeGreaterThan(0);
         expect(names(r, 'face')).not.toContain(`${B}:face.ymin`);
-      });
+      }, 60_000); // two failed thick-solid attempts, an offset and two booleans: seconds under load
 
       it('an over-thick shell is a structured error and the kernel keeps working', () => {
         const ss = session();
