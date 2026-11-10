@@ -2,7 +2,6 @@
   "_comment": "Allow-listed offenders of scripts/check-file-sizes.mjs: path -> line ceiling. Ceilings only go down; remove an entry once the file is under 2,500 lines.",
   "ceilings": {
     "apps/web/src/app/workbench.ts": 3540,
-    "packages/kernel-client/src/regen/engine.ts": 4714,
     "packages/viewport/src/viewport.ts": 3860
   }
 }
