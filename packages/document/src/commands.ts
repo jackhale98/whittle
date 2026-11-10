@@ -258,6 +258,14 @@ export function compileCommand(doc: WrenDoc, cmd: Command): Compiled {
       };
     case 'patch':
       return { ok: true, label: 'Edit', ops: structuredClone(cmd.ops) };
+    // M3.6 commands: contract landed first; the document workstream implements them.
+    case 'setSuppressedMany':
+    case 'setSketchVisibility':
+    case 'addFolder':
+    case 'renameFolder':
+    case 'removeFolder':
+    case 'moveFolder':
+      return err(`‘${cmd.kind}’ is not implemented yet`);
   }
 }
 

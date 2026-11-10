@@ -6,7 +6,17 @@
  * `coalesceKey` and collapse into one undo step.
  */
 
-import type { Expr, Feature, Id, Material, Param, Part, WrenDoc } from './document';
+import type {
+  Expr,
+  Feature,
+  FeatureFolder,
+  Id,
+  Material,
+  Param,
+  Part,
+  SketchVisibility,
+  WrenDoc,
+} from './document';
 
 export type JsonPointer = string;
 
@@ -28,7 +38,34 @@ export type Command =
   | { kind: 'removeFeature'; partId: Id; featureId: Id }
   | { kind: 'moveFeature'; partId: Id; featureId: Id; toIndex: number }
   | { kind: 'setSuppressed'; partId: Id; featureId: Id; suppressed: boolean }
+  /** Several features at once, one undo entry (a folder's "Suppress all"). */
+  | { kind: 'setSuppressedMany'; partId: Id; featureIds: Id[]; suppressed: boolean }
   | { kind: 'setRollback'; partId: Id; index: number }
+  /** `'auto'` restores the consumed-sketch default. Non-sketch ids are ignored. */
+  | {
+      kind: 'setSketchVisibility';
+      partId: Id;
+      featureIds: Id[];
+      visibility: SketchVisibility;
+    }
+  /**
+   * Feature tree folders (M3.6, ADR-066). `features` must be a contiguous run that no other folder
+   * holds; otherwise the command fails (nothing changes). Folder membership follows edits:
+   * - removing a feature drops it from its folder; a folder left empty is removed;
+   * - `moveFeature` of a member to outside its run takes it out of the folder;
+   * - `moveFeature` / `addFeature` of a non-member strictly inside a run (between two members)
+   *   adds it; landing just before the first or after the last member does not.
+   * So a run can never be split by an edit.
+   */
+  | { kind: 'addFolder'; partId: Id; folder: FeatureFolder }
+  | { kind: 'renameFolder'; partId: Id; folderId: Id; name: string }
+  /** Ungroup: the folder goes, its features stay where they are. */
+  | { kind: 'removeFolder'; partId: Id; folderId: Id }
+  /**
+   * Move the whole run. `toIndex` is the position of its first member in `features` with the run
+   * taken out (0 = top of the tree). Fails if that lands inside another folder's run.
+   */
+  | { kind: 'moveFolder'; partId: Id; folderId: Id; toIndex: number }
   | { kind: 'addParam'; param: Param }
   | { kind: 'updateParam'; paramId: Id; name?: string; expr?: Expr; description?: string }
   | { kind: 'removeParam'; paramId: Id }
