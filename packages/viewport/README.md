@@ -136,3 +136,22 @@ the overlay. Palette and rendering choices: see ADR-028 in docs/DECISIONS.md.
   faces thinner than about 2 px may be missed.
 - **Diagnostics.** `getNavigationState()` (engine extra, not in the contract) reports the drag mode,
   pivot, pivot source, marker visibility and the pivot's screen position, for tests.
+
+### Measured picking budgets (1M-triangle probe, 2026-11-10)
+
+`WREN_PERF=1 WREN_PERF_ASSERT=1 pnpm exec playwright test e2e/navigation.spec.ts -g "perf probe"`
+(software WebGL2, headless Chromium, loaded machine):
+
+| Measure | Budget | Measured |
+| --- | --- | --- |
+| Orbit-start pivot pick (median of 5) | 2 ms | **0.20 ms** (runs 0.50 / 0.20 / 0.20 / 0.20 / 0.10) |
+| Full-screen `pickRect`, crossing | 16 ms | **8.5 ms** |
+| Full-screen `pickRect`, window, first call (builds per-image totals) | 16 ms | **2.9 ms** (1.7 ms repeat) |
+
+## Coplanar overlays: depth bias
+
+Sketches, region fills, highlights and body/ghost edges lie exactly on faces. `polygonOffset` is not
+used (WebGPU ignores it for lines and coplanar slopes). `applyDepthBias` (`overlays.ts`) moves each
+overlay vertex to `p * (1 - 0.005)` in view space: screen x, y and w are unchanged and clip z gets
+`+ P[2][3] * eps / (1 - eps)`. The pull is 0.5 % of the point's own distance, independent of the
+near plane. See ADR-063 in `docs/DECISIONS.md`.

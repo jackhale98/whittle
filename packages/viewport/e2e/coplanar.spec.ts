@@ -22,6 +22,9 @@ test.use({
   },
 });
 
+/** Half the diagonal of the 40 x 30 x 20 harness box. */
+const SCENE_RADIUS = Math.hypot(40, 30, 20) / 2;
+
 /** Number of canvas pixels that differ noticeably between two screenshots. */
 async function diffPixels(page: Page, a: Buffer, b: Buffer): Promise<number> {
   return page.evaluate(
@@ -87,27 +90,53 @@ for (const { name, backend, noOffset } of variants) {
       expect(await diffPixels(page, base, withSketch)).toBeGreaterThan(1500);
     });
 
-    test('a sketch within a hair of the face wins the depth test; one clearly behind stays hidden', async ({
-      page,
-    }) => {
-      const got = await open(page, `?backend=${backend}&reducedMotion=1&hover=0`);
-      test.skip(got !== backend, `${backend} is not available in this browser`);
-      await settle(page);
-      await page.evaluate(() => window.__viewport!.viewport.setView('iso', false));
-      await frame(page);
-      const base = await page.locator('canvas').screenshot();
-      // 0.15 mm under the top face: numeric slop of a sketch "on" the face, and what depth
-      // precision does to coplanar geometry. The bias (0.2 % of the view distance) covers it.
-      await page.evaluate(() => window.__viewport!.showSketchAt(19.85));
-      await frame(page);
-      const near = await page.locator('canvas').screenshot();
-      expect(await diffPixels(page, base, near)).toBeGreaterThan(1500);
-      // 3 mm inside the part: hidden by the model, as it must be.
-      await page.evaluate(() => window.__viewport!.showSketchAt(17));
-      await frame(page);
-      const deep = await page.locator('canvas').screenshot();
-      expect(await diffPixels(page, base, deep)).toBeLessThan(150);
-    });
+    // 0.03 mm under the top face stands for numeric slop of a sketch "on" the face (real slop is
+    // float precision, far smaller); 1 mm under it is a thin wall, and 3 mm inside the part, both
+    // hidden by the model. The bias is relative, so this must hold at the iso fit and when zoomed
+    // in to 1x and 0.5x the scene radius (a near-plane-scaled bias pulled hidden geometry through).
+    for (const zoom of [null, 1, 0.5]) {
+      test(`a sketch within a hair of the face wins the depth test; one clearly behind stays hidden (${zoom === null ? 'iso fit' : `${zoom}x radius`})`, async ({
+        page,
+      }) => {
+        const got = await open(page, `?backend=${backend}&reducedMotion=1&hover=0`);
+        test.skip(got !== backend, `${backend} is not available in this browser`);
+        await settle(page);
+        await page.evaluate(() => window.__viewport!.viewport.setView('iso', false));
+        await frame(page);
+        if (zoom !== null) {
+          // Dolly along the view direction until the camera is `zoom` scene radii from a point on the top face.
+          const dist = await page.evaluate(
+            ({ r, radius }) => {
+              const v = window.__viewport!.viewport;
+              // Centre on the top face so the sketch stays in view.
+              const target: [number, number, number] = [20, 15, 20];
+              // zoomTo's distance is linear in its radius: measure the factor, then scale.
+              v.zoomTo(target, 10, false);
+              const k = v.getCameraState().distance / 10;
+              v.zoomTo(target, (r * radius) / k, false);
+              return v.getCameraState().distance;
+            },
+            { r: zoom, radius: SCENE_RADIUS },
+          );
+          expect(dist).toBeCloseTo(zoom * SCENE_RADIUS, 1);
+          await frame(page);
+        }
+        const base = await page.locator('canvas').screenshot();
+        await page.evaluate(() => window.__viewport!.showSketchAt(19.97));
+        await frame(page);
+        const near = await page.locator('canvas').screenshot();
+        expect(await diffPixels(page, base, near)).toBeGreaterThan(zoom === null ? 1500 : 800);
+        await page.evaluate(() => window.__viewport!.showSketchAt(17));
+        await frame(page);
+        const deep = await page.locator('canvas').screenshot();
+        expect(await diffPixels(page, base, deep)).toBeLessThan(150);
+        // A thin wall: geometry 1 mm behind the face must not bleed through it.
+        await page.evaluate(() => window.__viewport!.showSketchAt(19));
+        await frame(page);
+        const thin = await page.locator('canvas').screenshot();
+        expect(await diffPixels(page, base, thin)).toBeLessThan(150);
+      });
+    }
 
     test('a selected top face and its edges are drawn over the face', async ({ page }) => {
       const got = await open(page, `?backend=${backend}&reducedMotion=1&hover=0`);

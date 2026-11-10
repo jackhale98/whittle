@@ -189,3 +189,53 @@ test('a pinch during a finger drag of a sketch point ends the drag (M2 re-gate N
   // The drag's result before the pinch was kept as an ordinary, undoable edit.
   expect(afterPinch.some(([x]) => (x as number) > 20.5)).toBe(true);
 });
+
+test('sketch mode: a one-finger drag on empty space orbits; presses the sketch keeps do not (M3.5 N4)', async ({
+  page,
+}) => {
+  test.slow();
+  await boot(page);
+  await page.getByRole('button', { name: 'Close welcome' }).tap();
+  const a = app(page);
+  const t = await touch(page);
+  await page.getByRole('button', { name: 'Sketch', exact: true }).tap();
+  await page.getByTestId('plane-chooser').getByRole('button', { name: /Top/ }).tap();
+  await expect(page.getByRole('toolbar', { name: 'Sketch tools' })).toBeVisible();
+  await cameraStill(page);
+  const box = await page.getByTestId('viewport-canvas').boundingBox();
+  if (!box) throw new Error('no canvas');
+  const from = { x: box.x + 200, y: box.y + box.height - 220 };
+  const to = { x: from.x + 90, y: from.y - 60 };
+  const moved = async (run: () => Promise<void>): Promise<number> => {
+    await cameraStill(page);
+    const before = (await cameraState(page)).position as number[];
+    await run();
+    await cameraStill(page);
+    const after = (await cameraState(page)).position as number[];
+    return Math.hypot(...after.map((v, i) => v - (before[i] ?? 0)));
+  };
+  const penDrag = async () => {
+    await t.pen.down(from);
+    for (let k = 1; k <= 8; k++)
+      await t.pen.move({
+        x: from.x + ((to.x - from.x) * k) / 8,
+        y: from.y + ((to.y - from.y) * k) / 8,
+      });
+    await t.pen.up(to);
+  };
+
+  // The line tool is active: a finger drag and a Pencil drag draw, they never orbit.
+  expect((await a.ui()).sketch?.tool).toBe('line');
+  expect(await moved(() => t.drag(from, to)), 'finger drag with the line tool').toBeLessThan(1e-6);
+  await page.keyboard.press('Escape'); // end the chain
+  expect(await moved(penDrag), 'Pencil drag with the line tool').toBeLessThan(1e-6);
+
+  // No tool, nothing under the finger: the drag orbits.
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape');
+  await a.idle();
+  const orbit = await moved(() => t.drag(from, to));
+  expect(orbit, 'one-finger drag on empty space in select mode').toBeGreaterThan(1);
+  // The Pencil with no tool draws a stroke instead of navigating.
+  expect(await moved(penDrag), 'Pencil drag with no tool').toBeLessThan(1e-6);
+});
