@@ -797,6 +797,26 @@ Owner request 2026-11-10 (moved up from P2): before drawings and assemblies, so 
   - **Model and UX rules** (from the report's P0 list): sparse overrides keyed by id over an implicit Default; edit scope decided at the point of edit (an inherited value edits Default, i.e. all configurations, with an undoable "Changed in all N configurations" toast; an overridden value edits only the active configuration; "override in this configuration" is an explicit chip, never a sticky mode); an always-visible active-configuration pill with a tinted edge off Default; override markers with "Reset to default"; inline table; explicit per-configuration suppression and never auto-suppression of new features; needs-attention per configuration; a background rebuild-all check with per-configuration status, cached by resolved-value hash, and no forced rebuild on save; a consumer whose configuration id is missing is "needs attention", never a silent fall-back to Default. Typed inputs, rules and derived configurations are deferred (D5, D6).
 - **Accept:** golden tests regenerate each configuration of a reference part and match the expected masses (FreeCAD-checked like §12A); E2E creates two configurations from the UI, switches between them, suppresses a feature in one only, exports both, and save → reload keeps everything; a merge test resolves edits to different configurations without conflict and flags the same cell edited on both sides.
 
+### M3.8 — Sketch input polish
+
+Owner feedback 2026-11-10. Small; right after M3.7, before M4 (drawings dimension sketches and edges, so sketch input should be solid first).
+
+- **Implied constraints on every tool.** Today the inference engine proposes coincident (and horizontal/vertical, on-curve, tangent) snaps, and the line tool commits them; other tools don't consistently. For example, the Point tool ignores a click on an existing point instead of merging, and a circle centre or a spline pole placed on an existing point may not bind.
+  - Audit every sketch tool: line, rectangle (each variant), circle, arc, slot, polygon, point, ellipse, elliptic arc, both spline tools, and the Pencil-recognised shapes.
+  - Every placed point that lands on a visible point **reuses that point** (or adds `coincident`). Points landing on a curve add point-on-curve, and axis or origin alignment adds horizontal or vertical, exactly as the glyph promised while hovering.
+  - What is shown is what is committed. A test checks that the glyphs shown match the constraints written, for every tool.
+- **Finish a tool without Esc.**
+  - **Mouse:** a right click (press and release, no drag) **finishes the current chain or shape**: it ends a line chain where it is, and commits an open spline with the points placed so far. With nothing in progress it opens the radial menu, as today, and right-drag still navigates. Esc keeps working; Enter and double-click still finish splines.
+  - **Touch and Pencil:** a visible **Finish** button beside the sketch toolbar's Done ✕ while a chain or spline is in progress. Double-tap still works.
+  - The behaviour is configurable in Settings → Navigation ("Right click finishes the current sketch tool", on by default) and listed in the shortcut overlay.
+- **Two-point splines.** A through-point spline with two points is valid: a straight cubic with free end tangents that can be dragged or constrained later. A control-point spline with two poles is a degree-1 segment, offered as such. Today a two-point spline can't be finished.
+- **Accept:**
+  - Unit tests per tool: glyphs shown equal constraints committed. Dropping a point on an existing point merges it, with no duplicate.
+  - E2E (mouse): a right click ends a line chain and a three-point spline. With nothing in progress it opens the radial menu.
+  - E2E (touch): Finish ends a chain.
+  - A two-point spline finishes and regenerates.
+  - No change to right-drag navigation.
+
 ### M4 — Drawings
 
 - Sheets and templates; base, projected, iso, section and detail views with exact HLR; centre marks; dimensions with tolerances; GD&T frames, datums, notes and a **part properties table** (part number, description, material, mass; optionally one row per configuration; balloons and multi-part BOMs come with M6); associativity; PDF, SVG and DXF export. **Not in M4:** weld symbols (later, with assemblies or on request). Owner decisions 2026-11-10; design input: `docs/ux-research/reports/Drawings and configurations UX.md`.
