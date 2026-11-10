@@ -180,6 +180,7 @@ export interface ViewportProbe {
     sectionNormal: [number, number, number] | null;
     sectionOffset: number | null;
     capsDrawn: number;
+    capColor: string | null;
     handleHover: string | null;
   };
   getRenderCount(): number;

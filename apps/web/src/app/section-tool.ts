@@ -163,12 +163,18 @@ export class SectionTool {
     this.place(this.settings());
   }
 
+  /** The UI changed (push/pull, sketch, picking...): show or hide the manipulator if that flipped. */
+  onUiChange(): void {
+    if (this.wanted() !== this.shown) this.sync();
+  }
+
   /** The camera moved: the screen-sized parts follow, at most once per frame. */
   onCamera(): void {
     if (!this.shown || this.placeRaf) return;
     this.placeRaf = requestAnimationFrame(() => {
       this.placeRaf = 0;
-      if (this.shown) this.place(this.settings());
+      if (this.shown && this.wanted()) this.place(this.settings());
+      else if (this.shown) this.hide();
     });
   }
 

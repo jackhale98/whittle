@@ -66,11 +66,17 @@ export function getBodyMaterialState(vp: ViewportImpl, id: string): BodyMaterial
 
 export function getTouchStats(vp: ViewportImpl): TouchStats {
   let capsDrawn = 0;
-  for (const e of vp.bodies.values()) if (e.cap?.quad.visible) capsDrawn++;
+  let capColor: string | null = null;
+  for (const e of vp.bodies.values()) {
+    if (!e.cap?.quad.visible) continue;
+    capsDrawn++;
+    capColor ??= `#${e.cap.quadMat.color.getHexString()}`;
+  }
   return {
     ...vp.touchStats,
     sectionNormal: vp.section ? [...vp.section.eq.n] : null,
     sectionOffset: vp.section ? vp.section.eq.offset : null,
     capsDrawn,
+    capColor,
   };
 }

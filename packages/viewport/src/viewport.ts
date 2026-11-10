@@ -271,6 +271,7 @@ export class ViewportImpl implements ViewportEngine {
     sectionNormal: null,
     sectionOffset: null,
     capsDrawn: 0,
+    capColor: null,
   };
   followSystemMotion = false;
   previewDirty = false;
