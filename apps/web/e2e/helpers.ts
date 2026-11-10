@@ -8,7 +8,14 @@ export interface AppHooks {
     revision: number;
     source: 'live' | 'cache';
     quality: 'coarse' | 'fine';
-    bodies: { id: string; volume: number | null; bbox: { min: number[]; max: number[] } }[];
+    /** The rollback position the result was computed at. */
+    rollback: number | null;
+    bodies: {
+      id: string;
+      volume: number | null;
+      faces: number;
+      bbox: { min: number[]; max: number[] };
+    }[];
     features: {
       id: string;
       state: string;
@@ -21,6 +28,13 @@ export interface AppHooks {
   idle(): Promise<void>;
   /** Ids of the sketches currently drawn in the viewport. */
   shownSketches(): string[];
+  /** Ids of the bodies the viewport holds. */
+  shownBodies(): string[];
+  /** The phone step-through's previewed rollback position (null when not previewing). */
+  preview(): number | null;
+  previewTimings(): { index: number; ms: number; cached: boolean }[];
+  /** Folders the user has collapsed in the open document. */
+  collapsedFolders(): string[];
   editFeature(id: string): void;
   flushSave(): Promise<void>;
   sketch(): {
@@ -118,6 +132,11 @@ export const app = (page: Page) => ({
   regen: () => page.evaluate(() => (window as unknown as W).__wrenApp.regen()),
   idle: () => page.evaluate(() => (window as unknown as W).__wrenApp.idle()),
   shownSketches: () => page.evaluate(() => (window as unknown as W).__wrenApp.shownSketches()),
+  shownBodies: () => page.evaluate(() => (window as unknown as W).__wrenApp.shownBodies()),
+  preview: () => page.evaluate(() => (window as unknown as W).__wrenApp.preview()),
+  previewTimings: () => page.evaluate(() => (window as unknown as W).__wrenApp.previewTimings()),
+  collapsedFolders: () =>
+    page.evaluate(() => (window as unknown as W).__wrenApp.collapsedFolders()),
   editFeature: (id: string) =>
     page.evaluate((x) => (window as unknown as W).__wrenApp.editFeature(x), id),
   flushSave: () => page.evaluate(() => (window as unknown as W).__wrenApp.flushSave()),

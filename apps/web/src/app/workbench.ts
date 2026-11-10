@@ -3307,6 +3307,8 @@ export class Workbench {
           : null;
       },
       shownSketches: () => [...this.shownSketches],
+      /** Ids of the bodies the viewport holds (what is on screen). */
+      shownBodies: () => [...this.shownBodies],
       /** The phone step-through: the previewed rollback position (null when not previewing). */
       preview: () => this.preview.get(),
       previewTimings: () => [...this.previewTimings],
