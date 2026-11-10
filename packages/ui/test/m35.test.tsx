@@ -353,6 +353,28 @@ describe('error-at-cause in the inspector', () => {
     expect(screen.queryByRole('button', { name: /^Select/ })).toBeNull();
   });
 
+  it('a deleted cause offers Undo, a live one does not', async () => {
+    const onUndo = vi.fn();
+    const { unmount } = renderUI(
+      <FeatureInspector
+        feature={fillet}
+        status={{
+          ...attention,
+          unresolved: [{ ...u0, cause: { featureId: 'ex', kind: 'deleted' } }],
+        }}
+        evaluate={(e, x) => evaluate(e, x)}
+        onChange={() => {}}
+        describeFeature={(id) => names[id] ?? id}
+        onUndo={onUndo}
+      />,
+    );
+    await userEvent.click(screen.getByTestId('undo-cause'));
+    expect(onUndo).toHaveBeenCalledOnce();
+    unmount();
+    mount(attention);
+    expect(screen.queryByTestId('undo-cause')).toBeNull();
+  });
+
   it('error and blocked features name their cause too', async () => {
     const a = mount({
       featureId: 'fi',

@@ -92,6 +92,29 @@ describe('sketch toolbar: edit tools', () => {
     expect(keys).not.toContain('X'); // construction toggle
   });
 
+  it('follows the app keymap when matchShortcut is given (ADR-049 switch-over)', () => {
+    const onTool = vi.fn();
+    const onToggle = vi.fn();
+    renderUI(
+      <SketchToolbar
+        activeTool={null}
+        onTool={onTool}
+        construction={false}
+        onToggleConstruction={onToggle}
+        onFinish={() => {}}
+        matchShortcut={(e) =>
+          e.code === 'KeyJ' ? 'circle' : e.code === 'KeyK' ? 'construction' : null
+        }
+      />,
+    );
+    fireEvent.keyDown(window, { key: 'l', code: 'KeyL' }); // the built-in table is replaced
+    expect(onTool).not.toHaveBeenCalled();
+    fireEvent.keyDown(window, { key: 'x', code: 'KeyJ' }); // layout-independent: by code
+    expect(onTool).toHaveBeenLastCalledWith('circle', 'center');
+    fireEvent.keyDown(window, { key: 'q', code: 'KeyK' });
+    expect(onToggle).toHaveBeenCalled();
+  });
+
   it('ignores shortcuts while typing', () => {
     const onTool = setup();
     const input = document.createElement('input');

@@ -1,7 +1,7 @@
 import type { FeatureStatus, FilletFeature, SketchFeature, WrenDoc } from '@wren-cad/contracts';
 import { newDoc } from '@wren-cad/document';
 import { describe, expect, it } from 'vitest';
-import { describeEdgeName, explainStatus } from './explain';
+import { describeEdgeName, explainStatus, followBlockedCauses } from './explain';
 
 const SK = '01SKETCH000000000000000000';
 const EX = '01EXTRUDE00000000000000000';
@@ -87,5 +87,29 @@ describe('explainStatus (propagate: false, ADR-040)', () => {
       'the edge between the end face of Extrude 1 and the side of Line 1 (Extrude 1)',
     );
     expect(describeEdgeName(docWith(false), 'nonsense')).toBe('an edge');
+  });
+});
+
+describe('followBlockedCauses (errors at the root cause)', () => {
+  const st = (featureId: string, state: FeatureStatus['state'], cause?: FeatureStatus['cause']) =>
+    ({ featureId, state, cached: false, ms: 0, ...(cause ? { cause } : {}) }) as FeatureStatus;
+
+  it('follows blocked links to the first feature that is not blocked', () => {
+    const out = followBlockedCauses([
+      st('A', 'error'),
+      st('B', 'blocked', { featureId: 'A', kind: 'failed' }),
+      st('C', 'blocked', { featureId: 'B', kind: 'failed' }),
+    ]);
+    expect(out[2]?.cause).toEqual({ featureId: 'A', kind: 'failed' });
+    expect(out[1]?.cause).toEqual({ featureId: 'A', kind: 'failed' });
+  });
+  it('never invents a cause and survives cycles', () => {
+    const none = st('B', 'blocked');
+    expect(followBlockedCauses([none])[0]).toBe(none);
+    const out = followBlockedCauses([
+      st('A', 'blocked', { featureId: 'B', kind: 'failed' }),
+      st('B', 'blocked', { featureId: 'A', kind: 'failed' }),
+    ]);
+    expect(out).toHaveLength(2);
   });
 });

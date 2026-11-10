@@ -233,6 +233,12 @@ export interface SketchToolbarProps {
   onEscape?(): void;
   /** Attach L / A / Shift+C / D / X / Esc listeners on `window` (default true). */
   shortcuts?: boolean;
+  /**
+   * The app's keymap (ADR-049): given a key event, the tool id it runs (`line`, `splineControl`,
+   * ...), `'construction'`, or null. When given it replaces the built-in letter table, so tool
+   * shortcuts follow the user's keymap; Esc stays the toolbar's.
+   */
+  matchShortcut?(e: KeyboardEvent): string | null;
   layout?: 'bar' | 'rail';
   /** `touch`: a short text label under every icon (no hover tooltips on touch) and 56 px targets. */
   density?: 'compact' | 'touch';
@@ -263,6 +269,7 @@ export function SketchToolbar({
   onFinish,
   onEscape,
   shortcuts = true,
+  matchShortcut,
   layout = 'bar',
   density = 'compact',
   className,
@@ -278,8 +285,15 @@ export function SketchToolbar({
     | null
   >(null);
   const pressTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const live = useRef({ activeTool, chosen, onTool, onToggleConstruction, onEscape });
-  live.current = { activeTool, chosen, onTool, onToggleConstruction, onEscape };
+  const live = useRef({
+    activeTool,
+    chosen,
+    onTool,
+    onToggleConstruction,
+    onEscape,
+    matchShortcut,
+  });
+  live.current = { activeTool, chosen, onTool, onToggleConstruction, onEscape, matchShortcut };
 
   function pick(spec: ToolSpec, variant?: string) {
     const v = variant ?? chosen[spec.id] ?? spec.variants?.[0]?.id;
@@ -309,6 +323,12 @@ export function SketchToolbar({
           e.preventDefault();
           L.onTool(null);
         } else L.onEscape?.();
+      } else if (L.matchShortcut) {
+        const id = L.matchShortcut(e);
+        if (id === 'construction') {
+          e.preventDefault();
+          L.onToggleConstruction();
+        } else if (id) run(id as SketchToolId);
       } else if (!e.shiftKey && (e.code ? e.code === 'KeyX' : e.key.toLowerCase() === 'x')) {
         e.preventDefault();
         L.onToggleConstruction();

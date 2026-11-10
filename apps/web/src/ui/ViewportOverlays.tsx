@@ -6,7 +6,6 @@
  */
 
 import type {
-  DimensionConstraint,
   EntityRef,
   ExtrudeFeature,
   Id,
@@ -16,13 +15,11 @@ import type {
   Vec3,
   WrenDoc,
 } from '@wren-cad/contracts';
-import { isDimension } from '@wren-cad/contracts';
 import { constraintLabel, isSketchReference, Namer } from '@wren-cad/sketch';
 import {
   ConflictPanel,
   ConstraintGlyph,
   cn,
-  DimensionLabel,
   ExpressionInput,
   type PickCandidate,
   PromptChip,
@@ -35,11 +32,10 @@ import { Library } from 'lucide-react';
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { useObservable } from '../app/observable';
 import type { SketchSession } from '../app/sketch-session';
-import type { SketchUi } from '../app/state';
+import type { SketchUi, UiState } from '../app/state';
 import type { Workbench } from '../app/workbench';
 import { ORIGIN_FRAMES, type OriginPlane } from '../model/frames';
 import { measureLabel } from '../model/measure';
-import { labelAnchor } from '../sketch/dimension';
 import { entityAnchor } from '../sketch/overlay';
 import { describeRef, useDoc } from './Inspector';
 
@@ -60,6 +56,11 @@ const TOP_LEFT = { top: 'var(--chrome-top, 3.5rem)', left: 'var(--chrome-left, 0
 const ABOVE_BOTTOM = { bottom: 'calc(var(--chrome-bottom, 80px) + 12px)' };
 const TOAST_BOTTOM = { bottom: 'calc(var(--chrome-bottom, 68px) + 12px)' };
 const Welcome = lazy(() => import('./Welcome'));
+// M3.5: the radial menu, the settings panel and the shortcut overlay load on first use.
+const RadialLayer = lazy(() => import('./RadialLayer'));
+const SettingsPanel = lazy(() => import('./SettingsPanel'));
+const SketchDimensions = lazy(() => import('./SketchDimensions'));
+const ShortcutOverlayLayer = lazy(() => import('./ShortcutOverlayLayer'));
 
 function useCameraTick(session: SketchSession | null): number {
   const [, force] = useState(0);
@@ -179,6 +180,7 @@ function candidateFor(doc: WrenDoc, h: PickHit, i: number): PickCandidate {
   return {
     id: String(i),
     kind,
+    ...(h.depth !== undefined ? { depth: h.depth } : {}),
     label: `${noun}${owner ? ` of ${owner.name}` : ''}`,
     detail: `${h.distancePx.toFixed(1)} px away`,
   };
@@ -304,7 +306,6 @@ function SketchLayer({
     return [{ c, x: p.x + 10 + k * 22, y: p.y - 22 }];
   });
 
-  const dims = f.constraints.filter((c): c is DimensionConstraint => isDimension(c));
   const cursor = ui.draw?.cursor ? screen(ui.draw.cursor) : null;
 
   return (
@@ -337,41 +338,16 @@ function SketchLayer({
           />
         </button>
       ))}
-      {dims.map((c) => {
-        const at = labelAnchor(f, c);
-        const p = at ? screen(at) : null;
-        if (!p?.visible) return null;
-        const measured = driven[c.id];
-        return (
-          <DimensionLabel
-            key={`${c.id}:${ui.editDimension === c.id}`}
-            x={p.x}
-            y={p.y}
-            kind={c.kind}
-            expr={c.value}
-            driving={c.driving}
-            {...(measured !== undefined
-              ? {
-                  measured:
-                    c.kind === 'angle'
-                      ? `${((measured * 180) / Math.PI).toFixed(2)}°`
-                      : measured.toFixed(2),
-                }
-              : {})}
-            evaluate={(e) => wb.evaluate(e, c.kind === 'angle' ? 'angle' : 'length')}
-            autoEdit={ui.editDimension === c.id}
-            selected={ui.selectedConstraint === c.id}
-            conflicting={conflicting.has(c.id)}
-            onCommit={(e) => session.updateDimension(c.id, e, 'commit')}
-            onCancel={() => session.doneEditingDimension()}
-            onSelect={() => session.selectConstraint(c.id)}
-            onToggleDriving={() => session.toggleDriving(c.id)}
-            {...(c.kind === 'radius' || c.kind === 'diameter'
-              ? { onToggleKind: () => session.toggleRadiusDiameter(c.id) }
-              : {})}
-          />
-        );
-      })}
+      <Suspense fallback={null}>
+        <SketchDimensions
+          wb={wb}
+          session={session}
+          ui={ui}
+          f={f}
+          driven={driven}
+          conflicting={conflicting}
+        />
+      </Suspense>
       {cursor?.visible && ui.draw?.glyphs.length ? (
         <div
           className="pointer-events-none absolute flex gap-1"
@@ -469,6 +445,27 @@ function StrokeChip({ wb, session, ui }: { wb: Workbench; session: SketchSession
   );
 }
 
+/** The rubber band of a box selection: solid for window (L to R), dashed for crossing (R to L). */
+function BoxBand({ box }: { box: NonNullable<UiState['box']> }) {
+  return (
+    <div
+      data-testid="box-select"
+      data-mode={box.mode}
+      aria-hidden
+      className={cn(
+        'pointer-events-none absolute border border-accent bg-accent-soft',
+        box.mode === 'crossing' && 'border-dashed',
+      )}
+      style={{
+        left: Math.min(box.x0, box.x1),
+        top: Math.min(box.y0, box.y1),
+        width: Math.abs(box.x1 - box.x0),
+        height: Math.abs(box.y1 - box.y0),
+      }}
+    />
+  );
+}
+
 export function ViewportOverlays({ wb, touch }: { wb: Workbench; touch: boolean }) {
   const ui = useObservable(wb.ui);
   const doc = useDoc(wb);
@@ -521,6 +518,7 @@ export function ViewportOverlays({ wb, touch }: { wb: Workbench; touch: boolean 
             enabledConstraints={session.enabledConstraints()}
             onFinish={() => session.finish()}
             onEscape={() => session.finish()}
+            matchShortcut={wb.sketchShortcut}
             density={touch ? 'touch' : 'compact'}
           />
         </div>
@@ -591,9 +589,19 @@ export function ViewportOverlays({ wb, touch }: { wb: Workbench; touch: boolean 
                     : id;
                 }}
                 onFix={(fix) => session.applyFix(fix)}
+                entityName={(id) => {
+                  const f = part?.features.find((x) => x.id === sk.featureId);
+                  return f?.type === 'sketch' ? new Namer(f.entities).entity(id) : undefined;
+                }}
                 onHighlight={(ids) => {
                   wb.ui.set((u) =>
                     u.sketch ? { ...u, sketch: { ...u.sketch, highlightConstraints: ids } } : u,
+                  );
+                  session.pushHighlights();
+                }}
+                onHighlightEntities={(ids) => {
+                  wb.ui.set((u) =>
+                    u.sketch ? { ...u, sketch: { ...u.sketch, highlightEntities: ids } } : u,
                   );
                   session.pushHighlights();
                 }}
@@ -616,6 +624,7 @@ export function ViewportOverlays({ wb, touch }: { wb: Workbench; touch: boolean 
           candidates={ui.chooser.hits.map((h, i) => candidateFor(doc, h, i))}
           at={{ x: ui.chooser.x, y: ui.chooser.y }}
           size={touch ? 'touch' : 'md'}
+          onHover={(id) => wb.previewChooser(id === null ? null : Number(id))}
           onPick={(id) =>
             void wb.choose(ui.chooser?.hits[Number(id)] ?? null, ui.chooser?.additive)
           }
@@ -668,6 +677,23 @@ export function ViewportOverlays({ wb, touch }: { wb: Workbench; touch: boolean 
       {ui.project && !sk ? (
         <Suspense fallback={null}>
           <ProjectPanel wb={wb} />
+        </Suspense>
+      ) : null}
+
+      {ui.box ? <BoxBand box={ui.box} /> : null}
+      {ui.settings ? (
+        <Suspense fallback={null}>
+          <SettingsPanel wb={wb} touch={touch} />
+        </Suspense>
+      ) : null}
+      {ui.radial ? (
+        <Suspense fallback={null}>
+          <RadialLayer wb={wb} />
+        </Suspense>
+      ) : null}
+      {ui.ready ? (
+        <Suspense fallback={null}>
+          <ShortcutOverlayLayer wb={wb} />
         </Suspense>
       ) : null}
 

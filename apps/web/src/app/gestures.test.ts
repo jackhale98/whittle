@@ -35,10 +35,16 @@ describe('gesture map (PLAN §9.3)', () => {
     expect(gestureAction(g('twoFingerTap'), { ...model, sketch: true, tool: true })).toBe('undo');
     expect(gestureAction(g('threeFingerTap'), { ...model, sketch: true, tool: true })).toBe('redo');
   });
-  it('long-press opens the context bubble (touch and pen, not in sketch mode)', () => {
-    expect(gestureAction(g('longPress'), model)).toBe('menu');
+  it('long-press opens the radial menu (touch and pen, not in sketch mode); the bubble stays on tap-select', () => {
+    expect(gestureAction(g('longPress'), model)).toBe('radial');
     expect(gestureAction(g('longPress', 'mouse'), model)).toBeNull();
     expect(gestureAction(g('longPress'), { ...model, sketch: true })).toBeNull();
+  });
+  it('a right click opens the radial menu; a quick one under rightOrbitRepeat repeats', () => {
+    expect(gestureAction(g('contextMenu', 'mouse'), model)).toBe('radial');
+    expect(gestureAction({ ...g('contextMenu', 'mouse'), repeat: true }, model)).toBe('repeat');
+    expect(gestureAction(g('contextMenu', 'mouse'), { ...model, sketch: true })).toBe('radial');
+    expect(gestureAction(g('setPivot', 'mouse'), model)).toBeNull();
   });
   it('two-finger tap undoes and three-finger tap redoes, in any mode', () => {
     expect(gestureAction(g('twoFingerTap'), model)).toBe('undo');

@@ -5,7 +5,15 @@
 
 import type { DeviceTier, PickKind, ViewportGesture } from '@wren-cad/contracts';
 
-export type GestureAction = 'select' | 'zoomTo' | 'fit' | 'menu' | 'undo' | 'redo' | null;
+export type GestureAction =
+  | 'select'
+  | 'zoomTo'
+  | 'fit'
+  | 'radial'
+  | 'repeat'
+  | 'undo'
+  | 'redo'
+  | null;
 
 export interface GestureMode {
   /** Sketch mode: taps and long-presses go to the sketch session's own pointer path. */
@@ -34,14 +42,17 @@ export function gestureAction(g: ViewportGesture, mode: GestureMode): GestureAct
       if (mode.drawing || (mode.sketch && mode.tool)) return null;
       return mode.onGeometry && !mode.sketch ? 'zoomTo' : 'fit';
     case 'longPress':
-      return g.pointerType === 'mouse' || mode.sketch ? null : 'menu';
+      // M3.5: a long-press opens the radial menu (the context bubble stays on tap-select).
+      return g.pointerType === 'mouse' || mode.sketch ? null : 'radial';
     case 'twoFingerTap':
       return 'undo';
     case 'threeFingerTap':
       return 'redo';
     case 'contextMenu':
+      // A right click (mouse): the radial menu, or under `rightOrbitRepeat` a quick one repeats.
+      return g.repeat ? 'repeat' : 'radial';
     case 'setPivot':
-      return null; // M3.5 placeholder (ADR-046): the integration wires the radial menu.
+      return null; // the viewport already moved its pivot
   }
 }
 

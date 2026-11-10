@@ -646,7 +646,9 @@ export function createKernelApi(
       if (kernel === null) return notReady();
       try {
         return parseResult<ProjectedEdge[]>(
-          kernel.projectEdges(JSON.stringify({ shape, edges, plane })),
+          // `exact`: conics and B-splines come back as exact ellipse / ellipticArc / bspline curves
+          // (M3.5, ADR-056), which become exact linked entities, not polylines.
+          kernel.projectEdges(JSON.stringify({ shape, edges, plane, exact: true })),
           'projectEdges',
         );
       } catch (e) {
@@ -662,7 +664,7 @@ export function createKernelApi(
       if (kernel === null) return notReady();
       try {
         const raw = parseResult<ProjectedOutline>(
-          kernel.projectFaceOutline(JSON.stringify({ shape, face, plane })),
+          kernel.projectFaceOutline(JSON.stringify({ shape, face, plane, exact: true })),
           'projectFaceOutline',
         );
         if (!raw.ok) return raw;
