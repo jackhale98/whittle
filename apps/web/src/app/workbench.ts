@@ -92,6 +92,7 @@ import { MeasureTool } from './measure-tool';
 import { type Observable, observable } from './observable';
 import * as pointer from './pointer';
 import { PointerDowns } from './pointers';
+import * as sync from './project-sync';
 import { PushPullTool } from './push-pull';
 import type { SketchSession } from './sketch-session';
 import {
@@ -110,33 +111,6 @@ import * as view from './view-actions';
 import { freshDocument, readLastDoc, writeLastDoc } from './workbench-util';
 
 export { freshDocument };
-
-const LINKS_KEY = 'whittle:links';
-const HISTORY_DIR = '.wren-history/';
-
-/** The page is an OAuth callback (`state` plus `code` or `error`). */
-const isOAuthCallback = () => {
-  const q = new URLSearchParams(globalThis.location?.search ?? '');
-  if (!(q.has('state') && (q.has('code') || q.has('error')))) return false;
-  // Only a sign-in this tab started (its PKCE record, packages/sync auth/oauth.ts): a stray or
-  // bookmarked `?code=` is left alone and doesn't load the sync chunk.
-  try {
-    return sessionStorage.getItem('whittle:oauth-pending') !== null;
-  } catch {
-    return false;
-  }
-};
-
-/** A library project linked to a connection (sync/store.ts); read without loading the sync chunk. */
-function isLinked(id: string | undefined): boolean {
-  if (!id) return false;
-  try {
-    const links = JSON.parse(localStorage.getItem(LINKS_KEY) ?? '{}') as Record<string, unknown>;
-    return !!links[id];
-  } catch {
-    return false;
-  }
-}
 
 export interface MassSummaryView {
   volume: number;
@@ -217,9 +191,9 @@ export class Workbench {
   });
   /** Connections, sync and versions (lazy chunk with `@wren-cad/sync` and isomorphic-git). */
   syncCtl: SyncController | null = null;
-  private syncLoad: Promise<SyncController> | null = null;
+  syncLoad: Promise<SyncController> | null = null;
   /** Library writes run one at a time (saves and sync's compare-and-swap writes). */
-  private libChain: Promise<unknown> = Promise.resolve();
+  libChain: Promise<unknown> = Promise.resolve();
   /** The document object last written to the library (sync may replace only that one). */
   persistedDoc: WrenDoc | null = null;
   /** History files written in memory and not yet saved. */
@@ -227,7 +201,7 @@ export class Workbench {
   /** A merged result from sync waits for the current sketch or drag to finish. */
   syncDeferred = false;
   /** The store change being applied came from another device: don't autosave it back. */
-  private applyingRemote = false;
+  applyingRemote = false;
 
   constructor() {
     this.tier = getDiagnostics().tier;
@@ -1631,11 +1605,11 @@ export class Workbench {
   }
 
   /** Attachment bytes of the document's import features (ImportFeature.source.path). */
-  private attachmentsFor(doc: WrenDoc): Attachment[] {
+  attachmentsFor(doc: WrenDoc): Attachment[] {
     return fileOps.attachmentsFor(this, doc);
   }
 
-  private saveToLibrary(doc: WrenDoc): Promise<void> {
+  saveToLibrary(doc: WrenDoc): Promise<void> {
     return fileOps.saveToLibrary(this, doc);
   }
 
@@ -1858,142 +1832,41 @@ export class Workbench {
 
   /** Library writes, one at a time (autosave and sync's compare-and-swap never interleave). */
   libLocked<T>(fn: () => Promise<T>): Promise<T> {
-    const run = this.libChain.then(fn, fn);
-    this.libChain = run.catch(() => undefined);
-    return run;
+    return sync.libLocked(this, fn);
   }
 
   /** A sketch session, a push/pull drag or a pointer press on the model is in progress. */
   midEdit(): boolean {
-    const u = this.ui.get();
-    return !!u.sketch || !!u.pushPull?.dragging || this.downs.size > 0;
+    return sync.midEdit(this);
   }
 
   /** The sync chunk, loaded on first use (Connections, Versions, a linked project, OAuth). */
   syncController(): Promise<SyncController> {
-    this.syncLoad ??= import('../sync/controller').then(async (m) => {
-      const ctl = m.createSyncController(this.syncHost());
-      this.syncCtl = ctl;
-      const place = isOAuthCallback() ? ctl.restorePlace() : null;
-      if (place?.doc && place.doc !== this.doc.meta.id) await this.openFromLibrary(place.doc);
-      await ctl.openProject(this.doc.meta.id);
-      if (isOAuthCallback()) await ctl.completeSignIn();
-      return ctl;
-    });
-    return this.syncLoad;
+    return sync.syncController(this);
   }
 
   /** A document was opened or replaced: its sync engine and history follow it. */
   projectOpened(): void {
-    if (this.syncCtl) {
-      void this.syncCtl.openProject(this.doc.meta.id);
-      return;
-    }
-    this.projectBar.set({ status: { state: 'local' }, branch: null });
-    const hasHistory = [...this.extra.keys()].some((k) => k.startsWith(HISTORY_DIR));
-    if (isLinked(this.doc.meta.id) || hasHistory || isOAuthCallback()) void this.syncController();
+    sync.projectOpened(this);
   }
 
   /** Opens (or with `null` closes) the project panel: versions, connections. */
   openProjectPanel(tab: 'versions' | 'connections' | null): void {
-    if (tab === null) this.syncCtl?.closeMode();
-    this.patchUi({ project: tab, ...(tab ? { library: false } : {}) });
-    if (tab) void this.flushSave().then(() => this.syncController());
+    sync.openProjectPanel(this, tab);
   }
 
   /** Sync merged another device's edits into the library entry: show them as one undo step. */
-  private adoptRemote(doc: WrenDoc, extra: ProjectFiles, ops: JsonPatchOp[]): void {
-    this.extra = new Map(extra);
-    if (ops.length) {
-      this.applyingRemote = true;
-      try {
-        const r = this.store.apply(
-          { kind: 'patch', ops },
-          { label: 'Changes from another device' },
-        );
-        this.store.commit();
-        if (!r.ok) this.store.load(doc); // never leave the screen behind the library
-      } finally {
-        this.applyingRemote = false;
-      }
-    }
-    this.persistedDoc = this.doc;
-    this.loop?.request();
+  adoptRemote(doc: WrenDoc, extra: ProjectFiles, ops: JsonPatchOp[]): void {
+    sync.adoptRemote(this, doc, extra, ops);
   }
 
   /** Restore, branch switch, merge: the project's files as one undoable edit (then saved). */
-  private applyProject(extra: ProjectFiles, label: string, ops: JsonPatchOp[]): boolean {
-    this.extra = new Map(extra);
-    this.extraDirty = true;
-    if (ops.length === 0) {
-      void this.saveToLibrary(this.doc);
-      return true;
-    }
-    const ok = this.apply({ kind: 'patch', ops }, label);
-    this.commit();
-    return ok;
+  applyProject(extra: ProjectFiles, label: string, ops: JsonPatchOp[]): boolean {
+    return sync.applyProject(this, extra, label, ops);
   }
 
-  private syncHost(): SyncHost {
-    return {
-      currentId: () => this.doc.meta.id,
-      doc: () => this.doc,
-      extra: () => this.extra,
-      lockLibrary: async (fn) => {
-        const lib = await this.library();
-        return lib ? this.libLocked(() => fn(lib)) : null;
-      },
-      canAdoptRemote: () => {
-        if (this.midEdit()) {
-          this.syncDeferred = true;
-          return false;
-        }
-        if (
-          this.autosaver.pending ||
-          this.extraDirty ||
-          this.store.getDoc() !== this.persistedDoc
-        ) {
-          // Save what is on screen first; the engine then merges against it.
-          void this.autosaver.flush().then(() => {
-            if (this.store.getDoc() !== this.persistedDoc || this.extraDirty)
-              return this.saveToLibrary(this.doc);
-          });
-          return false;
-        }
-        return true;
-      },
-      adoptRemote: (doc, extra, ops) => this.adoptRemote(doc, extra, ops),
-      applyFiles: (extra, label, ops) => this.applyProject(extra, label, ops),
-      setExtraFiles: (changes) => {
-        for (const [p, b] of changes) {
-          if (b) this.extra.set(p, b);
-          else this.extra.delete(p);
-        }
-        this.extraDirty = true;
-      },
-      persist: async () => {
-        await this.autosaver.flush();
-        await this.saveToLibrary(this.doc);
-      },
-      flush: () => this.flushSave(),
-      openNewProject: async (doc, extra) => {
-        const lib = await this.library();
-        if (!lib) return false;
-        await this.flushSave();
-        await this.libLocked(() => lib.save(doc, { extra }));
-        if (!this.loadDocument({ doc, extra }, true)) return false;
-        this.patchUi({ library: false, welcome: false });
-        return true;
-      },
-      modeling: async () => ((await this.whenLive()) ? this.modeling : null),
-      viewport: () => this.viewport,
-      attachments: (doc) =>
-        Object.fromEntries(this.attachmentsFor(doc).map((a) => [a.path, a.bytes])),
-      evaluate: (e) => this.evaluate(e),
-      toast: (t, tone) => this.toast(t, tone),
-      setBar: (bar) => this.projectBar.set(bar),
-      openPanel: (tab) => this.patchUi({ project: tab, library: false }),
-    };
+  syncHost(): SyncHost {
+    return sync.syncHost(this);
   }
 
   // ------------------------------------------------------------------ misc
