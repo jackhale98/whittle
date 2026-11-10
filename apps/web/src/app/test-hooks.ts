@@ -294,6 +294,15 @@ export function testHooks(wb: Workbench) {
       }
       return false;
     },
+    /** Slows each configuration of "Export all" (ms), so a test can act while it runs. */
+    slowExport: (ms: number) => {
+      wb.config.exportDelayMs = ms;
+    },
+    /** Regen slots the kernel holds for the part (memory guard: config slots are released). */
+    kernelSlots: async () => {
+      const m = await wb.modeling?.port.memoryStats?.();
+      return (m?.regen.slots ?? []).map((s) => s.slot);
+    },
     /** Simulates "Export all" holding the live slot (picks and measurements are refused). */
     holdExport: (on: boolean) => wb.config.setExportingAll(on),
     /** Number of `regenerate` calls the loop made (the background builds are not counted). */

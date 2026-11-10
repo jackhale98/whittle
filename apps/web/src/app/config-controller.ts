@@ -149,13 +149,47 @@ export class ConfigController {
 
   reset(): void {
     this.builds.reset();
-    this.state.set({ panel: false, notice: null, focusField: null, exportingAll: false });
+    // An export in progress keeps its hold until its loop really ends (it stops at the next
+    // configuration boundary because the document changed).
+    this.state.set((s) => ({
+      panel: false,
+      notice: null,
+      focusField: null,
+      exportingAll: s.exportingAll,
+    }));
     this.pendingInherited = null;
   }
 
   /** Picks, measurements and tool commits are held while "Export all" uses the live slot. */
   get exportingAll(): boolean {
     return this.state.get().exportingAll;
+  }
+
+  /** Aborts the waits of an export in progress (Cancel, timeout): the hold is released. */
+  private abortExport: (() => void) | null = null;
+  /** Test hook: extra wait before each configuration of "Export all" (ms). */
+  exportDelayMs = 0;
+
+  /** Registers the abort of the running export; `null` when it ends. */
+  onExportAbort(fn: (() => void) | null): void {
+    this.abortExport = fn;
+  }
+
+  cancelExport(): void {
+    this.abortExport?.();
+  }
+
+  /** Resolves once picks are allowed again (immediately when not exporting). */
+  whenReleased(): Promise<void> {
+    if (!this.exportingAll) return Promise.resolve();
+    return new Promise((resolve) => {
+      const off = this.state.subscribe(() => {
+        if (!this.exportingAll) {
+          off();
+          resolve();
+        }
+      });
+    });
   }
 
   setExportingAll(on: boolean): void {

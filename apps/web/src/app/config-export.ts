@@ -93,10 +93,35 @@ export async function exportAll(wb: Workbench, request: ExportRequest): Promise<
   const saved: string[] = [];
   let failed: { name: string; message: string } | null = null;
   let written = 0;
+  const docId = doc.meta.id;
+  // Each wait of the export races Cancel and a per-configuration timeout (a kernel that hangs must
+  // not hold the model forever); both release the hold and the live model regenerates.
+  const timeoutMs = ({ desktop: 60_000, tablet: 90_000, phone: 120_000 } as const)[wb.tier];
+  let abort: (reason: string) => void = () => {};
+  const aborted = new Promise<never>((_, reject) => {
+    abort = (reason) => reject(new Error(reason));
+  });
+  aborted.catch(() => {});
+  wb.config.onExportAbort(() => abort('Cancelled.'));
+  const guard = <T>(p: Promise<T>): Promise<T> => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const t = new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () => reject(new Error(`The kernel did not answer within ${timeoutMs / 1000} s.`)),
+        timeoutMs,
+      );
+    });
+    return Promise.race([p, aborted, t]).finally(() => clearTimeout(timer));
+  };
   wb.config.setExportingAll(true);
   try {
     await loop.exclusive(async () => {
       for (const f of files) {
+        // Another document was opened meanwhile: stop at this boundary.
+        if (wb.doc.meta.id !== docId) {
+          skipped.push(`${nameOf(f.configurationId)} (the document changed)`);
+          continue;
+        }
         const resolved = resolveConfiguration(doc, part.id, f.configurationId);
         // Overrides that no longer apply: the configuration is partial, so it is never exported.
         if (resolved.issues.length > 0) {
@@ -109,19 +134,26 @@ export async function exportAll(wb: Workbench, request: ExportRequest): Promise<
           );
           // The engine exports "the latest regen of main": regenerate this configuration there.
           // The live model is regenerated again when this block ends (value-cached).
-          const result = await modeling.port.regenerate({
-            doc: resolved.doc,
-            partId: part.id,
-            quality: 'fine',
-            ...(Object.keys(attachments).length ? { attachments } : {}),
-          });
+          if (wb.config.exportDelayMs > 0) {
+            await guard(new Promise((r) => setTimeout(r, wb.config.exportDelayMs)));
+          }
+          const result = await guard(
+            modeling.port.regenerate({
+              doc: resolved.doc,
+              partId: part.id,
+              quality: 'fine',
+              ...(Object.keys(attachments).length ? { attachments } : {}),
+            }),
+          );
           if (result.features.some((s) => s.state === 'error' || s.state === 'needsAttention')) {
             skipped.push(nameOf(f.configurationId));
             continue;
           }
           let bytes: Uint8Array;
           if (target === 'step' || target === 'stl') {
-            const r = await modeling.exportPart(part.id, target as ExportFormat, request.options);
+            const r = await guard(
+              modeling.exportPart(part.id, target as ExportFormat, request.options),
+            );
             if (!r.ok) {
               skipped.push(nameOf(f.configurationId));
               continue;
@@ -157,6 +189,7 @@ export async function exportAll(wb: Workbench, request: ExportRequest): Promise<
       }
     });
   } finally {
+    wb.config.onExportAbort(null);
     wb.config.setExportingAll(false);
   }
   if (written > 0) wb.exports.set((n) => n + 1);
