@@ -30,7 +30,6 @@ import type { CompareOutput } from './regen/compare';
 import {
   RegenEngine,
   type RegenEngineOptions,
-  type RegenMemoryStats,
   type RegenOutput,
   type SketchSolve,
 } from './regen/engine';
@@ -79,14 +78,9 @@ export interface ModelingApiDeps extends KernelApiDeps {
  * Memory guard (PLAN H1): the kernel worker's memory in one structured-clonable snapshot, for
  * diagnostics and soak tests. Proposed for the contract as `ModelingApi.memoryStats()`.
  */
-export interface KernelMemoryStats {
-  /** Live façade shape handles of every owner (regen cache, imports, callers); `-1` before init. */
-  liveHandles: number;
-  /** Bytes of the kernel's Wasm linear memory (grows on demand, never shrinks); `-1` if unknown. */
-  wasmHeapBytes: number;
-  /** What the regen engine holds (cache entries, owned handles, per-handle caches) and its bounds. */
-  regen: RegenMemoryStats;
-}
+import type { KernelMemoryStats } from '@wren-cad/contracts';
+
+export type { KernelMemoryStats };
 
 /** Extra surface for tests and diagnostics; not part of the Comlink contract. */
 export interface ModelingApiInternals extends KernelApiInternals {

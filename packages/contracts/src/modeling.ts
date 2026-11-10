@@ -173,6 +173,59 @@ export interface ExportOptions {
   angularDeflection?: number;
 }
 
+/** Feature-result cache of one slot of a part (`RegenMemoryStats.slots`). H1 memory guard. */
+export interface RegenSlotStats {
+  partId: Id;
+  slot: RegenSlot;
+  /** Cache entries (feature results and copied tool solids). */
+  entries: number;
+  /** Shape handles those entries own. */
+  handles: number;
+  /** Imported attachments cached by sha256, and the B-rep handles they own. */
+  imports: number;
+  importHandles: number;
+}
+
+/**
+ * Memory guard (PLAN H1, ADR-070): what the regen engine holds and the bounds it holds it to. A
+ * snapshot taken between engine calls (it does not wait for a running regen). Structured-clonable.
+ */
+export interface RegenMemoryStats {
+  /** The configured bounds (`configureRegen`). */
+  limits: {
+    /** Spare cache entries kept per slot beyond those the latest and last all-ok regens use. */
+    maxSpareResults: number;
+    /** Version slots kept per part beside `'main'`. */
+    maxVersionSlots: number;
+    /** Spare imported attachments kept per slot beyond those the latest regen uses. */
+    importSpare: number;
+  };
+  /** One row per part and slot: parts in first-regen order, `'main'` first, then by recency. */
+  slots: RegenSlotStats[];
+  /** Totals over every slot. */
+  entries: number;
+  handles: number;
+  /** Every shape handle the engine owns (cache entries and cached imports). */
+  ownedHandles: number;
+  /** Per-handle caches, dropped with their handle: counts, and the cached meshes' bytes. */
+  shapeCaches: {
+    fingerprints: number;
+    massProperties: number;
+    meshes: number;
+    meshBytes: number;
+    geometry: number;
+  };
+}
+
+/** The kernel worker's memory: live handles, Wasm heap and the regen engine's holdings. */
+export interface KernelMemoryStats {
+  /** Live façade shape handles of every owner (regen cache, imports, callers); `-1` before init. */
+  liveHandles: number;
+  /** Bytes of the kernel's Wasm linear memory (grows on demand, never shrinks); `-1` if unknown. */
+  wasmHeapBytes: number;
+  regen: RegenMemoryStats;
+}
+
 /** The kernel worker's full Comlink surface from M1 on. */
 export interface ModelingApi extends KernelApi {
   /** Per-part cache bound (device tiers pass smaller values). */
@@ -182,6 +235,8 @@ export interface ModelingApi extends KernelApi {
     maxVersionSlots?: number;
   }): Promise<void>;
   fingerprints(shape: ShapeHandle): Promise<Result<ShapeFingerprints>>;
+  /** H1 memory guard snapshot: diagnostics and the soak test read it. */
+  memoryStats(): Promise<KernelMemoryStats>;
   regenerate(request: RegenRequest): Promise<RegenResult>;
   /** Persistent reference (with fingerprint) for a picked sub-shape of the latest regen. */
   refFor(partId: Id, query: EntityQuery): Promise<EntityRef | null>;
