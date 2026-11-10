@@ -32,6 +32,10 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec biome ci .
+      # File-size guardrail (PLAN H1): warn > 1,500 lines, fail > 2,500 except the shrinking
+      # allow-list in scripts/file-size-allowlist.json.
+      - name: File-size guardrail
+        run: pnpm check:size
 
   kernel:
     name: Kernel
@@ -93,6 +97,19 @@ jobs:
           VITE_BITBUCKET_CLIENT_ID: ${{ vars.VITE_BITBUCKET_CLIENT_ID }}
       - name: Initial-route JS budget (<= 250 kB gzip)
         run: pnpm --filter @wren-cad/web size
+      # Every JS chunk, raw and gzip, initial vs lazy, with the initial-route headroom (PLAN H1).
+      # Written to the job summary and uploaded; a new editor in the initial list stopped lazy-loading.
+      - name: Bundle report (per chunk)
+        run: pnpm --filter @wren-cad/web bundle-report --md bundle-report.md --json bundle-report.json
+      - name: Upload bundle report
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: bundle-report
+          path: |
+            apps/web/bundle-report.md
+            apps/web/bundle-report.json
+          if-no-files-found: error
+          retention-days: 30
       - name: Upload web build
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
