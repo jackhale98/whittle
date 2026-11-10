@@ -334,16 +334,11 @@ export function reconcileConfigurations(doc: WrenDoc, sides: ReconcileSides): Co
   const { base, ours, theirs } = sides;
   const all = [ours, theirs, base];
   const liveParams = new Set(doc.params.map((p) => p.id));
-  const known = (pid: string, g: Group, target: string): boolean =>
-    all.some((d) =>
-      g === 'params'
-        ? d.params.some((p) => p.id === target)
-        : (partIn(d, pid)?.features.some((f) => f.id === target) ?? false),
-    );
   const has = (d: WrenDoc, pid: string, g: Group, target: string): boolean =>
     g === 'params'
       ? d.params.some((p) => p.id === target)
       : (partIn(d, pid)?.features.some((f) => f.id === target) ?? false);
+  const known = (pid: string, g: Group, target: string) => all.some((d) => has(d, pid, g, target));
   const targetName = (pid: string, g: Group, target: string): string => {
     for (const d of [doc, ...all]) {
       const x =
