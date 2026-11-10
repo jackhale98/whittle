@@ -16,6 +16,7 @@ export * from './evaluate';
 export * from './expressions';
 export * from './factory';
 export * from './features';
+export * from './folders';
 export * from './files';
 export * from './hole-tables';
 export * from './materials';
