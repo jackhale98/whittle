@@ -10,19 +10,21 @@
 
 import type { Feature, FeatureInputs, FeatureResult, NamingEntry } from '@wren-cad/contracts';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import type { WhittleKernelModule } from '../src/index';
+import type { RawImportResult, WhittleKernelModule } from '../src/index';
 import {
   boxFeature,
   boxValues,
   frameAt,
   indexOf,
   loadVariant,
+  ok,
   relClose,
   Session,
   suiteTitle,
   VARIANTS,
   variantBuilt,
 } from './helpers';
+import { igesBox } from './iges';
 
 const REL = 1e-9;
 const A = '01JUNIFYA00000000000000001';
@@ -30,6 +32,8 @@ const B = '01JUNIFYB00000000000000001';
 const C = '01JUNIFYC00000000000000001';
 const D = '01JUNIFYD00000000000000001';
 const LP = '01JUNIFYLP0000000000000001';
+const IM = '01JUNIFYIM0000000000000001';
+const BOOL = '01JUNIFYBOOL00000000000001';
 
 /** Primary names (the first entry per kind and index) of a result. */
 function primary(r: FeatureResult, kind: NamingEntry['kind']): string[] {
@@ -298,6 +302,116 @@ for (const { variant } of VARIANTS) {
         }
         expect(primary(r, 'face')).toContain(`F${LP}:inst3(F${B}:face.xmax)`);
       });
+
+      it('copies only: instance indices compare as numbers (inst2 keeps the name, not inst10)', () => {
+        const ss = session();
+        const plate = ss.exec(box(A, [0, 0, 0], 'new'), boxValues(140, 20, 5));
+        const boss = add(ss, plate.shape, box(B, [5, 5, 5], 'add'), boxValues(10, 10, 5).values);
+        const tool = ss.exec(box(B, [5, 5, 5], 'new'), boxValues(10, 10, 5));
+        // 12 touching bosses, instance 1 skipped: the original stands alone, 2 … 11 form one block.
+        const r = ss.exec({ ...pattern(10), count: '12', skip: [1] } as Feature, {
+          values: { [`/ops/${B}`]: 0, '/count': 12, '/spacing': 10 },
+          target: boss.shape,
+          shapes: { [`tool:${B}`]: tool.shape },
+          frames: { '/direction': frameAt([0, 0, 0], [1, 0, 0], [0, 1, 0]) },
+        });
+        relClose(ss.mass(r.shape).volume, 140 * 20 * 5 + 11 * 500, REL);
+        const top = `F${LP}:inst2(F${B}:face.zmax)`;
+        expect(primary(r, 'face')).toContain(top);
+        expect(primary(r, 'face')).toContain(`F${B}:face.zmax`);
+        const al = aliases(r, 'face');
+        for (let i = 3; i < 12; i++) expect(al[`F${LP}:inst${i}(F${B}:face.zmax)`]).toBe(top);
+        relClose(ss.fingerprints(r.shape).faces[indexOf(r, top, 'face')]?.area ?? 0, 1000, REL);
+      });
+    });
+
+    it('surviving split pieces keep their #k after a merge; the merged piece is an alias', () => {
+      // A 40-long top T at z = 10 is split by two walls into [10,20], [22,30], [32,40]
+      // (F{T}:face.zmax#0, #1, #2 without the merge). #0 is flush with the box P's top and merges
+      // into it; #1 and #2 must keep their names: renumbering would hand "#0" to [22,30].
+      const P = '01JUNIFYP00000000000000001';
+      const S = '01JUNIFYS00000000000000001';
+      const W1 = '01JUNIFYW10000000000000001';
+      const W2 = '01JUNIFYW20000000000000001';
+      const T = '01JUNIFYT00000000000000001';
+      const ss = session();
+      let b = ss.exec(box(P, [0, 0, 0], 'new'), boxValues(10, 10, 10));
+      b = add(ss, b.shape, box(S, [0, 0, 0], 'add'), boxValues(40, 10, 2).values);
+      b = add(ss, b.shape, box(W1, [20, 0, 0], 'add'), boxValues(2, 10, 20).values);
+      b = add(ss, b.shape, box(W2, [30, 0, 0], 'add'), boxValues(2, 10, 20).values);
+      const r = add(ss, b.shape, box(T, [0, 0, 5], 'add'), boxValues(40, 10, 5).values);
+      const fp = ss.fingerprints(r.shape);
+      const at = (name: string) => fp.faces[indexOf(r, name, 'face')];
+      expect(primary(r, 'face')).not.toContain(`F${T}:face.zmax#0`);
+      expect(aliases(r, 'face')[`F${T}:face.zmax#0`]).toBe(`F${P}:face.zmax`);
+      relClose(at(`F${P}:face.zmax`)?.area ?? 0, 200, REL);
+      relClose(at(`F${T}:face.zmax#1`)?.centroid[0] ?? 0, 26, REL);
+      relClose(at(`F${T}:face.zmax#2`)?.centroid[0] ?? 0, 36, REL);
+      // No name moved to another sub-shape: every primary name is unique.
+      for (const kind of ['face', 'edge', 'vertex'] as const) {
+        const p = primary(r, kind);
+        expect(new Set(p).size, kind).toBe(p.length);
+      }
+    });
+
+    it('faces that were already on one input never merge, also on a tool body', () => {
+      // An imported box whose top is two coplanar faces (a split a boolean no longer makes), used
+      // as the tool of a boolean add: its own two top faces stay two.
+      const ss = session();
+      const path = '/tmp/wren-unify-split-top.igs';
+      k.FS.writeFile(path, new TextEncoder().encode(igesBox(20, 10, 10, 6, 10)));
+      let raw = 0;
+      try {
+        raw = ok<RawImportResult>(k.importFile(path, 'iges')).bodies[0]?.shape ?? 0;
+        ss.handles.push(raw);
+      } finally {
+        k.FS.unlink(path);
+      }
+      const imp = ss.exec(
+        {
+          id: IM,
+          type: 'import',
+          name: 'Import',
+          suppressed: false,
+          source: { path: `imports/${IM}.igs`, format: 'iges', sha256: '0', fileName: 's.igs' },
+          op: 'new',
+        } as Feature,
+        { values: {}, shapes: { source: raw } },
+      );
+      expect(ss.mass(imp.shape).faceCount).toBe(7);
+      const boolAdd = (target: number) =>
+        ss.exec(
+          {
+            id: BOOL,
+            type: 'boolean',
+            name: 'Boolean',
+            suppressed: false,
+            op: 'add',
+            target: { name: `B${A}`, kind: 'body' },
+            tools: [{ name: `B${IM}`, kind: 'body' }],
+            keepTools: false,
+          } as Feature,
+          {
+            values: {},
+            refs: {
+              '/target': { shape: target, kind: 'body', index: 0 },
+              '/tools/0': { shape: imp.shape, kind: 'body', index: 0 },
+            },
+          },
+        );
+      const far = boolAdd(ss.exec(box(A, [100, 0, 0], 'new'), boxValues(20, 10, 5)).shape);
+      expect(ss.mass(far.shape).faceCount).toBe(6 + 7);
+      expect(aliases(far, 'face')).toEqual({});
+      // Under it, flush: the sides merge across the two inputs (body face wins), the top stays two.
+      const below = boolAdd(ss.exec(box(A, [0, 0, -5], 'new'), boxValues(20, 10, 5)).shape);
+      const m = ss.mass(below.shape);
+      relClose(m.volume, 20 * 10 * 15, REL);
+      expect(m.faceCount).toBe(7);
+      const tops = ss
+        .fingerprints(below.shape)
+        .faces.filter((f) => f.normal?.[2] === 1 && Math.abs((f.centroid[2] ?? 0) - 10) < 1e-9);
+      expect(tops).toHaveLength(2);
+      expect(primary(below, 'face')).toContain(`F${A}:face.ymin`);
     });
   });
 }
