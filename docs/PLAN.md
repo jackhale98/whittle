@@ -67,7 +67,7 @@ Priority: **P0** = MVP (M1–M2), **P1** = v1.0 (M3–M6), **P2** = after v1.0.
 | Reference planes, axes and points; measure; mass properties; section view; interference check                                                            | P1                        |
 | **Materials:** assign a material per part from a built-in library (steels, aluminium alloys, brass, titanium, common plastics such as ABS/PLA/PETG/nylon, wood) or a custom one; editable density with units (`2.70 g/cm^3`); appearance colour; mass, centre of mass and inertia in mass properties; material and density written to STEP (XCAF `XCAFDoc_MaterialTool`) and shown in BOMs | P0 (assign + density, M1) / P1 (mass properties, STEP, BOM; M3–M6) |
 | Variable fillet, face fillet, split body, thicken, offset/replace face, move face, delete face (defeature)                                               | P2                        |
-| Configurations (parameter tables), derived parts                                                                                                         | P2                        |
+| Configurations: part configurations (parameter values, feature suppression, material) in M3.7; assembly configurations in M6. Derived parts stay P2.     | P1 (M3.7 / M6)            |
 
 ### 2.3 Assemblies (M6)
 
@@ -553,7 +553,7 @@ Wren can do better because its source format is text-based parametric data (§8A
 **Phone:**
 
 - The viewer comes first.
-- A bottom sheet holds parts, parameters, measure, section, explode and export.
+- A bottom sheet holds parts, parameters, measure, section, explode and export, and (M3.6) the feature tree with a step-through control (previous / next feature, scrubbing the rollback position) so a design can be reviewed feature by feature.
 - Editing is limited to parameters and simple features.
 
 ### 9.2 Interaction rules
@@ -737,6 +737,7 @@ Owner-approved 2026-11-09 from the research report `docs/ux-research/reports/CAD
   - **Feature lineage:** selecting a face, edge or vertex shows "Made by <feature>" (the latest feature that created or modified it, and its sketch) with Edit buttons; selecting a feature in the tree shows its parents (what it references) and children (what references it).
   - **Bug:** a sketch on a part face was invisible after leaving the sketch on desktop Edge (only the centre point showed). Coplanar overlays must stay visible on WebGPU as well as WebGL2.
   - **Bug fixed now:** the tutorial card covered an open tool flyout; flyouts truncated command names ("Extruded …").
+  - **Tablet (owner, 2026-11-10):** a visible way to drop the active sketch tool (a Select tool, plus a ✕ on the active tool for touch and pen); a visible "Clear selection" control and tap-on-empty clears the selection; a sketch consumed by a cut-revolve (and every consuming feature) hides once the feature is no longer being edited.
 - **Sketch curves:** B-splines by control points and through points (degree 3 default, open or closed), ellipses and elliptic arcs; tangent constraints between any curves (G1 at shared ends), a curvature-continuous (G2) constraint where the solver can express it (otherwise an `unsupported` conflict, never dropped); the Pencil recognises ovals as ellipses and smooth strokes as splines; offset, trim/extend, mirror and convert work on the new curves where OCCT can (otherwise a clear refusal). The kernel builds exact B-spline and elliptic edges for profiles. Conics beyond ellipses are deferred.
 - **Accept:**
   - E2E: orbiting from a point on a face keeps that point under the cursor within 2 px; panning then orbiting never pivots in empty space; the pivot marker is visible during the drag. Each preset's mapping is exercised (left box-select window and crossing, right/middle orbit and pan, right click opens the radial menu).
@@ -749,6 +750,23 @@ Owner-approved 2026-11-09 from the research report `docs/ux-research/reports/CAD
   - E2E: a dimension's label drags without changing its value and shows extension and dimension lines; selecting a face shows the feature that made it and Edit opens it; the tree shows a feature's parents and children.
   - Render test on the WebGPU backend (or the closest available) shows a circle sketched on a face after finishing the sketch.
   - All existing suites, the 10 reference parts and `pnpm perf` stay green; orbit start (pick under cursor) ≤ 2 ms on the 1M-triangle probe.
+
+### M3.6 — Review on the phone, sketch visibility
+
+Owner request 2026-11-10. Small; follows the M3.5 gate.
+
+- **Phone feature tree:** the phone sheet gains the feature tree (read-only apart from what phones already edit) with step-through: previous / next feature and a scrubber that moves the rollback position, so a design can be reviewed feature by feature. The model shows the state at that step; leaving the tree restores the full model unless the user chose to keep the rollback.
+- **Show or hide any sketch, including one inside a feature:** a sketch consumed by a feature is hidden by default (as now), and its eye toggle in the tree (nested or flat) overrides that per sketch, persisted in the document; "Show all sketches" / "Hide all sketches" commands. Works on every shell.
+- **Accept:** E2E on a phone steps through the demo bracket's features and the viewport shows each intermediate state; E2E shows a consumed sketch via its eye toggle, the setting survives save → reload, and hiding it again restores the default.
+
+### M3.7 — Part configurations
+
+Owner request 2026-11-10 (moved up from P2): before drawings and assemblies, so both can be built configuration-aware.
+
+- **Model:** a part has named configurations; each sets parameter values (expressions with units), feature suppression, material and optional custom properties (part number, description), over a default. The active configuration is a document setting; every regen is of one configuration. Stored in the document format with a migration; structural merge (M2.5) merges configurations keyed by id, a conflict per (configuration, parameter).
+- **UI:** a configuration switcher in the top bar / tree; a configuration table (parameters × configurations) edited inline with expressions, no modal dialogs; "suppress in this configuration only" vs "all configurations" when suppressing a feature; the Params tab shows which values the active configuration overrides.
+- **Use:** export STEP/STL per configuration (or all, one file each); mass properties per configuration; versions/compare work across configurations; drawings (M4) pick a configuration per view; assemblies (M6) pick a configuration per instance.
+- **Accept:** golden tests regenerate each configuration of a reference part and match the expected masses (FreeCAD-checked like §12A); E2E creates two configurations from the UI, switches between them, suppresses a feature in one only, exports both, and save → reload keeps everything; a merge test resolves edits to different configurations without conflict and flags the same cell edited on both sides.
 
 ### M4 — Drawings
 
@@ -779,6 +797,7 @@ Owner-approved 2026-11-09 from the research report `docs/ux-research/reports/CAD
 ### M6 — Assemblies
 
 - Multi-part documents, instances, mates and DOF, exploded views, BOM, assembly drawings, assembly STEP (with PMI per part).
+- **Assembly configurations** (owner request 2026-11-10): per configuration, which instances are suppressed, each instance's part configuration, and mate values (distances, angles); BOM and exports per configuration.
 - **Accept:** a 25-part assembly reference model can be built, moved through its DOF, exploded, drawn and exported. The certification-style suite gains assembly stages: build from parts plus mates, then check the assembly mass and centre of mass.
 
 ### M7 — v1.0 hardening & polish
