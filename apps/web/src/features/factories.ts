@@ -531,8 +531,9 @@ export const bodyIdOf = (featureId: Id): string => `B${featureId}`;
 export function consumedSketchRefs(f: Feature): readonly EntityRef[] {
   switch (f.type) {
     case 'extrude':
-    case 'revolve':
       return f.profile;
+    case 'revolve':
+      return [...f.profile, f.axis];
     case 'sweep':
       return [...f.profile, ...f.path];
     case 'loft':

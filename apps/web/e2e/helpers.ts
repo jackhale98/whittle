@@ -19,6 +19,8 @@ export interface AppHooks {
     sketches: { id: string; regions: string[] }[];
   } | null;
   idle(): Promise<void>;
+  /** Ids of the sketches currently drawn in the viewport. */
+  shownSketches(): string[];
   flushSave(): Promise<void>;
   sketch(): {
     status: string;

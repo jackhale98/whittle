@@ -575,7 +575,16 @@ export class Workbench {
       this.lastPickKey = key;
       this.loop?.request();
     }
+    // Which sketches show depends on what is being edited or picked: re-evaluate whenever that
+    // changes, on every path (Done, clear selection, Esc, tree clicks), not only on some of them.
+    const u = this.ui.get();
+    const visKey = `${u.featureId ?? ''}|${key}|${u.prompt?.tool ?? ''}|${u.sketch?.featureId ?? ''}`;
+    if (visKey !== this.lastVisKey) {
+      this.lastVisKey = visKey;
+      this.refreshSketchVisibility();
+    }
   }
+  private lastVisKey = '';
 
   /** Stable subscribe/snapshot pair for `useSyncExternalStore`. */
   readonly subscribeDoc = (listener: () => void): (() => void) =>
@@ -3085,6 +3094,7 @@ export class Workbench {
             }
           : null;
       },
+      shownSketches: () => [...this.shownSketches],
       idle: async () => {
         await this.sketch?.whenSettled();
         await this.boot?.modeling;
