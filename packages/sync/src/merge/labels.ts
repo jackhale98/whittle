@@ -175,7 +175,7 @@ export function folderChangeSummary(
 ): string | null {
   const folder = name(change.folderId);
   if (change.kind === 'removed')
-    return `Folder ${folder} was removed: none of its features are left`;
+    return `Folder ${folder} was removed: no features were left in it`;
   const feature = name(change.featureId);
   if (change.kind === 'joined') {
     return `${feature} joined folder ${folder} to keep the folder in one piece`;
