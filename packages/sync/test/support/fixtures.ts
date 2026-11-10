@@ -191,7 +191,7 @@ let schema: ValidateFunction | undefined;
 
 /** Problems with `doc`: `validateDoc` plus the JSON Schema (empty when valid). */
 export function problems(doc: unknown): string[] {
-  schema ??= new Ajv({ allErrors: true, strict: true }).compile(
+  schema ??= new Ajv({ allErrors: true, strict: true, allowUnionTypes: true }).compile(
     JSON.parse(readFileSync(schemaPath, 'utf8')),
   );
   const errs = validateDoc(doc);
