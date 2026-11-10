@@ -43,8 +43,13 @@ import {
  */
 export const overlayDepthBias = uniform(0);
 
-/** Fraction of its own distance an overlay is pulled toward the camera (2.5 %: along the iso view ray a plane 0.15 mm lower is 0.26 mm further away, so 0.5 scene radii needs about 2 %). */
-export const OVERLAY_BIAS_FRACTION = 2.5e-2;
+/**
+ * Fraction of its own distance an overlay is pulled toward the camera: 0.5 %. A sketch on a face is
+ * exactly coplanar and body edges share the face triangulation's boundary vertices, so the bias only
+ * has to beat depth precision; a larger one lets hidden edges show through thin walls (2.5 % bled
+ * through a 1 mm wall at the iso fit). `coplanar.spec.ts` pins both sides of the trade-off.
+ */
+export const OVERLAY_BIAS_FRACTION = 5e-3;
 
 /** The uniform value for a fraction `eps`: the factor `eps / (1 - eps)` used by `biasedClipZ`. */
 export function overlayBiasFor(eps: number = OVERLAY_BIAS_FRACTION): number {

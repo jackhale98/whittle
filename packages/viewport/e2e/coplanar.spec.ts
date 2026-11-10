@@ -90,7 +90,8 @@ for (const { name, backend, noOffset } of variants) {
       expect(await diffPixels(page, base, withSketch)).toBeGreaterThan(1500);
     });
 
-    // 0.15 mm under the top face is numeric slop of a sketch "on" the face; 3 mm inside the part is
+    // 0.03 mm under the top face stands for numeric slop of a sketch "on" the face (real slop is
+    // float precision, far smaller); 1 mm under it is a thin wall, and 3 mm inside the part, both
     // hidden by the model. The bias is relative, so this must hold at the iso fit and when zoomed
     // in to 1x and 0.5x the scene radius (a near-plane-scaled bias pulled hidden geometry through).
     for (const zoom of [null, 1, 0.5]) {
@@ -121,7 +122,7 @@ for (const { name, backend, noOffset } of variants) {
           await frame(page);
         }
         const base = await page.locator('canvas').screenshot();
-        await page.evaluate(() => window.__viewport!.showSketchAt(19.85));
+        await page.evaluate(() => window.__viewport!.showSketchAt(19.97));
         await frame(page);
         const near = await page.locator('canvas').screenshot();
         expect(await diffPixels(page, base, near)).toBeGreaterThan(zoom === null ? 1500 : 800);
@@ -129,6 +130,11 @@ for (const { name, backend, noOffset } of variants) {
         await frame(page);
         const deep = await page.locator('canvas').screenshot();
         expect(await diffPixels(page, base, deep)).toBeLessThan(150);
+        // A thin wall: geometry 1 mm behind the face must not bleed through it.
+        await page.evaluate(() => window.__viewport!.showSketchAt(19));
+        await frame(page);
+        const thin = await page.locator('canvas').screenshot();
+        expect(await diffPixels(page, base, thin)).toBeLessThan(150);
       });
     }
 

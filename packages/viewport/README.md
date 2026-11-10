@@ -152,6 +152,6 @@ the overlay. Palette and rendering choices: see ADR-028 in docs/DECISIONS.md.
 
 Sketches, region fills, highlights and body/ghost edges lie exactly on faces. `polygonOffset` is not
 used (WebGPU ignores it for lines and coplanar slopes). `applyDepthBias` (`overlays.ts`) moves each
-overlay vertex to `p * (1 - 0.025)` in view space: screen x, y and w are unchanged and clip z gets
-`+ P[2][3] * eps / (1 - eps)`. The pull is 2.5 % of the point's own distance, independent of the
-near plane. See the ADR-pending entry in `docs/DECISIONS.md`.
+overlay vertex to `p * (1 - 0.005)` in view space: screen x, y and w are unchanged and clip z gets
+`+ P[2][3] * eps / (1 - eps)`. The pull is 0.5 % of the point's own distance, independent of the
+near plane. See ADR-063 in `docs/DECISIONS.md`.
