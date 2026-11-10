@@ -41,7 +41,6 @@ import {
   type DocumentStoreImpl,
   entityRefs,
   expressionEngine,
-  newDoc,
   scopeOf,
   ulid,
 } from '@wren-cad/document';
@@ -73,7 +72,6 @@ import {
   type FeatureTool,
   isFeatureTool,
   isModelTool,
-  isUnset,
   type ModelTool,
   newBox,
   newChamfer,
@@ -89,7 +87,6 @@ import {
   newSketch,
   TOOL_NEEDS,
 } from '../features/factories';
-import { pruneAttachments, savedExtra } from '../model/attachments';
 import { attentionItems, attentionMarkers, locateName, partDiagonal } from '../model/attention';
 import { bootEngine, type EngineBoot } from '../model/engine';
 import { explainStatus, followBlockedCauses } from '../model/explain';
@@ -104,7 +101,6 @@ import {
 import { nextFolderName, readCollapsedFolders, writeCollapsedFolders } from '../model/folders';
 import { isOriginPlane, ORIGIN_FRAMES, type PlaneFrame, toPlaneFrame } from '../model/frames';
 import { foldHeals, type Heal, healsFrom } from '../model/heal';
-import { IMPORT_EXTENSIONS, importFeature, importFormat } from '../model/import';
 import { type Attachment, createRegenLoop, type Modeling, type RegenLoop } from '../model/modeling';
 import { sketchShown, type VisibilityContext } from '../model/sketch-visibility';
 import { getDiagnostics } from '../platform/diagnostics';
@@ -123,6 +119,7 @@ import {
   vertexAt,
 } from '../selection/pick';
 import type { SyncController, SyncHost } from '../sync/controller';
+import * as fileOps from './files';
 import { type BubbleActionId, gestureAction } from './gestures';
 import { commandFor, type InputSettings, loadInput } from './input';
 import * as keys from './keyboard';
@@ -133,7 +130,6 @@ import { PushPullTool } from './push-pull';
 import type { SketchSession } from './sketch-session';
 import {
   type EngineState,
-  initialSection,
   initialUi,
   type RegenView,
   type SectionUi,
@@ -142,8 +138,17 @@ import {
 } from './state';
 import * as hooks from './test-hooks';
 import { failBoot, mark, markOnce } from './timing';
+import {
+  emptyField,
+  freshDocument,
+  pointerValue,
+  readLastDoc,
+  toolOfFeature,
+  writeLastDoc,
+} from './workbench-util';
 
-const LAST_DOC_KEY = 'whittle:last-document';
+export { freshDocument };
+
 const LINKS_KEY = 'whittle:links';
 const HISTORY_DIR = '.wren-history/';
 
@@ -169,33 +174,6 @@ function isLinked(id: string | undefined): boolean {
   } catch {
     return false;
   }
-}
-/**
- * Library thumbnails read the WebGL canvas back (≈ 200 ms on software GL), so while editing they
- * are taken at most this often; flushes (page hidden, switching documents, opening the library)
- * and a document's first save always take one.
- */
-const THUMB_EVERY_MS = 30_000;
-
-function readLastDoc(): string | null {
-  try {
-    return localStorage.getItem(LAST_DOC_KEY);
-  } catch {
-    return null;
-  }
-}
-function writeLastDoc(id: string | undefined): void {
-  try {
-    if (id) localStorage.setItem(LAST_DOC_KEY, id);
-    else localStorage.removeItem(LAST_DOC_KEY);
-  } catch {
-    // storage blocked: the library still works, we just won't reopen automatically
-  }
-}
-
-export function freshDocument(): WrenDoc {
-  const doc = newDoc({ name: 'Untitled part', firstPart: 'Part 1' });
-  return { ...doc, meta: { ...doc.meta, id: ulid() } };
 }
 
 /** Left-drag past this many px is a box selection, not a click. */
@@ -256,19 +234,19 @@ export class Workbench {
   /** Document key of the meshes in `cache` and of the last cache that reached the library. */
   cacheKey: string | null = null;
   savedCacheKey: string | null = null;
-  private cacheTimer: ReturnType<typeof setTimeout> | undefined;
+  cacheTimer: ReturnType<typeof setTimeout> | undefined;
   /** The open document has a library entry (saved or opened from it). */
-  private inLibrary = false;
+  inLibrary = false;
   /** Rebound reference names waiting to be folded into the next user edit (ADR-008). */
   heals = new Map<Id, Heal[]>();
   /** The document the pending heals were computed for: only that exact version may take them. */
   private healsFor: WrenDoc | null = null;
   /** Auto-fit once per opened document, then leave the camera to the user. */
-  private fitPending = true;
+  fitPending = true;
   private initialBundle: Promise<ProjectBundle | null> | null = null;
   private lastGood = new Map<string, MeshBuffers>();
   private firstRendered = false;
-  private lastThumbAt = 0;
+  lastThumbAt = 0;
   private toastSeq = 0;
   private toastTimer: ReturnType<typeof setTimeout> | undefined;
   private cleanup: Array<() => void> = [];
@@ -287,11 +265,11 @@ export class Workbench {
   /** Library writes run one at a time (saves and sync's compare-and-swap writes). */
   private libChain: Promise<unknown> = Promise.resolve();
   /** The document object last written to the library (sync may replace only that one). */
-  private persistedDoc: WrenDoc | null = null;
+  persistedDoc: WrenDoc | null = null;
   /** History files written in memory and not yet saved. */
-  private extraDirty = false;
+  extraDirty = false;
   /** A merged result from sync waits for the current sketch or drag to finish. */
-  private syncDeferred = false;
+  syncDeferred = false;
   /** The store change being applied came from another device: don't autosave it back. */
   private applyingRemote = false;
 
@@ -467,7 +445,7 @@ export class Workbench {
   }
 
   /** A document with features but no cached meshes can only be shown by the kernel: boot it. */
-  private kernelIfNothingCached(): void {
+  kernelIfNothingCached(): void {
     if (this.boot || (this.part?.features.length ?? 0) === 0) return;
     const view = this.regen.get();
     if (view?.source === 'cache' && view.result.partId === this.part?.id) return;
@@ -793,10 +771,10 @@ export class Workbench {
   }
 
   /** Set by document loads (the first geometry always fits); a fresh empty document fits only if needed. */
-  private fitOnFirstGeometry = false;
+  fitOnFirstGeometry = false;
 
   /** Shows the document's cached meshes until the live regen replaces them (PLAN §4). */
-  private showCached(doc: WrenDoc): void {
+  showCached(doc: WrenDoc): void {
     const geometry = decodeCache(this.cache, docKey(doc));
     if (!geometry) return;
     this.cacheKey = geometry.key;
@@ -851,7 +829,7 @@ export class Workbench {
   }
 
   /** Saves the document again shortly so a mesh cache newer than the stored one reaches it. */
-  private scheduleCacheSave(): void {
+  scheduleCacheSave(): void {
     clearTimeout(this.cacheTimer);
     this.cacheTimer = setTimeout(() => {
       if (this.cacheKey !== this.savedCacheKey && docKey(this.doc) === this.cacheKey)
@@ -977,7 +955,7 @@ export class Workbench {
     failBoot(`viewport: ${message}`);
   }
 
-  private bodyColor(): string | undefined {
+  bodyColor(): string | undefined {
     const part = this.part;
     return part?.color ?? part?.material?.appearance ?? undefined;
   }
@@ -1956,7 +1934,7 @@ export class Workbench {
     return { enabled: s.enabled, axis: s.axis, offset: s.offset, flipped: s.flipped, face: s.face };
   }
 
-  private bounds() {
+  bounds() {
     return unionBounds((this.regen.get()?.result.bodies ?? []).map((b) => b.mesh.bbox));
   }
 
@@ -2410,115 +2388,43 @@ export class Workbench {
   // ------------------------------------------------------------------ library & files
 
   /** The open project's extra files and cache (open/new/import replace them). */
-  private setProjectFiles(
+  setProjectFiles(
     bundle: { extra?: ProjectFiles; cache?: ProjectFiles },
     inLibrary: boolean,
   ): void {
-    this.extra = new Map(bundle.extra ?? []);
-    this.cache = new Map(bundle.cache ?? []);
-    this.cacheKey = null;
-    this.savedCacheKey = null;
-    this.inLibrary = inLibrary;
-    this.heals = new Map();
-    this.fitPending = true;
-    this.fitOnFirstGeometry = true;
+    fileOps.setProjectFiles(this, bundle, inLibrary);
   }
 
   /** Attachment bytes of the document's import features (ImportFeature.source.path). */
   private attachmentsFor(doc: WrenDoc): Attachment[] {
-    const out: Attachment[] = [];
-    for (const f of doc.parts[0]?.features ?? []) {
-      if (f.type !== 'import') continue;
-      const bytes = this.extra.get(f.source.path);
-      if (bytes) out.push({ path: f.source.path, sha256: f.source.sha256, bytes });
-    }
-    return out;
+    return fileOps.attachmentsFor(this, doc);
   }
 
-  private async saveToLibrary(doc: WrenDoc): Promise<void> {
-    const lib = await this.library();
-    if (!lib) return;
-    // A save can run after another document was loaded (it was scheduled or queued before the
-    // switch): it must write *its* document's files, never the newly open one's.
-    const current = doc.meta.id === this.doc.meta.id;
-    const files = current
-      ? { extra: this.extra, cache: this.cache, key: this.cacheKey }
-      : this.retired.get(doc.meta.id ?? '');
-    if (!files) return; // nothing known about that document's files: never guess them
-    const thumbnail = current ? await this.thumbnail() : undefined;
-    // Orphaned import attachments are never written; in memory they live on while the history
-    // could bring their feature back (model/attachments.ts, ADR-016).
-    if (current) this.pruneAttachments();
-    const extra = savedExtra(files.extra, doc);
-    const wasDirty = current && this.extraDirty;
-    await this.libLocked(() =>
-      lib.save(doc, {
-        ...(thumbnail ? { thumbnail } : {}),
-        extra,
-        cache: files.cache,
-      }),
-    );
-    if (doc.meta.id) this.syncCtl?.onSaved(doc.meta.id, doc, extra);
-    if (current && doc.meta.id === this.doc.meta.id) {
-      if (wasDirty) this.extraDirty = false;
-      this.persistedDoc = doc;
-      const first = !this.inLibrary;
-      this.inLibrary = true;
-      if (first) void this.syncCtl?.openProject(doc.meta.id);
-      this.savedCacheKey = files.key;
-      writeLastDoc(doc.meta.id);
-      // Finer meshes that arrived while this save ran (e.g. the first save of a new document,
-      // when updateMeshCache could not schedule one yet) still need to reach the library.
-      if (this.cacheKey !== files.key && !this.autosaver.pending) this.scheduleCacheSave();
-    }
-    if (this.ui.get().library) void this.refreshLibrary();
+  private saveToLibrary(doc: WrenDoc): Promise<void> {
+    return fileOps.saveToLibrary(this, doc);
   }
 
   /** Files of documents that were replaced while a save of them may still be pending. */
-  private retired = new Map<
-    string,
-    { extra: ProjectFiles; cache: ProjectFiles; key: string | null }
-  >();
+  retired = new Map<string, { extra: ProjectFiles; cache: ProjectFiles; key: string | null }>();
 
   /** Saves pending changes now (page hidden, switching documents, tests), with a thumbnail. */
   flushSave(): Promise<void> {
-    this.thumbWanted = true;
-    return this.autosaver.flush().finally(() => {
-      this.thumbWanted = false;
-    });
+    return fileOps.flushSave(this);
   }
 
-  private thumbWanted = false;
-  private thumbDocs = new Set<string>();
+  thumbWanted = false;
+  thumbDocs = new Set<string>();
 
-  private async thumbnail(): Promise<Uint8Array | undefined> {
-    const canvas = this.canvas;
-    const v = this.viewport;
-    if (!canvas || !v || this.shownBodies.size === 0 || this.ui.get().sketch) return undefined;
-    const now = performance.now();
-    const id = this.doc.meta.id ?? '';
-    const first = !this.thumbDocs.has(id);
-    if (!first && !this.thumbWanted && now - this.lastThumbAt < THUMB_EVERY_MS) return undefined;
-    this.lastThumbAt = now;
-    this.thumbDocs.add(id);
-    try {
-      const { canvasToThumbnail } = await import('../doc/library');
-      // Read pixels in the same task as a fresh frame (the drawing buffer is not preserved).
-      await v.nextFrame();
-      return await canvasToThumbnail(canvas, { width: 256, height: 192 });
-    } catch {
-      return undefined;
-    }
+  thumbnail(): Promise<Uint8Array | undefined> {
+    return fileOps.thumbnail(this);
   }
 
-  async refreshLibrary(query = ''): Promise<void> {
-    const lib = await this.library();
-    this.libraryEntries.set(lib ? await lib.list(query) : []);
+  refreshLibrary(query = ''): Promise<void> {
+    return fileOps.refreshLibrary(this, query);
   }
 
   toggleLibrary(open = !this.ui.get().library): void {
-    this.patchUi({ library: open });
-    if (open) void this.flushSave().then(() => this.refreshLibrary());
+    fileOps.toggleLibrary(this, open);
   }
 
   /** Replaces the open document (history cleared). */
@@ -2526,135 +2432,50 @@ export class Workbench {
     bundle: { doc: WrenDoc; extra?: ProjectFiles; cache?: ProjectFiles },
     inLibrary: boolean,
   ): boolean {
-    this.sketch?.exit(false);
-    this.patchUi({
-      selection: [],
-      featureId: null,
-      picking: null,
-      prompt: null,
-      hover: null,
-      chooser: null,
-      candidates: null,
-    });
-    const old = this.part?.id;
-    // Edits made while a switch was in flight are still pending for the outgoing document: save
-    // them with that document's own files (snapshotted here), then let the new one load.
-    const outgoing = this.doc.meta.id;
-    if (outgoing && this.autosaver.pending) {
-      this.retired.set(outgoing, { extra: this.extra, cache: this.cache, key: this.cacheKey });
-      const flushed = this.autosaver.flush();
-      void flushed.finally(() => {
-        if (outgoing !== this.doc.meta.id) this.retired.delete(outgoing);
-      });
-    }
-    const r = this.store.load(bundle.doc);
-    if (!r.ok) {
-      this.toast(r.error, 'error');
-      return false;
-    }
-    clearTimeout(this.cacheTimer);
-    this.setProjectFiles(bundle, inLibrary);
-    writeLastDoc(bundle.doc.meta.id);
-    if (old && old !== this.part?.id) {
-      this.loop?.forget(old);
-      void this.modeling?.closePart(old);
-    }
-    this.showCached(this.doc);
-    this.kernelIfNothingCached();
-    this.pushPull.cancel();
-    this.measure.stop();
-    this.setSection(initialSection);
-    this.persistedDoc = inLibrary ? this.doc : null;
-    this.extraDirty = false;
-    this.syncDeferred = false;
-    this.projectOpened();
-    return true;
+    return fileOps.loadDocument(this, bundle, inLibrary);
   }
 
   /** Starts the bracket tutorial on a fresh part (App owns the tutorial state). */
   requestTour(): void {
-    this.tourRequests.set((n) => n + 1);
+    fileOps.requestTour(this);
   }
 
   // ------------------------------------------------------------------ parts (phone sheet)
 
-  private hiddenParts = new Set<Id>();
+  hiddenParts = new Set<Id>();
 
   partVisible(id: Id): boolean {
-    return !this.hiddenParts.has(id);
+    return fileOps.partVisible(this, id);
   }
 
   setPartVisible(id: Id, visible: boolean): void {
-    if (visible) this.hiddenParts.delete(id);
-    else this.hiddenParts.add(id);
-    this.syncViewport();
-    this.ui.set((u) => ({ ...u })); // re-render the parts list
+    fileOps.setPartVisible(this, id, visible);
   }
 
   /** Frames a part (Parts tab tap). */
   focusPart(id: Id): void {
-    const view = this.regen.get();
-    if (!view || view.result.partId !== id) return;
-    const b = this.bounds();
-    if (!b) return;
-    const c: Vec3 = [
-      (b.min[0] + b.max[0]) / 2,
-      (b.min[1] + b.max[1]) / 2,
-      (b.min[2] + b.max[2]) / 2,
-    ];
-    const r = Math.hypot(b.max[0] - b.min[0], b.max[1] - b.min[1], b.max[2] - b.min[2]) / 2;
-    this.viewport?.zoomTo(c, Math.max(r, 1), true);
+    fileOps.focusPart(this, id);
   }
 
-  async newDocument(): Promise<void> {
-    await this.flushSave();
-    this.loadDocument({ doc: freshDocument() }, false);
-    this.patchUi({ library: false, welcome: false });
+  newDocument(): Promise<void> {
+    return fileOps.newDocument(this);
   }
 
   /** Opens an editable copy of the demo bracket (saved to the library right away). */
-  async openDemo(): Promise<void> {
-    await this.flushSave();
-    const { demoBracket } = await import('../samples/bracket');
-    const doc = demoBracket();
-    this.loadDocument({ doc }, false);
-    this.autosaver.schedule(doc);
-    this.patchUi({ library: false, welcome: false });
+  openDemo(): Promise<void> {
+    return fileOps.openDemo(this);
   }
 
-  async openFromLibrary(id: string): Promise<void> {
-    await this.flushSave();
-    const lib = await this.library();
-    if (!lib) return;
-    try {
-      this.loadDocument(await lib.open(id), true);
-      this.patchUi({ library: false });
-    } catch (e) {
-      this.toast(e instanceof Error ? e.message : 'Could not open that document', 'error');
-    }
+  openFromLibrary(id: string): Promise<void> {
+    return fileOps.openFromLibrary(this, id);
   }
 
-  async renameInLibrary(id: string, name: string): Promise<void> {
-    if (id === this.doc.meta.id) {
-      this.renameDocument(name);
-      await this.flushSave();
-    } else {
-      const lib = await this.library();
-      await lib?.rename(id, name);
-    }
-    await this.refreshLibrary();
+  renameInLibrary(id: string, name: string): Promise<void> {
+    return fileOps.renameInLibrary(this, id, name);
   }
 
-  async deleteFromLibrary(id: string): Promise<void> {
-    const lib = await this.library();
-    if (!lib) return;
-    if (id === this.doc.meta.id) {
-      this.autosaver.cancel();
-      await lib.remove(id);
-      this.loadDocument({ doc: freshDocument() }, false);
-      this.patchUi({ library: true });
-    } else await lib.remove(id);
-    await this.refreshLibrary();
+  deleteFromLibrary(id: string): Promise<void> {
+    return fileOps.deleteFromLibrary(this, id);
   }
 
   /**
@@ -2662,28 +2483,12 @@ export class Workbench {
    * `current` adds the import to the open part (the inspector's Open…, ⌘O, drag and drop), `new`
    * starts a new document for it (library and welcome, where no part is being worked on).
    */
-  async openFromDisk(into: 'current' | 'new' = 'current'): Promise<void> {
-    const { openFile } = await import('../doc/library');
-    // `.whittle`: files saved before the rename (ADR-032) still open.
-    const f = await openFile(['.wrencad', '.whittle', ...IMPORT_EXTENSIONS]);
-    if (f) await this.openBytes(f.name, f.bytes, into);
+  openFromDisk(into: 'current' | 'new' = 'current'): Promise<void> {
+    return fileOps.openFromDisk(this, into);
   }
 
-  async openBytes(
-    name: string,
-    bytes: Uint8Array,
-    into: 'current' | 'new' = 'current',
-  ): Promise<void> {
-    if (/\.(wrencad|whittle)$/i.test(name)) {
-      try {
-        const { fromWrenBytes } = await import('../doc/library');
-        await this.openProject(fromWrenBytes(bytes));
-      } catch (e) {
-        this.toast(e instanceof Error ? e.message : 'That file could not be read', 'error');
-      }
-      return;
-    }
-    await this.importFiles([{ name, bytes }], into);
+  openBytes(name: string, bytes: Uint8Array, into: 'current' | 'new' = 'current'): Promise<void> {
+    return fileOps.openBytes(this, name, bytes, into);
   }
 
   /**
@@ -2692,125 +2497,26 @@ export class Workbench {
    * file comes from elsewhere) opens as a new entry — new id, " (copy)" when the name is taken —
    * and says so; only the identical project reuses its entry.
    */
-  private async openProject(bundle: ProjectBundle): Promise<void> {
-    await this.flushSave();
-    const lib = await this.library();
-    let { doc } = bundle;
-    let note: string | null = null;
-    let inLibrary = false;
-    if (lib && doc.meta.id) {
-      const { sameProject, copyName } = await import('../doc/library');
-      // A lookup that fails is not "absent": treat it like a different version (open as a copy)
-      // rather than letting autosave overwrite whatever is stored under that id.
-      const existing = await lib.find(doc.meta.id).catch(() => 'unknown' as const);
-      if (existing && existing !== 'unknown' && sameProject(existing, bundle)) inLibrary = true;
-      else if (existing) {
-        const names = new Set((await lib.list()).map((e) => e.name));
-        const name = copyName(doc.meta.name, names);
-        doc = { ...doc, meta: { ...doc.meta, id: ulid(), name } };
-        note = `Opened as “${name}”: your library already has a different version of this document, and it is unchanged.`;
-      }
-    }
-    if (!this.loadDocument({ ...bundle, doc }, inLibrary)) return;
-    this.autosaver.schedule(this.doc); // opened from disk: keep a copy in the library
-    this.patchUi({ library: false, welcome: false });
-    if (note) this.toast(note, 'info');
+  openProject(bundle: ProjectBundle): Promise<void> {
+    return fileOps.openProject(this, bundle);
   }
 
   /** Imports CAD/mesh files as ImportFeatures (attachments `imports/<featureId>.<ext>`). */
-  async importFiles(files: readonly OpenedFile[], into: 'current' | 'new'): Promise<void> {
-    const usable = files.filter((f) => importFormat(f.name));
-    if (usable.length === 0) {
-      const names = files.map((f) => f.name).join(', ');
-      this.toast(
-        `Wren can open .wrencad projects and import STEP, IGES, BREP, STL, OBJ, 3MF and GLB files${names ? ` (not ${names})` : ''}.`,
-        'info',
-      );
-      return;
-    }
-    if (into === 'new' || !this.part) {
-      await this.flushSave();
-      const doc = freshDocument();
-      const stem = (usable[0]?.name ?? 'Import').replace(/\.[^.]+$/, '');
-      this.loadDocument({ doc: { ...doc, meta: { ...doc.meta, name: stem } } }, false);
-    }
-    if (this.ui.get().sketch) this.sketch?.exit(true);
-    for (const f of usable) {
-      const part = this.part;
-      if (!part) return;
-      const made = await importFeature(part, f.name, f.bytes);
-      if (!made) continue;
-      this.extra.set(made.path, f.bytes);
-      if (
-        !this.apply(
-          { kind: 'addFeature', partId: part.id, feature: made.feature },
-          `Import ${f.name}`,
-        )
-      )
-        this.extra.delete(made.path);
-      this.commit();
-    }
-    this.fitPending = true;
-    this.fitOnFirstGeometry = true;
-    this.patchUi({ library: false, welcome: false, selection: [], featureId: null });
+  importFiles(files: readonly OpenedFile[], into: 'current' | 'new'): Promise<void> {
+    return fileOps.importFiles(this, files, into);
   }
 
   /** Drops orphaned attachments that no undo or redo can restore any more. */
-  private pruneAttachments(): void {
-    pruneAttachments(this.extra, this.doc, (paths) => this.store.historyMentions(paths));
+  pruneAttachments(): void {
+    fileOps.pruneAttachments(this);
   }
 
-  async exportWren(): Promise<void> {
-    const { toWrenBytes, saveFile, MIME } = await import('../doc/library');
-    this.pruneAttachments();
-    await saveFile(
-      toWrenBytes(this.doc, savedExtra(this.extra, this.doc), this.cache),
-      `${fileBase(this.doc.meta.name)}.wrencad`,
-      MIME.wrencad,
-    );
+  exportWren(): Promise<void> {
+    return fileOps.exportWren(this);
   }
 
-  async export(request: ExportRequest): Promise<void> {
-    const part = this.part;
-    const view = this.regen.get();
-    if (!part) return;
-    this.patchUi({ exporting: true });
-    try {
-      const lib = await import('../doc/library');
-      const base = fileBase(this.doc.meta.name);
-      if (request.target === 'wren') return await this.exportWren();
-      if (request.target === '3mf' || request.target === 'glb') {
-        const bodies = (view?.result.bodies ?? []).filter(
-          (b) => !request.options.bodies || request.options.bodies.includes(b.id),
-        );
-        if (bodies.length === 0) return this.toast('There is nothing to export yet.', 'info');
-        const { meshExporters } = await import('@wren-cad/io');
-        const color = this.bodyColor();
-        const items = bodies.map((b, i) => ({
-          name: `Body ${i + 1}`,
-          mesh: b.mesh,
-          ...(color ? { color } : {}),
-        }));
-        const bytes =
-          request.target === '3mf'
-            ? meshExporters.to3mf(items, 'millimeter')
-            : meshExporters.toGlb(items);
-        await lib.saveFile(bytes, `${base}.${request.target}`, lib.MIME[request.target]);
-        this.exports.set((n) => n + 1);
-        return;
-      }
-      // Exact formats need the kernel (phones boot it now).
-      const live = view?.source === 'live' || (await this.whenLive());
-      const modeling = this.modeling;
-      if (!modeling || !live) return this.toast('The geometry kernel is still loading.', 'info');
-      const r = await modeling.exportPart(part.id, request.target, request.options);
-      if (!r.ok) return this.toast(r.error.message, 'error');
-      const ext = request.target === 'step' ? 'step' : request.target;
-      await lib.saveFile(r.bytes, `${base}.${ext}`, lib.MIME[request.target]);
-      this.exports.set((n) => n + 1);
-    } finally {
-      this.patchUi({ exporting: false });
-    }
+  export(request: ExportRequest): Promise<void> {
+    return fileOps.exportDoc(this, request);
   }
 
   // ------------------------------------------------------------------ needs attention
@@ -2916,7 +2622,7 @@ export class Workbench {
   // ------------------------------------------------------------------ connections, sync, versions (M2.5)
 
   /** Library writes, one at a time (autosave and sync's compare-and-swap never interleave). */
-  private libLocked<T>(fn: () => Promise<T>): Promise<T> {
+  libLocked<T>(fn: () => Promise<T>): Promise<T> {
     const run = this.libChain.then(fn, fn);
     this.libChain = run.catch(() => undefined);
     return run;
@@ -2943,7 +2649,7 @@ export class Workbench {
   }
 
   /** A document was opened or replaced: its sync engine and history follow it. */
-  private projectOpened(): void {
+  projectOpened(): void {
     if (this.syncCtl) {
       void this.syncCtl.openProject(this.doc.meta.id);
       return;
@@ -3121,29 +2827,4 @@ export class Workbench {
   testHooks() {
     return hooks.testHooks(this);
   }
-}
-
-/** The M3 tool that makes a feature (its pick sequence), if any. */
-function toolOfFeature(f: Feature): FeatureTool | null {
-  return isFeatureTool(f.type) ? f.type : null;
-}
-
-/** A reference field still to be picked: an empty list or an unset reference. */
-function emptyField(f: Feature, path: string): boolean {
-  const v = pointerValue(f, path);
-  if (Array.isArray(v)) return v.length === 0;
-  return v === undefined || isUnset(v as EntityRef);
-}
-
-function pointerValue(f: Feature, path: string): unknown {
-  let cur: unknown = f;
-  for (const s of path.split('/').slice(1)) {
-    if (cur === null || typeof cur !== 'object') return undefined;
-    cur = (cur as Record<string, unknown>)[s];
-  }
-  return cur;
-}
-
-function fileBase(name: string): string {
-  return (name.trim() || 'Untitled').replace(/[\\/:*?"<>|]+/g, '-');
 }
