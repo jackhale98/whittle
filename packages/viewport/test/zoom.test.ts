@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  WHEEL_MAX_NOTCHES_PER_EVENT,
-  WHEEL_ZOOM_PER_NOTCH,
-} from '../src/constants';
+import { WHEEL_MAX_NOTCHES_PER_EVENT, WHEEL_ZOOM_PER_NOTCH } from '../src/constants';
 import {
   anchorStillValid,
   easeDistance,
@@ -81,7 +78,13 @@ describe('easeDistance', () => {
 });
 
 describe('anchor', () => {
-  const a = { point: [0, 0, 0] as [number, number, number], x: 100, y: 100, t: 1000, source: 'surface' as const };
+  const a = {
+    point: [0, 0, 0] as [number, number, number],
+    x: 100,
+    y: 100,
+    t: 1000,
+    source: 'surface' as const,
+  };
   it('is kept for the same spot while the wheel turns, dropped otherwise', () => {
     expect(anchorStillValid(a, 101, 100, 1200)).toBe(true);
     expect(anchorStillValid(a, 120, 100, 1200)).toBe(false);

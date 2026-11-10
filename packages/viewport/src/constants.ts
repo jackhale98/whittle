@@ -84,3 +84,9 @@ export const WHEEL_MAX_DISTANCE_RADII = 200;
  * it never lands between two wheel notches. `whenPickReady()` skips the wait.
  */
 export const REST_WORK_DEBOUNCE_MS = 220;
+/**
+ * A BVH build for a large model (over NAV_SYNC_BVH_TRIANGLES) is one task of hundreds of ms and
+ * cannot be interrupted, so it only starts after this long without wheel or camera activity
+ * (longer than the pauses of a person turning a wheel).
+ */
+export const BVH_PREBUILD_QUIET_MS = 1500;

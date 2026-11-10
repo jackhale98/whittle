@@ -90,6 +90,7 @@ import {
   sideVisibility,
 } from './compare';
 import {
+  BVH_PREBUILD_QUIET_MS,
   HANDLE_PICK_PAD_PX,
   LONG_PRESS_GRACE_MS,
   LONG_PRESS_JANK_MS,
@@ -1482,9 +1483,11 @@ class ViewportImpl implements ViewportEngine {
       if (this.disposed || next.bvh || !this.hasBody(next)) return;
       // A build is one uninterruptible task (hundreds of ms at 1M triangles): never start one
       // while the camera moves or the wheel has just turned; try again after a quiet spell.
+      const need =
+        next.triangles > NAV_SYNC_BVH_TRIANGLES ? BVH_PREBUILD_QUIET_MS : REST_WORK_DEBOUNCE_MS;
       const quietFor = performance.now() - this.lastActivityAt;
-      if (this.isCameraMoving() || this.nav || quietFor < REST_WORK_DEBOUNCE_MS) {
-        setTimeout(wait, REST_WORK_DEBOUNCE_MS);
+      if (this.isCameraMoving() || this.nav || quietFor < need) {
+        setTimeout(wait, Math.max(REST_WORK_DEBOUNCE_MS, need - quietFor));
         return;
       }
       this.bvhFor(next);
@@ -2084,7 +2087,7 @@ class ViewportImpl implements ViewportEngine {
   }
 
   /** One frame of the wheel ease. Returns true while the camera is still travelling. */
-  private stepWheel(dt: number): boolean {
+  private stepWheel(dt: number, land = false): boolean {
     const w = this.wheel;
     if (!w || w.settled) return false;
     if (!this.wheelPoseIntact(w)) {
@@ -2092,7 +2095,7 @@ class ViewportImpl implements ViewportEngine {
       return false;
     }
     const tau = this.reducedMotion ? 0 : WHEEL_SMOOTH_TAU_S;
-    const next = easeDistance(w.current, w.goal, dt, tau);
+    const next = land ? { value: w.goal, done: true } : easeDistance(w.current, w.goal, dt, tau);
     w.current = next.value;
     const pose = zoomPose(w.frame, w.current);
     w.lastPos = pose.position;
@@ -2886,6 +2889,12 @@ class ViewportImpl implements ViewportEngine {
     if (o.pointerType === 'touch' && this.recognizer.palmRejected(performance.now())) {
       this.dispatchNav(this.navMachine.abort());
       return;
+    }
+    // A drag starting mid-zoom lands the zoom first, so no wheel steps are lost.
+    if (this.wheel && !this.wheel.settled) {
+      this.wheel.current = this.wheel.goal;
+      this.stepWheel(0, true);
+      this.controls.update(0);
     }
     const t0 = performance.now();
     const r = this.resolveNavPivot(o.x, o.y);
