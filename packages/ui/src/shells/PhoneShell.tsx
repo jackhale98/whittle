@@ -1,8 +1,9 @@
-import { Box, Download, Ruler, Scissors, SlidersHorizontal } from 'lucide-react';
+import { Box, Download, ListTree, Ruler, Scissors, SlidersHorizontal } from 'lucide-react';
 import { type ComponentType, type CSSProperties, lazy, Suspense, useState } from 'react';
 import { Button, cn } from '../components/primitives';
 import { StatusChip } from '../components/StatusChip';
 import { ExportPanel } from '../export/ExportMenu';
+import { PhoneFeatureTree } from '../features/PhoneFeatureTree';
 import { BottomSheet } from './BottomSheet';
 import {
   EmptyState,
@@ -27,8 +28,8 @@ const SectionPanel = lazy(() =>
   import('../panels/SectionPanel').then((mod) => ({ default: mod.SectionPanel })),
 );
 
-type SheetTab = 'parts' | 'params' | 'measure' | 'section' | 'export';
-const TABS: readonly SheetTab[] = ['parts', 'params', 'measure', 'section', 'export'];
+type SheetTab = 'parts' | 'history' | 'params' | 'measure' | 'section' | 'export';
+const TABS: readonly SheetTab[] = ['parts', 'history', 'params', 'measure', 'section', 'export'];
 
 const sheetTabs: Array<{
   id: SheetTab;
@@ -43,6 +44,13 @@ const sheetTabs: Array<{
     Icon: Box,
     title: 'No parts yet',
     body: 'Parts in this document will be listed here. Tap one to focus it.',
+  },
+  {
+    id: 'history',
+    label: 'Features',
+    Icon: ListTree,
+    title: 'No features yet',
+    body: 'Step through the features one by one to see how the part was built.',
   },
   {
     id: 'params',
@@ -143,7 +151,7 @@ export function PhoneShell(props: ShellProps) {
                 testId="tools-sheet"
                 onVisibleHeight={setSheetPx}
                 header={
-                  <fieldset className="m-0 grid min-w-0 shrink-0 grid-cols-5 gap-1 border-0 px-2 pt-0 pb-1">
+                  <fieldset className="m-0 grid min-w-0 shrink-0 grid-cols-6 gap-1 border-0 px-2 pt-0 pb-1">
                     <legend className="sr-only">Viewer tools</legend>
                     {sheetTabs.map(({ id, label, Icon }) => {
                       const on = tab === id && open;
@@ -175,6 +183,9 @@ export function PhoneShell(props: ShellProps) {
                 <div className="px-2 pb-4" data-testid="sheet-content">
                   <Suspense fallback={loading}>
                     {tab === 'parts' && props.parts ? <PartsPanel {...props.parts} /> : null}
+                    {tab === 'history' && props.phoneFeatureTree && open ? (
+                      <PhoneFeatureTree {...props.phoneFeatureTree} />
+                    ) : null}
                     {tab === 'measure' && props.measure ? (
                       <MeasurePanel {...props.measure} />
                     ) : null}
@@ -201,6 +212,7 @@ export function PhoneShell(props: ShellProps) {
                   {sheetTabs.map(({ id, Icon, title, body }) =>
                     id === tab &&
                     !(id === 'parts' && props.parts) &&
+                    !(id === 'history' && props.phoneFeatureTree) &&
                     !(id === 'params' && paramsTable) &&
                     !(id === 'measure' && props.measure) &&
                     !(id === 'section' && props.section) &&

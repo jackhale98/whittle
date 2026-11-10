@@ -448,7 +448,7 @@ describe('phone panels', () => {
       within(tabs)
         .getAllByRole('button')
         .map((b) => b.textContent),
-    ).toEqual(['Parts', 'Params', 'Measure', 'Section', 'Export']);
+    ).toEqual(['Parts', 'Features', 'Params', 'Measure', 'Section', 'Export']);
     fireEvent.click(within(tabs).getByRole('button', { name: 'Measure' }));
     expect(await screen.findByTestId('measure-reading')).toHaveTextContent('90.00');
     expect(screen.getByTestId('tools-sheet')).toHaveAttribute('data-snap', 'half');

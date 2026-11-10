@@ -6,6 +6,8 @@ import {
   Ellipsis,
   Eye,
   EyeOff,
+  FolderInput,
+  FolderMinus,
   GripVertical,
   ListTree,
   Pencil,
@@ -17,6 +19,7 @@ import {
 import { m } from 'motion/react';
 import {
   type KeyboardEvent,
+  type MouseEvent,
   type PointerEvent,
   useCallback,
   useEffect,
@@ -32,16 +35,34 @@ import { CauseSentence } from '../inspector/CauseSentence';
 import { useLongPress } from '../logic/longPress';
 import { readStored, writeStored } from '../logic/persist';
 import {
+  applySteps,
+  type BlockStep,
+  canFolder,
+  effectiveSketchShown,
+  folderOf,
+  folderRange,
+  membershipAfterMove,
+  planBlockMove,
+  planFolderMove,
+  runWithNested,
+  type SketchVisibilityMode,
+  type TreeFolder,
+  toggledVisibility,
+} from '../logic/treeFolders';
+import {
   allowedRollbacks,
   computeNesting,
   type MoveStep,
-  planUnitMove,
   sharedCount,
   snapRollback,
 } from '../logic/treeNesting';
+import { buildRows, folderKey, gapBefore, type TreeRow } from '../logic/treeRows';
 import { useSpring } from '../motion';
 import { EmptyState } from '../shells/shared';
+import { FolderRow } from './FolderRow';
 import { featureMeta } from './featureMeta';
+import { SketchEye } from './SketchEye';
+import { DeletePrompt, LeavePrompt, UndoLine } from './TreePrompts';
 
 /** The slice of a document `Feature` the tree needs. */
 export interface FeatureTreeItem {
@@ -49,6 +70,14 @@ export interface FeatureTreeItem {
   type: FeatureType;
   name: string;
   suppressed: boolean;
+  /** Sketches only: the document's `visibility` (absent = `'auto'`). */
+  visibility?: SketchVisibilityMode;
+  /**
+   * Sketches only: whether the viewport shows it. Pass it when the app resolves visibility itself
+   * (ADR-060: it also counts a revolve axis as consumed). Otherwise the tree computes it from
+   * `visibility` and the features that use the sketch.
+   */
+  shown?: boolean;
 }
 
 /** `onMove` may refuse (e.g. a fillet cannot move above the solid it rounds). */
@@ -68,6 +97,13 @@ export interface FeatureTreeProps {
    */
   lineage?: { parents: readonly Id[]; children: readonly Id[] };
   onSelect?(id: Id | null): void;
+  /**
+   * Several features selected (Ctrl/Cmd-click toggles, Shift-click selects a range, or "Add to
+   * selection" in the row menu). Controlled when given; otherwise the tree keeps it. A plain click
+   * resets it to the one clicked row.
+   */
+  selectedIds?: readonly Id[];
+  onSelectedIdsChange?(ids: readonly Id[]): void;
   onRename?(id: Id, name: string): void;
   onRollback?(index: number): void;
   /** Reorder. May return a promise; `{ ok: false }` triggers the gentle shake and shows `reason`. */
@@ -91,6 +127,40 @@ export interface FeatureTreeProps {
    */
   nestSketches?: boolean;
   onNestSketchesChange?(nest: boolean): void;
+
+  /* ---- M3.6 folders (ADR-066) ---- */
+  /** The part's folders (`Part.folders`). Each is a contiguous run of `features`. */
+  folders?: readonly TreeFolder[];
+  /**
+   * Folders that are collapsed. UI state, never document data: controlled when given (the app may
+   * persist it per user), otherwise the tree keeps it and every folder starts open.
+   */
+  collapsedFolders?: readonly Id[];
+  onCollapsedFoldersChange?(ids: readonly Id[]): void;
+  /**
+   * "Add to new folder" on the features (a contiguous run, nested sketches included, in history
+   * order). The app creates the folder (`addFolder`); once it shows up in `folders` the tree opens
+   * its name for inline editing.
+   */
+  onAddFolder?(featureIds: readonly Id[]): void;
+  onRenameFolder?(folderId: Id, name: string): void;
+  /** Ungroup: the folder goes, its features stay. */
+  onRemoveFolder?(folderId: Id): void;
+  /** Drag a folder. `toIndex` is the `moveFolder` value: its first member's position with the run taken out. */
+  onMoveFolder?(folderId: Id, toIndex: number): MoveResult | Promise<MoveResult> | undefined;
+  /** Folder "Suppress all" / "Unsuppress all": one undo step (`setSuppressedMany`). */
+  onSuppressMany?(ids: readonly Id[], suppressed: boolean): void;
+  /** Reverses the last change; offered as "Undo" after a drop changed a folder's members. */
+  onUndo?(): void;
+
+  /* ---- M3.6 sketch visibility ---- */
+  /**
+   * Sets viewport visibility of sketches (`setSketchVisibility`): the eye, a folder's
+   * "Show / Hide sketches" and the tree-level commands all come through here. Without it no eye
+   * is drawn.
+   */
+  onSketchVisibility?(ids: readonly Id[], visibility: SketchVisibilityMode): void;
+
   /** `touch` = 44px rows and always-visible handles. */
   density?: 'compact' | 'touch';
   className?: string;
@@ -106,18 +176,33 @@ export function writeNestSketches(nest: boolean): void {
   writeStored(NEST_SKETCHES_KEY, nest ? 'nested' : 'flat');
 }
 
-interface VisibleRow {
-  id: Id;
-  /** Document index. */
-  i: number;
-  level: 1 | 2;
-  /** Position among its siblings (1-based) and their count. */
-  pos: number;
-  size: number;
-  parent?: Id;
+const clampIdx = (n: number, max: number) => Math.max(0, Math.min(max, n));
+const NO_FOLDERS: readonly TreeFolder[] = [];
+
+/** One place a dragged row can land: a document gap with what it does to folders. */
+interface Slot {
+  /** Document gap: the dragged block would sit before feature index `g`. */
+  g: number;
+  /** Key of the head row the line sits above; null = after the last row. */
+  before: string | null;
+  /** `into` joins a folder, `out` leaves one, `stay` reorders inside its own folder. */
+  kind: 'top' | 'into' | 'stay' | 'out';
+  folderId?: Id;
+  steps?: BlockStep[];
+  toIndex?: number;
+  /** Pixel y of the line, measured when the drag starts. */
+  y: number;
 }
 
-const clampIdx = (n: number, max: number) => Math.max(0, Math.min(max, n));
+interface DragState {
+  kind: 'feature' | 'folder';
+  key: string;
+  id: Id;
+  dy: number;
+  at: number;
+  slots: Slot[];
+  slot: number | null;
+}
 
 interface StatusLine {
   tone: 'danger' | 'warning' | 'muted';
@@ -182,15 +267,23 @@ function describeStatus(
  * "used by N" badge. A feature moves with its sketches, and the rollback bar skips the gap between
  * them. This is a view only: the document keeps the flat serial order.
  *
+ * Folders (M3.6, ADR-066) group a contiguous run of features. Dragging the folder row moves the
+ * run, dragging a member out takes it out (after an inline "Take X out of Y?"), dropping a feature
+ * strictly between two members adds it. The rollback bar can sit inside an open folder; a collapsed
+ * folder is skipped over as a unit. Every sketch row has an eye (see `SketchEye`).
+ *
  * Keyboard: Up/Down/Home/End move; Right/Left expand, collapse or step in and out of a nested
- * sketch; Space selects; Enter/F2 renames; Alt+Up/Down reorders; Delete deletes; Shift+F10 / Menu
- * opens actions. The rollback bar is a separate focusable splitter.
+ * sketch or folder; Space selects (Ctrl+Space adds to the selection); Enter/F2 renames; Alt+Up/Down
+ * reorders; Delete deletes; Shift+F10 / Menu opens actions. The rollback bar is a separate
+ * focusable splitter.
  */
 export function FeatureTree({
   features,
   statuses,
   rollbackIndex,
   selectedId = null,
+  selectedIds,
+  onSelectedIdsChange,
   lineage,
   onSelect,
   onRename,
@@ -202,6 +295,16 @@ export function FeatureTree({
   onDelete,
   nestSketches = true,
   onNestSketchesChange,
+  folders = NO_FOLDERS,
+  collapsedFolders,
+  onCollapsedFoldersChange,
+  onAddFolder,
+  onRenameFolder,
+  onRemoveFolder,
+  onMoveFolder,
+  onSuppressMany,
+  onUndo,
+  onSketchVisibility,
   density = 'compact',
   className,
 }: FeatureTreeProps) {
@@ -213,50 +316,122 @@ export function FeatureTree({
   const nameOf = (id: Id) => nameById.get(id);
 
   const wrap = useRef<HTMLDivElement>(null);
-  const rows = useRef(new Map<Id, HTMLDivElement>());
-  const [focusId, setFocusId] = useState<Id | null>(null);
-  const [renaming, setRenaming] = useState<Id | null>(null);
-  const [menu, setMenu] = useState<{ id: Id; anchor: FloatingAnchor } | null>(null);
+  const rows = useRef(new Map<string, HTMLDivElement>());
+  const [focusKey, setFocusKey] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [menu, setMenu] = useState<{ key: string; anchor: FloatingAnchor } | null>(null);
   const [expanded, setExpanded] = useState<ReadonlySet<Id>>(new Set());
   const [confirm, setConfirm] = useState<Id | null>(null);
+  const [multi, setMulti] = useState<readonly Id[]>([]);
+  const [anchorId, setAnchorId] = useState<Id | null>(null);
+  const [localCollapsed, setLocalCollapsed] = useState<readonly Id[]>([]);
+  const [leave, setLeave] = useState<{ id: Id; folderId: Id; steps: BlockStep[] } | null>(null);
+  const [info, setInfo] = useState('');
+  const [awaitFolder, setAwaitFolder] = useState<Id | null>(null);
+  const [dropSay, setDropSay] = useState('');
   // Touch and pen: press and hold a row for its menu (mouse has right-click, keyboards the Menu key).
-  const longPress = useLongPress<Id>((id, at) => {
-    setFocusId(id);
-    setMenu({ id, anchor: at });
+  const longPress = useLongPress<string>((key, at) => {
+    setFocusKey(key);
+    setMenu({ key, anchor: at });
   });
-  const [shake, setShake] = useState<{ id: Id; key: number } | null>(null);
+  const [shake, setShake] = useState<{ key: string; n: number } | null>(null);
   const [notice, setNotice] = useState('');
-  const [geom, setGeom] = useState<{ top: number[]; bottom: number[]; stop: number[] }>({
-    top: [],
-    bottom: [],
-    stop: [],
-  });
+  const [geom, setGeom] = useState<{ stop: number[] }>({ stop: [] });
   const [barDrag, setBarDrag] = useState<number | null>(null);
-  const [drag, setDrag] = useState<{
-    id: Id;
-    dy: number;
-    /** Positions among the top-level items. */
-    from: number;
-    to: number;
-    at: number;
-  } | null>(null);
+  const [drag, setDrag] = useState<DragState | null>(null);
   const rejectSpring = useSpring('reject');
   const noticeTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
-  /* ----------------------------------------------------------- nesting */
+  /* ----------------------------------------------------------- nesting, folders, selection */
   const nesting = useMemo(
     () => (nestSketches ? computeNesting(features) : computeNesting([])),
     [features, nestSketches],
   );
+  const consumers = useMemo(() => computeNesting(features).consumers, [features]);
   const indexOf = useMemo(() => new Map(features.map((f, i) => [f.id, i])), [features]);
   const allowed = useMemo(() => allowedRollbacks(features, nesting), [features, nesting]);
   const anyNested = nesting.parentOf.size > 0;
 
-  // Selecting a nested sketch (from the viewport, or while sketching) shows it.
+  const collapsedIds = collapsedFolders ?? localCollapsed;
+  const collapsed = useMemo(() => new Set(collapsedIds), [collapsedIds]);
+  const setCollapsed = useCallback(
+    (id: Id, closed: boolean) => {
+      const has = collapsedIds.includes(id);
+      if (has === closed) return;
+      const next = closed ? [...collapsedIds, id] : collapsedIds.filter((x) => x !== id);
+      setLocalCollapsed(next);
+      onCollapsedFoldersChange?.(next);
+    },
+    [collapsedIds, onCollapsedFoldersChange],
+  );
+  const ranges = useMemo(
+    () =>
+      folders.flatMap((f) => {
+        const r = folderRange(features, f);
+        return r ? [{ folder: f, ...r }] : [];
+      }),
+    [features, folders],
+  );
+  // Rollback stops that sit inside a folder that is closed are skipped (it steps as one unit).
+  const stops = useMemo(
+    () =>
+      allowed.filter(
+        (r) => !ranges.some((g) => collapsed.has(g.folder.id) && r > g.start && r <= g.end),
+      ),
+    [allowed, ranges, collapsed],
+  );
+
+  const picked = selectedIds ?? multi;
+  const effective = useMemo<readonly Id[]>(
+    () => (picked.length ? picked : selectedId ? [selectedId] : []),
+    [picked, selectedId],
+  );
+  const setPicked = useCallback(
+    (ids: readonly Id[]) => {
+      setMulti(ids);
+      onSelectedIdsChange?.(ids);
+    },
+    [onSelectedIdsChange],
+  );
+  // The app moved the selection elsewhere (viewport pick): the extra picks no longer apply.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: only a change of the primary selection resets
+  useEffect(() => {
+    if (multi.length && selectedId && !multi.includes(selectedId)) setPicked([]);
+  }, [selectedId]);
+
+  // Selecting a nested sketch (from the viewport, or while sketching) shows it; so does a
+  // selection inside a closed folder.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: opens once per selection change
   useEffect(() => {
     const parent = selectedId ? nesting.parentOf.get(selectedId) : undefined;
     if (parent) setExpanded((e) => (e.has(parent) ? e : new Set(e).add(parent)));
+    const f = selectedId ? folderOf(folders, selectedId) : undefined;
+    if (f && collapsed.has(f.id)) setCollapsed(f.id, false);
   }, [selectedId, nesting]);
+
+  // A rollback position inside a folder opens it, so the bar is visible where it sits.
+  const lastRollback = useRef(rollback);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reacts to the position only; a later manual collapse must stick
+  useEffect(() => {
+    if (lastRollback.current === rollback) return;
+    lastRollback.current = rollback;
+    for (const g of ranges) {
+      if (rollback > g.start && rollback <= g.end && collapsed.has(g.folder.id)) {
+        setCollapsed(g.folder.id, false);
+      }
+    }
+  }, [rollback]);
+
+  // "Add to new folder": the folder arrives through `folders`; then its name opens for editing.
+  useEffect(() => {
+    if (!awaitFolder) return;
+    const f = folders.find((x) => x.features[0] === awaitFolder);
+    if (f) {
+      setAwaitFolder(null);
+      setRenaming(folderKey(f.id));
+      setFocusKey(folderKey(f.id));
+    }
+  }, [awaitFolder, folders]);
 
   const toggle = useCallback((id: Id, open?: boolean) => {
     setExpanded((e) => {
@@ -269,94 +444,80 @@ export function FeatureTree({
     });
   }, []);
 
-  /** Rows as shown: top-level items in document order, each followed by its open sketches. */
-  const visible = useMemo<VisibleRow[]>(() => {
-    const out: VisibleRow[] = [];
-    const tops = features.filter((f) => !nesting.parentOf.has(f.id));
-    tops.forEach((f, k) => {
-      out.push({ id: f.id, i: indexOf.get(f.id) ?? 0, level: 1, pos: k + 1, size: tops.length });
-      const kids = nesting.childrenOf.get(f.id) ?? [];
-      if (expanded.has(f.id)) {
-        kids.forEach((c, j) => {
-          out.push({
-            id: c,
-            i: indexOf.get(c) ?? 0,
-            level: 2,
-            pos: j + 1,
-            size: kids.length,
-            parent: f.id,
-          });
-        });
-      }
-    });
-    return out;
-  }, [features, nesting, expanded, indexOf]);
-  const units = useMemo(() => visible.filter((r) => r.level === 1), [visible]);
+  /** Rows as shown (see `buildRows`). */
+  const visible = useMemo<TreeRow[]>(
+    () => buildRows({ features, nesting, folders, expanded, collapsed }),
+    [features, nesting, folders, expanded, collapsed],
+  );
+  const rowByKey = useMemo(() => new Map(visible.map((r) => [r.key, r])), [visible]);
 
-  const activeFocus = visible.some((r) => r.id === focusId)
-    ? focusId
-    : (visible.find((r) => r.id === selectedId)?.id ?? visible[0]?.id ?? null);
+  const activeFocus = visible.some((r) => r.key === focusKey)
+    ? focusKey
+    : (visible.find((r) => r.key === selectedId)?.key ?? visible[0]?.key ?? null);
 
   /* ----------------------------------------------------------- measuring the rollback bar */
   // biome-ignore lint/correctness/useExhaustiveDependencies: row heights depend on these inputs
   useLayoutEffect(() => {
     const measure = () => {
-      const top: number[] = [];
-      const bottom: number[] = [];
-      for (const u of units) {
-        const el = rows.current.get(u.id);
-        if (!el) continue;
-        top.push(el.offsetTop);
-        let last = el;
-        for (const r of visible) {
-          if (r.parent === u.id) last = rows.current.get(r.id) ?? last;
-        }
-        bottom.push(last.offsetTop + last.offsetHeight);
-      }
-      // y of each rollback position: above the first top-level item at or after it
+      const heads = visible.filter((r) => !r.nestedSketch);
+      const tops = heads.map((h) => rows.current.get(h.key)?.offsetTop ?? 0);
+      const lastEl = rows.current.get(visible[visible.length - 1]?.key ?? '');
+      const bottom = lastEl ? lastEl.offsetTop + lastEl.offsetHeight : 0;
+      // y of each rollback position: above the first head row at or after it
       const stop: number[] = [];
       for (let r = 0; r <= n; r++) {
-        const k = units.findIndex((u) => u.i >= r);
-        stop.push(k >= 0 ? (top[k] ?? 0) : (bottom[bottom.length - 1] ?? 0));
+        const k = heads.findIndex((h) => h.i >= r);
+        stop.push(k >= 0 ? (tops[k] ?? 0) : bottom);
       }
       setGeom((prev) =>
-        prev.stop.length === stop.length &&
-        prev.stop.every((v, i) => v === stop[i]) &&
-        prev.top.length === top.length &&
-        prev.top.every((v, i) => v === top[i]) &&
-        prev.bottom.every((v, i) => v === bottom[i])
+        prev.stop.length === stop.length && prev.stop.every((v, i) => v === stop[i])
           ? prev
-          : { top, bottom, stop },
+          : { stop },
       );
     };
     measure();
     const ro = new ResizeObserver(measure);
     if (wrap.current) ro.observe(wrap.current);
     return () => ro.disconnect();
-  }, [features, statuses, renaming, density, expanded, confirm, nestSketches]);
+  }, [
+    features,
+    statuses,
+    renaming,
+    density,
+    expanded,
+    confirm,
+    nestSketches,
+    collapsed,
+    folders,
+    leave,
+    info,
+  ]);
 
   useEffect(() => () => clearTimeout(noticeTimer.current), []);
 
-  const focusRow = useCallback((id: Id) => {
-    setFocusId(id);
-    rows.current.get(id)?.focus();
+  const focusRow = useCallback((key: string) => {
+    setFocusKey(key);
+    rows.current.get(key)?.focus();
   }, []);
+  const refocus = (key: string) => requestAnimationFrame(() => rows.current.get(key)?.focus());
 
   /* ----------------------------------------------------------- moves */
-  function reject(id: Id, reason: string) {
-    setShake((s) => ({ id, key: (s?.key ?? 0) + 1 }));
+  function reject(key: string, reason: string) {
+    setShake((s) => ({ key, n: (s?.n ?? 0) + 1 }));
     setNotice(reason);
     clearTimeout(noticeTimer.current);
     noticeTimer.current = setTimeout(() => setNotice(''), 5000);
   }
-  /** Makes top-level item `id` the `to`th top-level item, taking its nested sketches along. */
-  function requestMove(id: Id, to: number) {
-    if (!onMove || to < 0 || to >= units.length) return;
-    const steps = planUnitMove(features, nesting, id, to);
-    if (steps.length === 0) return;
+
+  /** Runs the `moveFeature` steps of one block move through `onReorder` / `onMove`. */
+  function runSteps(key: string, steps: readonly MoveStep[], after?: () => void) {
+    if (!onMove || steps.length === 0) return;
     const done = (r: MoveResult | undefined) => {
-      if (r && !r.ok) reject(id, r.reason);
-      else setNotice('');
+      if (r && !r.ok) reject(key, r.reason);
+      else {
+        setNotice('');
+        after?.();
+      }
     };
     const first = steps[0];
     if (steps.length === 1 && first) {
@@ -382,6 +543,71 @@ export function FeatureTree({
     })();
   }
 
+  /** The block a feature row moves as: its nested sketches, then itself. */
+  const blockOf = (id: Id): Id[] => [...(nesting.childrenOf.get(id) ?? []), id];
+
+  /** Every place `row` could be dropped, in display order (no geometry yet: `y` is 0). */
+  function computeSlots(row: TreeRow): Slot[] {
+    const ids = features.map((f) => f.id);
+    const seen = new Set<number>();
+    const cands: Array<{ g: number; before: string | null }> = [];
+    for (const h of visible) {
+      if (h.nestedSketch) continue;
+      const g = gapBefore(h, features, nesting);
+      if (seen.has(g)) continue; // an open folder's first member shares its header's gap
+      seen.add(g);
+      cands.push({ g, before: h.key });
+    }
+    if (!seen.has(n)) cands.push({ g: n, before: null });
+    const out: Slot[] = [];
+    for (const { g, before } of cands) {
+      if (row.kind === 'folder') {
+        const plan = planFolderMove(features, folders, row.id, g);
+        if (plan.ok === true) out.push({ g, before, kind: 'top', toIndex: plan.toIndex, y: 0 });
+        continue;
+      }
+      const block = blockOf(row.id);
+      const ref = features[g]?.id;
+      if (ref !== undefined && block.includes(ref)) continue;
+      const steps = planBlockMove(ids, block, ref);
+      if (steps.length === 0) continue;
+      const mem = membershipAfterMove(applySteps(ids, steps), folders, block);
+      const own = folderOf(folders, row.id);
+      if (mem.leaves) out.push({ g, before, kind: 'out', folderId: mem.leaves, steps, y: 0 });
+      else if (mem.joins) out.push({ g, before, kind: 'into', folderId: mem.joins, steps, y: 0 });
+      else if (own) out.push({ g, before, kind: 'stay', folderId: own.id, steps, y: 0 });
+      else out.push({ g, before, kind: 'top', steps, y: 0 });
+    }
+    return out;
+  }
+
+  const folderName = (id: Id | undefined) => folders.find((f) => f.id === id)?.name ?? 'the folder';
+
+  /** Carries out a chosen drop (pointer or keyboard). */
+  function commitSlot(row: TreeRow, slot: Slot) {
+    if (row.kind === 'folder') {
+      if (!onMoveFolder || slot.toIndex === undefined) return;
+      Promise.resolve(onMoveFolder(row.id, slot.toIndex)).then((r) => {
+        if (r && !r.ok) reject(row.key, r.reason);
+        else setNotice('');
+      });
+      return;
+    }
+    const steps = slot.steps ?? [];
+    const name = nameOf(row.id) ?? 'The feature';
+    if (slot.kind === 'out' && slot.folderId) {
+      setLeave({ id: row.id, folderId: slot.folderId, steps });
+      return;
+    }
+    runSteps(
+      row.key,
+      steps,
+      slot.kind === 'into'
+        ? () => setInfo(`Added ${name} to ${folderName(slot.folderId)}.`)
+        : undefined,
+    );
+  }
+
   /** Asks (inline) before deleting a feature that has nested sketches. */
   function requestDelete(id: Id): boolean {
     if (!onDelete) return false;
@@ -394,47 +620,90 @@ export function FeatureTree({
   }
   function answerDelete(id: Id, alsoSketches: boolean) {
     const kids = nesting.childrenOf.get(id) ?? [];
-    const at = visible.findIndex((r) => r.id === id);
+    const at = visible.findIndex((r) => r.key === id);
     const next = visible[at + 1 + (expanded.has(id) ? kids.length : 0)] ?? visible[at - 1];
     setConfirm(null);
     if (alsoSketches) onDelete?.(id, kids);
     else onDelete?.(id);
-    if (next && next.id !== id) focusRow(next.id);
+    if (next && next.key !== id) focusRow(next.key);
   }
 
   /* ----------------------------------------------------------- row drag (grip) */
-  function gripDown(e: PointerEvent<HTMLElement>, id: Id, from: number) {
-    if (!onMove || e.button !== 0) return;
+  const canDrag = (row: TreeRow) => (row.kind === 'folder' ? !!onMoveFolder : !!onMove);
+  function gripDown(e: PointerEvent<HTMLElement>, row: TreeRow) {
+    if (!canDrag(row) || e.button !== 0) return;
     e.currentTarget.setPointerCapture(e.pointerId);
-    setDrag({ id, dy: 0, from, to: from, at: e.clientY });
-    // dy tracks live; `at` is the pointer start.
+    const slots = computeSlots(row).map((s) => {
+      const el = s.before ? rows.current.get(s.before) : undefined;
+      const last = rows.current.get(visible[visible.length - 1]?.key ?? '');
+      const y = el ? el.offsetTop - 1 : last ? last.offsetTop + last.offsetHeight : 0;
+      return { ...s, y };
+    });
+    setDrag({ kind: row.kind, key: row.key, id: row.id, dy: 0, at: e.clientY, slots, slot: null });
   }
   function gripMove(e: PointerEvent<HTMLElement>) {
     if (!drag) return;
     const dy = e.clientY - drag.at;
-    // Insertion slot among the *other* top-level items (the dragged one moves with the pointer).
-    let q = 0;
-    units.forEach((u, j) => {
-      if (j === drag.from) return;
-      const r = rows.current.get(u.id)?.getBoundingClientRect();
-      if (r && r.top + Math.min(r.height, touch ? 44 : 32) / 2 < e.clientY) q++;
+    if (Math.abs(dy) <= 4) {
+      setDrag({ ...drag, dy, slot: null });
+      return;
+    }
+    const rel = e.clientY - (wrap.current?.getBoundingClientRect().top ?? 0);
+    let best: number | null = null;
+    let bestD = Number.POSITIVE_INFINITY;
+    drag.slots.forEach((s, k) => {
+      const d = Math.abs(s.y - rel);
+      if (d < bestD) {
+        bestD = d;
+        best = k;
+      }
     });
-    setDrag({ ...drag, dy, to: clampIdx(q, units.length - 1) });
+    setDrag({ ...drag, dy, slot: best });
+    const s = best === null ? undefined : drag.slots[best];
+    const name = drag.kind === 'folder' ? folderName(drag.id) : (nameOf(drag.id) ?? '');
+    setDropSay(
+      !s
+        ? ''
+        : s.kind === 'into'
+          ? `Drop to add ${name} to ${folderName(s.folderId)}.`
+          : s.kind === 'out'
+            ? `Drop to take ${name} out of ${folderName(s.folderId)}.`
+            : `Drop to move ${name} here.`,
+    );
   }
   function gripUp() {
     if (!drag) return;
-    const { id, from, to, dy } = drag;
+    const { key, dy, slot, slots } = drag;
     setDrag(null);
-    if (Math.abs(dy) > 4 && to !== from) requestMove(id, to);
+    setDropSay('');
+    const row = rowByKey.get(key);
+    const chosen = slot === null ? undefined : slots[slot];
+    if (row && chosen && Math.abs(dy) > 4) commitSlot(row, chosen);
+  }
+
+  /** Alt+Up / Alt+Down: the nearest drop place above or below. */
+  function keyboardMove(row: TreeRow, dir: -1 | 1) {
+    if (!canDrag(row)) return;
+    const v = visible.findIndex((r) => r.key === row.key);
+    let end = v;
+    while ((visible[end + 1]?.level ?? 0) > row.level) end++;
+    const at = (s: Slot) =>
+      s.before === null ? visible.length : visible.findIndex((r) => r.key === s.before);
+    const slots = computeSlots(row);
+    const pick =
+      dir < 0
+        ? slots.filter((s) => at(s) < v).sort((a, b) => at(b) - at(a))[0]
+        : slots.filter((s) => at(s) > end).sort((a, b) => at(a) - at(b))[0];
+    if (pick) commitSlot(row, pick);
   }
 
   /* ----------------------------------------------------------- rollback bar */
   const rollbackFromY = (clientY: number) => {
     const top = wrap.current?.getBoundingClientRect().top ?? 0;
     const y = clientY - top;
-    let best = allowed[0] ?? 0;
+    let best = stops[0] ?? 0;
     let bestD = Number.POSITIVE_INFINITY;
-    for (const r of allowed) {
+    for (const r of stops) {
       const d = Math.abs((geom.stop[r] ?? 0) - y);
       if (d < bestD) {
         bestD = d;
@@ -457,33 +726,75 @@ export function FeatureTree({
   }
   function barKey(e: KeyboardEvent<HTMLElement>) {
     let next = rollback;
-    if (e.key === 'ArrowUp' || e.key === 'ArrowLeft')
-      next = snapRollback(rollback - 1, allowed, -1);
+    if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') next = snapRollback(rollback - 1, stops, -1);
     else if (e.key === 'ArrowDown' || e.key === 'ArrowRight')
-      next = snapRollback(rollback + 1, allowed, 1);
+      next = snapRollback(rollback + 1, stops, 1);
     else if (e.key === 'Home') next = 0;
     else if (e.key === 'End') next = n;
-    else if (e.key === 'PageUp') next = snapRollback(rollback - 5, allowed, -1);
-    else if (e.key === 'PageDown') next = snapRollback(rollback + 5, allowed, 1);
+    else if (e.key === 'PageUp') next = snapRollback(rollback - 5, stops, -1);
+    else if (e.key === 'PageDown') next = snapRollback(rollback + 5, stops, 1);
     else return;
     e.preventDefault();
     next = clampIdx(next, n);
     if (next !== rollback) onRollback?.(next);
   }
 
+  /* ----------------------------------------------------------- selection and folders */
+  /** Head feature rows in display order: what a Shift-click range runs over. */
+  const headIds = visible.filter((r) => r.kind === 'feature' && !r.nestedSketch).map((r) => r.id);
+
+  function clickFeature(e: MouseEvent, id: Id) {
+    if (e.ctrlKey || e.metaKey) {
+      const base = effective.length ? effective : anchorId ? [anchorId] : [];
+      setPicked(base.includes(id) ? base.filter((x) => x !== id) : [...base, id]);
+      setAnchorId(id);
+      return;
+    }
+    if (e.shiftKey && (anchorId ?? selectedId)) {
+      const a = headIds.indexOf((anchorId ?? selectedId) as Id);
+      const b = headIds.indexOf(id);
+      if (a >= 0 && b >= 0) {
+        setPicked(headIds.slice(Math.min(a, b), Math.max(a, b) + 1));
+        return;
+      }
+    }
+    if (picked.length) setPicked([]);
+    setAnchorId(id);
+    onSelect?.(id);
+  }
+
+  /** The features a row's menu acts on: the whole selection when the row is part of it. */
+  const targetsOf = (id: Id): Id[] =>
+    effective.length > 1 && effective.includes(id) ? [...effective] : [id];
+
+  /** Ids to group: the picks plus the sketches nested under them, in history order. */
+  const folderIdsFor = (ids: readonly Id[]) => runWithNested(features, nesting, ids);
+  function addFolder(ids: readonly Id[]) {
+    const run = folderIdsFor(ids);
+    if (!onAddFolder || !canFolder(features, folders, run).ok) return;
+    setAwaitFolder(run[0] as Id);
+    onAddFolder(run);
+  }
+
+  const sketchesIn = (ids: readonly Id[]) =>
+    ids.filter((id) => features[indexOf.get(id) ?? -1]?.type === 'sketch');
+  const isShown = (f: FeatureTreeItem) =>
+    f.shown ?? effectiveSketchShown(f.visibility, consumers.has(f.id));
+
   /* ----------------------------------------------------------- row keyboard */
-  function rowKey(e: KeyboardEvent<HTMLDivElement>, row: VisibleRow) {
+  function rowKey(e: KeyboardEvent<HTMLDivElement>, row: TreeRow) {
     if (e.target !== e.currentTarget) return;
-    const { id } = row;
-    const v = visible.findIndex((r) => r.id === id);
+    const { key, id } = row;
+    const v = visible.findIndex((r) => r.key === key);
     const go = (j: number) => {
       const r = visible[clampIdx(j, visible.length - 1)];
-      if (r) focusRow(r.id);
+      if (r) focusRow(r.key);
     };
-    const kids = nesting.childrenOf.get(id);
+    const isFolder = row.kind === 'folder';
+    const kids = isFolder ? undefined : nesting.childrenOf.get(id);
     if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
       e.preventDefault();
-      if (row.level === 1) requestMove(id, row.pos - 1 + (e.key === 'ArrowUp' ? -1 : 1));
+      if (!row.nestedSketch) keyboardMove(row, e.key === 'ArrowUp' ? -1 : 1);
       return;
     }
     switch (e.key) {
@@ -496,7 +807,11 @@ export function FeatureTree({
         go(v - 1);
         break;
       case 'ArrowRight':
-        if (kids?.length) {
+        if (isFolder) {
+          e.preventDefault();
+          if (collapsed.has(id)) setCollapsed(id, false);
+          else go(v + 1);
+        } else if (kids?.length) {
           e.preventDefault();
           if (!expanded.has(id)) toggle(id, true);
           else go(v + 1);
@@ -506,6 +821,9 @@ export function FeatureTree({
         if (row.parent) {
           e.preventDefault();
           focusRow(row.parent);
+        } else if (isFolder && !collapsed.has(id)) {
+          e.preventDefault();
+          setCollapsed(id, true);
         } else if (kids?.length && expanded.has(id)) {
           e.preventDefault();
           toggle(id, false);
@@ -521,34 +839,88 @@ export function FeatureTree({
         break;
       case ' ':
         e.preventDefault();
-        onSelect?.(selectedId === id ? null : id);
+        if (isFolder) setCollapsed(id, !collapsed.has(id));
+        else if (e.ctrlKey || e.metaKey) {
+          setPicked(
+            effective.includes(id) ? effective.filter((x) => x !== id) : [...effective, id],
+          );
+          setAnchorId(id);
+        } else onSelect?.(selectedId === id ? null : id);
         break;
       case 'Enter':
       case 'F2':
-        if (onRename) {
+        if (isFolder ? onRenameFolder : onRename) {
           e.preventDefault();
-          setRenaming(id);
+          setRenaming(key);
         }
         break;
       case 'Delete':
       case 'Backspace':
-        if (onDelete) {
+        if (onDelete && !isFolder) {
           e.preventDefault();
           const nextR = visible[v + 1] ?? visible[v - 1];
-          if (!requestDelete(id) && nextR) focusRow(nextR.id);
+          if (!requestDelete(id) && nextR) focusRow(nextR.key);
         }
         break;
       case 'ContextMenu':
         e.preventDefault();
-        setMenu({ id, anchor: e.currentTarget });
+        setMenu({ key, anchor: e.currentTarget });
         break;
       case 'F10':
         if (e.shiftKey) {
           e.preventDefault();
-          setMenu({ id, anchor: e.currentTarget });
+          setMenu({ key, anchor: e.currentTarget });
         }
         break;
     }
+  }
+
+  /* ----------------------------------------------------------- menus */
+  function folderMenuItems(folder: TreeFolder): MenuItem[] {
+    const items: MenuItem[] = [];
+    const run = folderRange(features, folder);
+    if (onRenameFolder)
+      items.push({
+        id: 'rename',
+        label: 'Rename',
+        shortcut: 'F2',
+        icon: <Pencil className="size-4" />,
+        onSelect: () => setRenaming(folderKey(folder.id)),
+      });
+    if (onRemoveFolder)
+      items.push({
+        id: 'ungroup',
+        label: 'Ungroup',
+        icon: <FolderMinus className="size-4" />,
+        onSelect: () => onRemoveFolder(folder.id),
+      });
+    if (onSuppressMany) {
+      const all = folder.features.every((id) => features[indexOf.get(id) ?? -1]?.suppressed);
+      items.push({
+        id: 'suppress-all',
+        label: all ? 'Unsuppress all' : 'Suppress all',
+        icon: all ? <Eye className="size-4" /> : <EyeOff className="size-4" />,
+        onSelect: () => onSuppressMany(folder.features, !all),
+      });
+    }
+    const sk = sketchesIn(folder.features);
+    if (onSketchVisibility && sk.length) {
+      const allShown = sk.every((id) => isShown(features[indexOf.get(id) ?? 0] as FeatureTreeItem));
+      items.push({
+        id: 'folder-sketches',
+        label: allShown ? 'Hide sketches' : 'Show sketches',
+        icon: allShown ? <EyeOff className="size-4" /> : <Eye className="size-4" />,
+        onSelect: () => onSketchVisibility(sk, allShown ? 'hidden' : 'shown'),
+      });
+    }
+    if (onRollback && run)
+      items.push({
+        id: 'rollto',
+        label: 'Roll back to before folder',
+        icon: <SkipBack className="size-4" />,
+        onSelect: () => onRollback(snapRollback(run.start, allowed, -1)),
+      });
+    return items;
   }
 
   function menuItems(id: Id, i: number): MenuItem[] {
@@ -577,6 +949,23 @@ export function FeatureTree({
         icon: f.suppressed ? <Eye className="size-4" /> : <EyeOff className="size-4" />,
         onSelect: () => onSuppress(id, !f.suppressed),
       });
+    if (onSketchVisibility && f.type === 'sketch') {
+      const shown = isShown(f);
+      items.push({
+        id: 'viewport',
+        label: shown ? 'Hide in viewport' : 'Show in viewport',
+        icon: shown ? <EyeOff className="size-4" /> : <Eye className="size-4" />,
+        onSelect: () => onSketchVisibility([id], toggledVisibility(shown)),
+      });
+      if (f.visibility === 'shown' || f.visibility === 'hidden')
+        items.push({
+          id: 'viewport-auto',
+          label: 'Reset to automatic',
+          hint: 'Shown until a feature uses it, then hidden.',
+          icon: <Eye className="size-4" />,
+          onSelect: () => onSketchVisibility([id], 'auto'),
+        });
+    }
     if (onRollback)
       items.push({
         id: 'rollto',
@@ -585,6 +974,29 @@ export function FeatureTree({
         // A nested sketch rolls to after the feature it sits under.
         onSelect: () => onRollback(snapRollback(i + 1, allowed, 1)),
       });
+    if (onAddFolder) {
+      const run = folderIdsFor(targetsOf(id));
+      const can = canFolder(features, folders, run);
+      items.push({
+        id: 'add-folder',
+        label: 'Add to new folder',
+        icon: <FolderInput className="size-4" />,
+        separatorBefore: true,
+        disabled: !can.ok,
+        ...(can.ok ? {} : { hint: can.reason }),
+        onSelect: () => addFolder(targetsOf(id)),
+      });
+      const on = effective.includes(id) && effective.length > 0;
+      items.push({
+        id: 'select-more',
+        label: on ? 'Remove from selection' : 'Add to selection',
+        icon: <ListTree className="size-4" />,
+        onSelect: () => {
+          setPicked(on ? effective.filter((x) => x !== id) : [...effective, id]);
+          setAnchorId(id);
+        },
+      });
+    }
     if (onDelete)
       items.push({
         id: 'delete',
@@ -617,8 +1029,14 @@ export function FeatureTree({
 
   const barY = barDrag ?? geom.stop[rollback];
   const rowH = touch ? 'min-h-11' : 'min-h-8';
-  const menuFor = menu ? features.findIndex((f) => f.id === menu.id) : -1;
+  const menuRow = menu ? rowByKey.get(menu.key) : undefined;
+  const menuFeature = menuRow && menuRow.kind === 'feature' ? indexOf.get(menuRow.id) : undefined;
+  const menuFolder =
+    menuRow?.kind === 'folder' ? folders.find((f) => f.id === menuRow.id) : undefined;
   const chevronW = touch ? 'w-7' : 'w-4';
+  const dragging = drag && Math.abs(drag.dy) > 4 ? drag : null;
+  const activeSlot = dragging && dragging.slot !== null ? dragging.slots[dragging.slot] : undefined;
+  const indentPx = touch ? 36 : 28;
 
   return (
     <div className={cn('flex min-h-0 flex-col', className)}>
@@ -627,13 +1045,106 @@ export function FeatureTree({
           aria-label="Features"
           role="tree"
           aria-orientation="vertical"
+          aria-multiselectable={effective.length > 1 || undefined}
           className="m-0 list-none p-0"
         >
           {visible.map((row) => {
+            const isMoving =
+              dragging !== null &&
+              (dragging.key === row.key ||
+                (dragging.kind === 'folder' && row.folderId === dragging.id));
+            const dy = isMoving ? (dragging?.dy ?? 0) : 0;
+            const isShaking = shake?.key === row.key;
+
+            if (row.kind === 'folder') {
+              const folder = folders.find((f) => f.id === row.id);
+              if (!folder) return null;
+              const open = !collapsed.has(folder.id);
+              const run = folderRange(features, folder);
+              const rolled = run ? run.start >= rollback : false;
+              const allSuppressed = folder.features.every(
+                (id) => features[indexOf.get(id) ?? -1]?.suppressed,
+              );
+              const dropTarget =
+                !!activeSlot &&
+                (activeSlot.kind === 'into' || activeSlot.kind === 'stay') &&
+                activeSlot.folderId === folder.id;
+              return (
+                <FolderRow
+                  key={row.key}
+                  folderId={folder.id}
+                  name={folder.name}
+                  count={folder.features.length}
+                  level={row.level}
+                  pos={row.pos}
+                  size={row.size}
+                  open={open}
+                  touch={touch}
+                  focusable={activeFocus === row.key}
+                  renaming={renaming === row.key}
+                  rolled={rolled}
+                  suppressed={allSuppressed}
+                  dropTarget={dropTarget}
+                  dragging={isMoving}
+                  dy={dy}
+                  draggable={!!onMoveFolder}
+                  description={[
+                    `Folder with ${folder.features.length} ${folder.features.length === 1 ? 'feature' : 'features'}.`,
+                    open ? 'Expanded.' : 'Collapsed.',
+                    allSuppressed ? 'All suppressed.' : '',
+                    rolled ? 'Rolled back.' : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
+                  rowRef={(el) => {
+                    if (el) rows.current.set(row.key, el);
+                    else rows.current.delete(row.key);
+                  }}
+                  rootProps={{
+                    onFocus: (e) => {
+                      if (e.target === e.currentTarget) setFocusKey(row.key);
+                    },
+                    onClick: () => {
+                      setFocusKey(row.key);
+                      if (touch) setCollapsed(folder.id, open);
+                    },
+                    onKeyDown: (e) => rowKey(e, row),
+                    onContextMenu: (e) => {
+                      e.preventDefault();
+                      setFocusKey(row.key);
+                      setMenu({ key: row.key, anchor: { x: e.clientX, y: e.clientY } });
+                    },
+                    ...longPress(row.key),
+                  }}
+                  gripProps={{
+                    onPointerDown: (e) => gripDown(e, row),
+                    onPointerMove: gripMove,
+                    onPointerUp: gripUp,
+                    onPointerCancel: () => setDrag(null),
+                  }}
+                  onToggle={() => setCollapsed(folder.id, open)}
+                  onMenu={(anchor) => {
+                    setFocusKey(row.key);
+                    setMenu({ key: row.key, anchor });
+                  }}
+                  onStartRename={() => onRenameFolder && setRenaming(row.key)}
+                  onCommitRename={(name) => {
+                    setRenaming(null);
+                    onRenameFolder?.(folder.id, name);
+                    refocus(row.key);
+                  }}
+                  onCancelRename={() => {
+                    setRenaming(null);
+                    refocus(row.key);
+                  }}
+                />
+              );
+            }
+
             const f = features[row.i];
             if (!f) return null;
             const i = row.i;
-            const nested = row.level === 2;
+            const nested = row.nestedSketch;
             const kids = nesting.childrenOf.get(f.id) ?? [];
             const open = kids.length > 0 && expanded.has(f.id);
             const shared = f.type === 'sketch' ? sharedCount(nesting, f.id) : 0;
@@ -642,8 +1153,9 @@ export function FeatureTree({
             const st = describeStatus(status, f.name, nameOf);
             const rolled = i >= rollback || status?.state === 'rolledBack';
             const suppressed = f.suppressed || status?.state === 'suppressed';
-            const selected = selectedId === f.id;
-            const dragging = !nested && drag?.id === f.id && Math.abs(drag.dy) > 4;
+            const selected = effective.includes(f.id);
+            const isSketch = f.type === 'sketch';
+            const shown = isSketch ? isShown(f) : false;
             const stateText = [
               suppressed ? 'suppressed' : '',
               rolled ? 'rolled back' : '',
@@ -653,25 +1165,30 @@ export function FeatureTree({
             ]
               .filter(Boolean)
               .join(', ');
+            const auto = f.visibility === undefined || f.visibility === 'auto';
             const hidden = [
               `${meta.label}${stateText ? `, ${stateText}` : ''}.`,
               kids.length
                 ? `Contains ${kids.length === 1 ? 'a sketch' : `${kids.length} sketches`}.`
                 : '',
               shared ? `Used by ${shared} features.` : '',
+              isSketch && onSketchVisibility
+                ? `${shown ? 'Shown' : 'Hidden'} in the viewport${auto ? ' (automatic)' : ''}.`
+                : '',
+              row.folderId ? `In the folder ${folderName(row.folderId)}.` : '',
               lineage?.parents.includes(f.id) ? 'The selected feature is built from this one.' : '',
               lineage?.children.includes(f.id) ? 'Built from the selected feature.' : '',
               st?.hint,
             ]
               .filter(Boolean)
               .join(' ');
-            const isShaking = shake?.id === f.id;
+            const indent = row.level - 1;
             return (
               <div
-                key={f.id}
+                key={row.key}
                 ref={(el) => {
-                  if (el) rows.current.set(f.id, el);
-                  else rows.current.delete(f.id);
+                  if (el) rows.current.set(row.key, el);
+                  else rows.current.delete(row.key);
                 }}
                 role="treeitem"
                 aria-level={row.level}
@@ -679,9 +1196,10 @@ export function FeatureTree({
                 aria-setsize={row.size}
                 aria-selected={selected}
                 aria-expanded={kids.length ? open : undefined}
-                tabIndex={activeFocus === f.id ? 0 : -1}
+                tabIndex={activeFocus === row.key ? 0 : -1}
                 data-feature-id={f.id}
                 data-state={status?.state ?? 'ok'}
+                data-folder={row.folderId}
                 data-lineage={
                   lineage?.parents.includes(f.id)
                     ? 'parent'
@@ -691,39 +1209,38 @@ export function FeatureTree({
                 }
                 data-nested={nested || undefined}
                 onFocus={(e) => {
-                  if (e.target === e.currentTarget) setFocusId(f.id);
+                  if (e.target === e.currentTarget) setFocusKey(row.key);
                 }}
-                onClick={() => {
-                  setFocusId(f.id);
-                  onSelect?.(f.id);
+                onClick={(e) => {
+                  setFocusKey(row.key);
+                  clickFeature(e, f.id);
                 }}
                 onKeyDown={(e) => rowKey(e, row)}
-                {...longPress(f.id)}
+                {...longPress(row.key)}
                 onContextMenu={(e) => {
                   e.preventDefault();
-                  setFocusId(f.id);
-                  setMenu({ id: f.id, anchor: { x: e.clientX, y: e.clientY } });
+                  setFocusKey(row.key);
+                  setMenu({ key: row.key, anchor: { x: e.clientX, y: e.clientY } });
                 }}
-                style={dragging ? { transform: `translateY(${drag?.dy}px)`, zIndex: 2 } : undefined}
+                style={isMoving ? { transform: `translateY(${dy}px)`, zIndex: 2 } : undefined}
                 className={cn(
                   'group/row relative list-none outline-none',
                   'data-[lineage=child]:shadow-[inset_3px_0_0_var(--color-warning)] data-[lineage=parent]:shadow-[inset_3px_0_0_var(--color-accent)]',
-                  dragging && 'opacity-90',
+                  isMoving && 'opacity-90',
                 )}
               >
                 <m.div
-                  key={isShaking ? shake?.key : 0}
+                  key={isShaking ? shake?.n : 0}
                   initial={isShaking ? { x: 9 } : false}
                   animate={{ x: 0 }}
                   transition={rejectSpring}
+                  style={indent ? { marginLeft: indent * indentPx } : undefined}
                   className={cn(
                     'flex items-start gap-2 rounded-[9px] pr-1 pl-1 transition-colors duration-fast',
                     rowH,
-                    nested && (touch ? 'ml-9' : 'ml-6'),
                     'group-focus-visible/row:outline-2 group-focus-visible/row:outline-offset-[-2px] group-focus-visible/row:outline-accent',
                     selected ? 'bg-accent-soft' : 'hover:bg-surface-2',
-                    dragging && 'bg-surface shadow-float',
-
+                    isMoving && 'bg-surface shadow-float',
                     isShaking && 'bg-danger-soft',
                   )}
                 >
@@ -732,7 +1249,7 @@ export function FeatureTree({
                       aria-hidden
                       data-grip
                       data-no-longpress
-                      onPointerDown={(e) => gripDown(e, f.id, row.pos - 1)}
+                      onPointerDown={(e) => gripDown(e, row)}
                       onPointerMove={gripMove}
                       onPointerUp={gripUp}
                       onPointerCancel={() => setDrag(null)}
@@ -792,7 +1309,7 @@ export function FeatureTree({
                     <meta.Icon className="size-[18px]" strokeWidth={1.6} aria-hidden />
                   </span>
                   <div className={cn('min-w-0 flex-1', touch ? 'py-[11px]' : 'py-[5px]')}>
-                    {renaming === f.id ? (
+                    {renaming === row.key ? (
                       <input
                         // biome-ignore lint/a11y/noAutofocus: inline rename focuses its field by design
                         autoFocus
@@ -814,7 +1331,7 @@ export function FeatureTree({
                           const cancelled = e.currentTarget.dataset.cancel === '1';
                           setRenaming(null);
                           if (!cancelled && v && v !== f.name) onRename?.(f.id, v);
-                          requestAnimationFrame(() => rows.current.get(f.id)?.focus());
+                          refocus(row.key);
                         }}
                         className="h-6 w-full min-w-0 rounded-[6px] bg-surface px-1.5 text-ui text-fg shadow-[inset_0_0_0_2px_var(--color-accent)] outline-none"
                       />
@@ -824,7 +1341,7 @@ export function FeatureTree({
                         onDoubleClick={(e) => {
                           if (!onRename) return;
                           e.stopPropagation();
-                          setRenaming(f.id);
+                          setRenaming(row.key);
                         }}
                         className={cn(
                           'block truncate text-ui leading-[22px] font-medium',
@@ -891,6 +1408,15 @@ export function FeatureTree({
                       aria-hidden
                     />
                   ) : null}
+                  {isSketch && onSketchVisibility ? (
+                    <SketchEye
+                      name={f.name}
+                      shown={shown}
+                      visibility={f.visibility}
+                      touch={touch}
+                      onToggle={() => onSketchVisibility([f.id], toggledVisibility(shown))}
+                    />
+                  ) : null}
                   <button
                     type="button"
                     tabIndex={-1}
@@ -898,8 +1424,8 @@ export function FeatureTree({
                     aria-label={`Actions for ${f.name}`}
                     onClick={(e) => {
                       e.stopPropagation();
-                      setFocusId(f.id);
-                      setMenu({ id: f.id, anchor: e.currentTarget });
+                      setFocusKey(row.key);
+                      setMenu({ key: row.key, anchor: e.currentTarget });
                     }}
                     className={cn(
                       'flex shrink-0 items-center justify-center rounded-[7px] text-fg-muted hover:bg-surface-3 hover:text-fg',
@@ -920,7 +1446,7 @@ export function FeatureTree({
                     onAnswer={(also) => answerDelete(f.id, also)}
                     onCancel={() => {
                       setConfirm(null);
-                      requestAnimationFrame(() => rows.current.get(f.id)?.focus());
+                      refocus(row.key);
                     }}
                   />
                 ) : null}
@@ -929,14 +1455,36 @@ export function FeatureTree({
           })}
         </div>
 
-        {drag && Math.abs(drag.dy) > 4 && drag.to !== drag.from ? (
+        {activeSlot ? (
           <div
             aria-hidden
-            className="pointer-events-none absolute right-2 left-2 h-0.5 rounded-full bg-accent"
+            data-testid="drop-indicator"
+            data-kind={activeSlot.kind}
+            className="pointer-events-none absolute right-2 left-2 z-[4] flex items-center transition-[top] duration-fast"
             style={{
-              top: ((drag.to < drag.from ? geom.top[drag.to] : geom.bottom[drag.to]) ?? 0) - 1,
+              top: activeSlot.y - 1,
+              left: activeSlot.kind === 'into' || activeSlot.kind === 'stay' ? 8 + indentPx : 8,
             }}
-          />
+          >
+            <span
+              className={cn(
+                'h-0.5 flex-1 rounded-full',
+                activeSlot.kind === 'out' ? 'bg-warning' : 'bg-accent',
+              )}
+            />
+            {activeSlot.kind === 'into' || activeSlot.kind === 'out' ? (
+              <span
+                className={cn(
+                  'ml-1 rounded-full px-1.5 text-2xs leading-4 font-medium whitespace-nowrap',
+                  activeSlot.kind === 'out'
+                    ? 'bg-warning-soft text-warning-text'
+                    : 'bg-accent-soft text-accent-text',
+                )}
+              >
+                {activeSlot.kind === 'out' ? 'Out of' : 'Into'} {folderName(activeSlot.folderId)}
+              </span>
+            ) : null}
+          </div>
         ) : null}
 
         {onRollback && barY !== undefined ? (
@@ -990,6 +1538,30 @@ export function FeatureTree({
         ) : null}
       </div>
 
+      {leave ? (
+        <LeavePrompt
+          feature={nameOf(leave.id) ?? 'the feature'}
+          folder={folderName(leave.folderId)}
+          touch={touch}
+          onConfirm={() => {
+            const { id, folderId, steps } = leave;
+            setLeave(null);
+            runSteps(id, steps, () =>
+              setInfo(`Took ${nameOf(id) ?? 'the feature'} out of ${folderName(folderId)}.`),
+            );
+            refocus(id);
+          }}
+          onCancel={() => {
+            const id = leave.id;
+            setLeave(null);
+            refocus(id);
+          }}
+        />
+      ) : null}
+      {info ? (
+        <UndoLine text={info} touch={touch} onUndo={onUndo} onDismiss={() => setInfo('')} />
+      ) : null}
+
       <p
         role="status"
         aria-live="polite"
@@ -1001,84 +1573,29 @@ export function FeatureTree({
       >
         {notice}
       </p>
+      <p aria-live="polite" className="sr-only" data-testid="drop-announce">
+        {dropSay}
+      </p>
 
-      {menu && menuFor >= 0 ? (
+      {menu && menuRow ? (
         <Menu
           anchor={menu.anchor}
-          label={`Actions for ${features[menuFor]?.name}`}
-          items={menuItems(menu.id, menuFor)}
+          label={
+            menuFolder
+              ? `Actions for folder ${menuFolder.name}`
+              : `Actions for ${menuFeature !== undefined ? features[menuFeature]?.name : ''}`
+          }
+          items={
+            menuFolder
+              ? folderMenuItems(menuFolder)
+              : menuFeature !== undefined
+                ? menuItems(menuRow.id, menuFeature)
+                : []
+          }
           size={touch ? 'touch' : 'md'}
           onDismiss={() => setMenu(null)}
         />
       ) : null}
-    </div>
-  );
-}
-
-/**
- * The inline, non-modal question under a feature row when it has nested sketches. Escape cancels;
- * the first button is focused so a keyboard user can answer straight away.
- */
-function DeletePrompt({
-  name,
-  sketches,
-  touch,
-  onAnswer,
-  onCancel,
-}: {
-  name: string;
-  sketches: number;
-  touch: boolean;
-  onAnswer(alsoSketches: boolean): void;
-  onCancel(): void;
-}) {
-  const plural = sketches > 1;
-  const btn = cn(
-    'rounded-control px-2.5 text-2xs font-medium whitespace-nowrap select-none transition-colors duration-fast',
-    touch ? 'h-11' : 'h-7',
-  );
-  return (
-    // biome-ignore lint/a11y/useSemanticElements: a labelled group of buttons, not a fieldset
-    <div
-      role="group"
-      aria-label={`Delete ${name}?`}
-      data-testid="delete-prompt"
-      onClick={(e) => e.stopPropagation()}
-      onKeyDown={(e) => {
-        e.stopPropagation();
-        if (e.key === 'Escape') {
-          e.preventDefault();
-          onCancel();
-        }
-      }}
-      className="mt-0.5 mb-1 ml-7 flex flex-wrap items-center gap-1.5 rounded-[9px] border border-border bg-surface-2 p-2"
-    >
-      <p className="w-full text-2xs leading-4 text-fg">
-        {plural ? `“${name}” has ${sketches} sketches.` : `“${name}” has a sketch.`} Delete it too?
-      </p>
-      <button
-        type="button"
-        // biome-ignore lint/a11y/noAutofocus: the prompt appears on the user's own delete action
-        autoFocus
-        onClick={() => onAnswer(true)}
-        className={cn(btn, 'bg-danger-soft text-danger-text hover:brightness-95')}
-      >
-        {plural ? 'Delete sketches too' : 'Delete sketch too'}
-      </button>
-      <button
-        type="button"
-        onClick={() => onAnswer(false)}
-        className={cn(btn, 'bg-surface-3 text-fg hover:bg-border')}
-      >
-        {plural ? 'Keep sketches' : 'Keep sketch'}
-      </button>
-      <button
-        type="button"
-        onClick={onCancel}
-        className={cn(btn, 'text-fg-muted hover:bg-surface-3 hover:text-fg')}
-      >
-        Cancel
-      </button>
     </div>
   );
 }
