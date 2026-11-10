@@ -28,6 +28,7 @@ import type {
   ProjectFiles,
   RegenResult,
   SketchFeature,
+  SketchVisibility,
   SyncStatus,
   TouchViewport,
   Vec3,
@@ -45,10 +46,13 @@ import {
   ulid,
 } from '@wren-cad/document';
 import {
+  canFolder,
+  computeNesting,
   cyclePreselection,
   type ExportRequest,
   eventBindingId,
   type KeymapOverrides,
+  runWithNested,
   type SheetSnap,
   type SheetTabId,
   type SketchToolId,
@@ -65,7 +69,6 @@ import {
   withoutMeshes,
 } from '../doc/mesh-cache';
 import {
-  consumedSketchRefs,
   contextFeatureTools,
   contextTools,
   defaultAxisFor,
@@ -101,10 +104,12 @@ import {
   sectionRange,
   unionBounds,
 } from '../model/faces';
+import { nextFolderName, readCollapsedFolders, writeCollapsedFolders } from '../model/folders';
 import { isOriginPlane, ORIGIN_FRAMES, type PlaneFrame, toPlaneFrame } from '../model/frames';
 import { foldHeals, type Heal, healsFrom } from '../model/heal';
 import { IMPORT_EXTENSIONS, importFeature, importFormat } from '../model/import';
 import { type Attachment, createRegenLoop, type Modeling, type RegenLoop } from '../model/modeling';
+import { sketchShown, type VisibilityContext } from '../model/sketch-visibility';
 import { getDiagnostics } from '../platform/diagnostics';
 import { policyFor, type TierPolicy } from '../platform/tier-policy';
 import {
@@ -546,6 +551,18 @@ export class Workbench {
     const doc = this.store.getDoc();
     const p = this.ui.get().picking;
     const part = doc.parts[0];
+    const pv = this.preview.get();
+    if (pv !== null && part) {
+      // Phone step-through (M3.6): a copy of the document at another rollback position. The
+      // document itself is untouched; the copy is memoised so the regen loop sees a stable value.
+      const idx = Math.max(0, Math.min(part.features.length, pv));
+      if (idx === part.rollbackIndex) return doc;
+      const memo = this.previewMemo;
+      if (memo && memo.doc === doc && memo.index === idx) return memo.out;
+      const out = { ...doc, parts: [{ ...part, rollbackIndex: idx }, ...doc.parts.slice(1)] };
+      this.previewMemo = { doc, index: idx, out };
+      return out;
+    }
     if (!p || !part) return doc;
     const kinds = this.pickAccepts()?.kinds ?? [];
     if (!kinds.some((k) => k === 'edge' || k === 'face' || k === 'vertex')) return doc;
@@ -559,6 +576,72 @@ export class Workbench {
   }
 
   private viewMemo: { doc: WrenDoc; index: number; out: WrenDoc } | null = null;
+  private previewMemo: { doc: WrenDoc; index: number; out: WrenDoc } | null = null;
+  /**
+   * The phone's step-through preview (M3.6): the rollback position being shown, or null. View
+   * state only: it never writes the document (no undo entry, autosave, sync or dirty flag).
+   */
+  readonly preview = observable<number | null>(null);
+
+  /** Shows the model after the first `index` features without changing the document. */
+  previewRollback(index: number): void {
+    const part = this.part;
+    if (!part) return;
+    const idx = Math.max(0, Math.min(part.features.length, Math.round(index)));
+    if (this.preview.get() === idx) return;
+    this.ensureKernel(); // a phone viewer boots the kernel on the first step
+    this.previewSteps.push({ index: idx, t0: performance.now() });
+    this.preview.set(idx);
+    this.refreshSketchVisibility();
+    this.loop?.request();
+  }
+
+  /** Back to the full model (the document was never changed). */
+  endPreview(): void {
+    if (this.preview.get() === null) return;
+    this.preview.set(null);
+    this.previewMemo = null;
+    this.refreshSketchVisibility();
+    this.loop?.request();
+  }
+
+  /** "Keep this rollback": the one write a preview makes. */
+  keepPreview(): void {
+    const part = this.part;
+    const idx = this.preview.get();
+    if (!part || idx === null) return;
+    this.preview.set(null);
+    this.previewMemo = null;
+    if (idx !== part.rollbackIndex) {
+      this.apply({ kind: 'setRollback', partId: part.id, index: idx }, undefined, 'rollback');
+      this.commit();
+    } else {
+      this.loop?.request();
+    }
+  }
+
+  private recordPreviewStep(outcome: RegenView): void {
+    if (this.preview.get() === null || outcome.doc !== this.viewDoc()) return;
+    const idx = outcome.doc.parts[0]?.rollbackIndex;
+    const at = this.previewSteps.findIndex((x) => x.index === idx);
+    if (at < 0) return;
+    const [step] = this.previewSteps.splice(at, 1);
+    if (!step) return;
+    const cached = outcome.result.features.every(
+      (f) => f.cached || f.state === 'rolledBack' || f.state === 'suppressed',
+    );
+    void (this.viewport?.nextFrame() ?? Promise.resolve()).then(() => {
+      this.previewTimings.push({
+        index: step.index,
+        ms: Math.round(performance.now() - step.t0),
+        cached,
+      });
+    });
+  }
+
+  /** Step timings for the budget check: when a step was asked for, and when its result showed. */
+  private previewSteps: { index: number; t0: number }[] = [];
+  private previewTimings: { index: number; ms: number; cached: boolean }[] = [];
   private lastPickKey = '';
   /** Feature statuses of the last regen of the real (not rolled-back-for-picking) document. */
   readonly treeStatuses = observable<RegenResult['features'] | undefined>(undefined);
@@ -609,6 +692,13 @@ export class Workbench {
 
   /** `loaded`: the document was replaced (open/new), not edited: nothing to autosave yet. */
   private onDocChange(doc: WrenDoc, loaded: boolean): void {
+    this.syncCollapsed();
+    // An edit that arrives during a step-through (sync, undo, a load) ends the preview: what it
+    // showed is no longer a view of this document.
+    if (this.preview.get() !== null) {
+      this.preview.set(null);
+      this.previewMemo = null;
+    }
     if (!this.ui.get().ready) return;
     this.loop?.request();
     if (!loaded && !this.applyingRemote) this.autosaver.schedule(doc);
@@ -688,6 +778,7 @@ export class Workbench {
     this.syncViewport();
     this.sketch?.onRegen(outcome.result);
     this.keepInView(outcome);
+    this.recordPreviewStep(outcome);
     if (!this.firstRendered && this.viewport && outcome.source === 'live') {
       this.firstRendered = true;
       void this.viewport.nextFrame().then(() => mark('firstBodyMs'));
@@ -969,11 +1060,15 @@ export class Workbench {
     this.markers = new Set(next.keys());
   }
 
-  /** Which sketches are shown: unconsumed ones, or any when regions are being picked. */
+  /** The ids of the sketches the viewport shows (what the tree's eye draws). */
+  readonly shownSketchIds = observable<ReadonlySet<Id>>(new Set());
+
+  /**
+   * Which sketches are shown (`sketchShown`, ADR-060 / ADR-066): the document's per-sketch
+   * visibility, the consumed-sketch default, and picking / editing. The tree's eye reads the same
+   * set (`shownSketchIds`), so it matches the viewport exactly.
+   */
   refreshSketchVisibility(): void {
-    const v = this.viewport;
-    const view = this.regen.get();
-    if (!v || !view) return;
     const part = this.part;
     const u = this.ui.get();
     const pickKinds = this.pickAccepts()?.kinds ?? [];
@@ -981,18 +1076,30 @@ export class Workbench {
     const wantRegions =
       (u.prompt !== null && TOOL_NEEDS[u.prompt.tool].kinds.includes('region')) ||
       pickKinds.some((k) => k === 'region' || k === 'sketchCurve' || k === 'sketchPoint');
-    const editing = u.featureId ? part?.features.find((f) => f.id === u.featureId) : undefined;
+    const features = part?.features ?? [];
+    const ctx: VisibilityContext = {
+      features,
+      rollback: this.preview.get() ?? part?.rollbackIndex ?? features.length,
+      activeSketch: u.sketch?.featureId,
+      editing: u.featureId ? features.find((f) => f.id === u.featureId) : undefined,
+      wantRegions,
+    };
+    const ids = new Set<Id>();
+    for (const f of features) if (f.type === 'sketch' && sketchShown(f, ctx)) ids.add(f.id);
+    const prev = this.shownSketchIds.get();
+    if (prev.size !== ids.size || [...ids].some((id) => !prev.has(id)))
+      this.shownSketchIds.set(ids);
+
+    const v = this.viewport;
+    const view = this.regen.get();
+    if (!v || !view) return;
     const next = new Set<string>();
-    const uses = (f: Feature | undefined, id: Id) =>
-      !!f && consumedSketchRefs(f).some((r) => r.name.startsWith(`S${id}:`));
     for (const s of view.result.sketches) {
       if (u.sketch?.featureId === s.featureId) {
         next.add(s.featureId);
         continue; // the sketch session owns the active overlay
       }
-      const consumed = part?.features.some((f) => uses(f, s.featureId));
-      const related = editing?.id === s.featureId || uses(editing, s.featureId);
-      if (consumed && !wantRegions && !related) continue;
+      if (!ids.has(s.featureId)) continue;
       v.setSketch(s.featureId, { sketch: s, active: false });
       next.add(s.featureId);
     }
@@ -1999,6 +2106,108 @@ export class Workbench {
     this.pushHighlights();
   }
 
+  // ------------------------------------------------------------------ tree: folders, visibility
+
+  /** The features picked in the tree (several: Ctrl/Shift-click). The radial menu reads it. */
+  readonly treeSelection = observable<readonly Id[]>([]);
+  setTreeSelection(ids: readonly Id[]): void {
+    const cur = this.treeSelection.get();
+    if (cur.length === ids.length && cur.every((x, i) => x === ids[i])) return;
+    this.treeSelection.set(ids);
+  }
+
+  /** Folders the user has collapsed: UI state, remembered per document (never in the document). */
+  readonly collapsedFolders = observable<readonly Id[]>([]);
+  private collapsedFor = '';
+  private syncCollapsed(): void {
+    const id = this.doc.meta.id ?? '';
+    if (id === this.collapsedFor) return;
+    this.collapsedFor = id;
+    this.collapsedFolders.set(readCollapsedFolders(id));
+  }
+  setCollapsedFolders(ids: readonly Id[]): void {
+    this.collapsedFolders.set(ids);
+    writeCollapsedFolders(this.doc.meta.id ?? '', ids);
+  }
+
+  /**
+   * "Add to new folder": `ids` (a contiguous run, nested sketches included) become a folder named
+   * "Folder N". One undo entry. Returns false (and says why) when the run cannot be a folder.
+   */
+  addFolder(ids: readonly Id[]): boolean {
+    const part = this.part;
+    if (!part) return false;
+    const can = canFolder(part.features, part.folders ?? [], ids);
+    if (!can.ok) {
+      this.toast(can.reason, 'info');
+      return false;
+    }
+    const ok = this.apply({
+      kind: 'addFolder',
+      partId: part.id,
+      folder: { id: ulid(), name: nextFolderName(part.folders ?? []), features: [...ids] },
+    });
+    this.commit();
+    if (ok) this.setTreeSelection([]);
+    return ok;
+  }
+
+  /** The tree's multi-selection plus the sketches nested under each pick, in history order. */
+  folderRunOf(ids: readonly Id[]): Id[] {
+    const part = this.part;
+    if (!part) return [];
+    return runWithNested(part.features, computeNesting(part.features), ids);
+  }
+
+  renameFolder(folderId: Id, name: string): void {
+    const part = this.part;
+    if (!part) return;
+    this.apply({ kind: 'renameFolder', partId: part.id, folderId, name });
+    this.commit();
+  }
+
+  removeFolder(folderId: Id): void {
+    const part = this.part;
+    if (!part) return;
+    this.apply({ kind: 'removeFolder', partId: part.id, folderId });
+    this.commit();
+  }
+
+  /** Drags a folder's run. A refusal comes back as a reason (nothing changes). */
+  moveFolder(folderId: Id, toIndex: number): { ok: true } | { ok: false; reason: string } {
+    const part = this.part;
+    if (!part) return { ok: false, reason: 'No part' };
+    const r = this.store.apply({ kind: 'moveFolder', partId: part.id, folderId, toIndex });
+    this.commit();
+    return r.ok ? { ok: true } : { ok: false, reason: r.error };
+  }
+
+  /** A folder's "Suppress all" / "Unsuppress all": one undo entry, one regeneration. */
+  suppressMany(featureIds: readonly Id[], suppressed: boolean): void {
+    const part = this.part;
+    if (!part) return;
+    this.apply({
+      kind: 'setSuppressedMany',
+      partId: part.id,
+      featureIds: [...featureIds],
+      suppressed,
+    });
+    this.commit();
+  }
+
+  /** The eye, a folder's Show / Hide sketches, Show all / Hide all, Reset: one undo entry. */
+  setSketchVisibility(featureIds: readonly Id[], visibility: SketchVisibility): void {
+    const part = this.part;
+    if (!part || featureIds.length === 0) return;
+    this.apply({
+      kind: 'setSketchVisibility',
+      partId: part.id,
+      featureIds: [...featureIds],
+      visibility,
+    });
+    this.commit();
+  }
+
   editFeature(id: Id): void {
     const f = this.part?.features.find((x) => x.id === id);
     if (!f) return;
@@ -2279,6 +2488,7 @@ export class Workbench {
     else if (id === 'sketch:finish') this.sketch?.finish();
     else if (id.startsWith('sketch:')) this.sketch?.setTool(id.slice(7) as SketchToolId);
     else if (id === 'iso') this.viewport?.setView('iso', true);
+    else if (id === 'folder:add') void this.addFolder(this.folderRunOf(this.treeSelection.get()));
     else this.bubbleAction(id as BubbleActionId);
   }
 
@@ -3075,9 +3285,11 @@ export class Workbench {
               revision: r.revision,
               source: view.source,
               quality: view.quality,
+              rollback: view.doc.parts[0]?.rollbackIndex ?? null,
               bodies: r.bodies.map((b) => ({
                 id: b.id,
                 volume: b.massProperties?.volume ?? null,
+                faces: b.mesh.faceNames.length,
                 bbox: b.mesh.bbox,
               })),
               features: r.features.map((f) => ({
@@ -3095,6 +3307,11 @@ export class Workbench {
           : null;
       },
       shownSketches: () => [...this.shownSketches],
+      /** The phone step-through: the previewed rollback position (null when not previewing). */
+      preview: () => this.preview.get(),
+      previewTimings: () => [...this.previewTimings],
+      /** Collapsed folders of the open document (UI state, per document). */
+      collapsedFolders: () => [...this.collapsedFolders.get()],
       /** Opens a feature for editing (a sketch enters sketch mode). */
       editFeature: (id: Id) => this.editFeature(id),
       idle: async () => {

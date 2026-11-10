@@ -5,6 +5,7 @@
  */
 
 import type { MergeConflict } from '@wren-cad/contracts';
+import { conflictField, conflictSummary, conflictValueText, mergeNotes } from '@wren-cad/sync';
 import {
   Button,
   ComparePanel,
@@ -25,7 +26,18 @@ import type { SyncController } from './controller';
 const describe = (value: unknown, c: MergeConflict) =>
   value instanceof Uint8Array
     ? `${c.file ?? 'File'} · ${value.byteLength.toLocaleString()} bytes`
-    : defaultDescribeValue(value);
+    : c.file === undefined && isStructural(c)
+      ? conflictValueText(value, c)
+      : defaultDescribeValue(value);
+
+/** Folder and sketch-visibility conflicts read in words ("shown", "Mounting (3 features)"). */
+const isStructural = (c: MergeConflict) => /\/(folders|visibility)(\/|$)/.test(c.path);
+
+/** "Sketch 2 visibility": the subject and the field inside it. */
+function conflictTitle(c: MergeConflict): string {
+  const field = conflictField(c);
+  return field ? `${c.subject.label} ${field}` : c.subject.label;
+}
 
 export default function ProjectPanel({ wb }: { wb: Workbench }) {
   const [ctl, setCtl] = useState<SyncController | null>(null);
@@ -154,6 +166,9 @@ function Body({
           oursLabel={m.oursLabel}
           theirsLabel={m.theirsLabel}
           describeValue={describe}
+          conflictTitle={conflictTitle}
+          conflictSummary={conflictSummary}
+          notes={mergeNotes(m.result).map((n) => n.summary)}
           finishing={m.finishing}
           density={density}
         />
