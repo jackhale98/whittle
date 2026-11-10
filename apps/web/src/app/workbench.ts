@@ -39,15 +39,11 @@ import {
   entityRefs,
   expressionEngine,
   scopeOf,
-  ulid,
 } from '@wren-cad/document';
 import {
-  canFolder,
-  computeNesting,
   type ExportRequest,
   eventBindingId,
   type KeymapOverrides,
-  runWithNested,
   type SheetSnap,
   type SheetTabId,
   type ToolId,
@@ -73,7 +69,6 @@ import { attentionItems, attentionMarkers, locateName, partDiagonal } from '../m
 import { bootEngine, type EngineBoot } from '../model/engine';
 import { explainStatus, followBlockedCauses } from '../model/explain';
 import { type FaceInfo, faceInfo, type SectionSettings } from '../model/faces';
-import { nextFolderName, readCollapsedFolders, writeCollapsedFolders } from '../model/folders';
 import { isOriginPlane, ORIGIN_FRAMES, type PlaneFrame, toPlaneFrame } from '../model/frames';
 import { foldHeals, type Heal, healsFrom } from '../model/heal';
 import { type Attachment, createRegenLoop, type Modeling, type RegenLoop } from '../model/modeling';
@@ -110,6 +105,7 @@ import {
 import * as hooks from './test-hooks';
 import { failBoot, mark, markOnce } from './timing';
 import * as tools from './tools';
+import * as tree from './tree-actions';
 import * as view from './view-actions';
 import { freshDocument, readLastDoc, writeLastDoc } from './workbench-util';
 
@@ -1385,15 +1381,7 @@ export class Workbench {
   // ------------------------------------------------------------------ feature tree / inspector
 
   selectFeature(id: Id | null): void {
-    // A tree click while a mirror / pattern picks its sources adds that feature.
-    if (id && this.pickAccepts()?.features) {
-      this.addSourceFeature(id);
-      return;
-    }
-    this.patchUi({ featureId: id, picking: null, selection: [], prompt: null });
-    if (id === null) this.restoreSheet();
-    this.refreshSketchVisibility();
-    this.pushHighlights();
+    tree.selectFeature(this, id);
   }
 
   // ------------------------------------------------------------------ tree: folders, visibility
@@ -1401,23 +1389,17 @@ export class Workbench {
   /** The features picked in the tree (several: Ctrl/Shift-click). The radial menu reads it. */
   readonly treeSelection = observable<readonly Id[]>([]);
   setTreeSelection(ids: readonly Id[]): void {
-    const cur = this.treeSelection.get();
-    if (cur.length === ids.length && cur.every((x, i) => x === ids[i])) return;
-    this.treeSelection.set(ids);
+    tree.setTreeSelection(this, ids);
   }
 
   /** Folders the user has collapsed: UI state, remembered per document (never in the document). */
   readonly collapsedFolders = observable<readonly Id[]>([]);
-  private collapsedFor = '';
+  collapsedFor = '';
   private syncCollapsed(): void {
-    const id = this.doc.meta.id ?? '';
-    if (id === this.collapsedFor) return;
-    this.collapsedFor = id;
-    this.collapsedFolders.set(readCollapsedFolders(id));
+    tree.syncCollapsed(this);
   }
   setCollapsedFolders(ids: readonly Id[]): void {
-    this.collapsedFolders.set(ids);
-    writeCollapsedFolders(this.doc.meta.id ?? '', ids);
+    tree.setCollapsedFolders(this, ids);
   }
 
   /**
@@ -1425,101 +1407,47 @@ export class Workbench {
    * "Folder N". One undo entry. Returns false (and says why) when the run cannot be a folder.
    */
   addFolder(ids: readonly Id[]): boolean {
-    const part = this.part;
-    if (!part) return false;
-    const can = canFolder(part.features, part.folders ?? [], ids);
-    if (!can.ok) {
-      this.toast(can.reason, 'info');
-      return false;
-    }
-    const ok = this.apply({
-      kind: 'addFolder',
-      partId: part.id,
-      folder: { id: ulid(), name: nextFolderName(part.folders ?? []), features: [...ids] },
-    });
-    this.commit();
-    if (ok) this.setTreeSelection([]);
-    return ok;
+    return tree.addFolder(this, ids);
   }
 
   /** The tree's multi-selection plus the sketches nested under each pick, in history order. */
   folderRunOf(ids: readonly Id[]): Id[] {
-    const part = this.part;
-    if (!part) return [];
-    return runWithNested(part.features, computeNesting(part.features), ids);
+    return tree.folderRunOf(this, ids);
   }
 
   renameFolder(folderId: Id, name: string): void {
-    const part = this.part;
-    if (!part) return;
-    this.apply({ kind: 'renameFolder', partId: part.id, folderId, name });
-    this.commit();
+    tree.renameFolder(this, folderId, name);
   }
 
   removeFolder(folderId: Id): void {
-    const part = this.part;
-    if (!part) return;
-    this.apply({ kind: 'removeFolder', partId: part.id, folderId });
-    this.commit();
+    tree.removeFolder(this, folderId);
   }
 
   /** Drags a folder's run. A refusal comes back as a reason (nothing changes). */
   moveFolder(folderId: Id, toIndex: number): { ok: true } | { ok: false; reason: string } {
-    const part = this.part;
-    if (!part) return { ok: false, reason: 'No part' };
-    const r = this.store.apply({ kind: 'moveFolder', partId: part.id, folderId, toIndex });
-    this.commit();
-    return r.ok ? { ok: true } : { ok: false, reason: r.error };
+    return tree.moveFolder(this, folderId, toIndex);
   }
 
   /** A folder's "Suppress all" / "Unsuppress all": one undo entry, one regeneration. */
   suppressMany(featureIds: readonly Id[], suppressed: boolean): void {
-    const part = this.part;
-    if (!part) return;
-    this.apply({
-      kind: 'setSuppressedMany',
-      partId: part.id,
-      featureIds: [...featureIds],
-      suppressed,
-    });
-    this.commit();
+    tree.suppressMany(this, featureIds, suppressed);
   }
 
   /** The eye, a folder's Show / Hide sketches, Show all / Hide all, Reset: one undo entry. */
   setSketchVisibility(featureIds: readonly Id[], visibility: SketchVisibility): void {
-    const part = this.part;
-    if (!part || featureIds.length === 0) return;
-    this.apply({
-      kind: 'setSketchVisibility',
-      partId: part.id,
-      featureIds: [...featureIds],
-      visibility,
-    });
-    this.commit();
+    tree.setSketchVisibility(this, featureIds, visibility);
   }
 
   editFeature(id: Id): void {
-    const f = this.part?.features.find((x) => x.id === id);
-    if (!f) return;
-    if (f.type === 'sketch') void this.enterSketch(f.id, false);
-    else this.selectFeature(id);
+    tree.editFeature(this, id);
   }
 
   updateFeature(feature: Feature, mode: 'commit' | 'preview'): void {
-    const part = this.part;
-    if (!part) return;
-    const key = `edit:${feature.id}`;
-    this.apply(
-      { kind: 'updateFeature', partId: part.id, featureId: feature.id, feature },
-      undefined,
-      key,
-    );
-    if (mode === 'commit') this.commit();
+    tree.updateFeature(this, feature, mode);
   }
 
   startPicking(featureId: Id, path: string): void {
-    this.patchUi({ picking: { featureId, path }, selection: [] });
-    this.refreshSketchVisibility();
+    tree.startPicking(this, featureId, path);
   }
 
   evaluate = (expr: Expr, expected?: NamedDimension): EvalResult => {
@@ -1530,40 +1458,15 @@ export class Workbench {
   };
 
   setMaterial(material: Material | null): void {
-    const part = this.part;
-    if (part) this.apply({ kind: 'setMaterial', partId: part.id, material });
-    this.commit();
-    this.syncViewport();
+    tree.setMaterial(this, material);
   }
 
   renameDocument(name: string): void {
-    const n = name.trim();
-    if (!n || n === this.doc.meta.name) return;
-    this.apply({ kind: 'setDocName', name: n });
-    this.commit();
+    tree.renameDocument(this, name);
   }
 
   massSummary(): MassSummaryView | undefined {
-    const bodies = this.regen.get()?.result.bodies ?? [];
-    const props = bodies.flatMap((b) => (b.massProperties ? [b.massProperties] : []));
-    if (props.length === 0) return undefined;
-    let volume = 0;
-    let area = 0;
-    let mass = 0;
-    let hasMass = false;
-    const c: [number, number, number] = [0, 0, 0];
-    for (const p of props) {
-      volume += p.volume;
-      area += p.area;
-      if (p.mass !== undefined) {
-        mass += p.mass;
-        hasMass = true;
-      }
-      for (let k = 0; k < 3; k++) c[k] = (c[k] as number) + (p.centroid[k] as number) * p.volume;
-    }
-    const centroid: [number, number, number] =
-      volume > 0 ? [c[0] / volume, c[1] / volume, c[2] / volume] : [0, 0, 0];
-    return { volume, area, centroid, ...(hasMass ? { mass } : {}) };
+    return tree.massSummary(this);
   }
 
   // ------------------------------------------------------------------ sketch mode
