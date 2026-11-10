@@ -7,7 +7,6 @@
 
 import type {
   CameraChange,
-  CircularPatternFeature,
   Command,
   DeviceTier,
   EntityRef,
@@ -17,10 +16,8 @@ import type {
   HighlightItem,
   Id,
   JsonPatchOp,
-  LinearPatternFeature,
   Material,
   MeshBuffers,
-  MirrorFeature,
   NamedDimension,
   Part,
   PickHit,
@@ -110,22 +107,19 @@ import {
   acceptsFor,
   applyPick,
   hitKey,
-  orderStackedRegions,
   pickVertices,
-  refForHit,
-  resolvePick,
   toHighlight,
-  toleranceFor,
   vertexAt,
 } from '../selection/pick';
 import type { SyncController, SyncHost } from '../sync/controller';
 import * as fileOps from './files';
-import { type BubbleActionId, gestureAction } from './gestures';
+import type { BubbleActionId } from './gestures';
 import { commandFor, type InputSettings, loadInput } from './input';
 import * as keys from './keyboard';
 import { MeasureTool } from './measure-tool';
 import { type Observable, observable } from './observable';
-import { PointerDowns, replayedPointerDowns } from './pointers';
+import * as pointer from './pointer';
+import { PointerDowns } from './pointers';
 import { PushPullTool } from './push-pull';
 import type { SketchSession } from './sketch-session';
 import {
@@ -138,14 +132,7 @@ import {
 } from './state';
 import * as hooks from './test-hooks';
 import { failBoot, mark, markOnce } from './timing';
-import {
-  emptyField,
-  freshDocument,
-  pointerValue,
-  readLastDoc,
-  toolOfFeature,
-  writeLastDoc,
-} from './workbench-util';
+import { emptyField, freshDocument, readLastDoc, writeLastDoc } from './workbench-util';
 
 export { freshDocument };
 
@@ -175,12 +162,6 @@ function isLinked(id: string | undefined): boolean {
     return false;
   }
 }
-
-/** Left-drag past this many px is a box selection, not a click. */
-const BOX_DRAG_PX = 5;
-
-/** A Pencil press held still this long opens the radial menu (touch has the viewport's long-press). */
-const PEN_LONG_PRESS_MS = 500;
 
 export interface MassSummaryView {
   volume: number;
@@ -251,7 +232,7 @@ export class Workbench {
   private toastTimer: ReturnType<typeof setTimeout> | undefined;
   private cleanup: Array<() => void> = [];
   /** Presses by pointer id (a pen and a finger, or two fingers, can be down at once). */
-  private readonly downs = new PointerDowns();
+  readonly downs = new PointerDowns();
   sketch: SketchSession | null = null;
   private sketchModule: Promise<typeof import('./sketch-session')> | null = null;
   /** Top bar: sync status and branch of the open project (M2.5; `local` until linked). */
@@ -1121,92 +1102,43 @@ export class Workbench {
 
   /** Canvas-relative CSS px of a pointer event. */
   local(e: { clientX: number; clientY: number }): { x: number; y: number } {
-    const r = this.canvas?.getBoundingClientRect();
-    return { x: e.clientX - (r?.left ?? 0), y: e.clientY - (r?.top ?? 0) };
+    return pointer.local(this, e);
   }
 
   /** Kinds selectable right now (model mode). */
   pickKinds(): PickKind[] {
-    const u = this.ui.get();
-    if (u.section.picking) return ['face'];
-    if (u.measure?.active) return ['face', 'edge', 'vertex'];
-    if (u.picking) return this.pickAccepts()?.kinds ?? [];
-    if (u.prompt) return TOOL_NEEDS[u.prompt.tool].kinds;
-    return ['face', 'edge', 'vertex', 'region'];
+    return pointer.pickKinds(this);
   }
 
   /** What the inspector field being picked accepts (null when nothing is being picked). */
   pickAccepts(): Accepts | null {
-    const p = this.ui.get().picking;
-    if (!p) return null;
-    return acceptsFor(
-      p.path,
-      this.part?.features.find((f) => f.id === p.featureId),
-    );
+    return pointer.pickAccepts(this);
   }
 
   /** The prompt chip text while an inspector field is picked (the tool's own wording first). */
   pickPrompt(): string | null {
-    const p = this.ui.get().picking;
-    const f = p ? this.part?.features.find((x) => x.id === p.featureId) : undefined;
-    if (!p || !f) return null;
-    const tool = toolOfFeature(f);
-    const root = p.path.replace(/\/\d+$/, '');
-    const step = tool ? FEATURE_PICKS[tool].find((s) => s.path === root) : undefined;
-    return step?.prompt ?? `Select ${this.pickAccepts()?.noun ?? 'geometry'}`;
+    return pointer.pickPrompt(this);
   }
 
-  private pick(e: PointerEvent | MouseEvent, kinds: PickKind[], all = true): PickHit[] {
-    const { x, y } = this.local(e);
-    return this.pickAt(x, y, 'pointerType' in e ? e.pointerType : 'mouse', kinds, all);
+  pick(e: PointerEvent | MouseEvent, kinds: PickKind[], all = true): PickHit[] {
+    return pointer.pick(this, e, kinds, all);
   }
 
   /** Viewport pick at canvas px with the pointer type's tolerance. */
   pickAt(x: number, y: number, pointerType: string, kinds: PickKind[], all = true): PickHit[] {
-    const v = this.viewport;
-    if (!v) return [];
-    const hits = v.pick(x, y, { kinds, tolerancePx: toleranceFor(pointerType), all });
-    // Sketch regions are all "0 px away": of stacked ones (a sketch on a face above another
-    // sketch's region) the one nearest the camera is the one under the cursor.
-    const cam = (
-      v as { getCameraState?: () => { position: [number, number, number] } }
-    ).getCameraState?.()?.position;
-    if (!cam) return hits;
-    return orderStackedRegions(hits, cam as [number, number, number], (h) => this.regionArea(h));
+    return pointer.pickAt(this, x, y, pointerType, kinds, all);
   }
 
-  private regionAreas = new WeakMap<MeshBuffers, number>();
+  regionAreas = new WeakMap<MeshBuffers, number>();
 
   /** Area (mm²) of a picked sketch region's mesh (cached per immutable mesh). */
-  private regionArea(h: PickHit): number {
-    const mesh = this.regen
-      .get()
-      ?.result.sketches.find((s) => s.featureId === h.bodyId)
-      ?.regions.find((r) => r.name === h.entity)?.mesh;
-    if (!mesh) return Number.POSITIVE_INFINITY;
-    const cached = this.regionAreas.get(mesh);
-    if (cached !== undefined) return cached;
-    const p = mesh.positions;
-    const ix = mesh.indices;
-    const at = (v: number, c: number) => p[(ix[v] as number) * 3 + c] as number;
-    let a = 0;
-    for (let t = 0; t + 2 < ix.length; t += 3) {
-      const u = [0, 1, 2].map((c) => at(t + 1, c) - at(t, c)) as [number, number, number];
-      const w = [0, 1, 2].map((c) => at(t + 2, c) - at(t, c)) as [number, number, number];
-      a +=
-        Math.hypot(
-          u[1] * w[2] - u[2] * w[1],
-          u[2] * w[0] - u[0] * w[2],
-          u[0] * w[1] - u[1] * w[0],
-        ) / 2;
-    }
-    this.regionAreas.set(mesh, a);
-    return a;
+  regionArea(h: PickHit): number {
+    return pointer.regionArea(this, h);
   }
 
   /** Only presses on the canvas itself count (not the view cube or other host children). */
-  private onCanvas(e: Event): boolean {
-    return e.target === this.canvas;
+  onCanvas(e: Event): boolean {
+    return pointer.onCanvas(this, e);
   }
 
   /** Time of the last pen contact (sketch mode: fingers never draw while the Pencil is in use). */
@@ -1214,368 +1146,116 @@ export class Workbench {
 
   /** The Apple Pencil was used anywhere in the app in the last 10 minutes. */
   penRecentlyUsed(): boolean {
-    return performance.now() - this.lastPenAt < 10 * 60_000;
+    return pointer.penRecentlyUsed(this);
   }
 
   private onPointerMove(e: PointerEvent): void {
-    this.lastPointer = { x: e.clientX, y: e.clientY };
-    if (this.pushPull.onPointerMove(e)) return;
-    if (!this.onCanvas(e)) {
-      this.forgetPick(); // over a panel or button: Tab keeps its normal job
-      return;
-    }
-    if (this.ui.get().sketch) {
-      this.sketch?.onPointerMove(e);
-      return;
-    }
-    if (this.boxMove(e)) return;
-    if (this.penHold && e.pointerId === this.penHold.id) {
-      if (Math.hypot(e.clientX - this.penHold.x, e.clientY - this.penHold.y) > BOX_DRAG_PX)
-        this.endPenHold();
-    }
-    if (e.buttons !== 0) return; // orbiting
-    // Mouse and Pencil hover (where supported) preselect.
-    const hits = this.pick(e, this.pickKinds());
-    this.rememberPick(hits);
-    const { best } = resolvePick(hits, {
-      pointerType: 'pointerType' in e ? e.pointerType : 'mouse',
-    });
-    this.setHover(best);
+    pointer.onPointerMove(this, e);
   }
 
   // ------------------------------------------------------------------ box selection
 
   /** A left press in model mode that may turn into a box selection (mouse and Pencil only). */
-  private boxDown: { id: number; x: number; y: number; on: boolean } | null = null;
-  private penHold: {
+  boxDown: { id: number; x: number; y: number; on: boolean } | null = null;
+  penHold: {
     id: number;
     x: number;
     y: number;
     timer: ReturnType<typeof setTimeout>;
   } | null = null;
 
-  private boxAllowed(): boolean {
-    const u = this.ui.get();
-    return !(u.picking || u.prompt || u.measure?.active || u.section.picking || u.pushPull);
+  boxAllowed(): boolean {
+    return pointer.boxAllowed(this);
   }
 
   /** Left-drag in model mode: the rubber band. Returns true while a box is being dragged. */
-  private boxMove(e: PointerEvent): boolean {
-    const b = this.boxDown;
-    if (!b || b.id !== e.pointerId || (e.buttons & 1) === 0) return false;
-    if (!b.on && Math.hypot(e.clientX - b.x, e.clientY - b.y) > BOX_DRAG_PX) {
-      b.on = true;
-      this.endPenHold();
-      this.setHover(null);
-    }
-    if (!b.on) return false;
-    const a = this.local({ clientX: b.x, clientY: b.y });
-    const c = this.local(e);
-    this.patchUi({
-      box: { x0: a.x, y0: a.y, x1: c.x, y1: c.y, mode: c.x >= a.x ? 'window' : 'crossing' },
-    });
-    return true;
+  boxMove(e: PointerEvent): boolean {
+    return pointer.boxMove(this, e);
   }
 
   /** Release of a box drag: pick the rectangle and fold it into the selection. */
-  private boxEnd(e: PointerEvent): boolean {
-    const b = this.boxDown;
-    if (!b || b.id !== e.pointerId) return false;
-    this.boxDown = null;
-    if (!b.on) return false;
-    const box = this.ui.get().box;
-    this.patchUi({ box: null });
-    if (box) void this.track(this.applyBox(box, e));
-    return true;
+  boxEnd(e: PointerEvent): boolean {
+    return pointer.boxEnd(this, e);
   }
 
   /**
    * A box selection: left to right selects what lies entirely inside (window), right to left what
    * the box touches (crossing). Shift adds, Ctrl / Cmd toggles, a plain drag replaces.
    */
-  private async applyBox(
+  applyBox(
     box: NonNullable<UiState['box']>,
     mods: { shiftKey: boolean; ctrlKey: boolean; metaKey: boolean },
   ): Promise<void> {
-    const v = this.viewport;
-    if (!v) return;
-    const hits = v.pickRect(
-      { x0: box.x0, y0: box.y0, x1: box.x1, y1: box.y1 },
-      { mode: box.mode, kinds: this.pickKinds() },
-    );
-    const items = new Map<string, SelectionItem>();
-    for (const hit of hits) items.set(hitKey(hit), { key: hitKey(hit), hit, ref: null });
-    const have = this.ui.get().selection;
-    const fresh = [...items.values()].filter((i) => !have.some((s) => s.key === i.key));
-    let selection: SelectionItem[];
-    if (mods.ctrlKey || mods.metaKey)
-      selection = [...have.filter((s) => !items.has(s.key)), ...fresh];
-    else if (mods.shiftKey) selection = [...have, ...fresh];
-    else selection = [...items.values()];
-    this.patchUi({ selection, featureId: null, hover: null });
-    this.pushHighlights();
-    // References resolve in the background, like a single pick's.
-    const refs = await Promise.all(selection.map((s) => (s.ref ? s.ref : this.refFor(s.hit))));
-    this.ui.set((u) => ({
-      ...u,
-      selection: u.selection.map((s) => {
-        const i = selection.findIndex((x) => x.key === s.key);
-        return i >= 0 && !s.ref ? { ...s, ref: refs[i] ?? null } : s;
-      }),
-    }));
+    return pointer.applyBox(this, box, mods);
   }
 
   /** The Pencil whose long press opened the radial menu: its lift must not also be a click. */
-  private penOpened: number | null = null;
+  penOpened: number | null = null;
 
-  private endPenHold(): void {
-    if (this.penHold) clearTimeout(this.penHold.timer);
-    this.penHold = null;
+  endPenHold(): void {
+    pointer.endPenHold(this);
   }
 
   /** A Pencil press held still opens the radial menu (touch uses the viewport's long-press). */
-  private startPenHold(e: PointerEvent): void {
-    this.endPenHold();
-    const { clientX: x, clientY: y, pointerId: id } = e;
-    const timer = setTimeout(() => {
-      this.penHold = null;
-      this.boxDown = null;
-      this.penOpened = id; // its lift is the end of the long press, not a click
-      const at = this.local({ clientX: x, clientY: y });
-      const hit = resolvePick(this.pickAt(at.x, at.y, 'pen', this.pickKinds()), {
-        pointerType: 'pen',
-      }).best;
-      void this.track(this.openRadial({ ...at, pointerType: 'pen', pointerId: id }, hit, true));
-    }, PEN_LONG_PRESS_MS);
-    this.penHold = { id, x, y, timer };
+  startPenHold(e: PointerEvent): void {
+    pointer.startPenHold(this, e);
   }
 
   setHover(hit: PickHit | null): void {
-    const u = this.ui.get();
-    if (u.sketch) {
-      this.sketch?.setHover(null);
-      return;
-    }
-    const same =
-      (hit === null && u.hover === null) || (hit && u.hover && hitKey(hit) === hitKey(u.hover));
-    if (same) return;
-    this.patchUi({ hover: hit });
-    this.pushHighlights();
+    pointer.setHover(this, hit);
   }
 
   private onPointerDown(e: PointerEvent): void {
-    if (replayedPointerDowns.has(e)) return; // the sketch session handing a finger to the camera
-    if (!this.onCanvas(e)) {
-      this.downs.drop(e.pointerId);
-      return;
-    }
-    if (e.pointerType === 'pen') this.lastPenAt = performance.now();
-    this.downs.press(e);
-    if (this.ui.get().sketch) {
-      this.sketch?.onPointerDown(e);
-      return;
-    }
-    // A press on the push/pull arrow drags it (the viewport keeps the camera still).
-    if (this.pushPull.onPointerDown(e)) {
-      this.downs.drop(e.pointerId);
-      return;
-    }
-    // Left button, mouse or Pencil: a drag from here is a box selection (touch keeps orbit).
-    if (e.button === 0 && e.pointerType !== 'touch') {
-      if (this.boxAllowed()) {
-        this.boxDown = { id: e.pointerId, x: e.clientX, y: e.clientY, on: false };
-        (e.target as Element | null)?.setPointerCapture?.(e.pointerId);
-      }
-      if (e.pointerType === 'pen') this.startPenHold(e);
-    }
+    pointer.onPointerDown(this, e);
   }
 
   private onPointerUp(e: PointerEvent): void {
-    const d = this.downs.release(e.pointerId);
-    if (e.pointerType === 'pen') this.lastPenAt = performance.now();
-    if (this.pushPull.onPointerUp(e)) return;
-    if (this.penHold?.id === e.pointerId) this.endPenHold();
-    if (this.penOpened === e.pointerId) {
-      this.penOpened = null;
-      return;
-    }
-    if (!this.ui.get().sketch && this.boxEnd(e)) return;
-    this.boxDown = null;
-    if (this.ui.get().sketch) {
-      this.sketch?.onPointerUp(e, d);
-      return;
-    }
-    if (!d || d.id !== e.pointerId || e.button !== 0) return;
-    // One path per input: touch taps select through `onGesture` (with palm rejection and
-    // double-tap handling); mouse and Pencil clicks come through here.
-    if (d.type === 'touch') return;
-    if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > 5) return; // a drag (box select or navigation), not a click
-    this.onClick(e);
+    pointer.onPointerUp(this, e);
   }
 
   private onPointerCancel(e: PointerEvent): void {
-    this.downs.drop(e.pointerId);
-    if (this.boxDown?.id === e.pointerId) {
-      this.boxDown = null;
-      if (this.ui.get().box) this.patchUi({ box: null });
-    }
-    if (this.penHold?.id === e.pointerId) this.endPenHold();
-    this.pushPull.onPointerCancel(e);
-    this.sketch?.onPointerCancel(e);
+    pointer.onPointerCancel(this, e);
   }
 
-  private onClick(e: PointerEvent): void {
-    // Tab chose a candidate under the still pointer: the click takes that one.
-    const tab = this.tabHit;
-    this.tabHit = null;
-    if (tab && this.lastPick.some((c) => hitKey(c.hit) === hitKey(tab))) {
-      this.patchUi({ chooser: null });
-      void this.choose(tab, e.shiftKey || e.metaKey || e.ctrlKey);
-      return;
-    }
-    const { x, y } = this.local(e);
-    this.tapAt(x, y, e.pointerType, e.shiftKey || e.metaKey || e.ctrlKey);
+  onClick(e: PointerEvent): void {
+    pointer.onClick(this, e);
   }
 
   /** A tap or click at canvas px: the best hit, or the "Which one?" chooser for near-ties. */
-  private tapAt(x: number, y: number, pointerType: string, additive: boolean): void {
-    if (this.ui.get().bubble) this.patchUi({ bubble: null });
-    const { best, ties } = resolvePick(this.pickAt(x, y, pointerType, this.pickKinds()), {
-      pointerType,
-    });
-    if (ties.length > 1) {
-      const r = this.canvas?.getBoundingClientRect();
-      const at = { x: x + (r?.left ?? 0), y: y + (r?.top ?? 0) };
-      this.patchUi({ chooser: { ...at, hits: ties, additive } });
-      return;
-    }
-    void this.choose(best, additive);
+  tapAt(x: number, y: number, pointerType: string, additive: boolean): void {
+    pointer.tapAt(this, x, y, pointerType, additive);
   }
 
   /** Discrete viewport gestures (PLAN §9.3): see `gestureAction` for the mapping. */
   private onGesture(g: ViewportGesture): void {
-    const u = this.ui.get();
-    const draw = u.sketch?.draw;
-    const probe = g.kind === 'doubleTap' || g.kind === 'longPress' || g.kind === 'contextMenu';
-    const best = probe
-      ? resolvePick(this.pickAt(g.x, g.y, g.pointerType, this.pickKinds()), {
-          pointerType: g.pointerType,
-        }).best
-      : null;
-    const action = gestureAction(g, {
-      sketch: u.sketch !== null,
-      drawing: !!draw && (draw.anchors.length > 0 || draw.chainFrom !== null),
-      tool: !!draw || u.sketch?.tool === 'dimension',
-      onGeometry: best !== null,
-    });
-    switch (action) {
-      case 'select':
-        this.tapAt(g.x, g.y, g.pointerType, false);
-        break;
-      case 'zoomTo':
-        if (best) this.zoomToHit(best);
-        break;
-      case 'fit':
-        this.viewport?.fitAll(true);
-        break;
-      case 'radial':
-        if (g.pointerType !== 'pen')
-          void this.track(this.openRadial(g, best, g.kind === 'longPress'));
-        break;
-      case 'repeat':
-        this.repeatLast();
-        break;
-      case 'undo':
-        this.undo();
-        break;
-      case 'redo':
-        this.redo();
-        break;
-      case null:
-        break;
-    }
+    pointer.onGesture(this, g);
   }
 
   /** Double-tap on geometry: centre it and fill about half the view with it. */
-  private zoomToHit(hit: PickHit): void {
-    const v = this.viewport;
-    if (!v) return;
-    // `zoomTo`'s radius fills about half the view: half the face's radius makes it fill the view.
-    const f = hit.kind === 'face' ? this.face(hit.bodyId, hit.index) : null;
-    const diag = partDiagonal(this.regen.get()?.result);
-    if (f) v.zoomTo(f.centroid, Math.max(f.radius / 2, diag * 0.02), true);
-    else v.zoomTo(hit.point, Math.max(diag * 0.06, 0.5), true);
+  zoomToHit(hit: PickHit): void {
+    pointer.zoomToHit(this, hit);
   }
 
   /** Hover or Tab in the "Which one?" list preselects that candidate in the view. */
   previewChooser(index: number | null): void {
-    const hit = index === null ? null : (this.ui.get().chooser?.hits[index] ?? null);
-    this.setHover(hit);
+    pointer.previewChooser(this, index);
   }
 
   /** A hit was chosen (click or "Which one?"). */
   /** Applies a pick (a click or the overlap chooser); tracked so `idle()` waits for it. */
   choose(hit: PickHit | null, additive = false): Promise<void> {
-    return this.track(this.applyChoice(hit, additive));
+    return pointer.choose(this, hit, additive);
   }
 
   /** Picks applied (tests: one tap = one pick, whichever input path delivered it). */
   choices = 0;
 
-  private async applyChoice(hit: PickHit | null, additive: boolean): Promise<void> {
-    this.choices++;
-    this.patchUi({ chooser: null });
-    const u = this.ui.get();
-    const part = this.part;
-    if (!part) return;
-    if (u.section.picking) {
-      if (hit?.kind === 'face') this.sectionFromFace(hit);
-      return;
-    }
-    if (u.measure?.active) {
-      if (hit) await this.measure.pick(hit);
-      return;
-    }
-    if (u.pushPull) {
-      // Another flat face moves the arrow there; anything else ends push/pull.
-      if (hit?.kind === 'face' && this.pushPull.start([hit], true)) return;
-      this.pushPull.cancel();
-    }
-    if (u.picking) {
-      if (!hit) return;
-      const f = part.features.find((x) => x.id === u.picking?.featureId);
-      if (!f) return;
-      const accepts = acceptsFor(u.picking.path, f);
-      if (accepts.features) {
-        // Mirror / pattern sources: the feature that made the clicked geometry.
-        const owner = this.ownerFeature(hit, f.id);
-        if (owner) this.addSourceFeature(owner);
-        else this.toast('Pick geometry a feature made, or the feature in the tree.', 'info');
-        return;
-      }
-      const ref = await this.refFor(hit, accepts.as);
-      if (!ref) return this.toast('That can’t be referenced yet — try again in a moment.', 'info');
-      this.pickRef(ref);
-      return;
-    }
-    if (u.prompt) {
-      if (!hit) return;
-      await this.selectHit(hit, false);
-      await this.runTool(u.prompt.tool);
-      return;
-    }
-    if (!hit) {
-      if (!additive) this.clearSelection();
-      return;
-    }
-    await this.selectHit(hit, additive);
+  applyChoice(hit: PickHit | null, additive: boolean): Promise<void> {
+    return pointer.applyChoice(this, hit, additive);
   }
 
-  async refFor(hit: PickHit, as?: EntityRef['kind']): Promise<EntityRef | null> {
-    const part = this.part;
-    const modeling = this.modeling;
-    if (!part) return null;
-    return refForHit(hit, part.id, (p, q) => modeling?.refFor(p, q) ?? Promise.resolve(null), as);
+  refFor(hit: PickHit, as?: EntityRef['kind']): Promise<EntityRef | null> {
+    return pointer.refFor(this, hit, as);
   }
 
   /**
@@ -1585,105 +1265,30 @@ export class Workbench {
    * Enter, Done or another field.
    */
   pickRef(ref: EntityRef): void {
-    const p = this.ui.get().picking;
-    const part = this.part;
-    const f = p ? part?.features.find((x) => x.id === p.featureId) : undefined;
-    if (!p || !part || !f) return;
-    const next = applyPick(f, p.path, ref);
-    if (next !== f)
-      this.apply({ kind: 'updateFeature', partId: part.id, featureId: f.id, feature: next });
-    this.commit();
-    const root = p.path.replace(/\/\d+$/, '');
-    const list = root === p.path && Array.isArray(pointerValue(f, p.path));
-    const tool = toolOfFeature(next);
-    const once = tool ? FEATURE_PICKS[tool].find((s) => s.path === root)?.once : false;
-    if (!list || once) this.advancePicking(next, root);
+    pointer.pickRef(this, ref);
   }
 
   /** Picking moves to the tool's next empty reference field after `from`, or ends. */
   advancePicking(f?: Feature, from?: string): void {
-    const p = this.ui.get().picking;
-    const feature = f ?? (p ? this.part?.features.find((x) => x.id === p.featureId) : undefined);
-    const after = from ?? p?.path.replace(/\/\d+$/, '');
-    if (!feature) return;
-    const tool = toolOfFeature(feature);
-    const steps = tool ? FEATURE_PICKS[tool] : [];
-    const i = steps.findIndex((s) => s.path === after);
-    const next = i >= 0 ? steps.slice(i + 1).find((s) => emptyField(feature, s.path)) : undefined;
-    this.patchUi({ picking: next ? { featureId: feature.id, path: next.path } : null });
-    this.loop?.request();
-    this.refreshSketchVisibility();
-    this.pushHighlights();
+    pointer.advancePicking(this, f, from);
   }
 
   /** The feature whose output a model hit belongs to (latest named), before `before`. */
-  private ownerFeature(hit: PickHit, before: Id): Id | null {
-    const part = this.part;
-    const mesh = this.regen.get()?.result.bodies.find((b) => b.id === hit.bodyId)?.mesh;
-    const name =
-      hit.kind === 'face'
-        ? mesh?.faceNames[hit.index]
-        : hit.kind === 'edge'
-          ? mesh?.edgeNames[hit.index]
-          : undefined;
-    if (!part || !name) return null;
-    const end = part.features.findIndex((f) => f.id === before);
-    const earlier = part.features.slice(0, end < 0 ? undefined : end);
-    return earlier.findLast((f) => f.type !== 'sketch' && name.includes(f.id))?.id ?? null;
+  ownerFeature(hit: PickHit, before: Id): Id | null {
+    return pointer.ownerFeature(this, hit, before);
   }
 
   /** Adds a feature to the mirror / pattern source being picked (no duplicates, earlier only). */
   addSourceFeature(id: Id): void {
-    const p = this.ui.get().picking;
-    const part = this.part;
-    const f = p
-      ? part?.features.find(
-          (x): x is MirrorFeature | LinearPatternFeature | CircularPatternFeature =>
-            x.id === p.featureId &&
-            (x.type === 'mirror' || x.type === 'linearPattern' || x.type === 'circularPattern'),
-        )
-      : undefined;
-    if (!part || !f || f.source.kind !== 'features') return;
-    const at = part.features.findIndex((x) => x.id === id);
-    const self = part.features.findIndex((x) => x.id === f.id);
-    if (id === f.id || at < 0 || at > self) {
-      this.toast('Only features before this one can be copied.', 'info');
-      return;
-    }
-    if (f.source.features.includes(id)) return;
-    const next = {
-      ...f,
-      source: { kind: 'features' as const, features: [...f.source.features, id] },
-    };
-    this.apply(
-      { kind: 'updateFeature', partId: part.id, featureId: f.id, feature: next as Feature },
-      `Copy ${part.features[at]?.name ?? 'feature'}`,
-    );
-    this.commit();
+    pointer.addSourceFeature(this, id);
   }
 
-  async selectHit(hit: PickHit, additive: boolean): Promise<void> {
-    const key = hitKey(hit);
-    const u = this.ui.get();
-    const exists = u.selection.some((s) => s.key === key);
-    let selection: SelectionItem[];
-    if (additive) {
-      selection = exists
-        ? u.selection.filter((s) => s.key !== key)
-        : [...u.selection, { key, hit, ref: null }];
-    } else selection = [{ key, hit, ref: null }];
-    this.patchUi({ selection, featureId: null });
-    this.pushHighlights();
-    const ref = await this.refFor(hit);
-    this.ui.set((s) => ({
-      ...s,
-      selection: s.selection.map((x) => (x.key === key ? { ...x, ref } : x)),
-    }));
+  selectHit(hit: PickHit, additive: boolean): Promise<void> {
+    return pointer.selectHit(this, hit, additive);
   }
 
   clearSelection(): void {
-    this.patchUi({ selection: [], featureId: null, picking: null, bubble: null });
-    this.pushHighlights();
+    pointer.clearSelection(this);
   }
 
   // ------------------------------------------------------------------ tools
@@ -2354,7 +1959,7 @@ export class Workbench {
    * first (right-click on an unselected face selects it), so the menu's contents match what the
    * user pointed at; on empty space the current selection (or the general set) decides.
    */
-  private openRadial(
+  openRadial(
     g: { x: number; y: number; pointerType: 'mouse' | 'pen' | 'touch'; pointerId?: number },
     hit: PickHit | null,
     held: boolean,
@@ -2372,11 +1977,11 @@ export class Workbench {
   /** Tab's current preselection (a hit of `lastPick`), valid while the pointer stays put. */
   tabHit: PickHit | null = null;
 
-  private forgetPick(): void {
+  forgetPick(): void {
     keys.forgetPick(this);
   }
 
-  private rememberPick(hits: readonly PickHit[]): void {
+  rememberPick(hits: readonly PickHit[]): void {
     keys.rememberPick(this, hits);
   }
 
