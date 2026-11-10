@@ -127,10 +127,19 @@ async function boxSetup(page: Page) {
   const pts = await Promise.all(corners.map((c) => toPage(page, c)));
   const xs = pts.map((p) => p.x);
   const ys = pts.map((p) => p.y);
+  // Empty canvas to the right of the part (the canvas is narrower than the window: panels flank it).
+  const cv = await page.getByTestId('viewport-canvas').boundingBox();
+  if (!cv) throw new Error('no canvas');
+  const empty = {
+    x: Math.max(Math.max(...xs) + 40, cv.x + cv.width - 90),
+    y: cv.y + cv.height / 2,
+  };
   return {
     b,
     min: { x: Math.min(...xs), y: Math.min(...ys) },
     max: { x: Math.max(...xs), y: Math.max(...ys) },
+    empty,
+    canvas: cv,
   };
 }
 
@@ -237,7 +246,7 @@ test.describe('presets', () => {
     await drag(page, 'middle', [cx, cy], [cx + 100, cy + 40]);
     expect(classify(p1, await pose(page))).toBe('pan');
     // A right click opens the radial menu (and nothing is a modal dialog).
-    await page.mouse.click(cx - 350, cy + 250, { button: 'right' });
+    await page.mouse.click(s.empty.x, s.empty.y, { button: 'right' });
     await expect(page.getByTestId('radial-menu')).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(page.getByTestId('radial-menu')).toBeHidden();
@@ -261,7 +270,7 @@ test.describe('presets', () => {
     expect(classify(p1, p2)).toBe('pan');
     await drag(page, 'right', [cx, cy], [cx + 100, cy + 40]);
     expect(classify(p2, await pose(page))).toBe('pan');
-    await page.mouse.click(cx - 350, cy + 250, { button: 'right' });
+    await page.mouse.click(s.empty.x, s.empty.y, { button: 'right' });
     await expect(page.getByTestId('radial-menu')).toBeVisible();
     await page.keyboard.press('Escape');
 
@@ -297,12 +306,12 @@ test.describe('presets', () => {
     await page.keyboard.press('Escape');
     await expect.poll(async () => (await a.ui()).prompt).toBeNull();
     // A quick right click repeats it; no menu.
-    await page.mouse.click(cx - 350, cy + 250, { button: 'right' });
+    await page.mouse.click(s.empty.x, s.empty.y, { button: 'right' });
     await expect.poll(async () => (await a.ui()).prompt).toBe('fillet');
     await expect(page.getByTestId('radial-menu')).toBeHidden();
     await page.keyboard.press('Escape');
     // A held one opens the menu.
-    await page.mouse.move(cx - 350, cy + 250);
+    await page.mouse.move(s.empty.x, s.empty.y);
     await page.mouse.down({ button: 'right' });
     await page.waitForTimeout(450);
     await page.mouse.up({ button: 'right' });
@@ -376,9 +385,13 @@ test.describe('presets', () => {
     await page.mouse.down();
     await page.mouse.move(r.x1 - 5, r.y1 - 5, { steps: 3 });
     await page.mouse.up();
-    await page.mouse.move(40, 40);
+    const cv = await page.getByTestId('viewport-canvas').boundingBox();
+    if (!cv) throw new Error('no canvas');
+    const ex = cv.x + cv.width - 150;
+    const ey = cv.y + 120;
+    await page.mouse.move(ex, ey);
     await page.mouse.down();
-    await page.mouse.move(120, 100, { steps: 4 });
+    await page.mouse.move(ex + 60, ey + 50, { steps: 4 });
     await page.mouse.up();
     await a.idle();
     expect(await selection(page)).toBe(0);
@@ -421,8 +434,8 @@ test.describe('radial menu', () => {
   }) => {
     const s = await boxSetup(page);
     const a = app(page);
-    const x = (s.min.x + s.max.x) / 2;
-    const y = s.max.y + 30;
+    // Empty space left of the box, at mid height (below it sits the command bar).
+    const { x, y } = s.empty;
 
     // Right click on empty space, then flick north-east at once: Sketch (first item).
     let ran = false;
@@ -504,8 +517,7 @@ test.describe('radial menu', () => {
       const s = await boxSetup(page);
       const a = app(page);
       const t = await touch(page);
-      const x = (s.min.x + s.max.x) / 2;
-      const y = s.max.y + 40;
+      const { x, y } = s.empty;
       const menu = page.getByTestId('radial-menu');
 
       // Finger: hold, the menu draws at once (no blind flick on touch), lift in empty direction.
