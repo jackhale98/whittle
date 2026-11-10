@@ -585,8 +585,11 @@ describe('DocMerger: configuration notes', () => {
 
   it('a side’s own dangling override is its state, not the merge’s to drop', () => {
     const base = configured(baseDoc());
-    // Deleted without pruning (an older writer): Short keeps a "needs attention" override.
-    const ours = apply(base, { kind: 'removeFeature', partId: PART, featureId: FILLET });
+    // Deleted without pruning (an older writer; today's removeFeature prunes): Short keeps a
+    // "needs attention" override. Built by hand so the merge, not the command, is under test.
+    const ours = structuredClone(base);
+    const part = ours.parts.find((p) => p.id === PART);
+    if (part) part.features = part.features.filter((f) => f.id !== FILLET);
     expect(configOf(ours, SHORT)?.features?.[FILLET]).toEqual({ suppressed: true });
     for (const r of [docMerger.merge(base, ours, base), docMerger.merge(base, ours, ours)]) {
       expect(canonicalJson(r.doc)).toBe(canonicalJson(ours));
