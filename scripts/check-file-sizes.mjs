@@ -5,7 +5,10 @@
 //          grow past their recorded ceiling. Ceilings only go down: a file that shrinks below its
 //          ceiling prints a reminder to lower it (a failure with --strict), and one that drops
 //          under the fail line should be removed from the list.
-// Usage: node scripts/check-file-sizes.mjs [--strict] [--root <dir>] [--allowlist <file>]
+//  - with --base <git ref>, the allow-list itself is compared with the one at that ref: a raised
+//    ceiling or a new entry fails (the ratchet only turns one way).
+// Usage: node scripts/check-file-sizes.mjs [--strict] [--root <dir>] [--allowlist <file>] [--base <ref>]
+import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -58,6 +61,28 @@ const allow = existsSync(allowPath)
   ? (JSON.parse(readFileSync(allowPath, 'utf8')).ceilings ?? {})
   : {};
 const errors = [];
+
+const baseRef = opt('--base');
+if (baseRef) {
+  let baseAllow = null;
+  try {
+    const text = execFileSync('git', ['show', `${baseRef}:scripts/file-size-allowlist.json`], {
+      cwd: root,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    baseAllow = JSON.parse(text).ceilings ?? {};
+  } catch {
+    // No allow-list at the base ref (first introduction): nothing to compare with.
+  }
+  if (baseAllow) {
+    for (const [rel, ceiling] of Object.entries(allow)) {
+      const was = baseAllow[rel];
+      if (was === undefined) errors.push(`${rel}: new allow-list entry (the list may only shrink)`);
+      else if (ceiling > was) errors.push(`${rel}: ceiling raised from ${was} to ${ceiling}`);
+    }
+  }
+}
 const notes = [];
 const warnings = [];
 const seen = new Set();
@@ -76,19 +101,24 @@ for (const src of sourceRoots()) {
       } else if (lines <= FAIL_LINES) {
         notes.push(`${rel}: ${lines} lines is under ${FAIL_LINES}; remove it from the allow-list`);
       } else if (lines < ceiling) {
-        notes.push(`${rel}: ${lines} lines is below its ceiling of ${ceiling}; lower the ceiling to ${lines}`);
+        notes.push(
+          `${rel}: ${lines} lines is below its ceiling of ${ceiling}; lower the ceiling to ${lines}`,
+        );
       } else {
         warnings.push(`${rel}: ${lines} lines (allow-listed, ceiling ${ceiling})`);
       }
     } else if (lines > FAIL_LINES) {
-      errors.push(`${rel}: ${lines} lines exceeds the ${FAIL_LINES}-line limit (split it by responsibility)`);
+      errors.push(
+        `${rel}: ${lines} lines exceeds the ${FAIL_LINES}-line limit (split it by responsibility)`,
+      );
     } else if (lines > WARN_LINES) {
       warnings.push(`${rel}: ${lines} lines is past the ${WARN_LINES}-line soft limit`);
     }
   }
 }
 for (const rel of Object.keys(allow)) {
-  if (!seen.has(rel)) notes.push(`${rel}: allow-listed but not found; remove it from the allow-list`);
+  if (!seen.has(rel))
+    notes.push(`${rel}: allow-listed but not found; remove it from the allow-list`);
 }
 
 const gh = process.env.GITHUB_ACTIONS === 'true';

@@ -36,6 +36,12 @@ jobs:
       # allow-list in scripts/file-size-allowlist.json.
       - name: File-size guardrail
         run: pnpm check:size
+      # The allow-list ratchet: on a pull request, no new entry and no raised ceiling vs the base.
+      - name: File-size allow-list only shrinks
+        if: github.event_name == 'pull_request'
+        run: |
+          git fetch --no-tags --depth=1 origin "${{ github.base_ref }}"
+          node scripts/check-file-sizes.mjs --base "origin/${{ github.base_ref }}"
 
   kernel:
     name: Kernel
