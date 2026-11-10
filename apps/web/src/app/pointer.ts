@@ -136,7 +136,7 @@ export function penRecentlyUsed(wb: Workbench): boolean {
 
 export function onPointerMove(wb: Workbench, e: PointerEvent): void {
   wb.lastPointer = { x: e.clientX, y: e.clientY };
-  if (wb.pushPull.onPointerMove(e)) return;
+  if (wb.pushPull.onPointerMove(e) || wb.sectionTool.onPointerMove(e)) return;
   if (!wb.onCanvas(e)) {
     wb.forgetPick(); // over a panel or button: Tab keeps its normal job
     return;
@@ -273,7 +273,7 @@ export function onPointerDown(wb: Workbench, e: PointerEvent): void {
     return;
   }
   // A press on the push/pull arrow drags it (the viewport keeps the camera still).
-  if (wb.pushPull.onPointerDown(e)) {
+  if (wb.pushPull.onPointerDown(e) || wb.sectionTool.onPointerDown(e)) {
     wb.downs.drop(e.pointerId);
     return;
   }
@@ -290,7 +290,7 @@ export function onPointerDown(wb: Workbench, e: PointerEvent): void {
 export function onPointerUp(wb: Workbench, e: PointerEvent): void {
   const d = wb.downs.release(e.pointerId);
   if (e.pointerType === 'pen') wb.lastPenAt = performance.now();
-  if (wb.pushPull.onPointerUp(e)) return;
+  if (wb.pushPull.onPointerUp(e) || wb.sectionTool.onPointerUp(e)) return;
   if (wb.penHold?.id === e.pointerId) wb.endPenHold();
   if (wb.penOpened === e.pointerId) {
     wb.penOpened = null;
@@ -318,6 +318,7 @@ export function onPointerCancel(wb: Workbench, e: PointerEvent): void {
   }
   if (wb.penHold?.id === e.pointerId) wb.endPenHold();
   wb.pushPull.onPointerCancel(e);
+  wb.sectionTool.onPointerCancel(e);
   wb.sketch?.onPointerCancel(e);
 }
 

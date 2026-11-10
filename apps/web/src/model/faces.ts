@@ -5,7 +5,7 @@
  * `MeshBuffers` so they are unit-tested without a viewport.
  */
 
-import type { MeshBuffers, SectionPlane, Vec3 } from '@wren-cad/contracts';
+import type { MeshBuffers, Vec3 } from '@wren-cad/contracts';
 
 export interface FaceInfo {
   /** Area-weighted centroid (mm). */
@@ -293,61 +293,9 @@ export function unionBounds(boxes: readonly Bounds[]): Bounds | null {
   return { min, max };
 }
 
-export type SectionAxis = 'x' | 'y' | 'z' | 'face';
-
-export interface SectionSettings {
-  enabled: boolean;
-  axis: SectionAxis;
-  /** Along the axis (world coordinate) or, for a face, along its normal from the face. */
-  offset: number;
-  flipped: boolean;
-  face: { origin: Vec3; normal: Vec3 } | null;
-}
-
-const AXES: Record<'x' | 'y' | 'z', Vec3> = { x: [1, 0, 0], y: [0, 1, 0], z: [0, 0, 1] };
-
-/** Base point and unit normal of the section's axis (before offset and flip). */
-function sectionFrame(s: SectionSettings): { base: Vec3; normal: Vec3 } | null {
-  if (s.axis === 'face') return s.face ? { base: s.face.origin, normal: s.face.normal } : null;
-  return { base: [0, 0, 0], normal: AXES[s.axis] };
-}
-
-/** Slider range: the part's extent along the axis (relative to the face for `face`). */
-export function sectionRange(
-  s: SectionSettings,
-  bounds: Bounds | null,
-): { min: number; max: number } {
-  const f = sectionFrame(s);
-  if (!f || !bounds) return { min: -50, max: 50 };
-  let lo = Infinity;
-  let hi = -Infinity;
-  for (const x of [bounds.min[0], bounds.max[0]])
-    for (const y of [bounds.min[1], bounds.max[1]])
-      for (const z of [bounds.min[2], bounds.max[2]]) {
-        const d =
-          (x - f.base[0]) * f.normal[0] +
-          (y - f.base[1]) * f.normal[1] +
-          (z - f.base[2]) * f.normal[2];
-        lo = Math.min(lo, d);
-        hi = Math.max(hi, d);
-      }
-  return hi - lo < 1e-9 ? { min: lo - 1, max: hi + 1 } : { min: lo, max: hi };
-}
-
-/** The viewport section plane for the settings; null when off (or a face axis without a face). */
-export function sectionPlane(s: SectionSettings): SectionPlane | null {
-  if (!s.enabled) return null;
-  const f = sectionFrame(s);
-  if (!f) return null;
-  const origin: Vec3 = [
-    f.base[0] + f.normal[0] * s.offset,
-    f.base[1] + f.normal[1] * s.offset,
-    f.base[2] + f.normal[2] * s.offset,
-  ];
-  const sign = s.flipped ? -1 : 1;
-  return {
-    origin,
-    normal: [f.normal[0] * sign, f.normal[1] * sign, f.normal[2] * sign],
-    caps: true,
-  };
-}
+export {
+  type SectionAxis,
+  type SectionSettings,
+  sectionPlane,
+  sectionRange,
+} from './section';

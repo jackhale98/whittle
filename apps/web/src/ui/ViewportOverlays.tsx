@@ -13,6 +13,7 @@ import {
   ExpressionInput,
   type PickCandidate,
   PromptChip,
+  SectionChip,
   SketchStatusChip,
   WhichOneChooser,
   WrenLoader,
@@ -468,6 +469,27 @@ export function ViewportOverlays({ wb, touch }: { wb: Workbench; touch: boolean 
             </div>
           ) : null}
         </>
+      ) : null}
+
+      {ui.section.enabled && !ui.section.picking ? (
+        // Above the prompt / toast / sketch toolbar when one is up; clear of the view cube (top
+        // right), the top bar and the Library button (top left) and the sheet or command bar.
+        <div
+          className="absolute left-1/2 -translate-x-1/2"
+          style={{
+            bottom: `calc(var(--chrome-bottom, 80px) + ${sk ? 96 : promptText || ui.toast ? 68 : 12}px)`,
+          }}
+          data-testid="section-chip-slot"
+        >
+          <SectionChip
+            size={touch ? 'touch' : 'md'}
+            editing={ui.section.open}
+            flipped={ui.section.flipped}
+            onExit={() => wb.exitSection()}
+            onFlip={() => wb.flipSection()}
+            onEdit={() => (ui.section.open ? wb.closeSection() : wb.openSection())}
+          />
+        </div>
       ) : null}
 
       {!sk && editing?.type === 'extrude' ? <ExtrudeDepth wb={wb} f={editing} /> : null}

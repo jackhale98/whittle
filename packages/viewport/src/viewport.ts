@@ -268,6 +268,9 @@ export class ViewportImpl implements ViewportEngine {
     environmentReady: false,
     handleHover: null,
     sectionActive: false,
+    sectionNormal: null,
+    sectionOffset: null,
+    capsDrawn: 0,
   };
   followSystemMotion = false;
   previewDirty = false;

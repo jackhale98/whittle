@@ -49,6 +49,7 @@ import {
 import { M3Gallery } from './m3Gallery';
 import { M35Gallery } from './m35Gallery';
 import { M36Gallery } from './m36Gallery';
+import { SectionGallery } from './sectionGallery';
 import { SyncGallery } from './syncGallery';
 
 type Tier = 'desktop' | 'tablet' | 'phone';
@@ -585,6 +586,9 @@ export function Gallery({
       case 'm3-tree':
       case 'm3-bar':
         return <M3Gallery section={section} tier={tier} />;
+      case 'section-chip':
+      case 'section-panel':
+        return <SectionGallery section={section} tier={tier} />;
       case 'm36-folders':
       case 'm36-eye':
       case 'm36-phone':

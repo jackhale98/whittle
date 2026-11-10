@@ -170,3 +170,20 @@ export function parseLengthMm(text: string, defaultUnit: MeasureUnits = 'mm'): n
 export function formatLengthMm(mm: number, units: MeasureUnits = 'mm'): string {
   return units === 'in' ? `${(mm / MM_PER_IN).toFixed(3)}in` : `${mm.toFixed(2)}mm`;
 }
+
+/** Angles typed into a Section tilt field: "15", "15deg", "15°", "0.2rad". Returns radians or null. */
+export function parseAngleRad(text: string): number | null {
+  const m = /^\s*([+-]?\s*\d*\.?\d+(?:e[+-]?\d+)?)\s*(deg|degrees?|°|rad|radians?)?\s*$/i.exec(
+    text.replace('−', '-'),
+  );
+  if (!m?.[1]) return null;
+  const n = Number(m[1].replace(/\s/g, ''));
+  if (!Number.isFinite(n)) return null;
+  return (m[2] ?? 'deg').toLowerCase().startsWith('rad') ? n : (n * Math.PI) / 180;
+}
+
+/** "15deg" (at most two decimals; a tilt of 0 is "0deg"). */
+export function formatAngleDeg(rad: number): string {
+  const d = Math.round(((rad * 180) / Math.PI) * 100) / 100;
+  return `${Object.is(d, -0) ? 0 : d}deg`;
+}

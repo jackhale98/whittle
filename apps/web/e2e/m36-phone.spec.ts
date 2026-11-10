@@ -45,6 +45,15 @@ function bracketVolume(): number {
   );
 }
 
+/** Scrolls the sheet's list to its end (the sheet clips the box Playwright measures). */
+async function scrollListToEnd(page: Page) {
+  await page.getByTestId('feature-tree').evaluate((el) => {
+    let p = el.parentElement;
+    while (p && p.scrollHeight <= p.clientHeight) p = p.parentElement;
+    p?.scrollTo({ top: p.scrollHeight });
+  });
+}
+
 async function openDemo(page: Page) {
   await boot(page);
   const a = app(page);
@@ -89,6 +98,8 @@ test('phone: dragging the rollback bar by touch rolls the model back, undoably',
   // Drag the bar up to just below "Holes" (the model after the first four features).
   const holes = page.getByRole('treeitem', { name: /^Holes/ });
   await holes.scrollIntoViewIfNeeded();
+  // The bar has its own 44 px row now: scroll the list to its end so the bar is fully on screen.
+  await scrollListToEnd(page);
   const holesBox = await holes.boundingBox();
   const grab = await page.getByTestId('rollback-grab').boundingBox();
   if (!(holesBox && grab)) throw new Error('rows not laid out');
@@ -167,4 +178,64 @@ test('phone: a long press on a row opens its menu; Suppress is one undo entry', 
     .toBeFalsy();
   await a.idle();
   expect((await a.regen())?.bodies[0]?.volume).toBeCloseTo(full?.bodies[0]?.volume ?? 0, 6);
+});
+
+test('phone: a tap at the centre of the row above the rollback bar selects that row, not the bar', async ({
+  page,
+}) => {
+  test.slow();
+  const a = await openDemo(page);
+  const doc0 = await a.doc();
+  const features = doc0.parts[0]?.features ?? [];
+  await tab(page, 'Features').tap();
+  const tree = page.getByTestId('feature-tree');
+  await expect(tree).toBeVisible();
+  const bar = page.getByTestId('rollback-bar');
+  const rows = page.getByRole('treeitem');
+  await rows.last().scrollIntoViewIfNeeded();
+
+  // The bar has its own gap below the last row: no overlap, a row-height gap.
+  const barBox = await bar.boundingBox();
+  const lastBox = await rows.last().boundingBox();
+  if (!(barBox && lastBox)) throw new Error('not laid out');
+  expect(barBox.height).toBeGreaterThanOrEqual(44);
+  expect(barBox.y).toBeGreaterThanOrEqual(lastBox.y + lastBox.height - 0.5);
+
+  // A tap on the last row's centre selects that row (it used to grab the bar's overlapping half).
+  const last = features[features.length - 1];
+  const rollback0 = doc0.parts[0]?.rollbackIndex;
+  await page.touchscreen.tap(lastBox.x + lastBox.width / 2, lastBox.y + lastBox.height / 2);
+  await expect.poll(async () => (await a.ui()).featureId).toBe(last?.id);
+  expect((await a.doc()).parts[0]?.rollbackIndex).toBe(rollback0);
+
+  // The row above the bar when the bar sits mid-list: the same.
+  const holes = page.getByRole('treeitem', { name: /^Holes/ });
+  await holes.scrollIntoViewIfNeeded();
+  // The bar has its own 44 px row now: scroll the list to its end so the bar is fully on screen.
+  await scrollListToEnd(page);
+  const holesBox = await holes.boundingBox();
+  const grab = await page.getByTestId('rollback-grab').boundingBox();
+  if (!(holesBox && grab)) throw new Error('rows not laid out');
+  const t = await touch(page);
+  await t.drag(
+    { x: grab.x + grab.width / 2, y: grab.y + grab.height / 2 },
+    { x: grab.x + grab.width / 2, y: holesBox.y + holesBox.height },
+    16,
+  );
+  await expect.poll(async () => (await a.doc()).parts[0]?.rollbackIndex).toBe(4);
+  // The bar settles (it eases to its stop) in its own gap right below the Holes row.
+  await expect
+    .poll(async () => {
+      const h = await holes.boundingBox();
+      const b = await page.getByTestId('rollback-bar').boundingBox();
+      return h && b ? Math.round(b.y - (h.y + h.height)) : null;
+    })
+    .toBe(0);
+  const holes2 = await holes.boundingBox();
+  if (!holes2) throw new Error('not laid out');
+  await page.touchscreen.tap(holes2.x + holes2.width / 2, holes2.y + holes2.height / 2);
+  await expect
+    .poll(async () => (await a.ui()).featureId)
+    .toBe(features.find((f) => f.name.startsWith('Holes'))?.id);
+  expect((await a.doc()).parts[0]?.rollbackIndex).toBe(4); // the tap did not move the bar
 });

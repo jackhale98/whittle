@@ -209,6 +209,7 @@ export function attachViewport(
 
 export function onCamera(wb: Workbench, c: CameraChange): void {
   wb.cameraTick.set((n) => n + 1);
+  wb.sectionTool.onCamera();
   const cur = wb.camera.get();
   if (c.moving !== cur.moving)
     wb.camera.set({ moving: c.moving, rest: c.moving ? cur.rest : cur.rest + 1 });

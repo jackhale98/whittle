@@ -54,6 +54,7 @@ export {
   RadialMenu,
   type RadialMenuProps,
 } from './components/RadialMenu';
+export { SectionChip, type SectionChipProps } from './components/SectionChip';
 export {
   describeKernelStatus,
   StatusChip,
@@ -279,6 +280,7 @@ export {
   tutorialReducer,
 } from './logic/tutorial';
 export {
+  formatAngleDeg,
   formatLengthMm,
   type Measurement,
   type MeasurementExtra,
@@ -287,6 +289,7 @@ export {
   type MeasureTargetItem,
   type MeasureUnits,
   measurementKind,
+  parseAngleRad,
   parseLengthMm,
   readMeasurement,
   speakMeasurement,

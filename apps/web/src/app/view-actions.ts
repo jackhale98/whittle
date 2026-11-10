@@ -48,6 +48,11 @@ export function setSection(wb: Workbench, patch: Partial<SectionUi>): void {
     (patch.axis !== undefined && patch.axis !== cur.axis) ||
     patch.face !== undefined ||
     (patch.enabled === true && !cur.enabled);
+  if (restart) {
+    // A new axis, face or a fresh enable starts level (no tilt) unless the caller says otherwise.
+    if (patch.tiltU === undefined) next.tiltU = 0;
+    if (patch.tiltV === undefined) next.tiltV = 0;
+  }
   if (restart && patch.offset === undefined) {
     const r = faceSectionRange(next, wb.bounds());
     // A face plane starts halfway into the part (behind the face), an axis mid-part.
@@ -59,11 +64,25 @@ export function setSection(wb: Workbench, patch: Partial<SectionUi>): void {
 
 export function openSection(wb: Workbench): void {
   wb.patchUi({ section: { ...wb.ui.get().section, open: true }, featureId: null });
-  if (wb.tier !== 'desktop') wb.openSheet(wb.tier === 'phone' ? 'section' : 'inspector');
+  // auto: closing the panel (Edit, Esc, Exit) puts the sheet back, so it no longer covers the view.
+  if (wb.tier !== 'desktop') wb.openSheet(wb.tier === 'phone' ? 'section' : 'inspector', true);
 }
 
+/** Closes the panel only; a running cut stays on, with its chip in the viewport. */
 export function closeSection(wb: Workbench): void {
   wb.patchUi({ section: { ...wb.ui.get().section, open: false, picking: false } });
+  wb.restoreSheet();
+}
+
+/** Ends the section: the cut goes away and so do the chip, the panel and the manipulator. */
+export function exitSection(wb: Workbench): void {
+  if (!wb.ui.get().section.enabled && !wb.ui.get().section.open) return;
+  wb.setSection({ enabled: false, open: false, picking: false });
+  wb.restoreSheet();
+}
+
+export function flipSection(wb: Workbench): void {
+  wb.setSection({ flipped: !wb.ui.get().section.flipped });
 }
 
 export function sectionRange(wb: Workbench): { min: number; max: number } {
@@ -72,7 +91,15 @@ export function sectionRange(wb: Workbench): { min: number; max: number } {
 
 export function sectionSettings(wb: Workbench): SectionSettings {
   const s = wb.ui.get().section;
-  return { enabled: s.enabled, axis: s.axis, offset: s.offset, flipped: s.flipped, face: s.face };
+  return {
+    enabled: s.enabled,
+    axis: s.axis,
+    offset: s.offset,
+    flipped: s.flipped,
+    face: s.face,
+    tiltU: s.tiltU,
+    tiltV: s.tiltV,
+  };
 }
 
 export function bounds(wb: Workbench) {
@@ -82,7 +109,8 @@ export function bounds(wb: Workbench) {
 export function syncSection(wb: Workbench): void {
   const v = wb.viewport;
   if (!v) return;
-  const plane = sectionPlane(wb.sectionSettings());
+  const plane = sectionPlane(wb.sectionSettings(), wb.bounds());
+  wb.sectionTool.sync();
   const key = JSON.stringify(plane);
   if (key === wb.lastSection) return;
   wb.lastSection = key;
@@ -181,6 +209,7 @@ export function cancel(wb: Workbench): boolean {
   else if (u.library) wb.patchUi({ library: false });
   else if (u.project) wb.openProjectPanel(null);
   else if (u.welcome) wb.patchUi({ welcome: false });
+  else if (u.section.enabled && !u.sketch) wb.exitSection();
   else return false;
   wb.refreshSketchVisibility();
   wb.pushHighlights();

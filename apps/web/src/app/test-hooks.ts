@@ -10,6 +10,8 @@ import type { Workbench } from './workbench';
 export function testHooks(wb: Workbench) {
   return {
     doc: () => wb.doc,
+    /** The section manipulator's grips (offset arrow, two arcs) in canvas CSS px. */
+    sectionGrips: () => wb.sectionTool.grips(),
     regen: () => {
       const view = wb.regen.get();
       const r = view?.result;
@@ -162,6 +164,9 @@ export function testHooks(wb: Workbench) {
           offset: u.section.offset,
           flipped: u.section.flipped,
           picking: u.section.picking,
+          open: u.section.open,
+          tiltU: u.section.tiltU,
+          tiltV: u.section.tiltV,
         },
         bubble: u.bubble !== null,
         chooser: u.chooser?.hits.map((h) => h.kind) ?? null,
