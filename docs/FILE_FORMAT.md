@@ -159,7 +159,18 @@ reference other parameters. Parameters are global; feature-local scopes are a la
 
 ```jsonc
 {
+  "activeConfigurationId": "01J…",    // optional (v3); absent = Default
   "color": "#9aa4b2",                 // optional; overrides the material's appearance
+  "configurations": [                 // optional (v3); absent = only Default, never written empty
+    {
+      "features": { "01J…": { "fields": { "/end/depth": "60mm" }, "suppressed": true } },
+      "id": "01J…",
+      "material": null,               // null = no material; absent = inherited
+      "name": "Long",
+      "params": { "01J…": "80mm" },   // paramId -> Expr
+      "properties": { "partNumber": "BR-100-L" }
+    }
+  ],
   "features": [ /* Feature[] in evaluation order */ ],
   "folders": [                        // optional (v2); absent = none, never written empty
     { "features": ["01J…", "01J…"], "id": "01J…", "name": "Mounting" }
@@ -167,6 +178,7 @@ reference other parameters. Parameters are global; feature-local scopes are a la
   "id": "01J…",
   "material": { /* §6, optional */ },
   "name": "Bracket",
+  "properties": { "description": "Bracket", "partNumber": "BR-100" },   // optional (v3)
   "rollbackIndex": 14                 // features with index >= rollbackIndex are not evaluated
 }
 ```
@@ -180,6 +192,51 @@ a non-empty `name` string and an `id` that is unique across the whole document l
 id. The order of the `folders` array carries no meaning (a folder sits where its first member
 sits); writers keep the order they were created in. Collapsed/expanded is per-user UI state and is
 not stored.
+
+**Configurations** (v3, ADR-074) are named variants of one part. The part as stored is the
+implicit **Default**; a configuration stores **only what differs** from it, keyed by id, so
+renames never break anything and a text merge sees one line per override.
+
+| Key | Meaning |
+|---|---|
+| `id`, `name` | Unique id (shared id space with every other id in the document); display name. Names should be unique, but duplicates are allowed and flagged by the UI. |
+| `params` | `paramId → Expr`. Replaces `Param.expr` **only while this part regenerates**; other parts keep the parameter's own value. |
+| `features` | `featureId → { suppressed?, fields? }`. `suppressed` replaces `Feature.suppressed`. `fields` maps a JSON pointer inside the feature (RFC 6901, e.g. `/end/depth`, `/size`) to a value. |
+| `material` | Replaces the part's material; `null` = no material; absent = inherited. |
+| `color` | Replaces the part's colour. |
+| `properties` | Overrides of `partNumber` / `description`. |
+
+`fields` accepts (a) any `Expr` field of the feature (§5.4; the value is an expression string)
+except sketch dimensions (not yet) and driven dimensions, and (b) these option fields, whose
+value must be one of the listed strings or booleans:
+
+| Feature | Pointer: allowed values |
+|---|---|
+| `primitive` | `/op`: `new add cut intersect` |
+| `extrude` | `/end/kind`: `blind throughAll`; `/direction`: `normal reverse symmetric`; `/op`: `new add cut intersect` |
+| `revolve` | `/direction`; `/op` (as above) |
+| `boolean` | `/op`: `add cut intersect`; `/keepTools`: `true false` |
+| `fillet`, `chamfer` | `/propagate`: `true false` |
+| `hole` | `/size`: a key of the hole's standard table; `/kind`: `simple counterbore countersink tapped`; `/fit`: `close normal loose`; `/end/kind`: `blind throughAll` |
+| `thread` | `/size`: a key of the standard's table |
+
+`upTo` is not offered because it needs a topological reference. Changing `end.kind` to `blind`
+needs the same configuration to set `/end/depth` (otherwise the configuration reports a missing
+value). The reference implementation exposes these tables as `CONFIGURABLE_OPTIONS` and
+`configurableFields(feature)`.
+
+`activeConfigurationId` names the configuration every regen of the live model uses (absent =
+Default); it must exist. `Part.properties` holds Default's part number and description. A
+part number resolves to the user-set one (the configuration's, else Default's), else
+`<document name>-<configuration name>`; Default with none set resolves to the document name.
+Exports are named after it; colliding names are reported, never overwritten.
+
+Writers keep the file **canonical**: an override reset to Default removes its key, and empty
+`params`, `features`, `fields` and `properties` objects (and an empty `configurations` array or a
+dangling `activeConfigurationId`) are removed rather than written. Deleting a feature or a
+parameter removes its overrides from every configuration in the same edit. Keys are sorted like
+every object (§2), including the pointer keys of `fields`; the order of the `configurations`
+array is preserved.
 
 **Features** all have `id`, `type`, `name`, `suppressed` and optional `annotations` (PMI). Fields
 holding user numbers are **expression strings**; the table in §5.4 gives each one's dimension.
@@ -340,7 +397,7 @@ returns `{ values, errors }` keyed by JSON pointer, in millimetres / radians.
 
 ## 7. Versioning and migrations
 
-`schemaVersion` (manifest and in-memory document) is an integer, currently **2**.
+`schemaVersion` (manifest and in-memory document) is an integer, currently **3**.
 
 - Readers **must** reject a `schemaVersion` greater than they understand, with a message telling
   the user to update ("This file uses document version N, but this copy of Wren understands up
@@ -356,6 +413,9 @@ returns `{ values, errors }` keyed by JSON pointer, in millimetres / radians.
     without a bump, so a v1 file may contain them. The 1→2 migration changes no data; its purpose
     is that an older Wren answers "update Wren" instead of a validation error. A file that uses
     none of these is still valid v1 content, and is rewritten as v2 on the next save.
+  - **v3 (M3.7):** additive. Adds `Part.configurations`, `Part.activeConfigurationId` and
+    `Part.properties` (§4.3). The 2→3 migration changes no data; its purpose is that an older Wren
+    answers "update Wren" instead of dropping configurations on save.
 - Every bump ships with a migration function in `packages/document/src/migrations.ts` and a test
   with a fixture of the old shape.
 - Within a version, readers ignore unknown *files* but treat unknown *properties* in the files
@@ -377,7 +437,13 @@ returns `{ values, errors }` keyed by JSON pointer, in millimetres / radians.
    feature in two folders stays with the lower folder id; a broken run is extended over its gap
    if no other folder's member is in it, otherwise the longest contiguous run is kept (earliest
    on a tie).
-4. Semantic problems (an expression that does not evaluate, an unresolved reference) are *not*
+4. Configurations: `validateDoc` checks types, unique ids (shared id space), that
+   `activeConfigurationId` is one of the part's configurations, that `params` values and `fields`
+   values are strings (`fields` also numbers and booleans), that `fields` keys are JSON pointers,
+   `suppressed` is a boolean and `material` is `null` or a material. An override whose feature,
+   parameter or field no longer exists is **not** a load error: resolution reports it and the
+   configuration shows "needs attention"; the override is never dropped silently.
+5. Semantic problems (an expression that does not evaluate, an unresolved reference) are *not*
    load errors; they surface in the UI as inline errors / "needs attention".
 
 ## 9. Version history (`.wren-history/`)
