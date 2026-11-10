@@ -149,6 +149,9 @@ test('rollback: a sketch whose feature is rolled back shows by default; an expli
   expect(await a.apply({ kind: 'setRollback', partId: p.id, index: 1 })).toBe(true);
   await a.idle();
   await expect.poll(() => shown(page)).toEqual([plate]);
+  // A sketch past the rollback bar is not in the viewport, and its eye says so (M3.6 gate B2).
+  await expect(await eye(page, 'Hole sketch', 'click')).toHaveAttribute('data-shown', 'false');
+  await expect(await eye(page, 'Plate sketch', 'click')).toHaveAttribute('data-shown', 'true');
 
   // Hidden is honoured even though nothing consumes the sketch.
   expect(

@@ -97,6 +97,8 @@ describe('addFolder', () => {
     fail(s, add(F(2, 'B', 2, 3)), /already in the folder ‘A’/);
     fail(s, add(F(2, 'B', 3, 3)), /only be listed once/);
     fail(s, add({ ...F(1, 'B', 3, 4) }), /already in use/);
+    fail(s, add(F(2, '  ', 3, 4)), /needs a name/);
+    fail(s, { kind: 'renameFolder', partId: pid, folderId: id(901), name: '' }, /needs a name/);
     fail(s, add({ ...F(2, 'B', 3, 4), id: id(5) }), /already in use/);
     fail(s, add(F(2, 'B', 3, 4), id(7777)), /Part .* was not found/);
   });
@@ -337,10 +339,21 @@ describe('folders follow the existing commands', () => {
     expect(validateDoc(s.getDoc())).toEqual([]);
   });
 
-  it('a one-feature folder still travels with its member outside other runs', () => {
+  it('moving a one-feature folder’s only member elsewhere takes it out; the folder goes (gate B1)', () => {
     const s = storeOf(partOf(6, [F(1, 'A', 2, 3), F(2, 'B', 6)]));
     ok(s.apply(move(6, 0)));
-    expect(members(s)).toEqual({ A: [2, 3], B: [6] });
+    expect(members(s)).toEqual({ A: [2, 3] });
+    expect(validateDoc(s.getDoc())).toEqual([]);
+  });
+
+  it('a folder whose members leave one by one goes when the last one leaves (gate B1)', () => {
+    // "Add to new folder" on one Extrude groups its nested sketch too; dragging both out (the tree
+    // moves a feature with its nested sketch) must not leave a folder behind.
+    const s = storeOf(partOf(5, [F(1, 'A', 2, 3)]));
+    ok(s.apply(move(2, 4))); // 1,3,4,5,2
+    expect(members(s)).toEqual({ A: [3] });
+    ok(s.apply(move(3, 4))); // 1,4,5,2,3
+    expect(members(s)).toEqual({});
   });
 
   it('moveFeature of a member out of its run takes it out', () => {
@@ -383,10 +396,13 @@ describe('folders follow the existing commands', () => {
     expect(validateDoc(s.getDoc())).toEqual([]);
   });
 
-  it('a folder’s only member takes its folder along', () => {
+  it('a folder’s only member moved away empties it, and it goes; moveFolder moves it', () => {
     const s = storeOf(partOf(4, [F(1, 'Solo', 2)]));
     ok(s.apply(move(2, 3)));
-    expect(members(s)).toEqual({ Solo: [2] });
+    expect(members(s)).toEqual({});
+    const t = storeOf(partOf(4, [F(1, 'Solo', 2)]));
+    ok(t.apply({ kind: 'moveFolder', partId: pid, folderId: id(901), toIndex: 3 }));
+    expect(members(t)).toEqual({ Solo: [2] });
   });
 
   it('addFeature inside a run joins; at the edges it does not', () => {

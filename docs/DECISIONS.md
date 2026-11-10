@@ -2039,7 +2039,7 @@ Implements ADR-066 in `packages/document` (`folders.ts`, `commands.ts`).
 
 - **Strict validation, repairing load.** `validateDoc` reports every folder problem (missing members, non-contiguous run, overlap, out of history order, empty folder). The load path (`migrateDoc`, hence `fromFiles` and `DocumentStore.load`) first runs `normalizeFolders` on parts whose folders are well-typed, so a merge that left a broken run loads repaired. Wrong types (a non-string name, `features` not an array) are load errors.
 - **A feature held by two folders** (each branch added it to a different folder) stays with the folder of the lowest id.
-- **A one-feature folder follows its member.** Moving its only member does not remove the folder.
+- **A folder whose last member leaves goes** (M3.6 gate B1, replacing "a one-feature folder follows its member"). Moving a folder's only member is an ordinary `moveFeature`: the member leaves (and joins another folder if it lands strictly inside one's run), and the emptied folder is removed. Moving a whole folder is `moveFolder` (dragging the folder row). The exception made the store disagree with the tree, which predicts membership from the Command rules: dragging Extrude 2 (with its nested sketch) out of a folder created from it left an invisible folder holding only the sketch.
 - **Raw `patch` commands** are normalised in the same undo entry; `addPart` repairs the folders it is given.
 - **`moveFolder` and the rollback bar:** the run is evaluated iff it lands before the bar of the other features (the `moveFeature` rule for a run). It is refused when a member would cross geometry it uses or that uses it.
 - **Labels for bulk commands** count the features actually changed and name the feature when there is one.

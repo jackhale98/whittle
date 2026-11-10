@@ -105,6 +105,13 @@ describe('drop -> membership', () => {
     const one: TreeFolder = { id: 'o', name: 'One', features: ['h1'] };
     expect(membershipAfterMove(reorder(['h1'], 'e1'), [one], ['h1'])).toEqual({ leaves: 'o' });
   });
+  it('a member dropped inside another folder leaves its own and joins that one (gate B1)', () => {
+    const one: TreeFolder = { id: 'o', name: 'One', features: ['h1'] };
+    expect(membershipAfterMove(reorder(['h1'], 'f2'), [mounting, one], ['h1'])).toEqual({
+      leaves: 'o',
+      joins: 'm',
+    });
+  });
   it('a feature block moves with its sketch, sketch first when moving up', () => {
     const steps = planBlockMove(ids, ['s2', 'e2'], 'f1');
     expect(steps.map((s) => s.id)).toEqual(['s2', 'e2']);

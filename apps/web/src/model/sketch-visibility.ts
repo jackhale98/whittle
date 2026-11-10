@@ -8,6 +8,7 @@
  * - `auto` (or absent) is the ADR-060 rule: shown until consumed; a sketch comes back while its
  *   consuming feature is being edited, or while a region is being picked.
  * - The sketch being edited is always shown (the sketch session owns its overlay).
+ * - A rolled-back or suppressed sketch is never shown: the regen does not evaluate it.
  */
 
 import type { Feature, Id, SketchFeature } from '@wren-cad/contracts';
@@ -38,8 +39,18 @@ export function isConsumed(ctx: VisibilityContext, id: Id): boolean {
   return false;
 }
 
+/** A sketch the regen does not evaluate (rolled back or suppressed) is not in the viewport. */
+export function isEvaluated(ctx: VisibilityContext, sketch: SketchFeature): boolean {
+  if (sketch.suppressed) return false;
+  const i = ctx.features.findIndex((f) => f.id === sketch.id);
+  return i >= 0 && i < Math.min(ctx.rollback, ctx.features.length);
+}
+
 export function sketchShown(sketch: SketchFeature, ctx: VisibilityContext): boolean {
   if (ctx.activeSketch === sketch.id) return true;
+  // Rolled back or suppressed: the regen skips it, so nothing is on screen whatever the setting
+  // (M3.6 gate B2: the eye said "shown" for sketches past the rollback bar).
+  if (!isEvaluated(ctx, sketch)) return false;
   const vis = sketch.visibility;
   if (vis === 'shown') return true;
   if (ctx.wantRegions) return true;

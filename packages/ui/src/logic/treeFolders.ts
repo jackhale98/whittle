@@ -175,18 +175,29 @@ export function membershipAfterMove(
   const at = after.indexOf(head);
   const moved = new Set(block);
   const own = folderOf(folders, head);
+  // Mirrors the document (foldersAfterPlace): strictly inside a run joins it, anywhere else leaves;
+  // a folder whose last member leaves goes. A member can leave its folder and join another.
+  const joinsOther = (except?: Id): Id | undefined => {
+    for (const f of folders) {
+      if (f.id === except) continue;
+      const pos = f.features
+        .filter((m) => !moved.has(m))
+        .map((m) => after.indexOf(m))
+        .filter((p) => p >= 0);
+      if (pos.length < 2) continue;
+      if (at > Math.min(...pos) && at < Math.max(...pos)) return f.id;
+    }
+    return undefined;
+  };
   if (own) {
     const others = own.features.filter((m) => !moved.has(m)).map((m) => after.indexOf(m));
-    if (others.length === 0) return { leaves: own.id };
-    const stays = at > Math.min(...others) && at < Math.max(...others);
-    return stays ? {} : { leaves: own.id };
+    const stays = others.length > 0 && at > Math.min(...others) && at < Math.max(...others);
+    if (stays) return {};
+    const joins = joinsOther(own.id);
+    return joins ? { leaves: own.id, joins } : { leaves: own.id };
   }
-  for (const f of folders) {
-    const pos = f.features.map((m) => after.indexOf(m)).filter((p) => p >= 0);
-    if (pos.length < 2) continue;
-    if (at > Math.min(...pos) && at < Math.max(...pos)) return { joins: f.id };
-  }
-  return {};
+  const joins = joinsOther();
+  return joins ? { joins } : {};
 }
 
 /** The folder whose run the document gap `g` (before feature index g) lies strictly inside. */

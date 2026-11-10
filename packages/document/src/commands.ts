@@ -400,7 +400,7 @@ function compileAddFolder(doc: WrenDoc, cmd: Extract<Command, { kind: 'addFolder
   const part = doc.parts[i] as Part;
   const { id, name } = cmd.folder;
   if (typeof id !== 'string' || id === '') return err('A folder needs an id');
-  if (typeof name !== 'string') return err('A folder needs a name');
+  if (typeof name !== 'string' || name.trim() === '') return err('A folder needs a name');
   if (usedIds(doc).has(id)) return err(`The id ‘${id}’ is already in use`);
   const wanted = cmd.folder.features;
   if (!Array.isArray(wanted) || wanted.length === 0) {
@@ -441,7 +441,9 @@ function compileRenameOrRemoveFolder(
   const folder = part.folders?.[k];
   if (!folder) return err(`Folder ‘${cmd.folderId}’ was not found`);
   if (cmd.kind === 'renameFolder') {
-    if (typeof cmd.name !== 'string') return err('A folder needs a name');
+    if (typeof cmd.name !== 'string' || cmd.name.trim() === '') {
+      return err('A folder needs a name');
+    }
     return {
       ok: true,
       label: `Rename folder ${folder.name} to ${cmd.name}`,

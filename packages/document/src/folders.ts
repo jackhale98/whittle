@@ -230,7 +230,8 @@ export function foldersAfterRemove(
 /**
  * Folders after `featureId` lands in `newOrder` (an insert or a move; `newOrder` already holds
  * it). Per the Command doc: strictly between two members of a folder joins it, anywhere else
- * leaves it. A folder's only member takes the folder along (moving a one-feature folder).
+ * leaves it. A folder whose only member moves is left empty and goes (M3.6 gate B1): moving a
+ * whole folder is `moveFolder`, so the tree's prediction and the store always agree.
  */
 export function foldersAfterPlace(
   folders: readonly FeatureFolder[] | undefined,
@@ -239,24 +240,11 @@ export function foldersAfterPlace(
 ): FeatureFolder[] {
   const out: FeatureFolder[] = [];
   const at = newOrder.indexOf(featureId);
-  const insideOf = (others: readonly Id[]) => {
-    const idx = others.map((m) => newOrder.indexOf(m)).sort((a, b) => a - b);
-    return at > (idx[0] as number) && at < (idx[idx.length - 1] as number);
-  };
-  // Landing strictly inside another folder's run joins it. A one-feature folder normally travels
-  // with its only member, but not into another folder: the member joins that one and its own
-  // folder, now empty, goes (else the feature would sit in two folders).
-  const joined = (folders ?? []).some((f) => {
-    const others = f.features.filter((m) => m !== featureId);
-    return others.length > 0 && insideOf(others);
-  });
   for (const f of folders ?? []) {
     const others = f.features.filter((m) => m !== featureId);
-    if (others.length === 0) {
-      if (!joined) out.push(f);
-      continue;
-    }
-    const inside = insideOf(others);
+    if (others.length === 0) continue; // its only member left: the folder goes
+    const idx = others.map((m) => newOrder.indexOf(m)).sort((a, b) => a - b);
+    const inside = at > (idx[0] as number) && at < (idx[idx.length - 1] as number);
     const kept = (inside ? [...others, featureId] : others).sort(
       (a, b) => newOrder.indexOf(a) - newOrder.indexOf(b),
     );

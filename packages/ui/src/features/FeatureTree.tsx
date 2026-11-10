@@ -177,6 +177,8 @@ interface Slot {
   /** `into` joins a folder, `out` leaves one, `stay` reorders inside its own folder. */
   kind: 'top' | 'into' | 'stay' | 'out';
   folderId?: Id;
+  /** For `out`: the folder it lands inside and joins (a move from one folder into another). */
+  joinsId?: Id;
   steps?: BlockStep[];
   toIndex?: number;
   /** Pixel y of the line, measured when the drag starts. */
@@ -314,7 +316,12 @@ export function FeatureTree({
   const [multi, setMulti] = useState<readonly Id[]>([]);
   const [anchorId, setAnchorId] = useState<Id | null>(null);
   const [localCollapsed, setLocalCollapsed] = useState<readonly Id[]>([]);
-  const [leave, setLeave] = useState<{ id: Id; folderId: Id; steps: BlockStep[] } | null>(null);
+  const [leave, setLeave] = useState<{
+    id: Id;
+    folderId: Id;
+    joinsId?: Id;
+    steps: BlockStep[];
+  } | null>(null);
   const [info, setInfo] = useState('');
   const [awaitFolder, setAwaitFolder] = useState<Id | null>(null);
   const [dropSay, setDropSay] = useState('');
@@ -562,7 +569,16 @@ export function FeatureTree({
       if (steps.length === 0) continue;
       const mem = membershipAfterMove(applySteps(ids, steps), folders, block);
       const own = folderOf(folders, row.id);
-      if (mem.leaves) out.push({ g, before, kind: 'out', folderId: mem.leaves, steps, y: 0 });
+      if (mem.leaves)
+        out.push({
+          g,
+          before,
+          kind: 'out',
+          folderId: mem.leaves,
+          ...(mem.joins ? { joinsId: mem.joins } : {}),
+          steps,
+          y: 0,
+        });
       else if (mem.joins) out.push({ g, before, kind: 'into', folderId: mem.joins, steps, y: 0 });
       else if (own) out.push({ g, before, kind: 'stay', folderId: own.id, steps, y: 0 });
       else out.push({ g, before, kind: 'top', steps, y: 0 });
@@ -585,7 +601,12 @@ export function FeatureTree({
     const steps = slot.steps ?? [];
     const name = nameOf(row.id) ?? 'The feature';
     if (slot.kind === 'out' && slot.folderId) {
-      setLeave({ id: row.id, folderId: slot.folderId, steps });
+      setLeave({
+        id: row.id,
+        folderId: slot.folderId,
+        ...(slot.joinsId ? { joinsId: slot.joinsId } : {}),
+        steps,
+      });
       return;
     }
     runSteps(
@@ -1533,10 +1554,15 @@ export function FeatureTree({
           folder={folderName(leave.folderId)}
           touch={touch}
           onConfirm={() => {
-            const { id, folderId, steps } = leave;
+            const { id, folderId, joinsId, steps } = leave;
             setLeave(null);
+            const what = nameOf(id) ?? 'the feature';
             runSteps(id, steps, () =>
-              setInfo(`Took ${nameOf(id) ?? 'the feature'} out of ${folderName(folderId)}.`),
+              setInfo(
+                joinsId
+                  ? `Moved ${what} from ${folderName(folderId)} into ${folderName(joinsId)}.`
+                  : `Took ${what} out of ${folderName(folderId)}.`,
+              ),
             );
             refocus(id);
           }}

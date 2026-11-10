@@ -51,6 +51,19 @@ describe('sketchShown (the one resolver for the viewport and the tree eye)', () 
     expect(sketchShown(s, ctx([s], { wantRegions: true }))).toBe(true);
     expect(sketchShown(s, ctx([s], { activeSketch: 'A' }))).toBe(true);
   });
+  it('a rolled-back or suppressed sketch is never shown, whatever its setting (gate B2)', () => {
+    for (const vis of [undefined, 'auto', 'shown'] as const) {
+      const s = sketch('B', vis);
+      const f = [sketch('A'), extrude('E', 'A'), s];
+      expect(sketchShown(s, ctx(f, { rollback: 2 })), String(vis)).toBe(false);
+      expect(sketchShown(s, ctx(f, { rollback: 2, wantRegions: true })), String(vis)).toBe(false);
+      const off = { ...s, suppressed: true } as SketchFeature;
+      expect(sketchShown(off, ctx([sketch('A'), off])), String(vis)).toBe(false);
+    }
+    // Sketch mode on it still shows it (its session owns the overlay).
+    const s = sketch('B', 'shown');
+    expect(sketchShown(s, ctx([s], { rollback: 0, activeSketch: 'B' }))).toBe(true);
+  });
   it('editing the consuming feature shows an automatic sketch, not a hidden one', () => {
     const e = extrude('E', 'A');
     const auto = [sketch('A'), e];
