@@ -142,6 +142,7 @@ export {
   buildExportRequest,
   EXPORT_TARGETS,
   type ExportBody,
+  type ExportConfigurations,
   type ExportRequest,
   type ExportTarget,
   QUALITY_PRESETS,
@@ -228,6 +229,7 @@ export {
   HoleWizard,
 } from './inspector/FeatureInspector';
 export { FeatureLineage, type FeatureLineageProps } from './inspector/FeatureLineage';
+export type { FieldConfigCtx } from './inspector/fieldKit';
 export {
   type ResolvedDim,
   resolveHole,
@@ -236,12 +238,15 @@ export {
 } from './inspector/holeResolve';
 export { type MaterialLibraryItem, SWATCHES, toMaterial } from './inspector/materials';
 export {
+  type ConfigMassRow,
   defaultMassFormat,
   type MassFormat,
   MassReadout,
   type MassSummary,
+  type PartConfigurationProps,
   PartInspector,
   type PartInspectorProps,
+  type PartPropertiesProps,
 } from './inspector/PartInspector';
 export {
   defaultDescribeRef,
@@ -367,7 +372,11 @@ export {
 } from './panels/NavigationSettings';
 export { type PartListItem, PartsPanel, type PartsPanelProps } from './panels/PartsPanel';
 export { type SectionAxis, SectionPanel, type SectionPanelProps } from './panels/SectionPanel';
-export { ParamsTable, type ParamsTableProps } from './params/ParamsTable';
+export {
+  type ParamsConfiguration,
+  ParamsTable,
+  type ParamsTableProps,
+} from './params/ParamsTable';
 export { AppShell, type AppShellProps } from './shells/AppShell';
 export { BottomSheet, type BottomSheetProps } from './shells/BottomSheet';
 export { DesktopShell } from './shells/DesktopShell';

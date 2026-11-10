@@ -27,7 +27,16 @@ import { featureMeta } from '../features/featureMeta';
 import type { FormatValue } from '../format';
 import { attentionSentences } from './attentionMessage';
 import { CauseSentence } from './CauseSentence';
-import { type Ctx, dirOptions, type Edit, ExprField, Pick, ScopeFields, without } from './fieldKit';
+import {
+  type Ctx,
+  dirOptions,
+  type Edit,
+  ExprField,
+  type FieldConfigCtx,
+  Pick,
+  ScopeFields,
+  without,
+} from './fieldKit';
 import { HoleFields } from './HoleWizard';
 import {
   AxisFields,
@@ -75,6 +84,8 @@ export interface FeatureInspectorProps {
   /** Closes the inspector back to selection state. */
   onDone?(): void;
   units?: { length: string; angle: string };
+  /** M3.7: override markers (with Reset) on the fields the active configuration overrides. */
+  configuration?: FieldConfigCtx;
   density?: 'compact' | 'touch';
   className?: string;
 }
@@ -575,6 +586,22 @@ function StatusBanner({
       </div>
     );
   }
+  if (status.state === 'needsAttention' && status.error && !status.unresolved?.length) {
+    // Not a lost reference: a configuration's override no longer applies (M3.7).
+    return (
+      <div
+        role="alert"
+        data-testid="config-issue"
+        className="mx-4 mt-3 flex gap-2 rounded-control bg-warning-soft p-2.5 text-ui text-warning-text"
+      >
+        <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
+        <div className="min-w-0 flex-1">
+          <p className="font-medium">{status.error.message}</p>
+          {status.error.hint ? <p className="mt-0.5 text-xs">{status.error.hint}</p> : null}
+        </div>
+      </div>
+    );
+  }
   if (status.state === 'needsAttention') {
     const n = Math.max(status.unresolved?.length ?? 1, 1);
     const ambiguous = status.unresolved?.[0]?.reason === 'ambiguous';
@@ -634,6 +661,7 @@ export function FeatureInspector({
   onEditSketch,
   onDone,
   units = { length: 'mm', angle: 'deg' },
+  configuration,
   density = 'compact',
   className,
 }: FeatureInspectorProps) {
@@ -649,6 +677,7 @@ export function FeatureInspector({
     describeFeature,
     holeTables,
     onPick,
+    ...(configuration ? { config: configuration } : {}),
   };
   const edit = {
     commit: (next: Feature) => onChange(next),

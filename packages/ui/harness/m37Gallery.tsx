@@ -1,3 +1,4 @@
+import type { Expr } from '@wren-cad/contracts';
 import { lazy, type ReactNode, Suspense, useState } from 'react';
 import {
   ChangedInAllNotice,
@@ -5,9 +6,13 @@ import {
   type ConfigTableRow,
   ConfigurationPill,
   configTargetKey,
+  ExportPanel,
+  FeatureInspector,
   FeatureTree,
   type FeatureTreeItem,
   OverrideMarker,
+  ParamsTable,
+  PartInspector,
   ScopeChip,
   useOneShotScope,
 } from '../src';
@@ -18,7 +23,7 @@ import {
   configRows,
   configSummaries,
 } from './configFixtures';
-import { makeEvaluator } from './fixtures';
+import { extrudeSample, makeEvaluator, sampleLibrary, sampleParams } from './fixtures';
 
 /* M3.7 visual states: the pill, override markers, the scope chip and notice, the tree's suppress
    scope and the configuration table. Open popovers and editing are driven by e2e/m37.spec.ts. */
@@ -308,6 +313,88 @@ function Review() {
   );
 }
 
+/** The inspector, Params tab, part inspector and export form with a configuration active (app wiring). */
+function Wiring({ tier }: { tier: Tier }) {
+  const density = tier === 'desktop' ? 'compact' : 'touch';
+  const size = tier === 'desktop' ? 'md' : 'touch';
+  const ev = (e: Expr) => makeEvaluator(sampleParams)(e);
+  return (
+    <div className="flex flex-col gap-6 p-4" data-testid="g-m37-wiring">
+      <section className="w-[296px] max-w-full overflow-hidden rounded-panel bg-surface shadow-pop">
+        <FeatureInspector
+          feature={extrudeSample}
+          density={density}
+          evaluate={(e, x) => makeEvaluator(sampleParams)(e, x)}
+          onChange={() => {}}
+          configuration={{
+            activeName: 'Long',
+            overridden: (p) => p === '/end/depth',
+            reset: () => {},
+          }}
+        />
+      </section>
+      <section className="w-[296px] max-w-full overflow-hidden rounded-panel bg-surface shadow-pop">
+        <ParamsTable
+          density={density}
+          params={sampleParams.slice(0, 3)}
+          evaluate={ev}
+          configuration={{
+            activeId: 'c-long',
+            activeName: 'Long',
+            overrides: { P1: '80mm' },
+            onReset: () => {},
+          }}
+          onUpdate={() => {}}
+        />
+      </section>
+      <section className="w-[296px] max-w-full overflow-hidden rounded-panel bg-surface shadow-pop">
+        <PartInspector
+          part={{
+            name: 'Bracket',
+            material: sampleLibrary[0] ? { name: 'Steel', density: '7.85 g/cm^3' } : undefined,
+          }}
+          library={sampleLibrary}
+          density={density}
+          evaluate={(e) => makeEvaluator([])(e, 'density')}
+          mass={{ volume: 31_250, area: 8_420.5, mass: 0.245, centroid: [30, 20, 6.5] }}
+          onSetMaterial={() => {}}
+          configuration={{
+            activeName: 'Long',
+            materialOverridden: true,
+            onResetMaterial: () => {},
+            masses: [
+              { id: null, name: 'Default', active: false, status: 'ok', mass: '0.2 kg' },
+              { id: 'c-long', name: 'Long', active: true, status: 'ok', mass: '0.245 kg' },
+              { id: 'c-steel', name: 'Steel', active: false, status: 'unbuilt' },
+            ],
+            properties: {
+              partNumber: '',
+              description: 'Long bracket',
+              generatedPartNumber: 'Bracket-Long',
+              overridden: { description: true },
+              onChange: () => {},
+              onReset: () => {},
+            },
+          }}
+        />
+      </section>
+      <section className="w-[320px] max-w-full rounded-panel bg-surface p-3 shadow-pop">
+        <ExportPanel
+          size={size}
+          onExport={() => {}}
+          configurations={{
+            activeName: 'Long',
+            count: 3,
+            warnings: [
+              'Default and Steel would both be written to PL-100. Give them different part numbers.',
+            ],
+          }}
+        />
+      </section>
+    </div>
+  );
+}
+
 export function M37Gallery({ section, tier }: { section: string; tier: Tier }) {
   switch (section) {
     case 'm37-pill':
@@ -336,6 +423,8 @@ export function M37Gallery({ section, tier }: { section: string; tier: Tier }) {
       return <Review />;
     case 'm37-live':
       return <Live tier={tier} />;
+    case 'm37-wiring':
+      return <Wiring tier={tier} />;
     default:
       return null;
   }

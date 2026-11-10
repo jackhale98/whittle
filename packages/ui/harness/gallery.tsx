@@ -602,6 +602,7 @@ export function Gallery({
       case 'm37-table-collapsed':
       case 'm37-review':
       case 'm37-live':
+      case 'm37-wiring':
         return <M37Gallery section={section} tier={tier} />;
       case 'm35-radial':
       case 'm35-radial-live':

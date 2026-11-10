@@ -526,6 +526,24 @@ the tablet and desktop trees can.
 A feature that fails is marked in the tree with a short explanation. Its last good geometry stays
 on screen as a ghost, so you can see what changed.
 
+## Configurations
+
+A part can have several **configurations**, such as a Long and a Short version, that differ in parameter values, feature settings, which features are suppressed, material and part number. **Default** is the part as you drew it; a configuration stores only what differs from it.
+
+- **The pill.** The configuration pill in the top bar shows the active configuration and turns amber with a coloured edge whenever it is not Default. Tap it to switch. Each entry shows its status: OK, Failed, Needs attention, or Not yet built. Wren checks the other configurations in the background while you work; saving never rebuilds them. On the phone the pill appears once the part has a configuration, and only switches.
+- **New configuration…** (pill, desktop and tablet). Name it and choose **From Default** or **From Active** (Active is preselected). The new configuration becomes active.
+- **Where an edit lands.** Wren decides at the moment you edit, and remembers nothing.
+  - Changing a value the active configuration does **not** override changes Default, so every configuration that inherits it changes too. A notice says "Changed in all N configurations" and has **Undo**.
+  - Changing a value marked **Override** changes only the active configuration.
+  - Turn on **This configuration only** next to a value to override it in the active configuration. It applies to that one edit and switches itself off afterwards.
+  - **Reset to default** on an Override marker removes the override.
+- **Suppressing.** In the feature tree's actions choose **Suppress in this configuration only** or **Suppress in all configurations**. A new feature is never suppressed in the other configurations. On the phone, Suppress affects the active configuration only.
+- **The table.** **Manage…** in the pill opens the configuration table (desktop and tablet). Rows are configurations, columns are parameters, each feature's expressions and options, suppression, material, colour, part number and description. Cells that differ from Default are highlighted. Type expressions with units in a cell, press Delete to reset it, double-click a feature value to jump to it in the inspector, and paste a block from a spreadsheet (configuration names in the first column, optional header row) to create configurations in one undo step. The Status and Mass columns come from the background check.
+- **Part properties.** The part inspector has Part number and Description. Without a part number, the name is the document name plus the configuration name, such as "Bracket-Long". The inspector also lists the mass of every configuration.
+- **Exporting.** The Export form offers **Active** or **All**: one file per configuration, named by part number. If two configurations would write the same file name, Wren warns and exports nothing. Give them different part numbers.
+- **Needs attention.** An override that no longer fits (for example a field that was removed) marks that feature "needs attention" in that configuration only, with the reason; the override is kept. If the active configuration itself is missing, Wren says so and shows Default only until you choose a configuration. It never switches silently.
+- **Versions.** Compare lists configuration changes ("Long: width 45 mm"); merges combine edits to different configurations and flag the same cell edited on both sides.
+
 ## Section view
 
 A section slices the model open so you can look inside. Turn it on with **Section view** in the

@@ -12,8 +12,41 @@ import type {
 } from '@wren-cad/contracts';
 import { Field, Segmented } from '../components/controls';
 import { ExpressionInput } from '../components/ExpressionInput';
+import { OverrideMarker } from '../config/markers';
 import type { FormatValue } from '../format';
 import { PickField } from './PickField';
+
+/**
+ * Configuration awareness of the field groups (M3.7). `overridden` and `reset` are keyed by the
+ * JSON pointer inside the feature (`/end/depth`, `/radius`), which `ExprField` derives from its own
+ * `build`, so no call site names a pointer.
+ */
+export interface FieldConfigCtx {
+  activeName: string;
+  overridden(pointer: string): boolean;
+  reset(pointer: string): void;
+}
+
+const PROBE = '\u2063wren-probe';
+
+/** The pointer of the leaf a `build(expr)` function writes its argument to, or null. */
+export function probePointer(build: (expr: string) => unknown): string | null {
+  const walk = (v: unknown, at: string): string | null => {
+    if (v === PROBE) return at;
+    if (v === null || typeof v !== 'object') return null;
+    const entries = Array.isArray(v) ? v.map((x, i) => [String(i), x] as const) : Object.entries(v);
+    for (const [k, x] of entries) {
+      const r = walk(x, `${at}/${k.replace(/~/g, '~0').replace(/\//g, '~1')}`);
+      if (r !== null) return r;
+    }
+    return null;
+  };
+  try {
+    return walk(build(PROBE), '');
+  } catch {
+    return null;
+  }
+}
 
 /** Everything the per-type field groups share. */
 export interface Ctx {
@@ -29,6 +62,8 @@ export interface Ctx {
   /** Standards tables for the hole wizard and thread size lists. */
   holeTables?: Partial<Record<HoleStandard, HoleTable>>;
   onPick?(path: string): void;
+  /** M3.7: the active configuration's overrides of this feature's fields (markers with Reset). */
+  config?: FieldConfigCtx;
 }
 
 export const opOptions = [
@@ -70,8 +105,24 @@ export function ExprField<F extends Feature>({
 }) {
   const unit =
     expected === 'length' ? c.units.length : expected === 'angle' ? c.units.angle : undefined;
+  const pointer = probePointer(build);
+  const overridden = pointer !== null && !!c.config?.overridden(pointer);
   return (
-    <Field label={label}>
+    <Field
+      label={label}
+      {...(pointer !== null ? { pointer } : {})}
+      adornment={
+        c.config && pointer !== null ? (
+          <OverrideMarker
+            overridden={overridden}
+            configurationName={c.config.activeName}
+            fieldLabel={label}
+            onReset={() => c.config?.reset(pointer)}
+            size={c.size}
+          />
+        ) : undefined
+      }
+    >
       <ExpressionInput
         label={label}
         value={value}

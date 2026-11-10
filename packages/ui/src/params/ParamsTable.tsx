@@ -4,18 +4,42 @@ import { m } from 'motion/react';
 import { type KeyboardEvent, type PointerEvent, useRef, useState } from 'react';
 import { ExpressionInput } from '../components/ExpressionInput';
 import { Button, cn, IconButton } from '../components/primitives';
+import { OverrideMarker, ScopeChip, useOneShotScope } from '../config/markers';
+import type { EditScope } from '../config/model';
 import type { MoveResult } from '../features/FeatureTree';
 import { defaultFormatValue, type FormatValue } from '../format';
 import { useSpring } from '../motion';
 import { EmptyState } from '../shells/shared';
 
+/**
+ * M3.7: what the Params tab needs to show the active configuration. A parameter's override applies
+ * while this part regenerates (owner D1). Editing an inherited value edits Default (`scope: 'all'`),
+ * an overridden value or one with the "This configuration only" chip on edits the configuration.
+ */
+export interface ParamsConfiguration {
+  /** The active configuration's id; `null` = Default (nothing below is shown). */
+  activeId: Id | null;
+  activeName: string;
+  /** The active configuration's overrides: paramId → expression. */
+  overrides: Readonly<Record<Id, Expr>>;
+  /** "Reset to default" on a marker. */
+  onReset(id: Id): void;
+}
+
 export interface ParamsTableProps {
   params: readonly Param[];
+  /** M3.7: the active configuration. Absent or Default: the plain table. */
+  configuration?: ParamsConfiguration;
   /** Evaluates an expression in the document scope (the host resolves other params). */
   evaluate(expr: Expr): EvalResult;
   formatValue?: FormatValue;
   onAdd?(): void;
-  onUpdate?(id: Id, patch: { name?: string; expr?: Expr; description?: string }): void;
+  /** `scope` (M3.7) is given for an expression edit while a configuration is active. */
+  onUpdate?(
+    id: Id,
+    patch: { name?: string; expr?: Expr; description?: string },
+    scope?: EditScope,
+  ): void;
   onRemove?(id: Id): void;
   /** Reorder; may be refused like the feature tree's. */
   onMove?(id: Id, toIndex: number): MoveResult | Promise<MoveResult> | undefined;
@@ -63,6 +87,12 @@ function ParamRow({
 }: RowProps) {
   const { params, evaluate, formatValue, onUpdate, onRemove, onMove, usage, density } = props;
   const touch = density === 'touch';
+  const cfg = props.configuration;
+  const activeIsDefault = !cfg || cfg.activeId === null;
+  const oneShot = useOneShotScope(activeIsDefault, cfg?.activeId);
+  const overriddenExpr = cfg?.overrides[param.id];
+  const overridden = !activeIsDefault && overriddenExpr !== undefined;
+  const shown = overridden ? (overriddenExpr as Expr) : param.expr;
   const [nameDraft, setNameDraft] = useState<string | null>(null);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [describing, setDescribing] = useState(false);
@@ -70,7 +100,7 @@ function ParamRow({
   const fmt = formatValue ?? defaultFormatValue;
   const name = nameDraft ?? param.name;
   const nameError = nameDraft !== null ? validateName(nameDraft, param.id, params) : null;
-  const result = param.expr.trim() ? evaluate(param.expr) : undefined;
+  const result = shown.trim() ? evaluate(shown) : undefined;
   const used = usage?.[param.id] ?? 0;
 
   function commitName() {
@@ -182,14 +212,40 @@ function ParamRow({
               {nameError}
             </p>
           ) : null}
+          {cfg && !activeIsDefault ? (
+            <div className="flex min-h-5 items-center gap-1.5 px-1.5">
+              <OverrideMarker
+                overridden={overridden}
+                configurationName={cfg.activeName}
+                fieldLabel={param.name}
+                onReset={() => cfg.onReset(param.id)}
+                size={touch ? 'touch' : 'md'}
+              />
+              <ScopeChip
+                configurationName={cfg.activeName}
+                activeIsDefault={false}
+                scope={oneShot.scope}
+                onScopeChange={oneShot.setScope}
+                size={touch ? 'touch' : 'md'}
+              />
+            </div>
+          ) : null}
           <ExpressionInput
             label={`Expression for ${param.name}`}
-            value={param.expr}
+            value={shown}
             evaluate={evaluate}
             formatValue={formatValue}
             showValue={false}
             size={touch ? 'touch' : 'md'}
-            onCommit={(expr) => onUpdate?.(param.id, { expr })}
+            onCommit={(expr) =>
+              cfg && !activeIsDefault
+                ? onUpdate?.(
+                    param.id,
+                    { expr },
+                    oneShot.consume() === 'configuration' || overridden ? 'configuration' : 'all',
+                  )
+                : onUpdate?.(param.id, { expr })
+            }
           />
           {param.description || describing ? (
             <input

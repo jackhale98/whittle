@@ -36,6 +36,7 @@ for (const theme of themes) {
       'm37-pill',
       'm37-markers',
       'm37-review',
+      'm37-wiring',
       'm37-table',
       'm37-table-transposed',
       'm37-table-collapsed',
@@ -158,5 +159,25 @@ for (const theme of themes) {
       await expect(page).toHaveScreenshot(`m37-${tier}-${theme}-suppress-review.png`);
       await a11y(page);
     });
+  });
+}
+
+/* The pill in the real shells, and the table panel over the viewport (the app's wiring). */
+for (const theme of themes) {
+  test.describe(`m37 shells ${theme}`, () => {
+    for (const cfg of ['default', 'long', 'panel'] as const) {
+      test(`shell with the configuration ${cfg} (${theme})`, async ({ page }, info) => {
+        const tier = info.project.name as Tier;
+        if (cfg === 'panel' && tier === 'phone') test.skip(true, 'no table panel on the phone');
+        await page.goto(`/?shell=${tier}&theme=${theme}&data=1&cfg=${cfg}&inspector=part`);
+        await page.locator('[data-testid="app-shell"]').waitFor();
+        if (cfg === 'panel') await page.locator('[data-testid="configuration-table"]').waitFor();
+        await page.evaluate(() => document.fonts.ready);
+        await page.waitForTimeout(150);
+        await expect(page.getByTestId('configuration-pill')).toBeVisible();
+        await expect(page).toHaveScreenshot(`m37-${tier}-${theme}-shell-${cfg}.png`);
+        await a11y(page);
+      });
+    }
   });
 }
