@@ -92,6 +92,11 @@ export interface TouchStats {
   environmentReady: boolean;
   handleHover: string | null;
   sectionActive: boolean;
+  /** The active section's unit normal and plane offset (n . p = offset); null when off. */
+  sectionNormal: [number, number, number] | null;
+  sectionOffset: number | null;
+  /** Bodies whose stencil cap quad is drawn right now (caps filled). */
+  capsDrawn: number;
 }
 
 export interface NavigationState {

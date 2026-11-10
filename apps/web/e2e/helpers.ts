@@ -78,7 +78,16 @@ export interface AppHooks {
       busy: boolean;
       error: string | null;
     } | null;
-    section: { enabled: boolean; axis: string; offset: number; flipped: boolean; picking: boolean };
+    section: {
+      enabled: boolean;
+      axis: string;
+      offset: number;
+      flipped: boolean;
+      picking: boolean;
+      open: boolean;
+      tiltU: number;
+      tiltV: number;
+    };
     bubble: boolean;
     chooser: string[] | null;
     /** M3.5: the radial menu request, the box-select band, the settings tab, Tab's order. */
@@ -165,6 +174,9 @@ export interface ViewportProbe {
     prismBuilds: number;
     lastPreviewPresentedAt: number;
     sectionActive: boolean;
+    sectionNormal: [number, number, number] | null;
+    sectionOffset: number | null;
+    capsDrawn: number;
     handleHover: string | null;
   };
   getRenderCount(): number;

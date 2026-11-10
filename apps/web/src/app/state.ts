@@ -159,6 +159,9 @@ export interface SectionUi {
   axis: SectionAxis;
   offset: number;
   flipped: boolean;
+  /** Tilts (radians) about the base plane's two in-plane axes; the base is the axis or face. */
+  tiltU: number;
+  tiltV: number;
   face: { origin: Vec3; normal: Vec3; label: string } | null;
   /** The next viewport pick sets the face. */
   picking: boolean;
@@ -240,6 +243,8 @@ export const initialSection: SectionUi = {
   axis: 'z',
   offset: 0,
   flipped: false,
+  tiltU: 0,
+  tiltV: 0,
   face: null,
   picking: false,
   open: false,

@@ -77,6 +77,7 @@ import { PointerDowns } from './pointers';
 import * as sync from './project-sync';
 import { PushPullTool } from './push-pull';
 import * as regenView from './regen-view';
+import { SectionTool } from './section-tool';
 import type { SketchSession } from './sketch-session';
 import * as sketchVis from './sketch-visibility-sync';
 import { type EngineState, initialUi, type RegenView, type SectionUi, type UiState } from './state';
@@ -124,6 +125,7 @@ export class Workbench {
   /** "Take the tour" requests (welcome card, ⌘K); the app runs the tutorial on a new part. */
   readonly tourRequests = observable(0);
   readonly pushPull: PushPullTool;
+  readonly sectionTool: SectionTool;
   readonly measure: MeasureTool;
   loop: RegenLoop | null = null;
   boot: EngineBoot | null = null;
@@ -185,6 +187,7 @@ export class Workbench {
     this.tier = getDiagnostics().tier;
     this.policy = policyFor(this.tier);
     this.pushPull = new PushPullTool(this);
+    this.sectionTool = new SectionTool(this);
     this.measure = new MeasureTool(this);
     // Coalescing groups are closed explicitly (pointer up, Enter, blur); the idle window only
     // guards against a forgotten commit, so it is long enough that a drag or a typed value on a
@@ -893,6 +896,15 @@ export class Workbench {
 
   closeSection(): void {
     view.closeSection(this);
+  }
+
+  /** Exit section: the cut, the chip, the panel and the plane manipulator all go. */
+  exitSection(): void {
+    view.exitSection(this);
+  }
+
+  flipSection(): void {
+    view.flipSection(this);
   }
 
   /** The slider range for the current section axis (the part's extent). */

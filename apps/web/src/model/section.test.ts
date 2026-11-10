@@ -25,7 +25,7 @@ const base: SectionSettings = {
 };
 const close = (a: readonly number[], b: readonly number[], digits = 9) => {
   expect(a).toHaveLength(b.length);
-  a.forEach((x, i) => expect(x).toBeCloseTo(b[i] as number, digits));
+  for (const [i, x] of a.entries()) expect(x).toBeCloseTo(b[i] as number, digits);
 };
 
 describe('section frame', () => {

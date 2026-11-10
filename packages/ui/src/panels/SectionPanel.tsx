@@ -3,7 +3,13 @@ import { FlipHorizontal2, Scissors } from 'lucide-react';
 import { Field, Segmented, Switch } from '../components/controls';
 import { ExpressionInput } from '../components/ExpressionInput';
 import { Button, cn } from '../components/primitives';
-import { formatLengthMm, type MeasureUnits, parseLengthMm } from '../measure/types';
+import {
+  formatAngleDeg,
+  formatLengthMm,
+  type MeasureUnits,
+  parseAngleRad,
+  parseLengthMm,
+} from '../measure/types';
 
 export type SectionAxis = 'x' | 'y' | 'z' | 'face';
 
@@ -23,8 +29,28 @@ export interface SectionPanelProps {
   onOffsetChange(mm: number): void;
   flipped: boolean;
   onFlippedChange(flipped: boolean): void;
+  /**
+   * Tilt of the plane about its two in-plane axes (radians), shown as inline angle fields that
+   * take expressions with units ("15deg", "0.2rad"). Omit to hide the fields.
+   */
+  tilt?: {
+    u: number;
+    v: number;
+    /** Field names, e.g. "Tilt about X" and "Tilt about Y". */
+    labels: readonly [string, string];
+    onChange(patch: { tiltU?: number; tiltV?: number }): void;
+  };
   units?: MeasureUnits;
   className?: string;
+}
+
+const ANGLE: readonly [number, number, number, number] = [0, 0, 0, 0];
+
+function evaluateAngle(expr: Expr): EvalResult {
+  const rad = parseAngleRad(expr);
+  return rad === null
+    ? { ok: false, error: { message: 'Enter an angle such as 15deg or 0.2rad' } }
+    : { ok: true, value: rad, dimension: ANGLE, dependsOn: [] };
 }
 
 const LENGTH: readonly [number, number, number, number] = [1, 0, 0, 0];
@@ -54,6 +80,7 @@ export function SectionPanel({
   onOffsetChange,
   flipped,
   onFlippedChange,
+  tilt,
   units = 'mm',
   className,
 }: SectionPanelProps) {
@@ -128,6 +155,30 @@ export function SectionPanel({
             />
           </div>
         </Field>
+
+        {tilt ? (
+          <Field label="Tilt">
+            <div className="flex items-center gap-2">
+              {([0, 1] as const).map((k) => (
+                <ExpressionInput
+                  key={k}
+                  label={tilt.labels[k]}
+                  size="touch"
+                  align="right"
+                  className="min-w-0 flex-1"
+                  value={formatAngleDeg(k === 0 ? tilt.u : tilt.v)}
+                  evaluate={evaluateAngle}
+                  showValue={false}
+                  onCommit={(expr) => {
+                    const rad = parseAngleRad(expr);
+                    if (rad !== null) tilt.onChange(k === 0 ? { tiltU: rad } : { tiltV: rad });
+                  }}
+                  testId={k === 0 ? 'section-tilt-u' : 'section-tilt-v'}
+                />
+              ))}
+            </div>
+          </Field>
+        ) : null}
 
         <button
           type="button"

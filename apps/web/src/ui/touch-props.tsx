@@ -169,6 +169,14 @@ export function useMeasureProps(wb: Workbench): MeasurePanelProps {
   };
 }
 
+/** The in-plane axes a tilt turns about (see model/section.ts: Z -> X, Y; X -> Y, Z; Y -> Z, X). */
+const TILT_LABELS = {
+  x: ['Tilt about Y', 'Tilt about Z'],
+  y: ['Tilt about Z', 'Tilt about X'],
+  z: ['Tilt about X', 'Tilt about Y'],
+  face: ['Tilt about face axis 1', 'Tilt about face axis 2'],
+} as const;
+
 /** Section panel props: axis X/Y/Z or a picked face's plane, offset within the part, flip. */
 export function useSectionProps(wb: Workbench): SectionPanelProps {
   const ui = useObservable(wb.ui);
@@ -190,6 +198,12 @@ export function useSectionProps(wb: Workbench): SectionPanelProps {
     onOffsetChange: (offset) => wb.setSection({ offset }),
     flipped: s.flipped,
     onFlippedChange: (flipped) => wb.setSection({ flipped }),
+    tilt: {
+      u: s.tiltU,
+      v: s.tiltV,
+      labels: TILT_LABELS[s.axis],
+      onChange: (patch) => wb.setSection(patch),
+    },
   };
 }
 

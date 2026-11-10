@@ -65,5 +65,12 @@ export function getBodyMaterialState(vp: ViewportImpl, id: string): BodyMaterial
 }
 
 export function getTouchStats(vp: ViewportImpl): TouchStats {
-  return { ...vp.touchStats };
+  let capsDrawn = 0;
+  for (const e of vp.bodies.values()) if (e.cap?.quad.visible) capsDrawn++;
+  return {
+    ...vp.touchStats,
+    sectionNormal: vp.section ? [...vp.section.eq.n] : null,
+    sectionOffset: vp.section ? vp.section.eq.offset : null,
+    capsDrawn,
+  };
 }
