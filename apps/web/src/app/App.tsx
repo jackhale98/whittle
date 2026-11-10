@@ -22,6 +22,7 @@ import {
   useSyncExternalStore,
 } from 'react';
 import { isFeatureTool } from '../features/factories';
+import { featureLineage } from '../model/lineage';
 import { reorderFeatures } from '../model/tree-edits';
 import { getDiagnostics } from '../platform/diagnostics';
 import { getRuntimeState, subscribeRuntimeState } from '../platform/runtime-state';
@@ -96,6 +97,18 @@ export function App({ wb }: { wb: Workbench }) {
 
   const commands = useMemo<PaletteCommand[]>(
     () => [
+      {
+        id: 'settings',
+        label: 'Settings',
+        hint: 'Mouse buttons, orbit, keyboard shortcuts',
+        run: () => wb.openSettings('navigation'),
+      },
+      {
+        id: 'keyboard',
+        label: 'Keyboard shortcuts',
+        hint: 'Edit the keymap',
+        run: () => wb.openSettings('keyboard'),
+      },
       { id: 'welcome', label: 'Welcome / samples', run: () => wb.patchUi({ welcome: true }) },
       {
         id: 'tour',
@@ -196,6 +209,12 @@ export function App({ wb }: { wb: Workbench }) {
   const touch = diagnostics.tier !== 'desktop';
   const density = touch ? 'touch' : 'compact';
   const statuses = useObservable(wb.treeStatuses);
+  const selectedId = ui.featureId ?? ui.sketch?.featureId ?? null;
+  const selectedLineage = useMemo(() => {
+    if (!selectedId) return undefined;
+    const l = featureLineage(doc, selectedId);
+    return { parents: l.parents.map((p) => p.id), children: l.children.map((p) => p.id) };
+  }, [doc, selectedId]);
   const canUndo = wb.store.canUndo();
   const canRedo = wb.store.canRedo();
   const activeTool: ToolId | null = ui.sketch
@@ -257,6 +276,7 @@ export function App({ wb }: { wb: Workbench }) {
                 ...(statuses ? { statuses } : {}),
                 rollbackIndex: part.rollbackIndex,
                 selectedId: ui.featureId ?? ui.sketch?.featureId ?? null,
+                ...(selectedLineage ? { lineage: selectedLineage } : {}),
                 onSelect: (id) => wb.selectFeature(id),
                 onRename: (id, name) => {
                   const f = part.features.find((x) => x.id === id);

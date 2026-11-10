@@ -58,7 +58,7 @@ async function emptySpot(page: Page): Promise<{ x: number; y: number }> {
     const canvas = document.querySelector('[data-testid="viewport-canvas"]') as HTMLElement;
     const r = canvas.getBoundingClientRect();
     for (let fy = 0.25; fy <= 0.85; fy += 0.05) {
-      for (let fx = 0.95; fx >= 0.15; fx -= 0.05) {
+      for (let fx = 0.8; fx >= 0.15; fx -= 0.05) {
         const x = r.left + r.width * fx;
         const y = r.top + r.height * fy;
         if (document.elementFromPoint(x, y) !== canvas) continue; // a panel or chip is there
@@ -122,13 +122,16 @@ test('touch taps select once; bubble; double-tap zoom; long-press; 2/3-finger un
   await cameraStill(page);
   expect((await cameraState(page)).distance).toBeGreaterThan(near * 1.1);
 
-  // Long-press on empty space: the view actions.
-  await t.down([{ x: 1100, y: 600 }]);
-  await expect(bubble(page).locator('[data-action="fit"]')).toBeVisible();
+  // Long-press on empty space: the radial menu (M3.5; the bubble stays on tap-select). It offers
+  // the view actions among others and stays open when lifted without a direction.
+  const radial = page.getByTestId('radial-menu');
+  const holdAt = await emptySpot(page); // away from the edges: the menu is not shifted
+  await t.down([holdAt]);
+  await expect(radial.locator('[data-item="fit"]')).toBeVisible();
   await t.up();
-  await expect(bubble(page).locator('[data-action="undo"]')).toBeVisible();
-  await bubble(page).locator('[data-action="fit"]').tap();
-  await expect(bubble(page)).toHaveCount(0);
+  await expect(radial.locator('[data-item="undo"]')).toBeVisible();
+  await radial.locator('[data-item="fit"]').tap();
+  await expect(radial).toHaveCount(0);
 
   // Two-finger tap = undo (the box goes), three-finger tap = redo.
   await t.tap([
@@ -241,8 +244,11 @@ test('Pencil: strokes are recognised live and committed; fingers never draw whil
   await cameraStill(page);
   // Entered by finger, so the line tool is selected; tapping it again leaves no tool, and the
   // Pencil draws freehand shapes that are recognised.
-  await expect(tools.getByRole('button', { name: 'Line' })).toHaveAttribute('aria-pressed', 'true');
-  await tools.getByRole('button', { name: 'Line' }).tap();
+  await expect(tools.getByRole('button', { name: 'Line', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await tools.getByRole('button', { name: 'Line', exact: true }).tap();
   await expect.poll(async () => (await a.ui()).sketch?.tool ?? null).toBeNull();
 
   // A rectangle, drawn as one stroke.
@@ -402,7 +408,7 @@ test('Pencil: a selected tool draws with the Pencil; a new sketch after Pencil u
   expect((await a.ui()).sketch?.tool ?? null).toBeNull();
 
   // Rectangle tool, then a Pencil drag from corner to corner draws that rectangle.
-  await pencilTap(tools.getByRole('button', { name: 'Rectangle' }));
+  await pencilTap(tools.getByRole('button', { name: 'Rectangle', exact: true }));
   await expect.poll(async () => (await a.ui()).sketch?.tool).toBe('rectangle');
   const from = await toPage(page, [-20, -10, 0]);
   const to = await toPage(page, [20, 15, 0]);
@@ -421,7 +427,7 @@ test('Pencil: a selected tool draws with the Pencil; a new sketch after Pencil u
   expect((await a.ui()).sketch?.lastStroke ?? null).toBeNull();
 
   // Dimension tool with the Pencil: tap the bottom edge, then tap where the label goes.
-  await pencilTap(tools.getByRole('button', { name: 'Dimension' }));
+  await pencilTap(tools.getByRole('button', { name: 'Dimension', exact: true }));
   await expect.poll(async () => (await a.ui()).sketch?.tool).toBe('dimension');
   const edge = await toPage(page, [8, -10, 0]);
   await t.pen.down(edge);

@@ -393,9 +393,9 @@ test.describe('handle', () => {
 
     // Navigation is back for a press elsewhere.
     await page.mouse.move(box.x + o.x - 250, box.y + o.y + 150);
-    await page.mouse.down();
+    await page.mouse.down({ button: 'right' });
     await page.mouse.move(box.x + o.x - 120, box.y + o.y + 150, { steps: 10 });
-    await page.mouse.up();
+    await page.mouse.up({ button: 'right' });
     await frame(page);
     expect(dist((await camera(page)).position, before.position)).toBeGreaterThan(3);
   });

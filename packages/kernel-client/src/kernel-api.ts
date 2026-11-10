@@ -34,14 +34,12 @@ import type {
   Vec3,
 } from '@wren-cad/contracts';
 import {
+  type ExactProjectedEdge,
   type ExportShape,
   instantiateKernel,
   type KernelInitModule,
   type KernelModuleOptions,
   type MeasureSubject,
-  type ProjectedCurve,
-  type ProjectedEdge,
-  type ProjectedOutline,
   type RawExportResult,
   type RawImportResult,
   type RawKernelInfo,
@@ -71,6 +69,8 @@ export interface KernelApiDeps {
 }
 
 export type {
+  ExactProjectedCurve,
+  ExactProjectedEdge,
   ExportShape,
   MeasureSubject,
   ProjectedCurve,
@@ -82,7 +82,7 @@ export type {
  * A face-outline edge: a `ProjectedEdge` tagged with its loop (0 = the outer loop, k = the k-th
  * inner loop). A flat array, so it also satisfies the regen engine's `ProjectionApi` seam.
  */
-export interface ProjectedLoopEdge extends ProjectedEdge {
+export interface ProjectedLoopEdge extends ExactProjectedEdge {
   loop: number;
 }
 
@@ -138,14 +138,15 @@ export interface KernelProjectionApi {
   /**
    * Model edges (TopExp edge ordinals of `shape`) projected onto `plane`, in its local x/y. Lines
    * stay lines, circles and arcs seen face-on stay circles and counter-clockwise arcs, everything
-   * else is a `polyline` (approximated). An edge along the plane normal projects to a point and
+   * else is a `polyline` (approximated); the worker asks for `exact` projections, so conics and
+   * B-splines come back as `ellipse` / `ellipticArc` / `bspline`. An edge along the plane normal projects to a point and
    * comes back with no curves.
    */
   projectEdges(
     shape: ShapeHandle,
     edges: number[],
     plane: Frame,
-  ): Promise<Result<{ edge: number; curves: ProjectedCurve[] }[]>>;
+  ): Promise<Result<ExactProjectedEdge[]>>;
   /**
    * A face's outline projected like `projectEdges`: the outer loop's edges (`loop` 0), then each
    * inner loop's (`loop` 1, 2, …), each loop in wire order.
@@ -642,11 +643,13 @@ export function createKernelApi(
       shape: ShapeHandle,
       edges: number[],
       plane: Frame,
-    ): Promise<Result<ProjectedEdge[]>> {
+    ): Promise<Result<ExactProjectedEdge[]>> {
       if (kernel === null) return notReady();
       try {
-        return parseResult<ProjectedEdge[]>(
-          kernel.projectEdges(JSON.stringify({ shape, edges, plane })),
+        return parseResult<ExactProjectedEdge[]>(
+          // `exact`: conics and B-splines come back as exact ellipse / ellipticArc / bspline curves
+          // (M3.5, ADR-056), which become exact linked entities, not polylines.
+          kernel.projectEdges(JSON.stringify({ shape, edges, plane, exact: true })),
           'projectEdges',
         );
       } catch (e) {
@@ -661,8 +664,8 @@ export function createKernelApi(
     ): Promise<Result<ProjectedLoopEdge[]>> {
       if (kernel === null) return notReady();
       try {
-        const raw = parseResult<ProjectedOutline>(
-          kernel.projectFaceOutline(JSON.stringify({ shape, face, plane })),
+        const raw = parseResult<{ outer: ExactProjectedEdge[]; inner: ExactProjectedEdge[][] }>(
+          kernel.projectFaceOutline(JSON.stringify({ shape, face, plane, exact: true })),
           'projectFaceOutline',
         );
         if (!raw.ok) return raw;

@@ -6,6 +6,7 @@
  */
 
 import type { Frame, SketchEntity, Vec2, Vec3 } from '@wren-cad/contracts';
+import { ellipsePoint, ellipticArcRange, prepareBSpline, sampleBSpline } from './curves';
 
 export const add = (a: Vec3, b: Vec3): Vec3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
 export const sub = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -181,6 +182,28 @@ export function sampleEntity(
         out.push([c[0] + u * cr - v * sr, c[1] + u * sr + v * cr]);
       }
       return out;
+    }
+    case 'ellipticArc': {
+      // Exact points, uniform in the parametric angle with the step of a circle of the major
+      // radius (an ellipse's sagitta for a step Δt is at most a·Δt²/8, as that circle's), ends
+      // snapped to the stored end points so profiles stay closed on screen.
+      const s = p(e.start);
+      const t = p(e.end);
+      if (!(e.majorRadius > 0 && e.minorRadius > 0)) return [s, t];
+      const g = { c: p(e.center), a: e.majorRadius, b: e.minorRadius, rotation: e.rotation };
+      const { t0, sweep } = ellipticArcRange(g, s, t);
+      const n = segments(Math.max(e.majorRadius, e.minorRadius), sweep, chord);
+      const out: Vec2[] = [s];
+      for (let i = 1; i < n; i++) out.push(ellipsePoint(g, t0 + (sweep * i) / n));
+      out.push(t);
+      return out;
+    }
+    case 'bspline': {
+      // Exact de Boor samples (rational when weighted) at the same chord tolerance; an invalid
+      // definition (the kernel reports why) shows its control polygon.
+      const poles = e.poles.map(p);
+      const b = prepareBSpline(e, poles);
+      return typeof b === 'string' ? poles : sampleBSpline(b, chord);
     }
   }
 }

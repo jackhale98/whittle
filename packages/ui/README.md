@@ -41,8 +41,8 @@ The entry is `src/index.ts`. The main groups are:
 | --- | --- |
 | Shells | `AppShell`, `DesktopShell`, `TabletShell`, `PhoneShell`, `ShellProps` |
 | Feature tree and params | `FeatureTree` (nested sketches, ADR-015), `computeNesting`, `planUnitMove`, `allowedRollbacks`, `readNestSketches`, `featureMeta`, `ParamsTable` |
-| Inspectors | `FeatureInspector`, `PartInspector`, `MassReadout`, `SelectionInspector`, `PickField`, `MaterialLibraryItem`, `SWATCHES` |
-| Sketch | `SketchToolbar`, `sketchTools`, `SketchStatusChip`, `describeSketchStatus`, `DimensionLabel`, `ConstraintGlyph`, `ConflictPanel` (lazy), `constraintLabels` |
+| Inspectors | `FeatureInspector` (`onUndo` beside a deleted cause), `PartInspector`, `MassReadout`, `SelectionInspector`, `PickField`, `MaterialLibraryItem`, `SWATCHES` |
+| Sketch | `SketchToolbar` (`matchShortcut` takes tool keys from the app's keymap), `sketchTools`, `SketchStatusChip`, `describeSketchStatus`, `DimensionLabel`, `ConstraintGlyph`, `ConflictPanel` (lazy), `constraintLabels` |
 | Commands and chooser | `CommandBar`, `ToolRail`, `PaletteCommand`, `WhichOneChooser`, `PromptChip`, `tools`, `toolGroups`, `toolHint`, `groupOf`, `ToolId` |
 | Inputs | `ExpressionInput` (with an on-screen keypad on touch), `Field`, `Section`, `Segmented`, `Switch`, `useCoarsePointer` |
 | Export | `ExportMenu`, `ExportPanel`, `EXPORT_TARGETS`, `QUALITY_PRESETS`, `buildExportRequest` |

@@ -9,6 +9,7 @@ import {
   FlipHorizontal2,
   Hexagon,
   Link2,
+  MousePointer2,
   MoveRight,
   Pencil,
   Pill,
@@ -17,12 +18,14 @@ import {
   Scissors,
   Slash,
   SquareRoundCorner,
+  X,
 } from 'lucide-react';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { Menu, type MenuItem } from '../components/floating';
 import { ChamferIcon } from '../components/icons';
 import { Button, cn, Tooltip } from '../components/primitives';
 import { ConstraintGlyph, constraintLabels, geometricConstraintKinds } from './ConstraintGlyph';
+import { SplineControlIcon, sketchCurveTools } from './curveTools';
 import type { SketchEditToolId } from './EditChrome';
 
 export type SketchDrawToolId =
@@ -34,10 +37,12 @@ export type SketchDrawToolId =
   | 'polygon'
   | 'point'
   | 'dimension';
-export type SketchToolId = SketchDrawToolId | SketchEditToolId;
+/** M3.5 curve tools (ADR-046). They sit behind the "Curves" menu button. */
+export type SketchCurveToolId = 'splineControl' | 'splineThrough' | 'ellipse' | 'ellipticArc';
+export type SketchToolId = SketchDrawToolId | SketchCurveToolId | SketchEditToolId;
 export type GeometricConstraintKind = GeometricConstraint['kind'];
 
-interface ToolSpec {
+export interface ToolSpec {
   id: SketchToolId;
   label: string;
   /** Text under the icon in touch density. */
@@ -189,13 +194,26 @@ export const sketchEditTools: readonly (ToolSpec & { id: SketchEditToolId })[] =
   },
 ];
 
-const allSketchTools: readonly ToolSpec[] = [...sketchTools, ...sketchEditTools];
+const allSketchTools: readonly ToolSpec[] = [
+  ...sketchTools,
+  ...sketchCurveTools,
+  ...sketchEditTools,
+];
 
-/** `⇧C` -> shift + c; `O` -> o. */
+export { sketchCurveTools };
+
+/**
+ * `⇧C` -> shift + c; `O` -> o. Matches the physical key (`KeyboardEvent.code`, PLAN 9.4) so a
+ * shortcut sits on the same key on every layout; synthetic events without a code fall back to `key`.
+ */
 function matchesShortcut(e: KeyboardEvent, shortcut: string | undefined): boolean {
   if (!shortcut) return false;
   const shift = shortcut.startsWith('⇧');
-  return e.shiftKey === shift && e.key.toLowerCase() === shortcut.replace('⇧', '').toLowerCase();
+  if (e.shiftKey !== shift) return false;
+  const letter = shortcut.replace('⇧', '');
+  return e.code
+    ? e.code === `Key${letter.toUpperCase()}`
+    : e.key.toLowerCase() === letter.toLowerCase();
 }
 
 export interface SketchToolbarProps {
@@ -204,10 +222,17 @@ export interface SketchToolbarProps {
   variants?: Partial<Record<SketchToolId, string>>;
   /** `tool` null = leave the tool (Esc). */
   onTool(tool: SketchToolId | null, variant?: string): void;
+  /**
+   * The Select tool and the touch "Done with <tool>" ✕: drop the active tool at once and return
+   * to selection (not Esc's "cancel what is in progress first"). Defaults to `onTool(null)`.
+   */
+  onSelectTool?(): void;
   construction: boolean;
   onToggleConstruction(): void;
   /** Applies a constraint to the current selection. */
   onConstraint?(kind: GeometricConstraintKind): void;
+  /** M3.5 curve tools behind the "Curves" button (default {@link sketchCurveTools}); [] hides it. */
+  curveTools?: readonly ToolSpec[];
   /** Constraints applicable to the current selection; others are shown disabled. */
   enabledConstraints?: readonly GeometricConstraintKind[];
   onFinish(): void;
@@ -215,6 +240,12 @@ export interface SketchToolbarProps {
   onEscape?(): void;
   /** Attach L / A / Shift+C / D / X / Esc listeners on `window` (default true). */
   shortcuts?: boolean;
+  /**
+   * The app's keymap (ADR-049): given a key event, the tool id it runs (`line`, `splineControl`,
+   * ...), `'construction'`, or null. When given it replaces the built-in letter table, so tool
+   * shortcuts follow the user's keymap; Esc stays the toolbar's.
+   */
+  matchShortcut?(e: KeyboardEvent): string | null;
   layout?: 'bar' | 'rail';
   /** `touch`: a short text label under every icon (no hover tooltips on touch) and 56 px targets. */
   density?: 'compact' | 'touch';
@@ -237,13 +268,16 @@ export function SketchToolbar({
   activeTool,
   variants,
   onTool,
+  onSelectTool,
   construction,
   onToggleConstruction,
   onConstraint,
+  curveTools = sketchCurveTools,
   enabledConstraints,
   onFinish,
   onEscape,
   shortcuts = true,
+  matchShortcut,
   layout = 'bar',
   density = 'compact',
   className,
@@ -255,11 +289,19 @@ export function SketchToolbar({
     | { kind: 'variants'; tool: ToolSpec; anchor: HTMLElement }
     | { kind: 'constraints'; anchor: HTMLElement }
     | { kind: 'edit'; anchor: HTMLElement }
+    | { kind: 'curves'; anchor: HTMLElement }
     | null
   >(null);
   const pressTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const live = useRef({ activeTool, chosen, onTool, onToggleConstruction, onEscape });
-  live.current = { activeTool, chosen, onTool, onToggleConstruction, onEscape };
+  const live = useRef({
+    activeTool,
+    chosen,
+    onTool,
+    onToggleConstruction,
+    onEscape,
+    matchShortcut,
+  });
+  live.current = { activeTool, chosen, onTool, onToggleConstruction, onEscape, matchShortcut };
 
   function pick(spec: ToolSpec, variant?: string) {
     const v = variant ?? chosen[spec.id] ?? spec.variants?.[0]?.id;
@@ -289,7 +331,13 @@ export function SketchToolbar({
           e.preventDefault();
           L.onTool(null);
         } else L.onEscape?.();
-      } else if (!e.shiftKey && e.key.toLowerCase() === 'x') {
+      } else if (L.matchShortcut) {
+        const id = L.matchShortcut(e);
+        if (id === 'construction') {
+          e.preventDefault();
+          L.onToggleConstruction();
+        } else if (id) run(id as SketchToolId);
+      } else if (!e.shiftKey && (e.code ? e.code === 'KeyX' : e.key.toLowerCase() === 'x')) {
         e.preventDefault();
         L.onToggleConstruction();
       } else {
@@ -307,7 +355,12 @@ export function SketchToolbar({
     !enabledConstraints || enabledConstraints.includes(k);
   const side = rail ? 'right' : 'top';
   const activeEdit = sketchEditTools.find((t) => t.id === activeTool);
+  const activeCurve = curveTools.find((t) => t.id === activeTool);
   const touch = density === 'touch';
+  const activeToolLabel = activeTool
+    ? ([...sketchTools, ...curveTools, ...sketchEditTools].find((t) => t.id === activeTool)
+        ?.label ?? null)
+    : null;
   const size = touch ? 'h-14 w-16 flex-col gap-0.5' : rail ? 'size-11' : 'size-10';
   const wide = touch ? size : rail ? size : 'h-10 w-12 gap-0.5';
   const lbl = (t: string) =>
@@ -325,22 +378,31 @@ export function SketchToolbar({
           checked: (chosen[menu.tool.id] ?? menu.tool.variants?.[0]?.id) === v.id,
           onSelect: () => pick(menu.tool, v.id),
         }))
-      : menu?.kind === 'edit'
-        ? sketchEditTools.map((t) => ({
+      : menu?.kind === 'curves'
+        ? curveTools.map((t) => ({
             id: t.id,
             label: t.label,
             icon: t.icon,
-            shortcut: t.shortcut,
+            ...(t.shortcut ? { shortcut: t.shortcut } : {}),
             checked: activeTool === t.id,
             onSelect: () => onTool(t.id),
           }))
-        : geometricConstraintKinds.map((k) => ({
-            id: k,
-            label: constraintLabels[k],
-            disabled: !enabled(k) || !onConstraint,
-            icon: <ConstraintGlyph kind={k} size={18} tone="plain" />,
-            onSelect: () => onConstraint?.(k),
-          }));
+        : menu?.kind === 'edit'
+          ? sketchEditTools.map((t) => ({
+              id: t.id,
+              label: t.label,
+              icon: t.icon,
+              shortcut: t.shortcut,
+              checked: activeTool === t.id,
+              onSelect: () => onTool(t.id),
+            }))
+          : geometricConstraintKinds.map((k) => ({
+              id: k,
+              label: constraintLabels[k],
+              disabled: !enabled(k) || !onConstraint,
+              icon: <ConstraintGlyph kind={k} size={18} tone="plain" />,
+              onSelect: () => onConstraint?.(k),
+            }));
 
   return (
     <>
@@ -354,6 +416,29 @@ export function SketchToolbar({
           className,
         )}
       >
+        <Tooltip content="Select" shortcut="Esc" side={side}>
+          <RToolbar.Button
+            aria-label="Select"
+            aria-pressed={activeTool === null}
+            data-tool="select"
+            onClick={() => (onSelectTool ? onSelectTool() : onTool(null))}
+            className={cn(itemBase, size)}
+          >
+            <MousePointer2 className={ic} strokeWidth={1.75} aria-hidden />
+            {lbl('Select')}
+          </RToolbar.Button>
+        </Tooltip>
+        {touch && activeToolLabel ? (
+          <RToolbar.Button
+            aria-label={`Done with ${activeToolLabel}`}
+            data-testid="tool-done"
+            onClick={() => (onSelectTool ? onSelectTool() : onTool(null))}
+            className={cn(itemBase, 'h-14 w-11 flex-col gap-0.5 text-fg')}
+          >
+            <X className={ic} strokeWidth={1.75} aria-hidden />
+            {lbl('Done')}
+          </RToolbar.Button>
+        ) : null}
         {sketchTools.map((spec) => {
           const active = activeTool === spec.id;
           const variantLabel = spec.variants?.find(
@@ -415,6 +500,22 @@ export function SketchToolbar({
             </Tooltip>
           );
         })}
+        {curveTools.length ? (
+          <Tooltip content="Splines, ellipses, elliptic arcs" side={side}>
+            <RToolbar.Button
+              aria-label="Curves"
+              aria-haspopup="menu"
+              aria-expanded={menu?.kind === 'curves'}
+              aria-pressed={activeCurve !== undefined}
+              data-tool-group="curves"
+              onClick={(e) => setMenu({ kind: 'curves', anchor: e.currentTarget })}
+              className={cn(itemBase, wide)}
+            >
+              {activeCurve?.icon ?? <SplineControlIcon className={ic} />}
+              {touch ? lbl('Curves') : <ChevronDown className="size-3" aria-hidden />}
+            </RToolbar.Button>
+          </Tooltip>
+        ) : null}
         <Tooltip content="Offset, convert, trim, fillet, mirror" side={side}>
           <RToolbar.Button
             aria-label="Edit"
@@ -482,7 +583,9 @@ export function SketchToolbar({
               ? `${menu.tool.label} options`
               : menu.kind === 'edit'
                 ? 'Edit tools'
-                : 'Constraints'
+                : menu.kind === 'curves'
+                  ? 'Curve tools'
+                  : 'Constraints'
           }
           items={menuItems}
           placement={rail ? 'right-start' : 'top-start'}

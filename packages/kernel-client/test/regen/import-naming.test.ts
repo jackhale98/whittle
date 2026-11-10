@@ -1,7 +1,7 @@
 /**
  * Persistent names of imported topology stay what documents already store. The golden
  * (fixtures/import-naming.golden.json) was recorded with the M1 engine (BREP location rewrite +
- * naming by a no-op intersect in the kernel, before ADR-pending "kernel import feature"); the
+ * naming by a no-op intersect in the kernel, before ADR-044); the
  * kernel `import` feature must give every face, edge and vertex of the same geometry the same
  * name, and the same body ids, so references into imported bodies keep resolving by name.
  *

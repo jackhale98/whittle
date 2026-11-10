@@ -21,7 +21,8 @@ interface EntityBase {
   /**
    * M3 Convert Entities: a **linked** entity whose geometry is the projection of model geometry
    * onto the sketch plane, recomputed by the regen engine every time (points, lines, arcs and
-   * circles; other curves project as an approximating chain of lines marked `approximate`). Linked
+   * circles, and since M3.5 ellipses, elliptic arcs and B-splines through the kernel's exact
+   * projection; anything else projects as an approximating chain of lines marked `approximate`). Linked
    * entities are fixed (no DOF) and can be dimensioned and constrained to. If `ref` no longer
    * resolves, the sketch is "needs attention" (never re-picked silently). Removing `source`
    * unlinks the entity into ordinary geometry.
@@ -64,7 +65,57 @@ export interface SketchEllipse extends EntityBase {
   rotation: number;
 }
 
-export type SketchEntity = SketchPoint | SketchLine | SketchCircle | SketchArc | SketchEllipse;
+/**
+ * M3.5. Counter-clockwise from `start` to `end` on the ellipse given by `center`, the radii and
+ * `rotation` (major axis direction, radians). `start` and `end` lie on the ellipse (the solver keeps
+ * them there).
+ */
+export interface SketchEllipticArc extends EntityBase {
+  kind: 'ellipticArc';
+  center: Id;
+  start: Id;
+  end: Id;
+  majorRadius: number;
+  minorRadius: number;
+  rotation: number;
+}
+
+/**
+ * M3.5. A B-spline curve by its control points (`poles`, point entities, so they can be dragged,
+ * dimensioned and constrained). Non-periodic splines are clamped: they start at the first pole and
+ * end at the last, so a line or arc can share an end point with them. `knots` are distinct values
+ * and come with `multiplicities` (both or neither). Omitted: clamped knots i/(n−p) with end
+ * multiplicity p + 1 (n poles, degree p), or periodic knots i/n all of multiplicity 1, on the
+ * domain [0, 1] (ADR-048 has the periodic flat-knot convention). Explicit knots: end multiplicities
+ * must be degree + 1 when not periodic and interior ones ≤ degree; an open spline may instead give
+ * a flat knot vector of n + p + 1 values (ADR-048, ADR-056). `weights` omitted = all 1
+ * (non-rational). A spline drawn **through points** stores the poles that interpolate them, plus the
+ * through points as point entities held on the curve by `pointOn` constraints, so moving a through
+ * point reshapes the curve (ADR-046).
+ */
+export interface SketchBSpline extends EntityBase {
+  kind: 'bspline';
+  poles: Id[];
+  degree: number;
+  periodic: boolean;
+  weights?: number[];
+  knots?: number[];
+  multiplicities?: number[];
+  /**
+   * Through points of a spline drawn through points (ADR-050): point entities held at the inner
+   * knots, in order. The solver keeps each on its knot; editing one reshapes the curve.
+   */
+  through?: Id[];
+}
+
+export type SketchEntity =
+  | SketchPoint
+  | SketchLine
+  | SketchCircle
+  | SketchArc
+  | SketchEllipse
+  | SketchEllipticArc
+  | SketchBSpline;
 export type SketchEntityKind = SketchEntity['kind'];
 
 // ---------------------------------------------------------------------------------------------
@@ -86,7 +137,17 @@ export type GeometricConstraint = ConstraintBase &
     | { kind: 'verticalPoints'; a: Id; b: Id }
     | { kind: 'parallel'; a: Id; b: Id }
     | { kind: 'perpendicular'; a: Id; b: Id }
+    /**
+     * Tangent curves. Lines, circles, arcs, ellipses, elliptic arcs and splines (M3.5). When the two
+     * curves share an end point the tangency is at that point (G1 continuity); otherwise anywhere.
+     */
     | { kind: 'tangent'; a: Id; b: Id }
+    /**
+     * M3.5. Curvature-continuous (G2) join at the shared end point of `a` and `b`, at least one of
+     * them a spline. Where the solver cannot express it the solve reports an `unsupported`
+     * conflict naming this constraint; it is never silently dropped.
+     */
+    | { kind: 'curvature'; a: Id; b: Id }
     | { kind: 'equal'; a: Id; b: Id } // equal length or equal radius
     | { kind: 'midpoint'; point: Id; line: Id }
     | { kind: 'concentric'; a: Id; b: Id }
@@ -112,8 +173,9 @@ export type DimensionConstraint = ConstraintBase & {
     | { kind: 'hDistance'; a: Id; b: Id }
     | { kind: 'vDistance'; a: Id; b: Id }
     | { kind: 'length'; line: Id }
-    | { kind: 'radius'; curve: Id }
-    | { kind: 'diameter'; curve: Id }
+    /** On an ellipse or elliptic arc, `axis` picks the radius (default `major`). */
+    | { kind: 'radius'; curve: Id; axis?: 'major' | 'minor' }
+    | { kind: 'diameter'; curve: Id; axis?: 'major' | 'minor' }
     | { kind: 'angle'; a: Id; b: Id } // between two lines, measured CCW from a to b
     /**
      * M3 Offset Entities: `targets[i]` stays offset from `sources[i]` by `value` (lines parallel at
@@ -187,6 +249,13 @@ export interface SketchConflict {
   kind?: 'overconstrained' | 'unsupported';
   /** Minimal conflicting set. */
   constraints: Id[];
+  /**
+   * M3.5. Entities the conflicting constraints act on, for highlighting on the canvas (the UI shows
+   * the set, never bare constraint numbers). `fixes[0]` is the suggestion: removing the most
+   * recently added constraint of the set (the order of `constraints` in the sketch), unless a
+   * better-explained fix exists.
+   */
+  entities?: Id[];
   /** Fixed entities that make the set conflict (removing a fix is offered as a fix). */
   fixed?: Id[];
   /** Human explanation, e.g. "Line 2 can't be both horizontal and at 30° to Line 1". */
@@ -264,6 +333,13 @@ export type RecognizedShape =
   | { kind: 'circle'; center: Vec2; radius: number }
   /** CCW from start to end around center. */
   | { kind: 'arc'; center: Vec2; radius: number; start: Vec2; end: Vec2 }
+  /** M3.5. A closed oval stroke; `rotation` is the major axis direction, radians. */
+  | { kind: 'ellipse'; center: Vec2; majorRadius: number; minorRadius: number; rotation: number }
+  /**
+   * M3.5. A smooth open or closed stroke that is no line, arc or polyline: a spline through these
+   * fit points (few, evenly spaced along the stroke, ends included).
+   */
+  | { kind: 'spline'; points: Vec2[]; closed: boolean }
   | { kind: 'scribble'; points: Vec2[] };
 
 export interface StrokeRecognition {

@@ -46,6 +46,10 @@ export interface SketchUi {
   editDimension: Id | null;
   /** Conflict cards hovered in the panel. */
   highlightConstraints: readonly Id[] | null;
+  /** A dimension label being dragged: its live position (sketch mm). Committed on release. */
+  dimDrag: { id: Id; at: Vec2 } | null;
+  /** The geometry of the hovered conflict card (`SketchConflict.entities`). */
+  highlightEntities: readonly Id[] | null;
   conflictsDismissed: boolean;
   /** Whether the sketch existed before this edit session (Finish removes new empty sketches). */
   isNew: boolean;
@@ -170,6 +174,31 @@ export interface BubbleRequest {
   view: boolean;
 }
 
+/** A radial menu request (right click, long-press, held key): where it opens and how. */
+export interface RadialRequest {
+  /** Client px. */
+  x: number;
+  y: number;
+  source: 'mouse' | 'pen' | 'touch' | 'keyboard';
+  /** The opening pointer is still down (touch / pen long-press): drag to an item and lift. */
+  held?: boolean;
+  pointerId?: number;
+  /** `KeyboardEvent.code` of a held opening key. */
+  holdCode?: string;
+}
+
+/** The rubber band of a box selection (canvas px) and what it will select. */
+export interface BoxSelect {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+  mode: 'window' | 'crossing';
+}
+
+/** Settings surface (a panel, never a dialog): which tab is showing. */
+export type SettingsTab = 'navigation' | 'keyboard';
+
 export interface UiState {
   /** The initial document is resolved (library or new). */
   ready: boolean;
@@ -200,6 +229,10 @@ export interface UiState {
   sheetSnap: SheetSnap;
   sheetTab: SheetTabId | null;
   bubble: BubbleRequest | null;
+  /** M3.5: the radial menu, the box-select rubber band, the settings panel. */
+  radial: RadialRequest | null;
+  box: BoxSelect | null;
+  settings: SettingsTab | null;
 }
 
 export const initialSection: SectionUi = {
@@ -234,6 +267,9 @@ export const initialUi: UiState = {
   sheetSnap: 'peek',
   sheetTab: null,
   bubble: null,
+  radial: null,
+  box: null,
+  settings: null,
 };
 
 export interface RegenView {

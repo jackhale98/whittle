@@ -1645,3 +1645,277 @@ CI (`PERF_FACTOR`, 3 for software-rendered main-thread work). The kernel gates
 now use the same rule with a factor of 2 on CI (pure CPU, no software GL) and 1 elsewhere,
 overridable with `WREN_PERF_FACTOR`. The measured times are still logged on every run, so a slow
 creep shows up in the logs before it reaches the scaled gate.
+
+## ADR-046 — M3.5 contracts: navigation, box pick, radial-menu gesture, sketch curves, error causes (2026-11-09)
+
+Scope approved by the owner from the UX research report (`docs/ux-research/reports/CAD UI feedback and lessons.md`).
+
+- **Navigation is a viewport setting, not app code.** `NavigationOptions` (preset, turntable or trackball, pivot `cursor` or `center`, pivot marker, invert zoom, speed) with `setNavigation` / `getNavigation`. Presets are named by behaviour (`rightOrbit`, `middleOrbit`, `middlePan`, `rightOrbitRepeat`), never by product; the settings UI may say "like SolidWorks / NX" as plain compatibility text. Left drag is never navigation under any preset, so the app owns picking and box selection. The research found Wren's orbit "off" because it pivoted on a stale target that pan and dolly-to-cursor drag into empty space, showed no pivot and used the left button; the pivot rule (point under the cursor, else the visible bodies' centre) and the marker follow Autodesk's Safe 3D Navigation findings and the MCAD defaults surveyed. The owner judged the SteeringWheels and ViewCube patents no obstacle for these generic behaviours (2026-11-09); Wren does not copy the wheel widget.
+- **Right click is a gesture.** The viewport reports `contextMenu` for a secondary press released within its drag threshold (and `repeat: true` for a quick click under `rightOrbitRepeat`), and `setPivot` for a middle click on geometry under `middleOrbit`; a drag past the threshold navigates. The app draws the radial menu.
+- **`pickRect`** returns window or crossing hits for box selection; the app decides the mode from the drag direction (left → right window, right → left crossing).
+- **Sketch curves:** `SketchEllipticArc` and `SketchBSpline` (poles as point entities, clamped unless periodic, optional weights and knots). A spline drawn through points stores its interpolating poles plus the through points as point entities held by `pointOn`, so editing a through point reshapes the curve; the sketch workstream decides whether the solver holds the interpolation exactly or the tool recomputes the poles, and records it here. `tangent` now covers every curve; `curvature` (G2) reports an `unsupported` conflict where planegcs cannot express it. `RecognizedShape` gains `ellipse` and `spline` for the Pencil.
+- **`SketchConflict.entities`** names the geometry to highlight, and `fixes[0]` is the suggestion (remove the most recently added constraint of the set unless a better-explained fix exists). The UI never shows bare constraint numbers (FreeCAD's "Redundant constraints: (61)" is the complaint).
+- **`AttentionCause`** on `UnresolvedRef` and `FeatureStatus`: the upstream feature whose change, suppression, deletion, reordering or failure broke the reference or the feature. Reported only when the engine can tell, never guessed (the SolidWorks 2023 Top Ten #1 and #5 requests and the UIST 2024 DeCAD finding).
+- **Placeholders.** So every workstream starts from a green tree, the lead added minimal cases for the new union members (control-polygon sampling, `null` closest points, "cannot be projected yet", no-op gestures, stub `setNavigation` / `pickRect`), each marked "M3.5 placeholder (ADR-046)". The workstreams replace them; the gate checks none remain.
+
+
+## ADR-047 — M3.5 error causes: how the regen engine names the upstream feature (2026-11-09)
+
+Modeling workstream (packages/kernel-client `src/regen/cause.ts`; README "Error causes").
+
+- **Evidence, not heuristics.** Each regen records a walk per slot: each feature's definition and values, cache key, the features whose output it read, and the containers it set. A cause comes from one of three rules; anything else gets no cause.
+  - Rule 1 reads it from the persistent name: a tagged feature that is deleted, suppressed, after the consumer, or failed.
+  - Rule 2 derives it from the difference to the previous regen's walk.
+  - Rule 3 carries it from the previous regen while it still holds.
+- **Rule 2 needs the same stored ref to have resolved in the last regen.** The touchers of the name family are the features whose results set or removed a container holding it, plus the producer. They are tried nearest first:
+  - A toucher that changed itself is the cause.
+  - A toucher whose key changed only through its inputs hands over to a breadth-first walk of its dependencies, through features whose keys changed. The first level holding a changed or removed feature decides: one feature is the cause; several mean no cause.
+  - This is the "nearest upstream feature that changed" rule for chains. A pocket whose floor vanished because the plate under it got thinner names the plate.
+  - Fallback: a single change upstream of the consumer is the cause, because regeneration is deterministic.
+- **Sticky causes.** The contract says "changed this regen". The engine keeps the cause while the ref stays broken, until the ref resolves or the cause stops holding, so an unrelated edit does not erase the explanation. Proposed contract wording: "since the reference last resolved".
+- **Kinds.**
+  - Added, unsuppressed and moved-above features are `changed`, with `detail` "added", "unsuppressed" or "moved". The contract has no `added` kind; the detail is enough.
+  - `detail` labels sketch dimensions by kind ("horizontal distance 30 mm → 200 mm"), never by constraint id.
+  - A blocked feature names what it waits on (`failed`): the referenced feature that failed itself, or the first feature that failed on its body. The UI follows `cause.featureId` to reach the root.
+  - A feature's own edit is never its upstream cause.
+- **Deps** come from three sources: reference name tags, copied features, and the last writer of each body that a feature acts on or whose content key it hashes (`Plan.reads` for implicit scopes).
+- **Cost**: one canonical-JSON snapshot of each definition per regen, about 20 µs per feature.
+
+## ADR-048 — M3.5 regen of the new curves: knot conventions, sampling, exact projections (2026-11-09)
+
+Modeling workstream. The kernel and sketch workstreams should confirm or amend this (ADR-046).
+
+- **Knot convention of `SketchBSpline`.** All three workstreams must agree on it.
+  - `knots` are the distinct knot values and `multiplicities` their multiplicities. This is OCCT's `Geom_BSplineCurve` form. Give both or neither. For an open spline without `multiplicities`, the regen also reads a flat vector of length n + p + 1.
+  - Open (clamped) default: knots `i/(n−p)`, i = 0…n−p, with multiplicities p+1, 1, …, 1, p+1.
+  - Periodic default: knots `i/n`, i = 0…n, all multiplicity 1.
+  - The domain is [0, 1] in both cases.
+  - Periodic flat knots follow `BSplCLib::KnotSequence`: p+1−m₀ knots of the neighbouring period on each side, and pole i supported on flat knots i … i+p+1. So the default periodic cubic starts at (P₀ + 4P₁ + P₂)/6. The kernel's `Geom_BSplineCurve(poles, weights, knots, mults, p, periodic=true)` with these arrays should give the same curve and parametrisation. This follows from reading `BSplCLib` and has not been checked against a build yet; the kernel goldens should confirm it.
+  - If all `weights` are equal, the spline is non-rational.
+- **Sampling** for display produces exact points at the sketch chord tolerance. Sampling never feeds geometry; the kernel builds the exact edges.
+  - Elliptic arcs: uniform in the parametric angle, with the step of a circle of the major radius.
+  - Splines: de Boor, with per-span subdivision against 0.9 × the tolerance at the middle and quarter points.
+- **Exact projection** of another sketch's curves:
+  - Ellipses and elliptic arcs are exact when the planes are parallel. Otherwise the kernel's polyline is used, marked approximate.
+  - B-splines are exact onto any plane that does not see them edge-on. Orthographic projection is affine, and B-splines (rational ones too) are affine invariant.
+  - Proposed for the kernel's `projectEdges`: return the same exact `ellipse` / `ellipticArc` / `bspline` curves for model edges. kernel-client's `ProjectedCurve` already accepts them.
+  - Proposed for packages/sketch `convertEntities` / `reprojectLinked`: create and follow `SketchEllipse`, `SketchEllipticArc` and `SketchBSpline` linked entities from those curves.
+  - Until then, the engine's own fallback re-projects linked entities of these kinds in place. A spline whose source gains or loses poles is lost (needs attention), never refitted.
+
+
+## ADR-049 — M3.5 UI: radial menu, chooser, keymap, navigation settings, errors at cause (2026-11-09)
+
+Choices made by the UI workstream that the contracts and PLAN leave open. Fold into ADR-046 at the gate.
+
+- **Radial geometry.** Eight fixed 45 degree sectors clockwise from north, the same on every surface; a flick in an empty or disabled sector does nothing (it never snaps to the nearest item). Items fill clockwise from north-east and north is reserved for Repeat, so Repeat is always in the same place. Pills are 128 px wide (88 px under 480 px viewports; the full label stays in the accessible name) on a 136 px ring, sized so neighbours never touch.
+- **Flick versus hover.** Before the menu has drawn (250 ms for mouse and pen), moving 40 px toward an item selects it. After it has drawn, movement only highlights (held pointer) and a click or Enter selects, so moving the mouse away from an open menu is never a command. A held pointer (touch long-press) or held key selects on release and, lifted with no direction, stays open for a tap (a held key cancels: spring-loaded). Keyboard and touch sources draw at once.
+- **Never act on a stale click.** The menu acts only on presses it saw begin after it mounted (or the explicitly `held` opening pointer). A press outside cancels it and that press's click is eaten (one-shot, 500 ms), as is the click after a held release. Cancelling swallows a click that would otherwise have reached the canvas: a second click is needed, which is the price of removing the SolidWorks mis-click.
+- **Chooser order** is vertex, edge, face, body (the hardest target first, after the bubble-cursor result), then pick-ray depth, then id compared by code unit (locale-independent), so it is identical on every run. `PickCandidate.depth` is optional (an additive prop). Tab and Shift+Tab are captured at the document while the chooser is open, and the pure `cyclePreselection` is exported for the app to drive the viewport preselect without it.
+- **Keymap model.** A binding is `Mod+Alt+Shift+<code>`; `Mod` is Cmd on macOS and Ctrl elsewhere, so one stored keymap works across platforms. A literal Ctrl on macOS or Meta elsewhere is not bindable (the OS's). Overrides are stored per command and replace the defaults; `[]` unbinds; locked commands (Esc, Space-repeat) cannot change. Contexts are `global`, `model`, `sketch`; commands conflict only when their contexts overlap, so P is Point in a sketch and Push/pull in the model. Browser-reserved keys have two severities: `blocked` (Ctrl/Cmd+W, T, N, Shift+N/T/W, Q, L, Tab, Ctrl+Tab, Ctrl+1-9, F11, F12 ...) cannot be assigned at all; `preventable` (Save, Open, Print, F5, Find ...) needs an explicit "Use anyway". The table is by-hand knowledge of Chrome, Edge, Firefox and Safari and must be rechecked when a browser changes; `docs/` has no source for it beyond the browsers' own shortcut pages.
+- **Keymap storage** is the app's: `KeymapOverrides` is plain JSON (suggested key `wren.keymap`, via `readJson` / `writeJson`). The default keymap (`DEFAULT_COMMANDS`) reproduces `workbench.ts onKey` and the sketch toolbar, plus B, Shift+B, Shift+E and Shift+A for the four new curve tools (clash-free with every sketch tool; asserted by a test).
+- **Settings key.** Navigation settings live under `wren.navigation` (new keys use the post-rename prefix; the legacy `whittle.*` keys keep their names so no user loses a setting). `sanitizeNavigation` clamps and defaults anything stored. There is no settings panel in the app yet (theme is a toolbar toggle, nest-sketches a palette command), so `NavigationSettings` is a stand-alone controlled panel for whichever surface the integration chooses.
+- **Overlay.** Ctrl, Cmd or Alt held alone for 600 ms; any other key (a chord), a pointer press (Ctrl-click multi-select) or a wheel cancels it; its listeners are passive and never cancel events; it takes no focus.
+- **Errors at the cause.** A sentence exists only when the engine reported an `AttentionCause`. A cause that was deleted, or whose id the app cannot name, is plain text, never a dead button. In a tree row the cause button is not a tab stop (a treeitem must not nest tab stops); the inspector has the keyboard path.
+- **Sketch toolbar.** The four curve tools sit behind a "Curves" menu (like "Edit") rather than four more buttons on a bar that is already long on the tablet rail. The toolbar's own shortcut handler now matches `KeyboardEvent.code` (falling back to `key` for synthetic events), so it is layout-independent even before the keymap switch-over. `curvature` is added to the Constraints menu (disabled unless `enabledConstraints` allows it).
+- **`FloatingLayer` anchors.** A point anchor `{ x, y }` is keyed by its coordinates: a fresh object on every render used to re-run the focus-restore effect and steal focus from the chooser on each hover.
+
+## ADR-050 — Sketch B-splines: knots, periodic form, splines through points (M3.5, sketch workstream)
+
+Confirms ADR-048's knot convention and decides how a spline drawn through points behaves (ADR-046 left that to the sketch workstream). packages/sketch `src/bspline.ts`; its de Boor matches kernel-client's `regen/curves.ts` to 1e-9 (clamped, periodic, rational, explicit knots).
+
+- **Knots, multiplicities, weights (normative for the kernel).** `knots` are distinct and strictly increasing; `multiplicities` go with them (both or neither; the solver refuses one without the other).
+  - Open splines are clamped: end multiplicities p + 1, interior 1…p, Σ multiplicities = n + p + 1, n ≥ p + 1. Default: knots i/(n − p), i = 0…n − p, multiplicities p + 1, 1, …, 1, p + 1.
+  - Periodic splines: n ≥ p + 1 poles, Σ multiplicities − last = n, first and last multiplicity 1, interior ≤ p. Default: knots i/n, i = 0…n, all 1. Domain [knots₀, knots_last] ([0, 1] by default).
+  - Weights omitted, or all equal: non-rational. Otherwise one positive weight per pole.
+- **Periodic form.** Flat knots: the p knots of the previous period before knots₀, one period, then p + 1 knots of the next period. Unwrapped control points are poles 0…n − 1, then 0…p − 1 again. The span [k₀, k₁] uses poles 0…p, so a uniform cubic starts at (P₀ + 4P₁ + P₂)/6. planegcs 1.3.0 gives the same point (measured), and so does OCCT `Geom_BSplineCurve(…, periodic = true)` from the same arrays (via `BSplCLib::PoleIndex`). The kernel goldens should confirm the OCCT side.
+- **Splines through points: the solver holds the interpolation exactly.**
+  - The tool (and the Pencil) interpolate with knots *at* the through points' chord-length parameters (normalised to [0, 1]). So every through point sits at a knot.
+  - Open: n = m + p − 1 poles. The end through points *are* the end poles (shared ids), and every inner through point has `pointOn` the spline. For a cubic the poles next to the ends are free **tangent handles**, starting at Bessel end tangents (the parabola through the first or last three points). Other degrees start with vanishing higher end derivatives.
+  - Closed: periodic, n = m poles, every through point at a knot (`pointOn`), no handles.
+  - The tool writes **`SketchBSpline.through`** (contract, accepted): the through points in order, the i-th at the i-th inner knot (every knot but the last when periodic). The solver takes it as the source of truth. A `pointOn` whose point is listed is a **knot point**: its curve parameter is that knot, fixed, wherever the point currently is (a point moved off its knot without a solve is pulled back). A `through` whose length doesn't match the inner knots, or repeats a point, fails the solve with a named reason. Listing a point doesn't hold it by itself: its `pointOn` does (removing that frees it).
+  - **Fallback for documents without `through`** (none have shipped; kept for read compatibility): a `pointOn` on a spline with explicit `knots` whose point is within 1e-6 × the sketch size of an inner knot is a knot point.
+  - Any other `pointOn` on a spline has a free curve parameter, so the point slides. On a clamped spline, past the ends, the curve continues polynomially (the carrier convention lines and arcs already follow).
+  - With knot parameters fixed, the derived (non-handle) poles are a linear function of the through points and the handles. When nothing else constrains them, the solver solves them **downstream** (`offsetSplit`, generalised from offsets). Everything else solves first, without them, so dragging a through point moves only that point and reshapes its spline. The other through points stay put to the bit, and dragging back restores the original curve. Otherwise everything solves together.
+  - DOF: open cubic through m points = 2m + 4 (the points plus the two handles); closed = 2m.
+  - Rejected: free curve parameters for through points. They drift with every drag, make the other through points move, and leave the spline never fully defined. Recomputing the poles in the tool on every edit was rejected too: the solver couldn't drag or dimension a through point, and other constraints couldn't act on the shape.
+- **Edits keep `through`.** A trimmed piece lists the original through points at its own inner knots (the pieces keep the original knot values). A mirrored copy lists the copies of its through points when they were mirrored too, else none (its symmetric poles carry the shape).
+
+## ADR-051 — Sketch curves in the solver (M3.5, sketch workstream)
+
+packages/sketch `src/model.ts`, `src/gcs.ts`, `src/solver.ts`. Our own residual rows stay the truth (verification, DOF, conflicts). planegcs solves where it can express the rows. Rows it can't express are marked `gcs: false` and finished by Newton on our rows (`polish`, ≤ 30 steps; ≤ 12 per drag frame).
+
+- **Parameters.** Ellipses and elliptic arcs use planegcs' parametrisation: centre, focus and minor radius. An elliptic arc's start and end are points with internal on-ellipse rows (focal sum); planegcs uses `arc_of_ellipse` + `arc_of_ellipse_rules`. A spline has no parameters of its own (its poles are points). A free spline curve parameter is a model parameter mapped to a planegcs sketch parameter (`point_on_bspline`). A tangency between curves that share no point gets an internal contact point. Unconstrained DOF: ellipse 5, elliptic arc 7, spline 2 × poles.
+- **Point on**: lines, circles, arcs (as before), ellipses and elliptic arcs (their ellipse), splines (above).
+- **Tangent, every pair.** Lines run start → end, circles and conics CCW, splines with increasing u. These are planegcs' normal conventions, measured.
+  - **At a shared point** (shared or coincident ends, or a point held on both), the row is regular: sin of the angle between the tangents at the joint (G1, either sense). A spline end's tangent is its end leg (P₁ − P₀). planegcs: lines and spline end legs use `parallel` (helper lines) and `perpendicular_pppp` against circles. Conics and points on splines use `angle_via_point` / `angle_via_point_and_param` at 0 or π, chosen from the current geometry.
+  - **Elsewhere**, between two lines/circles/arcs: as before. Any pair involving an ellipse, elliptic arc or spline gets a contact point on both curves where the tangents are parallel, seeded at the curves' closest approach. Like lines and arcs, this holds on the carrier (a spline's polynomial continuation).
+- **Curvature (G2)** = tangent at the shared point plus equal curvature vectors there (one row: their difference along A's normal, scaled to mm). Curvature vectors: lines 0; circles (c − P)/r²; ellipses ab/(r₁r₂)^{3/2} along the focal bisector; splines (C″ − (C″·T)T)/|C′|². Against a line, the row is the spline's third pole on its end leg's line (planegcs `point_on_line_ppp`). Otherwise there is no planegcs counterpart and Newton finishes it. Refused as `unsupported`, never dropped: no shared point ("…needs Spline 1 and Line 1 to share an end point"), no spline on either side. A tangent at the same joint is redundant, not a conflict.
+- **Ellipse dimensions.** `radius` / `diameter` on an ellipse or elliptic arc take **`axis`** (contract, accepted): `major` (the default) or `minor`. The major radius √(|CF|² + b²) is Newton-finished: planegcs 1.3.0's `internal_alignment_point2ellipse` ignores its alignment type (measured). The minor radius is planegcs `equal` on the minor radius. Labels read "Minor radius …". The interim convention "a distance from an ellipse's centre to it is the minor radius" is dropped (nothing shipped with it): distances to ellipses and splines are refused with a plain reason. Pole-to-pole distances are point distances.
+- **Equal** between ellipses and elliptic arcs: equal minor radii plus equal centre–focus distances (planegcs' `equal_radii_ee` rejects arcs of ellipses).
+- **Drags.** Ellipses and elliptic arcs: the centre near it, else the grabbed curve point follows the cursor. Splines: the curve point at the grabbed parameter follows the cursor. Through points: see "Sketch B-splines". Budget: 200 entities with 20 through-point splines, median 1.4 ms per drag solve (test/drag-splines.test.ts).
+- **Conflicts.** `entities` lists the user geometry the set's constraints act on (and the fixed or linked geometry that makes it conflict), never the origin or axes. `constraints` are in sketch order. `fixes[0]` removes the **most recently added** member (last by position); that is also the constraint the relaxed solution leaves out. Value changes and "make reference" follow it. Invalid or inexpressible constraints are `kind: 'unsupported'`. A `failed` result carries `error`, worded with entity names ("Spline 1: a degree-3 spline needs at least 4 control points"), and so do the explanations.
+
+## ADR-052 — Pencil ovals and splines (M3.5, sketch workstream)
+
+packages/sketch `src/recognize.ts`.
+
+- **Ellipse.** A closed stroke that is not a circle is fitted with the centre and axes from its principal axes, and the radii by least squares on (x/a)² + (y/b)² = 1. It is an `ellipse` when the RMS / worst geometric deviation ≤ 4% / 12% of b and **a/b ≥ 1.25**. Circles keep the aspect ≤ 1.2 gate, so nearly round strokes are never ellipses. Rectangles fail the fit.
+- **Spline.** A cubic through 4–12 evenly spaced fit points (5–14 closed; ends exact; inner points averaged with their neighbours) must follow the stroke within 2% of its length. Splines are tried only for strokes with curved pieces, closed non-circles, or ≥ 3 straight pieces **without a sharp corner**. A corner is sharp when ShortStraw's straw drops below 0.75 of its median: drawn corners measured ≤ 0.65, smooth bends ≥ 0.79. The spline must also fit no worse than the pieces' lines, or within hand noise with at most one point more than the polyline's vertices. A smooth stroke that fails all this stays a polyline (the old fallback).
+- Results: the 30- and 300-stroke corpora stay at 100%, and the shaky corpus at 98.3%. Its misses are shaky short arcs, now read as splines rather than polylines. Ellipses: all 24 tested; shaky ovals ≥ 90%. Waves: ≥ 90% with a normal hand and ≥ 75% shaky; the rest stay polylines. Frozen fixtures: test/fixtures/m35-strokes.json, from the seeded pen model (no real pen recordings were available).
+- `strokeFragment`: ellipse → centre point + ellipse; spline → the through-point spline tool.
+
+## ADR-053 — Editing the new curves (M3.5, sketch workstream)
+
+packages/sketch `src/edit/curve-ops.ts`, `trim.ts`, `mirror.ts`, `offset.ts`, `convert.ts`.
+
+- **Intersections** of any two curves: crossings of their samplings refined by Newton on the exact curves. Tangential touches are not cut points. Lines, arcs and circles now also stop at ellipses, elliptic arcs and splines.
+- **Trim.** An ellipse needs two cuts and becomes an elliptic arc (same id). An elliptic arc shortens or splits like an arc. The split-off piece shares the centre and is tied by `equal` + `pointOn`; its rotation is otherwise free.
+- A spline **splits by knot insertion** (Boehm). The curve is unchanged, and the pieces keep the original knot values, so through points stay at their knots (and keep reshaping their piece). The piece that keeps an original end keeps its end pole; other poles are new. Through points on a removed part lose their `pointOn` (noted). A closed spline needs two cuts and becomes open (same id).
+- **Extend.** Elliptic arcs extend along their ellipse. Splines and ellipses are refused with the reason.
+- **Mirror.** Ellipses (`equal`; the rotation isn't tied, and a note says so), elliptic arcs (reversed sense, `equal`), splines (poles mirrored in order, same knots and weights; symmetric poles tie the whole curve).
+- **Offset** refuses ellipses, elliptic arcs and splines: their offsets are not curves of the same kind, and Wren doesn't approximate them.
+- **Fillet / chamfer** stay lines and arcs ("A corner is where two lines or arcs meet").
+- **Convert Entities** (ADR-048's proposal, done). `ProjectedCurve` gains `ellipse`, `ellipticArc` (ends as points, CCW) and `bspline` (`SketchBSpline` fields, poles as coordinates). They become exact linked entities and are followed in place. A spline whose source gains or loses poles, or turns into another kind, is reported `lost` (needs attention) and never refitted; Re-pick refuses it with the reason.
+
+## ADR-054 — Sketch regions in TypeScript (M3.5, sketch workstream)
+
+packages/sketch `src/regions.ts`, `sketchRegions(entities)`. The kernel's regions (General Fuse + BOPAlgo_BuilderFace) stay the truth for profiles. This mirrors their rule for previews, picking and tests. Regions are the bounded faces of the arrangement of every non-construction curve. Curves are split where they cross or an end lies on them, within 1e-6 × the sketch size (the kernel's fuzzy value). Dangling pieces are dropped, and faces are traced on the half-edge graph. Outer loops are counter-clockwise; nested loops are holes and also regions of their own. Areas are exact per piece by Green's theorem: closed forms for lines and arcs, Gauss–Legendre per knot span for splines (exact to degree 8 when non-rational), per eighth turn for ellipses. They match a dense-polygon reference to ≤ 1e-6 relative.
+
+## ADR-055 — Dimension annotations (M3.5, owner request, sketch workstream)
+
+packages/sketch `src/annotation.ts`, `dimensionAnnotation(entities, constraint, value, options) → DimensionAnnotation` in sketch mm. The UI draws it, and dragging the label changes only `DimensionConstraint.label`.
+
+- **Linear.** `distance`, `length`, `hDistance` (x), `vDistance` (y), and line and circle `offset`s give extension lines (1 mm gap, 1.5 mm overshoot by default) and a dimension line through the label with two arrows. Measurement is aligned for point–point and length, across the line for point–line and line–line, and axis-parallel for h/v. An extension starts at the nearest point of a line's extent, not at the foot point. A label beyond the extensions pulls the dimension line out to it.
+- **Radial.** `radius` and `diameter` (on ellipses along the axis `axis` picks) draw a leader along the line through the centre towards the label. An arc gets an extension arc when the leader leaves its sweep.
+- **Angular.** An arc at the label's distance from the lines' intersection. A label in the vertical sector shows the same angle there. A label outside the sector gets an extension arc. Extension lines are drawn where the arc lies beyond a line.
+- **Arrows flip outside** (same tips, pointing in, with stubs) when the space can't hold the text (default 8 mm) plus two arrowheads.
+- `dragDimensionLabel` keeps an h/v distance's text clear of its points' span, on the side it was dragged to. The dimension line then never crosses the measured geometry, and the placement still reads as horizontal or vertical.
+- Proposed contract addition, if the type is shared beyond packages/sketch: `DimensionAnnotation` (extensions, lines, arcs, arrows, text, arrowsOutside) in contracts/sketch.ts. For now it is exported from `@wren-cad/sketch`.
+
+## ADR-056 — M3.5 kernel: exact sketch splines and elliptic arcs, knot defaults, knot-aware mass properties, exact projection (2026-11-09)
+
+**Sketch curves are exact OCCT edges.** `ellipticArc` is a `gp_Elips` (major axis at `rotation`;
+`minorRadius > majorRadius` swaps the axes and turns the frame by π/2, like `ellipse`) trimmed with
+`GC_MakeArcOfEllipse(…, Sense = true)`, counter-clockwise from `start` to `end`. `bspline` is a 3D
+`Geom_BSplineCurve` in the sketch plane from the pole points, `weights`, `knots`/`multiplicities`,
+`degree` and `periodic` (a 2D curve mapped onto the plane would be the same curve; the 3D one needs
+no extra conversion and its pcurve on the plane is exact). A clamped spline shares the vertices of
+its end poles with the lines and arcs that end there, so joints are topological, not fuzzy; a
+spline whose last pole is its first (or coincides with it) is one closed edge, and a periodic one
+is a closed edge on its own; both bound a face without another curve. The General Fuse path
+(fuzzy 1e-6 mm) is unchanged: G1 joints (spline tangent to the line at the shared pole) produce
+no extra pieces. A solver-tolerance gap between an end point and its ellipse (≤ 1e-6 · max(1, a))
+widens that vertex's tolerance to fit instead of failing `BRepLib_MakeEdge` (the same for arcs).
+
+**Knot defaults (contract: "omitted = uniform").** Clamped: multiplicity degree + 1 at both ends,
+interior knots `i / (n − degree)` for `i = 1 … n − degree − 1` with multiplicity 1, where `n` is the
+pole count (so knots lie in [0, 1]). Periodic: `n + 1` knots `i / n`, multiplicity 1 (period 1).
+Both are computed with one IEEE division per knot, so JS (`i / spans`) reproduces them bit for
+bit. Explicit knots are OCCT's form: distinct, strictly increasing knots plus multiplicities, given
+together or not at all; as in ADR-048 (which this confirms), an open spline's `knots` without
+`multiplicities` is read as a flat knot vector when it has n + degree + 1 values (equal neighbours
+collapse, exact equality), and anything else without the pair is refused. ADR-048's periodic
+parametrisation is confirmed against the build: `Geom_BSplineCurve(…, periodic = true)` with the
+default knots starts at (P₀ + 4P₁ + P₂)/6 and keeps the pole order (golden), and the modeling
+workstream's four `curves.golden.test.ts` goldens pass against this kernel. Non-periodic splines must be clamped (end multiplicities
+degree + 1: the contract says they start at the first pole and end at the last); interior
+multiplicities ≤ degree. Knot values are only relative ([0, 5, 10] is the curve of [0, 0.5, 1]).
+
+**Validation.** Every OCCT refusal is checked first and reported as `INVALID_INPUT` naming
+`S…:e(<id>)`: degree not an integer in 1 … 25, fewer than degree + 1 poles, a weight ≤ 0 or not one
+per pole, knots/multiplicities of different lengths or without each other, non-increasing knots, an
+unclamped end, an interior multiplicity above the degree, a wrong total ("5 control points of
+degree 3 need 9 knots counting multiplicity (has 10)"; periodic: the multiplicities without the last
+knot sum to `n`), all poles on one point; an elliptic arc whose end is off its ellipse, with no sweep
+or non-positive radii. A `Standard_Failure` from the constructor (not expected) is still caught and
+becomes `INVALID_INPUT`; anything later is caught at the boundary as before.
+
+**Naming and fingerprints.** Unchanged scheme: `S…:e(<id>)`, `F…:side(S…:e(<id>))` (side faces
+are `extrusion` / `revolution` surfaces of the spline), and the `edge(…)` / `vertex(…)` rules.
+Nothing in the naming assumes analytic curves (centroids are GProp's, deterministic). B-spline
+edges report curve `bspline` (rational ones too), elliptic arcs `ellipse`; regenerating gives
+byte-identical naming and fingerprints. Fingerprint edge lengths of free-form curves now come from
+`GCPnts_AbscissaPoint::Length` (adaptive per span, 1e-10): `LinearProperties` was 1.5e-7 off on a
+rational quarter circle.
+
+**Mass properties are knot-aware for spline profiles.** BRepGProp's default integrates each curve
+and surface with one fixed Gauss rule over the whole parameter range (`BRepGProp_Face::
+IntegrationOrder`, `UKnots`), not per knot span, so a piecewise B-spline profile came out 1e-5
+(uniform cubic) to 3e-3 (a C1 rational circle) off, and the adaptive `Eps` variant splits only at
+B-spline *surface* knots, which an extrusion or revolution of a spline curve does not have. For
+shapes with a planar face bounded by a free-form edge or an extrusion/revolution of a free-form
+curve, `massProperties` and `measure` now convert to NURBS (`BRepBuilderAPI_NurbsConvert`, exact)
+and integrate adaptively (relative 1e-12 requested, better than 1e-9 achieved; the run time
+hardly depends on it: 1e-6 and 1e-12 cost the same). That
+is about 3× the default on those shapes (a 14-face filleted spline solid: about 0.5 s against
+0.16 s in a dev `-O1` build); every other shape, including fillet corner patches, lofts and
+imported B-spline surfaces, keeps the M3 path and cost. Fingerprint face areas and the naming
+centroids keep the default everywhere (matching keys, not measurements). If spline parts make
+regen too slow, the alternatives are per-face integration (convert only the swept faces) or
+`VolumePropertiesGK` with `IsUseSpan`, which knows extrusion-of-B-spline spans but not revolutions.
+
+**Exact projection (`exact: true`).** Projection along a plane normal is affine, so it maps a conic
+to a conic and a (rational) B-spline to the B-spline with the projected poles and the same weights
+and knots; no `GeomProjLib` call is needed and nothing is approximated, for any source
+orientation (not just planar edges on a parallel plane). With `exact: true` on `projectEdges` /
+`projectFaceOutline`, circles seen obliquely and ellipses come back as `ellipse` / `ellipticArc`
+(principal axes from the 2 × 2 map of the conjugate semi-diameters; counter-clockwise; still
+`circle` / `arc` when the projection is circular), B-spline and Bezier edges as `bspline` (trimmed
+with `Segment`, which also clamps; a whole periodic curve stays periodic); edge-on projections and
+other curve types are sampled as before. The flag is opt-in so the M3 consumers (kernel-client's
+own `ProjectedCurve`) stay valid until the modeling workstream maps the new kinds onto
+`SketchEllipse` / `SketchEllipticArc` / `SketchBSpline` linked entities; the façade types are
+`ExactProjectedCurve` / `ExactProjectedEdge`.
+
+## ADR-057 — M3.5 viewport navigation: implementation choices (2026-11-09)
+
+- **Camera-controls only handles the wheel, two/three-finger touch and programmatic moves.** Every mouse button, one-finger touch and non-drawing pen is driven by a pure `NavigationMachine` and applied by writing the camera pose directly (`setLookAt` without a transition). `setOrbitPoint` was rejected: it stores the pivot as a focal offset, which `getCameraState`, `getRoll` and the standard-view maths would all have to understand. Instead the orbit rotates the whole pose rigidly about the pivot (so the pivot keeps its camera-space position, and therefore its screen position) and re-places the controls' target on the view axis at the unchanged orbit distance. `draggingSmoothTime` is 0.
+- **Trackball is ours, not camera-controls'.** Up is carried with the camera (`camera.up` plus `updateCameraUp()`), so the spherical state never reaches a pole. Switching back to turntable levels the camera in place (same position and target, up = +Z).
+- **Turntable axis is `camera.up`**, which is +Z unless the two-finger twist rolled the camera. Rolling is an explicit user act and the existing standard views reset it.
+- **Right drag under `middleOrbit` pans and under `middlePan` orbits.** The contract leaves right drag open; "a drag past the threshold navigates" (ADR-046) needs a verb. Pan suits the middle-orbits family (a right drag has no other use there), orbit suits the middle-pans family (Onshape-like).
+- **`rightOrbitRepeat` timing.** A click released in under 250 ms repeats (`repeat: true`); a longer press opens the menu on release, so the 250-350 ms gap is not a dead zone. The contract says a hold is at least about 350 ms; opening the menu earlier is the friendlier reading.
+- **`setPivot` remembers the point only as the fallback for the next orbit that starts on empty space.** Orbits that start on geometry always re-pick, which is what keeps panning and zooming from leaving a stale pivot. The remembered point is dropped on pan, on a preset change, and when it leaves the screen.
+- **No stall on orbit start.** If the ID image is stale and a visible body has no BVH yet and the scene has more than 150 000 triangles, the pick is skipped and the pivot falls back to the bodies' centre; building a 1M-triangle BVH takes hundreds of ms.
+- **`pickRect` faces come from per-face pixel counts of the half-resolution ID image.** Window mode compares the in-rectangle count with the whole-image count (cached per image). Edges and vertices are projected polylines; occlusion uses a 5 x 5 ID-buffer neighbourhood as a cheap "nothing in front" test, then the BVH ray. A stale ID image falls back to projected triangles filtered by a ray grid. Default kinds exclude `region` and `handle`.
+- **A pen without `penDraws` orbits like a finger** (unchanged), and palm-rejected touches do not start an orbit.
+- **Extra engine API `getNavigationState()`** (not in the contract) exposes the drag mode, pivot, pivot source and marker state for tests and for the integration step.
+
+## ADR-058 — Simulation: built-in mesher, solvers on the user's desktop (2026-11-10)
+
+Owner direction. Wren will support structural (CalculiX), CFD (OpenFOAM) and multiphysics (Elmer FEM; GetDP for low-frequency electromagnetics) analysis as a post-v1.0 track (PLAN §12B), with a meshing spike now. Specialised solvers are preferred over a general FEniCSx PDE builder (owner, 2026-11-10): they bring validated physics, documentation and user trust per problem class; FEniCSx stays only as a possible later expert-script mode.
+
+- **Wren is the pre- and post-processor; the user's installed solvers compute.** Porting OpenFOAM to the browser is unrealistic (size, MPI, runtime plugins, hour-long runs in a tab); CalculiX needs Fortran → Wasm and hits the 4 GB / iPad memory ceiling; FEniCSx JIT-compiles forms. Running them natively on the user's desktop removes the resource limits and the porting risk, and keeps compute local (no Wren-hosted service, consistent with the free, local-first model). Meshing and simulation are desktop only (owner, 2026-11-10), so the mesher is sized for desktop browsers, not tablet memory limits.
+- **A browser cannot launch native programs**, so solving goes through (1) file handoff: a case folder with a run script in the project folder, results imported when they appear; then (2) an optional localhost "Wren Runner" that only launches configured solver executables, paired by one-time code, streaming progress. Chrome's local-network permission and Safari's localhost behaviour need verifying in S2.
+- **The mesher is built in** (owner): interactive meshing with quality feedback is the core of pre-processing, it lets Wren own the persistent-name → physical-group mapping so loads survive design edits, and one mesh feeds every solver. Gmsh (GPL-2.0-or-later) compiled to Wasm against the kernel's OCCT build, in its own lazily loaded worker; Netgen (LGPL) is the fallback; TetGen (AGPL) is excluded. CFD volume meshing stays with OpenFOAM's `snappyHexMesh` locally (boundary layers, hex-dominant cells).
+- **Licences:** CalculiX GPL-2.0+, Gmsh GPL-2.0+, OpenFOAM GPL-3.0, Elmer GPL/LGPL, GetDP GPL, FEniCSx LGPL-3.0 — all compatible with Wren's GPL-3.0.
+- **Commit to one capability, design for many (owner, 2026-11-10).** After v1.0 CAD, only structural analysis with CalculiX (S1) is committed. Solver breadth is not what distinguishes Wren (FreeCAD's FEM workbench already drives several free solvers); the workflow is: loads on persistent names that survive edits, versioned studies, a clean setup and results flow. Each extra solver is a lasting cost (writers, readers, install guides, version drift, CI, support). A documented solver-backend interface (case writer, result reader, setup fields, install check), with CalculiX as the reference backend, keeps OpenFOAM, Elmer, GetDP and preCICE coupling (licence LGPL-3.0, compatible) open as on-demand or community-contributed extensions without committing the roadmap to them. Solvers are not bundled; Gmsh is, once adopted (to be recorded in docs/DEPENDENCIES.md then).
+
+## ADR-059 — M3.5 integration in apps/web: input, settings, radial, lineage (2026-11-10)
+
+Choices made while wiring the M3.5 packages into the app. To be folded into ADR-046 / ADR-049 at the gate.
+
+- **Settings is a panel, not a dialog.** `ui.settings` (`navigation` | `keyboard`) shows a lazy `SettingsPanel` over the view (`role=region`, no focus trap, no `aria-modal`). Desktop and tablet float it at the top right; touch and phone fill the stage between the top chrome and the sheet. It opens from a gear button in the project bar (desktop and tablet) and from the command palette ("Settings", "Keyboard shortcuts") on every tier; the phone top bar has no room for another button, so the phone reaches it through More (the palette).
+- **Storage.** `wren.navigation` (the UI package's `readNavigation` / `writeNavigation`) and `wren.keymap` (the overrides as JSON, written by `app/input.ts`; an empty keymap removes the key). Both are read at construction, so the first `setNavigation` and the first key press already use them.
+- **Long press versus the bubble.** The context bubble stays on tap-select (touch tiers, after the double-tap window). A long press, which used to open the bubble (or its view actions on empty space), now opens the radial menu; the radial's empty-space set carries the view actions (Fit view, Isometric, Undo, Redo). The mouse's right click, a long press and a held key share one layout. The Pencil gets its own 500 ms hold in the app (the viewport reports no gestures for a pen that draws), so `longPress` events with `pointerType: 'pen'` are ignored to avoid a second open.
+- **What the ring holds** (≤ 7 + Repeat, `app/radial.ts`): nothing selected: Sketch, Measure, Section, Fit view, Isometric, Undo, Redo; one flat face: Sketch, Push/pull, Hole, Shell, Draft, Measure, Section; a curved face: Thread, Shell, Draft, Measure; several flat faces: Push/pull, Shell, Draft, Measure; edges: Fillet, Chamfer, Measure; a vertex: Measure, Plane, Axis, Point; a region: Extrude, Cut, Revolve, Sweep; in a sketch: Line, Circle, Arc, Rectangle, Dimension, Spline (through), Finish. A right click on unselected geometry selects it first (replacing the selection); on empty space the ring follows the current selection. Repeat runs `ui.lastTool` (act-first tools set it) or, in a sketch, the last sketch tool.
+- **The radial key is Q** (`RADIAL_COMMAND`, global): free in every context, not a browser shortcut on its own, left hand beside the tool keys. A test asserts it is clash-free against `DEFAULT_COMMANDS`. It is recorded in the keymap, so it can be rebound; the hold is spring-loaded (releasing with no direction cancels).
+- **Keymap switch-over.** `workbench.onKey` builds the binding with `eventBindingId` and asks `matchCommand` for `['model','global']` or `['sketch','global']`. The sketch toolbar keeps its own window listener (it owns variant cycling) but asks the app's keymap through the new optional `matchShortcut` prop, so tool keys follow the overrides in the same contexts; Esc stays the toolbar's. Consequences: sketch tool keys cannot use Ctrl or Alt (the toolbar ignores chords); view keys 0-7 stay model-only (they were never active in a sketch); `palette` (⌘K) is listed in the editor but handled by the shell's palette. Enter ends an open spline in a sketch, and in the model Enter first advances a list pick, then takes Tab's preselection.
+- **Box select.** A left press in model mode (mouse or Pencil, not touch) arms a box; past 5 px it is a rubber band (`ui.box`, solid for window, dashed for crossing, canvas-relative like every overlay). It is off while a tool is picking (prompt, inspector pick, measure, section pick, push/pull) because those are single picks. The press is captured by the canvas so the band survives leaving it. Release calls `pickRect` with the current pick kinds; a plain drag replaces the selection (an empty drag clears it), Shift adds, Ctrl/Cmd toggles what the box covers. References resolve in the background like a click's.
+- **Tab cycling** works on `lastPick`, the candidates of the pointer's last move (all hits within tolerance, sorted by kind, depth, id), only when focus is on the page or the canvas, so Tab keeps moving focus through the panels. Tab sets the hover; a click without moving, or Enter, takes it. The order is the chooser's (`sortCandidates`); the chooser itself now receives `depth` and preselects on hover and Tab.
+- **Errors at the cause.** The statuses go through `followBlockedCauses` after `explainStatus`: a blocked feature's cause is followed through other blocked features to the first one that is not blocked. A name memory (`rememberedName`) lets "Extrude 1 was deleted" name a feature that is no longer in the document; the cause is plain text and the inspector offers **Undo** (`FeatureInspector.onUndo`, a small UI addition). A status with no engine cause keeps the generic text.
+- **Dimensions.** Labels use the sketch package's `dimensionAnnotation(...)` for their position and the drawing, projected through `worldToScreen`. A drag moves a transient `dimDrag` (nothing is stored while dragging); release stores `label` as one undo step "Move dimension". Radius/diameter leaders map to `leader`; the first dimension line to `line`, further stubs to `extensions`; only the first of several annotation arcs is drawn (angles), the extension arcs are dropped. For a camera that is not square to the sketch the angle arc is a circle through the projected start and end.
+- **Lineage** (`model/lineage.ts`): "Made by" is the latest feature in history that the persistent name mentions (`nameTouchesFeature`), and the sketch its own refs name (else the sketch in the name). Parents are, for each reference the feature holds, the latest feature that name mentions (a fillet's edge names the extrude and its sketch: the extrude); children are the reverse. Pattern and mirror sources that are whole features count as parents.
+- **Exact projection.** kernel-client always asks the kernel for `exact: true` in `projectEdges` and `projectFaceOutline`; every consumer (Convert Entities, re-pick, `reprojectLinked`) therefore gets exact ellipses, elliptic arcs and B-splines.
+- **Bundle.** The initial route was already 253.6 kB gzip (over the 250 kB budget) when M3.5 merged. The feature inspector and its hole and thread fields, the sketch toolbar, the sketch overlay (glyphs, dimensions), the radial menu, the settings panel, the keymap editor and the shortcut overlay are lazy chunks, which brings it to 243.6 kB after adding the M3.5 code (keymap, input, lineage, box select, Tab).
+
+
+## ADR-060 — Tablet: Select tool, Clear selection, sketch visibility follows UI state (2026-11-10)
+
+- Context: the owner found no discoverable way to drop a sketch tool or clear a selection on a tablet, and a sketch could stay shown after the cut-revolve that used it.
+- Decision: the sketch toolbar gets an explicit Select tool (pressed when no tool is active), and on touch a ✕ "Done with <tool>" beside it. Both call `onSelectTool` (drop the tool at once) rather than the Esc path, which first cancels work in progress. Clear selection is a plain ✕ on the context bubble and in the selection inspector (never Esc-only on touch). Sketch visibility is re-evaluated from a subscription to the UI state it depends on (edited feature, picking path, prompt, active sketch) instead of from a list of call sites, so every path (Done, clear, Esc, tree) agrees; a revolve's axis reference counts as consumed. The exact original repro was not found (Done already refreshed in the flows tried); the subscription removes the whole class.
+- The radial menu chunk is prefetched 1.5 s after the app is ready, so a first flick is never lost to a lazy download.
+
+## ADR-061 — Pencil hold-to-grab in sketch mode (2026-11-10)
+
+- With no tool, a pen press on unselected geometry starts a stroke and arms a 300 ms timer. If the pen stays inside the stroke slop, the stroke is dropped and the same solver drag the mouse uses starts on the picked entity (points, circle centres, curves, lines), highlighted through `highlightEntities`. Moving first is a stroke, which keeps the existing start-snap to a node. Dimensioned geometry behaves as the solver's drag does today (driving dimensions hold). Hover needs no new code: the pen hover already feeds the sketch preselect.
+- Touch and pen presses that the app keeps (sketch drawing and dimensioning) no longer also start a camera orbit: the viewport hands them to the navigation machine in the window's bubble phase, so `stopPropagation` on the canvas keeps them out. This fixed the bracket tutorial's rectangle drag.

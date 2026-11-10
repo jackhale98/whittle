@@ -23,6 +23,8 @@ import {
   bindCandidate,
   circle3PointTool,
   circleCenterTool,
+  ellipseTool,
+  ellipticArcTool,
   infer,
   isSketchReference,
   newId,
@@ -35,9 +37,26 @@ import {
   SKETCH_Y_AXIS,
   type SketchFragment,
   slotTool,
+  splineControlTool,
+  splineThroughTool,
 } from '@wren-cad/sketch';
 
-export type DrawToolId = 'line' | 'rectangle' | 'circle' | 'arc' | 'slot' | 'polygon' | 'point';
+export type DrawToolId =
+  | 'line'
+  | 'rectangle'
+  | 'circle'
+  | 'arc'
+  | 'slot'
+  | 'polygon'
+  | 'point'
+  | 'ellipse'
+  | 'ellipticArc'
+  | 'splineControl'
+  | 'splineThrough';
+
+/** Spline tools take any number of taps: Enter, a double-tap or closing on the first point ends them. */
+export const isSplineTool = (tool: DrawToolId): boolean =>
+  tool === 'splineControl' || tool === 'splineThrough';
 
 export interface SketchData {
   entities: readonly SketchEntity[];
@@ -71,6 +90,8 @@ export interface DrawState {
   candidates: InferenceCandidate[];
   /** Glyphs to show next to the cursor (best one or two). */
   glyphs: InferenceCandidate['constraint']['kind'][];
+  /** Snap tolerance (mm) at the last cursor move: how near the first point closes a spline. */
+  tolerance?: number;
 }
 
 /** Clicks each tool variant needs (the line tool chains instead). */
@@ -90,6 +111,13 @@ export function clicksFor(tool: DrawToolId, variant: string): number {
       return 2;
     case 'point':
       return 1;
+    case 'ellipse':
+      return 3;
+    case 'ellipticArc':
+      return 5;
+    case 'splineControl':
+    case 'splineThrough':
+      return 2; // at least; the shape ends when the user says so
   }
 }
 
@@ -101,6 +129,10 @@ export const defaultVariant: Record<DrawToolId, string> = {
   slot: 'slot',
   polygon: 'polygon',
   point: 'point',
+  ellipse: 'ellipse',
+  ellipticArc: 'ellipticArc',
+  splineControl: 'splineControl',
+  splineThrough: 'splineThrough',
 };
 
 export function startDraw(tool: DrawToolId, variant?: string, construction = false): DrawState {
@@ -186,7 +218,7 @@ export function move(
     }
     hover = dir ? { at, dir: dir.constraint } : { at };
   }
-  return { ...state, cursor: at, hover, candidates, glyphs: glyphs.slice(0, 2) };
+  return { ...state, cursor: at, hover, candidates, glyphs: glyphs.slice(0, 2), tolerance };
 }
 
 /**
@@ -261,9 +293,21 @@ function shapeFragment(
   anchors: readonly Anchor[],
 ): SketchFragment | null {
   const o = { construction: state.construction };
-  const [a, b, c] = pts;
+  const [a, b, c, d, e] = pts;
   if (!a || !b) return null;
   switch (state.tool) {
+    case 'ellipse':
+      return c ? ellipseTool(a, b, c, o) : null;
+    case 'ellipticArc':
+      return c && d && e ? ellipticArcTool(a, b, c, d, e, o) : null;
+    case 'splineControl':
+    case 'splineThrough': {
+      // A preview whose cursor sits on the first point shows the closed curve.
+      const last = pts[pts.length - 1] as Vec2;
+      if (pts.length === state.anchors.length + 1 && closesSpline(state, last))
+        return splineFragment(state, pts.slice(0, -1), true);
+      return splineFragment(state, pts, false);
+    }
     case 'rectangle':
       if (state.variant === 'center') return rectangleCenterTool(a, b, o);
       if (state.variant === 'threePoint') return c ? rectangle3PointTool(a, b, c, o) : null;
@@ -294,6 +338,26 @@ function shapeFragment(
     case 'line':
       return null;
   }
+}
+
+/** Closing: the point lands on the first of at least three placed points. */
+function closesSpline(state: DrawState, at: Vec2): boolean {
+  const first = state.anchors[0];
+  return (
+    !!first &&
+    state.anchors.length >= 3 &&
+    dist(first.at, at) <= Math.max((state.tolerance ?? 0) * 1.5, 1e-6)
+  );
+}
+
+/** A spline through (or controlled by) the placed points; `closed` makes it periodic. */
+function splineFragment(
+  state: DrawState,
+  pts: readonly Vec2[],
+  closed: boolean,
+): SketchFragment | null {
+  const o = { construction: state.construction, closed };
+  return state.tool === 'splineControl' ? splineControlTool(pts, o) : splineThroughTool(pts, o);
 }
 
 /** A line segment from `from` to `to`, sharing/merging points; with inferred constraints. */
@@ -331,6 +395,41 @@ function lineSegment(
 export interface ClickResult {
   state: DrawState;
   edit: SketchEdit | null;
+}
+
+/** A tap for a spline tool: another point, or (on the first point) the end of a closed curve. */
+function splineClick(state: DrawState, hover: Anchor): ClickResult {
+  const last = state.anchors[state.anchors.length - 1];
+  if (last && dist(last.at, hover.at) < 1e-9) return { state, edit: null }; // a double-tap's second
+  if (closesSpline(state, hover.at)) return finishSpline(state, true);
+  return { state: { ...state, anchors: [...state.anchors, hover] }, edit: null };
+}
+
+function finishSpline(state: DrawState, closed: boolean): ClickResult {
+  const reset = { ...state, anchors: [], candidates: [], glyphs: [] };
+  const frag = splineFragment(
+    state,
+    state.anchors.map((a) => a.at),
+    closed,
+  );
+  if (!frag) return { state: reset, edit: null }; // too few points: nothing to make
+  return {
+    state: reset,
+    edit: {
+      entities: frag.entities,
+      constraints: [...frag.constraints, ...anchorConstraints(frag, state.anchors)],
+      created: frag.entities.filter((e) => e.kind !== 'point').map((e) => e.id),
+    },
+  };
+}
+
+/**
+ * Enter or a double-tap: ends the open spline being drawn (null when the tool has nothing to end).
+ * Closing is by tapping the first point; this leaves the curve open.
+ */
+export function finishShape(state: DrawState): ClickResult | null {
+  if (!isSplineTool(state.tool) || state.anchors.length === 0) return null;
+  return finishSpline(state, false);
 }
 
 /** A click at the current (snapped) cursor. */
@@ -379,6 +478,8 @@ export function click(state: DrawState, sketch: SketchData): ClickResult {
       },
     };
   }
+
+  if (isSplineTool(state.tool)) return splineClick(state, hover);
 
   const anchors = [...state.anchors, hover];
   const need = clicksFor(state.tool, state.variant);
@@ -430,13 +531,22 @@ export function preview(state: DrawState, sketch: SketchData): SketchFragment | 
   const need = clicksFor(state.tool, state.variant);
   // With fewer points than needed, preview the two-point form (e.g. a circle through 2 points).
   let frag: SketchFragment | null = null;
-  if (pts.length >= need) frag = shapeFragment(state, sketch, pts, [...state.anchors]);
+  if (state.tool === 'ellipticArc' && (pts.length === 3 || pts.length === 4)) {
+    // The ellipse first (dashed), then the arc along it once its start is placed.
+    frag = ellipseTool(pts[0] as Vec2, pts[1] as Vec2, pts[2] as Vec2, { construction: true });
+  } else if (pts.length >= need) frag = shapeFragment(state, sketch, pts, [...state.anchors]);
   else if (pts.length === 2) {
     const a = pts[0] as Vec2;
     const b = pts[1] as Vec2;
     if (state.tool === 'slot')
       frag = slotTool(a, b, Math.max(dist(a, b) * 0.15, 0.5), { construction: state.construction });
-    else if (state.tool === 'rectangle' || state.tool === 'arc' || state.tool === 'circle') {
+    else if (
+      state.tool === 'rectangle' ||
+      state.tool === 'arc' ||
+      state.tool === 'circle' ||
+      state.tool === 'ellipse' ||
+      state.tool === 'ellipticArc'
+    ) {
       const ids = ['a', 'b', 'l'].map(newPreviewId) as [Id, Id, Id];
       frag = {
         entities: [
@@ -463,6 +573,15 @@ export function preview(state: DrawState, sketch: SketchData): SketchFragment | 
           return { ...e, id: re(e.id), center: re(e.center) };
         case 'arc':
           return { ...e, id: re(e.id), center: re(e.center), start: re(e.start), end: re(e.end) };
+        case 'ellipticArc':
+          return { ...e, id: re(e.id), center: re(e.center), start: re(e.start), end: re(e.end) };
+        case 'bspline':
+          return {
+            ...e,
+            id: re(e.id),
+            poles: e.poles.map(re),
+            ...(e.through ? { through: e.through.map(re) } : {}),
+          };
         default:
           return { ...e, id: re(e.id), center: re(e.center) };
       }

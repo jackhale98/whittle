@@ -128,7 +128,14 @@ export async function touchDriver(page: Page) {
 export async function collectGestures(page: Page) {
   await page.evaluate(() => {
     const w = window as unknown as {
-      __g: Array<{ kind: string; x: number; y: number; t: number }>;
+      __g: Array<{
+        kind: string;
+        x: number;
+        y: number;
+        t: number;
+        repeat?: boolean;
+        pointerType?: string;
+      }>;
     };
     w.__g = [];
     window.__viewport?.viewport.onGesture((g) => w.__g.push({ ...g, t: performance.now() }));
@@ -141,8 +148,18 @@ export async function collectGestures(page: Page) {
     all: () =>
       page.evaluate(
         () =>
-          (window as unknown as { __g: Array<{ kind: string; x: number; y: number; t: number }> })
-            .__g,
+          (
+            window as unknown as {
+              __g: Array<{
+                kind: string;
+                x: number;
+                y: number;
+                t: number;
+                repeat?: boolean;
+                pointerType?: string;
+              }>;
+            }
+          ).__g,
       ),
     clear: () =>
       page.evaluate(() => {

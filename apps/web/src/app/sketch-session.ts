@@ -22,8 +22,14 @@ import type {
   SuggestedFix,
   Vec2,
 } from '@wren-cad/contracts';
+import { isDimension } from '@wren-cad/contracts';
 import { evaluateFeatureValues, sketchSolveValues } from '@wren-cad/document';
-import { createSketchSolverClient, newId, type SketchSolverClient } from '@wren-cad/sketch';
+import {
+  createSketchSolverClient,
+  dragDimensionLabel,
+  newId,
+  type SketchSolverClient,
+} from '@wren-cad/sketch';
 import { recognizeStroke, strokeFragment } from '@wren-cad/sketch/recognize';
 import type { GeometricConstraintKind, SketchToolId } from '@wren-cad/ui';
 import { toWorld } from '../model/frames';
@@ -40,9 +46,12 @@ import {
   cancel as cancelDraw,
   type DrawToolId,
   click as drawClick,
+  finishShape as drawFinish,
   move as drawMove,
+  isSplineTool,
   preview,
   type SketchData,
+  type SketchEdit,
   startDraw,
   withPending,
 } from '../sketch/draw';
@@ -79,7 +88,18 @@ const DRAW_TOOLS = new Set<string>([
   'slot',
   'polygon',
   'point',
+  'ellipse',
+  'ellipticArc',
+  'splineControl',
+  'splineThrough',
 ]);
+
+/** Two taps this close in time and place end a spline (the double-tap / double-click). */
+const DOUBLE_TAP_MS = 450;
+const DOUBLE_TAP_PX = 14;
+
+/** A Pencil press held still this long on sketch geometry grabs it (a solver drag). */
+const GRAB_HOLD_MS = 300;
 
 /** A pen press that moves less than this (CSS px) is a tap (a click for the tool), not a stroke. */
 const STROKE_SLOP_PX = 6;
@@ -93,6 +113,8 @@ interface Stroke {
   /** Recognition tolerance (mm): about twice the pen pick radius at the current zoom. */
   tolerance: number;
   moved: boolean;
+  /** Pen down on grabbable geometry: held still for `GRAB_HOLD_MS` it grabs it instead. */
+  grab?: { entity: Id; timer: ReturnType<typeof setTimeout> };
 }
 
 interface DragState {
@@ -270,6 +292,8 @@ export class SketchSession {
       solve: null,
       editDimension: null,
       highlightConstraints: null,
+      highlightEntities: null,
+      dimDrag: null,
       conflictsDismissed: false,
       isNew: this.isNew,
       stroke: null,
@@ -527,9 +551,24 @@ export class SketchSession {
 
   // ------------------------------------------------------------------ toolbar
 
+  /** The last tool chosen (Space and the radial menu's Repeat slot bring it back after Esc). */
+  private lastTool: { tool: SketchToolId; variant: string | undefined } | null = null;
+
+  repeatTool(): void {
+    const u = this.ui();
+    if (!u || !this.lastTool) return;
+    if (u.tool === this.lastTool.tool && u.draw) return; // still in it
+    this.setTool(this.lastTool.tool, this.lastTool.variant);
+  }
+
+  lastToolLabel(): string | null {
+    return this.lastTool?.tool ?? null;
+  }
+
   setTool(tool: SketchToolId | null, variant?: string): void {
     const u = this.ui();
     if (!u) return;
+    if (tool) this.lastTool = { tool, variant: variant ?? u.variants[tool] };
     const variants = variant && tool ? { ...u.variants, [tool]: variant } : u.variants;
     const draw =
       tool && DRAW_TOOLS.has(tool)
@@ -640,6 +679,39 @@ export class SketchSession {
     );
   }
 
+  /** Where a dragged label (screen px in the overlay) lands in the sketch, or null. */
+  private labelTo(id: Id, x: number, y: number): Vec2 | null {
+    const v = this.wb.viewport;
+    const f = this.feature();
+    const frame = this.ui()?.frame;
+    const c = f?.constraints.find((k) => k.id === id);
+    if (!v || !f || !frame || !c || !isDimension(c)) return null;
+    const at = v.screenToPlane(x, y, frame);
+    return at ? dragDimensionLabel(f.entities, c, at) : null;
+  }
+
+  /** Live: the label follows the pointer. Nothing is stored and the value never changes. */
+  moveDimensionLabel(id: Id, x: number, y: number): void {
+    const at = this.labelTo(id, x, y);
+    if (at) this.patch({ dimDrag: { id, at } });
+  }
+
+  /** The drag ended: the label position is stored (`label`) as one undo step. */
+  endMoveDimensionLabel(id: Id, x: number, y: number): void {
+    const at = this.labelTo(id, x, y);
+    this.patch({ dimDrag: null });
+    if (!at) return;
+    void this.commitEdit(
+      (cur) => ({
+        entities: cur.entities,
+        constraints: cur.constraints.map((c) =>
+          c.id === id && isDimension(c) ? { ...c, label: at } : c,
+        ),
+      }),
+      'Move dimension',
+    );
+  }
+
   doneEditingDimension(): void {
     this.patch({ editDimension: null });
     this.wb.commit();
@@ -659,7 +731,7 @@ export class SketchSession {
     };
     // The conflict card under the pointer unmounts with the fix, so it never sees mouseleave:
     // drop its highlight here or the sketch keeps the stale conflict colours.
-    this.patch({ highlightConstraints: null });
+    this.patch({ highlightConstraints: null, highlightEntities: null });
     this.pushHighlights();
     void this.commitEdit(
       (cur) => ({ entities: cur.entities, constraints: fixConstraints(cur.constraints) }),
@@ -847,6 +919,53 @@ export class SketchSession {
     if (this.fingers.size === 0) this.navigating = false;
   }
 
+  private armGrab(st: Stroke, entity: Id, e: PointerEvent): void {
+    const pointerId = e.pointerId;
+    const start = { x: e.clientX, y: e.clientY };
+    const at = this.toSketch(e);
+    st.grab = {
+      entity,
+      timer: setTimeout(() => {
+        if (this.stroke !== st || st.moved || !at) return;
+        // Held still: the stroke becomes a grab. The target pulses and follows the Pencil as a
+        // normal solver drag (one undo step); the release ends it.
+        this.stroke = null;
+        st.grab = undefined;
+        this.patch({ stroke: null, highlightEntities: [entity] });
+        this.pushHighlights();
+        this.scheduleOverlay();
+        this.startDrag(entity, at, start, pointerId);
+      }, GRAB_HOLD_MS),
+    };
+  }
+
+  private disarmGrab(st: Stroke | null): void {
+    if (st?.grab) clearTimeout(st.grab.timer);
+    if (st) st.grab = undefined;
+  }
+
+  /** Begins a solver drag of `entity` from `at` (mouse, finger, or a Pencil grab). */
+  private startDrag(entity: Id, at: Vec2, start: { x: number; y: number }, _pointerId: number) {
+    const f = this.feature();
+    if (!f) return;
+    const input = {
+      entities: [...f.entities],
+      constraints: [...f.constraints],
+      values: this.values(f),
+    };
+    this.drag = {
+      session: solver()
+        .api.beginDrag(input, entity, at)
+        .then((r) => r.session),
+      entity,
+      key: `drag:${newId()}`,
+      inFlight: false,
+      pending: null,
+      moved: false,
+      start,
+    };
+  }
+
   private beginStroke(e: PointerEvent): void {
     const at = this.toSketch(e);
     if (!at) return;
@@ -871,6 +990,7 @@ export class SketchSession {
     if (!st.moved && Math.hypot(e.clientX - st.start.x, e.clientY - st.start.y) < STROKE_SLOP_PX)
       return;
     st.moved = true;
+    this.disarmGrab(st);
     // Live feedback: the ink plus what it is recognised as so far (pure, ≈ 0.2 ms).
     const rec = recognizeStroke(st.samples, { tolerance: st.tolerance });
     this.patch({
@@ -924,6 +1044,10 @@ export class SketchSession {
     const d = this.drag;
     if (!d) return;
     this.drag = null;
+    if (this.ui()?.highlightEntities?.includes(d.entity)) {
+      this.patch({ highlightEntities: null });
+      this.pushHighlights();
+    }
     void this.serial(async () => {
       const session = await d.session;
       // Let an in-flight drag step land first.
@@ -940,6 +1064,7 @@ export class SketchSession {
     // The system took the pointer (e.g. a gesture): never leave a drag running behind it.
     this.endDrag();
     if (this.stroke?.pointerId === e.pointerId) {
+      this.disarmGrab(this.stroke);
       this.stroke = null;
       this.patch({ stroke: null });
       this.scheduleOverlay();
@@ -1012,11 +1137,14 @@ export class SketchSession {
       // drags it.
       if (!u.draw && u.tool !== 'dimension') {
         const picked = this.pickSketch(e)?.entity;
-        const onSelected = picked && !isSketchReference(picked) && u.selected.includes(picked);
+        const grabbable = picked && !isSketchReference(picked) ? picked : null;
+        const onSelected = grabbable !== null && u.selected.includes(grabbable);
         if (!onSelected) {
           e.stopPropagation();
           e.preventDefault();
           this.beginStroke(e);
+          // Held still on geometry: grab it. Moving first is a stroke (snapping to a node).
+          if (grabbable && this.stroke) this.armGrab(this.stroke, grabbable, e);
           return;
         }
       }
@@ -1059,26 +1187,9 @@ export class SketchSession {
     // The origin and axes are selectable (on release) but never dragged.
     if (isSketchReference(hit.entity)) return;
     withhold();
-    const f = this.feature();
-    if (!f) return;
-    const entity = hit.entity;
+    if (!this.feature()) return;
     (e.target as Element | null)?.setPointerCapture?.(e.pointerId);
-    const input = {
-      entities: [...f.entities],
-      constraints: [...f.constraints],
-      values: this.values(f),
-    };
-    this.drag = {
-      session: solver()
-        .api.beginDrag(input, entity, at)
-        .then((r) => r.session),
-      entity,
-      key: `drag:${newId()}`,
-      inFlight: false,
-      pending: null,
-      moved: false,
-      start: { x: e.clientX, y: e.clientY },
-    };
+    this.startDrag(hit.entity, at, { x: e.clientX, y: e.clientY }, e.pointerId);
   }
 
   private values(f: SketchFeature): Record<Id, number> {
@@ -1134,6 +1245,7 @@ export class SketchSession {
     if (!u) return;
     const st = this.stroke;
     if (st && st.pointerId === e.pointerId) {
+      this.disarmGrab(st);
       this.stroke = null;
       e.stopPropagation();
       if (st.moved) {
@@ -1214,9 +1326,41 @@ export class SketchSession {
     if (!at) return;
     const base = this.drawData();
     const state = drawMove(u.draw, base, at, this.toleranceMm(e, at));
+    // A spline ends on a double-tap or double-click (open); its second tap adds no point.
+    const prev = this.lastTap;
+    this.lastTap = { t: performance.now(), x: e.clientX, y: e.clientY };
+    if (
+      isSplineTool(u.draw.tool) &&
+      u.draw.anchors.length > 0 &&
+      prev &&
+      performance.now() - prev.t < DOUBLE_TAP_MS &&
+      Math.hypot(e.clientX - prev.x, e.clientY - prev.y) < DOUBLE_TAP_PX
+    ) {
+      this.lastTap = null;
+      this.finishShape();
+      return;
+    }
     const r = drawClick(state, base);
     this.patch({ draw: r.state, cursor: r.state.cursor });
-    const edit = r.edit;
+    this.commitDrawEdit(r.edit, u.tool);
+    this.scheduleOverlay();
+  }
+
+  private lastTap: { t: number; x: number; y: number } | null = null;
+
+  /** Enter or a double-tap: ends the spline being drawn. Returns whether there was one. */
+  finishShape(): boolean {
+    const u = this.ui();
+    if (!u?.draw) return false;
+    const r = drawFinish(u.draw);
+    if (!r) return false;
+    this.patch({ draw: r.state, cursor: r.state.cursor });
+    this.commitDrawEdit(r.edit, u.tool);
+    this.scheduleOverlay();
+    return true;
+  }
+
+  private commitDrawEdit(edit: SketchEdit | null, tool: SketchToolId | null): void {
     if (edit) {
       const pending: SketchData = { entities: edit.entities, constraints: edit.constraints };
       this.unsettled.push(pending);
@@ -1225,18 +1369,18 @@ export class SketchSession {
           entities: [...cur.entities, ...edit.entities],
           constraints: [...cur.constraints, ...edit.constraints],
         }),
-        `Draw ${u.tool ?? 'geometry'}`,
+        `Draw ${tool ?? 'geometry'}`,
       ).finally(() => {
         this.unsettled = this.unsettled.filter((x) => x !== pending);
       });
     }
-    this.scheduleOverlay();
   }
 
   onDoubleClick(e: MouseEvent): void {
     const u = this.ui();
     if (!u?.draw) return;
     e.stopPropagation();
+    if (this.finishShape()) return;
     const next = cancelDraw(u.draw);
     if (next) this.patch({ draw: next });
     this.scheduleOverlay();
@@ -1403,6 +1547,7 @@ export class SketchSession {
           (isSketchReference(val) || f.entities.some((e) => e.id === val))
         )
           selectedIds.push(val);
+    for (const id of u.highlightEntities ?? []) selectedIds.push(id);
     for (const id of u.highlightConstraints ?? []) {
       const k = f.constraints.find((x) => x.id === id);
       if (k)

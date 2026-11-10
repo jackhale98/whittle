@@ -1,4 +1,4 @@
-import { Box, Circle, MousePointer2, RectangleHorizontal, Slash, Square } from 'lucide-react';
+import { Box, Circle, MousePointer2, RectangleHorizontal, Slash, Square, X } from 'lucide-react';
 import type { ComponentType, ReactNode } from 'react';
 import { Section } from '../components/controls';
 import { Button, cn, Kbd } from '../components/primitives';
@@ -25,8 +25,29 @@ export interface SelectionAction {
   icon?: ReactNode;
 }
 
+/** A feature (or sketch) named in a lineage line. */
+export interface LineageRef {
+  id: string;
+  name: string;
+}
+
+/**
+ * Where a selected face, edge or vertex came from: the latest feature that created or last
+ * modified it, and that feature's sketch if it has one. The integration computes it from the
+ * persistent names and feature refs.
+ */
+export interface SelectionLineage {
+  madeBy?: LineageRef;
+  sketch?: LineageRef;
+}
+
 export interface SelectionInspectorProps {
   selection: SelectionState;
+  lineage?: SelectionLineage;
+  /** Edit button: open that feature (or sketch) for editing. */
+  onEditFeature?(id: string): void;
+  /** A plain ✕ "Clear selection" in the header (no Esc-only path on touch). */
+  onClear?(): void;
   /** Context tools offered for this selection (select first, act second). */
   actions?: readonly SelectionAction[];
   onAction?(id: string): void;
@@ -47,6 +68,9 @@ const kindMeta: Record<
 /** Empty / hint state, and facts + context actions for the current viewport selection. */
 export function SelectionInspector({
   selection,
+  lineage,
+  onEditFeature,
+  onClear,
   actions,
   onAction,
   className,
@@ -67,12 +91,23 @@ export function SelectionInspector({
         <span className="flex size-8 items-center justify-center rounded-control bg-accent-soft text-accent-text">
           <Icon className="size-[18px]" aria-hidden />
         </span>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <h2 className="truncate text-sm leading-5 font-semibold">{title}</h2>
           {selection.label ? (
             <p className="truncate text-2xs text-fg-muted">{selection.label}</p>
           ) : null}
         </div>
+        {onClear ? (
+          <button
+            type="button"
+            onClick={onClear}
+            aria-label="Clear selection"
+            data-testid="clear-selection"
+            className="flex size-11 shrink-0 items-center justify-center rounded-control text-fg-muted transition-colors duration-fast hover:bg-surface-2 hover:text-fg active:bg-surface-3 focus-visible:outline-2 focus-visible:outline-accent"
+          >
+            <X className="size-[18px]" aria-hidden />
+          </button>
+        ) : null}
       </header>
       {selection.details?.length ? (
         <Section title="Properties">
@@ -84,6 +119,39 @@ export function SelectionInspector({
               </div>
             ))}
           </dl>
+        </Section>
+      ) : null}
+      {lineage && (lineage.madeBy || lineage.sketch) && selection.kind !== 'region' ? (
+        <Section title="Made by">
+          <ul className="m-0 flex list-none flex-col gap-1.5 p-0" data-testid="selection-lineage">
+            {(
+              [
+                ['Feature', lineage.madeBy],
+                ['Sketch', lineage.sketch],
+              ] as const
+            ).map(([role, ref]) =>
+              ref ? (
+                <li
+                  key={role}
+                  data-lineage={role.toLowerCase()}
+                  className="flex items-center gap-2 text-ui"
+                >
+                  <span className="w-14 shrink-0 text-xs text-fg-muted">{role}</span>
+                  <span className="min-w-0 flex-1 truncate font-medium">{ref.name}</span>
+                  {onEditFeature ? (
+                    <Button
+                      variant="secondary"
+                      className="h-7"
+                      aria-label={`Edit ${ref.name}`}
+                      onClick={() => onEditFeature(ref.id)}
+                    >
+                      Edit
+                    </Button>
+                  ) : null}
+                </li>
+              ) : null,
+            )}
+          </ul>
         </Section>
       ) : null}
       {actions?.length ? (

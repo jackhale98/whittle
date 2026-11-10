@@ -5,7 +5,7 @@
 
 import type { DeviceTier } from '@wren-cad/contracts';
 import { Button, IconButton, SyncStatusChip } from '@wren-cad/ui';
-import { GitBranch } from 'lucide-react';
+import { GitBranch, Settings } from 'lucide-react';
 import { useObservable } from '../app/observable';
 import type { Workbench } from '../app/workbench';
 
@@ -40,6 +40,17 @@ export function ProjectBar({ wb, tier }: { wb: Workbench; tier: DeviceTier }) {
         >
           <span className="max-w-[16ch] truncate">{bar.branch ?? 'Versions'}</span>
         </Button>
+      )}
+      {/* Phones reach Settings from the command palette (More); the bar has no room. */}
+      {phone ? null : (
+        <IconButton
+          label="Settings"
+          icon={<Settings className="size-[18px]" />}
+          {...(touch ? { size: 'touch' as const } : {})}
+          pressed={ui.settings !== null}
+          onClick={() => (ui.settings ? wb.closeSettings() : wb.openSettings('navigation'))}
+          data-testid="settings-button"
+        />
       )}
       {/* The phone top bar is narrow: "local only" is the quiet default, so it isn't shown there. */}
       {phone && bar.status.state === 'local' ? null : (

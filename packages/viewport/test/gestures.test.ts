@@ -154,6 +154,7 @@ describe('gesture recognizer: long-press', () => {
     d.wait(1);
     expect(d.gestures()).toEqual(['longPress']);
     expect(d.out.some((o) => o.type === 'releaseNavigation' && o.id === 1)).toBe(true);
+    expect(d.out.some((o) => o.type === 'gesture' && o.gesture.pointerId === 1)).toBe(true);
     d.feed('up', 1, 100, 80);
     expect(d.gestures()).toEqual(['longPress']);
     expect(d.r.nextDeadline()).toBeNull();

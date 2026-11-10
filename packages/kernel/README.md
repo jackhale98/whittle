@@ -48,6 +48,12 @@ amalgamated file.
 - `assemble` (3.1.0) rejects the generated d.ts unless `FS` or `wasmMemory` is exported, so we
   export `wasmMemory`.
 - OCCT 8 deprecates the `TopTools_*` collection typedefs. Use the `NCollection_*` templates.
+- The image's `link` entrypoint runs the whole nx graph, and nx restores every cached step's
+  outputs (generated bindings, docs) into the container's writable layer: several GB on the Docker
+  disk. On a nearly full disk ("no space left on device" in the container log) point
+  `LIBCASCADE_CONTAINER_CMD` at a wrapper that runs the same `link <yml>` through
+  `--entrypoint /opencascade.js/build-wasm.sh` (the earlier steps' outputs are already in the
+  image), with the yml path made absolute (`/src/…`) and `--tmpfs /tmp`. The M3.5 build used this.
 
 ## Artefacts (`dist/`, gitignored; never commit `.wasm`)
 
@@ -60,10 +66,13 @@ amalgamated file.
 | `*.build-manifest.json`, `*.provenance.json`        | build records: flags, image digest, source SHA-256s           |
 | `size-report.json`                                  | raw, gzip and brotli sizes                                    |
 
-Sizes at M3 (toolchain 3.1.0, `-O3`, wasm-opt `-O4`, SIMD, native Wasm exceptions). The M3
-features (offset/thick solid, draft, pipe shell, ThruSections, the hole profile revolve, BOP self-
-interference check, curve sampling) and the IGES reader added +0.77 MiB brotli per kernel over M2
-(3.76 / 3.73 MiB; M1 3.71 MiB; M0 1.30 MiB). IGES alone (measured with a
+Sizes at M3.5 (toolchain 3.1.0, `-O3`, wasm-opt `-O4`, SIMD, native Wasm exceptions). The M3.5
+sketch curves (B-spline/elliptic-arc edges, exact projection, `BRepBuilderAPI_NurbsConvert` for
+knot-aware mass properties) added +17.0 KiB brotli (+0.37 %), +18.5 KiB gzip, +48.8 KiB raw to the
+single-threaded kernel and +11.6 KiB brotli to the threaded one, measured against the M3 build. At
+M3 the M3 features (offset/thick solid, draft, pipe shell, ThruSections, the hole profile revolve,
+BOP self-interference check, curve sampling) and the IGES reader had added +0.77 MiB brotli per
+kernel over M2 (3.76 / 3.73 MiB; M1 3.71 MiB; M0 1.30 MiB). IGES alone (measured with a
 `WREN_NO_IGES=1` production link of the single-threaded kernel): +265 KiB brotli (5.7 %),
 +394 KiB gzip, +1.84 MiB raw; the other M3 features +525 KiB brotli. Not worth a lazily loaded
 side module yet; if data exchange grows (IGES export, more formats), a separate exchange kernel
@@ -71,8 +80,8 @@ loaded on first import is the way to split it.
 
 | Artefact                 |       raw |     gzip |   brotli |
 | ------------------------ | --------: | -------: | -------: |
-| `whittle-kernel-st.wasm` | 20.75 MiB | 6.51 MiB | 4.53 MiB |
-| `whittle-kernel.wasm`    | 20.09 MiB | 6.48 MiB | 4.51 MiB |
+| `whittle-kernel-st.wasm` | 20.80 MiB | 6.52 MiB | 4.54 MiB |
+| `whittle-kernel.wasm`    | 20.14 MiB | 6.50 MiB | 4.52 MiB |
 | `whittle-kernel-st.js`   |    56 KiB |   21 KiB |   19 KiB |
 | `whittle-kernel.js`      |    63 KiB |   24 KiB |   21 KiB |
 
@@ -122,8 +131,8 @@ last resort is an empty string (the worker reports it as a malformed result).
 | `exportShapes(shapes, format, options)`    | `{path, files:[{path,name}]}` in MEMFS (`step`, `stl`, `brep`)  |
 | `importFile(path, format)`                 | `{bodies:[{shape,name?}]}` (`step`, `iges`, `brep`, `stl`)      |
 | `measure(query)`                           | `Measurement` (M2; `{a, b?}`, see below)                        |
-| `projectEdges(query)`                      | M3: `ProjectedEdge[]` (`{shape, edges, plane}`, see below)      |
-| `projectFaceOutline(query)`                | M3: `{outer, inner}` (`{shape, face, plane}`)                   |
+| `projectEdges(query)`                      | M3: `ProjectedEdge[]` (`{shape, edges, plane, exact?}`, below)  |
+| `projectFaceOutline(query)`                | M3: `{outer, inner}` (`{shape, face, plane, exact?}`)           |
 | `configureThreads(count)`                  | `{threads, max}` (threaded build; no-op single)                 |
 | `release(shape)`, `liveHandleCount()`      |                                                                 |
 
@@ -286,6 +295,16 @@ normal stay `circle`s and counter-clockwise `arc`s (from either side of the plan
 line (a circle seen edge-on) is one `line`. Edges along the normal project to points and come back
 with no curves. Outlines list the outer loop, then each inner loop, in wire order.
 
+With `exact: true` in the query (M3.5, `ExactProjectedEdge`), the projection is exact for conics
+and B-splines in any orientation, because projecting along the normal is affine: circles seen
+obliquely and ellipses are `ellipse` / counter-clockwise `ellipticArc` (`c`, `majorRadius`,
+`minorRadius`, `rotation` in (−π/2, π/2], `start`, `end`), still `circle` / `arc` when the result
+is circular; B-spline and Bezier edges are `bspline` (`poles` projected, the curve's own `degree`,
+`weights` when rational, OCCT `knots` + `multiplicities`; trimmed edges are segmented and clamped,
+a whole periodic curve stays `periodic`). These map one-to-one onto `SketchEllipse`,
+`SketchEllipticArc` and `SketchBSpline`. Edge-on projections and other curves are sampled as
+above. Without the flag the output is the M3 one.
+
 **IGES** (`importFile(path, "iges")`): `IGESControl_Reader`; solids are kept, loose faces are sewn
 (`BRepBuilderAPI_Sewing`, 1 µm tolerance) and closed shells become solids, open shells stay
 shell bodies. Lengths arrive in mm. A `WREN_NO_IGES=1` build leaves the reader out (size
@@ -302,6 +321,34 @@ mesh reference body (STL) is one face `F<id>:face` and only `op: "new"`.
 200 × 200 × 10 plate, as a pattern of a hole feature, is one 99-tool cut. The golden gates the
 smaller of each run's wall and process CPU time (wall inflates on oversubscribed CI machines,
 CPU while V8 tiers up the module on background threads), best of five warm runs.
+
+### Sketch curves (M3.5)
+
+`ellipticArc` and `bspline` entities become exact edges (ADR-056):
+
+- **Elliptic arc**: `gp_Elips` (major axis at `rotation`; `minorRadius > majorRadius` swaps the
+  axes, like `ellipse`) trimmed by `GC_MakeArcOfEllipse`, counter-clockwise from `start` to `end`.
+  The end points must lie on the ellipse within 1e-6 · max(1, a) mm.
+- **B-spline**: `Geom_BSplineCurve` from the pole points, `weights`, `knots` + `multiplicities`
+  (OCCT form: distinct knots, both or neither; an open spline may give a flat vector of
+  n + degree + 1 knots instead, ADR-048), `degree`, `periodic`. Defaults: clamped =
+  multiplicity degree + 1 at the ends and interior knots `i / (n − degree)`; periodic = `n + 1` knots
+  `i / n`, multiplicity 1. Non-periodic splines must be clamped; their end poles are the shared
+  vertices of the lines and arcs that end there. A closed clamped spline (last pole = first) or a
+  periodic one bounds a region on its own.
+- Bad input is `INVALID_INPUT` with `entityRefs: ["S…:e(<id>)"]`: degree (integer 1 … 25), too
+  few poles (degree + 1), weights (> 0, one per pole), knot vector length, ordering, clamping,
+  multiplicities, zero size; elliptic arcs off their ellipse, without sweep or with bad radii.
+- Edges keep `S…:e(<id>)`; fingerprints report `bspline` / `ellipse`; side faces are `extrusion` /
+  `revolution` surfaces named `F…:side(S…:e(<id>))`. Fillets on spline-to-line and spline-to-cap
+  edges work.
+
+**Mass properties of spline profiles.** BRepGProp's default Gauss rule does not split at knots,
+so piecewise B-spline profiles were 1e-5 to 3e-3 off. `massProperties` and `measure` convert shapes
+with a planar face bounded by a free-form edge, or an extrusion/revolution of a free-form curve, to
+NURBS and integrate adaptively (relative 1e-12, better than 1e-9 achieved; about 3× the default's time on
+those shapes only). Fingerprint areas and naming centroids keep the default; fingerprint lengths of
+free-form edges use `GCPnts_AbscissaPoint` (1e-10).
 
 ### Naming (packages/contracts/src/naming.ts)
 

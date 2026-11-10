@@ -26,6 +26,7 @@ export {
   type FilletOptions,
   filletCorner,
 } from './corner';
+export { curveIntersections } from './curve-ops';
 export type { EditOptions, SketchData, SketchEdit, SketchEditResult } from './draft';
 export { type MirrorOptions, mirrorEntities } from './mirror';
 export { type OffsetOptions, type OffsetSide, offsetEntities } from './offset';
