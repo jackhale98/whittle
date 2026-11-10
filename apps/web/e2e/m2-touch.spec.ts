@@ -376,7 +376,7 @@ test('touch targets: welcome actions, Close, Library and the prompt Esc are 44 p
   await page.locator('[data-tool-group="sketch"]').tap();
   const chip = page.getByTestId('prompt-chip');
   await expect(chip).toContainText('Select a plane');
-  await expectTouchTarget(chip.getByRole('button', { name: /cancel selection/ }), 'Esc');
+  await expectTouchTarget(chip.getByRole('button', { name: /cancel selection/i }), 'Esc');
 });
 
 test('Pencil: a selected tool draws with the Pencil; a new sketch after Pencil use starts freehand', async ({

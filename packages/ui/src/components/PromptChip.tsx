@@ -41,14 +41,15 @@ export function PromptChip({ children, count, onCancel, size = 'md', className }
         <button
           type="button"
           onClick={onCancel}
-          aria-label="Esc: cancel selection"
+          aria-label={touch ? 'Cancel selection' : 'Esc: cancel selection'}
           className={cn(
-            'ml-0.5 flex items-center justify-center gap-1 rounded-full text-2xs text-fg-muted hover:bg-surface-2 hover:text-fg',
-            touch ? 'h-11 min-w-11 px-3' : 'h-7 px-2',
+            'ml-0.5 flex shrink-0 items-center justify-center gap-1 rounded-full text-2xs text-fg-muted hover:bg-surface-2 hover:text-fg',
+            touch ? 'size-11 bg-surface-2 text-fg active:bg-surface-3' : 'h-7 px-2',
           )}
         >
-          <Kbd>Esc</Kbd>
-          <X className="size-3.5" aria-hidden />
+          {/* No keyboard on a phone or tablet: a plain close button there, the Esc hint on desktop. */}
+          {touch ? null : <Kbd>Esc</Kbd>}
+          <X className={touch ? 'size-5' : 'size-3.5'} aria-hidden />
         </button>
       ) : (
         <span className="w-2" />

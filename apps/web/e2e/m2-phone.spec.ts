@@ -153,7 +153,7 @@ test('phone touch targets: welcome, Library, prompt Esc, Add description are 44 
   );
   await tab(page, 'Measure').tap();
   const chip = page.getByTestId('prompt-chip');
-  await expectTouchTarget(chip.getByRole('button', { name: /cancel selection/ }), 'Esc');
+  await expectTouchTarget(chip.getByRole('button', { name: /cancel selection/i }), 'Esc');
 });
 
 /** Reloads the cached document: on screen from the cache, the kernel not started. */
