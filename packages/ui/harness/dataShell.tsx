@@ -1,8 +1,9 @@
 import type { DeviceTier, Expr, Feature, Id, KernelStatus } from '@wren-cad/contracts';
 import { ArrowUpFromLine, EyeOff, PenLine, Trash2 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { lazy, Suspense, useMemo, useState } from 'react';
 import {
   AppShell,
+  ConfigurationPill,
   bracketTutorial,
   type ExportRequest,
   FeatureInspector,
@@ -16,6 +17,7 @@ import {
   type ToolId,
   useTutorial,
 } from '../src';
+import { configColumns, configDefault, configRows, configSummaries } from './configFixtures';
 import {
   makeEvaluator,
   sampleFeatures,
@@ -25,6 +27,8 @@ import {
 } from './fixtures';
 
 const q = new URLSearchParams(location.search);
+// M3.7: the table is a lazy chunk in the app too.
+const ConfigurationTable = lazy(() => import('../src/config/ConfigurationTable'));
 const pt = (key: string): { x: number; y: number } | null => {
   const v = q.get(key);
   if (!v) return null;
@@ -67,6 +71,8 @@ export function DataShell({
   const evaluate = useMemo(() => makeEvaluator(params), [params]);
   const feature = features.find((f) => f.id === selected);
   const touch = tier === 'desktop' ? 'compact' : 'touch';
+  /** `cfg=default|long|panel`: the configuration pill (and the table panel) in the top bar. */
+  const cfgMode = q.get('cfg');
 
   // M2 touch state, switched on by query params so every state has a stable URL for screenshots.
   const [snap, setSnap] = useState<SheetSnap>((q.get('sheet') as SheetSnap | null) ?? 'peek');
@@ -141,6 +147,51 @@ export function DataShell({
         documentName="Untitled bracket"
         kernelStatus={status}
         viewport={viewport}
+        {...(cfgMode
+          ? {
+              configurationBar: (
+                <ConfigurationPill
+                  variant={tier === 'phone' ? 'chip' : 'bar'}
+                  size={tier === 'desktop' ? 'md' : 'touch'}
+                  configurations={configSummaries}
+                  activeId={cfgMode === 'default' ? null : 'c-long'}
+                  defaultStatus="ok"
+                  onSwitch={() => {}}
+                  onCreate={() => {}}
+                  onManage={() => {}}
+                />
+              ),
+            }
+          : {})}
+        {...(cfgMode === 'panel' && tier !== 'phone'
+          ? {
+              configurationPanel: (
+                <section
+                  aria-label="Configurations"
+                  data-testid="configuration-panel"
+                  className="w-card pointer-events-auto flex max-h-full min-h-0 w-full flex-col overflow-hidden rounded-[14px] shadow-float"
+                >
+                  <h2 className="border-b border-border px-3 py-1.5 text-sm font-semibold">
+                    Configurations
+                  </h2>
+                  <div className="min-h-0 flex-1 overflow-auto">
+                    <Suspense fallback={null}>
+                      <ConfigurationTable
+                        columns={configColumns}
+                        rows={configRows}
+                        defaultRow={configDefault}
+                        activeId="c-long"
+                        size={tier === 'desktop' ? 'md' : 'touch'}
+                        maxHeight="min(50vh, 28rem)"
+                        onEdit={() => {}}
+                        onPaste={() => {}}
+                      />
+                    </Suspense>
+                  </div>
+                </section>
+              ),
+            }
+          : {})}
         featureTree={{
           features,
           statuses: sampleStatuses,

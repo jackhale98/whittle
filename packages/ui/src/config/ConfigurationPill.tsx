@@ -197,7 +197,7 @@ export function ConfigurationPill({
         )}
       >
         <Layers className="size-4 shrink-0" aria-hidden />
-        <span className="min-w-0 max-w-40 truncate" title={activeName}>
+        <span className={cn('min-w-0 truncate', chip ? 'max-w-[9ch]' : 'max-w-40')} title={activeName}>
           {activeName}
         </span>
         {activeStatus === 'failed' || activeStatus === 'attention' ? (

@@ -122,10 +122,10 @@ export function PhoneShell(props: ShellProps) {
                     {documentName}
                   </h1>
                 </div>
-                <div className="flex min-w-0 shrink items-start gap-2">
+                <div className="flex shrink-0 items-start gap-2">
                   {props.configurationBar ? (
                     <div
-                      className="pointer-events-auto flex min-w-0 items-center"
+                      className="pointer-events-auto flex shrink-0 items-center"
                       data-testid="configuration-bar"
                     >
                       {props.configurationBar}
