@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { expect, type Page, test } from '@playwright/test';
 import type { PickHit } from '@wren-cad/contracts';
 import type { HarnessApi } from '../harness/main';
+import { PERF_FACTOR } from './perf-budget';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const SHOTS = join(here, '..', 'test-results', 'screenshots'); // untracked output
@@ -563,6 +564,14 @@ test('perf probe: picking active on a 1M-triangle model', async ({ page }) => {
       `edge/vertex pick first ${res.edgeFirst.toFixed(1)} ms (BVH build ${res.stats.lastBvhBuildMs.toFixed(0)} ms), repeat ${res.edgeAgain.toFixed(2)} ms`,
   );
   expect(res.hit).toBe('face');
+  if (process.env.WREN_PERF_ASSERT) {
+    // Repeat picks hit the ID image / BVH: well inside a frame (the first pick of each kind pays
+    // for the one-off ID refresh and BVH build, which are reported, not gated).
+    expect(res.faceAgain, 'repeat face pick budget 2 ms').toBeLessThanOrEqual(2 * PERF_FACTOR);
+    expect(res.edgeAgain, 'repeat edge/vertex pick budget 2 ms').toBeLessThanOrEqual(
+      2 * PERF_FACTOR,
+    );
+  }
 
   // Orbit with picking enabled: frame time must not regress (ID pass only runs when idle).
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
@@ -579,5 +588,11 @@ test('perf probe: picking active on a 1M-triangle model', async ({ page }) => {
   console.log(
     `[perf] orbit with picking enabled: renderCpuMs(avg60)=${stats?.frameMs.toFixed(2)} (advisory on SwiftShader)`,
   );
+  if (process.env.WREN_PERF_ASSERT) {
+    // PLAN §10: <= 8 ms render CPU per frame at 1M triangles; picking enabled changes nothing.
+    expect(stats?.frameMs, 'orbit render CPU with picking, 8 ms budget').toBeLessThanOrEqual(
+      8 * PERF_FACTOR,
+    );
+  }
   await page.evaluate(() => window.__viewport?.viewport.whenPickReady());
 });

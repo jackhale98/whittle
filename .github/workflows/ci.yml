@@ -268,12 +268,17 @@ jobs:
       # Same as `pnpm perf` minus the rebuild: the build job's artefact is what ships.
       - name: Web perf (shell TTI, memory)
         run: pnpm --filter @wren-cad/web perf:run --trace off
-      # Viewport frame-time probes (WREN_PERF=1 above). Owned by the viewport package. Advisory
-      # until the 1M-triangle probes are assertions and stable: at the time of writing both probes
-      # die with "Execution context was destroyed" (a navigation mid-probe). Remove
-      # continue-on-error to make them gate.
-      - name: Viewport perf (1M triangles)
-        continue-on-error: true
+      # Viewport frame-time probes (WREN_PERF=1 above), gating. WREN_PERF_ASSERT=1 turns on their
+      # assertions; every time budget is multiplied by the CI factor (3, packages/viewport/e2e/
+      # perf-budget.ts, same rule as apps/web/e2e/perf/budgets.ts, ADR-010). The harness is served
+      # from its production build (WREN_VIEWPORT_PREVIEW): against the dev server, a late
+      # dependency optimisation reloads the page mid-probe ("Execution context was destroyed").
+      # compare.spec's toggle probe measures render CPU of a frame (~20 ms on software GL against the
+      # 16 ms real-hardware budget); the factor covers it, it is not informational any more.
+      - name: Viewport perf (1M triangles, compare, preview latency)
+        env:
+          WREN_PERF_ASSERT: "1"
+          WREN_VIEWPORT_PREVIEW: "1"
         run: pnpm --filter @wren-cad/viewport perf
       - name: Upload perf results
         if: always()

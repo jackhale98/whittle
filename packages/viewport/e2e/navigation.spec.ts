@@ -1,6 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import type { NavigationOptions, PickHit } from '@wren-cad/contracts';
 import { collectGestures, dist, frame, open, samplePoints, settle } from './helpers';
+import { PERF_FACTOR } from './perf-budget';
 
 /**
  * M3.5 navigation (ADR-046): pivot at the cursor, marker, button mapping per preset, turntable vs
@@ -723,7 +724,7 @@ test('perf probe: orbit start and full-screen box select on a 1M-triangle model'
   );
   expect(rect.crossing.n).toBeGreaterThan(0);
   if (process.env.WREN_PERF_ASSERT) {
-    const f = Number(process.env.WREN_PERF_FACTOR ?? '1');
+    const f = PERF_FACTOR;
     expect(med(starts), 'orbit-start pick budget 2 ms').toBeLessThanOrEqual(2 * f);
     expect(rect.crossing.ms, 'full-screen pickRect budget 16 ms').toBeLessThanOrEqual(16 * f);
     expect(
