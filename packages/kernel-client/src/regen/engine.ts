@@ -157,6 +157,14 @@ import {
 } from './geometry';
 import { hashKey, stableStringify } from './hash';
 import {
+  allBodiesFor,
+  copiedFeatures,
+  definition,
+  hasFreeEdges,
+  kerr,
+  meshOnlyError,
+} from './helpers';
+import {
   compareGeoKey,
   frameMatrix,
   isIdentity,
@@ -256,20 +264,10 @@ const FIELD_LABELS: Record<string, string> = {
   '/length': 'Thread length',
 };
 
-const kerr = (
-  code: KernelError['code'],
-  message: string,
-  extra: Partial<Omit<KernelError, 'code' | 'message'>> = {},
-): KernelError => ({ code, message, ...extra });
-
 const SKETCH_TAG = /^S([0-9A-Za-z]+):/;
 const PLANE_NAME = /^F([0-9A-Za-z]+):plane$/;
 const AXIS_NAME = /^F([0-9A-Za-z]+):axis$/;
 const POINT_NAME = /^F([0-9A-Za-z]+):point$/;
-
-function definition(f: Feature): unknown {
-  return { ...f, name: undefined, suppressed: undefined, annotations: undefined };
-}
 
 function refKind(ref: EntityRef): SubKind | 'body' {
   return ref.kind === 'region' ? 'face' : ref.kind;
@@ -4263,44 +4261,10 @@ function opCode(op: ExtrudeFeature['op']): 0 | 1 | 2 {
   return op === 'cut' ? 1 : op === 'intersect' ? 2 : 0;
 }
 
-/** Ids of the features a mirror / pattern copies (they are not EntityRefs). */
-function copiedFeatures(f: Feature): Id[] {
-  if (f.type !== 'mirror' && f.type !== 'linearPattern' && f.type !== 'circularPattern') return [];
-  return f.source.kind === 'features' ? f.source.features : [];
-}
-
 /** Persistent name of a sketch entity (naming.ts): points `S…:p(id)`, curves `S…:e(id)`. */
 function entityName(f: SketchFeature, id: Id): string {
   const e = f.entities.find((x) => x.id === id);
   return `S${f.id}:${e?.kind === 'point' ? 'p' : 'e'}(${id})`;
-}
-
-/** Bodies a blocked feature would have acted on (conservative: all for body-modifying features). */
-function allBodiesFor(f: Feature, all: string[]): string[] {
-  switch (f.type) {
-    case 'sketch':
-    case 'plane':
-    case 'axis':
-    case 'point':
-    case 'thread':
-      return [];
-    case 'extrude':
-    case 'revolve':
-    case 'primitive':
-    case 'sweep':
-    case 'loft':
-      if (f.op === 'new') return [`B${f.id}`];
-      if (f.scope?.kind === 'bodies') return f.scope.bodies.map((b) => b.name);
-      return all;
-    case 'boolean':
-      return [f.target.name, ...f.tools.map((t) => t.name)];
-    case 'import':
-      if (f.op === 'new') return [`B${f.id}`];
-      if (f.scope?.kind === 'bodies') return f.scope.bodies.map((b) => b.name);
-      return all;
-    default:
-      return all;
-  }
 }
 
 function fieldLabel(f: Feature, pointer: string): string {
@@ -4395,29 +4359,7 @@ const MESH_FORMATS: ReadonlySet<ImportFeature['source']['format']> = new Set([
   'glb',
 ]);
 
-/**
- * Does an imported body have free (boundary) edges? Its edges are named from their adjacent faces
- * (naming.ts): `edge(A|B)` between two faces, `edge(A|A)` on a seam, `edge(A)` on a free edge.
- * Degenerate edges (sphere poles, cone apexes, revolves touching the axis) are also named
- * `edge(A)` in a closed solid, so edges whose fingerprint curve is `degenerate` are not free.
- * Without fingerprints the body is assumed closed: a false "open" would refuse a valid solid.
- */
-function hasFreeEdges(naming: NamingMap, featureId: Id, fp: ShapeFingerprints | null): boolean {
-  if (!fp) return false;
-  const free = new RegExp(`^edge\\(F${featureId}:face(#\\d+)?\\)(#\\d+)?$`);
-  return naming.some(
-    (n) => n.kind === 'edge' && free.test(n.name) && fp.edges[n.index]?.curve !== 'degenerate',
-  );
-}
-
 const IDENTITY_FRAME: Frame = { origin: [0, 0, 0], z: [0, 0, 1], x: [1, 0, 0] };
-
-function meshOnlyError(verb: string, bodyId: string): KernelError {
-  return kerr('INVALID_INPUT', `A mesh reference body cannot be ${verb}`, {
-    hint: 'Meshes (STL, OBJ, 3MF, GLB) are for reference only; import a STEP file to model on it.',
-    entityRefs: [bodyId],
-  });
-}
 
 /** Equal up to float noise (1e-6 mm, 1e-9 relative). */
 function sameFingerprint(a: Fingerprint, b: Fingerprint): boolean {
