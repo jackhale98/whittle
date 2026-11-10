@@ -195,6 +195,8 @@ export interface MenuItem {
   disabled?: boolean;
   /** Renders a check mark (toggle style menus). */
   checked?: boolean;
+  /** Why the item is disabled (or a short note): shown under the label, wrapped, never cut off. */
+  hint?: string;
   separatorBefore?: boolean;
   onSelect(): void;
 }
@@ -272,7 +274,13 @@ export function Menu({ anchor, items, onDismiss, label, placement, size = 'md' }
               }}
               className={cn(
                 'flex w-full items-center gap-2.5 rounded-[8px] px-2.5 text-left text-ui outline-none transition-colors duration-fast',
-                size === 'touch' ? 'h-11' : 'h-8',
+                item.hint
+                  ? size === 'touch'
+                    ? 'min-h-11 py-1.5'
+                    : 'min-h-8 py-1'
+                  : size === 'touch'
+                    ? 'h-11'
+                    : 'h-8',
                 'hover:bg-surface-2 focus-visible:bg-surface-3 aria-disabled:opacity-45',
                 item.danger ? 'text-danger-text' : 'text-fg',
               )}
@@ -280,7 +288,14 @@ export function Menu({ anchor, items, onDismiss, label, placement, size = 'md' }
               <span className="flex size-4 shrink-0 items-center justify-center text-fg-muted">
                 {item.icon}
               </span>
-              <span className="flex-1 truncate">{item.label}</span>
+              <span className="flex-1">
+                <span className="block whitespace-nowrap">{item.label}</span>
+                {item.hint ? (
+                  <span className="mt-0.5 block max-w-64 text-2xs leading-4 text-fg-muted">
+                    {item.hint}
+                  </span>
+                ) : null}
+              </span>
               {item.shortcut ? <Kbd>{item.shortcut}</Kbd> : null}
               {item.checked ? <span aria-hidden>✓</span> : null}
             </button>
