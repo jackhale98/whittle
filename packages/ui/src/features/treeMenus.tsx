@@ -15,6 +15,7 @@ import { canFolder, folderRange, type TreeFolder, toggledVisibility } from '../l
 import { type allowedRollbacks, snapRollback } from '../logic/treeNesting';
 import { folderKey } from '../logic/treeRows';
 import type { FeatureTreeItem, FeatureTreeProps } from './FeatureTree';
+import { suppressMenuItems } from './suppressMenu';
 
 /** What the row and folder menus read from the tree (its props, selection and handlers). */
 export interface MenuCtx
@@ -23,6 +24,7 @@ export interface MenuCtx
     | 'onEdit'
     | 'onRename'
     | 'onSuppress'
+    | 'configuration'
     | 'onDelete'
     | 'onRollback'
     | 'onAddFolder'
@@ -153,7 +155,9 @@ export function menuItems(c: MenuCtx, id: Id, i: number): MenuItem[] {
       icon: <Pencil className="size-4" />,
       onSelect: () => setRenaming(id),
     });
-  if (onSuppress)
+  const scoped = suppressMenuItems(c.configuration, f, !!c.review);
+  if (scoped) items.push(...scoped);
+  else if (onSuppress)
     items.push({
       id: 'suppress',
       label: f.suppressed ? 'Unsuppress' : 'Suppress',

@@ -81,6 +81,58 @@ export {
   type WhichOneChooserProps,
 } from './components/WhichOneChooser';
 export {
+  ConfigStatusLabel,
+  ConfigurationPill,
+  type ConfigurationPillProps,
+  type NewConfigurationInput,
+} from './config/ConfigurationPill';
+export type {
+  ConfigTableDefault,
+  ConfigTableEdit,
+  ConfigTableRow,
+  ConfigurationTableProps,
+} from './config/ConfigurationTable';
+export {
+  ChangedInAllNotice,
+  type ChangedInAllNoticeProps,
+  type OneShotScope,
+  OverrideMarker,
+  type OverrideMarkerProps,
+  ScopeChip,
+  type ScopeChipProps,
+  useOneShotScope,
+} from './config/markers';
+export {
+  type CellValue,
+  CONFIG_GROUPS,
+  CONFIG_STATUS_LABEL,
+  type ConfigColumn,
+  type ConfigColumnKind,
+  type ConfigGroupId,
+  type ConfigOption,
+  type ConfigStatus,
+  type ConfigurationSummary,
+  cellText,
+  configTargetKey,
+  DEFAULT_CONFIGURATION_NAME,
+  type EditScope,
+  groupOf as configGroupOf,
+  resolveEditScope,
+  sameCellValue,
+} from './config/model';
+export {
+  coerceCell,
+  type PasteEdit,
+  type PasteIgnored,
+  type PasteInput,
+  type PastePlan,
+  type PasteRow,
+  type PasteRowInfo,
+  parseTsv,
+  planPaste,
+  transposeGrid,
+} from './config/tsv';
+export {
   type ExportFormProps,
   ExportMenu,
   type ExportMenuProps,
@@ -104,6 +156,11 @@ export {
 export { FolderRow, type FolderRowProps } from './features/FolderRow';
 export { featureMeta } from './features/featureMeta';
 export { SketchEye, type SketchEyeProps } from './features/SketchEye';
+export {
+  type FeatureTreeConfiguration,
+  type SuppressScope,
+  suppressMenuItems,
+} from './features/suppressMenu';
 export {
   folderCommands,
   sketchVisibilityCommands,
