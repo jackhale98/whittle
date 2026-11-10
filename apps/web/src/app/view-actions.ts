@@ -64,7 +64,8 @@ export function setSection(wb: Workbench, patch: Partial<SectionUi>): void {
 
 export function openSection(wb: Workbench): void {
   wb.patchUi({ section: { ...wb.ui.get().section, open: true }, featureId: null });
-  if (wb.tier !== 'desktop') wb.openSheet(wb.tier === 'phone' ? 'section' : 'inspector');
+  // auto: closing the panel (Edit, Esc, Exit) puts the sheet back, so it no longer covers the view.
+  if (wb.tier !== 'desktop') wb.openSheet(wb.tier === 'phone' ? 'section' : 'inspector', true);
 }
 
 /** Closes the panel only; a running cut stays on, with its chip in the viewport. */

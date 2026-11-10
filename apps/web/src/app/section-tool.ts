@@ -306,6 +306,10 @@ export class SectionTool {
     window.addEventListener('pointerup', this.onWindowUp, true);
     window.addEventListener('pointercancel', this.onWindowUp, true);
     (e.target as Element | null)?.setPointerCapture?.(e.pointerId);
+    // preventDefault below also skips the browser's focus move: leave a panel field (which commits
+    // a valid edit) so Esc and the shortcuts reach the app, not the text field.
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && active !== document.body) active.blur();
     e.preventDefault();
     return true;
   }

@@ -504,8 +504,9 @@ that sketch in the viewport whatever the default is, and the choice is saved wit
 The phone's **Features** tab is just the feature tree, the same as on the tablet: folders, nested
 sketches and the eye on each sketch.
 
-- **Drag the line.** The rollback bar between the rows has a grab handle in the middle and a 44 px
-  touch target. Drag it up to roll the model back to that point and down to bring features back; the
+- **Drag the line.** The rollback bar sits in its own row-height gap between the rows (it never
+  covers the row above, so tapping a row's middle always selects that row). It has a grab handle in
+  the middle and a 44 px touch target. Drag it up to roll the model back to that point and down to bring features back; the
   model follows your finger. Each stop is an ordinary rollback edit, so **Undo** puts it back (a
   feature and the sketch under it count as one stop; a collapsed folder is skipped as a unit).
 - **Touch and hold a row** to open its menu: **Suppress** or **Unsuppress** (an undoable edit), plus
@@ -514,6 +515,31 @@ sketches and the eye on each sketch.
 
 A feature that fails is marked in the tree with a short explanation. Its last good geometry stays
 on screen as a ghost, so you can see what changed.
+
+## Section view
+
+A section slices the model open so you can look inside. Turn it on with **Section view** in the
+command palette (Ctrl/Cmd+K), the radial menu, the Inspect tools, or the **Section** tab on the
+phone, then pick X, Y, Z or **Face** (a flat face of the model) as the plane.
+
+- **Leaving the section.** While a section is on, a floating **Section** chip stays over the view
+  with three buttons: **Exit section**, **Flip** (cut away the other side) and **Edit** (open or
+  close the section panel). It stays when you close the panel, and it sits clear of the view cube,
+  the top bar and the sheet. **Esc** also exits (the first Esc closes the panel, the next one
+  exits). Exiting removes the cut, the cap, the chip and the plane handles.
+- **Moving and tilting the plane.** While a section is on, the plane shows a small dashed outline
+  with three handles that keep their size on screen at any zoom:
+  - the **arrow** along the plane's normal slides the plane (offset);
+  - the two **arcs**, one at each edge, tilt it about the plane's two in-plane axes. For an X, Y or Z
+    plane the axes are the other two world axes; for a face they are two axes in the face.
+  - Drag with the mouse or a finger. The plane snaps onto the X, Y and Z planes when you get within
+    about 3 degrees. Hold **Shift** (or keep a second finger down on a touch screen) to snap both
+    angles to 15 degree steps.
+- **Typing it.** The panel has an **Offset** (slider and value) and two **Tilt** fields. They take
+  angles with units, for example `15deg`, `-30` (degrees by default) or `0.2rad`. The offset takes
+  lengths with units (`12mm`, `0.5in`). A face plane measures its offset from the face's centre; an
+  axis plane tilts about the middle of the part.
+- The section is a view setting. It is not saved in the document and it does not change the model.
 
 ## Parameters and expressions
 

@@ -46,6 +46,7 @@ async function typeTilt(page: Page, which: 'u' | 'v', text: string) {
 
 /** No overlap between two boxes. */
 async function apart(a: Locator, b: Locator, what: string) {
+  if ((await b.count()) === 0) return; // not in this shell
   const [x, y] = [await a.boundingBox(), await b.boundingBox()];
   if (!(x && y)) return;
   const overlap =
