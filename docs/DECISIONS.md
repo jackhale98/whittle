@@ -2174,3 +2174,25 @@ Owner feedback: on desktop, the right-click menu "takes a while to load". There 
 - **No kernel wait.** `openRadial` sets the selection synchronously and opens the menu; the reference resolves in the background, tracked so `idle()` still waits for it. The menu's items depend only on the selection, which is already set.
 
 **Consequences.** Moving the mouse quickly toward an item in the first 250 ms selects it, which is the item the user was heading for. After the window, movement never selects, as before. User customisation of the ring and of the flick window is planned in M3.8.
+
+## ADR-077 — Sketch dimensions: click selects, labels follow their geometry, leaders leave geometry grabbable (2026-11-10)
+
+Owner bug report: after dimensioning a circle, its centre could not be grabbed, the circle seemed to "rotate about the dimension" when moved, and Delete did not remove a dimension. There were three causes:
+
+1. A diameter leader runs through the centre point, and its 12 px transparent hit stroke took the press.
+2. A placed label is stored in absolute sketch coordinates (`DimensionConstraint.label`), so when the circle moved, the leader swung round the fixed label.
+3. A click on a driving label opened its editor, so Delete edited the field's text.
+
+**Decision.**
+- **Hit areas leave geometry free.** `DimensionGeometry.clear` lists points the hit area keeps 10 px clear of (`clipSegment`). For radius and diameter leaders these are the centre, both ends and the arrow tips. The strokes still draw in full.
+- **Labels follow their geometry.** After every solve (`commitEdit`) and every drag step, `carryLabels` moves each placed label by the movement of its geometry anchor:
+  - radius, diameter and ellipse dimensions follow the curve's centre, so a resize alone doesn't move the label;
+  - a length dimension follows the line's midpoint;
+  - a two-entity dimension follows the midpoint of its two anchors.
+  
+  The label change lands in the same undo step. The contract is unchanged: `label` stays absolute sketch mm.
+- **Click selects, as in other CAD sketchers.**
+  - A click on a label selects the dimension.
+  - A click on the selected label, a double-click or Enter edits it.
+  - Delete or Backspace (on the label or with it selected) removes it, and so does the Delete chip, shown with the radius/diameter and reference chips when the label is selected or being edited.
+  - A label with no selection model (`onSelect` absent, e.g. the UI harness) still edits on a click.

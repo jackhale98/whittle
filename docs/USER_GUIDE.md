@@ -275,7 +275,11 @@ Choose **Dimension** (D), then:
   dimension aligned instead.
 
 Dimension values accept expressions and units, such as `25mm + 1/8in` or a parameter name. Click a
-dimension and press Enter to edit it.
+dimension to select it. Click it again, double-click it, or press Enter to edit its value. Press
+**Delete** (or use the bin button under the selected label) to remove it.
+
+A placed label moves with its geometry: drag a dimensioned circle by its centre and the dimension
+comes along.
 
 A dimension is drawn the way other sketchers draw it: **extension lines** from the measured geometry, a
 **dimension line with arrows** between them, a **leader** for a radius or diameter, and an **arc** for an
@@ -283,7 +287,7 @@ angle, so you can see what it measures. They highlight when you hover them and w
 selected, and a reference dimension is dashed.
 
 **Drag a label** (mouse, finger or Pencil) to move the dimension line where you want it. A drag only moves
-the label: the value never changes, a plain tap still edits it, and the move is one undo step, "Move
+the label: the value never changes, a plain tap still selects it, and the move is one undo step, "Move
 dimension".
 
 Each dimension label has small toggles:

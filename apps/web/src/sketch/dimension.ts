@@ -4,12 +4,13 @@
  * the sketch's origin and axes (`@origin`, `@x`, `@y`, ADR-017).
  */
 
-import type {
-  DimensionConstraint,
-  Id,
-  SketchConstraint,
-  SketchEntity,
-  Vec2,
+import {
+  type DimensionConstraint,
+  type Id,
+  isDimension,
+  type SketchConstraint,
+  type SketchEntity,
+  type Vec2,
 } from '@wren-cad/contracts';
 import { indexEntities, isSketchReference, newId, SKETCH_ORIGIN } from '@wren-cad/sketch';
 import type { SketchData } from './draw';
@@ -216,7 +217,14 @@ export function measure(sketch: SketchData, d: DimensionDraft): number | null {
 /** Sketch-space anchor of a dimension's label (stored `label`, else next to its geometry). */
 export function labelAnchor(sketch: SketchData, c: DimensionConstraint): Vec2 | null {
   if (c.label) return c.label;
-  const index = refIndex(sketch);
+  return geometryAnchor(refIndex(sketch), c, false);
+}
+
+/**
+ * Where a dimension's geometry is: the default label spot (`follow` false: beside a circle), or the
+ * point its label moves with (`follow` true: a circle's centre, so a resize doesn't shift it).
+ */
+function geometryAnchor(index: Index, c: DimensionConstraint, follow: boolean): Vec2 | null {
   const center = (id: Id): Vec2 | null => {
     const e = index.get(id);
     if (!e) return null;
@@ -227,9 +235,11 @@ export function labelAnchor(sketch: SketchData, c: DimensionConstraint): Vec2 | 
     }
     if (e.kind === 'circle' || e.kind === 'arc') {
       const p = pos(index, e.center);
+      if (follow) return p;
       const r = radiusOf(index, id) ?? 0;
       return p ? [p[0] + r * Math.SQRT1_2, p[1] + r * Math.SQRT1_2] : null;
     }
+    if (follow && (e.kind === 'ellipse' || e.kind === 'ellipticArc')) return pos(index, e.center);
     return null;
   };
   switch (c.kind) {
@@ -246,6 +256,29 @@ export function labelAnchor(sketch: SketchData, c: DimensionConstraint): Vec2 | 
       return a && b ? mid(a, b) : (a ?? b);
     }
   }
+}
+
+/**
+ * Placed dimension labels follow their geometry (as in other CAD sketchers): when a solve or drag
+ * moves what a dimension measures, its stored `label` moves by the same amount. Returns
+ * `after.constraints` itself when nothing moved.
+ */
+export function carryLabels(before: SketchData, after: SketchData): SketchData['constraints'] {
+  const was = refIndex(before);
+  const now = refIndex(after);
+  let changed = false;
+  const out = after.constraints.map((c) => {
+    if (!isDimension(c) || !c.label) return c;
+    const a = geometryAnchor(was, c, true);
+    const b = geometryAnchor(now, c, true);
+    if (!a || !b) return c;
+    const dx = b[0] - a[0];
+    const dy = b[1] - a[1];
+    if (Math.abs(dx) < 1e-9 && Math.abs(dy) < 1e-9) return c;
+    changed = true;
+    return { ...c, label: [c.label[0] + dx, c.label[1] + dy] as Vec2 };
+  });
+  return changed ? out : after.constraints;
 }
 
 /**

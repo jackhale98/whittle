@@ -35,7 +35,13 @@ function toScreen(ann: Annotation, to: (p: Vec2) => P | null): DimensionGeometry
   const geometry: DimensionGeometry = { extensions, arrows };
   const first = lines[0];
   if (ann.kind === 'radial') {
-    if (first) geometry.leader = first;
+    if (first) {
+      geometry.leader = first;
+      // The leader runs over the centre point and meets the curve at its arrow tips: its hit area
+      // leaves those free so the centre (and the curve) can still be grabbed and dragged.
+      const mid = { x: (first.a.x + first.b.x) / 2, y: (first.a.y + first.b.y) / 2 };
+      geometry.clear = [first.a, first.b, mid, ...arrows.map((a) => a.tip)];
+    }
   } else if (first) geometry.line = first;
   // Further dimension lines (the stubs outside flipped arrows) draw like extension lines.
   geometry.extensions = [...extensions, ...lines.slice(1)];
@@ -137,6 +143,7 @@ function Dimension({
         onCommit={(e) => session.updateDimension(c.id, e, 'commit')}
         onCancel={() => session.doneEditingDimension()}
         onSelect={() => session.selectConstraint(c.id)}
+        onDelete={() => session.deleteConstraint(c.id)}
         onToggleDriving={() => session.toggleDriving(c.id)}
         {...(c.kind === 'radius' || c.kind === 'diameter'
           ? { onToggleKind: () => session.toggleRadiusDiameter(c.id) }
