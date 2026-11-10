@@ -1,4 +1,4 @@
-import { expect, type Page } from '@playwright/test';
+import { expect, type Page, test } from '@playwright/test';
 import type { Measurement, WrenDoc, WrenTestHooks } from '@wren-cad/contracts';
 
 /** App-level E2E hooks (`window.__wrenApp`, see src/app/workbench.ts `testHooks`). */
@@ -186,6 +186,12 @@ export const cameraState = (page: Page) =>
 
 /** Raw touch input through CDP (Playwright's touchscreen only taps with one finger). */
 export async function touch(page: Page) {
+  // CDP (Input.dispatchTouchEvent) exists only in Chromium; Firefox and WebKit skip these tests
+  // instead of failing on the session (their real touch paths are covered on devices, PLAN M2).
+  test.skip(
+    page.context().browser()?.browserType().name() !== 'chromium',
+    'multi-touch input needs Chromium (CDP)',
+  );
   const cdp = await page.context().newCDPSession(page);
   type TouchType = 'touchStart' | 'touchEnd' | 'touchMove';
   const send = (type: TouchType, pts: Array<{ x: number; y: number }>, timestamp?: number) =>

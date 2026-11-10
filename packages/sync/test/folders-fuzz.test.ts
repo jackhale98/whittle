@@ -322,5 +322,5 @@ describe('DocMerger fuzz: folders and sketch visibility', () => {
     expect(stats.clean).toBeGreaterThan(PAIRS / 4);
     expect(stats.conflicts).toBeGreaterThan(10);
     expect(stats.notes).toBeGreaterThan(0);
-  });
+  }, 60_000); // ~3 s locally; a loaded CI runner took over the 5 s default
 });
