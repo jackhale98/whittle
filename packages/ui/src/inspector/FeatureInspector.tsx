@@ -19,7 +19,7 @@ import type {
   RevolveFeature,
   SketchFeature,
 } from '@wren-cad/contracts';
-import { Ban, CircleAlert, PenLine, RefreshCw, TriangleAlert } from 'lucide-react';
+import { Ban, CircleAlert, PenLine, RefreshCw, TriangleAlert, Undo2 } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Field, Section, Segmented, Switch } from '../components/controls';
 import { Button, cn } from '../components/primitives';
@@ -67,6 +67,8 @@ export interface FeatureInspectorProps {
    * "<feature> lost its edge because <cause> changed" message. The app selects that feature.
    */
   onSelectFeature?(id: string): void;
+  /** Shown next to a "was deleted" cause: take the deletion back (the app's undo). */
+  onUndo?(): void;
   /** Hole and thread standards tables (data comes from packages/document). */
   holeTables?: Partial<Record<HoleStandard, HoleTable>>;
   onEditSketch?(): void;
@@ -498,12 +500,14 @@ function StatusBanner({
   nameOf,
   onRepick,
   onSelectFeature,
+  onUndo,
 }: {
   status: FeatureStatus;
   featureName: string;
   nameOf(id: string): string | undefined;
   onRepick?: () => void;
   onSelectFeature?: (id: string) => void;
+  onUndo?: () => void;
 }) {
   const sentences =
     status.state === 'needsAttention' || status.state === 'error' || status.state === 'blocked'
@@ -515,14 +519,30 @@ function StatusBanner({
           nameOf,
         })
       : [];
+  // A deleted cause cannot be selected: offer to take the deletion back.
+  const deleted =
+    status.cause?.kind === 'deleted' || status.unresolved?.some((u) => u.cause?.kind === 'deleted');
   const causes = sentences.length ? (
-    <ul className="m-0 mt-1 flex list-none flex-col gap-0.5 p-0" data-testid="attention-causes">
-      {sentences.map((s) => (
-        <li key={s.text} className="text-ui">
-          <CauseSentence sentence={s} {...(onSelectFeature ? { onSelectFeature } : {})} />
-        </li>
-      ))}
-    </ul>
+    <>
+      <ul className="m-0 mt-1 flex list-none flex-col gap-0.5 p-0" data-testid="attention-causes">
+        {sentences.map((s) => (
+          <li key={s.text} className="text-ui">
+            <CauseSentence sentence={s} {...(onSelectFeature ? { onSelectFeature } : {})} />
+          </li>
+        ))}
+      </ul>
+      {deleted && onUndo ? (
+        <Button
+          variant="secondary"
+          icon={<Undo2 className="size-3.5" />}
+          onClick={onUndo}
+          className="mt-2 h-7"
+          data-testid="undo-cause"
+        >
+          Undo
+        </Button>
+      ) : null}
+    </>
   ) : null;
   if (status.state === 'blocked' && causes) {
     return (
@@ -609,6 +629,7 @@ export function FeatureInspector({
   describeRef,
   describeFeature,
   onSelectFeature,
+  onUndo,
   holeTables,
   onEditSketch,
   onDone,
@@ -732,6 +753,7 @@ export function FeatureInspector({
           }}
           {...(onRepick ? { onRepick } : {})}
           {...(onSelectFeature ? { onSelectFeature } : {})}
+          {...(onUndo ? { onUndo } : {})}
         />
       ) : null}
       {body}

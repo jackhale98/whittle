@@ -126,6 +126,7 @@ export function useContextBubble(wb: Workbench): ContextBubbleProps | undefined 
     label: view ? 'View actions' : 'Selection actions',
     obstacles: chromeObstacles(wb),
     onDismiss: () => wb.cancel(),
+    ...(view ? {} : { onClear: () => wb.clearSelection() }),
   };
 }
 

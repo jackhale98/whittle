@@ -90,9 +90,13 @@ export function DimensionAnnotation({
   const strokes: string[] = [];
   const seg = (s: { a: P; b: P }) => `M${s.a.x} ${s.a.y}L${s.b.x} ${s.b.y}`;
   for (const e of geometry.extensions ?? []) strokes.push(seg(e));
-  if (geometry.line) strokes.push(seg(geometry.line));
-  if (geometry.leader) strokes.push(seg(geometry.leader));
-  if (geometry.arc) strokes.push(arcPath(geometry.arc));
+  // Only the dimension line, leader and arc take hover and clicks: an extension line starts a
+  // hair from the geometry it measures, and a fat hit area there would steal that geometry's picks.
+  const hit: string[] = [];
+  if (geometry.line) hit.push(seg(geometry.line));
+  if (geometry.leader) hit.push(seg(geometry.leader));
+  if (geometry.arc) hit.push(arcPath(geometry.arc));
+  strokes.push(...hit);
   const d = strokes.join('');
   const a11y = label ? { role: 'img', 'aria-label': label } : { 'aria-hidden': true as const };
   return (
@@ -128,7 +132,7 @@ export function DimensionAnnotation({
       {/* A fat transparent copy of the strokes is the hover / hit target. */}
       {/* biome-ignore lint/a11y/noStaticElementInteractions: hover and click target of a decorative drawing; the label button is the accessible control */}
       <path
-        d={d}
+        d={hit.join('')}
         data-testid="dimension-hit"
         stroke="transparent"
         strokeWidth={12}

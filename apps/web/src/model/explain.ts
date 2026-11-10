@@ -90,3 +90,25 @@ export function explainStatus(doc: WrenDoc, status: FeatureStatus): FeatureStatu
     },
   };
 }
+
+/**
+ * A `blocked` feature names the feature it waits on; when that one is blocked too, the real news
+ * is further up the chain. Follows `blocked` links to the first feature that is not blocked (the
+ * one that failed or needs attention), so the message and its button point at the root cause.
+ * Cycles stop where they started; a status without a cause is returned as it is, never invented.
+ */
+export function followBlockedCauses(statuses: readonly FeatureStatus[]): FeatureStatus[] {
+  const byId = new Map(statuses.map((s) => [s.featureId, s]));
+  return statuses.map((s) => {
+    if (s.state !== 'blocked' || !s.cause) return s;
+    let cause = s.cause;
+    const seen = new Set<string>([s.featureId]);
+    for (;;) {
+      const up = byId.get(cause.featureId);
+      if (up?.state !== 'blocked' || !up.cause || seen.has(up.featureId)) break;
+      seen.add(up.featureId);
+      cause = up.cause;
+    }
+    return cause === s.cause ? s : { ...s, cause };
+  });
+}

@@ -162,6 +162,25 @@ describe('DimensionAnnotation', () => {
     expect(onSelect).toHaveBeenCalled();
   });
 
+  it('extension lines are drawn but never take pointer events (they must not steal geometry picks)', () => {
+    renderUI(
+      <DimensionAnnotation
+        geometry={{
+          extensions: [{ a: { x: 0, y: 0 }, b: { x: 0, y: 40 } }],
+          line: { a: { x: 0, y: 40 }, b: { x: 80, y: 40 } },
+        }}
+        onHover={() => {}}
+      />,
+    );
+    const hit = screen.getByTestId('dimension-hit');
+    expect(hit.getAttribute('d')).toBe('M0 40L80 40'); // the dimension line only
+    const drawn = screen
+      .getByTestId('dimension-annotation')
+      .querySelector('path')
+      ?.getAttribute('d');
+    expect(drawn).toContain('M0 0L0 40'); // the extension line is still drawn
+  });
+
   it('without callbacks it lets every pointer through', () => {
     renderUI(<DimensionAnnotation geometry={geometry} />);
     expect(screen.getByTestId('dimension-hit').style.pointerEvents).toBe('none');

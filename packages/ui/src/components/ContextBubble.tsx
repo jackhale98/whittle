@@ -1,4 +1,5 @@
 import * as RToolbar from '@radix-ui/react-toolbar';
+import { X } from 'lucide-react';
 import { m } from 'motion/react';
 import { type ReactNode, useRef } from 'react';
 import type { Rect, Side } from '../logic/bubble';
@@ -28,6 +29,8 @@ export interface ContextBubbleProps {
   preferred?: Side;
   /** Areas to stay clear of, in the same coordinates as `anchor` (rail, top bar). */
   obstacles?: readonly Rect[];
+  /** A plain ✕ "Clear selection" at the end of the bubble (touch has no Esc). */
+  onClear?(): void;
   /** Escape pressed while focus is inside. */
   onDismiss?(): void;
   className?: string;
@@ -47,6 +50,7 @@ export function ContextBubble({
   preferred = 'above',
   obstacles,
   onDismiss,
+  onClear,
   className,
 }: ContextBubbleProps) {
   const ref = useRef<HTMLDivElement>(null);
@@ -113,6 +117,16 @@ export function ContextBubble({
               <span className="leading-4">{a.label}</span>
             </RToolbar.Button>
           ))}
+          {onClear ? (
+            <RToolbar.Button
+              onClick={onClear}
+              aria-label="Clear selection"
+              data-testid="bubble-clear"
+              className="flex h-14 min-w-11 items-center justify-center rounded-control text-fg-muted transition-colors duration-fast select-none hover:bg-surface-2 active:bg-surface-3"
+            >
+              <X className="size-5" aria-hidden />
+            </RToolbar.Button>
+          ) : null}
         </RToolbar.Root>
         {tip ? (
           <span
