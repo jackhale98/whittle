@@ -198,7 +198,6 @@ export const TableCell = memo(function TableCell(p: TableCellProps) {
         overridden && 'bg-warning-soft',
       )}
     >
-      {/* biome-ignore lint/a11y/noStaticElementInteractions: focus-out ends the inline editor */}
       <div
         ref={wrap}
         className="flex min-w-0 items-center"
