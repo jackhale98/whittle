@@ -7,8 +7,9 @@
  * then validates the result, so `DocumentStore.load` never accepts a malformed document.
  */
 
-import { SCHEMA_VERSION, type WrenDoc } from '@wren-cad/contracts';
+import { type Part, SCHEMA_VERSION, type WrenDoc } from '@wren-cad/contracts';
 import { exprFields, FEATURE_TYPES } from './features';
+import { folderProblems, normalizeFolders } from './folders';
 import { getAt } from './patch';
 
 type Obj = Record<string, unknown>;
@@ -87,6 +88,7 @@ export function migrateDoc(raw: unknown, options: MigrateOptions = {}): MigrateR
     applied.push(version);
   }
   doc.schemaVersion = version;
+  repairFolders(doc);
   if (options.validate !== false) {
     const errors = validateDoc(doc);
     if (errors.length > 0) {
@@ -97,12 +99,40 @@ export function migrateDoc(raw: unknown, options: MigrateOptions = {}): MigrateR
   return { ok: true, doc: doc as unknown as WrenDoc, applied };
 }
 
+const wellFormedFolders = (p: Obj): boolean =>
+  Array.isArray(p.features) &&
+  p.features.every((f) => isObj(f) && typeof f.id === 'string') &&
+  Array.isArray(p.folders) &&
+  p.folders.every(
+    (f) =>
+      isObj(f) &&
+      typeof f.id === 'string' &&
+      typeof f.name === 'string' &&
+      Array.isArray(f.features) &&
+      f.features.every((m) => typeof m === 'string'),
+  );
+
+/**
+ * Loading repairs semantic folder problems (missing members, broken runs, overlaps) with
+ * `normalizeFolders` instead of rejecting the file: a merge written by a plain text tool (git)
+ * can produce them, and ADR-066 defines the deterministic fix. Malformed folders (wrong types)
+ * are left for `validateDoc` to report.
+ */
+function repairFolders(doc: Obj): void {
+  if (!Array.isArray(doc.parts)) return;
+  doc.parts = doc.parts.map((p: unknown) => {
+    if (!isObj(p) || !wellFormedFolders(p)) return p;
+    return normalizeFolders(p as unknown as Part).part;
+  });
+}
+
 // ---------------------------------------------------------------------------------------------
 // Validation (structural; the JSON Schema in ../schema is the exhaustive description)
 // ---------------------------------------------------------------------------------------------
 
 const LENGTH_UNITS = ['mm', 'cm', 'm', 'in', 'ft'];
 const ANGLE_UNITS = ['deg', 'rad'];
+const SKETCH_VISIBILITY = ['auto', 'shown', 'hidden'];
 
 /** Human-readable problems; empty when the document is structurally sound. */
 export function validateDoc(doc: unknown): string[] {
@@ -220,6 +250,12 @@ function validatePart(
     }
     id(f.id, `${fa}.id`);
     str(f.name, `${fa}.name`);
+    if (f.visibility !== undefined) {
+      if (f.type !== 'sketch') errs.push(`${fa}.visibility is only valid on sketches`);
+      else if (!SKETCH_VISIBILITY.includes(f.visibility as string)) {
+        errs.push(`${fa}.visibility must be one of ${SKETCH_VISIBILITY.join(', ')}`);
+      }
+    }
     if (typeof f.suppressed !== 'boolean') errs.push(`${fa}.suppressed must be a boolean`);
     if (!(FEATURE_TYPES as readonly unknown[]).includes(f.type)) {
       errs.push(`${fa}.type ‘${String(f.type)}’ is not a known feature type`);
@@ -235,4 +271,26 @@ function validatePart(
       errs.push(`${fa} is malformed`);
     }
   });
+  if (part.folders === undefined) return;
+  if (!arr(part.folders, `${at}.folders`)) return;
+  let structural = true;
+  part.folders.forEach((f, k) => {
+    const fa = `${at}.folders[${k}]`;
+    if (!isObj(f)) {
+      errs.push(`${fa} must be an object`);
+      structural = false;
+      return;
+    }
+    id(f.id, `${fa}.id`);
+    if (!str(f.name, `${fa}.name`)) structural = false;
+    if (!Array.isArray(f.features) || !f.features.every((m) => typeof m === 'string')) {
+      errs.push(`${fa}.features must be an array of feature ids`);
+      structural = false;
+    }
+  });
+  // Semantic membership checks. `validateDoc` is strict about them; loading repairs them first
+  // (`repairFolders`), so they only fail for documents that skipped normalisation.
+  if (structural && part.features.every((f) => isObj(f) && typeof f.id === 'string')) {
+    for (const p of folderProblems(part as unknown as Part)) errs.push(`${at}.${p}`);
+  }
 }
