@@ -20,5 +20,5 @@ esac
 mkdir -p "$build"
 exec docker run --rm --cpus "${JOBS:-2}" --tmpfs /tmp \
   -e VARIANT="$variant" -e JOBS="${JOBS:-2}" -e STAGE="${STAGE:-all}" \
-  -v "$src:/gmsh:ro" -v "$here:/api:ro" -v "$build:/build" \
+  -v "$src:/gmsh" -v "$here:/api:ro" -v "$build:/build" \
   --entrypoint nice "$image" -n 19 bash /api/build-in-container.sh

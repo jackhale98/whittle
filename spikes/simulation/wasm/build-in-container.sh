@@ -20,6 +20,9 @@ done
 libs="${libs#;}"
 
 if [ "$stage" = all ] || [ "$stage" = configure ]; then
+  # OCCT 8 headers need C++17 (std::optional, std::in_place); Gmsh 4.15.2 pins C++14 with a plain
+  # set(), which -DCMAKE_CXX_STANDARD cannot override. Patch the fetched copy.
+  sed -i 's/set(CMAKE_CXX_STANDARD 14)/set(CMAKE_CXX_STANDARD 17)/' /gmsh/CMakeLists.txt
   # Minimal Gmsh: OCC + mesh (Delaunay/Frontal 3D built in, HXT, Netgen frontal), Eigen for
   # linear algebra. No FLTK, PETSc, Fortran, OpenMP (Emscripten has none), MED/CGNS, parser,
   # post-processing or plugins.
