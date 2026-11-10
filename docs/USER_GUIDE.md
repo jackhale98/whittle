@@ -210,6 +210,22 @@ is active, and tapping it drops the current tool and returns to selecting. On a 
 tool also shows a ✕ **Done with <tool>** beside it. With no tool active, the Pencil draws freehand
 strokes that Wren recognises.
 
+### Pencil: draw, or hold to grab
+
+With no tool selected, the Pencil does two things, depending on how you press.
+
+- **Move at once** and you draw a freehand stroke that Wren recognises. If the stroke starts on an existing
+  corner or end point, its start joins that point (a coincident constraint) and the point does not move, so
+  you can chain strokes from a corner quickly.
+- **Press and hold still** for about 0.3 s on sketch geometry and it is grabbed: the target lights up and
+  then follows the Pencil as a normal solver drag (one undo step; constraints and dimensions are kept). You
+  can grab a point (a rectangle corner, a line or arc end), a circle's or arc's centre (the circle moves), a
+  circle's or arc's edge (its radius changes) or a line's body (the line moves).
+- **Hover** the Pencil over geometry (on an iPad with Pencil hover) and what a hold would grab is
+  highlighted.
+- Geometry that is already selected drags at once, a tap selects, a drawing tool in use takes the Pencil
+  as before, and fingers are unchanged.
+
 ### Editing sketches
 
 The **Edit** button on the sketch toolbar opens the editing tools. Each one is a small panel over

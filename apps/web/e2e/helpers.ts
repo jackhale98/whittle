@@ -21,6 +21,7 @@ export interface AppHooks {
   idle(): Promise<void>;
   /** Ids of the sketches currently drawn in the viewport. */
   shownSketches(): string[];
+  editFeature(id: string): void;
   flushSave(): Promise<void>;
   sketch(): {
     status: string;
@@ -117,6 +118,8 @@ export const app = (page: Page) => ({
   regen: () => page.evaluate(() => (window as unknown as W).__wrenApp.regen()),
   idle: () => page.evaluate(() => (window as unknown as W).__wrenApp.idle()),
   shownSketches: () => page.evaluate(() => (window as unknown as W).__wrenApp.shownSketches()),
+  editFeature: (id: string) =>
+    page.evaluate((x) => (window as unknown as W).__wrenApp.editFeature(x), id),
   flushSave: () => page.evaluate(() => (window as unknown as W).__wrenApp.flushSave()),
   sketch: () => page.evaluate(() => (window as unknown as W).__wrenApp.sketch()),
   settled: () => page.evaluate(() => (window as unknown as W).__wrenApp.sketchSettled()),

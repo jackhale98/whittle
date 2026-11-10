@@ -3095,6 +3095,8 @@ export class Workbench {
           : null;
       },
       shownSketches: () => [...this.shownSketches],
+      /** Opens a feature for editing (a sketch enters sketch mode). */
+      editFeature: (id: Id) => this.editFeature(id),
       idle: async () => {
         await this.sketch?.whenSettled();
         await this.boot?.modeling;

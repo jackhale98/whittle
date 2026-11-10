@@ -264,12 +264,7 @@ test.describe('Pencil hold to grab', () => {
     sk.entities.push({ id: 'circ', kind: 'circle', center: 'cc', radius: 8, construction: false });
     await a.load(docWith('pencil-grab', {}, [sk.feature(S, 'Sketch')]));
     await a.idle();
-    await page
-      .getByTestId('feature-tree')
-      .getByRole('treeitem', { name: /Sketch/ })
-      .first()
-      .tap();
-    await page.getByRole('button', { name: 'Edit sketch' }).tap();
+    await a.editFeature(S);
     await expect.poll(async () => (await a.ui()).sketch?.featureId).toBe(S);
     await cameraStill(page);
     await page
@@ -322,9 +317,8 @@ test.describe('Pencil hold to grab', () => {
     expect((await pt('rb')).x).toBeCloseTo(after.x, 3);
     expect((await pt('rd')).y).toBeCloseTo(after.y, 3);
     expect((await a.history()).past.length).toBe(undoDepth + 1);
-    await page.keyboard.press('ControlOrMeta+z');
-    await a.settled();
-    expect((await pt('rc')).x).toBeCloseTo(before.x, 6);
+    await page.getByRole('button', { name: 'Undo', exact: true }).tap();
+    await expect.poll(async () => (await pt('rc')).x).toBeCloseTo(before.x, 6);
   });
 
   test('hold on a circle edge then move: the radius changes', async ({ page }) => {
