@@ -7,8 +7,8 @@
  */
 
 import type {
-  ConfigTarget,
   Command,
+  ConfigTarget,
   Configuration,
   ConfiguredValue,
   Feature,
@@ -19,11 +19,16 @@ import type {
   WrenDoc,
 } from '@wren-cad/contracts';
 import type { Compiled } from './commands';
-import { configurableFields, isConfiguredValue, pruneConfiguration } from './configurations';
+import {
+  CONFIGURABLE_OPTIONS,
+  configurableFields,
+  isConfiguredValue,
+  pruneConfiguration,
+} from './configurations';
 import { scopeOf } from './evaluate';
 import { expressionEngine } from './expressions';
 import { tryResolveDensity } from './materials';
-import { diff } from './patch';
+import { applyPatch, diff, existsAt } from './patch';
 
 export type ConfigCommand = Extract<
   Command,
@@ -438,23 +443,24 @@ function validateValue(
   }
 }
 
-/** The feature with only its option overrides applied (cheap; used to find reachable fields). */
+/**
+ * The feature with only its option overrides applied (cheap; used to find reachable fields).
+ * Goes through the JSON-patch implementation, which refuses `__proto__` and never mutates.
+ */
 function stageOptions(
   feature: Feature,
   fields: Record<string, ConfiguredValue> | undefined,
 ): Feature {
-  if (!fields) return feature;
-  const copy = structuredClone(feature) as unknown as Record<string, unknown>;
-  for (const [path, value] of Object.entries(fields)) {
-    const segs = path.split('/').slice(1);
-    let cur: unknown = copy;
-    for (const s of segs.slice(0, -1)) cur = isPlain(cur) ? cur[s] : undefined;
-    const last = segs[segs.length - 1];
-    if (isPlain(cur) && last !== undefined && last !== '__proto__' && typeof value !== 'object') {
-      cur[last] = value;
+  let cur = feature;
+  for (const [path, value] of Object.entries(fields ?? {})) {
+    if (!CONFIGURABLE_OPTIONS[feature.type]?.some((o) => o.pointer === path)) continue;
+    try {
+      cur = applyPatch(cur, [{ op: existsAt(cur, path) ? 'replace' : 'add', path, value }]).doc;
+    } catch {
+      // An unusable option value is reported by its own validation.
     }
   }
-  return copy as unknown as Feature;
+  return cur;
 }
 
 // ---------------------------------------------------------------------------------------------

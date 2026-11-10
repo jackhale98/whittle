@@ -23,9 +23,9 @@ import type {
   SketchFeature,
   WrenDoc,
 } from '@wren-cad/contracts';
-import { validateParamName } from './expressions';
 import { compileConfigCommand } from './config-commands';
 import { configurationPruneOps } from './configurations';
+import { validateParamName } from './expressions';
 import { exprFields, featureReferences } from './features';
 import { folderOps, foldersAfterPlace, foldersAfterRemove, normalizeFolders } from './folders';
 import { identifierSpans } from './parser';
