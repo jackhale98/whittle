@@ -45,6 +45,15 @@ function bracketVolume(): number {
   );
 }
 
+/** Scrolls the sheet's list to its end (the sheet clips the box Playwright measures). */
+async function scrollListToEnd(page: Page) {
+  await page.getByTestId('feature-tree').evaluate((el) => {
+    let p = el.parentElement;
+    while (p && p.scrollHeight <= p.clientHeight) p = p.parentElement;
+    p?.scrollTo({ top: p.scrollHeight });
+  });
+}
+
 async function openDemo(page: Page) {
   await boot(page);
   const a = app(page);
@@ -89,6 +98,8 @@ test('phone: dragging the rollback bar by touch rolls the model back, undoably',
   // Drag the bar up to just below "Holes" (the model after the first four features).
   const holes = page.getByRole('treeitem', { name: /^Holes/ });
   await holes.scrollIntoViewIfNeeded();
+  // The bar has its own 44 px row now: scroll the list to its end so the bar is fully on screen.
+  await scrollListToEnd(page);
   const holesBox = await holes.boundingBox();
   const grab = await page.getByTestId('rollback-grab').boundingBox();
   if (!(holesBox && grab)) throw new Error('rows not laid out');
@@ -200,6 +211,8 @@ test('phone: a tap at the centre of the row above the rollback bar selects that 
   // The row above the bar when the bar sits mid-list: the same.
   const holes = page.getByRole('treeitem', { name: /^Holes/ });
   await holes.scrollIntoViewIfNeeded();
+  // The bar has its own 44 px row now: scroll the list to its end so the bar is fully on screen.
+  await scrollListToEnd(page);
   const holesBox = await holes.boundingBox();
   const grab = await page.getByTestId('rollback-grab').boundingBox();
   if (!(holesBox && grab)) throw new Error('rows not laid out');
@@ -210,10 +223,16 @@ test('phone: a tap at the centre of the row above the rollback bar selects that 
     16,
   );
   await expect.poll(async () => (await a.doc()).parts[0]?.rollbackIndex).toBe(4);
+  // The bar settles (it eases to its stop) in its own gap right below the Holes row.
+  await expect
+    .poll(async () => {
+      const h = await holes.boundingBox();
+      const b = await page.getByTestId('rollback-bar').boundingBox();
+      return h && b ? Math.round(b.y - (h.y + h.height)) : null;
+    })
+    .toBe(0);
   const holes2 = await holes.boundingBox();
-  const bar2 = await page.getByTestId('rollback-bar').boundingBox();
-  if (!(holes2 && bar2)) throw new Error('not laid out');
-  expect(bar2.y).toBeGreaterThanOrEqual(holes2.y + holes2.height - 0.5);
+  if (!holes2) throw new Error('not laid out');
   await page.touchscreen.tap(holes2.x + holes2.width / 2, holes2.y + holes2.height / 2);
   await expect
     .poll(async () => (await a.ui()).featureId)
