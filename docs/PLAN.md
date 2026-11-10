@@ -32,7 +32,7 @@
 5. **Yours.** Local-first. No account is required. Files are open and documented (`.wrencad`). It works offline.
 6. **Beautiful.** It has a calm, modern visual language and polished motion. The viewport looks like a product render, not a debug view.
 
-**Non-goals for v1:** real-time multi-user collaboration (prepare for it, don't build it), CAM, FEA, rendering beyond the high-quality viewport, sheet-metal, and surfacing beyond loft/sweep/fill.
+**Non-goals for v1:** real-time multi-user collaboration (prepare for it, don't build it), CAM, FEA in v1.0 itself (simulation is a post-v1.0 track, §12B, with an early meshing spike), rendering beyond the high-quality viewport, sheet-metal, and surfacing beyond loft/sweep/fill.
 
 ---
 
@@ -820,6 +820,20 @@ A capability check modelled on the SolidWorks CSWA/CSWP exams, which test exactl
 - **Human run.** The real practice exams are run by a person in Wren, timed, for M7, and the findings are fed back as issues. Nothing from those exams is stored in the repo.
 
 ---
+
+### 12B. Simulation track (after v1.0; spike now)
+
+Owner direction 2026-11-10 (ADR-058). Wren is the pre- and post-processor; the user's own installed solvers do the heavy computation on their desktop. Wren meshes in the app.
+
+- **Architecture:**
+  - **Built-in mesher:** Gmsh compiled to Wasm against the kernel's OCCT build, in its own lazily loaded worker (never the kernel worker, never the main thread). It meshes the exact BRep handed over by the kernel together with the face names, so mesh physical groups are named after Wren's persistent names. Quadratic tetrahedra for solids, triangles/quads for shells, size controls (global, per face/edge, curvature), quality metrics, preview in the viewport. Fallback if Gmsh resists the port: Netgen (LGPL). Very large meshes: "Mesh on this computer" writes the same Gmsh settings for a local Gmsh.
+  - **Solvers run locally, two ways:** (1) **file handoff** — Wren writes a complete case folder (input deck plus `run.sh` / `run.bat`) into the project folder, the user runs it, and Wren imports the results when they appear (local-folder mode already watches the folder); (2) the optional **Wren Runner**, a small open-source localhost service paired with a one-time code that launches only the configured solver executables, streams progress and returns results. No Wren-hosted compute.
+  - **Loads on persistent names:** loads, constraints, contacts and mesh controls reference faces/edges by persistent name; a lost reference makes the study "needs attention", never a silent move.
+  - **Studies are document data** (versioned, branched, merged like features); results live in `results/`, excluded from history by default, readable on every device (review a desktop solve on an iPad).
+- **S0 — spike (now):** Gmsh → Wasm against the kernel's OCCT; mesh the demo bracket in a worker; measure download size, mesh time and memory (desktop and iPad-class limits); write a CalculiX `.inp`, solve it with a locally installed CalculiX, read the `.frd`, and match an analytic cantilever and the bracket's tip deflection from an independent solve. Report: `docs/spikes/simulation-mesh.md`.
+- **S1 — structural for single parts:** study model, materials with E, ν, yield, density and thermal properties, load/constraint/mesh-control tools, built-in mesher with preview and quality, CalculiX by file handoff then the Runner, linear static, modal and steady thermal, results viewer (colour maps, deformed shape, mode animation, probes, sections, report). **Accept:** NAFEMS LE1/LE10 and FV52-class benchmarks and analytic cases within published tolerances, as golden tests running the real solver in CI.
+- **S2 —** the Runner on all desktop OSes; nonlinear material; bonded and contact assemblies (after M6).
+- **S3 —** CFD through OpenFOAM (one distribution first): Wren prepares the fluid domain, named surface patches and the case; `snappyHexMesh` meshes locally; Wren reads the VTK output (streamlines, pressure, velocity). FEniCSx for custom physics with the built-in mesh. Optional in-browser lattice-Boltzmann flow preview on WebGPU.
 
 ## 13. Hosting roadmap
 

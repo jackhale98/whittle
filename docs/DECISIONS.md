@@ -1879,3 +1879,13 @@ own `ProjectedCurve`) stay valid until the modeling workstream maps the new kind
 - **`pickRect` faces come from per-face pixel counts of the half-resolution ID image.** Window mode compares the in-rectangle count with the whole-image count (cached per image). Edges and vertices are projected polylines; occlusion uses a 5 x 5 ID-buffer neighbourhood as a cheap "nothing in front" test, then the BVH ray. A stale ID image falls back to projected triangles filtered by a ray grid. Default kinds exclude `region` and `handle`.
 - **A pen without `penDraws` orbits like a finger** (unchanged), and palm-rejected touches do not start an orbit.
 - **Extra engine API `getNavigationState()`** (not in the contract) exposes the drag mode, pivot, pivot source and marker state for tests and for the integration step.
+
+## ADR-058 — Simulation: built-in mesher, solvers on the user's desktop (2026-11-10)
+
+Owner direction. Wren will support structural (CalculiX), CFD (OpenFOAM) and general PDE (FEniCSx) analysis as a post-v1.0 track (PLAN §12B), with a meshing spike now.
+
+- **Wren is the pre- and post-processor; the user's installed solvers compute.** Porting OpenFOAM to the browser is unrealistic (size, MPI, runtime plugins, hour-long runs in a tab); CalculiX needs Fortran → Wasm and hits the 4 GB / iPad memory ceiling; FEniCSx JIT-compiles forms. Running them natively on the user's desktop removes the resource limits and the porting risk, keeps compute local (no Wren-hosted service, consistent with the free, local-first model) and lets results be reviewed on any device.
+- **A browser cannot launch native programs**, so solving goes through (1) file handoff: a case folder with a run script in the project folder, results imported when they appear; then (2) an optional localhost "Wren Runner" that only launches configured solver executables, paired by one-time code, streaming progress. Chrome's local-network permission and Safari's localhost behaviour need verifying in S2.
+- **The mesher is built in** (owner): interactive meshing with quality feedback is the core of pre-processing, it lets Wren own the persistent-name → physical-group mapping so loads survive design edits, one mesh feeds every solver, and pre-processing works on a tablet. Gmsh (GPL-2.0-or-later) compiled to Wasm against the kernel's OCCT build, in its own lazily loaded worker; Netgen (LGPL) is the fallback; TetGen (AGPL) is excluded. CFD volume meshing stays with OpenFOAM's `snappyHexMesh` locally (boundary layers, hex-dominant cells).
+- **Licences:** CalculiX GPL-2.0+, Gmsh GPL-2.0+, OpenFOAM GPL-3.0, FEniCSx LGPL-3.0 — all compatible with Wren's GPL-3.0. Solvers are not bundled; Gmsh is, once adopted (to be recorded in docs/DEPENDENCIES.md then).
+
