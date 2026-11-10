@@ -239,14 +239,24 @@ export function foldersAfterPlace(
 ): FeatureFolder[] {
   const out: FeatureFolder[] = [];
   const at = newOrder.indexOf(featureId);
+  const insideOf = (others: readonly Id[]) => {
+    const idx = others.map((m) => newOrder.indexOf(m)).sort((a, b) => a - b);
+    return at > (idx[0] as number) && at < (idx[idx.length - 1] as number);
+  };
+  // Landing strictly inside another folder's run joins it. A one-feature folder normally travels
+  // with its only member, but not into another folder: the member joins that one and its own
+  // folder, now empty, goes (else the feature would sit in two folders).
+  const joined = (folders ?? []).some((f) => {
+    const others = f.features.filter((m) => m !== featureId);
+    return others.length > 0 && insideOf(others);
+  });
   for (const f of folders ?? []) {
     const others = f.features.filter((m) => m !== featureId);
     if (others.length === 0) {
-      out.push(f);
+      if (!joined) out.push(f);
       continue;
     }
-    const idx = others.map((m) => newOrder.indexOf(m)).sort((a, b) => a - b);
-    const inside = at > (idx[0] as number) && at < (idx[idx.length - 1] as number);
+    const inside = insideOf(others);
     const kept = (inside ? [...others, featureId] : others).sort(
       (a, b) => newOrder.indexOf(a) - newOrder.indexOf(b),
     );

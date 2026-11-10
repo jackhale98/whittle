@@ -151,9 +151,8 @@ function edits(g: Gen, base: WrenDoc, count: number): { doc: WrenDoc; cmds: Comm
     if (!cmd) continue;
     try {
       const next = apply(doc, cmd);
-      // The merge's inputs must be sound. See the `it.fails` below for the one known way the
-      // commands break that today; skip such an edit rather than feed the merge a broken side.
-      if (folderProblems(next).length > 0) continue;
+      // Document commands must never leave folders unsound: this fuzz is also their check.
+      expect(folderProblems(next), JSON.stringify(cmd)).toEqual([]);
       doc = next;
       cmds.push(cmd);
     } catch {
@@ -221,9 +220,9 @@ const PAIRS = 500;
 
 describe('document commands keep folders sound (fuzz input)', () => {
   // Found by this fuzz (seeds 7 and 42): moving the only member of a one-feature folder strictly
-  // inside another folder's run leaves the feature in both folders. A packages/document issue;
-  // when it is fixed this test fails and should become a plain `it`.
-  it.fails('moving a one-feature folder’s member into another run', () => {
+  // inside another folder's run left the feature in both folders. Now it joins that run and its
+  // own folder, emptied, goes.
+  it('moving a one-feature folder’s member into another run', () => {
     const base = withFolders(baseDoc(), [folder(MOUNTING, 'Mounting', [FILLET, CHAMFER])]);
     const doc = apply(
       base,
@@ -231,6 +230,9 @@ describe('document commands keep folders sound (fuzz input)', () => {
       { kind: 'moveFeature', partId: PART, featureId: PLANE, toIndex: 3 },
     );
     expect(folderProblems(doc)).toEqual([]);
+    expect(foldersOf(doc).map((f) => [f.name, f.features.includes(PLANE)])).toEqual([
+      ['Mounting', true],
+    ]);
   });
 });
 

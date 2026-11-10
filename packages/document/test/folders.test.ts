@@ -329,6 +329,20 @@ describe('folders follow the existing commands', () => {
     expect(validateDoc(s.getDoc())).toEqual([]);
   });
 
+  it('the only member of a one-feature folder moved into another run joins it; its folder goes', () => {
+    // Found by the sync fuzz: it used to stay in both folders.
+    const s = storeOf(partOf(6, [F(1, 'A', 2, 3, 4), F(2, 'B', 6)]));
+    ok(s.apply(move(6, 2))); // 1,2,6,3,4,5 : strictly inside A
+    expect(members(s)).toEqual({ A: [2, 6, 3, 4] });
+    expect(validateDoc(s.getDoc())).toEqual([]);
+  });
+
+  it('a one-feature folder still travels with its member outside other runs', () => {
+    const s = storeOf(partOf(6, [F(1, 'A', 2, 3), F(2, 'B', 6)]));
+    ok(s.apply(move(6, 0)));
+    expect(members(s)).toEqual({ A: [2, 3], B: [6] });
+  });
+
   it('moveFeature of a member out of its run takes it out', () => {
     const s = storeOf(partOf(6, [F(1, 'A', 2, 3, 4)]));
     roundTrip(s, move(3, 5), 'Move Box 3');

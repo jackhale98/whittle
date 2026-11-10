@@ -314,6 +314,20 @@ export interface MergeResult {
   conflicts: MergeConflict[];
   /** Number of non-conflicting changes taken from "theirs". */
   autoMerged: number;
+  /**
+   * Things a merge did on its own that the user should hear about even when it is clean (M3.6:
+   * a feature-tree folder kept in one piece, ADR-066). Absent = nothing to report.
+   */
+  notes?: MergeReportNote[];
+}
+
+/** One line of a merge report; `kind` lets the UI group or icon it (`'folderMembership'`). */
+export interface MergeReportNote {
+  kind: string;
+  /** What it is about (a folder uses its part's subject until a folder subject exists). */
+  subject?: DiffSubject;
+  /** Plain language, e.g. "Fillet 3 left folder Mounting to keep the folder in one piece". */
+  summary: string;
 }
 
 /**
