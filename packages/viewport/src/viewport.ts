@@ -90,14 +90,19 @@ import {
   sideVisibility,
 } from './compare';
 import {
+  BVH_PREBUILD_QUIET_MS,
   HANDLE_PICK_PAD_PX,
   LONG_PRESS_GRACE_MS,
   LONG_PRESS_JANK_MS,
   PIVOT_DOT_PX,
   PIVOT_FLASH_MS,
   PIVOT_RING_PX,
+  REST_WORK_DEBOUNCE_MS,
   ROTATE_SPEED_MAX,
   ROTATE_SPEED_MIN,
+  WHEEL_MAX_DISTANCE_RADII,
+  WHEEL_MIN_DISTANCE_RADII,
+  WHEEL_SMOOTH_TAU_S,
 } from './constants';
 import { edgesToSegments, meshBuffersToGeometry } from './geometry';
 import {
@@ -179,6 +184,17 @@ import {
   unionBounds,
   VIEW_DIRECTIONS,
 } from './views';
+import {
+  anchorStillValid,
+  easeDistance,
+  missAnchor,
+  nextGoalDistance,
+  type WheelAnchor,
+  wheelNotches,
+  type ZoomFrame,
+  zoomFrame,
+  zoomPose,
+} from './zoom';
 
 CameraControls.install({
   THREE: { Vector2, Vector3, Vector4, Quaternion, Matrix4, Spherical, Box3, Sphere, Raycaster },
@@ -193,6 +209,8 @@ const DEFAULT_TOLERANCE_PX = 6;
 const LARGE_FACE_TRIANGLES = 20_000;
 /** Orbit start builds a missing BVH synchronously only below this many visible triangles. */
 const NAV_SYNC_BVH_TRIANGLES = 150_000;
+/** The wheel pick may build a BVH synchronously only below this size (about 10 ms). */
+const WHEEL_SYNC_BVH_TRIANGLES = 30_000;
 
 /** Edge occlusion samples, as fractions of the polyline length. */
 const EDGE_SAMPLE_FRACTIONS = [0.5, 0.25, 0.75];
@@ -318,6 +336,20 @@ export interface PickStats {
   /** Face picks answered from the ID buffer / from the BVH fallback. */
   idBufferPicks: number;
   fallbackPicks: number;
+}
+
+/** Wheel zoom in progress: the camera slides along the cursor ray toward `anchor`. */
+interface WheelState {
+  anchor: WheelAnchor;
+  frame: ZoomFrame;
+  /** Eased distance to the anchor, and the distance the notches asked for. */
+  current: number;
+  goal: number;
+  min: number;
+  max: number;
+  /** Where this code last put the camera: a different pose means someone else moved it. */
+  lastPos: Vec3;
+  settled: boolean;
 }
 
 interface BodyEntry {
@@ -526,6 +558,14 @@ class ViewportImpl implements ViewportEngine {
   private lastPivotMs = 0;
   /** Button of the press the navigation machine is tracking (for lost-release recovery). */
   private navButton = 0;
+  /**
+   * Wheel zoom in progress (ADR-057 addendum): the camera slides along the cursor ray toward the
+   * anchor, easing `current` to `goal` (distance to the anchor) frame-rate independently.
+   */
+  private wheel: WheelState | null = null;
+  private restTimer = 0;
+  /** `performance.now()` of the last wheel event or moving frame (rest work waits for quiet). */
+  private lastActivityAt = 0;
 
   static async create(
     canvas: HTMLCanvasElement,
@@ -798,7 +838,11 @@ class ViewportImpl implements ViewportEngine {
   isCameraMoving(): boolean {
     // `controls.active` only clears on a "rest" frame, which never comes when smoothing is off
     // (reduced motion): the 'sleep' event is the reliable end of a transition.
-    return this.interacting || (this.controls.active && this.cameraAwake);
+    return (
+      this.interacting ||
+      (this.wheel !== null && !this.wheel.settled) ||
+      (this.controls.active && this.cameraAwake)
+    );
   }
 
   getPickStats(): PickStats {
@@ -825,6 +869,7 @@ class ViewportImpl implements ViewportEngine {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    clearTimeout(this.restTimer);
     if (this.raf) cancelAnimationFrame(this.raf);
     this.raf = 0;
     this.resizeObserver?.disconnect();
@@ -1112,6 +1157,8 @@ class ViewportImpl implements ViewportEngine {
     return new Promise((resolve) => {
       this.pickWaiters.push(resolve);
       this.requestRender();
+      // Someone is waiting: no debounce (the frame loop may be idle, so ask directly).
+      if (!this.raf) this.scheduleRestWork();
     });
   }
 
@@ -1434,13 +1481,22 @@ class ViewportImpl implements ViewportEngine {
     if (!next) return;
     const run = () => {
       if (this.disposed || next.bvh || !this.hasBody(next)) return;
+      // A build is one uninterruptible task (hundreds of ms at 1M triangles): never start one
+      // while the camera moves or the wheel has just turned; try again after a quiet spell.
+      const need =
+        next.triangles > NAV_SYNC_BVH_TRIANGLES ? BVH_PREBUILD_QUIET_MS : REST_WORK_DEBOUNCE_MS;
+      const quietFor = performance.now() - this.lastActivityAt;
+      if (this.isCameraMoving() || this.nav || quietFor < need) {
+        setTimeout(wait, Math.max(REST_WORK_DEBOUNCE_MS, need - quietFor));
+        return;
+      }
       this.bvhFor(next);
       this.prebuildBvh();
     };
     const ric = (globalThis as { requestIdleCallback?: (cb: () => void) => number })
       .requestIdleCallback;
-    if (ric) ric(run);
-    else setTimeout(run, 50);
+    const wait = () => (ric ? ric(run) : run());
+    setTimeout(wait, 50);
   }
 
   private ensureIdMesh(e: BodyEntry): void {
@@ -1950,6 +2006,115 @@ class ViewportImpl implements ViewportEngine {
     });
   }
 
+  // ---------------------------------------------------------------- wheel zoom (ADR-057 addendum)
+
+  private wheelPoseIntact(w: WheelState): boolean {
+    const p = this.controls.getPosition(new Vector3(), false);
+    const tol = 1e-6 * Math.max(1, w.current);
+    return (
+      Math.abs(p.x - w.lastPos[0]) <= tol &&
+      Math.abs(p.y - w.lastPos[1]) <= tol &&
+      Math.abs(p.z - w.lastPos[2]) <= tol
+    );
+  }
+
+  private onWheel(e: WheelEvent): void {
+    if (this.disposed) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    if (this.nav) return; // a drag owns the camera
+    const notches = wheelNotches(e.deltaY, e.deltaMode, this.navigation.invertZoom);
+    if (notches === 0) return;
+    const rect = this.canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const now = performance.now();
+    this.lastActivityAt = now;
+    clearTimeout(this.restTimer);
+    this.restTimer = 0;
+
+    let w = this.wheel;
+    if (w && !(anchorStillValid(w.anchor, x, y, now) && this.wheelPoseIntact(w))) w = null;
+    if (!w) w = this.beginWheel(x, y, now);
+    if (!w) return;
+    w.anchor.t = now;
+    w.goal = nextGoalDistance(w.goal, notches, w.min, w.max);
+    w.settled = false;
+    this.wheel = w;
+    this.cameraAwake = true;
+    if (this.reducedMotion) {
+      this.stepWheel(0);
+      this.controls.update(0);
+    }
+    this.requestRender();
+  }
+
+  /** Resolve the anchor under the cursor and capture the camera frame for a wheel gesture. */
+  private beginWheel(x: number, y: number, now: number): WheelState | null {
+    // Take over from anything in flight (a view transition): continue from where it is heading.
+    const pos = this.controls.getPosition(new Vector3(), true);
+    const tgt = this.controls.getTarget(new Vector3(), true);
+    const fwd = tgt.clone().sub(pos);
+    if (fwd.lengthSq() < 1e-18) this.camera.getWorldDirection(fwd);
+    fwd.normalize();
+    const f: Vec3 = [fwd.x, fwd.y, fwd.z];
+    const cam: Vec3 = [pos.x, pos.y, pos.z];
+    const dist = pos.distanceTo(tgt);
+    if (this.controls.active) {
+      void this.controls.setLookAt(pos.x, pos.y, pos.z, tgt.x, tgt.y, tgt.z, false);
+      this.controls.update(0);
+    }
+    const ray = this.rayAt(x, y);
+    const hit = this.navSurfaceHit(x, y, WHEEL_SYNC_BVH_TRIANGLES);
+    const centre = this.bodyBoundsList().length > 0 ? boundsCenter(this.sceneBounds) : null;
+    const point: Vec3 = hit
+      ? [hit.point[0], hit.point[1], hit.point[2]]
+      : missAnchor(ray.origin, ray.dir, f, centre, dist);
+    const frame = zoomFrame(cam, f, point);
+    if (!frame) return null;
+    const d0 = Math.hypot(cam[0] - point[0], cam[1] - point[1], cam[2] - point[2]);
+    const r = Math.max(this.sceneRadius, 1e-3);
+    return {
+      anchor: { point, x, y, t: now, source: hit ? 'surface' : 'scene' },
+      frame,
+      current: d0,
+      goal: d0,
+      min: Math.min(d0, r * WHEEL_MIN_DISTANCE_RADII),
+      max: Math.max(d0, r * WHEEL_MAX_DISTANCE_RADII),
+      lastPos: cam,
+      settled: true,
+    };
+  }
+
+  /** One frame of the wheel ease. Returns true while the camera is still travelling. */
+  private stepWheel(dt: number, land = false): boolean {
+    const w = this.wheel;
+    if (!w || w.settled) return false;
+    if (!this.wheelPoseIntact(w)) {
+      this.wheel = null; // another source moved the camera: drop the gesture
+      return false;
+    }
+    const tau = this.reducedMotion ? 0 : WHEEL_SMOOTH_TAU_S;
+    const next = land ? { value: w.goal, done: true } : easeDistance(w.current, w.goal, dt, tau);
+    w.current = next.value;
+    const pose = zoomPose(w.frame, w.current);
+    w.lastPos = pose.position;
+    void this.controls.setLookAt(
+      pose.position[0],
+      pose.position[1],
+      pose.position[2],
+      pose.target[0],
+      pose.target[1],
+      pose.target[2],
+      false,
+    );
+    if (next.done) {
+      w.settled = true;
+      this.cameraAwake = false;
+    }
+    return true;
+  }
+
   private configureControls(): void {
     const c = this.controls;
     const A = CameraControls.ACTION;
@@ -1960,7 +2125,10 @@ class ViewportImpl implements ViewportEngine {
     c.mouseButtons.left = A.NONE;
     c.mouseButtons.right = A.NONE;
     c.mouseButtons.middle = A.NONE;
-    c.mouseButtons.wheel = A.DOLLY;
+    // The wheel is ours (`onWheel`): zoom toward the surface under the cursor, one ratio per
+    // notch. camera-controls' own wheel dolly scales the distance to its *target* and eases with
+    // `draggingSmoothTime`, which is 0 here, so it jumped and crawled near the target.
+    c.mouseButtons.wheel = A.NONE;
     c.touches.one = A.NONE;
     c.touches.two = A.TOUCH_DOLLY_TRUCK;
     c.touches.three = A.TOUCH_TRUCK;
@@ -1981,6 +2149,13 @@ class ViewportImpl implements ViewportEngine {
     };
 
     on('contextmenu', (e) => e.preventDefault());
+    // Capture phase on the canvas runs before camera-controls' own wheel listener (also on the
+    // canvas); stopImmediatePropagation keeps it (and its ctrl+wheel pinch zoom) out.
+    const wheelListener = (e: WheelEvent) => this.onWheel(e);
+    this.canvas.addEventListener('wheel', wheelListener, { capture: true, passive: false });
+    this.cleanup.push(() =>
+      this.canvas.removeEventListener('wheel', wheelListener, { capture: true }),
+    );
 
     // Wake the render loop whenever the controls start moving.
     const wake = () => {
@@ -2662,7 +2837,11 @@ class ViewportImpl implements ViewportEngine {
   }
 
   /** Surface point under (x, y) for navigation: ID buffer when current, BVH when cheap, else null. */
-  private navSurfaceHit(x: number, y: number): PickHit | null {
+  private navSurfaceHit(
+    x: number,
+    y: number,
+    maxSyncBvhTriangles = NAV_SYNC_BVH_TRIANGLES,
+  ): PickHit | null {
     let tris = 0;
     let unbuilt = false;
     for (const e of this.bodies.values()) {
@@ -2673,7 +2852,7 @@ class ViewportImpl implements ViewportEngine {
     if (tris === 0) return null;
     this.enablePicking();
     // Never stall an orbit start on a multi-hundred-ms BVH build: fall back to the centre.
-    if (!this.idFresh() && unbuilt && tris > NAV_SYNC_BVH_TRIANGLES) return null;
+    if (!this.idFresh() && unbuilt && tris > maxSyncBvhTriangles) return null;
     return this.pickFace(x, y, this.rayAt(x, y));
   }
 
@@ -2710,6 +2889,12 @@ class ViewportImpl implements ViewportEngine {
     if (o.pointerType === 'touch' && this.recognizer.palmRejected(performance.now())) {
       this.dispatchNav(this.navMachine.abort());
       return;
+    }
+    // A drag starting mid-zoom lands the zoom first, so no wheel steps are lost.
+    if (this.wheel && !this.wheel.settled) {
+      this.wheel.current = this.wheel.goal;
+      this.stepWheel(0, true);
+      this.controls.update(0);
     }
     const t0 = performance.now();
     const r = this.resolveNavPivot(o.x, o.y);
@@ -3541,7 +3726,9 @@ class ViewportImpl implements ViewportEngine {
     const dt = this.lastFrameTime === 0 ? 1 / 60 : Math.min((now - this.lastFrameTime) / 1000, 0.1);
     this.lastFrameTime = now;
 
-    const moving = this.controls.update(dt);
+    const wheeling = this.stepWheel(dt);
+    const moving = this.controls.update(dt) || wheeling;
+    if (moving) this.lastActivityAt = performance.now();
     if (moving || this.dirty) {
       this.dirty = false;
       this.renderOnce();
@@ -3562,9 +3749,29 @@ class ViewportImpl implements ViewportEngine {
     } else {
       // Idle: stop the loop; the next frame's dt must not include the idle gap.
       this.lastFrameTime = 0;
-      // Settled: refresh the face ID buffer if picking is in use and the view changed.
-      this.kickIdRefresh();
+      // Settled: refresh the face ID buffer if picking is in use and the view changed, once the
+      // camera has been still for a moment (never between two wheel notches).
+      this.scheduleRestWork();
     }
+  }
+
+  /**
+   * ID refresh (an extra render of the scene plus a readback) and BVH prebuild are rest work: they
+   * wait for `REST_WORK_DEBOUNCE_MS` of stillness, except when someone awaits `whenPickReady()`.
+   */
+  private scheduleRestWork(): void {
+    clearTimeout(this.restTimer);
+    this.restTimer = 0;
+    if (this.pickWaiters.length > 0) {
+      this.kickIdRefresh();
+      return;
+    }
+    if (!this.pickingEnabled || this.idBusy || this.idFresh()) return;
+    this.restTimer = window.setTimeout(() => {
+      this.restTimer = 0;
+      if (this.disposed || this.raf || this.isCameraMoving()) return; // the frame loop reschedules
+      this.kickIdRefresh();
+    }, REST_WORK_DEBOUNCE_MS);
   }
 
   private renderOnce(): void {
