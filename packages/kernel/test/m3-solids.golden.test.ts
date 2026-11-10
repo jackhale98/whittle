@@ -267,7 +267,9 @@ for (const { variant } of VARIANTS) {
         const r = ss.exec(shellFeature(), {
           values: { '/thickness': 2 },
           target: filleted.shape,
-          refs: { '/openFaces/0': face(filleted.shape, indexOf(filleted, `${B}:face.ymin`, 'face')) },
+          refs: {
+            '/openFaces/0': face(filleted.shape, indexOf(filleted, `${B}:face.ymin`, 'face')),
+          },
         });
         const k = 1 - PI / 4;
         const body = 40 * 30 * 20 - 2 * k * 25 * 20;
@@ -277,7 +279,9 @@ for (const { variant } of VARIANTS) {
         relClose(ss.mass(r.shape).volume, body - voidVolume, REL);
         expect(names(r, 'face')).toContain(`F${SH}:shell(${B}:face.ymax)`);
         expect(names(r, 'face')).toContain(`F${SH}:shell(F${FI}:fillet(${corners[0]}))`);
-        expect(names(r, 'face').filter((n) => n.startsWith(`F${SH}:rim(${B}:face.ymin)`)).length).toBeGreaterThan(0);
+        expect(
+          names(r, 'face').filter((n) => n.startsWith(`F${SH}:rim(${B}:face.ymin)`)).length,
+        ).toBeGreaterThan(0);
         expect(names(r, 'face')).not.toContain(`${B}:face.ymin`);
       });
 

@@ -56,8 +56,11 @@ function aliases(r: FeatureResult, kind: NamingEntry['kind']): Record<string, st
   return out;
 }
 
-const box = (id: string, origin: [number, number, number], op: 'new' | 'add' | 'cut' | 'intersect') =>
-  boxFeature(id, frameAt(origin), op);
+const box = (
+  id: string,
+  origin: [number, number, number],
+  op: 'new' | 'add' | 'cut' | 'intersect',
+) => boxFeature(id, frameAt(origin), op);
 
 for (const { variant } of VARIANTS) {
   describe.skipIf(!variantBuilt(variant))(suiteTitle('unify same-domain faces', variant), () => {
@@ -274,7 +277,8 @@ for (const { variant } of VARIANTS) {
         relClose(m.volume, 100 * 20 * 5 + 4 * 500, REL);
         expect(m.faceCount).toBe(6 + 4 * 5);
         expect(primary(r, 'face')).toContain(`F${B}:face.zmax`);
-        for (let i = 1; i < 4; i++) expect(primary(r, 'face')).toContain(`F${LP}:inst${i}(F${B}:face.zmax)`);
+        for (let i = 1; i < 4; i++)
+          expect(primary(r, 'face')).toContain(`F${LP}:inst${i}(F${B}:face.zmax)`);
         expect(aliases(r, 'face')).toEqual({});
       });
 

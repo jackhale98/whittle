@@ -65,8 +65,7 @@ function voidVolume(d: BracketDims, t: number, open: 'none' | 'top' | 'back'): n
   const s2 = Math.SQRT2;
   let profile: number;
   if (open === 'top') {
-    profile =
-      (D - 2 * t) * (T - 2 * t) + (T - 2 * t) * (H + t) - 0.5 * (c - t + t * s2) ** 2;
+    profile = (D - 2 * t) * (T - 2 * t) + (T - 2 * t) * (H + t) - 0.5 * (c - t + t * s2) ** 2;
   } else if (open === 'back') {
     profile = (D - t) * (T - 2 * t) + (T - t) * H - 0.5 * (c - 2 * t + t * s2) ** 2;
   } else {
@@ -80,7 +79,11 @@ function voidVolume(d: BracketDims, t: number, open: 'none' | 'top' | 'back'): n
   );
 }
 
-function shell(openFaces: EntityRef[], thickness: string, extra: Partial<ShellFeature> = {}): ShellFeature {
+function shell(
+  openFaces: EntityRef[],
+  thickness: string,
+  extra: Partial<ShellFeature> = {},
+): ShellFeature {
   return {
     id: SH,
     type: 'shell',
@@ -120,8 +123,7 @@ describe.skipIf(!m3)(`regen golden: booleans merge coplanar faces (ADR-076)${not
       .map((f, i) => ({ f, name: body.mesh.faceNames[i] as string }))
       .filter(
         ({ f }) =>
-          f.normal !== undefined &&
-          f.normal.every((v, j) => Math.abs(v - (normal[j] as number)) < 1e-9) &&
+          f.normal?.every((v, j) => Math.abs(v - (normal[j] as number)) < 1e-9) === true &&
           Math.abs(f.centroid.reduce((s, v, j) => s + v * (normal[j] as number), 0) - offset) <
             1e-6,
       );
@@ -254,11 +256,7 @@ describe.skipIf(!m3)(`regen golden: booleans merge coplanar faces (ADR-076)${not
     );
     expect(states(r), describeFailures(r)).toEqual(Array(10).fill('ok'));
     const slab = (d.width - 2 * d.corner_r) * t * (d.thickness - 2 * t);
-    relClose(
-      totalVolume(r.bodies),
-      bracketVolume(d) - voidVolume(d, t, 'none') - slab,
-      1e-6,
-    );
+    relClose(totalVolume(r.bodies), bracketVolume(d) - voidVolume(d, t, 'none') - slab, 1e-6);
     const names = only(r).mesh.faceNames;
     expect(names.some((n) => n.startsWith(`F${SH}:rim(${side(B.E1, B.S1, 'L1')})`))).toBe(true);
     expect(names).not.toContain(side(B.E1, B.S1, 'L1'));

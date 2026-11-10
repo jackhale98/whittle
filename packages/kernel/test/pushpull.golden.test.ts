@@ -244,7 +244,12 @@ for (const { variant } of VARIANTS) {
             type: 'import',
             name: 'Import',
             suppressed: false,
-            source: { path: `imports/${IM}.igs`, format: 'iges', sha256: '0', fileName: 'split.igs' },
+            source: {
+              path: `imports/${IM}.igs`,
+              format: 'iges',
+              sha256: '0',
+              fileName: 'split.igs',
+            },
             op: 'new',
           } as Feature,
           { values: {}, shapes: { source: raw } },
@@ -254,7 +259,7 @@ for (const { variant } of VARIANTS) {
         const at = (c: number[]) =>
           names(body, 'face').find((n) => {
             const f = fp0.faces[indexOf(body, n, 'face')];
-            return f !== undefined && f.centroid.every((v, i) => Math.abs(v - (c[i] ?? 0)) < 1e-6);
+            return f?.centroid.every((v, i) => Math.abs(v - (c[i] ?? 0)) < 1e-6) === true;
           }) ?? '';
         const leftTop = at([5, 5, 10]);
         const rightTop = at([15, 5, 10]);

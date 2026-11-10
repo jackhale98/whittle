@@ -143,7 +143,12 @@ describe('demo bracket', () => {
           direction: 'inward',
         });
         p.rollbackIndex = p.features.length;
-        const s = await api.regenerate({ doc: shelled, partId, quality: 'coarse', massProperties: true });
+        const s = await api.regenerate({
+          doc: shelled,
+          partId,
+          quality: 'coarse',
+          massProperties: true,
+        });
         expect(s.features.map((f) => f.state)).toEqual(Array(10).fill('ok'));
         const v = s.bodies[0]?.massProperties?.volume ?? 0;
         const want = demoBracketVolume(DIMS) - voidAt(t);

@@ -7,7 +7,7 @@
 
 import type { NamingMap } from '@wren-cad/contracts';
 import { describe, expect, it } from 'vitest';
-import { mergeChain, ModelState, primaryNaming, recordMerges } from '../../src/regen/state';
+import { ModelState, mergeChain, primaryNaming, recordMerges } from '../../src/regen/state';
 
 const naming: NamingMap = [
   { name: 'F1:back', kind: 'face', index: 0 },
