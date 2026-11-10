@@ -181,8 +181,13 @@ for (const { variant } of VARIANTS) {
       const m = ss.mass(r.shape);
       relClose(m.volume, 20 * 10 * 10 - 15 * 10 * 5, REL);
       expect([m.faceCount, m.edgeCount, m.vertexCount]).toEqual([8, 18, 12]);
+      // The cut also splits the old floor where D's floor overlaps it ([10, 11]): its two pieces
+      // (#0, #1 without the merge) and D's floor merge back into one face under the plain name;
+      // all three earlier names are its aliases.
       expect(aliases(r, 'face')).toEqual({
         [`F${D}:face.zmin`]: `F${C}:face.zmin`,
+        [`F${C}:face.zmin#0`]: `F${C}:face.zmin`,
+        [`F${C}:face.zmin#1`]: `F${C}:face.zmin`,
       });
       const fp = ss.fingerprints(r.shape);
       relClose(fp.faces[indexOf(r, `F${C}:face.zmin`, 'face')]?.area ?? 0, 15 * 10, REL);

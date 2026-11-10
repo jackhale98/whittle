@@ -160,6 +160,20 @@ void keepNamesInPlace(const ShapeMap& beforeMap, const std::vector<std::string>&
     }
     return false;
   };
+  // A sub-shape several old ones merged into that is now alone in its name family takes the
+  // family's plain name (pieces of one face merged back: "N#0" + "N#1" → "N", as without a
+  // merge); the "#k" names become its aliases. Untouched sub-shapes keep a lone "#k".
+  auto collapse = [&](int j) {
+    std::string& name = afterNames[static_cast<size_t>(j - 1)];
+    if (pre[static_cast<size_t>(j)].size() < 2 || splitIndex(name) < 0) return;
+    const std::string base = stripSplitSuffix(name);
+    int family = 0;
+    for (const std::string& n : afterNames) family += stripSplitSuffix(n) == base ? 1 : 0;
+    if (family != 1) return;
+    const auto it = owner.find(base);
+    if (it != owner.end() && !ownsOld(j, base)) return;
+    name = base;
+  };
   if (restore) {
     for (int j = 1; j <= nAfter; ++j) {
       std::string& name = afterNames[static_cast<size_t>(j - 1)];
@@ -173,6 +187,7 @@ void keepNamesInPlace(const ShapeMap& beforeMap, const std::vector<std::string>&
       if (pick != nullptr) name = *pick;
     }
   }
+  for (int j = 1; j <= nAfter; ++j) collapse(j);
   std::set<std::string> used(afterNames.begin(), afterNames.end());
   for (const std::string& n : beforeNames) used.insert(n);
   for (int j = 1; j <= nAfter; ++j) {
@@ -394,14 +409,20 @@ NamedShape unifyBooleanResultImpl(const TopoDS_Shape& shape, std::vector<std::st
   //    Each unified face takes its earliest contributor's final name from `pre`, unchanged — no
   //    renumbering of the faces that did not merge. Edges and vertices are derived from those face
   //    names, then pinned to their old names where only an index moved.
+  const NamedShape pre = finalizeNamed(shape, names, fallback);
+  // Ties (pieces of one face) go to the smallest final name ("#0" before "#1").
+  auto earliest = [&](int a, int b) {
+    if (earlier(a, b)) return true;
+    if (earlier(b, a)) return false;
+    return naturalLess(pre.faces[static_cast<size_t>(a - 1)], pre.faces[static_cast<size_t>(b - 1)]);
+  };
   std::vector<int> best(static_cast<size_t>(t2.faces.Extent() + 1), 0);
   for (int fi = 1; fi <= nFaces; ++fi) {
     for (int j : imagesIn(history, t1.faces(fi), t2.faces)) {
       int& b = best[static_cast<size_t>(j)];
-      if (b == 0 || earlier(fi, b)) b = fi;
+      if (b == 0 || earliest(fi, b)) b = fi;
     }
   }
-  const NamedShape pre = finalizeNamed(shape, std::move(names), fallback);
   NamedShape post;
   post.shape = unified;
   post.faces.assign(static_cast<size_t>(t2.faces.Extent()), std::string());
