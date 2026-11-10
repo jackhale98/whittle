@@ -47,7 +47,6 @@ import type {
   KernelError,
   LinearPatternFeature,
   LoftFeature,
-  MassProperties,
   Measurement,
   MeasureTarget,
   MeshBuffers,
@@ -109,15 +108,11 @@ import {
 } from './cause';
 import { chainOrder } from './chain';
 import { type CompareOutput, type DiffSide, geometricDiff } from './compare';
+import { EngineCore } from './core';
 import {
   anglePlane,
-  edgeCircle,
-  edgeEndpoints,
-  edgeLine,
-  faceAxis,
   flipFrame,
   frameLine,
-  type GeoQuery,
   heightAbove,
   isGeoError,
   type Line,
@@ -182,13 +177,10 @@ import {
   projectPlaneTrace,
   projectPoint,
   projectSketchEntity,
-  type ReprojectLinked,
-  reprojectLinkedFallback,
 } from './linked';
 import { type Candidate, type ResolvedTarget, resolveRef, type SubKind } from './resolve';
 import {
   type BodyState,
-  type CacheEntry,
   type DatumState,
   type EntryResult,
   ModelState,
@@ -200,17 +192,15 @@ import {
   type ToolSpec,
   type WalkContext,
 } from './state';
-import {
-  type ExportResult,
-  type ImportResult,
-  MESH_QUALITY,
-  type ReboundRef,
-  type RegenEngineDeps,
-  type RegenEngineOptions,
-  type RegenFeatureStatus,
-  type RegenOutput,
-  type RegenUnresolvedRef,
-  type SketchSolve,
+import type {
+  ExportResult,
+  ImportResult,
+  ReboundRef,
+  RegenEngineDeps,
+  RegenEngineOptions,
+  RegenFeatureStatus,
+  RegenOutput,
+  RegenUnresolvedRef,
 } from './types';
 
 export {
@@ -278,38 +268,21 @@ function refKind(ref: EntityRef): SubKind | 'body' {
 // ---------------------------------------------------------------------------------------------
 
 export class RegenEngine {
-  private readonly kernel: RegenEngineDeps['kernel'];
-  private readonly solverLoader: RegenEngineDeps['sketchSolver'];
-  private solver: SketchSolve | null = null;
-  private readonly reproject: ReprojectLinked;
-  /** Per-handle memo of probed geometry (lines, circles, axes, end points); dropped on release. */
-  private readonly geoMemo = new Map<string, unknown>();
+  /** The kernel, the sketch solver and the per-handle caches the feature executors share. */
+  private readonly core: EngineCore;
   private maxSpare: number;
-  private readonly quality: Record<
-    MeshQuality,
-    { linearDeflection: number; angularDeflection: number }
-  >;
   private readonly now: () => number;
   private maxSlots: number;
   /** Per part, per slot (`'main'` and up to `maxSlots` version slots). */
   private readonly parts = new Map<Id, Map<RegenSlot, PartCache>>();
   private slotTick = 0;
-  /** Per-handle caches; dropped when the handle is released. */
-  private readonly fps = new Map<ShapeHandle, ShapeFingerprints | null>();
-  private readonly mass = new Map<string, MassProperties | null>();
-  private readonly meshes = new Map<string, MeshBuffers>();
-  /** Every handle owned by a cache entry (the UI must never release these). */
-  private readonly ownedHandles = new Set<ShapeHandle>();
   /** Serialises engine calls (Comlink may interleave async calls). */
   private queue: Promise<unknown> = Promise.resolve();
 
   constructor(deps: RegenEngineDeps) {
-    this.kernel = deps.kernel;
-    this.solverLoader = deps.sketchSolver;
-    this.reproject = deps.reprojectLinked ?? reprojectLinkedFallback;
+    this.core = new EngineCore(deps);
     this.maxSpare = validSpare(deps.options?.maxSpareResults) ?? 128;
     this.maxSlots = validSlots(deps.options?.maxVersionSlots) ?? DEFAULT_VERSION_SLOTS;
-    this.quality = { ...MESH_QUALITY, ...deps.options?.meshQuality };
     this.now = deps.options?.now ?? (() => performance.now());
   }
 
@@ -363,7 +336,7 @@ export class RegenEngine {
       if (!body) return null;
       const entry = body.naming.find((n) => n.kind === query.kind && n.index === query.index);
       if (!entry) return null;
-      const fp = await this.fingerprints(body.shape);
+      const fp = await this.core.fingerprints(body.shape);
       const ref: EntityRef = { name: entry.name, kind: query.kind };
       const fingerprint = fp ? fingerprintOf(fp, query.kind, query.index) : undefined;
       if (fingerprint) ref.fingerprint = fingerprint;
@@ -389,10 +362,10 @@ export class RegenEngine {
       }
       const sa = await this.measureSubject(latest.bodies, a);
       if ('code' in sa) return { ok: false, error: sa };
-      if (b === undefined) return this.kernel.measureShapes(sa);
+      if (b === undefined) return this.core.kernel.measureShapes(sa);
       const sb = await this.measureSubject(latest.bodies, b);
       if ('code' in sb) return { ok: false, error: sb };
-      return this.kernel.measureShapes(sa, sb);
+      return this.core.kernel.measureShapes(sa, sb);
     });
   }
 
@@ -414,7 +387,7 @@ export class RegenEngine {
       });
     }
     if (body.meshOnly) return meshOnlyError('measured exactly', body.id);
-    const fp = await this.fingerprints(body.shape);
+    const fp = await this.core.fingerprints(body.shape);
     const count =
       t.kind === 'face'
         ? fp?.faces.length
@@ -454,7 +427,7 @@ export class RegenEngine {
       const opts: ExportOptions = { ...options };
       delete opts.bodies;
       if (format === 'step') opts.stepSchema = options.stepSchema ?? 'AP214';
-      const r = await this.kernel.exportShapes(shapes, format, opts);
+      const r = await this.core.kernel.exportShapes(shapes, format, opts);
       if (!r.ok) return r;
       const files = r.value;
       if (files.length === 1) return { ok: true, bytes: (files[0] as { bytes: Uint8Array }).bytes };
@@ -471,13 +444,16 @@ export class RegenEngine {
 
   importFile(bytes: Uint8Array, format: ExportFormat): Promise<ImportResult> {
     return this.serial(async () => {
-      const r = await this.kernel.importShapes(bytes, format);
+      const r = await this.core.kernel.importShapes(bytes, format);
       if (!r.ok) return r;
       const out: { shape: ShapeHandle; mesh: MeshBuffers; name?: string }[] = [];
       for (const b of r.value) {
-        const m = await this.kernel.mesh(b.shape, { ...this.quality.fine, relative: true });
+        const m = await this.core.kernel.mesh(b.shape, {
+          ...this.core.quality.fine,
+          relative: true,
+        });
         if (!m.ok) {
-          for (const x of r.value) await this.kernel.release(x.shape);
+          for (const x of r.value) await this.core.kernel.release(x.shape);
           return m;
         }
         out.push(
@@ -543,17 +519,17 @@ export class RegenEngine {
         pc.used = ++this.slotTick;
         sides.push(await this.diffSide(pc, warnings));
       }
-      const kernel = this.kernel;
+      const kernel = this.core.kernel;
       const r = await geometricDiff(
         {
-          exec: (f, i) => this.exec(f, i),
+          exec: (f, i) => this.core.exec(f, i),
           mesh: (shape, options) => kernel.mesh(shape, options),
           massProperties: (shape, density) => kernel.massProperties(shape, density),
           release: (shape) => kernel.release(shape),
         },
         sides[0] as DiffSide,
         sides[1] as DiffSide,
-        { ...this.quality[quality], relative: true },
+        { ...this.core.quality[quality], relative: true },
       );
       if (r.ok && warnings.length > 0) r.value.warnings = warnings;
       return r;
@@ -575,7 +551,7 @@ export class RegenEngine {
         );
         continue;
       }
-      const mp = await this.massOf(body.shape);
+      const mp = await this.core.massOf(body.shape);
       if (!mp || !(Math.abs(mp.volume) > 0)) {
         warnings.push(
           kerr('UNSUPPORTED_FEATURE', `A body without volume in ${label} is not compared`, {
@@ -592,7 +568,7 @@ export class RegenEngine {
 
   /** Is `shape` owned by the regen cache (released by the engine, never by callers)? */
   ownsHandle(shape: ShapeHandle): boolean {
-    return this.ownedHandles.has(shape);
+    return this.core.ownedHandles.has(shape);
   }
 
   /** Diagnostics: cache entries and owned handles of one slot of a part (default `'main'`). */
@@ -609,66 +585,6 @@ export class RegenEngine {
     return [...(this.parts.get(partId)?.values() ?? [])]
       .sort((x, y) => (x.slot === 'main' ? -1 : y.slot === 'main' ? 1 : y.used - x.used))
       .map((pc) => pc.slot);
-  }
-
-  // -------------------------------------------------------------------------------------------
-  // Shape-level caches
-  // -------------------------------------------------------------------------------------------
-
-  private async fingerprints(shape: ShapeHandle): Promise<ShapeFingerprints | null> {
-    if (this.fps.has(shape)) return this.fps.get(shape) ?? null;
-    const r = await this.kernel.fingerprints(shape);
-    const v = r.ok ? r.value : null;
-    this.fps.set(shape, v);
-    return v;
-  }
-
-  private async massOf(shape: ShapeHandle, density?: number): Promise<MassProperties | null> {
-    const k = `${shape}|${density ?? 0}`;
-    if (this.mass.has(k)) return this.mass.get(k) ?? null;
-    const r = await this.kernel.massProperties(shape, density);
-    const v = r.ok ? r.value : null;
-    this.mass.set(k, v);
-    return v;
-  }
-
-  private async meshOf(shape: ShapeHandle, quality: MeshQuality): Promise<MeshBuffers | null> {
-    const k = `${shape}|${quality}`;
-    const cached = this.meshes.get(k);
-    if (cached) return cached;
-    const r = await this.kernel.mesh(shape, { ...this.quality[quality], relative: true });
-    if (!r.ok) return null;
-    this.meshes.set(k, r.value);
-    return r.value;
-  }
-
-  private async releaseHandle(shape: ShapeHandle): Promise<void> {
-    this.ownedHandles.delete(shape);
-    this.fps.delete(shape);
-    for (const k of [...this.mass.keys()]) if (k.startsWith(`${shape}|`)) this.mass.delete(k);
-    this.meshes.delete(`${shape}|coarse`);
-    this.meshes.delete(`${shape}|fine`);
-    for (const k of [...this.geoMemo.keys()]) if (k.startsWith(`${shape}|`)) this.geoMemo.delete(k);
-    await this.kernel.release(shape);
-  }
-
-  private async releaseEntry(e: CacheEntry): Promise<void> {
-    for (const h of e.owned) await this.releaseHandle(h);
-    e.owned = [];
-  }
-
-  private async releaseRaw(raw: RawImport): Promise<void> {
-    for (const h of raw.shapes) await this.releaseHandle(h);
-    raw.shapes = [];
-  }
-
-  /**
-   * `execFeature`. Every kernel feature call of the engine goes through here. (Kernel names are
-   * document names: the M1 translation of imported names, `F<id>:face:unnamed` → `F<id>:face`,
-   * went with the kernel `import` feature, which names imported faces `F<id>:face#k` itself.)
-   */
-  private exec(feature: Feature, inputs: FeatureInputs): Promise<Result<FeatureResult>> {
-    return this.kernel.execFeature(feature, inputs);
   }
 
   // -------------------------------------------------------------------------------------------
@@ -716,8 +632,8 @@ export class RegenEngine {
   }
 
   private async releaseSlot(partId: Id, pc: PartCache): Promise<void> {
-    for (const e of pc.entries.values()) await this.releaseEntry(e);
-    for (const raw of pc.imports.values()) await this.releaseRaw(raw);
+    for (const e of pc.entries.values()) await this.core.releaseEntry(e);
+    for (const raw of pc.imports.values()) await this.core.releaseRaw(raw);
     pc.entries.clear();
     pc.imports.clear();
     pc.latest = null;
@@ -854,7 +770,7 @@ export class RegenEngine {
     wantMass: boolean,
     density: number | undefined,
   ): Promise<BodyResult | null> {
-    const mesh = await this.meshOf(b.shape, quality);
+    const mesh = await this.core.meshOf(b.shape, quality);
     if (!mesh) return null;
     const out: BodyResult = { id: b.id, shape: b.shape, mesh: copyMesh(mesh) };
     // Names from the body's naming map: the kernel's mesh names are its internal ones (imports
@@ -862,7 +778,7 @@ export class RegenEngine {
     out.mesh.faceNames = namesByIndex(b.naming, 'face', out.mesh.faceRanges.length / 2);
     out.mesh.edgeNames = namesByIndex(b.naming, 'edge', out.mesh.edgeRanges.length / 2);
     if (wantMass) {
-      const mp = await this.massOf(b.shape, density);
+      const mp = await this.core.massOf(b.shape, density);
       if (mp) out.massProperties = mp;
     }
     return out;
@@ -880,7 +796,7 @@ export class RegenEngine {
         extent = Math.max(extent, e.majorRadius, e.minorRadius);
       }
     }
-    const chord = Math.max(1e-4, (extent || 10) * this.quality[quality].linearDeflection);
+    const chord = Math.max(1e-4, (extent || 10) * this.core.quality[quality].linearDeflection);
     const curves: SketchResult['curves'] = [];
     const pts: NonNullable<SketchResult['points']> = [];
     for (const e of s.entities) {
@@ -896,7 +812,7 @@ export class RegenEngine {
       curves.push({ entity: e.id, points: arr, construction: e.construction });
     }
     const regions: SketchResult['regions'] = [];
-    const mesh = s.regions.length > 0 ? await this.meshOf(s.shape, quality) : null;
+    const mesh = s.regions.length > 0 ? await this.core.meshOf(s.shape, quality) : null;
     for (const name of s.regions) {
       const fi = faceIndex(s.naming, name);
       if (mesh && fi >= 0) regions.push({ name, mesh: faceSubMesh(mesh, fi, name) });
@@ -920,7 +836,7 @@ export class RegenEngine {
       .filter((r) => !used.has(r.sha))
       .sort((a, b) => b.lastUsed - a.lastUsed);
     for (const raw of spare.slice(IMPORT_SPARE)) {
-      await this.releaseRaw(raw);
+      await this.core.releaseRaw(raw);
       pc.imports.delete(raw.sha);
     }
   }
@@ -931,7 +847,7 @@ export class RegenEngine {
       .filter((e) => !keep.has(e.key))
       .sort((a, b) => b.lastUsed - a.lastUsed);
     for (const e of spare.slice(this.maxSpare)) {
-      await this.releaseEntry(e);
+      await this.core.releaseEntry(e);
       pc.entries.delete(e.key);
     }
   }
@@ -1083,7 +999,7 @@ export class RegenEngine {
         };
       }
       entry = { key: plan.key, owned: ran.owned, result: ran.result, lastUsed: ctx.pc.tick };
-      for (const h of ran.owned) this.ownedHandles.add(h);
+      for (const h of ran.owned) this.core.ownedHandles.add(h);
       if (!ran.transient) ctx.pc.entries.set(plan.key, entry);
     }
     entry.lastUsed = ctx.pc.tick;
@@ -1224,7 +1140,7 @@ export class RegenEngine {
         ? [...ctx.state.bodies.values()].map((b) => b.shape)
         : [...ctx.state.sketches.values()].map((s) => s.shape);
     for (const s of shapes) {
-      const fp = await this.fingerprints(s);
+      const fp = await this.core.fingerprints(s);
       for (const v of fp?.vertices ?? []) extendBox(box, v.point);
       for (const f of fp?.faces ?? []) extendBox(box, f.centroid);
     }
@@ -1272,7 +1188,7 @@ export class RegenEngine {
     const r = await resolveRef(ref, cands, {
       diag: await this.partDiag(ctx),
       planeLike,
-      fingerprints: (s) => this.fingerprints(s),
+      fingerprints: (s) => this.core.fingerprints(s),
       weak: (name) => mentionsImport(name, ctx.importIds),
     });
     const memo = `${ctx.current.featureId}|${path}`;
@@ -1280,7 +1196,7 @@ export class RegenEngine {
       const t = r.target;
       ctx.pc.lastResolved.set(memo, { shape: t.shape, kind: t.kind, index: t.index });
       if (t.name === ref.name && t.via === 'name') return t;
-      const fp = await this.fingerprints(t.shape);
+      const fp = await this.core.fingerprints(t.shape);
       const now = fp ? fingerprintOf(fp, t.kind, t.index) : undefined;
       // Rebound: the name changed, or fingerprint evidence picked it and the stored fingerprint
       // is out of date (the app heals both).
@@ -1295,8 +1211,8 @@ export class RegenEngine {
     const u: RegenUnresolvedRef = { path, ref, reason: r.reason };
     if (r.candidates) u.candidates = r.candidates;
     const last = ctx.pc.lastResolved.get(memo);
-    if (last && !ref.fingerprint && this.ownedHandles.has(last.shape)) {
-      const fp = await this.fingerprints(last.shape);
+    if (last && !ref.fingerprint && this.core.ownedHandles.has(last.shape)) {
+      const fp = await this.core.fingerprints(last.shape);
       const lastKnown = fp ? fingerprintOf(fp, last.kind, last.index) : undefined;
       if (lastKnown) u.lastKnown = lastKnown;
     }
@@ -1320,7 +1236,7 @@ export class RegenEngine {
   private async frameOfTarget(t: ResolvedTarget): Promise<Frame | KernelError> {
     if (t.kind !== 'face')
       return kerr('INVALID_INPUT', 'Pick a flat face or a plane', { entityRefs: [t.name] });
-    const fp = await this.fingerprints(t.shape);
+    const fp = await this.core.fingerprints(t.shape);
     const face = fp?.faces[t.index];
     if (!face?.normal) {
       return kerr('INVALID_INPUT', 'The selected face is not flat', {
@@ -1471,8 +1387,8 @@ export class RegenEngine {
         key,
         involved,
         run: async () => {
-          this.solver ??= await this.solverLoader();
-          const solved = this.solver.solve({ entities, constraints, values: solveValues });
+          this.core.solver ??= await this.core.solverLoader();
+          const solved = this.core.solver.solve({ entities, constraints, values: solveValues });
           if (solved.status !== 'solved') {
             const c = solved.conflicts[0];
             const error =
@@ -1486,7 +1402,7 @@ export class RegenEngine {
                   });
             return { result: { ok: false, error }, owned: [] };
           }
-          const r = await this.exec(
+          const r = await this.core.exec(
             { ...f, entities: solved.entities },
             { values: {}, frames: { plane: frame } },
           );
@@ -1650,10 +1566,10 @@ export class RegenEngine {
       op: opCode(f.op),
       build: (depth?: number) => {
         if (depth === undefined || f.type !== 'extrude' || f.end.kind !== 'throughAll') {
-          return this.exec(tool, toolInputs);
+          return this.core.exec(tool, toolInputs);
         }
         const blind = { ...tool, end: { kind: 'blind', depth: `${depth} mm` } } as Feature;
-        return this.exec(blind, {
+        return this.core.exec(blind, {
           ...toolInputs,
           values: { ...inputs.values, '/end/depth': depth },
         });
@@ -1691,7 +1607,7 @@ export class RegenEngine {
       owned: [r.shape],
     });
     if (f.op === 'new') {
-      const r = await this.exec(f, inputs);
+      const r = await this.core.exec(f, inputs);
       return r.ok ? newBody(r.value, r.value.warnings) : fail(r.error);
     }
 
@@ -1700,22 +1616,22 @@ export class RegenEngine {
     const throughAll = f.type === 'extrude' && f.end.kind === 'throughAll';
     if (scoped.mode === 'default' && !throughAll) {
       // Prefilter "every body the tool touches" by bounding boxes of the tool alone.
-      const t = await this.exec({ ...f, op: 'new', scope: undefined } as Feature, inputs);
+      const t = await this.core.exec({ ...f, op: 'new', scope: undefined } as Feature, inputs);
       if (!t.ok) return fail(t.error);
       tool = t.value;
-      const tb = await this.massOf(tool.shape);
+      const tb = await this.core.massOf(tool.shape);
       if (tb && candidates.length > 0) {
         const tol = 1e-6 * Math.max(1, boxDiagonal(tb.bbox));
         const kept: BodyState[] = [];
         for (const b of candidates) {
-          const bb = await this.massOf(b.shape);
+          const bb = await this.core.massOf(b.shape);
           if (!bb || boxesOverlap(bb.bbox, tb.bbox, tol)) kept.push(b);
         }
         candidates = kept;
       }
     }
     const dropTool = async () => {
-      if (tool) await this.releaseHandle(tool.shape);
+      if (tool) await this.core.releaseHandle(tool.shape);
       tool = null;
     };
 
@@ -1733,7 +1649,7 @@ export class RegenEngine {
           tool = null;
           return newBody(t, [warning, ...t.warnings]);
         }
-        const r = await this.exec({ ...f, op: 'new', scope: undefined } as Feature, inputs);
+        const r = await this.core.exec({ ...f, op: 'new', scope: undefined } as Feature, inputs);
         return r.ok ? newBody(r.value, [warning, ...r.value.warnings]) : fail(r.error);
       }
       await dropTool();
@@ -1766,7 +1682,7 @@ export class RegenEngine {
       bodies.slice(1).forEach((b, i) => {
         shapes[`scope:${String(i + 1).padStart(4, '0')}`] = b.shape;
       });
-      return this.exec(f, {
+      return this.core.exec(f, {
         ...inputs,
         target: (bodies[0] as BodyState).shape,
         shapes: { ...inputs.shapes, ...shapes },
@@ -1788,7 +1704,7 @@ export class RegenEngine {
       if (!r.ok) return fail(r.error);
       const first = candidates[0] as BodyState;
       // Merged bodies: the oldest keeps its id; extra handles (none expected for fuse) released.
-      for (const extra of r.value.bodies ?? []) await this.releaseHandle(extra.shape);
+      for (const extra of r.value.bodies ?? []) await this.core.releaseHandle(extra.shape);
       return {
         result: {
           ok: true,
@@ -1838,7 +1754,7 @@ export class RegenEngine {
       const p = produced.get(b.id);
       if (!p) continue;
       if (f.op === 'cut' && scoped.mode !== 'bodies' && (await this.sameSolid(b.shape, p.shape))) {
-        await this.releaseHandle(p.shape);
+        await this.core.releaseHandle(p.shape);
         continue;
       }
       set.push({ id: b.id, shape: p.shape, naming: p.naming, key: `${key}/${b.id}` });
@@ -1861,8 +1777,8 @@ export class RegenEngine {
 
   /** Same volume and topology counts: the boolean left the body unchanged. */
   private async sameSolid(a: ShapeHandle, b: ShapeHandle): Promise<boolean> {
-    const ma = await this.massOf(a);
-    const mb = await this.massOf(b);
+    const ma = await this.core.massOf(a);
+    const mb = await this.core.massOf(b);
     if (!ma || !mb) return false;
     return (
       Math.abs(ma.volume - mb.volume) <= 1e-9 * Math.max(1, Math.abs(ma.volume)) &&
@@ -1934,13 +1850,13 @@ export class RegenEngine {
           const owned: ShapeHandle[] = [];
           const warnings: KernelError[] = [];
           for (const g of groups.values()) {
-            const r = await this.exec(f, {
+            const r = await this.core.exec(f, {
               values,
               target: g.body.shape,
               refs: g.refs,
             });
             if (!r.ok) {
-              for (const h of owned) await this.releaseHandle(h);
+              for (const h of owned) await this.core.releaseHandle(h);
               return { result: { ok: false, error: r.error }, owned: [] };
             }
             set.push({
@@ -2005,9 +1921,9 @@ export class RegenEngine {
               result: { ok: false, error: kerr('UNRESOLVED_REFERENCE', 'Select the target body') },
               owned: [],
             };
-          const r = await this.exec(f, { values, refs });
+          const r = await this.core.exec(f, { values, refs });
           if (!r.ok) return { result: { ok: false, error: r.error }, owned: [] };
-          for (const extra of r.value.bodies ?? []) await this.releaseHandle(extra.shape);
+          for (const extra of r.value.bodies ?? []) await this.core.releaseHandle(extra.shape);
           return {
             result: {
               ok: true,
@@ -2142,7 +2058,10 @@ export class RegenEngine {
         key,
         involved: [...involved],
         run: async () => {
-          const r = await this.exec(kernelFeature, computed ? { values: {} } : { values, frames });
+          const r = await this.core.exec(
+            kernelFeature,
+            computed ? { values: {} } : { values, frames },
+          );
           if (!r.ok) return { result: { ok: false, error: r.error }, owned: [] };
           let frame = computed ??
             r.value.frame ??
@@ -2193,13 +2112,13 @@ export class RegenEngine {
       });
     if (t.kind !== 'edge') return bad('A plane normal to a curve needs an edge');
     const owner = t.owner;
-    const line = await this.lineOfEdge(t);
+    const line = await this.core.lineOfEdge(t);
     if (line) {
       const dir = normalize(sub(line.b, line.a));
       const point = at ?? add(line.a, scale(sub(line.b, line.a), values['/definition/at/t'] ?? 0));
       return { frame: normalPlane(point, dir), owner };
     }
-    const circle = await this.circleOfEdge(t);
+    const circle = await this.core.circleOfEdge(t);
     if (circle) {
       if (!at) {
         return kerr(
@@ -2337,7 +2256,7 @@ export class RegenEngine {
     refs: Record<string, ResolvedRef>,
     picked: readonly string[],
   ): Promise<Result<FeatureResult>> {
-    const fp = await this.fingerprints(body.shape);
+    const fp = await this.core.fingerprints(body.shape);
     const members = Object.keys(refs)
       .map((path) => Number(path.slice('/faces/'.length)))
       .sort((a, b) => a - b)
@@ -2348,14 +2267,15 @@ export class RegenEngine {
       });
     const groups = fp ? groupByNormal(members) : null;
     // One normal (or a curved face, which the kernel reports): a single step, as in M2.
-    if (!groups || groups.length < 2) return this.exec(f, { target: body.shape, values, refs });
+    if (!groups || groups.length < 2)
+      return this.core.exec(f, { target: body.shape, values, refs });
 
     let shape = body.shape;
     let naming = body.naming;
     const warnings: KernelError[] = [];
     const seen = new Set<string>();
     const release = async (h: ShapeHandle): Promise<void> => {
-      if (h !== body.shape) await this.kernel.release(h);
+      if (h !== body.shape) await this.core.kernel.release(h);
     };
     for (const [g, group] of groups.entries()) {
       const stepRefs: Record<string, ResolvedRef> = {};
@@ -2390,7 +2310,7 @@ export class RegenEngine {
         stepRefs[`/faces/${faces.length}`] = { shape, kind: 'face', index };
         faces.push(original);
       }
-      const r = await this.exec({ ...f, faces }, { target: shape, values, refs: stepRefs });
+      const r = await this.core.exec({ ...f, faces }, { target: shape, values, refs: stepRefs });
       await release(shape);
       if (!r.ok) {
         // The error speaks for the whole selection, not just this step's share of it.
@@ -2412,40 +2332,6 @@ export class RegenEngine {
   // -------------------------------------------------------------------------------------------
   // M3: geometry probes, axes, points (reference geometry)
   // -------------------------------------------------------------------------------------------
-
-  private geo(): GeoQuery {
-    return {
-      fingerprints: (shape) => this.fingerprints(shape),
-      measure: (a, b) => this.kernel.measureShapes(a, b),
-    };
-  }
-
-  /** Memoised per handle (engine-owned handles keep their geometry; dropped on release). */
-  private async memo<T>(shape: ShapeHandle, what: string, fn: () => Promise<T>): Promise<T> {
-    const k = `${shape}|${what}`;
-    if (this.geoMemo.has(k)) return this.geoMemo.get(k) as T;
-    const v = await fn();
-    this.geoMemo.set(k, v);
-    return v;
-  }
-
-  private lineOfEdge(t: { shape: ShapeHandle; index: number }) {
-    return this.memo(t.shape, `line:${t.index}`, () => edgeLine(this.geo(), t.shape, t.index));
-  }
-
-  private circleOfEdge(t: { shape: ShapeHandle; index: number }) {
-    return this.memo(t.shape, `circle:${t.index}`, () => edgeCircle(this.geo(), t.shape, t.index));
-  }
-
-  private axisOfFace(t: { shape: ShapeHandle; index: number }) {
-    return this.memo(t.shape, `axis:${t.index}`, () => faceAxis(this.geo(), t.shape, t.index));
-  }
-
-  private endpointsOf(t: { shape: ShapeHandle; index: number }, tol: number) {
-    return this.memo(t.shape, `ends:${t.index}:${tol}`, () =>
-      edgeEndpoints(this.geo(), t.shape, t.index, tol),
-    );
-  }
 
   /**
    * An axis-like reference → a line: origin axes, axis features (`F…:axis`), straight edges (in
@@ -2487,9 +2373,9 @@ export class RegenEngine {
     const t = await this.resolveSub(ctx, ref, path, unresolved);
     if (!t) return null;
     if (t.kind === 'edge') {
-      const l = await this.lineOfEdge(t);
+      const l = await this.core.lineOfEdge(t);
       if (l) return { line: { origin: l.a, dir: normalize(sub(l.b, l.a)) }, owner: t.owner };
-      const c = await this.circleOfEdge(t);
+      const c = await this.core.circleOfEdge(t);
       if (c) {
         if (planeNormal) return bad('A circular edge has no direction; pick a straight edge');
         return { line: { origin: c.centre, dir: c.normal }, owner: t.owner };
@@ -2497,13 +2383,13 @@ export class RegenEngine {
       return bad('This edge is neither straight nor circular');
     }
     if (t.kind === 'face') {
-      const fp = await this.fingerprints(t.shape);
+      const fp = await this.core.fingerprints(t.shape);
       const face = fp?.faces[t.index];
       if (face?.normal) {
         if (!planeNormal) return bad('A flat face has no axis');
         return { line: { origin: face.centroid, dir: normalize(face.normal) }, owner: t.owner };
       }
-      const a = await this.axisOfFace(t);
+      const a = await this.core.axisOfFace(t);
       if (a) return { line: { origin: a.origin, dir: a.dir }, owner: t.owner };
       return bad('This face has no axis');
     }
@@ -2531,12 +2417,12 @@ export class RegenEngine {
     const t = await this.resolveSub(ctx, ref, path, unresolved);
     if (!t) return null;
     if (t.kind === 'vertex') {
-      const fp = await this.fingerprints(t.shape);
+      const fp = await this.core.fingerprints(t.shape);
       const v = fp?.vertices[t.index];
       if (v) return { point: v.point, owner: t.owner };
     }
     if (t.kind === 'edge') {
-      const c = await this.circleOfEdge(t);
+      const c = await this.core.circleOfEdge(t);
       if (c) return { point: c.centre, owner: t.owner };
     }
     return kerr('INVALID_INPUT', 'Pick a point, a vertex or a circular edge (its centre)', {
@@ -2618,7 +2504,7 @@ export class RegenEngine {
       const t = await this.resolveSub(ctx, d.edge, '/definition/edge', unresolved);
       if (t) {
         note(t.owner);
-        const l = t.kind === 'edge' ? await this.lineOfEdge(t) : null;
+        const l = t.kind === 'edge' ? await this.core.lineOfEdge(t) : null;
         if (!l) return geoError('Pick a straight edge', [d.edge]);
         line = { origin: l.a, dir: normalize(sub(l.b, l.a)) };
       }
@@ -2697,10 +2583,10 @@ export class RegenEngine {
       const t = await this.resolveSub(ctx, d.of, '/definition/of', unresolved);
       if (t) {
         note(t.owner);
-        if (t.kind === 'edge') point = (await this.circleOfEdge(t))?.centre ?? null;
+        if (t.kind === 'edge') point = (await this.core.circleOfEdge(t))?.centre ?? null;
         else if (t.kind === 'face') {
-          point = await this.memo(t.shape, `sphere:${t.index}`, () =>
-            sphereCentre(this.geo(), t.shape, t.index),
+          point = await this.core.memo(t.shape, `sphere:${t.index}`, () =>
+            sphereCentre(this.core.geo(), t.shape, t.index),
           );
         }
         if (!point) return geoError('Pick a circular edge or a spherical face', [d.of]);
@@ -2709,7 +2595,7 @@ export class RegenEngine {
       const t = await this.resolveSub(ctx, d.edge, '/definition/edge', unresolved);
       if (t) {
         note(t.owner);
-        const l = t.kind === 'edge' ? await this.lineOfEdge(t) : null;
+        const l = t.kind === 'edge' ? await this.core.lineOfEdge(t) : null;
         if (!l) {
           return geoError(
             'A position along a curved edge is not supported yet; pick a straight edge',
@@ -2812,10 +2698,10 @@ export class RegenEngine {
     inputs: FeatureInputs,
     key: string,
   ): Promise<{ result: EntryResult; owned: ShapeHandle[] }> {
-    const r = await this.exec(f, { ...inputs, target: body.shape });
+    const r = await this.core.exec(f, { ...inputs, target: body.shape });
     if (!r.ok) return { result: { ok: false, error: r.error }, owned: [] };
     for (const extra of r.value.bodies ?? []) {
-      if (extra.shape !== r.value.shape) await this.releaseHandle(extra.shape);
+      if (extra.shape !== r.value.shape) await this.core.releaseHandle(extra.shape);
     }
     return {
       result: {
@@ -2979,7 +2865,7 @@ export class RegenEngine {
         for (const t of path as ResolvedTarget[]) {
           if (t.kind !== 'edge')
             return fail('The sweep path must be edges or sketch curves', [t.name]);
-          ends.push(await this.endpointsOf(t, tol / 10));
+          ends.push(await this.core.endpointsOf(t, tol / 10));
         }
         const chain = chainOrder(ends, tol);
         if (!chain.ok)
@@ -3065,7 +2951,7 @@ export class RegenEngine {
       const r = await spec.build(depth);
       if (!r.ok) return r;
       for (const extra of r.value.bodies ?? []) {
-        if (extra.shape !== r.value.shape) await this.releaseHandle(extra.shape);
+        if (extra.shape !== r.value.shape) await this.core.releaseHandle(extra.shape);
       }
       const tool = { shape: r.value.shape, naming: r.value.naming };
       e = {
@@ -3074,7 +2960,7 @@ export class RegenEngine {
         result: { ok: true, set: [], remove: [], touched: [], tool, warnings: [] },
         lastUsed: ctx.pc.tick,
       };
-      this.ownedHandles.add(tool.shape);
+      this.core.ownedHandles.add(tool.shape);
       ctx.pc.entries.set(key, e);
     }
     e.lastUsed = ctx.pc.tick;
@@ -3288,13 +3174,13 @@ export class RegenEngine {
   ): Promise<number> {
     const box = emptyBox();
     const profile = emptyBox();
-    const tb = await this.massOf(target.shape);
+    const tb = await this.core.massOf(target.shape);
     if (tb) {
       extendBox(box, tb.bbox.min);
       extendBox(box, tb.bbox.max);
     }
     for (const s of profiles) {
-      const pb = await this.massOf(s);
+      const pb = await this.core.massOf(s);
       if (!pb) continue;
       for (const p of [pb.bbox.min, pb.bbox.max]) {
         extendBox(box, p);
@@ -3360,12 +3246,12 @@ export class RegenEngine {
     }
     const all: FeatureInputs = { ...inputs, shapes };
     if (target) all.target = target.shape;
-    const r = await this.exec(f, all);
+    const r = await this.core.exec(f, all);
     if (!r.ok) return fail(r.error);
     const v = r.value;
     const extras = (v.bodies ?? []).filter((b) => b.shape !== v.shape);
     if (target || (f.source.kind === 'bodies' && f.source.merge)) {
-      for (const b of extras) await this.releaseHandle(b.shape);
+      for (const b of extras) await this.core.releaseHandle(b.shape);
       const keep = (target ?? sources[0]) as BodyState;
       const consumed = target ? [] : sources.slice(1).map((b) => b.id);
       return {
@@ -3382,7 +3268,7 @@ export class RegenEngine {
     const copies =
       v.bodies && v.bodies.length > 0 ? v.bodies : [{ key: '', shape: v.shape, naming: v.naming }];
     if (v.bodies && v.bodies.length > 0 && !v.bodies.some((b) => b.shape === v.shape)) {
-      await this.releaseHandle(v.shape);
+      await this.core.releaseHandle(v.shape);
     }
     const set: BodyState[] = copies.map((c) => {
       const id = copies.length === 1 ? `B${f.id}` : `B${f.id}:${c.key}`;
@@ -3458,7 +3344,7 @@ export class RegenEngine {
     }
     if (unresolved.length > 0 || !ft || !body) return { unresolved, taint: body ? [body.id] : [] };
     const taint = [body.id];
-    const fp = await this.fingerprints(ft.shape);
+    const fp = await this.core.fingerprints(ft.shape);
     const face = fp?.faces[ft.index];
     if (!face?.normal) {
       return fail(
@@ -3552,7 +3438,7 @@ export class RegenEngine {
           key: hashKey({ t: 'tool', def: definition(f), values: kv, frames, refs: refKeys }),
           op: 1,
           // Without `target` the kernel returns the drill solids alone (proposed in ADR-036).
-          build: () => this.exec(f, toolInputs),
+          build: () => this.core.exec(f, toolInputs),
         },
       },
     };
@@ -3567,7 +3453,7 @@ export class RegenEngine {
     const unresolved: UnresolvedRef[] = [];
     const t = await this.resolveSub(ctx, f.face, '/face', unresolved);
     if (!t) return { unresolved, taint: [] };
-    const fp = await this.fingerprints(t.shape);
+    const fp = await this.core.fingerprints(t.shape);
     const surface = t.kind === 'face' ? fp?.faces[t.index]?.surface : undefined;
     if (surface !== 'cylinder') {
       return {
@@ -3589,7 +3475,11 @@ export class RegenEngine {
       };
     }
     const warnings: KernelError[] = [];
-    const m = await this.kernel.measureShapes({ shape: t.shape, kind: 'face', index: t.index });
+    const m = await this.core.kernel.measureShapes({
+      shape: t.shape,
+      kind: 'face',
+      index: t.index,
+    });
     const d = m.ok && m.value.radius !== undefined ? 2 * m.value.radius : undefined;
     if (d !== undefined) {
       const near = (x: number) => Math.abs(d - x) <= 0.05 * x;
@@ -3676,7 +3566,7 @@ export class RegenEngine {
       sources.push(s);
     }
     if (attention.length > 0) return { attention };
-    const rp = this.reproject(f.entities, sources);
+    const rp = this.core.reproject(f.entities, sources);
     for (const l of rp.lost) {
       const i = f.entities.findIndex((e) => e.id === l.entity);
       const e = f.entities[i];
@@ -3755,28 +3645,28 @@ export class RegenEngine {
       }
     }
     if (t.kind === 'vertex') {
-      const fp = await this.fingerprints(t.shape);
+      const fp = await this.core.fingerprints(t.shape);
       const v = fp?.vertices[t.index];
       if (v) return one(projectPoint(plane, v.point), t.owner);
     }
     if (t.kind === 'edge') {
-      if (this.kernel.projectEdges) {
-        const r = await this.kernel.projectEdges(t.shape, [t.index], plane);
+      if (this.core.kernel.projectEdges) {
+        const r = await this.core.kernel.projectEdges(t.shape, [t.index], plane);
         if (!r.ok) return r.error;
         return { curves: r.value.flatMap((x) => x.curves), owner: t.owner };
       }
-      const l = await this.lineOfEdge(t);
+      const l = await this.core.lineOfEdge(t);
       if (l) {
         const c = projectAxis(plane, { origin: l.a, dir: normalize(sub(l.b, l.a)) });
         if (c.kind === 'point') return one(c, t.owner);
         return one({ kind: 'line', a: toLocal(plane, l.a), b: toLocal(plane, l.b) }, t.owner);
       }
-      const circle = await this.circleOfEdge(t);
+      const circle = await this.core.circleOfEdge(t);
       if (circle?.full) return one(projectCircle(plane, circle), t.owner);
       if (circle) {
         const tol = Math.max(1e-7, 1e-7 * (await this.partDiag(ctx)));
-        const ends = await this.endpointsOf(t, tol);
-        const fp = await this.fingerprints(t.shape);
+        const ends = await this.core.endpointsOf(t, tol);
+        const fp = await this.core.fingerprints(t.shape);
         const mid = fp?.edges[t.index]?.centroid;
         if (ends.length === 2 && mid) {
           const [s, e] = ends as [Vec3, Vec3];
@@ -3793,8 +3683,8 @@ export class RegenEngine {
       );
     }
     if (t.kind === 'face') {
-      if (this.kernel.projectFaceOutline) {
-        const r = await this.kernel.projectFaceOutline(t.shape, t.index, plane);
+      if (this.core.kernel.projectFaceOutline) {
+        const r = await this.core.kernel.projectFaceOutline(t.shape, t.index, plane);
         if (!r.ok) return r.error;
         return { curves: flattenProjection(r.value), owner: t.owner };
       }
@@ -3924,18 +3814,18 @@ export class RegenEngine {
     } else {
       // IGES (M3): the kernel sews loose faces; closed shells become solids, open ones stay
       // shell bodies (whittle_io.cpp importIges).
-      const r = await this.kernel.importShapes(
+      const r = await this.core.kernel.importShapes(
         bytes,
         format === 'brep' ? 'brep' : format === 'iges' ? 'iges' : 'step',
       );
       if (!r.ok) return r;
       raw.shapes = r.value.map((b) => b.shape);
-      for (const h of raw.shapes) this.ownedHandles.add(h);
+      for (const h of raw.shapes) this.core.ownedHandles.add(h);
       if (raw.shapes.length === 0) {
         return { ok: false, error: kerr('INVALID_INPUT', 'The file contains no solids') };
       }
     }
-    if (cached) await this.releaseRaw(cached);
+    if (cached) await this.core.releaseRaw(cached);
     ctx.pc.imports.set(sha, raw);
     return { ok: true, value: raw };
   }
@@ -3968,13 +3858,13 @@ export class RegenEngine {
       x: [m[0], m[4], m[8]],
     };
     const { scope: _scope, ...feature } = f;
-    const r = await this.exec({ ...feature, op: 'new', frame }, { values: {}, shapes });
+    const r = await this.core.exec({ ...feature, op: 'new', frame }, { values: {}, shapes });
     if (!r.ok) return r;
     const rank = (key: string) => Number(/^body#(\d+)$/.exec(key)?.[1] ?? Number.NaN);
     const extra = [...(r.value.bodies ?? [])];
     if (extra.some((b) => !Number.isInteger(rank(b.key)))) {
-      for (const b of extra) await this.releaseHandle(b.shape);
-      await this.releaseHandle(r.value.shape);
+      for (const b of extra) await this.core.releaseHandle(b.shape);
+      await this.core.releaseHandle(r.value.shape);
       return {
         ok: false,
         error: kerr('INTERNAL', 'The imported bodies could not be ordered', {
@@ -4008,9 +3898,12 @@ export class RegenEngine {
       .sort((a, b) => compareGeoKey(a.c, b.c) || a.i - b.i);
     const out: { shape: ShapeHandle; naming: NamingMap }[] = [];
     for (const o of order) {
-      const r = await this.kernel.importShapes(meshToStl([{ name: 'mesh', mesh: o.mesh }]), 'stl');
+      const r = await this.core.kernel.importShapes(
+        meshToStl([{ name: 'mesh', mesh: o.mesh }]),
+        'stl',
+      );
       if (!r.ok) {
-        for (const x of out) await this.releaseHandle(x.shape);
+        for (const x of out) await this.core.releaseHandle(x.shape);
         return r;
       }
       for (const b of r.value)
@@ -4049,7 +3942,7 @@ export class RegenEngine {
     const open: string[] = [];
     if (!meshOnly) {
       for (const [k, t] of tools.entries()) {
-        const fp = await this.fingerprints(t.shape);
+        const fp = await this.core.fingerprints(t.shape);
         if (hasFreeEdges(t.naming, f.id, fp)) open.push(bodyId(k));
       }
     }
@@ -4057,7 +3950,7 @@ export class RegenEngine {
       const what =
         open.length === tools.length ? 'The imported file has' : 'Some imported bodies have';
       if (f.op !== 'new') {
-        for (const t of tools) await this.releaseHandle(t.shape);
+        for (const t of tools) await this.core.releaseHandle(t.shape);
         return fail(
           kerr(
             'INVALID_INPUT',
@@ -4097,13 +3990,13 @@ export class RegenEngine {
     if (f.op === 'new') return asNew([]);
 
     const dropTools = async () => {
-      for (const t of tools) await this.releaseHandle(t.shape);
+      for (const t of tools) await this.core.releaseHandle(t.shape);
     };
     let candidates = scoped.bodies;
     if (scoped.mode === 'default' && candidates.length > 0) {
       const tb = emptyBox();
       for (const t of tools) {
-        const mp = await this.massOf(t.shape);
+        const mp = await this.core.massOf(t.shape);
         if (mp) {
           extendBox(tb, mp.bbox.min);
           extendBox(tb, mp.bbox.max);
@@ -4112,7 +4005,7 @@ export class RegenEngine {
       const tol = 1e-6 * Math.max(1, boxDiagonal(tb));
       const kept: BodyState[] = [];
       for (const b of candidates) {
-        const bb = await this.massOf(b.shape);
+        const bb = await this.core.massOf(b.shape);
         if (!bb || boxesOverlap(bb.bbox, tb, tol)) kept.push(b);
       }
       candidates = kept;
@@ -4155,7 +4048,7 @@ export class RegenEngine {
         refs[`/tools/${i}`] = { shape: t.shape, kind: 'body', index: 0 };
       });
       const op = f.op === 'new' ? 'add' : f.op;
-      return this.exec(
+      return this.core.exec(
         {
           id: f.id,
           type: 'boolean',
@@ -4194,13 +4087,13 @@ export class RegenEngine {
         if (scoped.mode === 'bodies' || f.op === 'add') break;
         continue;
       }
-      for (const extra of r.value.bodies ?? []) await this.releaseHandle(extra.shape);
+      for (const extra of r.value.bodies ?? []) await this.core.releaseHandle(extra.shape);
       if (
         f.op === 'cut' &&
         scoped.mode !== 'bodies' &&
         (await this.sameSolid(b.shape, r.value.shape))
       ) {
-        await this.releaseHandle(r.value.shape);
+        await this.core.releaseHandle(r.value.shape);
         continue;
       }
       set.push({ id: b.id, shape: r.value.shape, naming: r.value.naming, key: `${key}/${b.id}` });
@@ -4210,7 +4103,7 @@ export class RegenEngine {
     }
     await dropTools();
     if (firstError && (scoped.mode === 'bodies' || f.op === 'add' || set.length === 0)) {
-      for (const h of owned) await this.releaseHandle(h);
+      for (const h of owned) await this.core.releaseHandle(h);
       return fail(firstError);
     }
     if (f.op === 'cut' && touched.length === 0) {
