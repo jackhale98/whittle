@@ -95,10 +95,7 @@ export function SectionPanel({
         className="min-h-11 w-full"
       />
 
-      <div
-        className={cn('flex flex-col gap-3', !enabled && 'opacity-60')}
-        data-enabled={enabled || undefined}
-      >
+      <div className="flex flex-col gap-3" data-enabled={enabled || undefined}>
         <Field label="Axis">
           <Segmented
             label="Section axis"
@@ -157,15 +154,13 @@ export function SectionPanel({
         </Field>
 
         {tilt ? (
-          <Field label="Tilt">
-            <div className="flex items-center gap-2">
-              {([0, 1] as const).map((k) => (
+          <div className="flex items-start gap-2">
+            {([0, 1] as const).map((k) => (
+              <Field key={k} label={tilt.labels[k]} className="min-w-0 flex-1">
                 <ExpressionInput
-                  key={k}
                   label={tilt.labels[k]}
                   size="touch"
                   align="right"
-                  className="min-w-0 flex-1"
                   value={formatAngleDeg(k === 0 ? tilt.u : tilt.v)}
                   evaluate={evaluateAngle}
                   showValue={false}
@@ -175,9 +170,9 @@ export function SectionPanel({
                   }}
                   testId={k === 0 ? 'section-tilt-u' : 'section-tilt-v'}
                 />
-              ))}
-            </div>
-          </Field>
+              </Field>
+            ))}
+          </div>
         ) : null}
 
         <button

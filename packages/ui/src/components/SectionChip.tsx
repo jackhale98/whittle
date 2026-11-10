@@ -1,5 +1,5 @@
 import { FlipHorizontal2, LogOut, Scissors, SlidersHorizontal } from 'lucide-react';
-import { cn, Kbd } from './primitives';
+import { cn } from './primitives';
 
 export interface SectionChipProps {
   /** Leaves the section: the cut, this chip and the plane manipulator go. */
@@ -83,11 +83,12 @@ export function SectionChip({
         type="button"
         onClick={onExit}
         data-testid="section-chip-exit"
+        aria-keyshortcuts="Escape"
+        title={touch ? undefined : 'Exit section (Esc)'}
         className={cn(btn, 'bg-accent text-accent-fg hover:brightness-110 active:brightness-95')}
       >
         <LogOut className="size-4" aria-hidden />
         Exit section
-        {touch ? null : <Kbd inverted>Esc</Kbd>}
       </button>
     </fieldset>
   );

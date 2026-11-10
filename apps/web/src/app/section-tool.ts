@@ -132,6 +132,27 @@ export class SectionTool {
     return u.section.enabled && !u.section.picking && !u.sketch && !u.pushPull;
   }
 
+  /** Test hook: where each grip is (canvas CSS px, the middle of its arrow) and its unit screen direction; null when hidden. */
+  grips(): Record<string, { x: number; y: number; dx: number; dy: number }> | null {
+    const v = this.wb.viewport;
+    if (!v || !this.shown) return null;
+    const out: Record<string, { x: number; y: number; dx: number; dy: number }> = {};
+    for (const [id, g] of this.gripSpecs) {
+      const half = (g.lengthPx / 2) * g.wpp;
+      const p = v.worldToScreen(add(g.origin, g.direction, half));
+      const a = v.worldToScreen(g.origin);
+      const l = Math.hypot(p.x - a.x, p.y - a.y) || 1;
+      // The arrow's screen direction (unit), for dragging along it.
+      out[id] = { x: p.x, y: p.y, dx: (p.x - a.x) / l, dy: (p.y - a.y) / l };
+    }
+    return out;
+  }
+
+  private readonly gripSpecs = new Map<
+    string,
+    { origin: Vec3; direction: Vec3; lengthPx: number; wpp: number }
+  >();
+
   /** The state or the geometry changed: show, move or hide the manipulator. */
   sync(): void {
     if (!this.wanted()) {
@@ -156,6 +177,7 @@ export class SectionTool {
     if (!this.shown) return;
     this.shown = false;
     const v = this.wb.viewport;
+    this.gripSpecs.clear();
     for (const id of IDS) v?.setHandle(id, null);
     v?.setMarkers(MARKERS, null);
   }
@@ -205,6 +227,12 @@ export class SectionTool {
       length: ARROW_PX,
     };
     v.setHandle(OFFSET, arrow);
+    this.gripSpecs.set(OFFSET, {
+      origin: rig.origin,
+      direction: rig.normal,
+      lengthPx: ARROW_PX,
+      wpp,
+    });
     const markers: Marker[] = [];
     // The plane's outline.
     const [e1, e2] = [rig.dirU, rig.dirV];
@@ -238,6 +266,7 @@ export class SectionTool {
       markers.push({ kind: 'polyline', points, tone: 'accent' });
       const grip = add(add(rig.origin, dir, r), tangent, -(GRIP_PX / 2) * wpp);
       v.setHandle(id, { kind: 'arrow', origin: grip, direction: tangent, length: GRIP_PX });
+      this.gripSpecs.set(id, { origin: grip, direction: tangent, lengthPx: GRIP_PX, wpp });
     }
     v.setMarkers(MARKERS, markers);
   }

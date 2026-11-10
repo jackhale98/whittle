@@ -10,6 +10,8 @@ import type { Workbench } from './workbench';
 export function testHooks(wb: Workbench) {
   return {
     doc: () => wb.doc,
+    /** The section manipulator's grips (offset arrow, two arcs) in canvas CSS px. */
+    sectionGrips: () => wb.sectionTool.grips(),
     regen: () => {
       const view = wb.regen.get();
       const r = view?.result;

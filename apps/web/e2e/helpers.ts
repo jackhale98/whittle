@@ -4,6 +4,8 @@ import type { Measurement, WrenDoc, WrenTestHooks } from '@wren-cad/contracts';
 /** App-level E2E hooks (`window.__wrenApp`, see src/app/workbench.ts `testHooks`). */
 export interface AppHooks {
   doc(): WrenDoc;
+  /** The section manipulator's grips (canvas CSS px); null when it is not shown. */
+  sectionGrips(): Record<string, { x: number; y: number; dx: number; dy: number }> | null;
   regen(): {
     revision: number;
     source: 'live' | 'cache';
@@ -135,6 +137,7 @@ export async function boot(page: Page, query = ''): Promise<void> {
 
 export const app = (page: Page) => ({
   doc: () => page.evaluate(() => (window as unknown as W).__wrenApp.doc()),
+  sectionGrips: () => page.evaluate(() => (window as unknown as W).__wrenApp.sectionGrips()),
   regen: () => page.evaluate(() => (window as unknown as W).__wrenApp.regen()),
   idle: () => page.evaluate(() => (window as unknown as W).__wrenApp.idle()),
   shownSketches: () => page.evaluate(() => (window as unknown as W).__wrenApp.shownSketches()),
