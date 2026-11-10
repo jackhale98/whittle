@@ -851,7 +851,54 @@ Owner direction 2026-11-10 (ADR-058). Wren is the pre- and post-processor; the u
   - **Studies are document data** (versioned, branched, merged like features); results live in `results/`, excluded from history by default; result files are streamed and parsed in a worker, never loaded whole.
   - **Solver-backend interface (documented, versioned):** a backend declares the study types and physics it supports, the setup fields it needs (materials, loads, boundary conditions, solver settings), a **case writer** (study + named mesh → input files and run script), a **result reader** (output files → Wren's common results format: fields on nodes/cells, steps/modes) and its install check. The study UI, mesher, Runner and results viewer are generic over backends. CalculiX is the first backend and the reference implementation; adding another solver means writing a backend, not changing the app.
 - **S0 — spike (now):** Gmsh → Wasm against the kernel's OCCT; mesh the demo bracket in a worker; measure download size, mesh time and memory in desktop browsers; write a CalculiX `.inp`, solve it with a locally installed CalculiX, read the `.frd`, and match an analytic cantilever and the bracket's tip deflection from an independent solve. Report: `docs/spikes/simulation-mesh.md`.
-- **S1 — committed: structural for single parts.** Study model; materials with E, ν, yield, density and thermal properties; load/constraint/mesh-control tools; built-in mesher with preview and quality; the solver-backend interface with CalculiX as the first backend; CalculiX by file handoff, then the Runner; linear static, modal and steady thermal; results viewer (colour maps, deformed shape, mode animation, probes, sections, factor of safety, report). **Accept:** NAFEMS LE1/LE10 and FV52-class benchmarks and analytic cases within published tolerances, as golden tests running the real solver in CI; a design edit upstream keeps every load on its face (or flags it), and the study re-solves.
+- **S1 — committed: structural for single parts.** Detailed in the research report `docs/ux-research/reports/Structural FEA best practices.md`; the trust layer is ADR-062. Principle: most wrong FEA results come from boundary conditions, singularities, coarse meshes, units and linear analysis pushed past its limits, not from the solver, so S1 ships guard rails a non-expert cannot miss. Sub-scopes, each with acceptance criteria:
+  - **S1a — study model, materials, supports, loads.**
+    - Study types: linear static, modal (N modes, with a re-run if the requested frequency limit is not reached) and steady thermal.
+    - Studies are document data with a status per node in a study tree.
+    - Material library stored in SI with units: E, ν, density, yield, ultimate, ductile/brittle flag, expansion, conductivity, specific heat, cited source. Curated metals and printing plastics; user materials import and export as a file. Decks are always written in mm·N·s·K (t/mm³).
+    - Supports: fixed, slider/symmetry, pin (cylindrical), elastic support, enforced displacement.
+    - Loads: force as a **total** over the selection (consistent nodal loads, never lumped equally), pressure (element-face surfaces), remote force or moment (coupling to a reference point), bearing (cosine pressure), gravity, rotation. Thermal: temperature, convection, heat flux, heat load, radiation.
+    - Values are inline and accept expressions with units.
+    - Glyphs on faces, sized in screen space. Every reference is a persistent name; a lost one makes the study "needs attention" with a dashed glyph.
+    - **Accept:** each support or load writes the expected ccx keywords (deck golden tests); the consistent loads sum to the applied total; a design edit keeps every load on its face or flags it.
+  - **S1b — mesher, quality and pre-run checks.**
+    - C3D10 only. Coarse/Medium/Fine slider plus an exact size; minimum size ≈ h/30; curvature sizing.
+    - Local refinement on named faces and edges; thin walls detected and refined to at least 2 layers, with a badge.
+    - Algorithm fallback ladder; failures reported by persistent face name.
+    - Mid-side nodes curved onto the exact geometry, then `HighOrderOptimize=2`.
+    - Quality policy: minDetJac ≤ 0 → refine the fillet and re-mesh, else fall back to straight-sided elements with a notice (never sent invalid); minSICN < 0.1 → warn and show where; ≥ 0.1 → OK.
+    - No OCC healing by default (it renumbers faces). "Suppress in study" for tiny features, never on loaded faces.
+    - Quality report: counts, estimated DOF, minSICN distribution, worst elements in the viewport.
+    - Pre-run checks block: missing material or required values; supports that do not stop all 6 rigid-body motions (offer modal instead); disconnected mesh; empty or unresolved sets; invalid elements. They warn: low quality, thin walls, DOF beyond the solver's memory.
+    - Deterministic mode (single thread, fixed seed) for CI.
+    - **Accept:** mesh volume matches the BRep volume; facet count per named surface; an under-constrained bracket is blocked; a deterministic re-mesh hashes identically.
+  - **S1c — CalculiX backend (the first solver backend).**
+    - Wren writes the `.inp` itself; Gmsh's export lacks face surfaces and adds stray plane-stress elements.
+    - Deck writing: contiguous numbering; the tet10 node-order swap, checked; sanitised ≤ 80-character set names mapped to persistent names; a header with Wren version, units and input hash.
+    - Outputs: U, RF, S, E plus ccx's error estimator; reaction totals per support; volume and mass totals; thermal NT, RFL, HFL; modal frequencies, participation and effective mass from `.dat`.
+    - Install check: `ccx -v` (minimum 2.20), probing the binary names; thread environment set in the run script.
+    - Failure classification: exit code, `*ERROR` lines, NaN residuals, missing `.frd`. Known errors become plain language; `*WARNING` lines are shown.
+    - Delivery: file handoff first, then the Runner with a live monitor (log, progress, kill).
+    - **Accept:** a deck for every support and load type solves on ccx 2.20 and 2.23; each failure class is recognised from captured logs.
+  - **S1d — results viewer and Results checks.**
+    - Plots: displacement (magnitude and components), von Mises, principal stresses and components, strain, factor of safety (yield/von Mises for ductile, ultimate/max principal for brittle), reaction forces, temperature, heat flux; modal frequency table with effective mass and the cumulative fraction.
+    - Averaged-at-nodes by default, labelled; unaveraged element values on demand.
+    - Deformation: automatic scale with ×N always shown, True scale one click away, undeformed overlay, animation.
+    - Legend: banded or continuous; automatic limits clipped at a high percentile while the true maximum stays shown and marked; manual limits flagged.
+    - Min/max markers; point and face/edge probes (min, max, average, integral) that persist across re-solves; section plane.
+    - Staleness: results are hashed against their inputs and marked "out of date" with the reason.
+    - **Results checks** on every result: equilibrium (reactions = loads), mesh mass vs CAD mass, mesh error indicator, singularity markers (re-entrant edges, edges of fixed faces, point or edge loads and supports), large-deflection flag (> ~10% of part size), yield exceedance, modal mass ≥ 90% with 6 rigid-body modes for free-free runs, thermal balance.
+    - **Accept:** every check fires on a seeded faulty model and stays green on the benchmarks.
+  - **S1e — convergence, compare, report.**
+    - "Check convergence" re-meshes at size factors 1, 0.7 and 0.5 and plots probe peak stress, strain energy and displacement against DOF. Converged below a 2% change; a peak that keeps rising is reported as a singularity, never chased.
+    - Compare two results side by side or as a difference, across designs, branches or configurations, plus a key-values table across study versions.
+    - HTML/PDF report: setup images, mesh quality, Results checks, plots, probes, solver version, units, input hash, disclaimer. CSV and VTU export.
+    - Error-driven adaptive refinement comes later.
+  - **S1f — benchmark CI (real ccx).**
+    - NAFEMS benchmarks: LE1 (92.7 MPa, ≤ 2%), LE10 (−5.38 MPa, ≤ 3%, face idealisation documented), FV32 (six modes, ≤ 1%), FV52 (simply supported, modes 4–10, ≤ 3%). LE11 joins once thermal stress arrives.
+    - Analytic cases: cantilever, Kirsch plate with a hole (plus a sharp-notch variant that must be flagged as singular), Lamé cylinder, beam frequencies, 1D conduction with convection.
+    - A free-free block giving 6 rigid-body modes, and the persistence test.
+- **S1 effort:** about 12–14 weeks, up from the S0 estimate of 10–12, after the research added the Results checks layer, the convergence check and the benchmark suite.
 - **Extension track — on demand or community-contributed, not committed.** Each item is a backend (plus any physics-specific UI) on the S1 foundation; built when users ask for it or a contributor offers it:
   - the Runner on all desktop OSes, nonlinear material, bonded and contact assemblies (after M6);
   - CFD via OpenFOAM (one distribution first): Wren prepares the fluid domain, named surface patches and the case; `snappyHexMesh` meshes locally; Wren reads the VTK output (pressure, velocity, streamlines); an optional in-browser lattice-Boltzmann flow preview on WebGPU;

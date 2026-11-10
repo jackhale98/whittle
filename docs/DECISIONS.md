@@ -1921,3 +1921,46 @@ Choices made while wiring the M3.5 packages into the app. To be folded into ADR-
 
 - With no tool, a pen press on unselected geometry starts a stroke and arms a 300 ms timer. If the pen stays inside the stroke slop, the stroke is dropped and the same solver drag the mouse uses starts on the picked entity (points, circle centres, curves, lines), highlighted through `highlightEntities`. Moving first is a stroke, which keeps the existing start-snap to a node. Dimensioned geometry behaves as the solver's drag does today (driving dimensions hold). Hover needs no new code: the pen hover already feeds the sketch preselect.
 - Touch and pen presses that the app keeps (sketch drawing and dimensioning) no longer also start a camera orbit: the viewport hands them to the navigation machine in the window's bubble phase, so `stopPropagation` on the canvas keeps them out. This fixed the bracket tutorial's rectangle drag.
+
+## ADR-062 — Simulation S1: accuracy safeguards and results checks (2026-11-10)
+
+From the structural FEA research (`docs/ux-research/reports/Structural FEA best practices.md`, with sources in `research_notes/Structural FEA best practices/`). This refines ADR-058 for S1. Most wrong results in CAD-embedded FEA come from modelling mistakes, not the solver: over- or under-constrained supports, singular peak stresses read as real, meshes too coarse where it matters, unit errors, and linear analysis used beyond small deflection or yield. Wren therefore treats the guard rails as part of the feature, not as polish.
+
+- **C3D10 only in S1.** CalculiX's manual calls C3D4 too stiff. Shells and beams are deferred: ccx expands them into 3D elements internally, with renumbered output, "knots" and no `*TIE`. C3D10T is used once thermal stress arrives.
+- **Wren writes the CalculiX deck itself**, not Gmsh's INP export. That export writes no element-face surfaces and adds the boundary triangles as plane-stress elements.
+  - Wren's deck uses contiguous numbering and the checked tet10 node-order swap.
+  - Set names are sanitised and mapped to persistent names.
+  - The deck is always written in mm·N·s·K, converting from unit-carrying inputs.
+  - A force is always a **total** over the selection, applied as consistent nodal loads.
+- **Mesh quality policy.**
+  - minDetJac ≤ 0 is never sent to the solver. Wren refines locally and re-meshes, and failing that falls back to straight-sided elements with a notice.
+  - minSICN < 0.1 warns and shows where.
+  - No OCC healing by default, because it renumbers faces and would break persistent names.
+  - Tiny features are suppressed only explicitly ("Suppress in study"), never on loaded faces.
+- **Pre-run checks block** runs that cannot succeed or cannot mean anything: a missing material or a value the study needs; supports that leave rigid-body motion free; a disconnected mesh; an unresolved reference; an invalid element.
+- **Failure detection does not trust the exit code alone.** `*ERROR` lines, NaN residuals and missing results also mean failure. Known messages are translated into plain language.
+- **Results checks on every result:**
+  - equilibrium (reactions balance the loads);
+  - mesh mass vs CAD mass;
+  - a mesh error indicator (averaged vs unaveraged stress, labelled indicative);
+  - markers at likely singularities (re-entrant edges, edges of fixed faces, point or edge loads), pointing users to read stress away from them;
+  - a large-deflection flag (displacement above about 10% of part size);
+  - yield exceedance;
+  - modal mass coverage, with 6 rigid-body modes expected free-free;
+  - thermal balance.
+- **Honest display.**
+  - Averaged nodal stress is labelled as such.
+  - The deformation scale factor is always shown, and True scale is one click away.
+  - Automatic legend limits clip at a high percentile, but the true maximum stays shown and marked.
+  - Results are hashed against their inputs and shown "out of date" when anything changes, never silently mixed with new geometry.
+- **Convergence:** a deterministic "Check convergence" (three mesh sizes, a 2% criterion on probe peaks and strain energy). A peak that keeps rising is reported as a singularity, not chased. Error-driven adaptivity comes later.
+- **Verification in CI with the real solver**:
+  - NAFEMS LE1, LE10 (face idealisation documented), FV32 and FV52;
+  - analytic cases;
+  - a free-free modal check;
+  - an under-constrained model that must be blocked;
+  - the load-persistence test.
+  
+  The plan's earlier "FV52-class free plate" was wrong: FV52 is a simply supported plate, and the free plate is FV12.
+
+Alternatives considered: trusting the user to check results themselves, as most free tools do. Rejected because Wren targets non-experts, and an unchecked colourful plot is worse than none. A full adaptive solver in S1 was also considered and deferred: the deterministic convergence check gives most of the protection at a fraction of the cost. Effort for S1 rises to about 12–14 weeks.

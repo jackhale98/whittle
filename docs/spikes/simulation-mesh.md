@@ -301,7 +301,7 @@ isolated, but nothing in the mesher depends on that.
 | CalculiX deck writer (static, modal, thermal), case folder with `run.sh`/`run.bat`, result import (frd ASCII and binary) | 1.5–2 weeks   |
 | Results viewer (colour maps, deformed shape, mode animation, probes, sections)                                         | 2–3 weeks     |
 | NAFEMS LE1/LE10/FV52 and analytic golden tests running `ccx` in CI                                                     | 1 week        |
-| **Total**                                                                                                              | **10–12 weeks** (the Runner is S2) |
+| **Total**                                                                                                              | **10–12 weeks** (the Runner is S2); revised to 12–14 weeks after the FEA research (ADR-062) |
 
 ## 7. Reproduction
 
