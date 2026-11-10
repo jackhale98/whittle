@@ -1,15 +1,5 @@
 import type { FeatureStatus, FeatureType, Id } from '@wren-cad/contracts';
-import {
-  Ban,
-  ChevronRight,
-  CircleAlert,
-  Ellipsis,
-  EyeOff,
-  GripVertical,
-  ListTree,
-  TriangleAlert,
-} from 'lucide-react';
-import { m } from 'motion/react';
+import { ListTree } from 'lucide-react';
 import {
   type KeyboardEvent,
   type MouseEvent,
@@ -22,8 +12,7 @@ import {
   useState,
 } from 'react';
 import { type FloatingAnchor, Menu } from '../components/floating';
-import { cn, Tooltip } from '../components/primitives';
-import { CauseSentence } from '../inspector/CauseSentence';
+import { cn } from '../components/primitives';
 import { useLongPress } from '../logic/longPress';
 import {
   applySteps,
@@ -38,7 +27,6 @@ import {
   runWithNested,
   type SketchVisibilityMode,
   type TreeFolder,
-  toggledVisibility,
 } from '../logic/treeFolders';
 import {
   allowedRollbacks,
@@ -50,11 +38,13 @@ import {
 import { buildRows, folderKey, gapBefore, type TreeRow } from '../logic/treeRows';
 import { useSpring } from '../motion';
 import { EmptyState } from '../shells/shared';
+import { FeatureRowBody } from './FeatureRowBody';
 import { FolderRow } from './FolderRow';
 import { featureMeta } from './featureMeta';
 import { describeStatus } from './featureStatus';
-import { SketchEye } from './SketchEye';
+import { DropIndicator, RollbackBar } from './TreeMarkers';
 import { DeletePrompt, LeavePrompt, UndoLine } from './TreePrompts';
+import type { DragState, Slot } from './treeDrag';
 import { folderMenuItems, type MenuCtx, menuItems } from './treeMenus';
 
 /** The slice of a document `Feature` the tree needs. */
@@ -161,33 +151,6 @@ export interface FeatureTreeProps {
 
 const clampIdx = (n: number, max: number) => Math.max(0, Math.min(max, n));
 const NO_FOLDERS: readonly TreeFolder[] = [];
-
-/** One place a dragged row can land: a document gap with what it does to folders. */
-interface Slot {
-  /** Document gap: the dragged block would sit before feature index `g`. */
-  g: number;
-  /** Key of the head row the line sits above; null = after the last row. */
-  before: string | null;
-  /** `into` joins a folder, `out` leaves one, `stay` reorders inside its own folder. */
-  kind: 'top' | 'into' | 'stay' | 'out';
-  folderId?: Id;
-  /** For `out`: the folder it lands inside and joins (a move from one folder into another). */
-  joinsId?: Id;
-  steps?: BlockStep[];
-  toIndex?: number;
-  /** Pixel y of the line, measured when the drag starts. */
-  y: number;
-}
-
-interface DragState {
-  kind: 'feature' | 'folder';
-  key: string;
-  id: Id;
-  dy: number;
-  at: number;
-  slots: Slot[];
-  slot: number | null;
-}
 
 /**
  * Feature history (PLAN 2.2, 9.1): type icons, inline rename, failure badges with a one-line
@@ -1064,215 +1027,45 @@ export function FeatureTree({
                   isMoving && 'opacity-90',
                 )}
               >
-                <m.div
-                  key={isShaking ? shake?.n : 0}
-                  initial={isShaking ? { x: 9 } : false}
-                  animate={{ x: 0 }}
-                  transition={rejectSpring}
-                  style={indent ? { marginLeft: indent * indentPx } : undefined}
-                  className={cn(
-                    'flex items-start gap-2 rounded-[9px] pr-1 pl-1 transition-colors duration-fast',
-                    rowH,
-                    'group-focus-visible/row:outline-2 group-focus-visible/row:outline-offset-[-2px] group-focus-visible/row:outline-accent',
-                    selected ? 'bg-accent-soft' : 'hover:bg-surface-2',
-                    isMoving && 'bg-surface shadow-float',
-                    isShaking && 'bg-danger-soft',
-                  )}
-                >
-                  {nested ? null : (
-                    <span
-                      aria-hidden
-                      data-grip
-                      data-no-longpress
-                      onPointerDown={(e) => gripDown(e, row)}
-                      onPointerMove={gripMove}
-                      onPointerUp={gripUp}
-                      onPointerCancel={() => setDrag(null)}
-                      className={cn(
-                        'mt-[7px] flex shrink-0 touch-none items-center text-fg-subtle',
-                        onMove ? 'cursor-grab active:cursor-grabbing' : 'invisible',
-                        touch ? 'mt-[11px] w-6' : 'w-4',
-                        touch
-                          ? ''
-                          : 'opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100',
-                      )}
-                    >
-                      <GripVertical className="size-4" />
-                    </span>
-                  )}
-                  {nested || !anyNested ? null : kids.length ? (
-                    <button
-                      type="button"
-                      tabIndex={-1}
-                      aria-hidden
-                      data-testid="nest-toggle"
-                      aria-label={`${open ? 'Collapse' : 'Expand'} ${f.name}`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggle(f.id);
-                      }}
-                      className={cn(
-                        'flex shrink-0 items-center justify-center rounded-[6px] text-fg-muted hover:bg-surface-3 hover:text-fg',
-                        chevronW,
-                        touch ? 'h-11' : 'mt-[7px] h-4',
-                      )}
-                    >
-                      <ChevronRight
-                        className={cn(
-                          'size-3.5 transition-transform duration-fast',
-                          open && 'rotate-90',
-                        )}
-                        aria-hidden
-                      />
-                    </button>
-                  ) : (
-                    <span aria-hidden className={cn('shrink-0', chevronW)} />
-                  )}
-                  <span
-                    className={cn(
-                      'flex shrink-0 items-center justify-center',
-                      touch ? 'mt-[11px]' : 'mt-[7px]',
-                      st?.tone === 'danger'
-                        ? 'text-danger'
-                        : selected
-                          ? 'text-accent-text'
-                          : rolled
-                            ? 'text-fg-subtle opacity-70'
-                            : 'text-fg-muted',
-                    )}
-                  >
-                    <meta.Icon className="size-[18px]" strokeWidth={1.6} aria-hidden />
-                  </span>
-                  <div className={cn('min-w-0 flex-1', touch ? 'py-[11px]' : 'py-[5px]')}>
-                    {renaming === row.key ? (
-                      <input
-                        // biome-ignore lint/a11y/noAutofocus: inline rename focuses its field by design
-                        autoFocus
-                        aria-label={`Rename ${f.name}`}
-                        defaultValue={f.name}
-                        onFocus={(e) => e.currentTarget.select()}
-                        onClick={(e) => e.stopPropagation()}
-                        onDoubleClick={(e) => e.stopPropagation()}
-                        onKeyDown={(e) => {
-                          e.stopPropagation();
-                          if (e.key === 'Enter') e.currentTarget.blur();
-                          else if (e.key === 'Escape') {
-                            e.currentTarget.dataset.cancel = '1';
-                            e.currentTarget.blur();
-                          }
-                        }}
-                        onBlur={(e) => {
-                          const v = e.currentTarget.value.trim();
-                          const cancelled = e.currentTarget.dataset.cancel === '1';
-                          setRenaming(null);
-                          if (!cancelled && v && v !== f.name) onRename?.(f.id, v);
-                          refocus(row.key);
-                        }}
-                        className="h-6 w-full min-w-0 rounded-[6px] bg-surface px-1.5 text-ui text-fg shadow-[inset_0_0_0_2px_var(--color-accent)] outline-none"
-                      />
-                    ) : (
-                      // biome-ignore lint/a11y/noStaticElementInteractions: double-click rename; keyboard uses Enter/F2 on the row
-                      <span
-                        onDoubleClick={(e) => {
-                          if (!onRename) return;
-                          e.stopPropagation();
-                          setRenaming(row.key);
-                        }}
-                        className={cn(
-                          'block truncate text-ui leading-[22px] font-medium',
-                          rolled && !suppressed && 'text-fg-subtle',
-                          suppressed && 'text-fg-muted line-through decoration-fg-subtle',
-                          st?.tone === 'danger' && !suppressed && 'text-danger-text',
-                        )}
-                      >
-                        {f.name}
-                      </span>
-                    )}
-                    {st ? (
-                      <Tooltip content={st.hint ?? st.message} side="bottom">
-                        <span
-                          data-testid="feature-message"
-                          className={cn(
-                            'mt-px flex items-start gap-1 text-2xs leading-4',
-                            st.tone === 'danger' && 'text-danger-text',
-                            st.tone === 'warning' && 'text-warning-text',
-                            st.tone === 'muted' && 'text-fg-muted',
-                          )}
-                        >
-                          {st.tone === 'danger' ? (
-                            <CircleAlert className="mt-px size-3 shrink-0" aria-hidden />
-                          ) : st.tone === 'warning' ? (
-                            <TriangleAlert className="mt-px size-3 shrink-0" aria-hidden />
-                          ) : (
-                            <Ban className="mt-px size-3 shrink-0" aria-hidden />
-                          )}
-                          <span>
-                            {st.sentence ? (
-                              <CauseSentence
-                                sentence={st.sentence}
-                                inTree
-                                {...(onSelect ? { onSelectFeature: onSelect } : {})}
-                              />
-                            ) : (
-                              st.message
-                            )}
-                          </span>
-                        </span>
-                      </Tooltip>
-                    ) : null}
-                    <span className="sr-only">{hidden}</span>
-                  </div>
-                  {shared ? (
-                    <span
-                      aria-hidden
-                      data-testid="used-by"
-                      className={cn(
-                        'shrink-0 rounded-full bg-surface-3 px-1.5 text-2xs leading-4 font-medium whitespace-nowrap text-fg-muted',
-                        touch ? 'mt-[14px]' : 'mt-[8px]',
-                      )}
-                    >
-                      used by {shared}
-                    </span>
-                  ) : null}
-                  {suppressed ? (
-                    <EyeOff
-                      className={cn(
-                        'shrink-0 text-fg-subtle',
-                        touch ? 'mt-[13px] size-4' : 'mt-[8px] size-4',
-                      )}
-                      aria-hidden
-                    />
-                  ) : null}
-                  {isSketch && onSketchVisibility ? (
-                    <SketchEye
-                      name={f.name}
-                      shown={shown}
-                      visibility={f.visibility}
-                      touch={touch}
-                      onToggle={() => onSketchVisibility([f.id], toggledVisibility(shown))}
-                    />
-                  ) : null}
-                  <button
-                    type="button"
-                    tabIndex={-1}
-                    aria-hidden
-                    aria-label={`Actions for ${f.name}`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setFocusKey(row.key);
-                      setMenu({ key: row.key, anchor: e.currentTarget });
-                    }}
-                    className={cn(
-                      'flex shrink-0 items-center justify-center rounded-[7px] text-fg-muted hover:bg-surface-3 hover:text-fg',
-                      touch ? 'mt-0 size-11' : 'mt-0.5 size-7',
-                      touch
-                        ? ''
-                        : 'opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100',
-                    )}
-                  >
-                    <Ellipsis className="size-4" aria-hidden />
-                  </button>
-                </m.div>
+                <FeatureRowBody
+                  shakeKey={isShaking ? (shake?.n ?? 0) : 0}
+                  isShaking={isShaking}
+                  rejectSpring={rejectSpring}
+                  indent={indent}
+                  indentPx={indentPx}
+                  rowH={rowH}
+                  isMoving={isMoving}
+                  selected={selected}
+                  nested={nested}
+                  anyNested={anyNested}
+                  kidCount={kids.length}
+                  open={open}
+                  chevronW={chevronW}
+                  touch={touch}
+                  canMove={!!onMove}
+                  onGripDown={(e) => gripDown(e, row)}
+                  onGripMove={gripMove}
+                  onGripUp={gripUp}
+                  onGripCancel={() => setDrag(null)}
+                  onToggle={toggle}
+                  f={f}
+                  st={st}
+                  rolled={rolled}
+                  suppressed={suppressed}
+                  renaming={renaming === row.key}
+                  rowKey={row.key}
+                  onRename={onRename}
+                  setRenaming={setRenaming}
+                  refocus={refocus}
+                  hidden={hidden}
+                  onSelect={onSelect}
+                  shared={shared}
+                  isSketch={isSketch}
+                  onSketchVisibility={onSketchVisibility}
+                  shown={shown}
+                  setFocusKey={setFocusKey}
+                  setMenu={setMenu}
+                />
                 {confirm === f.id ? (
                   <DeletePrompt
                     name={f.name}
@@ -1291,85 +1084,32 @@ export function FeatureTree({
         </div>
 
         {activeSlot ? (
-          <div
-            aria-hidden
-            data-testid="drop-indicator"
-            data-kind={activeSlot.kind}
-            className="pointer-events-none absolute right-2 left-2 z-[4] flex items-center transition-[top] duration-fast"
-            style={{
-              top: activeSlot.y - 1,
-              left: activeSlot.kind === 'into' || activeSlot.kind === 'stay' ? 8 + indentPx : 8,
-            }}
-          >
-            <span
-              className={cn(
-                'h-0.5 flex-1 rounded-full',
-                activeSlot.kind === 'out' ? 'bg-warning' : 'bg-accent',
-              )}
-            />
-            {activeSlot.kind === 'into' || activeSlot.kind === 'out' ? (
-              <span
-                className={cn(
-                  'ml-1 rounded-full px-1.5 text-2xs leading-4 font-medium whitespace-nowrap',
-                  activeSlot.kind === 'out'
-                    ? 'bg-warning-soft text-warning-text'
-                    : 'bg-accent-soft text-accent-text',
-                )}
-              >
-                {activeSlot.kind === 'out' ? 'Out of' : 'Into'} {folderName(activeSlot.folderId)}
-              </span>
-            ) : null}
-          </div>
+          <DropIndicator
+            slot={activeSlot}
+            indentPx={indentPx}
+            folder={folderName(activeSlot.folderId)}
+          />
         ) : null}
 
         {onRollback && barY !== undefined ? (
-          // biome-ignore lint/a11y/useSemanticElements: a focusable ARIA splitter, not an <hr>
-          <div
-            role="separator"
-            aria-orientation="horizontal"
-            aria-label="Rollback bar"
-            aria-valuemin={0}
-            aria-valuemax={n}
-            aria-valuenow={rollback}
-            aria-valuetext={
+          <RollbackBar
+            count={n}
+            rollback={rollback}
+            valueText={
               rollback >= n
                 ? 'All features active'
                 : rollback === 0
                   ? 'Rolled back before the first feature'
                   : `Rolled back after ${features[rollback - 1]?.name}`
             }
-            tabIndex={0}
+            y={barY}
+            dragging={barDrag !== null}
+            touch={touch}
             onPointerDown={barDown}
             onPointerMove={barMove}
-            onPointerUp={() => setBarDrag(null)}
-            onPointerCancel={() => setBarDrag(null)}
+            onPointerEnd={() => setBarDrag(null)}
             onKeyDown={barKey}
-            data-testid="rollback-bar"
-            className={cn(
-              'group/bar absolute right-0 left-0 z-[3] flex cursor-row-resize touch-none items-center outline-none',
-              touch ? 'h-6' : 'h-3.5',
-              barDrag === null && 'transition-[top] duration-fast',
-            )}
-            style={{ top: barY - (touch ? 12 : 7) }}
-          >
-            <span
-              aria-hidden
-              className={cn(
-                'pointer-events-none mx-2 flex-1 rounded-full transition-colors duration-fast',
-                rollback < n
-                  ? 'h-[3px] bg-warning'
-                  : 'h-0.5 bg-accent/55 group-hover/bar:bg-accent',
-                'group-focus-visible/bar:bg-accent group-focus-visible/bar:shadow-[0_0_0_3px_var(--color-accent-soft)]',
-              )}
-            />
-            <span
-              aria-hidden
-              className={cn(
-                'pointer-events-none absolute left-0 h-3.5 w-1.5 rounded-full',
-                rollback < n ? 'bg-warning' : 'bg-accent',
-              )}
-            />
-          </div>
+          />
         ) : null}
       </div>
 
