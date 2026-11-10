@@ -66,23 +66,13 @@ import {
   contextTools,
   type FeatureTool,
   type ModelTool,
-  newBox,
-  newCylinder,
-  newPlane,
   newSketch,
   TOOL_NEEDS,
 } from '../features/factories';
 import { attentionItems, attentionMarkers, locateName, partDiagonal } from '../model/attention';
 import { bootEngine, type EngineBoot } from '../model/engine';
 import { explainStatus, followBlockedCauses } from '../model/explain';
-import {
-  type FaceInfo,
-  faceInfo,
-  type SectionSettings,
-  sectionPlane,
-  sectionRange,
-  unionBounds,
-} from '../model/faces';
+import { type FaceInfo, faceInfo, type SectionSettings } from '../model/faces';
 import { nextFolderName, readCollapsedFolders, writeCollapsedFolders } from '../model/folders';
 import { isOriginPlane, ORIGIN_FRAMES, type PlaneFrame, toPlaneFrame } from '../model/frames';
 import { foldHeals, type Heal, healsFrom } from '../model/heal';
@@ -120,6 +110,7 @@ import {
 import * as hooks from './test-hooks';
 import { failBoot, mark, markOnce } from './timing';
 import * as tools from './tools';
+import * as view from './view-actions';
 import { freshDocument, readLastDoc, writeLastDoc } from './workbench-util';
 
 export { freshDocument };
@@ -1308,192 +1299,87 @@ export class Workbench {
   // ------------------------------------------------------------------ sheet (tablet, phone)
 
   setSheet(patch: { snap?: SheetSnap; tab?: SheetTabId }): void {
-    const u = this.ui.get();
-    if (patch.snap === 'full' || (patch.snap === 'peek' && u.sheetSnap !== 'peek'))
-      this.sheetOpenedForUser = false; // the user moved it: it is theirs now
-    const tab = patch.tab ?? u.sheetTab;
-    this.patchUi({ sheetSnap: patch.snap ?? u.sheetSnap, sheetTab: tab });
-    // The phone's Measure tab is the measure tool: open = picking, closed = done.
-    if (this.tier === 'phone' && patch.tab !== undefined && patch.tab !== u.sheetTab) {
-      if (patch.tab === 'measure') {
-        if (!u.measure?.active) void this.track(this.measure.start([]));
-      } else if (u.sheetTab === 'measure') this.measure.stop();
-    }
+    view.setSheet(this, patch);
   }
 
   /** Shows a sheet section at least half open (touch tiers). */
   openSheet(tab: SheetTabId, auto = false): void {
-    const snap = this.ui.get().sheetSnap;
-    // Opened for the user (a new feature, a measurement): Done puts it back.
-    if (auto && snap === 'peek') this.sheetOpenedForUser = true;
-    this.setSheet({ tab, snap: snap === 'peek' ? 'half' : snap });
+    view.openSheet(this, tab, auto);
   }
 
-  private sheetOpenedForUser = false;
+  sheetOpenedForUser = false;
 
   /** Collapses a sheet the app opened by itself (Done in the inspector, Measure off). */
   restoreSheet(): void {
-    if (!this.sheetOpenedForUser) return;
-    this.sheetOpenedForUser = false;
-    if (this.ui.get().sheetSnap === 'half') this.setSheet({ snap: 'peek' });
+    view.restoreSheet(this);
   }
 
   // ------------------------------------------------------------------ section view
 
   /** The plane last sent to the viewport (a new view starts without one: nothing to send). */
-  private lastSection = 'null';
+  lastSection = 'null';
 
   /** Section settings → the viewport plane (caps on); a new axis or face starts mid-part. */
   setSection(patch: Partial<SectionUi>): void {
-    const cur = this.ui.get().section;
-    const next: SectionUi = { ...cur, ...patch };
-    const restart =
-      (patch.axis !== undefined && patch.axis !== cur.axis) ||
-      patch.face !== undefined ||
-      (patch.enabled === true && !cur.enabled);
-    if (restart && patch.offset === undefined) {
-      const r = sectionRange(next, this.bounds());
-      // A face plane starts halfway into the part (behind the face), an axis mid-part.
-      next.offset = next.axis === 'face' ? (r.min + Math.min(r.max, 0)) / 2 : (r.min + r.max) / 2;
-    }
-    this.patchUi({ section: next });
-    this.syncSection();
+    view.setSection(this, patch);
   }
 
   /** ⌘K "Section view": the section panel (inspector on desktop/tablet, sheet tab on phones). */
   openSection(): void {
-    this.patchUi({ section: { ...this.ui.get().section, open: true }, featureId: null });
-    if (this.tier !== 'desktop') this.openSheet(this.tier === 'phone' ? 'section' : 'inspector');
+    view.openSection(this);
   }
 
   closeSection(): void {
-    this.patchUi({ section: { ...this.ui.get().section, open: false, picking: false } });
+    view.closeSection(this);
   }
 
   /** The slider range for the current section axis (the part's extent). */
   sectionRange(): { min: number; max: number } {
-    return sectionRange(this.sectionSettings(), this.bounds());
+    return view.sectionRange(this);
   }
 
-  private sectionSettings(): SectionSettings {
-    const s = this.ui.get().section;
-    return { enabled: s.enabled, axis: s.axis, offset: s.offset, flipped: s.flipped, face: s.face };
+  sectionSettings(): SectionSettings {
+    return view.sectionSettings(this);
   }
 
   bounds() {
-    return unionBounds((this.regen.get()?.result.bodies ?? []).map((b) => b.mesh.bbox));
+    return view.bounds(this);
   }
 
-  private syncSection(): void {
-    const v = this.viewport;
-    if (!v) return;
-    const plane = sectionPlane(this.sectionSettings());
-    const key = JSON.stringify(plane);
-    if (key === this.lastSection) return;
-    this.lastSection = key;
-    v.setSection(plane);
+  syncSection(): void {
+    view.syncSection(this);
   }
 
   /** Section along a picked face's plane. */
   sectionFromFace(hit: PickHit): void {
-    const f = hit.kind === 'face' ? this.face(hit.bodyId, hit.index) : null;
-    if (!f) return;
-    if (!f.planar) {
-      this.toast('Pick a flat face for the section plane.', 'info');
-      return;
-    }
-    const label = this.selectionLabel(hit) ?? 'Face';
-    this.setSection({
-      enabled: true,
-      axis: 'face',
-      face: { origin: f.centroid, normal: f.normal, label },
-      picking: false,
-    });
+    view.sectionFromFace(this, hit);
   }
 
   /** "Face of Extrude 1": the hit's kind and the feature its mesh name comes from. */
   selectionLabel(hit: PickHit): string | null {
-    const mesh = this.regen.get()?.result.bodies.find((b) => b.id === hit.bodyId)?.mesh;
-    const name =
-      hit.kind === 'face'
-        ? mesh?.faceNames[hit.index]
-        : hit.kind === 'edge'
-          ? mesh?.edgeNames[hit.index]
-          : undefined;
-    const noun = hit.kind[0]?.toUpperCase() + hit.kind.slice(1);
-    const owner = name ? this.part?.features.findLast((f) => name.includes(f.id)) : undefined;
-    return owner ? `${noun} of ${owner.name}` : noun;
+    return view.selectionLabel(this, hit);
   }
 
   /** Adds a feature and opens its inspector, keeping its main pick field live. */
   addFeature(feature: Feature, pickPath?: string): void {
-    const part = this.part;
-    if (!part) return;
-    if (!this.apply({ kind: 'addFeature', partId: part.id, feature })) return;
-    this.commit();
-    this.patchUi({
-      featureId: feature.id,
-      picking: pickPath ? { featureId: feature.id, path: pickPath } : null,
-      selection: [],
-      prompt: null,
-    });
-    // Tablet: the new feature's values are in the sheet's inspector (PLAN §9.1).
-    if (this.tier === 'tablet') this.openSheet('inspector', true);
-    this.refreshSketchVisibility();
-    this.pushHighlights();
+    view.addFeature(this, feature, pickPath);
   }
 
   addPrimitive(shape: 'box' | 'cylinder'): void {
-    const part = this.part;
-    if (!part) return;
-    this.addFeature(shape === 'box' ? newBox(part) : newCylinder(part));
+    view.addPrimitive(this, shape);
   }
 
   addPlane(): void {
-    const part = this.part;
-    if (!part) return;
-    this.addFeature(newPlane(part, { name: 'origin:XY', kind: 'face' }), '/definition/from');
+    view.addPlane(this);
   }
 
   addBoolean(): void {
-    const part = this.part;
-    const bodies = this.regen.get()?.result.bodies ?? [];
-    if (!part) return;
-    if (bodies.length < 2) {
-      this.toast('A boolean needs at least two bodies.', 'info');
-      return;
-    }
-    const [target, ...tools] = bodies.map((b) => ({ name: b.id, kind: 'body' as const }));
-    if (!target) return;
-    void import('../features/factories').then(({ newBoolean }) =>
-      this.addFeature(newBoolean(part, target, tools)),
-    );
+    view.addBoolean(this);
   }
 
   /** Esc: closes the innermost transient state. Returns whether anything was cancelled. */
   cancel(): boolean {
-    const u = this.ui.get();
-    if (u.radial) this.patchUi({ radial: null });
-    else if (u.settings) this.patchUi({ settings: null });
-    else if (u.chooser) this.patchUi({ chooser: null, hover: null });
-    else if (u.bubble) this.patchUi({ bubble: null });
-    else if (u.pushPull) this.pushPull.cancel();
-    else if (u.section.picking) this.setSection({ picking: false });
-    else if (u.measure?.active) this.measure.stop();
-    else if (u.picking) this.patchUi({ picking: null });
-    else if (u.prompt) this.patchUi({ prompt: null });
-    else if (u.selection.length) this.clearSelection();
-    else if (u.featureId) {
-      this.patchUi({ featureId: null });
-      this.restoreSheet();
-    } else if (u.section.open) this.closeSection();
-    else if (u.library) this.patchUi({ library: false });
-    else if (u.project) this.openProjectPanel(null);
-    else if (u.welcome) this.patchUi({ welcome: false });
-    else return false;
-    this.refreshSketchVisibility();
-    this.pushHighlights();
-    return true;
+    return view.cancel(this);
   }
 
   // ------------------------------------------------------------------ feature tree / inspector
