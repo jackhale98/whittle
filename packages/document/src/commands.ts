@@ -24,10 +24,12 @@ import type {
   WrenDoc,
 } from '@wren-cad/contracts';
 import { validateParamName } from './expressions';
+import { compileConfigCommand } from './config-commands';
+import { configurationPruneOps } from './configurations';
 import { exprFields, featureReferences } from './features';
 import { folderOps, foldersAfterPlace, foldersAfterRemove, normalizeFolders } from './folders';
 import { identifierSpans } from './parser';
-import { applyPatch, diff, getAt } from './patch';
+import { applyPatch, diff, escapePointerSegment, getAt } from './patch';
 
 export type Compiled =
   | { ok: true; ops: JsonPatchOp[]; label: string }
@@ -46,6 +48,7 @@ function usedIds(doc: WrenDoc): Set<string> {
     ids.add(p.id);
     for (const f of p.features) ids.add(f.id);
     for (const f of p.folders ?? []) ids.add(f.id);
+    for (const c of p.configurations ?? []) ids.add(c.id);
   }
   for (const a of doc.assemblies) ids.add(a.id);
   for (const d of doc.drawings) ids.add(d.id);
@@ -84,6 +87,16 @@ export function compileCommand(doc: WrenDoc, cmd: Command): Compiled {
           return err(`The id ‘${f.id}’ is already in use`);
         }
         folderIds.add(f.id);
+      }
+      const configIds = new Set<string>();
+      for (const c of part.configurations ?? []) {
+        if (configIds.has(c.id) || usedIds(doc).has(c.id) || c.id === part.id) {
+          return err(`The id ‘${c.id}’ is already in use`);
+        }
+        configIds.add(c.id);
+      }
+      if (part.activeConfigurationId !== undefined && !configIds.has(part.activeConfigurationId)) {
+        return err('The part’s active configuration does not exist');
       }
       if (part.folders) {
         const fixed = normalizeFolders(part).part;
@@ -180,6 +193,7 @@ export function compileCommand(doc: WrenDoc, cmd: Command): Compiled {
       if (part.folders) {
         ops.push(...folderOps(i, part.folders, foldersAfterRemove(part.folders, cmd.featureId)));
       }
+      ops.push(...configurationPruneOps(part, i, { featureIds: new Set([cmd.featureId]) }));
       return { ok: true, label: `Delete ${(part.features[j] as Feature).name}`, ops };
     }
     case 'moveFeature': {
@@ -282,11 +296,11 @@ export function compileCommand(doc: WrenDoc, cmd: Command): Compiled {
     case 'removeParam': {
       const i = doc.params.findIndex((p) => p.id === cmd.paramId);
       if (i < 0) return err(`Parameter ‘${cmd.paramId}’ was not found`);
-      return {
-        ok: true,
-        label: `Delete parameter ${(doc.params[i] as Param).name}`,
-        ops: [{ op: 'remove', path: `/params/${i}` }],
-      };
+      const ops: JsonPatchOp[] = [{ op: 'remove', path: `/params/${i}` }];
+      doc.parts.forEach((part, pi) => {
+        ops.push(...configurationPruneOps(part, pi, { paramIds: new Set([cmd.paramId]) }));
+      });
+      return { ok: true, label: `Delete parameter ${(doc.params[i] as Param).name}`, ops };
     }
     case 'setDocName':
       return {
@@ -296,14 +310,13 @@ export function compileCommand(doc: WrenDoc, cmd: Command): Compiled {
       };
     case 'patch':
       return compilePatch(doc, cmd.ops);
-    // M3.7 commands: the contract landed first; the document workstream implements them.
     case 'addConfiguration':
     case 'renameConfiguration':
     case 'removeConfiguration':
     case 'setActiveConfiguration':
     case 'setConfigurationOverrides':
     case 'setPartProperties':
-      return err(`‘${cmd.kind}’ is not implemented yet`);
+      return compileConfigCommand(doc, cmd, (id) => usedIds(doc).has(id));
     case 'setSuppressedMany':
       return compileSuppressMany(doc, cmd);
     case 'setSketchVisibility':
@@ -330,6 +343,18 @@ function compilePatch(doc: WrenDoc, patchOps: JsonPatchOp[]): Compiled {
       if (!part.folders) return;
       const fixed = normalizeFolders(part).part;
       if (fixed !== part) ops.push(...folderOps(i, part.folders, fixed.folders ?? []));
+    });
+    // Overrides of features and parameters this patch deleted go with them.
+    const paramIds = new Set(doc.params.map((p) => p.id));
+    for (const p of after.params) paramIds.delete(p.id);
+    after.parts.forEach((part, i) => {
+      if (!part.configurations?.length) return;
+      const before = doc.parts.find((x) => x.id === part.id);
+      const featureIds = new Set((before?.features ?? []).map((f) => f.id));
+      for (const f of part.features) featureIds.delete(f.id);
+      if (featureIds.size > 0 || paramIds.size > 0) {
+        ops.push(...configurationPruneOps(part, i, { featureIds, paramIds }));
+      }
     });
   } catch {
     // The store reports the failing patch itself.
@@ -563,6 +588,36 @@ function compileUpdateParam(
       if (own !== old.expr) ops.push({ op: 'replace', path: `/params/${i}/expr`, value: own });
     }
     doc.parts.forEach((part, pi) => {
+      // Configuration overrides that are expressions follow the rename too.
+      (part.configurations ?? []).forEach((c, ci) => {
+        const at = `/parts/${pi}/configurations/${ci}`;
+        for (const [pid, e] of Object.entries(c.params ?? {})) {
+          const r = renameInExpr(e, old.name, cmd.name as string);
+          if (r !== e) {
+            ops.push({
+              op: 'replace',
+              path: `${at}/params/${escapePointerSegment(pid)}`,
+              value: r,
+            });
+          }
+        }
+        for (const [fid, ov] of Object.entries(c.features ?? {})) {
+          const feature = part.features.find((f) => f.id === fid);
+          if (!feature) continue;
+          const exprPointers = new Set(exprFields(feature).map((x) => x.pointer));
+          for (const [path, v] of Object.entries(ov.fields ?? {})) {
+            if (typeof v !== 'string' || !exprPointers.has(path)) continue;
+            const r = renameInExpr(v, old.name, cmd.name as string);
+            if (r !== v) {
+              ops.push({
+                op: 'replace',
+                path: `${at}/features/${escapePointerSegment(fid)}/fields/${escapePointerSegment(path)}`,
+                value: r,
+              });
+            }
+          }
+        }
+      });
       part.features.forEach((f, fi) => {
         for (const field of exprFields(f)) {
           const cur = getAt(f, field.pointer);

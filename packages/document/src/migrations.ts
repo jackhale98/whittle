@@ -10,7 +10,7 @@
 import { type Part, SCHEMA_VERSION, type WrenDoc } from '@wren-cad/contracts';
 import { exprFields, FEATURE_TYPES } from './features';
 import { folderProblems, normalizeFolders } from './folders';
-import { getAt } from './patch';
+import { getAt, parsePointer } from './patch';
 
 type Obj = Record<string, unknown>;
 
@@ -241,6 +241,7 @@ function validatePart(
       str(part.material.density, `${at}.material.density`);
     }
   }
+  validateConfigurations(part, at, errs, str, arr, id);
   if (!arr(part.features, `${at}.features`)) return;
   const n = part.features.length;
   if (
@@ -302,4 +303,119 @@ function validatePart(
   if (structural && part.features.every((f) => isObj(f) && typeof f.id === 'string')) {
     for (const p of folderProblems(part as unknown as Part)) errs.push(`${at}.${p}`);
   }
+}
+
+const isPlainObj = (v: unknown): v is Obj =>
+  isObj(v) && Object.getPrototypeOf(v) === Object.prototype;
+
+/**
+ * M3.7 structure checks: types, unique ids, the active configuration exists, override keys are
+ * well-formed. Stale overrides (a deleted feature or parameter) are *not* errors: resolution
+ * reports them as "needs attention" (ADR-074).
+ */
+function validateConfigurations(
+  part: Obj,
+  at: string,
+  errs: string[],
+  str: (v: unknown, p: string) => v is string,
+  arr: (v: unknown, p: string) => v is unknown[],
+  id: (v: unknown, p: string) => void,
+): void {
+  const props = (v: unknown, path: string): void => {
+    if (!isPlainObj(v)) {
+      errs.push(`${path} must be an object`);
+      return;
+    }
+    for (const [k, x] of Object.entries(v)) {
+      if (k !== 'partNumber' && k !== 'description')
+        errs.push(`${path}.${k} is not a part property`);
+      else str(x, `${path}.${k}`);
+    }
+  };
+  if (part.properties !== undefined) props(part.properties, `${at}.properties`);
+  const ids = new Set<string>();
+  if (part.configurations !== undefined && arr(part.configurations, `${at}.configurations`)) {
+    part.configurations.forEach((c, k) => {
+      const ca = `${at}.configurations[${k}]`;
+      if (!isObj(c)) {
+        errs.push(`${ca} must be an object`);
+        return;
+      }
+      id(c.id, `${ca}.id`);
+      if (typeof c.id === 'string') ids.add(c.id);
+      str(c.name, `${ca}.name`);
+      if (c.params !== undefined) {
+        if (!isPlainObj(c.params)) errs.push(`${ca}.params must be an object`);
+        else {
+          for (const [key, v] of Object.entries(c.params)) {
+            if (key === '') errs.push(`${ca}.params has an empty parameter id`);
+            str(v, `${ca}.params.${key}`);
+          }
+        }
+      }
+      if (c.features !== undefined) {
+        if (!isPlainObj(c.features)) errs.push(`${ca}.features must be an object`);
+        else {
+          for (const [fid, ov] of Object.entries(c.features)) {
+            const oa = `${ca}.features.${fid}`;
+            if (fid === '') errs.push(`${ca}.features has an empty feature id`);
+            if (!isPlainObj(ov)) {
+              errs.push(`${oa} must be an object`);
+              continue;
+            }
+            for (const k2 of Object.keys(ov)) {
+              if (k2 !== 'suppressed' && k2 !== 'fields')
+                errs.push(`${oa}.${k2} is not an override`);
+            }
+            if (ov.suppressed !== undefined && typeof ov.suppressed !== 'boolean') {
+              errs.push(`${oa}.suppressed must be a boolean`);
+            }
+            if (ov.fields !== undefined) {
+              if (!isPlainObj(ov.fields)) errs.push(`${oa}.fields must be an object`);
+              else {
+                for (const [path, v] of Object.entries(ov.fields)) {
+                  const bad = pointerProblem(path);
+                  if (bad) errs.push(`${oa}.fields key ‘${path}’ ${bad}`);
+                  const okType =
+                    typeof v === 'string' ||
+                    typeof v === 'boolean' ||
+                    (typeof v === 'number' && Number.isFinite(v));
+                  if (!okType)
+                    errs.push(`${oa}.fields[‘${path}’] must be a string, number or boolean`);
+                }
+              }
+            }
+          }
+        }
+      }
+      if (c.material !== undefined && c.material !== null) {
+        if (!isObj(c.material)) errs.push(`${ca}.material must be an object or null`);
+        else {
+          str(c.material.name, `${ca}.material.name`);
+          str(c.material.density, `${ca}.material.density`);
+        }
+      }
+      if (c.color !== undefined) str(c.color, `${ca}.color`);
+      if (c.properties !== undefined) props(c.properties, `${ca}.properties`);
+    });
+  }
+  if (part.activeConfigurationId !== undefined) {
+    if (str(part.activeConfigurationId, `${at}.activeConfigurationId`)) {
+      if (!ids.has(part.activeConfigurationId)) {
+        errs.push(
+          `${at}.activeConfigurationId ‘${part.activeConfigurationId}’ is not one of the part’s configurations`,
+        );
+      }
+    }
+  }
+}
+
+function pointerProblem(path: string): string | undefined {
+  if (!path.startsWith('/') || path.length < 2) return 'must be a JSON pointer starting with ‘/’';
+  try {
+    parsePointer(path);
+  } catch {
+    return 'is not a valid JSON pointer';
+  }
+  return undefined;
 }
