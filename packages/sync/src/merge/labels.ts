@@ -6,6 +6,7 @@
  */
 
 import type {
+  Configuration,
   DiffSubject,
   Feature,
   FeatureFolder,
@@ -17,9 +18,10 @@ import type {
   WrenDoc,
 } from '@wren-cad/contracts';
 import { constraintLabel, Namer } from '@wren-cad/sketch';
+import { isConfigurationValuePath } from './configurations';
 import type { FolderChange } from './folders';
 import { formatValue, listText, plural } from './format';
-import { fromPointer, getAtSegs, isObj, type Segs } from './tree';
+import { equal, fromPointer, getAtSegs, isObj, type Segs } from './tree';
 
 const META_LABEL: Record<string, string> = {
   name: 'Document name',
@@ -75,6 +77,17 @@ export function subjectAt(segs: Segs, docs: readonly (WrenDoc | undefined)[]): D
     const partName = part?.name ?? id;
     if (sub === 'material')
       return { kind: 'material', partId: id, label: `Material of ${partName}` };
+    if (sub === 'configurations' || sub === 'activeConfigurationId') {
+      return configurationSubject(segs, docs, partName);
+    }
+    if (sub === 'properties') {
+      const key = segs[3];
+      return {
+        kind: 'part',
+        id,
+        label: key === undefined ? `Properties of ${partName}` : `${partName} ${fieldLabel([key])}`,
+      };
+    }
     if (sub === 'folders') {
       // Contracts have no folder subject yet: a folder is shown as part of its part.
       if (fid === undefined) return { kind: 'part', id, label: `Folders in ${partName}` };
@@ -132,6 +145,81 @@ export function subjectAt(segs: Segs, docs: readonly (WrenDoc | undefined)[]): D
     return { kind: 'feature', id: fid, partId: id, label: name };
   }
   return { kind: 'doc', label: top === 'schemaVersion' ? 'Document version' : 'Document' };
+}
+
+/**
+ * Subjects inside a part's configurations (M3.7). A cell's label names the configuration and the
+ * target, so it reads on its own: "Long: width", "Long: Fillet 3 radius", "Long: Fillet 3
+ * suppression", "Long: material"; the configuration itself is "Configuration Long".
+ */
+function configurationSubject(
+  segs: Segs,
+  docs: readonly (WrenDoc | undefined)[],
+  partName: string,
+): DiffSubject {
+  const [, pid = '', sub, cid, key, a] = segs;
+  if (sub === 'activeConfigurationId') {
+    return { kind: 'part', id: pid, label: 'Active configuration' };
+  }
+  if (cid === undefined) {
+    return { kind: 'part', id: pid, label: `Configuration order in ${partName}` };
+  }
+  const config = find<Configuration>(docs, ['parts', pid, 'configurations', cid]);
+  const name = config?.name ?? cid;
+  const part = (label: string): DiffSubject => ({ kind: 'part', id: pid, label });
+  if (key === undefined || key === 'name') return part(`Configuration ${name}`);
+  const label = `${name}: ${configurationCellTarget(pid, segs.slice(4), docs)}`;
+  if (key === 'params' && a !== undefined) return { kind: 'param', id: a, partId: pid, label };
+  if (key === 'features' && a !== undefined) {
+    const f = find<Feature>(docs, ['parts', pid, 'features', a]);
+    const subject: DiffSubject = { kind: 'feature', id: a, partId: pid, label };
+    if (f) subject.featureType = f.type;
+    return subject;
+  }
+  if (key === 'material') return { kind: 'material', partId: pid, label };
+  return part(label);
+}
+
+/**
+ * What a cell (`rel`, its path inside a configuration) overrides: "width", "Fillet 3 radius",
+ * "Fillet 3 suppression", "material", "colour", "part number".
+ */
+export function configurationCellTarget(
+  pid: string,
+  rel: Segs,
+  docs: readonly (WrenDoc | undefined)[],
+): string {
+  const [key, a, b, c] = rel;
+  switch (key) {
+    case 'params': {
+      if (a === undefined) return 'parameter overrides';
+      return find<Param>(docs, ['params', a])?.name ?? a;
+    }
+    case 'features': {
+      if (a === undefined) return 'feature overrides';
+      const fname = find<Feature>(docs, ['parts', pid, 'features', a])?.name ?? a;
+      if (b === 'suppressed') return `${fname} suppression`;
+      if (b === 'fields' && c !== undefined) return `${fname} ${pointerLabel(c)}`;
+      return fname;
+    }
+    case 'material':
+      return 'material';
+    case 'color':
+      return 'colour';
+    case 'properties':
+      return a === undefined ? 'properties' : fieldLabel([a]);
+    default:
+      return String(key);
+  }
+}
+
+/** "radius" for `/radius`, "depth" for `/end/depth`. */
+export function pointerLabel(pointer: string): string {
+  try {
+    return fieldLabel(fromPointer(pointer));
+  } catch {
+    return pointer;
+  }
 }
 
 /** "radius", "depth", "distance": the last meaningful segment of a field path inside a subject. */
@@ -203,6 +291,9 @@ function subjectDepth(segs: Segs): number {
     if (sub === 'features') return coll === 'entities' || coll === 'constraints' ? 6 : 4;
     if (sub === 'folders') return 4;
     if (sub === 'material') return 3;
+    // Configurations: the label names the cell; only a configuration's own name is a field.
+    if (sub === 'configurations') return segs[4] === 'name' ? 4 : segs.length;
+    if (sub === 'activeConfigurationId' || sub === 'properties') return segs.length;
     return 2;
   }
   if (top === 'params' || top === 'drawings' || top === 'assemblies') return 2;
@@ -218,7 +309,12 @@ export function conflictField(c: Pick<MergeConflict, 'path' | 'file'>): string {
 }
 
 /** One side's value of a conflict as short text: "shown", "2 mm", "Mounting (3 features)". */
-export function conflictValueText(value: unknown, c: Pick<MergeConflict, 'path' | 'file'>): string {
+export function conflictValueText(
+  value: unknown,
+  c: Pick<MergeConflict, 'path' | 'file'> & Partial<ConflictTexts>,
+): string {
+  const side = sideText(value, c);
+  if (side !== undefined) return side;
   const segs = c.file === undefined ? fromPointer(c.path) : [];
   const leaf = segs[segs.length - 1];
   if (segs.length === 5 && segs[2] === 'features' && leaf === 'visibility') {
@@ -233,9 +329,34 @@ export function conflictValueText(value: unknown, c: Pick<MergeConflict, 'path' 
   return formatValue(value) ?? 'changed';
 }
 
-/** One line for a conflict: "Sketch 2 visibility: shown vs hidden", "Folder Mounting name: A vs B". */
+/** The side texts a structural merge conflict may carry (configuration values, M3.7). */
+interface ConflictTexts {
+  base: unknown;
+  ours: unknown;
+  theirs: unknown;
+  text: { base?: string; ours?: string; theirs?: string };
+}
+
+/** The merge's own words for `value` when it is one of the conflict's sides. */
+function sideText(value: unknown, c: Partial<ConflictTexts>): string | undefined {
+  const text = c.text;
+  if (!isObj(text)) return undefined;
+  for (const side of ['ours', 'theirs', 'base'] as const) {
+    const t = text[side];
+    if (typeof t === 'string' && equal(value, c[side])) return t;
+  }
+  return undefined;
+}
+
+/**
+ * One line for a conflict: "Sketch 2 visibility: shown vs hidden", "Folder Mounting name: A vs
+ * B". A configuration cell reads like its compare line: "Long: width 45 mm vs 50 mm", "Long:
+ * Fillet 3 suppression on vs default (off)", "Active configuration: Long vs Short".
+ */
 export function conflictSummary(c: MergeConflict): string {
   const field = conflictField(c);
   const what = field ? `${c.subject.label} ${field}` : c.subject.label;
-  return `${what}: ${conflictValueText(c.ours, c)} vs ${conflictValueText(c.theirs, c)}`;
+  const values = `${conflictValueText(c.ours, c)} vs ${conflictValueText(c.theirs, c)}`;
+  const cell = c.file === undefined && isConfigurationValuePath(fromPointer(c.path));
+  return cell && !field && what.includes(': ') ? `${what} ${values}` : `${what}: ${values}`;
 }

@@ -118,6 +118,13 @@ export {
   type SnapshotHistoryOptions,
   type SnapshotLocalState,
 } from './history/snapshot';
+export {
+  type Cell,
+  type ConfigurationNote,
+  type ConfigurationNoteKind,
+  cellsOf,
+  configurationValueText,
+} from './merge/configurations';
 export { docDiffer, FeatureDiffer, movedIds } from './merge/diff';
 export {
   FILES_POINTER,
@@ -142,9 +149,11 @@ export {
 export {
   conflictId,
   docMerger,
+  type FolderMergeNote,
   type MergeNote,
   MergeResolutionError,
   mergeNotes,
+  type StructuralMergeConflict,
   type StructuralMergeResult,
   StructuralMerger,
   type StructuralMergerOptions,

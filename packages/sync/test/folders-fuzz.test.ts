@@ -15,7 +15,7 @@
 import type { Command, FeatureFolder, MergeConflict, Part, WrenDoc } from '@wren-cad/contracts';
 import { canonicalJson } from '@wren-cad/document';
 import { describe, expect, it } from 'vitest';
-import { docMerger, mergeNotes } from '../src';
+import { docMerger, type FolderMergeNote, mergeNotes } from '../src';
 import {
   apply,
   baseDoc,
@@ -177,7 +177,7 @@ function lostFolderEdits(
 ): string[] {
   const [bm, sm, om, mm] = [byId(base), byId(side), byId(other), byId(r.doc)];
   const live = new Set(partOf(r.doc)?.features.map((f) => f.id) ?? []);
-  const notes = mergeNotes(r);
+  const notes = mergeNotes(r).filter((n): n is FolderMergeNote => n.kind === 'folderMembership');
   const ptr = (fid: string) => `/parts/${PART}/folders/${fid}`;
   const out: string[] = [];
   for (const [fid, f] of sm) {
