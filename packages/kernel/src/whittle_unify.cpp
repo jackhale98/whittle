@@ -160,9 +160,9 @@ bool earlierFace(int originA, const std::string& nameA, int originB, const std::
 // provenance `origin` (per TopExp face: the index of the body it was on, or kOriginTool), merging
 // the same-domain faces the operation left side by side (see the top of this file). Returns the
 // named shape, with aliases for the absorbed names; when nothing merges this is exactly
-// finalizeNamed(shape, names, fallback).
-NamedShape unifyBooleanResult(const TopoDS_Shape& shape, std::vector<std::string> names,
-                              const std::vector<int>& origin, const std::string& fallback) {
+// finalizeNamed(shape, names, fallback). See unifyBooleanResult below.
+NamedShape unifyBooleanResultImpl(const TopoDS_Shape& shape, std::vector<std::string> names,
+                                  const std::vector<int>& origin, const std::string& fallback) {
   const Topo t1(shape);
   const int nFaces = t1.faces.Extent();
   names.resize(static_cast<size_t>(nFaces));
@@ -314,4 +314,15 @@ NamedShape unifyBooleanResult(const TopoDS_Shape& shape, std::vector<std::string
   aliasesFor(t1.edges, pre.edges, t2.edges, post.edges, history, "edge", post.aliases);
   aliasesFor(t1.vertices, pre.vertices, t2.vertices, post.vertices, history, "vertex", post.aliases);
   return post;
+}
+
+// The merge is an improvement, never a reason to fail: if OCCT throws anywhere in it, the boolean
+// result is named as it is, with its seams (as before ADR-076).
+NamedShape unifyBooleanResult(const TopoDS_Shape& shape, std::vector<std::string> names,
+                              const std::vector<int>& origin, const std::string& fallback) {
+  try {
+    return unifyBooleanResultImpl(shape, names, origin, fallback);
+  } catch (const Standard_Failure&) {
+    return finalizeNamed(shape, std::move(names), fallback);
+  }
 }
