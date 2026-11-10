@@ -296,6 +296,14 @@ export function compileCommand(doc: WrenDoc, cmd: Command): Compiled {
       };
     case 'patch':
       return compilePatch(doc, cmd.ops);
+    // M3.7 commands: the contract landed first; the document workstream implements them.
+    case 'addConfiguration':
+    case 'renameConfiguration':
+    case 'removeConfiguration':
+    case 'setActiveConfiguration':
+    case 'setConfigurationOverrides':
+    case 'setPartProperties':
+      return err(`‘${cmd.kind}’ is not implemented yet`);
     case 'setSuppressedMany':
       return compileSuppressMany(doc, cmd);
     case 'setSketchVisibility':

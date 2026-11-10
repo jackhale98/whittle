@@ -315,7 +315,7 @@ describe('project folder', () => {
     const future = new Map(files);
     m.schemaVersion = 99;
     future.set(MANIFEST_FILE, strToU8(JSON.stringify(m)));
-    expect(() => fromFiles(future)).toThrow(/understands up to version 2/);
+    expect(() => fromFiles(future)).toThrow(/understands up to version 3/);
   });
 });
 

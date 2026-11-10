@@ -43,6 +43,15 @@ export const MIGRATIONS: readonly Migration[] = [
       return doc;
     },
   },
+  {
+    from: 2,
+    to: 3,
+    description:
+      'Additive (M3.7): optional Part.configurations, Part.activeConfigurationId and Part.properties. No data changes.',
+    migrate(doc) {
+      return doc;
+    },
+  },
 ];
 
 export interface MigrateOptions {

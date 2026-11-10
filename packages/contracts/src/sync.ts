@@ -516,7 +516,12 @@ export interface GitHistory extends HistoryStore {
  * Regen slots let the kernel worker hold a second regeneration of a part (another version)
  * beside the live one, with its own cache. `'main'` is the live model.
  */
-export type RegenSlot = 'main' | `version:${string}`;
+/**
+ * `'main'` is the live model (the active configuration); `version:<id>` another version (M2.5);
+ * `config:<configurationId>` a background build of another configuration of the live model (M3.7
+ * rebuild-all check, per-configuration export and mass), each with its own cache.
+ */
+export type RegenSlot = 'main' | `version:${string}` | `config:${string}`;
 
 /** Added and removed material between two regenerations of a part (A = before, B = after). */
 export interface GeometricDiff {

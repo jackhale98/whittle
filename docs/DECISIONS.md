@@ -2122,3 +2122,33 @@ Owner: "hard to turn off, and section doesn't let you rotate the cut plane at al
 - **Phone tree.** The 44 px touch rollback bar now has its own 44 px gap in the list flow, where it sits (the bar is no longer drawn over the rows around it). The gap is excluded from the rollback stops, so they do not move while the bar is dragged, and a pointer position is mapped back to the layout without the gap.
 - **Contract proposal (not made).** If arcs need to be first-class: `HandleSpec` gains `{ kind: 'arc'; origin: Vec3; axis: Vec3; start: Vec3; sweep: number; radius?: number }` (radius in CSS px, constant while zooming), drawn as a thick arc and hit-tested against the arc; `PickHit` for it stays `{ kind: 'handle', entity: <id> }`.
 
+
+## ADR-074 — Part configurations: sparse overrides over an implicit Default, resolved before regen (M3.7, 2026-11-10)
+
+Owner decisions D1–D4 are in PLAN §M3.7; the research is `docs/ux-research/reports/Drawings and configurations UX.md` (List 1).
+
+- **Model.** `Part.configurations: Configuration[]` sits over an implicit **Default**, which is the part as stored, with `Part.activeConfigurationId` (absent = Default) and `Part.properties` (Default's part number and description).
+  - **What a configuration stores:** only what differs from Default.
+    - `params`: paramId → Expr. A configuration's override of a document-level parameter applies only while that part regenerates (D1).
+    - `features`: featureId → `{ suppressed?, fields? }`. `fields` maps a JSON pointer inside the feature to a value: any `Expr` field, plus the option fields the document package lists in `CONFIGURABLE_OPTIONS` (D2).
+    - `material` (`null` = none), `color` and `properties`.
+  - **Identity:** everything is keyed by id, so renames never break merges or consumers.
+  - **No derived configurations** (trap T5).
+- **Resolution before regen.** The document package's `resolveConfiguration(doc, partId, configurationId?)` returns the effective document: Default plus overrides. Regen, the kernel and the cache need no changes. Cache keys are value-based, so switching between already-built configurations reuses results.
+  - Background builds of non-active configurations use `RegenSlot` `config:<id>`, which keeps them in separate cache slots. They serve the rebuild-all status, per-configuration export and mass, and later drawings and assemblies.
+  - An override that no longer applies (its feature, parameter or path is gone) makes that configuration's feature "needs attention". It is never silently dropped.
+- **Edit scope at the point of edit** (Fusion's rule). The UI decides scope; the commands only express it.
+  - Editing an inherited value edits Default with the ordinary commands, so it applies to all configurations that inherit. The UI shows an undoable "Changed in all N configurations" notice.
+  - Editing an overridden value, or using the explicit "this configuration only" chip, writes `setConfigurationOverrides`.
+  - There is no sticky scope mode (trap T1).
+  - New features are never suppressed in other configurations automatically (T3).
+- **Commands:**
+  - `addConfiguration`, with `from: 'default' | id` (D3: the UI offers Default or Active, defaulting to Active);
+  - `renameConfiguration`;
+  - `removeConfiguration` (if it was active, Default becomes active);
+  - `setActiveConfiguration`;
+  - `setConfigurationOverrides`, a batch with one undo entry, used for a table paste;
+  - `setPartProperties`.
+- **Part number (D4).** When unset, a part number resolves to "<document name>-<configuration name>". Exports name files after it, and collisions warn, never overwrite.
+- **Merge.** Structural merge (ADR-0xx M2.5) treats configurations as id-keyed records and each override as a cell. Edits to different cells merge cleanly; the same cell edited on both sides conflicts. A delete on one side against an edit on the other conflicts. Two sides adding the same name keep both ids, and the duplicate name is flagged.
+- **Schema.** All additions are optional fields, so `schemaVersion` goes from 2 to 3 with a no-op migration (FILE_FORMAT §7).

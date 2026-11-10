@@ -386,6 +386,70 @@
       ],
       "type": "object"
     },
+    "Configuration": {
+      "additionalProperties": false,
+      "description": "One configuration of a part: only what differs from Default is stored. Resolution (document package `resolveConfiguration`) applies the overrides to a copy of the document before regen.",
+      "properties": {
+        "color": {
+          "description": "Replaces the part's colour; absent = inherited.",
+          "type": "string"
+        },
+        "features": {
+          "additionalProperties": {
+            "$ref": "#/definitions/FeatureOverride"
+          },
+          "description": "Per-feature overrides keyed by feature id.",
+          "propertyNames": {
+            "description": "ULID (26-char Crockford base32)."
+          },
+          "type": "object"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "material": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Material"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Replaces the part's material in this configuration; `null` = no material; absent = inherited."
+        },
+        "name": {
+          "type": "string"
+        },
+        "params": {
+          "additionalProperties": {
+            "$ref": "#/definitions/Expr"
+          },
+          "description": "Overrides of document parameters (paramId → Expr) while **this part** regenerates (owner D1: other parts keep the parameter's own value).",
+          "propertyNames": {
+            "description": "ULID (26-char Crockford base32)."
+          },
+          "type": "object"
+        },
+        "properties": {
+          "$ref": "#/definitions/PartProperties",
+          "description": "Overrides of the part properties. A missing part number resolves to \"<document name>-<configuration name>\" (owner D4); collisions are reported, never silently overwritten."
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "type": "object"
+    },
+    "ConfiguredValue": {
+      "description": "An `Expr` (string) or an option value.",
+      "type": [
+        "string",
+        "number",
+        "boolean"
+      ]
+    },
     "CopySource": {
       "anyOf": [
         {
@@ -1022,6 +1086,23 @@
         "name",
         "features"
       ],
+      "type": "object"
+    },
+    "FeatureOverride": {
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "additionalProperties": {
+            "$ref": "#/definitions/ConfiguredValue"
+          },
+          "description": "Field overrides: JSON pointer inside the feature (e.g. `/end/depth`, `/radius`, `/size`) → value. Only configurable fields are allowed (owner D2: every `Expr` field plus the option fields the document package lists in `CONFIGURABLE_OPTIONS`, e.g. hole size/kind/fit, extrude end kind). An override whose path no longer applies makes that configuration's feature \"needs attention\", never a silent drop.",
+          "type": "object"
+        },
+        "suppressed": {
+          "description": "Suppression in this configuration; absent = inherited from `Feature.suppressed`.",
+          "type": "boolean"
+        }
+      },
       "type": "object"
     },
     "FilletFeature": {
@@ -1968,9 +2049,20 @@
     "Part": {
       "additionalProperties": false,
       "properties": {
+        "activeConfigurationId": {
+          "$ref": "#/definitions/Id",
+          "description": "The active configuration: every regen of the live model is of this one. Absent = Default."
+        },
         "color": {
           "description": "CSS hex colour, e.g. `\"#9aa4b2\"`. Overrides the material's appearance colour.",
           "type": "string"
+        },
+        "configurations": {
+          "description": "M3.7 named configurations (ADR-074): sparse overrides over an implicit **Default**, which is the part as stored. Absent = only Default. Keyed by id everywhere, so renames never break merges or consumers. No derived (nested) configurations.",
+          "items": {
+            "$ref": "#/definitions/Configuration"
+          },
+          "type": "array"
         },
         "features": {
           "items": {
@@ -1995,6 +2087,10 @@
         "name": {
           "type": "string"
         },
+        "properties": {
+          "$ref": "#/definitions/PartProperties",
+          "description": "M3.7: the Default configuration's part number and description (and the part's when it has none)."
+        },
         "rollbackIndex": {
           "description": "Features with index >= rollbackIndex are not evaluated. `features.length` = fully rolled forward.",
           "type": "number"
@@ -2006,6 +2102,19 @@
         "features",
         "rollbackIndex"
       ],
+      "type": "object"
+    },
+    "PartProperties": {
+      "additionalProperties": false,
+      "description": "Part properties that drive exports, title blocks (M4) and the BOM (M6).",
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "partNumber": {
+          "type": "string"
+        }
+      },
       "type": "object"
     },
     "PlaneFeature": {
