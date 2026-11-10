@@ -43,6 +43,7 @@ import { FeatureRowBody } from './FeatureRowBody';
 import { FolderRow } from './FolderRow';
 import { featureMeta } from './featureMeta';
 import { describeStatus } from './featureStatus';
+import type { FeatureTreeConfiguration } from './suppressMenu';
 import { DropIndicator, RollbackBar } from './TreeMarkers';
 import { DeletePrompt, LeavePrompt, UndoLine } from './TreePrompts';
 import type { DragState, Slot } from './treeDrag';
@@ -145,6 +146,13 @@ export interface FeatureTreeProps {
    */
   onSketchVisibility?(ids: readonly Id[], visibility: SketchVisibilityMode): void;
 
+  /**
+   * M3.7: configuration awareness. When the part has configurations, the row menu offers "Suppress
+   * in this configuration only" / "Suppress in all configurations" (one item naming the
+   * configuration in `review` mode) instead of a plain Suppress, and a row whose suppression the
+   * active configuration overrides carries a marker. See `FeatureTreeConfiguration`.
+   */
+  configuration?: FeatureTreeConfiguration;
   /** `touch` = 44px rows and always-visible handles. */
   density?: 'compact' | 'touch';
   /**
@@ -195,6 +203,7 @@ export function FeatureTree({
   onReorder: onReorderProp,
   onEdit: onEditProp,
   onSuppress,
+  configuration,
   onDelete: onDeleteProp,
   nestSketches = true,
   onNestSketchesChange: onNestSketchesChangeProp,
@@ -855,6 +864,7 @@ export function FeatureTree({
     onEdit,
     onRename,
     onSuppress,
+    configuration,
     onDelete,
     onRollback,
     onAddFolder,
@@ -1004,10 +1014,14 @@ export function FeatureTree({
       .filter(Boolean)
       .join(', ');
     const auto = f.visibility === undefined || f.visibility === 'auto';
+    const suppressOverridden = !!configuration?.overriddenSuppression?.includes(f.id);
     const hidden = [
       `${meta.label}${stateText ? `, ${stateText}` : ''}.`,
       kids.length ? `Contains ${kids.length === 1 ? 'a sketch' : `${kids.length} sketches`}.` : '',
       shared ? `Used by ${shared} features.` : '',
+      suppressOverridden
+        ? `Suppression overridden in ${configuration?.activeName ?? 'this configuration'}.`
+        : '',
       isSketch && onSketchVisibility
         ? `${shown ? 'Shown' : 'Hidden'} in the viewport${auto ? ' (automatic)' : ''}.`
         : '',
@@ -1090,6 +1104,7 @@ export function FeatureTree({
           st={st}
           rolled={rolled}
           suppressed={suppressed}
+          suppressOverridden={suppressOverridden}
           renaming={renaming === row.key}
           rowKey={row.key}
           onRename={onRename}
