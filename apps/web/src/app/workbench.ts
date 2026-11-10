@@ -64,23 +64,11 @@ import {
 import {
   contextFeatureTools,
   contextTools,
-  defaultAxisFor,
-  FEATURE_PICKS,
   type FeatureTool,
-  isFeatureTool,
-  isModelTool,
   type ModelTool,
   newBox,
-  newChamfer,
-  newCut,
   newCylinder,
-  newExtrude,
-  newExtrudeCut,
-  newFeatureFor,
-  newFillet,
   newPlane,
-  newRevolve,
-  newRevolveCut,
   newSketch,
   TOOL_NEEDS,
 } from '../features/factories';
@@ -104,7 +92,6 @@ import { getDiagnostics } from '../platform/diagnostics';
 import { policyFor, type TierPolicy } from '../platform/tier-policy';
 import {
   type Accepts,
-  acceptsFor,
   applyPick,
   hitKey,
   pickVertices,
@@ -132,7 +119,8 @@ import {
 } from './state';
 import * as hooks from './test-hooks';
 import { failBoot, mark, markOnce } from './timing';
-import { emptyField, freshDocument, readLastDoc, writeLastDoc } from './workbench-util';
+import * as tools from './tools';
+import { freshDocument, readLastDoc, writeLastDoc } from './workbench-util';
 
 export { freshDocument };
 
@@ -1294,86 +1282,8 @@ export class Workbench {
   // ------------------------------------------------------------------ tools
 
   /** Command bar / shortcut / context action. */
-  async runTool(tool: ToolId): Promise<void> {
-    if (this.ui.get().sketch) return;
-    const part = this.part;
-    if (!part) return;
-    if (tool === 'section') {
-      if (this.ui.get().section.open) this.closeSection();
-      else this.openSection();
-      return;
-    }
-    if (tool === 'measure') {
-      if (this.ui.get().measure?.active) this.measure.stop();
-      else await this.measure.start(this.ui.get().selection.map((s) => s.hit));
-      return;
-    }
-    if (isFeatureTool(tool)) return this.startFeatureTool(tool);
-    if (!isModelTool(tool)) return;
-    const u = this.ui.get();
-    if (u.welcome) this.patchUi({ welcome: false });
-    if (u.measure?.active) this.measure.stop();
-    const need = TOOL_NEEDS[tool];
-    const picked = u.selection.filter((s) => need.kinds.includes(s.hit.kind));
-    if (tool === 'pushPull' && picked.length > 0 && picked.length === u.selection.length) {
-      // Select first: the arrow appears on the selected face(s).
-      if (this.pushPull.start(picked.map((s) => s.hit))) {
-        this.patchUi({ prompt: null, lastTool: tool, featureId: null, picking: null });
-        return;
-      }
-    }
-    if (picked.length === 0 || picked.length !== u.selection.length || tool === 'pushPull') {
-      // Act first, select second.
-      this.pushPull.cancel();
-      this.patchUi({
-        prompt: { tool, text: need.prompt },
-        selection: [],
-        featureId: null,
-        picking: null,
-        lastTool: tool,
-      });
-      this.refreshSketchVisibility();
-      this.pushHighlights();
-      return;
-    }
-    const refs: EntityRef[] = [];
-    for (const s of picked) {
-      const ref = s.ref ?? (await this.refFor(s.hit));
-      if (ref) refs.push(ref);
-    }
-    if (refs.length === 0) return this.toast('That selection can’t be referenced yet.', 'info');
-    this.patchUi({ prompt: null, selection: [], lastTool: tool });
-    const bodies = this.regen.get()?.result.bodies.length ?? 0;
-    let feature: Feature;
-    switch (tool) {
-      case 'sketch':
-        return this.startSketch(refs[0] as EntityRef);
-      case 'extrude':
-        feature = newExtrude(part, refs, bodies);
-        break;
-      case 'extrudeCut':
-        feature = newExtrudeCut(part, refs);
-        break;
-      case 'revolve':
-      case 'revolveCut': {
-        const sk = part.features.find(
-          (f): f is SketchFeature =>
-            f.type === 'sketch' && (refs[0]?.name ?? '').startsWith(`S${f.id}:`),
-        );
-        feature =
-          tool === 'revolve'
-            ? newRevolve(part, refs, defaultAxisFor(sk), bodies)
-            : newRevolveCut(part, refs, defaultAxisFor(sk));
-        break;
-      }
-      case 'fillet':
-        feature = newFillet(part, refs);
-        break;
-      case 'chamfer':
-        feature = newChamfer(part, refs);
-        break;
-    }
-    this.addFeature(feature, need.path);
+  runTool(tool: ToolId): Promise<void> {
+    return tools.runTool(this, tool);
   }
 
   /**
@@ -1381,87 +1291,18 @@ export class Workbench {
    * references field by field (`FEATURE_PICKS`). Select first, act second: a selection that fits
    * the first field fills it; a feature selected in the tree becomes a mirror / pattern source.
    */
-  private async startFeatureTool(tool: FeatureTool): Promise<void> {
-    const part = this.part;
-    if (!part) return;
-    const u = this.ui.get();
-    if (u.welcome) this.patchUi({ welcome: false });
-    if (u.measure?.active) this.measure.stop();
-    this.pushPull.cancel();
-    const copies = tool === 'mirror' || tool === 'linearPattern' || tool === 'circularPattern';
-    const selected = u.featureId ? part.features.find((f) => f.id === u.featureId) : undefined;
-    const sources = copies && selected && selected.type !== 'sketch' ? [selected.id] : [];
-    let feature = newFeatureFor(tool, part, {
-      bodyCount: this.regen.get()?.result.bodies.length ?? 0,
-      sources,
-    });
-    const steps = FEATURE_PICKS[tool];
-    const first = steps[0];
-    if (first && u.selection.length > 0) {
-      const accepts = acceptsFor(first.path, feature);
-      if (!accepts.features && u.selection.every((s) => accepts.kinds.includes(s.hit.kind))) {
-        for (const s of u.selection) {
-          const ref = s.ref ?? (await this.refFor(s.hit, accepts.as));
-          if (ref) feature = applyPick(feature, first.path, ref);
-        }
-      }
-    }
-    // The first field still empty (a pre-filled list field moves on to the next one).
-    const filledFirst = first && !emptyField(feature, first.path);
-    const next = steps.find((s, i) => (i > 0 || !filledFirst) && emptyField(feature, s.path));
-    this.patchUi({ lastTool: tool });
-    this.addFeature(feature, next?.path);
+  startFeatureTool(tool: FeatureTool): Promise<void> {
+    return tools.startFeatureTool(this, tool);
   }
 
   /** Bubble "Cut": the selected regions cut through everything (holes); more can be tapped. */
   cutSelection(): Promise<void> {
-    return this.track(
-      (async () => {
-        const part = this.part;
-        const regions = this.ui.get().selection.filter((s) => s.hit.kind === 'region');
-        if (!part || regions.length === 0) return;
-        const refs: EntityRef[] = [];
-        for (const s of regions) {
-          const ref = s.ref ?? (await this.refFor(s.hit));
-          if (ref) refs.push(ref);
-        }
-        if (refs.length) this.addFeature(newCut(part, refs), '/profile');
-      })(),
-    );
+    return tools.cutSelection(this);
   }
 
   /** A context bubble action (tablet / phone, select first, act second). */
   bubbleAction(id: BubbleActionId): void {
-    const hits = this.ui.get().selection.map((s) => s.hit);
-    this.patchUi({ bubble: null });
-    switch (id) {
-      case 'sketch':
-        this.sketchTool();
-        break;
-      case 'cut':
-        void this.cutSelection();
-        break;
-      case 'measure':
-        void this.track(this.measure.start(hits));
-        break;
-      case 'section': {
-        const face = hits.find((h) => h.kind === 'face');
-        if (face) this.sectionFromFace(face);
-        this.openSheet(this.tier === 'phone' ? 'section' : 'inspector');
-        break;
-      }
-      case 'fit':
-        this.viewport?.fitAll(true);
-        break;
-      case 'undo':
-        this.undo();
-        break;
-      case 'redo':
-        this.redo();
-        break;
-      default:
-        void this.track(this.runTool(id));
-    }
+    tools.bubbleAction(this, id);
   }
 
   // ------------------------------------------------------------------ sheet (tablet, phone)
