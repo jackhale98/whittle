@@ -5,9 +5,9 @@ import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { clipSegment, HIT_CLEAR } from '../src/sketch/DimensionAnnotation';
 import { DimensionLabel } from '../src/sketch/DimensionLabel';
-import { renderUI } from './helpers';
+import { makeEvaluator, renderUI } from './helpers';
 
-const evaluate = () => ({ ok: true as const, value: 30, dimension: 'length' as const });
+const evaluate = makeEvaluator([]);
 
 /** A host with a selection model, as the sketch layer has. */
 function Host({ onDelete }: { onDelete(): void }) {
