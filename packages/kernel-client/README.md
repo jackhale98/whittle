@@ -55,6 +55,27 @@ just works).
 
 ## Regeneration (`src/regen/engine.ts`)
 
+**Modules (H1).** `engine.ts` keeps orchestration: the public API, the regen walk, one feature
+(`runFeature`) and the per-type dispatch (`planFeature`); its public types live in `types.ts` and
+are re-exported from `engine.ts` and `regen/index.ts`. The rest, by responsibility:
+
+| Module | Holds |
+| --- | --- |
+| `core.ts` | `EngineCore`: the kernel, the lazy sketch solver, re-projection and the per-handle caches; the explicit context the executors take |
+| `result-cache.ts` | `ResultCache`: per-part, per-slot feature-result entries, LRU eviction, version slots |
+| `state.ts` | Internal state: model state, cache entries, walk context, plans |
+| `refs.ts` | Reference resolution against the walk state (PLAN §7.3), plane/axis/point refs, body scopes |
+| `attribution.ts` | `AttentionCause` attribution and field labels |
+| `outputs.ts` | Body and sketch results |
+| `helpers.ts` | Errors, cache-key definitions, taint scopes, the open-surface guard |
+| `exec-sketch.ts` | Sketches and the linked-entity (projection) pipeline |
+| `exec-solids.ts` | Extrude, revolve, primitive, sweep, loft and their tool solids |
+| `exec-modify.ts` | Fillet / chamfer, boolean, push/pull, shell, draft |
+| `exec-copies.ts` | Mirror and patterns |
+| `exec-holes.ts` | Holes and cosmetic threads |
+| `exec-datums.ts` | Construction planes, axes and points |
+| `exec-import.ts` | STEP/IGES/BREP and mesh imports |
+
 The engine walks `part.features` up to `rollbackIndex` keeping an ordered **body table**
 (`B<featureId>` → shape), the solved sketches and the construction planes. For each feature:
 
@@ -365,7 +386,8 @@ edits** (`naming`: a notch moved off the part merges two top faces and back, a d
 internal slot that grows until it splits the top face, a middle piece that vanishes so `#1` moves),
 suppress/rollback/reorder, multi-body scopes, errors and ghosts, revolve/planes/up-to, the
 50-feature cache budget (PLAN §10), handle accounting over 100 regens and runtime
-`configureRegen`, materials, STEP/STL/BREP round trips, `refFor`, a Comlink round trip with
+`configureRegen`, the LRU bounds at 200 features (`memory.test.ts`: distinct results, a partial
+failure, more version slots than the bound, `closePart` back to zero), materials, STEP/STL/BREP round trips, `refFor`, a Comlink round trip with
 transfer checks, and `import` (bracket STEP → import → same volume 1e-6, placement, cached/missing/
 corrupt attachments, stable names through a fillet over regens and fresh workers, a 1 %-scaled
 replacement resolved by fingerprint with `rebound`, an unrelated replacement → needs attention,
@@ -393,6 +415,20 @@ the identity solver and planegcs); `curves.golden.test.ts` (spline / elliptic-ar
 extruded vs integrated areas; **skipped** until the kernel builds those edges, and meanwhile
 checks today's clear `UNSUPPORTED_FEATURE`).
 
+## Memory guard (H1)
+
+`RegenEngine.memoryStats()` (`RegenMemoryStats`) is a snapshot of what the engine holds:
+per part and slot, the cache entries and the shape handles they own (as `stats(partId, slot)`) and
+the cached imports; totals; every owned handle; the per-handle caches (fingerprints, mass
+properties, meshes and their bytes, probed geometry); and the configured bounds
+(`maxSpareResults`, `maxVersionSlots`, the import spares). Invariants between engine calls:
+`ownedHandles` = `handles` + the slots' `importHandles`, every live façade handle beyond the
+baseline is owned, and after `closePart` of every part everything is 0.
+`createModelingApi(...).memoryStats()` (`KernelMemoryStats`) adds the façade's live handle count
+and the Wasm heap size (`wasmHeapBytes()`, bytes of the kernel's linear memory, which grows and
+never shrinks). Both are worker-side for now; see the contract proposal below for the Comlink
+method.
+
 ## Kernel gaps and contract notes
 
 - **Kernel**: the M1 gaps (no transform call, no naming call, no IGES reader) are closed by the M3
@@ -414,6 +450,11 @@ checks today's clear `UNSUPPORTED_FEATURE`).
     chain ("the pocket's floor is gone because the plate changed").
   - `SketchBSpline`: state that `knots` are distinct values with `multiplicities` (both or
     neither), the default knot vectors and the periodic flat-knot convention above, domain [0, 1].
+- **Contracts** (proposed, H1): `ModelingApi.memoryStats(): Promise<KernelMemoryStats>` with
+  `KernelMemoryStats` and `RegenMemoryStats` / `RegenSlotStats` as defined in
+  `src/modeling-api.ts` and `src/regen/types.ts`, so the app's diagnostics panel and the soak test
+  can read the worker's live handles, Wasm heap and cache state over Comlink. The worker already
+  implements it (`createModelingApi`); once the contract has it, `ModelingWorkerApi` picks it up.
 - **Kernel** (`@wren-cad/kernel` `ProjectedCurve`, proposed): `projectEdges` returns exact
   `ellipse` / `ellipticArc` for elliptic edges parallel to the plane and `bspline` (projected
   poles, same knots/weights) for B-spline edges, as this package's `ProjectedCurve`.
