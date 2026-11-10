@@ -18,6 +18,7 @@ import { ParamNamesContext } from '../components/paramNames';
 import { Button, cn, IconButton, TooltipProvider } from '../components/primitives';
 import { toolHint, tools } from '../components/tools';
 import { ExportMenu } from '../export/ExportMenu';
+import type { FeatureTreeProps } from '../features/FeatureTree';
 import type { SheetSnap } from '../logic/sheet';
 import type { ParamsTableProps } from '../params/ParamsTable';
 import { type ThemeControl, useTheme } from '../theme';
@@ -41,6 +42,21 @@ export function ParamsPanel(props: ParamsTableProps) {
       fallback={<p className="p-6 text-center text-ui text-fg-muted">Loading parameters…</p>}
     >
       <ParamsTableLazy {...props} />
+    </Suspense>
+  );
+}
+
+// The feature tree (folders, drag, prompts, menus) is a chunk of its own: it is fetched as the
+// shell mounts, not counted in the initial route (PLAN §10).
+const FeatureTreeLazy = lazy(() =>
+  import('../features/FeatureTree').then((mod) => ({ default: mod.FeatureTree })),
+);
+
+/** Code-split `FeatureTree` for the desktop panel and the tablet sheet. */
+export function TreePanel(props: FeatureTreeProps) {
+  return (
+    <Suspense fallback={<p className="p-6 text-center text-ui text-fg-muted">Loading features…</p>}>
+      <FeatureTreeLazy {...props} />
     </Suspense>
   );
 }

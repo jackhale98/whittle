@@ -29,7 +29,7 @@ describe('shells with data', () => {
         paramsTable={{ params: sampleParams, evaluate: (e) => evaluate(e) }}
       />,
     );
-    expect(screen.getByRole('tree', { name: 'Features' })).toBeInTheDocument();
+    expect(await screen.findByRole('tree', { name: 'Features' })).toBeInTheDocument();
     expect(screen.getByRole('separator', { name: 'Rollback bar' })).toBeInTheDocument();
     await user.click(screen.getByRole('tab', { name: 'Params' }));
     expect(await screen.findByRole('list', { name: 'Parameters' })).toBeInTheDocument();

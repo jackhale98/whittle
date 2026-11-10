@@ -14,7 +14,6 @@ import { type KeyboardEvent, type PointerEvent, useRef, useState } from 'react';
 import { CommandBar } from '../components/CommandBar';
 import { Button, cn, IconButton, Kbd, Separator, Tooltip } from '../components/primitives';
 import { StatusChip } from '../components/StatusChip';
-import { FeatureTree } from '../features/FeatureTree';
 import { reducedTransition, useSpring } from '../motion';
 import {
   DiagnosticsList,
@@ -24,6 +23,7 @@ import {
   ParamsPanel,
   ShellRoot,
   ThemeToggle,
+  TreePanel,
   UndoRedo,
   UnitsChip,
   ViewportOverlays,
@@ -180,7 +180,7 @@ export function DesktopShell(props: ShellProps) {
                   </div>
                   <RTabs.Content value="features" className="min-h-0 flex-1 overflow-y-auto">
                     {featureTree ? (
-                      <FeatureTree {...featureTree} />
+                      <TreePanel {...featureTree} />
                     ) : (
                       <EmptyState icon={ListTree} title="No features yet">
                         <p>Start with a sketch on a plane.</p>
