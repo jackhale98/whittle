@@ -273,6 +273,7 @@ export function Inspector({
     return (
       <SelectionInspector
         selection={{ kind, count: ui.selection.length, ...(label ? { label } : {}) }}
+        onClear={() => wb.clearSelection()}
         {...(lineage ? { lineage, onEditFeature: (id: string) => wb.editFeature(id) } : {})}
         actions={wb.selectionTools().map(actionMeta)}
         onAction={(id) => {

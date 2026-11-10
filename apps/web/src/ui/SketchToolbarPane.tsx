@@ -24,6 +24,7 @@ export default function SketchToolbarPane({
         if (tool === null && session.escapeTool()) return;
         session.setTool(tool, variant);
       }}
+      onSelectTool={() => session.setTool(null)}
       construction={sk.construction}
       onToggleConstruction={() => session.toggleConstruction()}
       onConstraint={(k) => session.constrain(k)}

@@ -9,6 +9,7 @@ import {
   FlipHorizontal2,
   Hexagon,
   Link2,
+  MousePointer2,
   MoveRight,
   Pencil,
   Pill,
@@ -17,6 +18,7 @@ import {
   Scissors,
   Slash,
   SquareRoundCorner,
+  X,
 } from 'lucide-react';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { Menu, type MenuItem } from '../components/floating';
@@ -220,6 +222,11 @@ export interface SketchToolbarProps {
   variants?: Partial<Record<SketchToolId, string>>;
   /** `tool` null = leave the tool (Esc). */
   onTool(tool: SketchToolId | null, variant?: string): void;
+  /**
+   * The Select tool and the touch "Done with <tool>" ✕: drop the active tool at once and return
+   * to selection (not Esc's "cancel what is in progress first"). Defaults to `onTool(null)`.
+   */
+  onSelectTool?(): void;
   construction: boolean;
   onToggleConstruction(): void;
   /** Applies a constraint to the current selection. */
@@ -261,6 +268,7 @@ export function SketchToolbar({
   activeTool,
   variants,
   onTool,
+  onSelectTool,
   construction,
   onToggleConstruction,
   onConstraint,
@@ -349,6 +357,10 @@ export function SketchToolbar({
   const activeEdit = sketchEditTools.find((t) => t.id === activeTool);
   const activeCurve = curveTools.find((t) => t.id === activeTool);
   const touch = density === 'touch';
+  const activeToolLabel = activeTool
+    ? ([...sketchTools, ...curveTools, ...sketchEditTools].find((t) => t.id === activeTool)?.label ??
+      null)
+    : null;
   const size = touch ? 'h-14 w-16 flex-col gap-0.5' : rail ? 'size-11' : 'size-10';
   const wide = touch ? size : rail ? size : 'h-10 w-12 gap-0.5';
   const lbl = (t: string) =>
@@ -404,6 +416,29 @@ export function SketchToolbar({
           className,
         )}
       >
+        <Tooltip content="Select" shortcut="Esc" side={side}>
+          <RToolbar.Button
+            aria-label="Select"
+            aria-pressed={activeTool === null}
+            data-tool="select"
+            onClick={() => (onSelectTool ? onSelectTool() : onTool(null))}
+            className={cn(itemBase, size)}
+          >
+            <MousePointer2 className={ic} strokeWidth={1.75} aria-hidden />
+            {lbl('Select')}
+          </RToolbar.Button>
+        </Tooltip>
+        {touch && activeToolLabel ? (
+          <RToolbar.Button
+            aria-label={`Done with ${activeToolLabel}`}
+            data-testid="tool-done"
+            onClick={() => (onSelectTool ? onSelectTool() : onTool(null))}
+            className={cn(itemBase, 'h-14 w-11 flex-col gap-0.5 text-fg')}
+          >
+            <X className={ic} strokeWidth={1.75} aria-hidden />
+            {lbl('Done')}
+          </RToolbar.Button>
+        ) : null}
         {sketchTools.map((spec) => {
           const active = activeTool === spec.id;
           const variantLabel = spec.variants?.find(

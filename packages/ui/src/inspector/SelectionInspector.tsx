@@ -1,4 +1,4 @@
-import { Box, Circle, MousePointer2, RectangleHorizontal, Slash, Square } from 'lucide-react';
+import { Box, Circle, MousePointer2, RectangleHorizontal, Slash, Square, X } from 'lucide-react';
 import type { ComponentType, ReactNode } from 'react';
 import { Section } from '../components/controls';
 import { Button, cn, Kbd } from '../components/primitives';
@@ -46,6 +46,8 @@ export interface SelectionInspectorProps {
   lineage?: SelectionLineage;
   /** Edit button: open that feature (or sketch) for editing. */
   onEditFeature?(id: string): void;
+  /** A plain ✕ "Clear selection" in the header (no Esc-only path on touch). */
+  onClear?(): void;
   /** Context tools offered for this selection (select first, act second). */
   actions?: readonly SelectionAction[];
   onAction?(id: string): void;
@@ -68,6 +70,7 @@ export function SelectionInspector({
   selection,
   lineage,
   onEditFeature,
+  onClear,
   actions,
   onAction,
   className,
@@ -88,12 +91,23 @@ export function SelectionInspector({
         <span className="flex size-8 items-center justify-center rounded-control bg-accent-soft text-accent-text">
           <Icon className="size-[18px]" aria-hidden />
         </span>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <h2 className="truncate text-sm leading-5 font-semibold">{title}</h2>
           {selection.label ? (
             <p className="truncate text-2xs text-fg-muted">{selection.label}</p>
           ) : null}
         </div>
+        {onClear ? (
+          <button
+            type="button"
+            onClick={onClear}
+            aria-label="Clear selection"
+            data-testid="clear-selection"
+            className="flex size-11 shrink-0 items-center justify-center rounded-control text-fg-muted transition-colors duration-fast hover:bg-surface-2 hover:text-fg active:bg-surface-3 focus-visible:outline-2 focus-visible:outline-accent"
+          >
+            <X className="size-[18px]" aria-hidden />
+          </button>
+        ) : null}
       </header>
       {selection.details?.length ? (
         <Section title="Properties">

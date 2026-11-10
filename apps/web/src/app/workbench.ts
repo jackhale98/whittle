@@ -1617,7 +1617,7 @@ export class Workbench {
   }
 
   clearSelection(): void {
-    this.patchUi({ selection: [], featureId: null, picking: null });
+    this.patchUi({ selection: [], featureId: null, picking: null, bubble: null });
     this.pushHighlights();
   }
 
