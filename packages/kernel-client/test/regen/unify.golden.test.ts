@@ -23,8 +23,10 @@ import { B, BRACKET_DIMS, type BracketDims, bracketDoc, bracketVolume } from './
 import {
   type Api,
   describeFailures,
+  edgeName,
   extrude,
   fid,
+  fillet,
   m3Kernel,
   makeDoc,
   region,
@@ -214,6 +216,24 @@ describe.skipIf(!m3)(`regen golden: booleans merge coplanar faces (ADR-076)${not
     expect(only(gap).mesh.faceNames).toContain(uprightBack);
     relClose(totalVolume(gap.bodies), 80 * 50 * 8 + 80 * 8 * 40 + boss, 1e-9);
     expect(await facesOnPlane(only(gap), [0, 1, 0], 50)).toHaveLength(2);
+  }, 120_000);
+
+  it('an absorbed edge name (the upright back corner) resolves to the merged full-height edge', async () => {
+    // The plate's and the upright's back-left vertical edges are one edge after the merge, named
+    // from the surviving faces; the upright's old name is its alias.
+    const uprightCorner = edgeName(uprightBack, uprightLeft);
+    const merged = edgeName(plateBack, plateLeft);
+    const r = await regen(
+      withFeatures(
+        bracketDoc(),
+        fillet(fid('UFI'), [{ name: uprightCorner, kind: 'edge' }], '2 mm'),
+      ),
+    );
+    expect(states(r), describeFailures(r)).toEqual(Array(10).fill('ok'));
+    const st = r.features[9] as RegenFeatureStatus;
+    expect(st.merged).toEqual([{ path: '/edges/0', name: uprightCorner, into: merged }]);
+    const d = BRACKET_DIMS;
+    relClose(totalVolume(r.bodies), bracketVolume(d) - K * 4 * (d.thickness + d.height), 1e-9);
   }, 120_000);
 
   it('shell 1 mm and 2 mm with the upright top open: analytic volume', async () => {
