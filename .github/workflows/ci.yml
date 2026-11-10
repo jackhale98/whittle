@@ -231,10 +231,15 @@ jobs:
           retention-days: 7
 
   package-e2e:
-    name: E2E (viewport + ui, chromium)
+    # Split (viewport | ui): together they reached ~30 min after H1 added wheel and section specs.
+    name: E2E (${{ matrix.suite }}, chromium)
     needs: lint
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [viewport, ui]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
@@ -246,10 +251,12 @@ jobs:
       - name: Install chromium
         run: pnpm --filter @wren-cad/viewport exec playwright install --with-deps chromium
       - name: Viewport E2E
+        if: matrix.suite == 'viewport'
         run: pnpm --filter @wren-cad/viewport e2e
       # Visual baselines were recorded outside CI; until CI-generated baselines are committed,
       # run the UI suite's functional/a11y assertions and skip pixel comparison.
       - name: UI E2E (functional + axe)
+        if: matrix.suite == 'ui'
         run: pnpm --filter @wren-cad/ui exec playwright test --trace off --ignore-snapshots
 
   # Performance budgets (PLAN §10) enforced as a test, with the SwiftShader factor from
