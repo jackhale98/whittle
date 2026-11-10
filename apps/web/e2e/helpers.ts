@@ -372,7 +372,9 @@ export async function cameraStill(page: Page): Promise<void> {
   // across two samples (a pose comparison alone passes mid-animation when no frame ran between
   // samples on a busy runner).
   let last = '';
-  for (let i = 0; i < 100; i++) {
+  // Polled every 50 ms (was 100): the same two-equal-samples-at-rest condition, up to 50 ms less
+  // idle time per call (51 call sites); the 10 s limit is unchanged.
+  for (let i = 0; i < 200; i++) {
     const s = await page.evaluate(() => {
       const v = (
         window as unknown as {
@@ -383,7 +385,7 @@ export async function cameraStill(page: Page): Promise<void> {
     });
     if (s !== null && s === last) return;
     last = s ?? '';
-    await page.waitForTimeout(100);
+    await page.waitForTimeout(50);
   }
   throw new Error('camera never came to rest');
 }

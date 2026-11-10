@@ -181,6 +181,17 @@ describe.skipIf(!built)(`regen golden: cache and handles${skipNote}`, () => {
     expect(small.engine.stats(PART)).toBeNull();
   }, 120_000);
 
+  it('memoryStats reports the live handles and the Wasm heap (diagnostics)', async () => {
+    const m0 = await api.memoryStats();
+    expect(m0.liveHandles).toBe(api.liveHandleCount());
+    expect(m0.wasmHeapBytes).toBeGreaterThan(0);
+    await api.regenerate({ doc: bracketDoc(), partId: PART, quality: 'coarse' });
+    const m1 = await api.memoryStats();
+    expect(m1.liveHandles).toBeGreaterThan(m0.liveHandles);
+    await api.closePart(PART);
+    expect((await api.memoryStats()).liveHandles).toBe(m0.liveHandles);
+  });
+
   it('configureRegen lowers the spare budget at runtime (device tiers)', async () => {
     const doc = bracketDoc();
     const regen = (width: string) =>

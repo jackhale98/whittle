@@ -34,6 +34,7 @@ import {
 } from '../ui/touch-props';
 import { useTreeProps } from '../ui/tree-props';
 import { ViewportOverlays } from '../ui/ViewportOverlays';
+import { installKernelMemoryHook, readKernelMemory } from './kernel-memory';
 import { useObservable } from './observable';
 import type { EngineState } from './state';
 import { ViewportHost } from './ViewportHost';
@@ -78,6 +79,8 @@ export function App({ wb }: { wb: Workbench }) {
   const part = doc.parts[0];
   const [updateReady, setUpdateReady] = useState(false);
   useEffect(() => onSwUpdateAvailable(() => setUpdateReady(true)), []);
+  useEffect(() => installKernelMemoryHook(wb), [wb]);
+  const kernelMemory = useCallback(() => readKernelMemory(wb), [wb]);
   const [updateNote, setUpdateNote] = useState<string | null>(null);
 
   useEffect(() => {
@@ -237,6 +240,7 @@ export function App({ wb }: { wb: Workbench }) {
         documentName={doc.meta.name}
         kernelStatus={engine.status}
         diagnostics={{ ...diagnostics, ...runtimeOverrides(runtime) }}
+        kernelMemory={kernelMemory}
         commands={allCommands}
         projectBar={
           <Suspense fallback={null}>

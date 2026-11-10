@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, type Page, test } from '@playwright/test';
 import { dist, frame, open, type RGB, samplePoints, settle } from './helpers';
+import { PERF_FACTOR } from './perf-budget';
 
 const Q = '?backend=webgl2&reducedMotion=1';
 const SHOTS = join(dirname(fileURLToPath(import.meta.url)), '..', 'test-results', 'screenshots');
@@ -262,7 +263,8 @@ test.describe('compare overlay', () => {
     // on SwiftShader is dominated by software rasterisation of the whole lit scene (a plain
     // camera move costs the same), so it is reported, not gated.
     if (process.env.WREN_PERF_ASSERT) {
-      const budget = Number(process.env.WREN_FRAME_BUDGET_MS ?? '16');
+      // Software GL: the 16 ms budget times the CI factor (ADR-010); WREN_FRAME_BUDGET_MS overrides.
+      const budget = Number(process.env.WREN_FRAME_BUDGET_MS ?? 16 * PERF_FACTOR);
       expect(summary.toggleCpuMax).toBeLessThanOrEqual(budget);
       expect(summary.resetCpuMax).toBeLessThanOrEqual(budget);
     }

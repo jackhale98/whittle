@@ -23,7 +23,7 @@ import type { SheetSnap } from '../logic/sheet';
 import type { ParamsTableProps } from '../params/ParamsTable';
 import { type ThemeControl, useTheme } from '../theme';
 import { TutorialCoach } from '../tutorial/TutorialLazy';
-import type { ShellProps } from './types';
+import type { KernelMemory, ShellProps } from './types';
 
 // The palette (Dialog + focus scope + scroll lock) is only fetched the first time it is opened.
 const CommandPalette = lazy(() =>
@@ -373,7 +373,52 @@ export function EmptyState({
   );
 }
 
-export function DiagnosticsList({ d }: { d: RuntimeDiagnostics }) {
+/** How often the open Runtime panel re-reads the kernel's memory figures. */
+export const KERNEL_MEMORY_POLL_MS = 2000;
+
+const formatMiB = (bytes: number) => `${(bytes / 1048576).toFixed(1)} MiB`;
+
+/** Polls `read` while `active`; stops (and keeps the last value) otherwise. */
+function useKernelMemory(
+  read: (() => Promise<KernelMemory | null>) | undefined,
+  active: boolean,
+): KernelMemory | null {
+  const [memory, setMemory] = useState<KernelMemory | null>(null);
+  useEffect(() => {
+    if (!read || !active) return;
+    let stopped = false;
+    const tick = () => {
+      read().then(
+        (m) => {
+          if (!stopped) setMemory(m);
+        },
+        () => {
+          if (!stopped) setMemory(null);
+        },
+      );
+    };
+    tick();
+    const id = setInterval(tick, KERNEL_MEMORY_POLL_MS);
+    return () => {
+      stopped = true;
+      clearInterval(id);
+    };
+  }, [read, active]);
+  return memory;
+}
+
+export function DiagnosticsList({
+  d,
+  kernelMemory,
+  active = true,
+}: {
+  d: RuntimeDiagnostics;
+  /** Reads the kernel's live handle count and Wasm heap; the two rows appear when it is given. */
+  kernelMemory?: () => Promise<KernelMemory | null>;
+  /** Poll only while the panel is visible. */
+  active?: boolean;
+}) {
+  const memory = useKernelMemory(kernelMemory, active);
   const rows: Array<[string, string]> = [
     ['Tier', d.tier],
     ['Isolated', d.crossOriginIsolated ? 'yes' : 'no'],
@@ -383,6 +428,18 @@ export function DiagnosticsList({ d }: { d: RuntimeDiagnostics }) {
     ['Pointer', d.primaryPointer],
     ['Version', d.appVersion],
   ];
+  if (kernelMemory) {
+    rows.splice(
+      4,
+      0,
+      ['Shape handles', memory && memory.handles >= 0 ? String(memory.handles) : '—'],
+      ['Wasm heap', memory && memory.heapBytes >= 0 ? formatMiB(memory.heapBytes) : '—'],
+      [
+        'Regen cache',
+        memory ? `${memory.cacheEntries} entries · ${memory.cacheHandles} handles` : '—',
+      ],
+    );
+  }
   return (
     <dl
       className="tnum grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-xs"

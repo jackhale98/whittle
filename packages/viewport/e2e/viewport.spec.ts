@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { expect, type Page, test } from '@playwright/test';
 import type { HarnessApi } from '../harness/main';
 import { settle } from './helpers';
+import { PERF_FACTOR } from './perf-budget';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const SHOTS = join(here, '..', 'test-results', 'screenshots'); // untracked output
@@ -336,7 +337,7 @@ test('perf probe: 1M triangles orbiting', async ({ page }) => {
   // in CI containers); the platform workstream turns it into a gate with WREN_PERF_ASSERT=1
   // (budget override: WREN_FRAME_BUDGET_MS, e.g. 16 for the iPad tier).
   if (process.env.WREN_PERF_ASSERT) {
-    const budget = Number(process.env.WREN_FRAME_BUDGET_MS ?? '8');
+    const budget = Number(process.env.WREN_FRAME_BUDGET_MS ?? 8 * PERF_FACTOR);
     expect(
       after?.frameMs,
       `1M-triangle CPU frame time ${after?.frameMs.toFixed(2)} ms exceeds the ${budget} ms budget`,

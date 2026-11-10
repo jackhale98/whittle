@@ -19,6 +19,17 @@ export type TabletSheetTab = 'history' | 'params' | 'inspector';
 export type PhoneSheetTab = 'parts' | 'history' | 'params' | 'measure' | 'section' | 'export';
 export type SheetTabId = TabletSheetTab | PhoneSheetTab;
 
+/** Live kernel memory (diagnostics only). `-1` = the kernel could not report it. */
+export interface KernelMemory {
+  /** Live kernel shape handles, the regen cache's included. */
+  handles: number;
+  /** Wasm linear memory in bytes. */
+  heapBytes: number;
+  /** Regen cache: entries and the shape handles they own. */
+  cacheEntries: number;
+  cacheHandles: number;
+}
+
 /** Props every shell accepts. The shell never touches Wasm or the kernel: it only renders state. */
 export interface ShellProps {
   /** App-level commands appended to the ⌘K palette (e.g. Check for updates, About). */
@@ -31,6 +42,11 @@ export interface ShellProps {
    */
   viewport: ReactNode;
   diagnostics?: RuntimeDiagnostics;
+  /**
+   * Live kernel memory for the Runtime panel (shape handles, Wasm heap). Called every
+   * `KERNEL_MEMORY_POLL_MS` while the panel is open and nowhere else; `null` = not available.
+   */
+  kernelMemory?: () => Promise<KernelMemory | null>;
   /** Controlled theme. Omit to let the shell manage + persist it (localStorage). */
   theme?: ThemeSetting;
   onThemeChange?(theme: ThemeSetting): void;

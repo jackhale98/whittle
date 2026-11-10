@@ -1,0 +1,70 @@
+# Long-session soak (PLAN H1): apps/web/e2e/soak.spec.ts. 100 edits on the demo bracket, then ten
+# close/reopen cycles; asserts kernel shape handles return to baseline, JS/Wasm/process memory stay
+# bounded and regen time does not drift. Nightly and on demand; never on push or pull request.
+# A separate workflow (not a job in ci.yml) so the nightly run does not repeat the whole CI suite.
+name: Soak
+
+on:
+  schedule:
+    - cron: "23 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: soak-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  WREN_BASE: /${{ github.event.repository.name }}/
+
+jobs:
+  kernel:
+    name: Kernel
+    uses: ./.github/workflows/kernel.yml
+
+  soak:
+    name: Soak (chromium)
+    needs: kernel
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Download kernel artefact
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: kernel-dist
+          path: packages/kernel/dist
+      - name: Build
+        run: pnpm build
+      - name: Install chromium
+        run: pnpm --filter @wren-cad/web exec playwright install --with-deps chromium
+      - name: Soak
+        env:
+          WREN_SOAK: "1"
+        shell: bash
+        run: pnpm --filter @wren-cad/web exec playwright test --trace off --project=soak 2>&1 | tee apps/web/soak.log
+      - name: Record soak numbers
+        if: always()
+        run: |
+          {
+            echo "## Soak"
+            grep -h '\[soak\]' apps/web/soak.log 2>/dev/null || echo "(see the job log)"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: soak-report
+          path: |
+            apps/web/playwright-report
+            apps/web/test-results
+          if-no-files-found: ignore
+          retention-days: 14
