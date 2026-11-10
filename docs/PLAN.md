@@ -869,6 +869,7 @@ Owner request 2026-11-10, from `docs/ux-research/reports/CAD UI feedback and les
   - Node round-trip tests with `STEPCAFControl_Reader`: dimension and tolerance counts, types, values and referenced faces all match.
   - Import the NIST MBE PMI test models (`test-fixtures/step/nist/`) and display their PMI. Note that OCCT has known gaps reading some third-party tolerance values; document what fails.
   - Manually validate the exports with the NIST _STEP File Analyzer and Viewer_ and at least one third-party CAD tool. Record the results in `docs/PMI_VALIDATION.md`.
+- **Configuration overrides on annotations must be id-keyed first** (M3.7 gate finding). Configurable pointers currently include array indices (`/annotations/<i>/…`, `packages/document/src/features.ts`). Once PMI can be edited, deleting or reordering an annotation would silently retarget overrides, and `changedPointers`' whole-array diff (`apps/web/src/app/config-model.ts`) could write an override's value into Default. Before PMI editing ships, key annotation pointers by annotation id, with a migration, and add a test that reorders annotations under an override.
 - **Accept:** the bracket exports with ≥ 15 semantic dimensions or tolerances plus presentation. The round-trip is lossless in Wren. The NIST analyzer reports no structural errors in the PMI entities.
 
 ### M6 — Assemblies
