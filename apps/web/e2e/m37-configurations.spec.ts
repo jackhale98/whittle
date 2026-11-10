@@ -692,3 +692,90 @@ test('a missing active configuration blocks edits instead of silently changing D
   ).toBeVisible();
   expect((await part(page)).features.find((f) => f.id === HOLE)).toMatchObject({ radius: '4 mm' });
 });
+
+async function startExportAll(page: Page): Promise<void> {
+  await page.getByRole('button', { name: 'Export' }).click();
+  const form = page.getByTestId('export-form');
+  await form.getByRole('radio', { name: /STEP/ }).click();
+  await form.getByRole('radio', { name: /^All \(3\)/ }).click();
+  await form.getByRole('button', { name: /^Export STEP/ }).click();
+}
+
+test('a real export-all holds the model: a click selects nothing, then the hold releases', async ({
+  page,
+}) => {
+  test.slow();
+  await open(page, configPartDoc());
+  const a = app(page);
+  await a.slowExport(1500);
+  const names: string[] = [];
+  page.on('download', (d) => names.push(d.suggestedFilename()));
+  await startExportAll(page);
+  await expect(page.getByTestId('config-export-busy')).toBeVisible();
+  const box = await page.getByTestId('viewport-canvas').boundingBox();
+  if (!box) throw new Error('no canvas');
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  expect((await a.ui()).selection).toEqual([]);
+  await expect(page.getByText(/Exported 3 files/)).toBeVisible({ timeout: 90_000 });
+  await expect(page.getByTestId('config-export-busy')).toHaveCount(0);
+  expect(names).toHaveLength(3);
+  // The live model is back and picks work again.
+  await a.idle();
+  expect(await bodyMass(page)).toBeCloseTo(expectedMass.default, 9);
+});
+
+test('Cancel on the lock releases the hold, regenerates the live model and lists what was saved', async ({
+  page,
+}) => {
+  test.slow();
+  await open(page, configPartDoc());
+  const a = app(page);
+  await a.slowExport(60_000);
+  await startExportAll(page);
+  await page.getByTestId('config-export-cancel').click();
+  await expect(page.getByTestId('config-export-busy')).toHaveCount(0);
+  await expect(page.getByText(/Export stopped at .*Cancelled/)).toBeVisible();
+  await a.slowExport(0);
+  await a.idle();
+  expect(await bodyMass(page)).toBeCloseTo(expectedMass.default, 9);
+});
+
+test('opening another document mid-export keeps the hold until the loop ends and stops it', async ({
+  page,
+}) => {
+  test.slow();
+  await open(page, configPartDoc());
+  const a = app(page);
+  await a.slowExport(1200);
+  const names: string[] = [];
+  page.on('download', (d) => names.push(d.suggestedFilename()));
+  await startExportAll(page);
+  await expect(page.getByTestId('config-export-busy')).toBeVisible();
+  const other = configPartDoc(false);
+  other.meta.id = '01JOTHERDOC00000000000000';
+  await a.load(other);
+  // The hold is still there: the loop has not ended yet.
+  await expect(page.getByTestId('config-export-busy')).toBeVisible();
+  await expect(page.getByTestId('config-export-busy')).toHaveCount(0, { timeout: 60_000 });
+  expect(names.length).toBeLessThan(3);
+});
+
+test('background builds release their slots: the kernel keeps no configuration slot', async ({
+  page,
+}) => {
+  test.slow();
+  const doc = configPartDoc();
+  const p = doc.parts[0];
+  p?.configurations?.push(
+    { id: '01JCEXTRA1000000000000000A', name: 'Wide', params: { [P_LENGTH]: '80 mm' } },
+    { id: '01JCEXTRA2000000000000000B', name: 'Slim', params: { [P_THICK]: '5 mm' } },
+  );
+  await open(page, doc);
+  const a = app(page);
+  expect(await a.configurationsBuilt()).toBe(true);
+  const builds = (await a.configurations()).builds;
+  expect(Object.values(builds).every((b) => b.status === 'ok' || b.status === 'unbuilt')).toBe(
+    true,
+  );
+  await expect.poll(async () => (await a.kernelSlots()).filter((s) => s !== 'main')).toEqual([]);
+});

@@ -68,11 +68,26 @@ export async function runTool(wb: Workbench, tool: ToolId): Promise<void> {
     return;
   }
   const refs: EntityRef[] = [];
+  let missing = 0;
   for (const s of picked) {
-    const ref = s.ref ?? (await wb.refFor(s.hit));
+    // A pick held back by "Export all" is asked again once the hold is over.
+    let ref = s.ref ?? (await wb.refFor(s.hit));
+    if (!ref && wb.config.exportingAll) {
+      await wb.config.whenReleased();
+      ref = await wb.refFor(s.hit);
+    }
     if (ref) refs.push(ref);
+    else missing++;
   }
-  if (refs.length === 0) return wb.toast('That selection can’t be referenced yet.', 'info');
+  // Never drop part of a selection silently: either every item is referenced or nothing is made.
+  if (missing > 0) {
+    return wb.toast(
+      refs.length === 0
+        ? 'That selection can’t be referenced yet.'
+        : `${missing} of ${picked.length} selected items can’t be referenced yet, so nothing was created. Select again.`,
+      'info',
+    );
+  }
   wb.patchUi({ prompt: null, selection: [], lastTool: tool });
   const bodies = wb.regen.get()?.result.bodies.length ?? 0;
   let feature: Feature;

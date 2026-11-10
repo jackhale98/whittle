@@ -22,9 +22,17 @@ export function ConfigNotices({ wb, touch }: { wb: Workbench; touch: boolean }) 
       {state.exportingAll ? (
         <output
           data-testid="config-export-busy"
-          className="pointer-events-auto absolute top-16 left-1/2 -translate-x-1/2 rounded-panel bg-surface px-3 py-2 text-ui text-fg shadow-pop"
+          className="pointer-events-auto absolute top-16 left-1/2 flex -translate-x-1/2 items-center rounded-panel bg-surface px-3 py-2 text-ui text-fg shadow-pop"
         >
-          Exporting every configuration. The model is locked until it is done.
+          <span>Exporting every configuration. The model is locked until it is done.</span>
+          <button
+            type="button"
+            data-testid="config-export-cancel"
+            onClick={() => wb.config.cancelExport()}
+            className={`ml-3 rounded-control bg-surface-2 px-2.5 font-medium shadow-[inset_0_0_0_1px_var(--color-border)] hover:bg-surface-3 focus-visible:outline-2 focus-visible:outline-accent ${touch ? 'min-h-11' : 'h-7'}`}
+          >
+            Cancel
+          </button>
         </output>
       ) : null}
       {v.missing ? (

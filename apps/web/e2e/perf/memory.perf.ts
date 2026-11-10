@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { expect, type Page, test } from '@playwright/test';
 import { app, boot } from '../helpers';
+import { configPartDoc, P_LENGTH, P_THICK } from '../support/config-part';
 import { BUDGETS } from './budgets';
 
 /**
@@ -119,6 +120,30 @@ test('demo bracket + edits stay within 1 GB', async ({ page }) => {
   test.info().annotations.push({ type: 'perf', description: line });
 
   const figure = Math.max(peakUa ?? 0, peakTree ?? 0, peakHeap ?? 0);
+  expect(figure, 'no memory reading available').toBeGreaterThan(0);
+  expect(figure).toBeLessThanOrEqual(BUDGETS.peakMemoryBytes);
+});
+
+test('a part with four configurations stays within 1 GB and keeps no configuration slot', async ({
+  page,
+}) => {
+  test.setTimeout(180_000);
+  await boot(page);
+  const a = app(page);
+  const doc = configPartDoc();
+  doc.parts[0]?.configurations?.push(
+    { id: '01JCEXTRA1000000000000000A', name: 'Wide', params: { [P_LENGTH]: '80 mm' } },
+    { id: '01JCEXTRA2000000000000000B', name: 'Slim', params: { [P_THICK]: '5 mm' } },
+  );
+  await a.load(doc);
+  await a.idle();
+  expect(await a.configurationsBuilt()).toBe(true);
+  // Each build releases its shapes once its summary is cached (iPad budget, PLAN §10).
+  await expect.poll(async () => (await a.kernelSlots()).filter((s) => s !== 'main')).toEqual([]);
+  const tree = await processTreeBytes(page);
+  const ua = (await readPage(page)).uaBytes;
+  const figure = Math.max(tree ?? 0, ua ?? 0);
+  console.log(`[perf] 4 configurations: processTreePSS=${((tree ?? 0) / 1048576).toFixed(1)} MB`);
   expect(figure, 'no memory reading available').toBeGreaterThan(0);
   expect(figure).toBeLessThanOrEqual(BUDGETS.peakMemoryBytes);
 });

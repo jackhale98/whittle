@@ -184,6 +184,8 @@ export class ConfigBuilds {
           };
         }
         this.set(key, entry, null);
+        // The summary is cached: release the slot's shapes at once (iPad memory, PLAN §10).
+        void modeling.port.closePart(part.id, slotOf(id)).catch(() => {});
         // Let the live model go first if it asked for the worker meanwhile.
         await wb.loop?.whenIdle();
       }
