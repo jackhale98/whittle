@@ -483,7 +483,7 @@ export class RegenEngine {
       attachments: request.attachments ?? {},
       importIds: new Set(part.features.filter((f) => f.type === 'import').map((f) => f.id)),
       usedImports: new Set(),
-      current: { featureId: '', rebound: [] },
+      current: { featureId: '', rebound: [], merged: [] },
       walk: newWalk(),
       rec: null,
       index: new Map(part.features.map((f, i) => [f.id, i])),
@@ -569,13 +569,14 @@ export class RegenEngine {
   // -------------------------------------------------------------------------------------------
 
   private async runFeature(ctx: WalkContext, f: Feature): Promise<RegenFeatureStatus> {
-    ctx.current = { featureId: f.id, rebound: [] };
+    ctx.current = { featureId: f.id, rebound: [], merged: [] };
     const status = (
       state: RegenFeatureStatus['state'],
       extra: Partial<RegenFeatureStatus> = {},
     ) => {
       const s = { featureId: f.id, state, cached: false, ms: 0, ...extra } as RegenFeatureStatus;
       if (ctx.current.rebound.length > 0) s.rebound = ctx.current.rebound;
+      if (ctx.current.merged.length > 0) s.merged = ctx.current.merged;
       return s;
     };
     const fail = (taint: string[]) => {

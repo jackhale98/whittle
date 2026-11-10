@@ -23,6 +23,7 @@ const require = createRequire(import.meta.url);
 const sources = [
   'src/whittle_kernel.h',
   'src/whittle_core.cpp',
+  'src/whittle_unify.cpp',
   'src/whittle_modeling.cpp',
   'src/whittle_pushpull.cpp',
   'src/whittle_shape_ops.cpp',

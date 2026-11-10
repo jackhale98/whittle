@@ -24,7 +24,7 @@ import type {
 } from '@wren-cad/contracts';
 import type { Walk, WalkEntry } from './cause';
 import type { SubKind } from './resolve';
-import type { ReboundRef } from './types';
+import type { MergedRef, ReboundRef } from './types';
 
 export interface BodyState {
   id: string;
@@ -162,11 +162,20 @@ export class ModelState {
   datums = new Map<Id, DatumState>();
   /** Tool solids of the solid features evaluated so far (by feature id), for copies. */
   tools = new Map<Id, ToolSpec>();
+  /**
+   * Names a boolean merged away (ADR-074), `${kind}|${absorbed}` → the name of the sub-shape that
+   * absorbed it, gathered from the alias entries of every body naming map seen in this walk (the
+   * kernel lists them only on the merging feature's result, so later features need this table).
+   */
+  merged = new Map<string, string>();
   version = 0;
 
   apply(r: Extract<EntryResult, { ok: true }>): void {
     for (const id of r.remove) this.bodies.delete(id);
-    for (const b of r.set) this.bodies.set(b.id, b);
+    for (const b of r.set) {
+      this.bodies.set(b.id, b);
+      recordMerges(this.merged, b.naming);
+    }
     if (r.sketch) this.sketches.set(r.sketch.id, r.sketch);
     if (r.plane) this.planes.set(r.plane.id, r.plane);
     if (r.datum) this.datums.set(r.datum.id, r.datum);
@@ -180,6 +189,58 @@ export class ModelState {
     for (const p of this.planes.values()) if (p.shape === shape) return p.key;
     return undefined;
   }
+}
+
+/**
+ * The primary entries of a body naming map: the first name per (kind, index). Later entries for
+ * the same sub-shape are merge aliases (packages/kernel whittle_unify.cpp): names a boolean
+ * absorbed into that sub-shape.
+ */
+export function primaryNaming(naming: NamingMap): NamingMap {
+  const cached = primaryCache.get(naming);
+  if (cached) return cached;
+  const seen = new Set<string>();
+  let aliases = false;
+  const out: NamingMap = [];
+  for (const n of naming) {
+    const k = `${n.kind}|${n.index}`;
+    if (seen.has(k)) {
+      aliases = true;
+      continue;
+    }
+    seen.add(k);
+    out.push(n);
+  }
+  const value = aliases ? out : naming;
+  primaryCache.set(naming, value);
+  return value;
+}
+
+const primaryCache = new WeakMap<NamingMap, NamingMap>();
+
+/** Adds a body naming map's merge aliases to `merged` (see `ModelState.merged`). */
+export function recordMerges(merged: Map<string, string>, naming: NamingMap): void {
+  if (primaryNaming(naming) === naming) return;
+  const primary = new Map<string, string>();
+  for (const n of naming) {
+    const k = `${n.kind}|${n.index}`;
+    const p = primary.get(k);
+    if (p === undefined) primary.set(k, n.name);
+    else if (p !== n.name) merged.set(`${n.kind}|${n.name}`, p);
+  }
+}
+
+/** The names `name` was merged into, nearest first (a survivor may be merged again later). */
+export function mergeChain(state: ModelState, kind: SubKind, name: string): string[] {
+  const out: string[] = [];
+  let n = name;
+  for (let i = 0; i < 16; i++) {
+    const next = state.merged.get(`${kind}|${n}`);
+    if (next === undefined || next === name || out.includes(next)) break;
+    out.push(next);
+    n = next;
+  }
+  return out;
 }
 
 export interface WalkContext {
@@ -199,8 +260,8 @@ export interface WalkContext {
   importIds: Set<Id>;
   /** Imports used by this regen (sha256). */
   usedImports: Set<string>;
-  /** The feature being planned: id and the refs rebound so far. */
-  current: { featureId: Id; rebound: ReboundRef[] };
+  /** The feature being planned: id, the refs rebound so far and those resolved through a merge. */
+  current: { featureId: Id; rebound: ReboundRef[]; merged: MergedRef[] };
   /** This regen's walk (cause.ts) and the walk entry of the feature being run. */
   walk: Walk;
   rec: WalkEntry | null;

@@ -20,20 +20,30 @@ NamedInput namedInputOf(const NamedShape& ns) { return NamedInput{ns.shape, ns.f
 // Carries face names from `input` into `result` through an algorithm's history: a face that
 // survives (unchanged, or Modified) keeps its name. With `onlyIfEmpty`, names already assigned
 // (e.g. from the target body) win over this input's.
+//
+// `origin` (optional, one slot per result face, kOriginTool when unclaimed) records which input
+// a face came from: the first input that reaches a slot claims it with `group`.
 void carryFaceNames(BRepBuilderAPI_MakeShape& algo, const NamedInput& input, const Topo& result,
                     std::vector<std::string>& names, bool onlyIfEmpty,
-                    const std::function<std::string(const std::string&)>& rename = nullptr) {
+                    const std::function<std::string(const std::string&)>& rename = nullptr,
+                    std::vector<int>* origin = nullptr, int group = kOriginTool) {
   const Topo in(input.shape);
   auto assign = [&](int resultIndex, const std::string& name) {
-    if (resultIndex <= 0 || name.empty()) return;
+    if (resultIndex <= 0) return;
+    if (origin != nullptr) {
+      int& o = (*origin)[static_cast<size_t>(resultIndex - 1)];
+      if (o == kOriginTool) o = group;
+    }
+    if (name.empty()) return;
     std::string& slot = names[static_cast<size_t>(resultIndex - 1)];
     if (slot.empty() || (!onlyIfEmpty && name < slot)) slot = name;
   };
   for (int i = 1; i <= in.faces.Extent(); ++i) {
     const TopoDS_Shape& face = in.faces(i);
     const size_t idx = static_cast<size_t>(i - 1);
-    if (idx >= input.faceNames.size() || input.faceNames[idx].empty()) continue;
-    const std::string name = rename ? rename(input.faceNames[idx]) : input.faceNames[idx];
+    const bool named = idx < input.faceNames.size() && !input.faceNames[idx].empty();
+    if (!named && origin == nullptr) continue;
+    const std::string name = !named ? std::string() : rename ? rename(input.faceNames[idx]) : input.faceNames[idx];
     if (algo.IsDeleted(face)) continue;
     const ShapeList& modified = algo.Modified(face);
     if (modified.IsEmpty()) {
@@ -49,6 +59,9 @@ void carryFaceNames(BRepBuilderAPI_MakeShape& algo, const NamedInput& input, con
 //
 // `manyTools` (M3 patterns and holes): tools are known-good solids (no inverted-solid check) and
 // the threaded build runs the General Fuse in parallel.
+//
+// Same-domain faces the operation leaves side by side (a tool face flush with a body face, pieces
+// of one face) are merged, and absorbed names stay as aliases (whittle_unify.cpp, ADR-074).
 NamedShape booleanNamed(BOPAlgo_Operation op, const std::vector<NamedInput>& objects,
                         const std::vector<NamedInput>& tools,
                         const std::function<std::string(const std::string&)>& toolRename,
@@ -78,9 +91,12 @@ NamedShape booleanNamed(BOPAlgo_Operation op, const std::vector<NamedInput>& obj
   const TopoDS_Shape result = bop.Shape();
   const Topo rt(result);
   std::vector<std::string> names(static_cast<size_t>(rt.faces.Extent()));
-  for (const NamedInput& o : objects) carryFaceNames(bop, o, rt, names, false);
+  std::vector<int> origin(static_cast<size_t>(rt.faces.Extent()), kOriginTool);
+  for (size_t i = 0; i < objects.size(); ++i) {
+    carryFaceNames(bop, objects[i], rt, names, false, nullptr, &origin, static_cast<int>(i));
+  }
   for (const NamedInput& t : tools) carryFaceNames(bop, t, rt, names, true, toolRename);
-  return finalizeNamed(result, std::move(names), fallback);
+  return unifyBooleanResult(result, std::move(names), origin, fallback);
 }
 
 const char* opLabel(BOPAlgo_Operation op) {

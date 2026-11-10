@@ -389,12 +389,13 @@ std::string execShell(const Json& feature, const Json& inputs, const std::string
   }
   auto isOpen = [&](int fi) { return std::find(openIdx.begin(), openIdx.end(), fi) != openIdx.end(); };
 
-  const double offset = direction == "inward" ? -t : t;
   const double before = solidVolume(solid);
   // Sharp (intersection) joins, like other CAD shells; when OCCT cannot intersect the offset
   // faces (some curved bodies), rounded (arc) joins, with a warning.
   std::string detail;
-  auto attempt = [&](GeomAbs_JoinType join, std::unique_ptr<BRepOffset_MakeOffset>& mo) -> TopoDS_Shape {
+  auto attemptAt = [&](double wall, GeomAbs_JoinType join,
+                       std::unique_ptr<BRepOffset_MakeOffset>& mo) -> TopoDS_Shape {
+    const double offset = direction == "inward" ? -wall : wall;
     mo = std::make_unique<BRepOffset_MakeOffset>();
     TopoDS_Shape result;
     try {
@@ -441,6 +442,9 @@ std::string execShell(const Json& feature, const Json& inputs, const std::string
     }
     return result;
   };
+  auto attempt = [&](GeomAbs_JoinType join, std::unique_ptr<BRepOffset_MakeOffset>& mo) {
+    return attemptAt(t, join, mo);
+  };
   std::vector<KernelError> warnings;
   std::unique_ptr<BRepOffset_MakeOffset> moPtr;
   TopoDS_Shape result = attempt(GeomAbs_Intersection, moPtr);
@@ -448,9 +452,20 @@ std::string execShell(const Json& feature, const Json& inputs, const std::string
     const std::string sharpDetail = detail;
     result = attempt(GeomAbs_Arc, moPtr);
     if (result.IsNull()) {
-      raiseError("OPERATION_FAILED", "The shell is too thick for this body",
-                 "Try a thinner wall (thinner than half the body's smallest width).",
-                 sharpDetail + "; arc joins: " + detail, openNames);
+      const std::string failDetail = sharpDetail + "; arc joins: " + detail;
+      // Only call it "too thick" when a much thinner wall works: otherwise the cause is the
+      // body's topology (faces OCCT cannot offset or join), and a thinner wall won't help.
+      std::unique_ptr<BRepOffset_MakeOffset> probe;
+      const double thin = std::min(t / 4, 0.25);
+      if (!attemptAt(thin, GeomAbs_Intersection, probe).IsNull()) {
+        raiseError("OPERATION_FAILED", "The shell is too thick for this body",
+                   "Try a thinner wall (thinner than half the body's thinnest section).",
+                   failDetail + "; a " + fmtMm(thin) + " mm wall works", openNames);
+      }
+      raiseError("OPERATION_FAILED", "The shell could not be built for this body",
+                 "OCCT cannot offset these faces even with a much thinner wall. Try removing other "
+                 "faces, or simplify the faces and edges around them.",
+                 failDetail + "; a " + fmtMm(thin) + " mm wall fails too: " + detail, openNames);
     }
     warnings.push_back(warning("OPERATION_FAILED", "The shell has rounded outside corners",
                                "OCCT could not build sharp corners for this body; the offset uses "
