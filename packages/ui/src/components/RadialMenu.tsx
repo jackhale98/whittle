@@ -40,8 +40,8 @@ export interface RadialMenuProps {
   /** Where the Repeat slot sits (default north). */
   repeatSlot?: RadialSlot;
   /**
-   * What opened it. `keyboard` and `touch` draw at once (no blind flicks there); `mouse` and
-   * `pen` wait `drawDelay` so an expert can flick before anything is drawn.
+   * What opened it. Every source draws at once by default. `mouse` and `pen` also accept a flick
+   * for `flickWindow` ms after opening (none for `keyboard` and `touch`).
    */
   source?: 'mouse' | 'pen' | 'touch' | 'keyboard';
   /**
@@ -53,8 +53,10 @@ export interface RadialMenuProps {
   pointerId?: number;
   /** `KeyboardEvent.code` of a held opening key; releasing it selects by pointer direction. */
   holdCode?: string;
-  /** Delay before drawing, ms (default 250). */
+  /** Delay before drawing, ms (default 0: draw at once; ADR-076). Flicks still work meanwhile. */
   drawDelay?: number;
+  /** How long after opening a mouse or pen flick selects, ms (default 250). 0 disables flicks. */
+  flickWindow?: number;
   /** Pointer travel that counts as a flick, px (default 40). */
   flickDistance?: number;
   onSelect(id: string): void;
@@ -88,7 +90,8 @@ function swallowNextClick() {
  * Radial context menu (PLAN 9.4, ADR-046). At most eight items by direction with a fixed Repeat
  * slot. Fully controlled: the app decides the contents and receives `onSelect` / `onCancel`.
  *
- * - Flick: before it has drawn, moving `flickDistance` toward an item selects it.
+ * - Flick: within `flickWindow` of opening (mouse, pen), moving `flickDistance` toward an item
+ *   selects it, whether or not it has drawn yet.
  * - Held (touch long-press, held key): drag to an item and lift.
  * - It never acts on a click that began before it opened, and the click that cancels it is eaten.
  * - Keyboard: arrows move, Enter selects, digits 1-8 pick a slot clockwise from north.
@@ -102,7 +105,8 @@ export function RadialMenu({
   held = false,
   pointerId,
   holdCode,
-  drawDelay = 250,
+  drawDelay = 0,
+  flickWindow = 250,
   flickDistance = 40,
   onSelect,
   onCancel,
@@ -118,7 +122,8 @@ export function RadialMenu({
   const pillW = compact ? 88 : 128;
   const ring = touch ? 140 : compact ? 124 : 136;
   const pillH = touch ? 40 : 34;
-  const instant = source === 'keyboard' || source === 'touch' || drawDelay <= 0;
+  const flicks = (source === 'mouse' || source === 'pen') && flickWindow > 0;
+  const instant = !flicks || drawDelay <= 0;
   const [drawn, setDrawn] = useState(instant);
   const [hover, setHover] = useState<RadialSlot | null>(null);
   const spring = useSpring('fast');
@@ -176,12 +181,26 @@ export function RadialMenu({
 
   const draw = useCallback(() => setDrawn(true), []);
 
-  // The visible delay: experts flick before this fires.
+  // An optional visible delay (off by default): experts can flick before this fires.
   useEffect(() => {
     if (instant) return;
     const t = setTimeout(draw, drawDelay);
     return () => clearTimeout(t);
   }, [instant, drawDelay, draw]);
+
+  // The flick window. Once the menu is visible a flick is measured from the visible centre, so a
+  // menu pushed in from a screen edge (pointer away from its centre) takes no flicks once drawn.
+  const flickOpen = useRef(flicks);
+  useEffect(() => {
+    if (!flicks) return;
+    const t = setTimeout(
+      () => {
+        flickOpen.current = false;
+      },
+      Math.max(flickWindow, instant ? 0 : drawDelay),
+    );
+    return () => clearTimeout(t);
+  }, [flicks, flickWindow, instant, drawDelay]);
 
   // Focus moves are requested by state and applied after the render that drew the items.
   const [focusReq, setFocusReq] = useState<{ slot: RadialSlot; n: number } | null>(null);
@@ -208,17 +227,23 @@ export function RadialMenu({
       const s = slotFromVector(p.x - o.x, p.y - o.y, L.drawn ? INNER : flickDistance);
       return s && L.enabledSlots.has(s) ? s : null;
     };
+    const flickSlot = (p: { x: number; y: number }) => {
+      const L = live.current;
+      if (L.drawn && Math.hypot(L.center.x - L.at.x, L.center.y - L.at.y) > 1) return null;
+      const s = slotFromVector(p.x - L.at.x, p.y - L.at.y, flickDistance);
+      return s && L.enabledSlots.has(s) ? s : null;
+    };
 
     function move(e: PointerEvent) {
       last.current = { x: e.clientX, y: e.clientY };
       const L = live.current;
-      if (!L.drawn) {
-        // Blind flick: a movement toward an item selects it before anything has drawn.
-        if (!holdingPointer.current && !holdCode) {
-          const s = slotFor(last.current);
+      if (!L.drawn || flickOpen.current) {
+        // Flick: a quick movement toward an item selects it, drawn or not.
+        if (!holdingPointer.current && !holdCode && flickOpen.current) {
+          const s = flickSlot(last.current);
           if (s) finish(s, 'select');
         }
-        return;
+        if (!L.drawn) return;
       }
       if (holdingPointer.current || holdCode) setHover(slotFor(last.current));
     }

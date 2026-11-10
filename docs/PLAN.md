@@ -742,7 +742,7 @@ Owner-approved 2026-11-09 from the research report `docs/ux-research/reports/CAD
 - **Sketch curves:** B-splines by control points and through points (degree 3 default, open or closed), ellipses and elliptic arcs; tangent constraints between any curves (G1 at shared ends), a curvature-continuous (G2) constraint where the solver can express it (otherwise an `unsupported` conflict, never dropped); the Pencil recognises ovals as ellipses and smooth strokes as splines; offset, trim/extend, mirror and convert work on the new curves where OCCT can (otherwise a clear refusal). The kernel builds exact B-spline and elliptic edges for profiles. Conics beyond ellipses are deferred.
 - **Accept:**
   - E2E: orbiting from a point on a face keeps that point under the cursor within 2 px; panning then orbiting never pivots in empty space; the pivot marker is visible during the drag. Each preset's mapping is exercised (left box-select window and crossing, right/middle orbit and pan, right click opens the radial menu).
-  - E2E: a flick on the radial menu runs its command before the menu draws; Space repeats; the menu is reachable with touch (long-press) and Pencil.
+  - E2E: a flick on the radial menu runs its command (inside the flick window; since ADR-076 the menu draws at once); Space repeats; the menu is reachable with touch (long-press) and Pencil.
   - E2E: Tab cycles overlapping candidates; the chooser order is identical across runs.
   - E2E: with a non-QWERTY layout emulated, shortcuts still fire by physical key; the keymap editor flags Ctrl+W / Ctrl+T as browser shortcuts.
   - E2E: shortening an extrude so a fillet loses its edge shows "needs attention" naming the extrude; selecting the message selects the extrude. An over-constrained sketch highlights the set and proposes the last-added constraint.
@@ -796,6 +796,33 @@ Owner request 2026-11-10 (moved up from P2): before drawings and assemblies, so 
   - **Part number (D4):** the user-set part number when present, else document name + configuration name (e.g. "Bracket-Long"); export file names follow it and collisions warn, never overwrite.
   - **Model and UX rules** (from the report's P0 list): sparse overrides keyed by id over an implicit Default; edit scope decided at the point of edit (an inherited value edits Default, i.e. all configurations, with an undoable "Changed in all N configurations" toast; an overridden value edits only the active configuration; "override in this configuration" is an explicit chip, never a sticky mode); an always-visible active-configuration pill with a tinted edge off Default; override markers with "Reset to default"; inline table; explicit per-configuration suppression and never auto-suppression of new features; needs-attention per configuration; a background rebuild-all check with per-configuration status, cached by resolved-value hash, and no forced rebuild on save; a consumer whose configuration id is missing is "needs attention", never a silent fall-back to Default. Typed inputs, rules and derived configurations are deferred (D5, D6).
 - **Accept:** golden tests regenerate each configuration of a reference part and match the expected masses (FreeCAD-checked like §12A); E2E creates two configurations from the UI, switches between them, suppresses a feature in one only, exports both, and save → reload keeps everything; a merge test resolves edits to different configurations without conflict and flags the same cell edited on both sides.
+
+### M3.8 — Sketch input polish
+
+Owner feedback 2026-11-10. Small; right after M3.7, before M4 (drawings dimension sketches and edges, so sketch input should be solid first).
+
+- **Implied constraints on every tool.** Today the inference engine proposes coincident (and horizontal/vertical, on-curve, tangent) snaps, and the line tool commits them; other tools don't consistently. For example, the Point tool ignores a click on an existing point instead of merging, and a circle centre or a spline pole placed on an existing point may not bind.
+  - Audit every sketch tool: line, rectangle (each variant), circle, arc, slot, polygon, point, ellipse, elliptic arc, both spline tools, and the Pencil-recognised shapes.
+  - Every placed point that lands on a visible point **reuses that point** (or adds `coincident`). Points landing on a curve add point-on-curve, and axis or origin alignment adds horizontal or vertical, exactly as the glyph promised while hovering.
+  - What is shown is what is committed. A test checks that the glyphs shown match the constraints written, for every tool.
+- **Finish a tool without Esc.**
+  - **Mouse:** a right click (press and release, no drag) **finishes the current chain or shape**: it ends a line chain where it is, and commits an open spline with the points placed so far. With nothing in progress it opens the radial menu, as today, and right-drag still navigates. Esc keeps working; Enter and double-click still finish splines.
+  - **Touch and Pencil:** a visible **Finish** button beside the sketch toolbar's Done ✕ while a chain or spline is in progress. Double-tap still works.
+  - The behaviour is configurable in Settings → Navigation ("Right click finishes the current sketch tool", on by default) and listed in the shortcut overlay.
+- **Radial menu customization** (owner, 2026-11-10). The menu already opens at once (ADR-076); users can now choose what's on it.
+  - **Per context.** Contexts: empty space, face, edge, vertex, body, feature (tree), sketch idle, sketch with a selection. Each context has up to seven items plus the fixed Repeat slot. Users choose which command sits in which direction, picking only from the command registry.
+  - **Stable positions.** An item that doesn't apply to the current selection shows disabled instead of disappearing, so muscle memory and flicks keep working.
+  - **Editor.** Settings → Radial menu shows the ring for a chosen context. Drag commands from a searchable list into a slot, or clear a slot. Keyboard alternative: pick a slot, then pick a command. Includes Reset for each context and Reset all.
+  - **Persistence.** Stored with the keymap: per device, exported and imported with settings. Schema-versioned, with unknown command ids dropped and reported.
+  - **Flick window setting.** 0–400 ms, default 250; 0 turns flicks off. An optional "Draw after a delay" setting for blind-flick purists (default off).
+  - **Accept:** unit tests for the layout, persistence and migration of a customised ring; E2E for customising the face context, reloading, then a right-click shows the custom ring and a flick runs the custom item; the editor passes axe, keyboard-only checks and phone width.
+- **Two-point splines.** A through-point spline with two points is valid: a straight cubic with free end tangents that can be dragged or constrained later. A control-point spline with two poles is a degree-1 segment, offered as such. Today a two-point spline can't be finished.
+- **Accept (sketch items):**
+  - Unit tests per tool: glyphs shown equal constraints committed. Dropping a point on an existing point merges it, with no duplicate.
+  - E2E (mouse): a right click ends a line chain and a three-point spline. With nothing in progress it opens the radial menu.
+  - E2E (touch): Finish ends a chain.
+  - A two-point spline finishes and regenerates.
+  - No change to right-drag navigation.
 
 ### M4 — Drawings
 
