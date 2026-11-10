@@ -1,6 +1,7 @@
 import type { FeatureStatus, FeatureType, Id } from '@wren-cad/contracts';
 import { ListTree } from 'lucide-react';
 import {
+  Fragment,
   type KeyboardEvent,
   type MouseEvent,
   type PointerEvent,
@@ -151,6 +152,8 @@ export interface FeatureTreeProps {
 
 const clampIdx = (n: number, max: number) => Math.max(0, Math.min(max, n));
 const NO_FOLDERS: readonly TreeFolder[] = [];
+/** The touch rollback bar's in-flow gap: its 44 px target. */
+const BAR_GAP_PX = 44;
 
 /**
  * Feature history (PLAN 2.2, 9.1): type icons, inline rename, failure badges with a one-line
@@ -237,6 +240,7 @@ export function FeatureTree({
   const [notice, setNotice] = useState('');
   const [geom, setGeom] = useState<{ stop: number[] }>({ stop: [] });
   const [barDrag, setBarDrag] = useState<number | null>(null);
+  const gapRef = useRef<HTMLDivElement>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
   const rejectSpring = useSpring('reject');
   const noticeTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -359,9 +363,15 @@ export function FeatureTree({
   useLayoutEffect(() => {
     const measure = () => {
       const heads = visible.filter((r) => !r.nestedSketch);
-      const tops = heads.map((h) => rows.current.get(h.key)?.offsetTop ?? 0);
+      // The touch bar's gap is in the flow: stops are the layout without it, so they do not move
+      // while the bar (and its gap) is dragged from one position to the next.
+      const gapEl = gapRef.current;
+      const gapTop = gapEl ? gapEl.offsetTop : Number.POSITIVE_INFINITY;
+      const gapH = gapEl ? gapEl.offsetHeight : 0;
+      const nat = (y: number) => (y >= gapTop + gapH - 0.5 ? y - gapH : y);
+      const tops = heads.map((h) => nat(rows.current.get(h.key)?.offsetTop ?? 0));
       const lastEl = rows.current.get(visible[visible.length - 1]?.key ?? '');
-      const bottom = lastEl ? lastEl.offsetTop + lastEl.offsetHeight : 0;
+      const bottom = lastEl ? nat(lastEl.offsetTop) + lastEl.offsetHeight : 0;
       // y of each rollback position: above the first head row at or after it
       const stop: number[] = [];
       for (let r = 0; r <= n; r++) {
@@ -390,6 +400,7 @@ export function FeatureTree({
     folders,
     leave,
     info,
+    rollback,
   ]);
 
   useEffect(() => () => clearTimeout(noticeTimer.current), []);
@@ -611,13 +622,28 @@ export function FeatureTree({
   }
 
   /* ----------------------------------------------------------- rollback bar */
+  // Touch: the 44 px bar gets its own row-height gap in the list flow, right where it sits, so it
+  // never overlaps the rows above and below it (a tap on a row's centre selects that row).
+  const barGapKey =
+    touch && onRollback
+      ? (visible.find((r) => !r.nestedSketch && r.i >= rollback)?.key ?? null)
+      : null;
+  const barOffset = touch && onRollback ? BAR_GAP_PX / 2 : 0;
+  const barGap =
+    touch && onRollback ? (
+      <div ref={gapRef} aria-hidden data-testid="rollback-gap" style={{ height: BAR_GAP_PX }} />
+    ) : null;
   const rollbackFromY = (clientY: number) => {
     const top = wrap.current?.getBoundingClientRect().top ?? 0;
     const y = clientY - top;
+    // Back to the layout without the bar's own gap, which sits at the current position.
+    const g = barGap ? BAR_GAP_PX : 0;
+    const at = geom.stop[rollback] ?? 0;
+    const yn = y < at ? y : y <= at + g ? at : y - g;
     let best = stops[0] ?? 0;
     let bestD = Number.POSITIVE_INFINITY;
     for (const r of stops) {
-      const d = Math.abs((geom.stop[r] ?? 0) - y);
+      const d = Math.abs((geom.stop[r] ?? 0) - yn);
       if (d < bestD) {
         bestD = d;
         best = r;
@@ -627,13 +653,13 @@ export function FeatureTree({
   };
   function barDown(e: PointerEvent<HTMLElement>) {
     e.currentTarget.setPointerCapture(e.pointerId);
-    setBarDrag(geom.stop[rollback] ?? 0);
+    setBarDrag((geom.stop[rollback] ?? 0) + barOffset);
   }
   function barMove(e: PointerEvent<HTMLElement>) {
     if (barDrag === null) return;
     const { index, y } = rollbackFromY(e.clientY);
-    const lo = geom.stop[0] ?? 0;
-    const hi = geom.stop[n] ?? 0;
+    const lo = (geom.stop[0] ?? 0) + barOffset;
+    const hi = (geom.stop[n] ?? 0) + (barGap ? BAR_GAP_PX : 0);
     setBarDrag(Math.max(lo, Math.min(hi, y)));
     if (index !== rollback) onRollback?.(index);
   }
@@ -825,7 +851,8 @@ export function FeatureTree({
     folderIdsFor,
     targetsOf,
   };
-  const barY = barDrag ?? geom.stop[rollback];
+  const barY =
+    barDrag ?? (geom.stop[rollback] !== undefined ? geom.stop[rollback] + barOffset : undefined);
   const rowH = touch ? 'min-h-11' : 'min-h-8';
   const menuRow = menu ? rowByKey.get(menu.key) : undefined;
   const menuFeature = menuRow && menuRow.kind === 'feature' ? indexOf.get(menuRow.id) : undefined;
@@ -835,6 +862,239 @@ export function FeatureTree({
   const dragging = drag && Math.abs(drag.dy) > 4 ? drag : null;
   const activeSlot = dragging && dragging.slot !== null ? dragging.slots[dragging.slot] : undefined;
   const indentPx = touch ? 36 : 28;
+
+  const renderRow = (row: TreeRow) => {
+    const isMoving =
+      dragging !== null &&
+      (dragging.key === row.key || (dragging.kind === 'folder' && row.folderId === dragging.id));
+    const dy = isMoving ? (dragging?.dy ?? 0) : 0;
+    const isShaking = shake?.key === row.key;
+
+    if (row.kind === 'folder') {
+      const folder = folders.find((f) => f.id === row.id);
+      if (!folder) return null;
+      const open = !collapsed.has(folder.id);
+      const run = folderRange(features, folder);
+      const rolled = run ? run.start >= rollback : false;
+      const allSuppressed = folder.features.every(
+        (id) => features[indexOf.get(id) ?? -1]?.suppressed,
+      );
+      const dropTarget =
+        !!activeSlot &&
+        (activeSlot.kind === 'into' || activeSlot.kind === 'stay') &&
+        activeSlot.folderId === folder.id;
+      return (
+        <FolderRow
+          key={row.key}
+          folderId={folder.id}
+          name={folder.name}
+          count={folder.features.length}
+          level={row.level}
+          pos={row.pos}
+          size={row.size}
+          open={open}
+          touch={touch}
+          focusable={activeFocus === row.key}
+          renaming={renaming === row.key}
+          rolled={rolled}
+          suppressed={allSuppressed}
+          dropTarget={dropTarget}
+          dragging={isMoving}
+          dy={dy}
+          draggable={!!onMoveFolder}
+          description={[
+            `Folder with ${folder.features.length} ${folder.features.length === 1 ? 'feature' : 'features'}.`,
+            open ? 'Expanded.' : 'Collapsed.',
+            allSuppressed ? 'All suppressed.' : '',
+            rolled ? 'Rolled back.' : '',
+          ]
+            .filter(Boolean)
+            .join(' ')}
+          rowRef={(el) => {
+            if (el) rows.current.set(row.key, el);
+            else rows.current.delete(row.key);
+          }}
+          rootProps={{
+            onFocus: (e) => {
+              if (e.target === e.currentTarget) setFocusKey(row.key);
+            },
+            onClick: () => {
+              setFocusKey(row.key);
+              if (touch) setCollapsed(folder.id, open);
+            },
+            onKeyDown: (e) => rowKey(e, row),
+            onContextMenu: (e) => {
+              e.preventDefault();
+              setFocusKey(row.key);
+              setMenu({ key: row.key, anchor: { x: e.clientX, y: e.clientY } });
+            },
+            ...longPress(row.key),
+          }}
+          gripProps={{
+            onPointerDown: (e) => gripDown(e, row),
+            onPointerMove: gripMove,
+            onPointerUp: gripUp,
+            onPointerCancel: () => setDrag(null),
+          }}
+          onToggle={() => setCollapsed(folder.id, open)}
+          onMenu={(anchor) => {
+            setFocusKey(row.key);
+            setMenu({ key: row.key, anchor });
+          }}
+          onStartRename={() => onRenameFolder && setRenaming(row.key)}
+          onCommitRename={(name) => {
+            setRenaming(null);
+            onRenameFolder?.(folder.id, name);
+            refocus(row.key);
+          }}
+          onCancelRename={() => {
+            setRenaming(null);
+            refocus(row.key);
+          }}
+        />
+      );
+    }
+
+    const f = features[row.i];
+    if (!f) return null;
+    const i = row.i;
+    const nested = row.nestedSketch;
+    const kids = nesting.childrenOf.get(f.id) ?? [];
+    const open = kids.length > 0 && expanded.has(f.id);
+    const shared = f.type === 'sketch' ? sharedCount(nesting, f.id) : 0;
+    const meta = featureMeta[f.type];
+    const status = statusById.get(f.id);
+    const st = describeStatus(status, f.name, nameOf);
+    const rolled = i >= rollback || status?.state === 'rolledBack';
+    const suppressed = f.suppressed || status?.state === 'suppressed';
+    const selected = effective.includes(f.id);
+    const isSketch = f.type === 'sketch';
+    const shown = isSketch ? isShown(f) : false;
+    const stateText = [
+      suppressed ? 'suppressed' : '',
+      rolled ? 'rolled back' : '',
+      status?.state === 'error' ? 'error' : '',
+      status?.state === 'needsAttention' ? 'needs attention' : '',
+      status?.state === 'blocked' ? 'blocked' : '',
+    ]
+      .filter(Boolean)
+      .join(', ');
+    const auto = f.visibility === undefined || f.visibility === 'auto';
+    const hidden = [
+      `${meta.label}${stateText ? `, ${stateText}` : ''}.`,
+      kids.length ? `Contains ${kids.length === 1 ? 'a sketch' : `${kids.length} sketches`}.` : '',
+      shared ? `Used by ${shared} features.` : '',
+      isSketch && onSketchVisibility
+        ? `${shown ? 'Shown' : 'Hidden'} in the viewport${auto ? ' (automatic)' : ''}.`
+        : '',
+      row.folderId ? `In the folder ${folderName(row.folderId)}.` : '',
+      lineage?.parents.includes(f.id) ? 'The selected feature is built from this one.' : '',
+      lineage?.children.includes(f.id) ? 'Built from the selected feature.' : '',
+      st?.hint,
+    ]
+      .filter(Boolean)
+      .join(' ');
+    const indent = row.level - 1;
+    return (
+      <div
+        key={row.key}
+        ref={(el) => {
+          if (el) rows.current.set(row.key, el);
+          else rows.current.delete(row.key);
+        }}
+        role="treeitem"
+        aria-level={row.level}
+        aria-posinset={row.pos}
+        aria-setsize={row.size}
+        aria-selected={selected}
+        aria-expanded={kids.length ? open : undefined}
+        tabIndex={activeFocus === row.key ? 0 : -1}
+        data-feature-id={f.id}
+        data-state={status?.state ?? 'ok'}
+        data-folder={row.folderId}
+        data-lineage={
+          lineage?.parents.includes(f.id)
+            ? 'parent'
+            : lineage?.children.includes(f.id)
+              ? 'child'
+              : undefined
+        }
+        data-nested={nested || undefined}
+        onFocus={(e) => {
+          if (e.target === e.currentTarget) setFocusKey(row.key);
+        }}
+        onClick={(e) => {
+          setFocusKey(row.key);
+          clickFeature(e, f.id);
+        }}
+        onKeyDown={(e) => rowKey(e, row)}
+        {...longPress(row.key)}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          setFocusKey(row.key);
+          setMenu({ key: row.key, anchor: { x: e.clientX, y: e.clientY } });
+        }}
+        style={isMoving ? { transform: `translateY(${dy}px)`, zIndex: 2 } : undefined}
+        className={cn(
+          'group/row relative list-none outline-none',
+          'data-[lineage=child]:shadow-[inset_3px_0_0_var(--color-warning)] data-[lineage=parent]:shadow-[inset_3px_0_0_var(--color-accent)]',
+          isMoving && 'opacity-90',
+        )}
+      >
+        <FeatureRowBody
+          shakeKey={isShaking ? (shake?.n ?? 0) : 0}
+          isShaking={isShaking}
+          rejectSpring={rejectSpring}
+          indent={indent}
+          indentPx={indentPx}
+          rowH={rowH}
+          isMoving={isMoving}
+          selected={selected}
+          nested={nested}
+          anyNested={anyNested}
+          kidCount={kids.length}
+          open={open}
+          chevronW={chevronW}
+          touch={touch}
+          canMove={!!onMove}
+          onGripDown={(e) => gripDown(e, row)}
+          onGripMove={gripMove}
+          onGripUp={gripUp}
+          onGripCancel={() => setDrag(null)}
+          onToggle={toggle}
+          f={f}
+          st={st}
+          rolled={rolled}
+          suppressed={suppressed}
+          renaming={renaming === row.key}
+          rowKey={row.key}
+          onRename={onRename}
+          setRenaming={setRenaming}
+          refocus={refocus}
+          hidden={hidden}
+          onSelect={onSelect}
+          shared={shared}
+          isSketch={isSketch}
+          onSketchVisibility={onSketchVisibility}
+          shown={shown}
+          setFocusKey={setFocusKey}
+          setMenu={setMenu}
+        />
+        {confirm === f.id ? (
+          <DeletePrompt
+            name={f.name}
+            sketches={kids.length}
+            touch={touch}
+            onAnswer={(also) => answerDelete(f.id, also)}
+            onCancel={() => {
+              setConfirm(null);
+              refocus(row.key);
+            }}
+          />
+        ) : null}
+      </div>
+    );
+  };
 
   return (
     <div className={cn('flex min-h-0 flex-col', className)}>
@@ -846,241 +1106,13 @@ export function FeatureTree({
           aria-multiselectable={effective.length > 1 || undefined}
           className="m-0 list-none p-0"
         >
-          {visible.map((row) => {
-            const isMoving =
-              dragging !== null &&
-              (dragging.key === row.key ||
-                (dragging.kind === 'folder' && row.folderId === dragging.id));
-            const dy = isMoving ? (dragging?.dy ?? 0) : 0;
-            const isShaking = shake?.key === row.key;
-
-            if (row.kind === 'folder') {
-              const folder = folders.find((f) => f.id === row.id);
-              if (!folder) return null;
-              const open = !collapsed.has(folder.id);
-              const run = folderRange(features, folder);
-              const rolled = run ? run.start >= rollback : false;
-              const allSuppressed = folder.features.every(
-                (id) => features[indexOf.get(id) ?? -1]?.suppressed,
-              );
-              const dropTarget =
-                !!activeSlot &&
-                (activeSlot.kind === 'into' || activeSlot.kind === 'stay') &&
-                activeSlot.folderId === folder.id;
-              return (
-                <FolderRow
-                  key={row.key}
-                  folderId={folder.id}
-                  name={folder.name}
-                  count={folder.features.length}
-                  level={row.level}
-                  pos={row.pos}
-                  size={row.size}
-                  open={open}
-                  touch={touch}
-                  focusable={activeFocus === row.key}
-                  renaming={renaming === row.key}
-                  rolled={rolled}
-                  suppressed={allSuppressed}
-                  dropTarget={dropTarget}
-                  dragging={isMoving}
-                  dy={dy}
-                  draggable={!!onMoveFolder}
-                  description={[
-                    `Folder with ${folder.features.length} ${folder.features.length === 1 ? 'feature' : 'features'}.`,
-                    open ? 'Expanded.' : 'Collapsed.',
-                    allSuppressed ? 'All suppressed.' : '',
-                    rolled ? 'Rolled back.' : '',
-                  ]
-                    .filter(Boolean)
-                    .join(' ')}
-                  rowRef={(el) => {
-                    if (el) rows.current.set(row.key, el);
-                    else rows.current.delete(row.key);
-                  }}
-                  rootProps={{
-                    onFocus: (e) => {
-                      if (e.target === e.currentTarget) setFocusKey(row.key);
-                    },
-                    onClick: () => {
-                      setFocusKey(row.key);
-                      if (touch) setCollapsed(folder.id, open);
-                    },
-                    onKeyDown: (e) => rowKey(e, row),
-                    onContextMenu: (e) => {
-                      e.preventDefault();
-                      setFocusKey(row.key);
-                      setMenu({ key: row.key, anchor: { x: e.clientX, y: e.clientY } });
-                    },
-                    ...longPress(row.key),
-                  }}
-                  gripProps={{
-                    onPointerDown: (e) => gripDown(e, row),
-                    onPointerMove: gripMove,
-                    onPointerUp: gripUp,
-                    onPointerCancel: () => setDrag(null),
-                  }}
-                  onToggle={() => setCollapsed(folder.id, open)}
-                  onMenu={(anchor) => {
-                    setFocusKey(row.key);
-                    setMenu({ key: row.key, anchor });
-                  }}
-                  onStartRename={() => onRenameFolder && setRenaming(row.key)}
-                  onCommitRename={(name) => {
-                    setRenaming(null);
-                    onRenameFolder?.(folder.id, name);
-                    refocus(row.key);
-                  }}
-                  onCancelRename={() => {
-                    setRenaming(null);
-                    refocus(row.key);
-                  }}
-                />
-              );
-            }
-
-            const f = features[row.i];
-            if (!f) return null;
-            const i = row.i;
-            const nested = row.nestedSketch;
-            const kids = nesting.childrenOf.get(f.id) ?? [];
-            const open = kids.length > 0 && expanded.has(f.id);
-            const shared = f.type === 'sketch' ? sharedCount(nesting, f.id) : 0;
-            const meta = featureMeta[f.type];
-            const status = statusById.get(f.id);
-            const st = describeStatus(status, f.name, nameOf);
-            const rolled = i >= rollback || status?.state === 'rolledBack';
-            const suppressed = f.suppressed || status?.state === 'suppressed';
-            const selected = effective.includes(f.id);
-            const isSketch = f.type === 'sketch';
-            const shown = isSketch ? isShown(f) : false;
-            const stateText = [
-              suppressed ? 'suppressed' : '',
-              rolled ? 'rolled back' : '',
-              status?.state === 'error' ? 'error' : '',
-              status?.state === 'needsAttention' ? 'needs attention' : '',
-              status?.state === 'blocked' ? 'blocked' : '',
-            ]
-              .filter(Boolean)
-              .join(', ');
-            const auto = f.visibility === undefined || f.visibility === 'auto';
-            const hidden = [
-              `${meta.label}${stateText ? `, ${stateText}` : ''}.`,
-              kids.length
-                ? `Contains ${kids.length === 1 ? 'a sketch' : `${kids.length} sketches`}.`
-                : '',
-              shared ? `Used by ${shared} features.` : '',
-              isSketch && onSketchVisibility
-                ? `${shown ? 'Shown' : 'Hidden'} in the viewport${auto ? ' (automatic)' : ''}.`
-                : '',
-              row.folderId ? `In the folder ${folderName(row.folderId)}.` : '',
-              lineage?.parents.includes(f.id) ? 'The selected feature is built from this one.' : '',
-              lineage?.children.includes(f.id) ? 'Built from the selected feature.' : '',
-              st?.hint,
-            ]
-              .filter(Boolean)
-              .join(' ');
-            const indent = row.level - 1;
-            return (
-              <div
-                key={row.key}
-                ref={(el) => {
-                  if (el) rows.current.set(row.key, el);
-                  else rows.current.delete(row.key);
-                }}
-                role="treeitem"
-                aria-level={row.level}
-                aria-posinset={row.pos}
-                aria-setsize={row.size}
-                aria-selected={selected}
-                aria-expanded={kids.length ? open : undefined}
-                tabIndex={activeFocus === row.key ? 0 : -1}
-                data-feature-id={f.id}
-                data-state={status?.state ?? 'ok'}
-                data-folder={row.folderId}
-                data-lineage={
-                  lineage?.parents.includes(f.id)
-                    ? 'parent'
-                    : lineage?.children.includes(f.id)
-                      ? 'child'
-                      : undefined
-                }
-                data-nested={nested || undefined}
-                onFocus={(e) => {
-                  if (e.target === e.currentTarget) setFocusKey(row.key);
-                }}
-                onClick={(e) => {
-                  setFocusKey(row.key);
-                  clickFeature(e, f.id);
-                }}
-                onKeyDown={(e) => rowKey(e, row)}
-                {...longPress(row.key)}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  setFocusKey(row.key);
-                  setMenu({ key: row.key, anchor: { x: e.clientX, y: e.clientY } });
-                }}
-                style={isMoving ? { transform: `translateY(${dy}px)`, zIndex: 2 } : undefined}
-                className={cn(
-                  'group/row relative list-none outline-none',
-                  'data-[lineage=child]:shadow-[inset_3px_0_0_var(--color-warning)] data-[lineage=parent]:shadow-[inset_3px_0_0_var(--color-accent)]',
-                  isMoving && 'opacity-90',
-                )}
-              >
-                <FeatureRowBody
-                  shakeKey={isShaking ? (shake?.n ?? 0) : 0}
-                  isShaking={isShaking}
-                  rejectSpring={rejectSpring}
-                  indent={indent}
-                  indentPx={indentPx}
-                  rowH={rowH}
-                  isMoving={isMoving}
-                  selected={selected}
-                  nested={nested}
-                  anyNested={anyNested}
-                  kidCount={kids.length}
-                  open={open}
-                  chevronW={chevronW}
-                  touch={touch}
-                  canMove={!!onMove}
-                  onGripDown={(e) => gripDown(e, row)}
-                  onGripMove={gripMove}
-                  onGripUp={gripUp}
-                  onGripCancel={() => setDrag(null)}
-                  onToggle={toggle}
-                  f={f}
-                  st={st}
-                  rolled={rolled}
-                  suppressed={suppressed}
-                  renaming={renaming === row.key}
-                  rowKey={row.key}
-                  onRename={onRename}
-                  setRenaming={setRenaming}
-                  refocus={refocus}
-                  hidden={hidden}
-                  onSelect={onSelect}
-                  shared={shared}
-                  isSketch={isSketch}
-                  onSketchVisibility={onSketchVisibility}
-                  shown={shown}
-                  setFocusKey={setFocusKey}
-                  setMenu={setMenu}
-                />
-                {confirm === f.id ? (
-                  <DeletePrompt
-                    name={f.name}
-                    sketches={kids.length}
-                    touch={touch}
-                    onAnswer={(also) => answerDelete(f.id, also)}
-                    onCancel={() => {
-                      setConfirm(null);
-                      refocus(row.key);
-                    }}
-                  />
-                ) : null}
-              </div>
-            );
-          })}
+          {visible.map((row) => (
+            <Fragment key={row.key}>
+              {row.key === barGapKey ? barGap : null}
+              {renderRow(row)}
+            </Fragment>
+          ))}
+          {barGapKey === null ? barGap : null}
         </div>
 
         {activeSlot ? (

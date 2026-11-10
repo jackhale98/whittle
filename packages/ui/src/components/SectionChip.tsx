@@ -41,7 +41,7 @@ export function SectionChip({
       aria-label="Section view"
       data-testid="section-chip"
       className={cn(
-        'w-panel pointer-events-auto m-0 flex w-max max-w-[calc(100vw-1.5rem)] flex-wrap items-center justify-center gap-1 rounded-[1.75rem] p-1 pl-3.5',
+        'w-panel pointer-events-auto m-0 flex border-0 w-max max-w-[calc(100vw-1.5rem)] flex-wrap items-center justify-center gap-1 rounded-[1.75rem] p-1 pl-3.5',
         className,
       )}
     >
