@@ -230,6 +230,7 @@ test.describe('presets', () => {
   test('the settings panel switches presets, persists them, and the mapping follows', async ({
     page,
   }) => {
+    test.slow(); // a dozen drags and a reload: past 30 s on a loaded CI runner
     const s = await boxSetup(page);
     const cx = (s.min.x + s.max.x) / 2;
     const cy = (s.min.y + s.max.y) / 2;

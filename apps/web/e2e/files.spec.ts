@@ -4,6 +4,7 @@ import type { WrenDoc } from '@wren-cad/contracts';
 import { projectCodec } from '@wren-cad/document';
 import { docWith, fid } from './fixtures';
 import { app, boot, palette } from './helpers';
+import { PERF_FACTOR } from './perf/budgets';
 
 /**
  * Files and the library (M1 gate defects 2, 3, 5, 6): opening a .wrencad never overwrites a
@@ -238,7 +239,10 @@ test('a cached document renders before the kernel is ready (≤ 500 ms), then go
   console.log(`cached open: ${JSON.stringify(marks)}`);
   // The PLAN §10 budget is asserted on an otherwise idle browser (one worker, as on CI): parallel
   // SwiftShader pages on one machine make absolute times meaningless. The order always holds.
-  if (info.config.workers === 1 || process.env.CI) expect(marks.cachedBodyMs).toBeLessThan(500);
+  // Software GL on a shared CI runner is scaled like every other web time budget (ADR-010,
+  // PERF_FACTOR); the ordering below is the functional guarantee and stays exact.
+  if (info.config.workers === 1 || process.env.CI)
+    expect(marks.cachedBodyMs).toBeLessThan(500 * PERF_FACTOR);
   else info.annotations.push({ type: 'cachedBodyMs', description: String(marks.cachedBodyMs) });
   expect(marks.cachedBodyMs).toBeLessThan(marks.kernelReadyMs as number);
   expect(marks.cachedBodyMs).toBeLessThan(marks.firstBodyMs as number);
