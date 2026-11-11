@@ -1,65 +1,16 @@
 /**
  * The radial menu (PLAN 9.4, ADR-046/049) for the app: contents by selection type (`radial.ts`),
- * Repeat = the last command. Lazy: the menu, its icons and its layout maths load on the first
- * right click, long-press or held key, never on the initial route.
+ * or the user's own ring for that context (`radial-config.ts`, ADR-085). Repeat = the last
+ * command. Lazy: the menu, its icons and its layout maths load on the first right click,
+ * long-press or held key, never on the initial route.
  */
 
-import {
-  canFolder,
-  type RadialItem,
-  RadialMenu,
-  sketchCurveTools,
-  sketchTools,
-  tools,
-} from '@wren-cad/ui';
-import {
-  CircleMinus,
-  FolderInput,
-  Maximize,
-  Redo2,
-  Scissors,
-  Undo2,
-  Box as ViewIcon,
-  X as XIcon,
-} from 'lucide-react';
-import type { ReactNode } from 'react';
+import { canFolder, RadialMenu, tools } from '@wren-cad/ui';
 import { useObservable } from '../app/observable';
-import {
-  modelRadialIds,
-  RADIAL_ADD_FOLDER,
-  type RadialSelection,
-  sketchRadialIds,
-} from '../app/radial';
+import { modelRadialIds, type RadialSelection, sketchRadialIds } from '../app/radial';
+import { contextOf, customRing, loadRadialConfig, ringToItems } from '../app/radial-config';
 import type { Workbench } from '../app/workbench';
-
-const ic = 'size-[18px]';
-
-const EXTRA: Record<string, { label: string; icon: ReactNode }> = {
-  [RADIAL_ADD_FOLDER]: {
-    label: 'Add to new folder',
-    icon: <FolderInput className={ic} aria-hidden />,
-  },
-  cut: { label: 'Cut', icon: <CircleMinus className={ic} aria-hidden /> },
-  section: { label: 'Section', icon: <Scissors className={ic} aria-hidden /> },
-  fit: { label: 'Fit view', icon: <Maximize className={ic} aria-hidden /> },
-  iso: { label: 'Isometric', icon: <ViewIcon className={ic} aria-hidden /> },
-  undo: { label: 'Undo', icon: <Undo2 className={ic} aria-hidden /> },
-  redo: { label: 'Redo', icon: <Redo2 className={ic} aria-hidden /> },
-  'sketch:finish': { label: 'Finish sketch', icon: <XIcon className={ic} aria-hidden /> },
-};
-
-function itemFor(id: string): RadialItem {
-  const extra = EXTRA[id];
-  if (extra) return { id, ...extra };
-  if (id.startsWith('sketch:')) {
-    const tool = id.slice(7);
-    const spec = [...sketchTools, ...sketchCurveTools].find((t) => t.id === tool);
-    if (spec) return { id, label: spec.label, icon: spec.icon };
-  }
-  const t = tools.find((x) => x.id === id);
-  if (t) return { id, label: t.label, icon: <t.Icon className={ic} aria-hidden /> };
-  return { id, label: id };
-}
+import { itemFor } from './radial-registry';
 
 export default function RadialLayer({ wb }: { wb: Workbench }) {
   const ui = useObservable(wb.ui);
@@ -80,15 +31,26 @@ export default function RadialLayer({ wb }: { wb: Workbench }) {
     sel.length === 0 &&
     run.length > 1 &&
     canFolder(part.features, part.folders ?? [], run).ok;
-  const ids = ui.sketch ? sketchRadialIds() : modelRadialIds(sel, { folderable });
+  const cfg = loadRadialConfig().config;
+  const ctx = contextOf(sel, {
+    sketch: !!ui.sketch,
+    sketchSelected: (ui.sketch?.selected.length ?? 0) > 0,
+    treePicked: picked.length,
+  });
+  const ring = customRing(cfg, ctx);
+  const items = ring
+    ? ringToItems(ring, { sel, folderable, sketch: !!ui.sketch }, itemFor)
+    : (ui.sketch ? sketchRadialIds() : modelRadialIds(sel, { folderable })).map(itemFor);
   const last = wb.lastCommandLabel();
   const label = last ? (tools.find((t) => t.id === last)?.label ?? last) : null;
   return (
     <RadialMenu
       at={{ x: r.x, y: r.y }}
-      items={ids.map(itemFor)}
+      items={items}
       repeat={{ label: label ?? 'Nothing yet', disabled: !last }}
       source={r.source}
+      flickWindow={cfg.flickWindow}
+      drawDelay={cfg.drawAfterDelay ? cfg.flickWindow : 0}
       {...(r.held ? { held: true } : {})}
       {...(r.pointerId !== undefined ? { pointerId: r.pointerId } : {})}
       {...(r.holdCode ? { holdCode: r.holdCode } : {})}

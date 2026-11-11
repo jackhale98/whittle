@@ -50,6 +50,7 @@ import { M3Gallery } from './m3Gallery';
 import { M35Gallery } from './m35Gallery';
 import { M36Gallery } from './m36Gallery';
 import { M37Gallery } from './m37Gallery';
+import { M38Gallery } from './m38Gallery';
 import { ParamsGallery } from './paramsGallery';
 import { SectionGallery } from './sectionGallery';
 import { SyncGallery } from './syncGallery';
@@ -607,6 +608,8 @@ export function Gallery({
       case 'm37-live':
       case 'm37-wiring':
         return <M37Gallery section={section} tier={tier} />;
+      case 'm38-radial-editor':
+        return <M38Gallery section={section} />;
       case 'm35-radial':
       case 'm35-radial-live':
       case 'm35-chooser':

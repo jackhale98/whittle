@@ -140,6 +140,17 @@ catches the next click. A press outside it closes it, and that press does not cl
 - **Hold Q**: the ring opens at the pointer; point and release to choose; releasing with no direction
   cancels. Q is a keymap entry (**Radial menu**) and can be moved.
 
+### Customising the radial menu
+
+Open **Settings → Radial menu** (or the command palette, "Radial menu settings"). It is a panel, not a dialog.
+
+1. Choose a **context**: empty space, face, edge, vertex, body or mixed selection, feature in the tree, sketch, or sketch with a selection.
+2. The ring shows seven slots around the fixed **Repeat** slot. **Drag** a command from the list onto a slot, or choose a slot and then a command (the keyboard and touch way: Tab to a slot, Enter, type to search, Tab to the command, Enter). **Delete** on a slot, or **Clear slot**, empties it.
+3. Commands come only from Wren's own list. A command that does not fit the current selection stays in its slot, dimmed, so the directions keep working from memory.
+4. **Reset this ring** and **Reset all** return to the built-in rings, which are the ones in the table above.
+
+Under **Flicks**, the *flick window* (0 to 400 ms, default 250) is how long after the ring opens a quick move picks an item; 0 turns flicks off. **Draw after a delay** (off by default) holds back drawing the mouse and pen ring until that window has passed, so a blind flick never shows it. Settings are saved on this device with the keymap; **Export** and **Import** move them between devices. Commands that no longer exist are dropped on import and listed.
+
 **Add to new folder** only appears when the features you picked in the tree can be grouped (they
 form one run in the history and none is in a folder yet). The ring has no room to say why not; the
 tree's menu and the command palette do.
