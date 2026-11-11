@@ -126,6 +126,10 @@ export function testHooks(wb: Workbench) {
               tool: u.sketch.tool,
               dimPicks: u.sketch.dimPicks,
               editDimension: u.sketch.editDimension,
+              shownRadius: shownRadius(
+                u.sketch.shown,
+                wb.part?.features.find((x) => x.id === u.sketch?.featureId),
+              ),
               frame: u.sketch.frame !== null,
               highlight: u.sketch.highlightConstraints,
               highlightEntities: u.sketch.highlightEntities,
@@ -318,4 +322,16 @@ export function testHooks(wb: Workbench) {
       return false;
     },
   };
+}
+
+/**
+ * The radius of the first circle in the display-only solved sketch; null when none is shown or it
+ * is stale (solved from entities the document no longer holds, so it is not what is drawn).
+ */
+function shownRadius(
+  shown: { for: unknown; entities: readonly { kind: string; radius?: number }[] } | null,
+  stored: object | undefined,
+) {
+  if (!shown || shown.for !== (stored as { entities?: unknown } | undefined)?.entities) return null;
+  return shown.entities.find((e) => e.kind === 'circle')?.radius ?? null;
 }
