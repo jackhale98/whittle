@@ -2,6 +2,8 @@ import { devices, expect, type Page, test } from '@playwright/test';
 import { app, boot, cameraStill, toPage, touch } from './helpers';
 import { PERF_FACTOR } from './perf/budgets';
 
+const BUDGET_S = Math.min(300 * PERF_FACTOR, 480);
+
 /**
  * PLAN §12 M2 acceptance: on an iPad a new user completes the "make a bracket" tutorial without a
  * keyboard. iPad emulation (1180 × 820, touch, mobile), and not a single keyboard event: every
@@ -32,8 +34,9 @@ async function keypad(page: Page, keys: string[]) {
 test('the bracket tutorial, touch only, on an iPad', async ({ page }) => {
   // PLAN M2 accept: a person finishes it in under 5 minutes on a real iPad. Emulated on a 2-vCPU
   // software-rendered CI runner it takes about as long by itself, so the budget scales like every
-  // other time budget (PERF_FACTOR, ADR-071); the run time is logged for comparison.
-  test.setTimeout(300_000 * PERF_FACTOR + 60_000);
+  // other time budget (PERF_FACTOR, ADR-071), capped at 8 minutes so a hang plus its retry stays
+  // well inside the 25-minute shard limit; the run time is logged for comparison.
+  test.setTimeout(BUDGET_S * 1000 + 60_000);
   // Downloads, not the File System Access picker (headless has no dialogs).
   await page.addInitScript(() => {
     (window as unknown as { showSaveFilePicker?: unknown }).showSaveFilePicker = undefined;
@@ -229,5 +232,5 @@ test('the bracket tutorial, touch only, on an iPad', async ({ page }) => {
   console.log(`tutorial on iPad emulation: ${seconds.toFixed(1)} s, touch only`);
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/ipad-tutorial-done.png` });
   expect(await page.evaluate(() => (window as unknown as { __keys?: number }).__keys ?? 0)).toBe(0);
-  expect(seconds).toBeLessThan(300 * PERF_FACTOR);
+  expect(seconds).toBeLessThan(BUDGET_S);
 });
