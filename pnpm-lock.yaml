@@ -29,6 +29,9 @@ importers:
       '@wren-cad/document':
         specifier: workspace:*
         version: link:../../packages/document
+      '@wren-cad/drawing':
+        specifier: workspace:*
+        version: link:../../packages/drawing
       '@wren-cad/io':
         specifier: workspace:*
         version: link:../../packages/io
@@ -60,6 +63,9 @@ importers:
         specifier: 7.4.1
         version: 7.4.1
     devDependencies:
+      '@axe-core/playwright':
+        specifier: 4.14.0
+        version: 4.14.0(playwright-core@1.63.0)
       '@playwright/test':
         specifier: 1.63.0
         version: 1.63.0
@@ -292,6 +298,9 @@ importers:
       '@wren-cad/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@wren-cad/drawing':
+        specifier: workspace:*
+        version: link:../drawing
       lucide-react:
         specifier: 1.70.0
         version: 1.70.0(@types/react@19.3.0)(react@19.3.1)

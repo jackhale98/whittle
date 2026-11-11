@@ -200,3 +200,22 @@ html[data-param-dragging] body * {
     font-size: 16px;
   }
 }
+
+/* M4 drawing sheet: the SVG model is black on white paper in both themes. */
+.sheet-model [data-selected="true"] :is(line, polyline, polygon, circle, path) {
+  stroke: var(--color-accent);
+}
+.sheet-model [data-selected="true"] path[fill-rule] {
+  fill: var(--color-accent);
+}
+.sheet-model [data-selected="true"] text {
+  fill: var(--color-accent);
+}
+.sheet-model [data-hover="true"] :is(line, polyline, polygon, circle, path) {
+  stroke: var(--color-accent);
+  stroke-opacity: 0.75;
+}
+/* Values of a model that has changed since its regen are dimmed, never shown as current. */
+.sheet-model-pending [data-source^="placement:"] {
+  opacity: 0.3;
+}

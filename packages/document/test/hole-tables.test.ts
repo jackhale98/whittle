@@ -1,13 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { describe, expect, it } from 'vitest';
-import {
-  ANSI_HOLES,
-  available,
-  HOLE_TABLES,
-  holeRow,
-  ISO_HOLES,
-  resolveHoleSize,
-} from '../src/hole-tables';
+import { resolveHoleSize } from '../src/hole-size';
+import { ANSI_HOLES, available, HOLE_TABLES, holeRow, ISO_HOLES } from '../src/hole-tables';
 
 const inch = (v: number) => v * 25.4;
 const DEG = Math.PI / 180;

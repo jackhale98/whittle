@@ -20,6 +20,16 @@ src/
     ViewportHost.tsx    creates the viewport lazily, after the shell paints
     sketch-session.ts   sketch mode: tools, solves, drags, dimensions, conflicts
     state.ts, observable.ts, timing.ts   UI state, change notification, boot timing marks
+  drawing/              M4 drawings: a lazy route over the model (ADR-092)
+    DrawingRoute.tsx    the route: shell, tools, sheet, panels
+    controller.ts       opens a drawing, keeps its build current, runs commands
+    pipeline.ts         model data per configuration, views, projections, buildDrawing
+    config-data.ts      regen result, resolutions and shape of each configuration
+    interact.ts         what a press on the sheet means in each tool
+    ops-views.ts, ops-annot.ts   view and annotation commands (one undo step each)
+    placeholder/        the placeholder HLR worker (DrawingKernelApi over the regen meshes)
+    kernel.ts           load-once and cache around any DrawingKernelApi
+    exports.ts          PDF, SVG and DXF downloads
   model/
     engine.ts           boots the kernel client and picks the real engine (fake only in dev)
     modeling.ts         the regen loop: coarse on edit, fine when idle, stale-result handling

@@ -47,6 +47,7 @@ The entry is `src/index.ts`. The main groups are:
 | Inputs | `ExpressionInput` (with an on-screen keypad on touch), `Field`, `Section`, `Segmented`, `Switch`, `useCoarsePointer` |
 | Export | `ExportMenu`, `ExportPanel`, `EXPORT_TARGETS`, `QUALITY_PRESETS`, `buildExportRequest` |
 | Status | `StatusChip`, `describeKernelStatus` |
+| Drawings (`@wren-cad/ui/drawing`, a separate entry: the app imports it only inside the lazy drawing route) | `SheetViewer` (pan, zoom, pick, tool drags), `DrawingShell`, `DrawingToolbar`, `StandardChoice` (the explicit standard and projection choice), `ViewsPanel`, `ViewPicker`, `ViewInspector`, `ConfigBadge`, `AnnotationInspector`, `ToleranceField`, `ImportPanel`, `AttentionPanel`, `TitleBlockEditor`, `InlineCellEditor`, `DrawingExportPanel`, `SheetSettings`, `DrawingList`, `hitTest` |
 | Formatting | `fmtNumber`, `prettyUnits`, `formatDensity`, `nudgeExpression`, `defaultFormatValue` |
 | Tokens and theme | `colors`, `fontFamily`, `layers`, `radii`, `surfaceAlpha`, `targets`; `initTheme`, `useTheme`, `applyTheme` |
 | Motion | `springs`, `useSpring`, `reducedTransition`, `resolveTransition`, `useReducedMotion` |

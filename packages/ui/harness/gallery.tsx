@@ -47,6 +47,7 @@ import {
   sampleStatuses,
 } from './fixtures';
 import { M3Gallery } from './m3Gallery';
+import { M4Gallery } from './m4Gallery';
 import { M35Gallery } from './m35Gallery';
 import { M36Gallery } from './m36Gallery';
 import { M37Gallery } from './m37Gallery';
@@ -610,6 +611,22 @@ export function Gallery({
         return <M37Gallery section={section} tier={tier} />;
       case 'm38-radial-editor':
         return <M38Gallery section={section} />;
+      case 'm4-choice':
+      case 'm4-viewer':
+      case 'm4-toolbar':
+      case 'm4-picker':
+      case 'm4-views':
+      case 'm4-view-inspector':
+      case 'm4-annotation':
+      case 'm4-tolerance':
+      case 'm4-import':
+      case 'm4-attention':
+      case 'm4-title':
+      case 'm4-list':
+      case 'm4-export':
+      case 'm4-settings':
+      case 'm4-shell':
+        return <M4Gallery section={section} />;
       case 'm35-radial':
       case 'm35-radial-live':
       case 'm35-chooser':

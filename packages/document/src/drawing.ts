@@ -18,6 +18,9 @@ export * from './annotation-rules';
 export * from './annotations';
 export * from './drawing-commands';
 export * from './drawings';
+// The hole callout's numbers come from the same table as the hole feature. Re-exported so the
+// drawing route reads it from this chunk and the initial route does not carry it for them.
+export { resolveHoleSize } from './hole-size';
 export * from './iso286';
 export * from './view-frames';
 

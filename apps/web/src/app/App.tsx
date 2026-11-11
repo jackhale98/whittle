@@ -51,6 +51,8 @@ const ConfigNotices = lazy(() =>
 );
 const ConfigurationBar = lazy(() => import('../ui/ConfigurationBar'));
 const ConfigurationPanel = lazy(() => import('../ui/ConfigurationPanel'));
+// M4: the drawing route is a lazy chunk, fetched when the first drawing opens (or on idle after it was used).
+const DrawingRoute = lazy(() => import('../drawing/DrawingRoute'));
 
 function isolationLabel(isolation: ReturnType<typeof getRuntimeState>['isolation']): string {
   if (isolation === 'pending') return 'checking isolation';
@@ -190,6 +192,12 @@ export function App({ wb }: { wb: Workbench }) {
         hint: nestSketches ? 'Flat list' : 'Tidy list',
         run: () => setNestSketches(!nestSketches),
       },
+      {
+        id: 'new-drawing',
+        label: 'New drawing',
+        hint: 'Put this part on a sheet',
+        run: () => wb.openDrawing(null),
+      },
       { id: 'undo', label: 'Undo', run: () => wb.undo() },
       { id: 'redo', label: 'Redo', run: () => wb.redo() },
       {
@@ -300,126 +308,157 @@ export function App({ wb }: { wb: Workbench }) {
 
   return (
     <>
-      <AppShell
-        tier={diagnostics.tier}
-        documentName={doc.meta.name}
-        kernelStatus={engine.status}
-        diagnostics={{ ...diagnostics, ...runtimeOverrides(runtime) }}
-        kernelMemory={kernelMemory}
-        commands={allCommands}
-        projectBar={
-          <Suspense fallback={null}>
-            <ProjectBar wb={wb} tier={diagnostics.tier} />
-          </Suspense>
-        }
-        configurationBar={
-          <Suspense fallback={null}>
-            <ConfigurationBar wb={wb} tier={diagnostics.tier} />
-          </Suspense>
-        }
-        {...(configState.panel && diagnostics.tier !== 'phone'
-          ? {
-              configurationPanel: (
-                <Suspense fallback={null}>
-                  <ConfigurationPanel wb={wb} touch={touch} />
-                </Suspense>
-              ),
-            }
-          : {})}
-        {...(exportConfigurations ? { exportConfigurations } : {})}
-        theme={theme.setting}
-        onThemeChange={theme.setSetting}
-        {...(canUndo ? { onUndo: () => wb.undo() } : {})}
-        {...(canRedo ? { onRedo: () => wb.redo() } : {})}
-        {...(tree.featureTree ? { featureTree: tree.featureTree } : {})}
-        paramsTable={{
-          params: doc.params,
-          ...(configs.length > 0
-            ? {
-                configuration: {
-                  activeId: activeConfig?.id ?? null,
-                  activeName: wb.config.activeName,
-                  overrides: activeConfig?.params ?? {},
-                  onReset: (id: string) => wb.config.resetOverride({ kind: 'param', paramId: id }),
-                },
-              }
-            : {}),
-          evaluate: (e) => wb.evaluate(e),
-          version: paramsVersion,
-          onAdd: () => {
-            const names = new Set(doc.params.map((p) => p.name));
-            let n = doc.params.length + 1;
-            while (names.has(`param${n}`)) n++;
-            wb.apply({ kind: 'addParam', param: { id: ulid(), name: `param${n}`, expr: '10 mm' } });
-            wb.commit();
-          },
-          onUpdate: (paramId, patch, scope) => wb.config.updateParam(paramId, patch, scope),
-          onRemove: (paramId) => {
-            wb.apply({ kind: 'removeParam', paramId });
-            wb.commit();
-          },
-          usedBy,
-          onSelectUse: (use) =>
-            void import('./param-actions').then((m) => m.selectParamUse(wb, use)),
-          onMake: (name, expr) => wb.makeParameter(name, expr),
-          onMakeDone: () => wb.endMakeParameter(),
-          density,
-        }}
-        inspector={<Inspector wb={wb} density={density} measure={measure} section={section} />}
-        {...(contextBubble ? { contextBubble } : {})}
-        {...(valueChip ? { valueChip } : {})}
-        sheetSnap={ui.sheetSnap}
-        onSheetHeight={(px) => onSheetHeight(wb, px)}
-        onSheetSnapChange={(snap) => wb.setSheet({ snap })}
-        {...(ui.sheetTab ? { sheetTab: ui.sheetTab } : {})}
-        onSheetTabChange={(tab) => wb.setSheet({ tab })}
-        parts={parts}
-        measure={measure}
-        section={section}
-        tutorial={tutorial}
-        enabledTools={ENABLED_TOOLS}
-        activeTool={activeTool}
-        onTool={(tool) => {
-          if (ui.sketch) return;
-          if (activeTool === tool && tool !== 'section') wb.cancel();
-          else if (tool === 'sketch') wb.sketchTool();
-          else void wb.runTool(tool);
-        }}
-        onExportRequest={(r) => void wb.export(r)}
-        exportBodies={(regen?.result.bodies ?? []).map((b, i) => ({
-          id: b.id,
-          name: `Body ${i + 1}`,
-        }))}
-        {...(engineFailed ? { exportUnavailable: { step: engineFailed, stl: engineFailed } } : {})}
-        {...(engineNote ? { exportNotes: { step: engineNote, stl: engineNote } } : {})}
-        onExportTargetChange={(target) => {
-          if (EXACT_EXPORTS.has(target)) wb.ensureKernel();
-        }}
-        exportBusy={ui.exporting}
-        viewport={
-          <>
-            <ViewportHost
-              beforeCreate={beforeViewport}
-              theme={theme.resolved}
-              onReady={onViewportReady}
-              onError={onViewportError}
-            />
-            <ViewportOverlays wb={wb} touch={touch} />
+      {/* The model stays mounted under the drawing route (the regen keeps running); it is inert and hidden from it. */}
+      <div className="contents" inert={ui.drawing !== null}>
+        <AppShell
+          tier={diagnostics.tier}
+          documentName={doc.meta.name}
+          kernelStatus={engine.status}
+          diagnostics={{ ...diagnostics, ...runtimeOverrides(runtime) }}
+          kernelMemory={kernelMemory}
+          commands={allCommands}
+          projectBar={
             <Suspense fallback={null}>
-              <ConfigNotices wb={wb} touch={touch} />
+              <ProjectBar wb={wb} tier={diagnostics.tier} />
             </Suspense>
-            {viewportError && (
-              <div
-                role="alert"
-                data-testid="viewport-error"
-                className="absolute inset-0 flex items-center justify-center p-8 text-center text-sm"
-              >
-                {viewportError} Your browser may have WebGL disabled.
-              </div>
-            )}
-          </>
-        }
-      />
+          }
+          configurationBar={
+            <Suspense fallback={null}>
+              <ConfigurationBar wb={wb} tier={diagnostics.tier} />
+            </Suspense>
+          }
+          {...(configState.panel && diagnostics.tier !== 'phone'
+            ? {
+                configurationPanel: (
+                  <Suspense fallback={null}>
+                    <ConfigurationPanel wb={wb} touch={touch} />
+                  </Suspense>
+                ),
+              }
+            : {})}
+          {...(exportConfigurations ? { exportConfigurations } : {})}
+          theme={theme.setting}
+          onThemeChange={theme.setSetting}
+          {...(canUndo ? { onUndo: () => wb.undo() } : {})}
+          {...(canRedo ? { onRedo: () => wb.redo() } : {})}
+          {...(tree.featureTree ? { featureTree: tree.featureTree } : {})}
+          paramsTable={{
+            params: doc.params,
+            ...(configs.length > 0
+              ? {
+                  configuration: {
+                    activeId: activeConfig?.id ?? null,
+                    activeName: wb.config.activeName,
+                    overrides: activeConfig?.params ?? {},
+                    onReset: (id: string) =>
+                      wb.config.resetOverride({ kind: 'param', paramId: id }),
+                  },
+                }
+              : {}),
+            evaluate: (e) => wb.evaluate(e),
+            version: paramsVersion,
+            onAdd: () => {
+              const names = new Set(doc.params.map((p) => p.name));
+              let n = doc.params.length + 1;
+              while (names.has(`param${n}`)) n++;
+              wb.apply({
+                kind: 'addParam',
+                param: { id: ulid(), name: `param${n}`, expr: '10 mm' },
+              });
+              wb.commit();
+            },
+            onUpdate: (paramId, patch, scope) => wb.config.updateParam(paramId, patch, scope),
+            onRemove: (paramId) => {
+              wb.apply({ kind: 'removeParam', paramId });
+              wb.commit();
+            },
+            usedBy,
+            onSelectUse: (use) =>
+              void import('./param-actions').then((m) => m.selectParamUse(wb, use)),
+            onMake: (name, expr) => wb.makeParameter(name, expr),
+            onMakeDone: () => wb.endMakeParameter(),
+            density,
+          }}
+          inspector={<Inspector wb={wb} density={density} measure={measure} section={section} />}
+          {...(contextBubble ? { contextBubble } : {})}
+          {...(valueChip ? { valueChip } : {})}
+          sheetSnap={ui.sheetSnap}
+          onSheetHeight={(px) => onSheetHeight(wb, px)}
+          onSheetSnapChange={(snap) => wb.setSheet({ snap })}
+          {...(ui.sheetTab ? { sheetTab: ui.sheetTab } : {})}
+          onSheetTabChange={(tab) => wb.setSheet({ tab })}
+          parts={parts}
+          measure={measure}
+          section={section}
+          tutorial={tutorial}
+          enabledTools={ENABLED_TOOLS}
+          activeTool={activeTool}
+          onTool={(tool) => {
+            if (ui.sketch) return;
+            if (activeTool === tool && tool !== 'section') wb.cancel();
+            else if (tool === 'sketch') wb.sketchTool();
+            else void wb.runTool(tool);
+          }}
+          onExportRequest={(r) => void wb.export(r)}
+          exportBodies={(regen?.result.bodies ?? []).map((b, i) => ({
+            id: b.id,
+            name: `Body ${i + 1}`,
+          }))}
+          {...(engineFailed
+            ? { exportUnavailable: { step: engineFailed, stl: engineFailed } }
+            : {})}
+          {...(engineNote ? { exportNotes: { step: engineNote, stl: engineNote } } : {})}
+          onExportTargetChange={(target) => {
+            if (EXACT_EXPORTS.has(target)) wb.ensureKernel();
+          }}
+          exportBusy={ui.exporting}
+          viewport={
+            <>
+              <ViewportHost
+                beforeCreate={beforeViewport}
+                theme={theme.resolved}
+                onReady={onViewportReady}
+                onError={onViewportError}
+              />
+              <ViewportOverlays wb={wb} touch={touch} />
+              <Suspense fallback={null}>
+                <ConfigNotices wb={wb} touch={touch} />
+              </Suspense>
+              {viewportError && (
+                <div
+                  role="alert"
+                  data-testid="viewport-error"
+                  className="absolute inset-0 flex items-center justify-center p-8 text-center text-sm"
+                >
+                  {viewportError} Your browser may have WebGL disabled.
+                </div>
+              )}
+            </>
+          }
+        />
+      </div>
+      {ui.drawing !== null && (
+        <section
+          className="fixed inset-0 z-[var(--z-drawing,60)] bg-bg"
+          data-testid="drawing-route"
+          aria-label="Drawing"
+        >
+          <Suspense
+            fallback={
+              <p className="p-6 text-sm text-fg-muted" role="status">
+                Loading the drawing tools…
+              </p>
+            }
+          >
+            <DrawingRoute
+              wb={wb}
+              id={ui.drawing.id}
+              tier={diagnostics.tier}
+              onClose={() => wb.closeDrawing()}
+            />
+          </Suspense>
+        </section>
+      )}
       {updateReady && (
         <button
           type="button"

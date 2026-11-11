@@ -10,7 +10,7 @@
  *  - Navigations (including an OAuth redirect back with `?code=...&state=...`) are answered with
  *    the precached shell by URL-fixed handler; the browser keeps the original URL, query and hash.
  *    Nothing here rewrites or redirects a navigation.
- *  - Only the kernel is runtime-cached, and only hashed kernel files.
+ *  - Only the kernel and the drawing font are runtime-cached, and only hashed files.
  */
 
 export interface RouteMatchInput {
@@ -28,4 +28,9 @@ export function mayHandle({ sameOrigin, request }: RouteMatchInput): boolean {
 /** Kernel Wasm and glue (`*.wasm`, `whittle-kernel*.js`): the only runtime-cached files. */
 export function isKernelAsset(url: Pick<URL, 'pathname'>): boolean {
   return url.pathname.endsWith('.wasm') || /\/whittle-kernel[^/]*\.js$/.test(url.pathname);
+}
+
+/** The drawing route's self-hosted font (Osifont `.ttf`): fetched once for the sheet and the PDF. */
+export function isDrawingFont(url: Pick<URL, 'pathname'>): boolean {
+  return url.pathname.endsWith('.ttf');
 }

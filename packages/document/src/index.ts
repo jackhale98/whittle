@@ -23,6 +23,7 @@ export * from './factory';
 export * from './features';
 export * from './files';
 export * from './folders';
+export * from './hole-size';
 export * from './hole-tables';
 export * from './materials';
 export * from './migrations';

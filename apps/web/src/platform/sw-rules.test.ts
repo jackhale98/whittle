@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isKernelAsset, mayHandle } from './sw-rules';
+import { isDrawingFont, isKernelAsset, mayHandle } from './sw-rules';
 
 const req = (headers: Record<string, string> = {}) => ({ headers: new Headers(headers) });
 
@@ -24,5 +24,15 @@ describe('service worker request rules', () => {
     expect(isKernelAsset(new URL('https://x/wren-cad/assets/whittle-kernel-st.js'))).toBe(true);
     expect(isKernelAsset(new URL('https://x/wren-cad/api/files.json'))).toBe(false);
     expect(isKernelAsset(new URL('https://x/wren-cad/assets/index-abc.js'))).toBe(false);
+  });
+});
+
+describe('the drawing font', () => {
+  it('is the only other runtime-cached file: a hashed .ttf, never a script', () => {
+    expect(isDrawingFont(new URL('https://x/wren-cad/assets/osifont-lgpl3fe-abc123.ttf'))).toBe(
+      true,
+    );
+    expect(isDrawingFont(new URL('https://x/wren-cad/assets/index-abc.js'))).toBe(false);
+    expect(isKernelAsset(new URL('https://x/wren-cad/assets/osifont-abc.ttf'))).toBe(false);
   });
 });
