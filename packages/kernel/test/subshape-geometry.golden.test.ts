@@ -95,7 +95,7 @@ for (const { variant } of VARIANTS) {
       relClose(edge.length, 30, 1e-12);
       expect(Math.abs(edge.direction[2])).toBeCloseTo(1, 12);
       vecClose([edge.start[0], edge.start[1]], [0, 0], 1e-12);
-      const v = geo(box, 'vertex', `F${BOX}:vertex(face.xmax|face.ymax|face.zmax)`);
+      const v = geo(box, 'vertex', `F${BOX}:vertex(max,max,max)`);
       expect(v.kind).toBe('vertex');
       if (v.kind === 'vertex') vecClose(v.point, [10, 20, 30], 1e-12);
     });
