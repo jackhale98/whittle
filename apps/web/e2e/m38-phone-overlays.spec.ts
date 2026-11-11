@@ -174,7 +174,7 @@ test('phone: section by face closes the bubble, hides the chip behind the Sectio
   await expectUnit(page.getByTestId('section-offset-value'));
   expect(await visibleShare(page, await sheetTop(page), 54)).toBeGreaterThanOrEqual(0.6);
 
-  // Collapse the sheet: the chip is back, clear of everything, and the model is re-framed.
+  // Collapse the sheet: the chip is back, clear of everything, and the view shifts into the free area.
   await page.getByTestId('tools-sheet-grip').getByRole('button').first().tap();
   await expect(page.getByTestId('tools-sheet')).toHaveAttribute('data-snap', 'peek');
   await expect(page.getByTestId('section-chip')).toBeVisible();
@@ -187,6 +187,65 @@ test('phone: section by face closes the bubble, hides the chip behind the Sectio
 
   if (process.env.WREN_SHOTS)
     await page.screenshot({ path: `${process.env.WREN_SHOTS}/phone-section-chip.png` });
+});
+
+test('phone: the sheet opening and collapsing pans the view and keeps the zoom; a mode start still frames', async ({
+  page,
+}) => {
+  test.slow();
+  const a = await openDemo(page);
+  const t = await touch(page);
+  const cam = () =>
+    page.evaluate(() =>
+      (
+        window as unknown as {
+          __wrenViewport: {
+            getCameraState(): { target: number[]; position: number[]; distance: number };
+          };
+        }
+      ).__wrenViewport.getCameraState(),
+    );
+  const zoomIn = async (target: number[]) => {
+    await page.evaluate((tg) => {
+      (
+        window as unknown as {
+          __wrenViewport: { zoomTo(p: number[], r: number, a: boolean): void };
+        }
+      ).__wrenViewport.zoomTo(tg, 12, false);
+    }, target);
+    await cameraStill(page);
+  };
+  await zoomIn((await cam()).target);
+  const framedBefore = await cam();
+  await t.tap([await faceAt(page, 120, 700)]);
+  await a.idle();
+  await page.getByTestId('context-bubble').locator('[data-action="section"]').tap();
+  await a.idle();
+  await cameraStill(page);
+  // The mode start re-fitted the camera (the framing the tests above check).
+  const framed = await cam();
+  expect(framed.distance).toBeGreaterThan(framedBefore.distance * 1.2);
+
+  // The user zooms in (instant), then moves the sheet: zoom unchanged, the view shifts.
+  await zoomIn(framed.target);
+  const zoomed = await cam();
+  expect(zoomed.distance).toBeLessThan(framed.distance);
+
+  await page.getByTestId('tools-sheet-grip').getByRole('button').first().tap();
+  await expect(page.getByTestId('tools-sheet')).toHaveAttribute('data-snap', 'peek');
+  await page.waitForTimeout(400);
+  await cameraStill(page);
+  const collapsed = await cam();
+  expect(collapsed.distance).toBeCloseTo(zoomed.distance, 3);
+  const moved = Math.hypot(...collapsed.target.map((v, i) => v - (zoomed.target[i] as number)));
+  expect(moved, 'the view shifted to the new free area').toBeGreaterThan(1e-3);
+
+  await page.getByTestId('tools-sheet-grip').getByRole('button').first().tap();
+  await expect(page.getByTestId('tools-sheet')).not.toHaveAttribute('data-snap', 'peek');
+  await page.waitForTimeout(400);
+  await cameraStill(page);
+  const reopened = await cam();
+  expect(reopened.distance).toBeCloseTo(zoomed.distance, 3);
 });
 
 test('phone: measure by face closes the bubble, shows the tab as the one home, frames the model', async ({
@@ -230,6 +289,9 @@ for (const scheme of ['light', 'dark'] as const) {
     await expect(page).toHaveScreenshot(`phone-section-tab-${scheme}.png`, { clip: await sheet() });
     await page.getByTestId('tools-sheet-grip').getByRole('button').first().tap();
     await expect(page.getByTestId('section-chip')).toBeVisible();
+    await expect(page.getByTestId('tools-sheet')).toHaveAttribute('data-snap', 'peek');
+    // The sheet's own animation, no longer covered by a camera re-fit, has to settle.
+    await page.waitForTimeout(600);
     await cameraStill(page);
     await expect(page).toHaveScreenshot(`phone-section-peek-${scheme}.png`, {
       clip: await sheet(),

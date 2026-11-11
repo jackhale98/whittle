@@ -78,6 +78,7 @@ import {
   createViewCube,
   fitAll,
   getRoll,
+  keepInView,
   lookAtPlane,
   screenToPlane,
   setReducedMotion,
@@ -436,10 +437,14 @@ export class ViewportImpl implements ViewportEngine {
   /**
    * The canvas area covered by floating chrome (bottom sheet, top bar). Later fits centre and
    * size the model in the rest; the view cube moves clear of the top inset. Does not move the
-   * camera: call `fitAll` to re-frame.
+   * camera away from what it shows: when the insets change after a fit, the camera trucks (snaps,
+   * no zoom or orientation change) so the view's old centre stays at the centre of the free area
+   * (ADR-086 amendment). Call `fitAll` to fully re-frame.
    */
   setFrameInsets(insets: Partial<FrameInsets>): void {
+    const prev = this.frameInsets;
     this.frameInsets = { ...NO_FRAME_INSETS, ...insets };
+    keepInView(this, prev, this.frameInsets);
     this.cube?.place(this.canvas, this.frameInsets);
   }
 

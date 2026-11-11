@@ -14,8 +14,10 @@ import {
   boundsCenter,
   boundsRadius,
   cameraPositionFor,
+  type FrameInsets,
   fitDistance,
   fitInsetFrame,
+  insetPan,
   unionBounds,
   VIEW_DIRECTIONS,
 } from './views';
@@ -235,5 +237,47 @@ export function fitTo(
   vp.cameraAwake = true;
   void vp.controls.setLookAt(pos[0], pos[1], pos[2], target[0], target[1], target[2], transition);
   if (!transition) vp.controls.update(0);
+  requestRender(vp);
+}
+
+/**
+ * The insets changed (bottom sheet opened, collapsed, resized): truck the camera so what the user
+ * was looking at stays centred in the free area. Zoom (distance) and orientation are unchanged; it
+ * snaps, since the sheet is moving itself. Nothing happens before the first fit has a body.
+ */
+export function keepInView(vp: ViewportImpl, prev: FrameInsets, next: FrameInsets): void {
+  const h = vp.canvas.clientHeight;
+  if (vp.bodies.size === 0 || h <= 0 || vp.canvas.clientWidth <= 0) return;
+  if (
+    prev.top === next.top &&
+    prev.right === next.right &&
+    prev.bottom === next.bottom &&
+    prev.left === next.left
+  ) {
+    return;
+  }
+  const target = vp.controls.getTarget(new Vector3());
+  const pos = vp.controls.getPosition(new Vector3());
+  const fwd = target.clone().sub(pos);
+  const distance = fwd.length();
+  if (distance < 1e-9) return;
+  fwd.divideScalar(distance);
+  const right = new Vector3().crossVectors(fwd, vp.camera.up);
+  if (right.lengthSq() < 1e-12) return;
+  right.normalize();
+  const up = new Vector3().crossVectors(right, fwd).normalize();
+  const pan = insetPan(prev, next, vp.camera.fov, h, distance);
+  const d = right.multiplyScalar(pan.right).addScaledVector(up, pan.up);
+  vp.cameraAwake = true;
+  void vp.controls.setLookAt(
+    pos.x + d.x,
+    pos.y + d.y,
+    pos.z + d.z,
+    target.x + d.x,
+    target.y + d.y,
+    target.z + d.z,
+    false,
+  );
+  vp.controls.update(0);
   requestRender(vp);
 }
