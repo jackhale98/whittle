@@ -49,6 +49,44 @@ function mean(ps: Vec3[]): Vec3 | null {
 }
 
 /**
+ * The distance a linear, aligned or ordinate dimension measures between its anchors (mm), or null
+ * without the geometry to tell. Zero when the two coincide along its direction.
+ */
+export function measuredLength(
+  a: Annotation,
+  anchors: readonly (AnnotationAnchor | null)[] | undefined,
+): number | null {
+  const m = measured(a, anchors);
+  return m ? Math.abs(m.s1 - m.s0) : null;
+}
+
+function measured(
+  a: Annotation,
+  anchors: readonly (AnnotationAnchor | null)[] | undefined,
+): { u: Vec3; s0: number; s1: number } | null {
+  if (!anchors) return null;
+  if (a.kind !== 'linear' && a.kind !== 'aligned' && a.kind !== 'ordinate') return null;
+  const a0 = anchors[0];
+  const a1 = anchors[1];
+  if (!a0 || !a1) return null;
+  const P = anchorPoints(a0, a.at?.[0]);
+  const Q = anchorPoints(a1, a.at?.[1]);
+  let d: Vec3 | undefined;
+  if (a.kind !== 'aligned') d = a.direction;
+  if (!d && a.kind !== 'aligned' && a0.kind === 'plane') d = a0.normal;
+  if (!d) {
+    const p = mean(P);
+    const r = mean(Q);
+    if (!p || !r) return null;
+    d = sub3(r, p);
+  }
+  if (len3(d) < 1e-9 || !P.length || !Q.length) return null;
+  const u = signless(d);
+  const s = (ps: Vec3[]) => ps.reduce((acc, p) => acc + dot3(p, u), 0) / ps.length;
+  return { u, s0: s(P), s1: s(Q) };
+}
+
+/**
  * The geometry key of a dimension, or null when it has none to compare (another kind, missing
  * anchors, a degenerate measurement).
  */
@@ -61,27 +99,9 @@ export function measureKey(
     case 'linear':
     case 'aligned':
     case 'ordinate': {
-      const a0 = anchors[0];
-      const a1 = anchors[1];
-      if (!a0 || !a1) return null;
-      const P = anchorPoints(a0, a.at?.[0]);
-      const Q = anchorPoints(a1, a.at?.[1]);
-      let d: Vec3 | undefined;
-      if (a.kind !== 'aligned') d = a.direction;
-      if (!d && a.kind !== 'aligned' && a0.kind === 'plane') d = a0.normal;
-      if (!d) {
-        const p = mean(P);
-        const r = mean(Q);
-        if (!p || !r) return null;
-        d = sub3(r, p);
-      }
-      if (len3(d) < 1e-9) return null;
-      const u = signless(d);
-      const s = (ps: Vec3[]) => ps.reduce((acc, p) => acc + dot3(p, u), 0) / ps.length;
-      if (!P.length || !Q.length) return null;
-      const s0 = s(P);
-      const s1 = s(Q);
-      if (Math.abs(s1 - s0) < 1e-9) return null;
+      const m = measured(a, anchors);
+      if (!m || Math.abs(m.s1 - m.s0) < 1e-9) return null;
+      const { u, s0, s1 } = m;
       return `L|${u.map(qd).join(',')}|${q(Math.min(s0, s1))}|${q(Math.max(s0, s1))}`;
     }
     case 'radius':

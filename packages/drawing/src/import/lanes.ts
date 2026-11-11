@@ -283,6 +283,35 @@ interface Obstacle {
   shape: Shape;
   /** The view it moves with; null for the title block, tables and the frame. */
   viewId: Id | null;
+  /** A cutting-plane line, end or arrow (`cuttingPlaneItems`). */
+  cut?: boolean;
+}
+
+/** How close a segment must be to an extension line's axis to lie on it, sheet mm. */
+const ON_AXIS = 0.05;
+
+/**
+ * True when the cutting plane does not stop extension line `k` of a lane on `side` at `at` (its
+ * position along the lane): the extension line runs along the cutting-plane line (a stepped cut
+ * through the measured point: both mark the same location, as a centre line extended as an
+ * extension line does, ISO 128-44 and 129-1), or a cutting-plane item only touches it where such
+ * a run ends (the arrow at the cut's end). A cutting-plane item that crosses the extension line
+ * anywhere else, and any other obstacle, still blocks it.
+ */
+function alongCut(
+  ob: Obstacle,
+  obstacles: readonly Obstacle[],
+  side: LaneSide,
+  at: number,
+): boolean {
+  if (!ob.cut || ob.shape.kind !== 'segment') return false;
+  // Horizontal extension lines (left and right lanes) lie on y = at; vertical ones on x = at.
+  const c = side === 'left' || side === 'right' ? 1 : 0;
+  const on = (p: Vec2) => Math.abs((p[c] as number) - at) <= ON_AXIS;
+  const runs = (o: Obstacle) =>
+    o.cut && o.shape.kind === 'segment' && on(o.shape.a) && on(o.shape.b);
+  if (runs(ob)) return true;
+  return (on(ob.shape.a) || on(ob.shape.b)) && obstacles.some((o) => o !== ob && runs(o));
 }
 
 interface Blocked {
@@ -423,7 +452,11 @@ export function planLanes(input: LanePlanInput): LanePlan {
         const out: Obstacle[] = [];
         for (const ob of sheet.obstacles) {
           if (ob.kind === 'view' && ob.viewId === viewId) continue; // its own outline
-          out.push({ shape: ob.shape, viewId: ob.viewId ?? null });
+          out.push({
+            shape: ob.shape,
+            viewId: ob.viewId ?? null,
+            ...(ob.kind === 'cutLine' ? { cut: true } : {}),
+          });
         }
         for (const p of planned) {
           if (p.viewId === viewId && p.side === side) continue; // the same side: rows decide
@@ -459,7 +492,12 @@ export function planLanes(input: LanePlanInput): LanePlan {
           const hits: Obstacle[] = [];
           let onward = true;
           for (const ob of obs) {
-            if (exts.some((e) => shapeHitsBox(ob.shape, e))) {
+            if (
+              exts.some(
+                (e, k) =>
+                  shapeHitsBox(ob.shape, e) && !alongCut(ob, obs, side, it.span[k] as number),
+              )
+            ) {
               hits.push(ob);
               onward = false; // longer extension lines only cross it again
             } else if (shapeHitsBox(ob.shape, strip)) hits.push(ob);

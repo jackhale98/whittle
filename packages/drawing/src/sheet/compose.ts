@@ -218,7 +218,12 @@ function viewItems(
   for (const c of proj.curves) {
     const role = curveRole(c, v);
     if (!role) continue;
-    const source: ItemSource = { kind: 'view', viewId: vid, ...(c.name ? { edge: c.name } : {}) };
+    const source: ItemSource = {
+      kind: 'view',
+      viewId: vid,
+      ...(c.name ? { edge: c.name } : {}),
+      ...(c.face ? { face: c.face } : {}),
+    };
     byRole[role] ??= [];
     byRole[role].push({ ...curveToSheet(c.curve, v), role, source });
   }

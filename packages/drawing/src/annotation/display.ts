@@ -43,7 +43,11 @@ export type LineType = 'continuous' | 'dashed' | 'center';
 export type ItemSource =
   | { kind: 'template' }
   | { kind: 'titleBlock'; slot?: string }
-  | { kind: 'view'; viewId: Id; edge?: string }
+  /**
+   * `edge`: the model edge's persistent name. `face`: the face an outline (or a seam on a
+   * silhouette) outlines (`ProjectedCurve.face`), so a pick on it can be a face ref.
+   */
+  | { kind: 'view'; viewId: Id; edge?: string; face?: string }
   | { kind: 'placement'; placementId: Id; annotationId: Id }
   | { kind: 'centerMark'; viewId: Id; markId?: Id }
   | { kind: 'note'; noteId: Id }

@@ -10,6 +10,7 @@ import type {
   Annotation,
   AnnotationSource,
   DimensionConstraint,
+  DimensionText,
   EntityRef,
   Expr,
   Feature,
@@ -57,6 +58,11 @@ export interface Promotion {
    * plane stands in for it).
    */
   choices?: EntityRef[][];
+  /**
+   * Index in `choices` whose refs count instances (`DimensionText.count`): the model faces of a
+   * patterned or mirrored feature. The draft asks for the count only while that choice is kept.
+   */
+  countChoice?: number;
 }
 
 export function sourceKey(s: AnnotationSource): string {
@@ -74,6 +80,33 @@ function sketchRef(f: SketchFeature, id: Id): EntityRef {
   const e = f.entities.find((x) => x.id === id);
   const point = e?.kind === 'point' || id === '@origin';
   return { name: `S${f.id}:${point ? 'p' : 'e'}(${id})`, kind: point ? 'vertex' : 'edge' };
+}
+
+/**
+ * A sketch dimension of a copied extrude's profile: measured between that extrude's faces first,
+ * so the label can count the copies (`N×`), with the sketch refs kept as the fallback choice.
+ */
+function withCopies(
+  p: Promotion,
+  f: SketchFeature,
+  c: DimensionConstraint,
+  extrudes: ReadonlyMap<Id, Extract<Feature, { type: 'extrude' }>>,
+  copied: ReadonlyMap<Id, number | undefined>,
+): Promotion {
+  const ex = extrudes.get(f.id);
+  if (!ex || !copied.has(ex.id)) return p;
+  const n = copied.get(ex.id);
+  if (n !== undefined && n <= 1) return p;
+  const refs = copiedProfileRefs(f, c, ex);
+  if (!refs) return p;
+  const text = 'text' in p.draft ? (p.draft.text as DimensionText | undefined) : undefined;
+  const draft = { ...p.draft, refs, text: { ...(text ?? {}), count: true } };
+  return {
+    ...p,
+    draft: draft as AnnotationDraft,
+    choices: [refs, p.draft.refs],
+    countChoice: 0,
+  };
 }
 
 function promoteSketch(
@@ -164,6 +197,100 @@ function promoteSketch(
 function sketchIdOf(name: string | undefined): Id | undefined {
   const m = name ? /^S([^:]+):/.exec(name) : null;
   return m?.[1];
+}
+
+// ---------------------------------------------------------------------------------------------
+// Pattern and mirror copies (`DimensionText.count`)
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * Features copied by an active pattern or mirror, with the number of instances the copies give
+ * (the original included, skipped positions left out), or `undefined` when that number does not
+ * evaluate. The kernel counts what exists (`AnnotationResolution.count`); this only decides
+ * whether asking for the count can show more than one.
+ */
+function copiedFeatures(
+  active: readonly Feature[],
+  evaluate: PromotionEvaluate | undefined,
+): Map<Id, number | undefined> {
+  const out = new Map<Id, number | undefined>();
+  const num = (e: Expr): number | undefined => {
+    const v = evaluate?.(e, 'length');
+    return v !== undefined && Number.isFinite(v) ? Math.round(v) : undefined;
+  };
+  for (const f of active) {
+    if (f.type !== 'linearPattern' && f.type !== 'circularPattern' && f.type !== 'mirror') continue;
+    if (f.source.kind !== 'features') continue;
+    let n: number | undefined;
+    if (f.type === 'mirror') n = 2;
+    else {
+      const a = num(f.count);
+      const b = f.type === 'linearPattern' && f.second ? num(f.second.count) : 1;
+      n = a !== undefined && b !== undefined ? a * b - new Set(f.skip ?? []).size : undefined;
+    }
+    for (const id of f.source.features) {
+      const was = out.get(id);
+      // Copies of copies multiply; an unknown factor makes the product unknown.
+      out.set(id, out.has(id) ? (was !== undefined && n !== undefined ? was * n : undefined) : n);
+    }
+  }
+  return out;
+}
+
+const REGION = /^S([^:]+):region\(([^|)]*)/;
+
+/**
+ * The model faces a size dimension of a copied extrude's profile measures, so that its count is
+ * the copies' (`F<extrude>:side(S<sketch>:e(<curve>))`, exact names, never a guess):
+ *
+ * - a diameter or radius of a profile circle or arc: that curve's side face;
+ * - an `hDistance` or `vDistance` between two profile corners: at each corner, the one profile
+ *   line through it that is perpendicular to the measuring direction (a rectangle's width and
+ *   height). Anything else (the origin, a point on no such line, two lines through one corner)
+ *   keeps the sketch refs.
+ */
+function copiedProfileRefs(
+  f: SketchFeature,
+  c: DimensionConstraint,
+  extrude: Extract<Feature, { type: 'extrude' }>,
+): EntityRef[] | undefined {
+  const m = REGION.exec(extrude.profile[0]?.name ?? '');
+  if (!m || m[1] !== f.id) return undefined;
+  const loop = new Set((m[2] as string).split(',').filter(Boolean));
+  const face = (curve: Id): EntityRef => ({
+    name: `F${extrude.id}:side(S${f.id}:e(${curve}))`,
+    kind: 'face',
+  });
+  const byId = new Map(f.entities.map((e) => [e.id, e]));
+  if (c.kind === 'diameter' || c.kind === 'radius') {
+    const e = byId.get(c.curve);
+    return (e?.kind === 'circle' || e?.kind === 'arc') && loop.has(c.curve)
+      ? [face(c.curve)]
+      : undefined;
+  }
+  if (c.kind !== 'hDistance' && c.kind !== 'vDistance') return undefined;
+  const pt = (id: Id) => {
+    const e = byId.get(id);
+    return e?.kind === 'point' ? e : undefined;
+  };
+  // hDistance measures along the sketch x: the lines that give it are vertical.
+  const across = c.kind === 'hDistance' ? 'x' : 'y';
+  const through = (p: Id): Id | undefined => {
+    const lines: Id[] = [];
+    for (const e of f.entities) {
+      if (e.kind !== 'line' || !loop.has(e.id) || (e.start !== p && e.end !== p)) continue;
+      const a = pt(e.start);
+      const b = pt(e.end);
+      if (!a || !b) continue;
+      const d = across === 'x' ? Math.abs(a.x - b.x) : Math.abs(a.y - b.y);
+      const l = Math.hypot(a.x - b.x, a.y - b.y);
+      if (l > 0 && d <= 1e-9 * Math.max(1, l)) lines.push(e.id);
+    }
+    return lines.length === 1 ? lines[0] : undefined;
+  };
+  const la = pt(c.a) ? through(c.a) : undefined;
+  const lb = pt(c.b) ? through(c.b) : undefined;
+  return la && lb && la !== lb ? [face(la), face(lb)] : undefined;
 }
 
 /** Evaluates an expression to mm or rad; `undefined` when it does not evaluate. */
@@ -323,12 +450,25 @@ export function collectPromotions(
   const active = part.features.slice(0, part.rollbackIndex).filter((f) => !f.suppressed);
   const sketches = new Map<Id, SketchFeature>();
   for (const f of part.features) if (f.type === 'sketch') sketches.set(f.id, f);
+  const copied = copiedFeatures(active, evaluate);
+  // The one active extrude of each profile sketch (a sketch two extrudes use is left alone).
+  const extrudes = new Map<Id, Extract<Feature, { type: 'extrude' }>>();
+  const shared = new Set<Id>();
+  for (const f of active) {
+    if (f.type !== 'extrude') continue;
+    const sk = sketchIdOf(f.profile[0]?.name);
+    if (!sk) continue;
+    if (extrudes.has(sk)) shared.add(sk);
+    extrudes.set(sk, f);
+  }
+  for (const sk of shared) extrudes.delete(sk);
   for (const f of active) {
     if (f.type === 'sketch') {
       for (const c of f.constraints) {
         if (!('value' in c) || !(c as DimensionConstraint).driving) continue;
-        const p = promoteSketch(f, c as DimensionConstraint, frames.get(f.id));
-        if ('draft' in p) promotions.push(p);
+        const d = c as DimensionConstraint;
+        const p = promoteSketch(f, d, frames.get(f.id));
+        if ('draft' in p) promotions.push(withCopies(p, f, d, extrudes, copied));
         else notPromotable.push(p);
       }
     } else {
