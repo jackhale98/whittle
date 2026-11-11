@@ -94,7 +94,8 @@ export interface ViewInspectorProps {
     cut?: {
       kind: 'full' | 'half' | 'offset' | 'stepped';
       points: { x: number; y: number; editable: boolean }[];
-      onMove(index: number, x: number, y: number): void;
+      /** One coordinate of one vertex (the other is read where the edit lands, never from here). */
+      onMove(index: number, axis: 'x' | 'y', value: number): void;
       onAdd(): void;
       onRemove(index: number): void;
       /** Only offered on a straight cut. */
@@ -102,6 +103,8 @@ export interface ViewInspectorProps {
       onOffset?(): void;
     };
   };
+  /** A base view's in-plane rotation (an angle expression: `90`, `90deg`, `a/2`); empty: none. */
+  rotation?: { value: Expr; evaluate(expr: Expr): EvalResult; onChange(expr: Expr | null): void };
   detail?: { letter: string; radius: number; onRadius(r: number): void; onLetter(l: string): void };
   /** Views derived from this one (deleting removes them too). */
   dependents: number;
@@ -201,6 +204,28 @@ export function ViewInspector(p: ViewInspectorProps) {
 
       {p.section?.cut ? (
         <CutLineSection cut={p.section.cut} evaluate={p.evaluate} size={sz} />
+      ) : null}
+
+      {p.rotation ? (
+        <Section title="Rotation">
+          <Field
+            label="Turn the view on the sheet"
+            hint="Counter-clockwise, in degrees. Views projected from it follow."
+          >
+            <ExpressionInput
+              label="View rotation"
+              value={p.rotation.value}
+              allowEmpty
+              evaluate={p.rotation.evaluate}
+              unitHint="deg"
+              step={90}
+              onCommit={(t) => p.rotation?.onChange(t.trim() === '' ? null : t)}
+              size={sz}
+              paramLinks="complete"
+              showValue={false}
+            />
+          </Field>
+        </Section>
       ) : null}
 
       {p.detail ? (
@@ -438,14 +463,14 @@ function CutLineSection({
                   label={`Cut vertex ${i + 1} X (mm)`}
                   value={pt.x}
                   evaluate={evaluate}
-                  onCommit={(x) => cut.onMove(i, x, pt.y)}
+                  onCommit={(x) => cut.onMove(i, 'x', x)}
                   size={size}
                 />
                 <SheetValueField
                   label={`Cut vertex ${i + 1} Y (mm)`}
                   value={pt.y}
                   evaluate={evaluate}
-                  onCommit={(y) => cut.onMove(i, pt.x, y)}
+                  onCommit={(y) => cut.onMove(i, 'y', y)}
                   size={size}
                 />
               </div>

@@ -1510,3 +1510,43 @@ test.describe('ordinate and chamfer dimensions (P1)', () => {
     await a11y(page);
   });
 });
+
+test.describe('rotate a base view (P1)', () => {
+  test('a base view turns by an angle expression; views from it follow; one undo step', async ({
+    page,
+  }) => {
+    await openDemo(page);
+    const s0 = await newDrawing(page);
+    const front = viewOf(s0, 'base');
+    if (!front?.outline) throw new Error('no front view');
+    const w0 = front.outline.max[0] - front.outline.min[0];
+    const h0 = front.outline.max[1] - front.outline.min[1];
+    const edge = (await drawing(page).edges(front.id)).find((e) => e.kind === 'line');
+    if (!edge) throw new Error('no edge');
+    await click(page, edge.at);
+    await expect.poll(async () => (await drawing(page).state()).selected?.kind).toBe('view');
+    const before = await historyLen(page);
+    const field = page.getByLabel('View rotation');
+    await field.fill('45+45');
+    await field.press('Enter');
+    await expect
+      .poll(async () => {
+        const v = ((await drawings(page))[0] as Drawing).views[0];
+        return v?.kind === 'base' ? v.rotation : null;
+      })
+      .toBe('45+45');
+    expect(await historyLen(page)).toBe(before + 1);
+    expect((await app(page).history()).past.at(-1)?.label).toBe('Rotate view');
+    // A quarter turn swaps the view's width and height on the sheet.
+    await built(page);
+    const o = viewOf(await drawing(page).state(), 'base')?.outline;
+    if (!o) throw new Error('no outline');
+    expect(o.max[0] - o.min[0]).toBeCloseTo(h0, 1);
+    expect(o.max[1] - o.min[1]).toBeCloseTo(w0, 1);
+    await a11y(page);
+    // Not an angle: refused inline, nothing stored.
+    await field.fill('5 mm');
+    await field.press('Enter');
+    expect(await historyLen(page)).toBe(before + 1);
+  });
+});

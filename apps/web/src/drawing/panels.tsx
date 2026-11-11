@@ -207,18 +207,25 @@ export function ViewPanelBody({ c, b, size }: { c: DrawingController; b: Built; 
                     ? { x: p.at[0], y: p.at[1], editable: true }
                     : { x: 0, y: 0, editable: false },
                 ),
-                onMove: (i: number, x: number, y: number) =>
-                  put(
-                    { ...sectionView, cut: moveVertex(sectionView.cut, i, [x, y]) },
-                    'Edit cut line',
-                  ),
-                onAdd: () =>
-                  put({ ...sectionView, cut: addVertex(sectionView.cut) }, 'Add cut vertex'),
-                onRemove: (i: number) =>
-                  put(
-                    { ...sectionView, cut: removeVertex(sectionView.cut, i) },
-                    'Remove cut vertex',
-                  ),
+                // Edits read the cut where they land: two fields committed in a row must not
+                // overwrite each other with a build that has not caught up yet.
+                onMove: (i: number, axis: 'x' | 'y', value: number) => {
+                  const cur = c.view(sectionView.id);
+                  const at = cur?.kind === 'section' ? cur.cut[i] : undefined;
+                  if (cur?.kind !== 'section' || at?.kind !== 'free') return;
+                  const to: [number, number] = axis === 'x' ? [value, at.at[1]] : [at.at[0], value];
+                  put({ ...cur, cut: moveVertex(cur.cut, i, to) }, 'Edit cut line');
+                },
+                onAdd: () => {
+                  const cur = c.view(sectionView.id);
+                  if (cur?.kind === 'section')
+                    put({ ...cur, cut: addVertex(cur.cut) }, 'Add cut vertex');
+                },
+                onRemove: (i: number) => {
+                  const cur = c.view(sectionView.id);
+                  if (cur?.kind === 'section')
+                    put({ ...cur, cut: removeVertex(cur.cut, i) }, 'Remove cut vertex');
+                },
                 ...(half
                   ? {
                       onHalf: () => put({ ...sectionView, cut: half }, 'Make half section'),
@@ -229,6 +236,20 @@ export function ViewPanelBody({ c, b, size }: { c: DrawingController; b: Built; 
                       onOffset: () => put({ ...sectionView, cut: offset }, 'Make offset section'),
                     }
                   : {}),
+              },
+            },
+          }
+        : {})}
+      {...(view.kind === 'base'
+        ? {
+            rotation: {
+              value: view.rotation ?? '',
+              evaluate: (e: Expr) => c.wb.evaluate(e, 'angle'),
+              onChange: (t: Expr | null) => {
+                const next = { ...view } as { rotation?: Expr };
+                if (t === null) delete next.rotation;
+                else next.rotation = t;
+                put(next as DrawingView, 'Rotate view');
               },
             },
           }

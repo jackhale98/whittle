@@ -344,6 +344,16 @@ export function AnnotationInspector(p: AnnotationInspectorProps) {
               />
             </Field>
           </div>
+          <Switch
+            checked={a.text?.count === true}
+            onChange={(on) => {
+              const text: DimensionText = { ...(a.text ?? {}) };
+              if (on) text.count = true;
+              else delete text.count;
+              set({ ...a, text });
+            }}
+            label="Instance count (N×), from the model"
+          />
         </Section>
       ) : null}
 

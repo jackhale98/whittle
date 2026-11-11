@@ -419,7 +419,7 @@ describe('ViewInspector', () => {
     await userEvent.type(y, '12');
     expect(cut.onMove).not.toHaveBeenCalled();
     await userEvent.type(y, '{Enter}');
-    expect(cut.onMove).toHaveBeenCalledWith(1, 40, 12);
+    expect(cut.onMove).toHaveBeenCalledWith(1, 'y', 12);
     // Two points cannot be reduced; three can.
     expect(screen.queryByRole('button', { name: /Remove vertex/ })).toBeNull();
     const { onHalf: _half, onOffset: _offset, ...bent } = cut;
@@ -565,7 +565,10 @@ describe('TableInspector', () => {
     await userEvent.type(x, '310{Enter}');
     expect(onChange).toHaveBeenLastCalledWith({ ...table, position: [310, 280] }, 'Move table');
     await userEvent.click(screen.getByRole('radio', { name: 'kg' }));
-    expect(onChange).toHaveBeenLastCalledWith({ ...table, massUnit: 'kg' }, 'Edit part properties table');
+    expect(onChange).toHaveBeenLastCalledWith(
+      { ...table, massUnit: 'kg' },
+      'Edit part properties table',
+    );
   });
 
   it('a table keeps at least one column', async () => {
@@ -615,6 +618,13 @@ describe('AnnotationInspector', () => {
       ...placement,
       layout: { kind: 'lane', side: 'top', lane: 0 },
     });
+  });
+
+  it('the instance count (N×) is a switch; the model gives the number', async () => {
+    const onChange = vi.fn();
+    renderUI(<AnnotationInspector {...inspector({ onChange })} />);
+    await userEvent.click(screen.getByRole('switch', { name: /Instance count/ }));
+    expect(onChange).toHaveBeenLastCalledWith({ ...dim, text: { count: true } });
   });
 
   it('a promoted dimension is read-only: no stated value, the source is named (D6)', () => {
