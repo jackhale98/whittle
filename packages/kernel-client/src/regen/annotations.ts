@@ -44,7 +44,6 @@ import type {
   DimensionText,
   EntityRef,
   Feature,
-  Fingerprint,
   GrownRef,
   HoleFeature,
   Id,

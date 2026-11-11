@@ -2474,7 +2474,7 @@ Applied from the drawing-engineer's proposal (`docs/proposals/M4-contracts.md`, 
 10. The view centre is the projected 3D bounding box.
 11. Everything on a sheet is in sheet mm, origin bottom-left, y up. The style is stored in full and the template version is pinned, so app updates never move an existing drawing.
 12. A missing configuration id needs attention, never a fallback.
-13. The v3 → v4 migration mints no ids. Feature-level `PmiAnnotation`s move to `Part.annotations`. Placeholder drawings (id + name only) are removed with a note.
+13. ~~The v3 → v4 migration mints no ids. Feature-level `PmiAnnotation`s move to `Part.annotations`. Placeholder drawings (id + name only) are removed with a note.~~ Superseded by the amendment "no migrations before 1.0": files from an earlier schema are refused.
 14. HLR runs in a separate drawing worker. `ModelingApi.shapeForDrawing` hands over BREP bytes plus persistent edge and face names. Draft (PolyAlgo) output comes first, then exact.
 15. Formatting and layout are one worker-safe module, `@wren-cad/drawing/annotation`, shared with M5.
 

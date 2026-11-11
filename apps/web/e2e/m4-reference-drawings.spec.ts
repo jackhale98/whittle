@@ -77,6 +77,38 @@ const shrink = (b: Box, by: number): Box => ({
   max: [b.max[0] - by, b.max[1] - by],
 });
 
+type Built = Awaited<ReturnType<typeof built>>;
+type Placements = Awaited<ReturnType<ReturnType<typeof drawing>['placements']>>;
+type SpecDim = ReturnType<typeof loadPartSpec>['drawing']['dimensions'][number];
+
+/**
+ * A specified dimension is met when annotation `id` is placed on the spec's view with a resolved
+ * value equal to the spec's and to the geometry, and the value is shown on the sheet.
+ */
+function dimensionMet(
+  d: SpecDim,
+  viewId: string,
+  id: string,
+  state: Built,
+  placements: Placements,
+): boolean {
+  const res = state.resolutions.find((r) => r.id === id);
+  const onView = placements.some((p) => p.annotationId === id && p.viewId === viewId);
+  const tol = TOL[d.unit];
+  const equal =
+    res?.state === 'ok' &&
+    res.value !== null &&
+    Math.abs(Math.abs(res.value) - Math.abs(d.value)) <= tol &&
+    (res.measured === null || Math.abs(Math.abs(res.measured) - Math.abs(res.value)) <= tol);
+  return onView && equal && showsValue(state.texts, Math.abs(d.value));
+}
+
+function describe(id: string, viewId: string, state: Built, placements: Placements): string {
+  const res = state.resolutions.find((r) => r.id === id);
+  const onView = placements.some((p) => p.annotationId === id && p.viewId === viewId);
+  return `resolved ${res?.state} ${res?.value} (measured ${res?.measured}), on view ${onView}`;
+}
+
 for (const part of PARTS) {
   test(`M4 reference drawing ${part.id}: views and dimensions of the spec drawing`, async ({
     page,
@@ -195,21 +227,8 @@ for (const part of PARTS) {
           .join(', ')})`;
       } else {
         const id = bound.get(d.name);
-        const res = state.resolutions.find((r) => r.id === id);
-        const onView = placements.some((p) => p.annotationId === id && p.viewId === v.id);
-        const tol = TOL[d.unit];
-        const equal =
-          res?.state === 'ok' &&
-          res.value !== null &&
-          Math.abs(Math.abs(res.value) - Math.abs(d.value)) <= tol &&
-          (res.measured === null || Math.abs(Math.abs(res.measured) - Math.abs(res.value)) <= tol);
-        const shown = equal && showsValue(state.texts, Math.abs(d.value));
-        ok = id !== undefined && onView && equal && shown;
-        why =
-          notes.get(d.name) ??
-          (id
-            ? `resolved ${res?.state} ${res?.value} (measured ${res?.measured}), on view ${onView}, shown ${shown}`
-            : 'not placed');
+        ok = id !== undefined && dimensionMet(d, v.id, id, state, placements);
+        why = notes.get(d.name) ?? (id ? describe(id, v.id, state, placements) : 'not placed');
       }
       if (ok) met.push(d.name);
       if (gapNames.has(d.name)) {
@@ -264,11 +283,33 @@ for (const part of PARTS) {
           crossing.push(`${who(e)}: a line over view ${s.id}`);
       }
     expect(crossing, 'annotations drawn over another view').toEqual([]);
+
+    // 5. Every listed product gap is tried with the drawing tools (the same pick the spec needs),
+    // after the checks above so a wrong attempt cannot disturb them, and must still fail: a gap
+    // that starts working fails this test, so it is moved out of GAPS and checked for real.
+    if (!ALL) {
+      const tried: { d: SpecDim; viewId: string; id?: string }[] = [];
+      for (const d of spec.drawing.dimensions) {
+        if (d.kind === 'count' || !gapNames.has(d.name) || bound.has(d.name)) continue;
+        const v = views.find((x) => x.spec.id === d.view);
+        if (!v) throw new Error(`no view ${d.view}`);
+        const r = await dimensionTool(page, spec, v, d);
+        tried.push({ d, viewId: v.id, ...('id' in r ? { id: r.id } : {}) });
+      }
+      const after = await built(page);
+      const afterPlacements = await drawing(page).placements();
+      const nowWorking = tried
+        .filter(
+          (t) => t.id !== undefined && dimensionMet(t.d, t.viewId, t.id, after, afterPlacements),
+        )
+        .map((t) => t.d.name);
+      expect(nowWorking, 'listed product gaps that now work: remove them from GAPS').toEqual([]);
+    }
   });
 }
 
-// Product gaps: a dimension or view the drawing tools cannot make yet. Skipped, with the reason;
-// the test above fails if one of them starts to work (see GAPS).
+// Product gaps (PLAN M4.1): listed as fixme entries for the report. The part tests above try every
+// gap with the drawing tools (check 5) and fail when one starts to work.
 for (const [id, gaps] of Object.entries(GAPS))
   for (const g of gaps)
     test.fixme(`M4 reference drawing ${id}: ${g.dims.join(', ')} (${g.what}): ${g.reason}`, () => {});

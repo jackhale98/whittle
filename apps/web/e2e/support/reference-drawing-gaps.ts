@@ -51,7 +51,7 @@ export const GAPS: Record<string, Gap[]> = {
     {
       dims: ['draft_a'],
       what: 'draft angle 3 deg between the drafted wall and the vertical, in the section',
-      reason: `${SECTION}. The drafted wall is a cut-face edge there, not an outline, so the new outline face names do not reach it`,
+      reason: `${SECTION}. The drafted wall is a cut-face edge there, not an outline, so the new outline face names do not reach it. Closing it also needs the certification driver to make angles with the Angle tool: \`dimensionTool\` has no angle path yet (PLAN M4.1)`,
     },
   ],
   'rp06-cable-guide': [

@@ -4,6 +4,26 @@
 
 - **Reference planes, axes and points are drawn in the model view** (owner report: a plane made in the model view was not shown). A plane is a translucent square with an outline and its name, an axis is a dash-dot line, a point a crosshair, in a teal reference colour in both themes, drawn after the bodies without ever hiding them. Click one to select it: a plane starts a sketch, an axis feeds a revolve or a pattern, a point is a point reference. Every plane, axis and point row in the feature tree has an eye (every shell, 44 px on touch); hiding is document data, survives a reload and makes the reference not pickable in the view. **Show origin planes** / **Hide origin planes** in the palette (per device) draws the XY, XZ, YZ planes and the X, Y, Z axes; they also appear while the sketch plane chooser is open. The palette's Plane command no longer starts a pick that hid the new plane. ADR-093.
 
+- M4 gate follow-ups (ADR-092 amendment):
+  - **New drawing tools:**
+    - angular dimensions between two edges that meet;
+    - ordinate dimensions sharing a lane;
+    - chamfer callouts (`2 × 45°`) bound to the chamfer feature;
+    - an `N×` instance count on a dimension, drawn from the resolved count, never typed;
+    - half and offset sections, by dragging or typing the cut line's corner points;
+    - a rotation for a base view;
+    - a part properties table.
+  - **Print at true scale:** Export → Print, or Ctrl/Cmd+P.
+  - **Editing:** layout values are typed inline as expressions with units, one undo step each. Escape during a drag undoes it and leaves no history entry.
+  - **Import:**
+    - never draws a dimension over another view;
+    - never places one twice;
+    - places fillet, chamfer and revolve values from exact anchors;
+    - skips full-turn revolve angles;
+    - measures hole callout leaders from the real hole rim.
+  - **Fix:** the drawing route sat above pop-overs (keypad, parameter lists).
+  - **Initial route:** 236.67 kB gzip with ADR-093 (limit 250 kB).
+
 - M4 in the app: **drawings**. A lazily loaded drawing route over the model: ⌘K "New drawing", or the Drawings section of the inspector (the phone's Parts tab lists them for review). The first drawing of a project asks for the standard (ISO or ASME) and the projection method (first or third angle) inline, never as a dialog, and remembers the choice; the sheet, template and style follow it. Base views in one tap, top and side views, an isometric, section views (drag a cut line) and detail views (drag a circle). Drag an arrow out of a selected view to add an aligned view, which follows the projection method (switching first and third angle edits nothing). Scales are inline expressions (`1:2`), and the drawing and each view can show a configuration, badged. **Import model annotations** places the model's dimensions on the views that show them true-length as one undo step. A dimension tool picks edges on a view, tolerances are typed inline as written (`±0.1`, `H7/g6`), and datums, tolerance frames, surface finishes and hole callouts are added the same way; dimensions drag between lanes. A promoted driving dimension is read-only. The title block is edited inline: bound values show, overrides are badged and reversible. A needs-attention list (search, grid zone, **Reattach…**) never shows a stale value. Export PDF (vector, true scale), SVG and DXF R12/R2000. The edges of the views and the dimensions come from the exact hidden-line engine in the drawing kernel (OCCT, lazy, 2.09 MiB brotli). Phone: review only. ADR-092. The initial route grew by 0.56 kB gzip (235.4 to 235.96 kB).
 
 - Parameters you can find and apply (ADR-080). Every value field (sketch dimensions, inspector fields, the on-canvas chip) now offers matching parameters, with their values, as you type a name (↑/↓, Enter or Tab to accept, Esc closes the list and keeps your edit; it works mid-formula and never gets in the way of numbers or units). **fx**, a leading `=` or Alt+↓ list them all, and **Make parameter** turns the current value into a named parameter and links the field to it in one undo step. A field or dimension driven by a parameter shows it (`width = Ø80`, an `fx` badge), and the Params tab says **Used by N**, expandable to the features and sketch dimensions that use it (choosing one selects it, opening the sketch if needed). A parameter can also be dragged from the Params tab onto a dimension label or a field with a mouse, finger or Pencil. The initial route grew by 1.07 kB gzip; the rest loads on demand.
