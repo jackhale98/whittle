@@ -3,6 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "license": "GPL-3.0-or-later",
+  "sideEffects": false,
   "type": "module",
   "description": "Wren document model: expression engine with units, JSON-patch store with undo/redo, canonical project serialisation, materials. Worker-safe (no DOM).",
   "exports": {

@@ -13,9 +13,10 @@ import {
   ExpressionInput,
   type PickCandidate,
   PromptChip,
+  prefetchWhichOneChooser,
   SectionChip,
   SketchStatusChip,
-  WhichOneChooser,
+  WhichOneChooserLazy,
   WrenLoader,
 } from '@wren-cad/ui';
 import { Library } from 'lucide-react';
@@ -332,7 +333,10 @@ export function ViewportOverlays({ wb, touch }: { wb: Workbench; touch: boolean 
   // Fetch the radial menu's chunk once the app is idle so a first flick is not lost to a download.
   useEffect(() => {
     if (!ui.ready) return;
-    const t = setTimeout(() => void loadRadial(), 1500);
+    const t = setTimeout(() => {
+      void loadRadial();
+      prefetchWhichOneChooser();
+    }, 1500);
     return () => clearTimeout(t);
   }, [ui.ready]);
 
@@ -456,7 +460,7 @@ export function ViewportOverlays({ wb, touch }: { wb: Workbench; touch: boolean 
       {!sk && ui.measure ? <MeasureLabel wb={wb} /> : null}
 
       {ui.chooser ? (
-        <WhichOneChooser
+        <WhichOneChooserLazy
           candidates={ui.chooser.hits.map((h, i) => candidateFor(doc, h, i))}
           at={{ x: ui.chooser.x, y: ui.chooser.y }}
           size={touch ? 'touch' : 'md'}
@@ -469,7 +473,7 @@ export function ViewportOverlays({ wb, touch }: { wb: Workbench; touch: boolean 
       ) : null}
 
       {ui.candidates ? (
-        <WhichOneChooser
+        <WhichOneChooserLazy
           candidates={ui.candidates.names.map((name) => candidateForName(wb, doc, name))}
           at={{ x: ui.candidates.x, y: ui.candidates.y }}
           size={touch ? 'touch' : 'md'}

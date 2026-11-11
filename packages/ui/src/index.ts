@@ -84,8 +84,9 @@ export {
   WhichOneChooser,
   type WhichOneChooserProps,
 } from './components/WhichOneChooser';
+export { prefetchWhichOneChooser, WhichOneChooserLazy } from './components/WhichOneChooserLazy';
+export { ConfigStatusLabel } from './config/ConfigStatusLabel';
 export {
-  ConfigStatusLabel,
   ConfigurationPill,
   type ConfigurationPillProps,
   type NewConfigurationInput,
@@ -393,7 +394,7 @@ export {
   type ParamsTableProps,
   type ParamUse,
 } from './params/ParamsTable';
-export { AppShell, type AppShellProps } from './shells/AppShell';
+export { AppShell, type AppShellProps, preloadShell } from './shells/AppShell';
 export { BottomSheet, type BottomSheetProps } from './shells/BottomSheet';
 export { DesktopShell } from './shells/DesktopShell';
 export { PhoneShell } from './shells/PhoneShell';

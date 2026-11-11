@@ -2428,3 +2428,25 @@ CI run 42966684008, shard 7: `sketch-touch.spec.ts` "a one-finger drag on empty 
 - **Amendment (M3.8 follow-up, review N4/N5).**
   - **The deadline starts once planegcs is loaded.** The worker posts one plain message besides Comlink: `{ wrenSketch: 'ready' }`, or `{ wrenSketch: 'failed', message }` if planegcs can't load (`packages/sketch/src/worker-protocol.ts`; Comlink ignores messages without its `id`). `SketchSolverApi` is unchanged. A call to a loaded worker has the 20 s deadline from the call. A call made while the worker is loading has its deadline start at the ready message. Before, a cold, slow link could take longer than 20 s to download the Wasm, and each restart downloaded it again. A loading worker is never restarted. A call that has waited `loadTimeoutMs` (120 s) for it rejects, and the worker keeps loading for the next call, so the edit queue still moves on. A `failed` message fails the waiting calls at once, and the next call spawns a fresh worker. Custom `createWorker` workers count as ready at once unless `signalsReady` is set.
   - **A release applies the last move.** The drag step loop stopped at `this.drag === d`. A release during a slow solve cleared `this.drag`, so the pending last position was dropped, and the geometry ended where the previous step landed (the flaky "hold on a circle edge then move" under load). `DragSteps` (`apps/web/src/app/drag-steps.ts`) runs the steps, latest position wins. `finish(true)` on a release waits for the step in flight, then applies the pending position before `endDrag`. A cancel or a pinch taking over drops it.
+
+## ADR-089 — Initial-route headroom pass: 249.3 to 234.7 kB gzip (2026-11-11)
+
+The initial route sat at 249.3 of 250 kB (0.7 kB headroom), too tight for M4. Chunks are assigned per module, so a module that one eager caller imports for one small export drags its whole body, and everything it imports, into the entry chunk. Measured with a throwaway Rollup `generateBundle` module-size dump (not committed), then rebuilt after each step. Sizes are `pnpm size` (gzip).
+
+| Change | Initial route (kB) |
+| --- | ---: |
+| Baseline | 249.33 |
+| `packages/document` `"sideEffects": false`, and `codec.ts` split so `archive.ts` (zip read/write, `fromFiles`, `projectCodec`) and with it fflate stay out of the eager chunk (`slugify`, `canonicalJson` stay in `codec.ts`; `canonicalBytes` uses `TextEncoder`) | 242.28 |
+| `config-export` imported inside `exportDoc` (already async) | 241.96 |
+| Touch shells (`TabletShell`, `PhoneShell`, `BottomSheet`) are lazy chunks; `preloadShell(tier)` runs in `main.tsx` before the first render on phone and tablet, and a loaded shell renders synchronously (no Suspense fallback). Desktop is unchanged | 238.09 |
+| `ConfigStatusLabel` moved out of `ConfigurationPill.tsx`, so the pill (already a lazy chunk) is no longer pulled in by the Part inspector | 235.73 |
+| `ConfigNotices` lazy (rendered only when there is a notice) | 235.06 |
+| `WhichOneChooserLazy` (idle prefetch with the radial chunk) | 234.69 |
+
+Result: 234.7 kB, headroom 15.3 kB. No behaviour change. `sideEffects: false` on document is safe because it has no import-time registration (same rule as ADR-075).
+
+**Time to interactive** (perf project, cold shell on fast 4G, three runs each): before 1262 to 1270 ms, after 1184 to 1196 ms (budget 2250). Warm shell visible 117 to 398 ms before, 189 to 224 ms after (noise). Phones and tablets now fetch one extra chunk before the first render (precached after the first visit); not measured on a throttled phone profile.
+
+**Tried, no gain:** `sideEffects: false` on io, sync and viewport (0 kB).
+
+**Not moved, and why:** `PushPullTool`, `SectionTool` and `MeasureTool` (about 6 kB gzip) are built in the `Workbench` constructor and called synchronously from the pointer path (first interaction), so they need an async facade first. `ConfigController` with config-model and config-commands (about 17 kB) is a `Workbench` member used by the inspector and tree on first paint. `test-hooks.ts` (8.8 kB raw) is read synchronously by E2E (`__wrenApp`). `workbox-window` is on the cross-origin-isolation boot path. motion-dom (11 kB) is what `m` components need. `react-dom` is the floor. These are the candidates if M4 needs more room.

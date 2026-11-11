@@ -1,6 +1,12 @@
 import '@testing-library/jest-dom/vitest';
 import { cleanup } from '@testing-library/react';
-import { afterEach } from 'vitest';
+import { afterEach, beforeAll } from 'vitest';
+import { preloadShell } from '../src/shells/AppShell';
+
+// The touch shells are lazy chunks in the app; tests render them synchronously.
+beforeAll(async () => {
+  await Promise.all([preloadShell('tablet'), preloadShell('phone')]);
+});
 
 afterEach(() => cleanup());
 
