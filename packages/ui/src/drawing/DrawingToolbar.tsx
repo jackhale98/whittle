@@ -1,14 +1,18 @@
 import * as RToolbar from '@radix-ui/react-toolbar';
 import {
+  Angle,
   Flag,
   Frame,
   Layers,
+  ListOrdered,
   ListPlus,
   MousePointer2,
   Ruler,
   ScanSearch,
   Scissors,
+  Slice,
   StickyNote,
+  Table2,
   Waves,
 } from 'lucide-react';
 import type { ReactNode } from 'react';
@@ -20,10 +24,14 @@ export type DrawingToolId =
   | 'section'
   | 'detail'
   | 'dimension'
+  | 'angle'
+  | 'ordinate'
+  | 'chamfer'
   | 'datum'
   | 'gdt'
   | 'finish'
   | 'note'
+  | 'table'
   | 'import';
 
 interface ToolDef {
@@ -86,6 +94,30 @@ export const drawingTools: readonly ToolDef[] = [
     mode: true,
   },
   {
+    id: 'angle',
+    label: 'Angular dimension',
+    hint: 'Pick two edges that meet',
+    icon: <Angle className={ic} />,
+    group: 'annotate',
+    mode: true,
+  },
+  {
+    id: 'ordinate',
+    label: 'Ordinate dimension',
+    hint: 'Pick an origin, then the features to read from it',
+    icon: <ListOrdered className={ic} />,
+    group: 'annotate',
+    mode: true,
+  },
+  {
+    id: 'chamfer',
+    label: 'Chamfer callout',
+    hint: 'Pick an edge of a chamfer',
+    icon: <Slice className={ic} />,
+    group: 'annotate',
+    mode: true,
+  },
+  {
     id: 'datum',
     label: 'Datum',
     hint: 'Pick an edge',
@@ -116,6 +148,14 @@ export const drawingTools: readonly ToolDef[] = [
     icon: <StickyNote className={ic} />,
     group: 'annotate',
     mode: true,
+  },
+  {
+    id: 'table',
+    label: 'Part properties table',
+    hint: 'Add the part number, material and mass table',
+    icon: <Table2 className={ic} />,
+    group: 'annotate',
+    mode: false,
   },
   {
     id: 'import',

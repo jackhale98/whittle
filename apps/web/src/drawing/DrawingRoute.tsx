@@ -30,6 +30,7 @@ import { DrawingController } from './controller';
 import { beginInteraction, currentSheet, pickAt } from './interact';
 import { SheetOverlay } from './Overlay';
 import { openImport } from './ops-annot';
+import { addPartPropertiesTable } from './ops-tables';
 import {
   AnnotationPanelBody,
   AttentionPanelBody,
@@ -37,10 +38,12 @@ import {
   ImportPanelBody,
   SheetPanelBody,
   setTitleField,
+  TablePanelBody,
   TitlePanelBody,
   ViewPanelBody,
   ViewsPanelBody,
 } from './panels';
+import { printDrawing } from './print';
 import type { DrawingPanel, DrawingTool } from './state';
 import { installDrawingHooks } from './test-hooks';
 
@@ -61,6 +64,9 @@ const TOOL_BY_ID: Partial<Record<DrawingToolId, DrawingTool>> = {
   section: 'section',
   detail: 'detail',
   dimension: 'dimension',
+  angle: 'angle',
+  ordinate: 'ordinate',
+  chamfer: 'chamfer',
   datum: 'datum',
   gdt: 'gdt',
   finish: 'finish',
@@ -70,7 +76,11 @@ const TOOL_BY_ID: Partial<Record<DrawingToolId, DrawingTool>> = {
 const PROMPTS: Partial<Record<DrawingTool, string>> = {
   section: 'Drag a cut line across a view',
   detail: 'Drag a circle around the detail on a view',
-  dimension: 'Pick a circle, or two edges, or one edge twice for its length',
+  dimension:
+    'Pick a circle, two edges (parallel: distance, meeting: angle), or one edge twice for its length',
+  angle: 'Pick the first of two edges that meet',
+  ordinate: 'Pick the origin: an edge or a circle',
+  chamfer: 'Pick an edge of the chamfer',
   datum: 'Pick the edge the datum is on',
   gdt: 'Pick the edge the tolerance applies to',
   finish: 'Pick the edge the surface finish is on',
@@ -121,6 +131,7 @@ export default function DrawingRoute({ wb, id, tier, onClose }: DrawingRouteProp
     if (s.kind === 'view') return new Set([`view:${s.id}`]);
     if (s.kind === 'placement') return new Set([`placement:${s.id}`]);
     if (s.kind === 'note') return new Set([`note:${s.id}`]);
+    if (s.kind === 'table') return new Set([`table:${s.id}`]);
     return new Set([`titleBlock:${s.slot}`]);
   }, [ui.selected]);
 
@@ -175,6 +186,8 @@ export default function DrawingRoute({ wb, id, tier, onClose }: DrawingRouteProp
       <ViewPanelBody c={c} b={b} size={size} />
     ) : ui.selected?.kind === 'placement' ? (
       <AnnotationPanelBody c={c} b={b} size={size} />
+    ) : ui.selected?.kind === 'table' ? (
+      <TablePanelBody c={c} b={b} size={size} />
     ) : ui.selected?.kind === 'cell' ? (
       <TitlePanelBody c={c} b={b} size={size} focusSlot={ui.selected.slot} />
     ) : (
@@ -255,12 +268,24 @@ export default function DrawingRoute({ wb, id, tier, onClose }: DrawingRouteProp
     ui.tool === 'reattach' ? null : ((ui.tool as DrawingToolId) ?? 'select');
   const disabledTools: Partial<Record<DrawingToolId, string>> = {};
   if (!b || (b.drawing.views.length === 0 && true)) {
-    for (const t of ['section', 'detail', 'dimension', 'datum', 'gdt', 'finish', 'note'] as const)
+    for (const t of [
+      'section',
+      'detail',
+      'dimension',
+      'angle',
+      'ordinate',
+      'chamfer',
+      'datum',
+      'gdt',
+      'finish',
+      'note',
+    ] as const)
       disabledTools[t] = 'Add a view first';
   }
   const onTool = (t: DrawingToolId) => {
     if (t === 'views') c.patch({ panel: 'views' });
     else if (t === 'import') openImport(c);
+    else if (t === 'table') addPartPropertiesTable(c);
     else {
       const tool = TOOL_BY_ID[t];
       if (tool) c.setTool(ui.tool === tool && tool !== 'select' ? 'select' : tool);
@@ -279,6 +304,12 @@ export default function DrawingRoute({ wb, id, tier, onClose }: DrawingRouteProp
     if ((e.key === 'Delete' || e.key === 'Backspace') && ui.selected && !readOnly) {
       e.preventDefault();
       c.deleteSelected();
+      return true;
+    }
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 'p') {
+      // The browser's own print would print the app around the sheet: print the sheet instead.
+      e.preventDefault();
+      void printDrawing(c, 'sheet');
       return true;
     }
     if (e.ctrlKey || e.metaKey || e.altKey || readOnly) return undefined;

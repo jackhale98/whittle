@@ -3,6 +3,7 @@ import { Layers, Trash2 } from 'lucide-react';
 import { Field, Section, Segmented, Switch } from '../components/controls';
 import { ExpressionInput } from '../components/ExpressionInput';
 import { Button, cn } from '../components/primitives';
+import { SheetValueField } from './SheetValueField';
 
 export interface ConfigChoice {
   id: Id | null;
@@ -89,6 +90,17 @@ export interface ViewInspectorProps {
     onFlip(): void;
     onDepth(d: 'full' | 'slice'): void;
     aligned: boolean;
+    /** The cut line's vertices (parent view plane, mm): editable inline, the alternative to dragging. */
+    cut?: {
+      kind: 'full' | 'half' | 'offset' | 'stepped';
+      points: { x: number; y: number; editable: boolean }[];
+      onMove(index: number, x: number, y: number): void;
+      onAdd(): void;
+      onRemove(index: number): void;
+      /** Only offered on a straight cut. */
+      onHalf?(): void;
+      onOffset?(): void;
+    };
   };
   detail?: { letter: string; radius: number; onRadius(r: number): void; onLetter(l: string): void };
   /** Views derived from this one (deleting removes them too). */
@@ -185,6 +197,10 @@ export function ViewInspector(p: ViewInspectorProps) {
             {p.section.aligned ? 'Aligned with its parent.' : 'Placed freely.'}
           </p>
         </Section>
+      ) : null}
+
+      {p.section?.cut ? (
+        <CutLineSection cut={p.section.cut} evaluate={p.evaluate} size={sz} />
       ) : null}
 
       {p.detail ? (
@@ -366,5 +382,92 @@ export function ViewInspector(p: ViewInspectorProps) {
         ) : null}
       </Section>
     </div>
+  );
+}
+
+const CUT_KIND_LABEL = {
+  full: 'A straight cut: a full section.',
+  half: 'An L-shaped cut: a half section.',
+  offset: 'A cut with one jog: an offset section.',
+  stepped: 'A stepped cut: an offset section.',
+} as const;
+
+type CutProps = NonNullable<NonNullable<ViewInspectorProps['section']>['cut']>;
+
+/**
+ * The cut line of a section as typed vertices (and, on the sheet, handles to drag): bend a straight
+ * cut into a half or offset section, add or remove a vertex. Inline, no dialog.
+ */
+function CutLineSection({
+  cut,
+  evaluate,
+  size,
+}: {
+  cut: CutProps;
+  evaluate(expr: Expr): EvalResult;
+  size: 'md' | 'touch';
+}) {
+  return (
+    <Section title="Cut line">
+      <p className="text-2xs text-fg-muted" data-testid="cut-kind">
+        {CUT_KIND_LABEL[cut.kind]}
+      </p>
+      {cut.onHalf || cut.onOffset ? (
+        <div className="flex flex-wrap gap-2">
+          {cut.onHalf ? (
+            <Button variant="secondary" size={size} onClick={cut.onHalf} data-testid="cut-half">
+              Make a half section
+            </Button>
+          ) : null}
+          {cut.onOffset ? (
+            <Button variant="secondary" size={size} onClick={cut.onOffset} data-testid="cut-offset">
+              Make an offset section
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+      <ol className="m-0 flex list-none flex-col gap-3 p-0">
+        {cut.points.map((pt, i) => (
+          // The vertices are positional: an index is their identity.
+          // biome-ignore lint/suspicious/noArrayIndexKey: see above
+          <li key={i} className="flex flex-col gap-1.5" data-testid="cut-vertex">
+            <span className="text-xs font-medium text-fg-muted">Vertex {i + 1}</span>
+            {pt.editable ? (
+              <div className="grid grid-cols-2 gap-2">
+                <SheetValueField
+                  label={`Cut vertex ${i + 1} X (mm)`}
+                  value={pt.x}
+                  evaluate={evaluate}
+                  onCommit={(x) => cut.onMove(i, x, pt.y)}
+                  size={size}
+                />
+                <SheetValueField
+                  label={`Cut vertex ${i + 1} Y (mm)`}
+                  value={pt.y}
+                  evaluate={evaluate}
+                  onCommit={(y) => cut.onMove(i, pt.x, y)}
+                  size={size}
+                />
+              </div>
+            ) : (
+              <p className="text-2xs text-fg-subtle">Follows a model edge.</p>
+            )}
+            {cut.points.length > 2 ? (
+              <Button
+                variant="ghost"
+                size={size}
+                onClick={() => cut.onRemove(i)}
+                className="self-start"
+              >
+                Remove vertex {i + 1}
+              </Button>
+            ) : null}
+          </li>
+        ))}
+      </ol>
+      <Button variant="secondary" size={size} onClick={cut.onAdd} data-testid="cut-add">
+        Add a vertex
+      </Button>
+    </Section>
   );
 }

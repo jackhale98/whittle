@@ -200,6 +200,34 @@ describe('coalescing', () => {
     expect((part(store).features[0] as Feature & { dx: string }).dx).toBe('42mm');
   });
 
+  it('cancelGroup() reverts an open group and leaves nothing on either stack', () => {
+    const { store } = setup();
+    must(add(store, box(10)));
+    must(store.apply({ kind: 'renamePart', partId: pid, name: 'before' }));
+    store.undo(); // a redo entry exists before the drag starts
+    must(edit(store, 41));
+    must(edit(store, 42));
+    expect(store.history().past).toHaveLength(2);
+    expect(store.history().future).toHaveLength(0);
+    expect(store.cancelGroup('drag')).toBe(true);
+    const h = store.history();
+    expect(h.past).toHaveLength(1);
+    expect((part(store).features[0] as Feature & { dx: string }).dx).not.toBe('42mm');
+    // The redo stack the drag cleared is back: the cancel is as if the drag never began.
+    expect(h.future.map((e) => e.label)).toEqual(['Rename P']);
+  });
+
+  it('cancelGroup() does nothing for a closed group or another key', () => {
+    const { store } = setup();
+    must(add(store, box(10)));
+    must(edit(store, 41));
+    expect(store.cancelGroup('other')).toBe(false);
+    store.commit();
+    expect(store.cancelGroup('drag')).toBe(false);
+    expect(store.history().past).toHaveLength(2);
+    expect((part(store).features[0] as Feature & { dx: string }).dx).toBe('41mm');
+  });
+
   it('a different key, an uncoalesced edit, or the idle window starts a new entry', () => {
     const { store, advance } = setup({ coalesceWindowMs: 500 });
     must(add(store, box(10)));

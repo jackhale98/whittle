@@ -187,3 +187,22 @@ export const panelTab = (page: Page, name: string) => page.getByRole('tab', { na
 /** The first view of a kind. */
 export const viewOf = (s: DrawingState, kind: string, from?: string) =>
   s.views.find((v) => v.kind === kind && (from === undefined || v.from === from));
+
+/** Two straight edges of a view that meet at a corner and are not parallel (sheet mm). */
+export async function cornerEdges(page: Page, viewId: string) {
+  const lines = (await drawing(page).edges(viewId)).filter((e) => e.kind === 'line' && e.a && e.b);
+  type P = [number, number];
+  const near = (p: P, q: P) => Math.hypot(p[0] - q[0], p[1] - q[1]) < 0.01;
+  for (const e of lines)
+    for (const f of lines) {
+      if (e === f || !e.a || !e.b || !f.a || !f.b) continue;
+      const shared = [e.a, e.b].some((p) => [f.a as P, f.b as P].some((q) => near(p, q)));
+      const d1: P = [e.b[0] - e.a[0], e.b[1] - e.a[1]];
+      const d2: P = [f.b[0] - f.a[0], f.b[1] - f.a[1]];
+      const l1 = Math.hypot(...d1);
+      const l2 = Math.hypot(...d2);
+      const cross = Math.abs(d1[0] * d2[1] - d1[1] * d2[0]) / (l1 * l2);
+      if (shared && cross > 0.9 && l1 > 20 && l2 > 20) return [e, f] as const;
+    }
+  throw new Error('no two edges meet at a corner');
+}

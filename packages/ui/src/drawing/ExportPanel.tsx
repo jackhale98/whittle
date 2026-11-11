@@ -1,4 +1,4 @@
-import { FileCode, FileDown, FileText, Image } from 'lucide-react';
+import { FileCode, FileDown, FileText, Image, Printer } from 'lucide-react';
 import { useState } from 'react';
 import { Segmented } from '../components/controls';
 import { Button } from '../components/primitives';
@@ -37,12 +37,14 @@ export interface DrawingExportPanelProps {
   sheetName: string;
   sheetCount: number;
   /** The format being written (a button shows it is working). */
-  busy: DrawingExportFormat | null;
+  busy: DrawingExportFormat | 'print' | null;
   /** Why exporting is not possible right now (the drawing has not built, the model is updating). */
   unavailable?: string;
   /** Needs-attention items: a drawing with open items still exports, and says so. */
   attentionCount: number;
   onExport(format: DrawingExportFormat, scope: 'sheet' | 'all'): void;
+  /** Print at true scale through the browser's own print dialog. */
+  onPrint?(scope: 'sheet' | 'all'): void;
   size?: 'md' | 'touch';
 }
 
@@ -54,6 +56,7 @@ export function DrawingExportPanel({
   unavailable,
   attentionCount,
   onExport,
+  onPrint,
   size = 'md',
 }: DrawingExportPanelProps) {
   const [scope, setScope] = useState<'sheet' | 'all'>('sheet');
@@ -80,6 +83,30 @@ export function DrawingExportPanel({
       ) : null}
       {unavailable ? <p className="text-xs text-fg-muted">{unavailable}</p> : null}
       <ul className="m-0 flex list-none flex-col gap-2 p-0">
+        {onPrint ? (
+          <li className="flex items-start gap-3 rounded-control bg-surface-2 p-2.5">
+            <Printer className="mt-1 size-5 shrink-0 text-fg-muted" aria-hidden />
+            <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+              <span className="text-ui font-semibold">Print</span>
+              <span className="text-2xs text-fg-muted">
+                True scale on a page of the sheet size: choose Actual size or 100% in the print
+                dialog, and a 100 mm graduation measures 100 mm.
+              </span>
+              <Button
+                variant="secondary"
+                size={touch ? 'touch' : 'md'}
+                icon={<Printer className="size-4" />}
+                disabled={unavailable !== undefined || busy !== null}
+                aria-busy={busy === 'print' || undefined}
+                data-export="print"
+                onClick={() => onPrint(scope)}
+                className="self-start"
+              >
+                {busy === 'print' ? 'Preparing…' : 'Print…'}
+              </Button>
+            </div>
+          </li>
+        ) : null}
         {FORMATS.map((f) => {
           const Icon = f.icon;
           return (

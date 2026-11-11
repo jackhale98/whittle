@@ -21,6 +21,7 @@ import {
   DrawingExportPanel,
   ImportPanel,
   SheetSettings,
+  TableInspector,
   TitleBlockEditor,
   ViewInspector,
   ViewsPanel,
@@ -40,6 +41,14 @@ import {
   viewRows,
 } from './adapters';
 import type { DrawingController } from './controller';
+import {
+  addVertex,
+  cutKind,
+  moveVertex,
+  removeVertex,
+  toHalfSection,
+  toOffsetSection,
+} from './cutline';
 import { exportDrawing } from './exports';
 import { host } from './host';
 import { ratioExpr, scaleFromInput, scaleLabel, viewName } from './model';
@@ -52,6 +61,7 @@ import {
   updateAnnotation,
   updatePlacement,
 } from './ops-annot';
+import { removeTable, updateTable } from './ops-tables';
 import {
   addBaseView,
   addIsoView,
@@ -61,6 +71,7 @@ import {
   updateView,
 } from './ops-views';
 import type { Built } from './pipeline';
+import { printDrawing } from './print';
 import type { DrawingUiState } from './state';
 
 type Touch = 'md' | 'touch';
@@ -104,6 +115,8 @@ export function ViewPanelBody({ c, b, size }: { c: DrawingController; b: Built; 
   const missing = typeof own === 'string' && !configs.some((k) => k.id === own);
   const sectionView = view.kind === 'section' ? (view as SectionView) : null;
   const children = childrenOf(b, view.id).length;
+  const half = sectionView ? toHalfSection(sectionView.cut, sectionView.look) : null;
+  const offset = sectionView ? toOffsetSection(sectionView.cut, sectionView.look) : null;
   return (
     <ViewInspector
       kind={view.kind}
@@ -187,6 +200,36 @@ export function ViewPanelBody({ c, b, size }: { c: DrawingController; b: Built; 
                 ),
               onDepth: (depth: 'full' | 'slice') =>
                 put({ ...sectionView, depth }, 'Change section depth'),
+              cut: {
+                kind: cutKind(sectionView.cut),
+                points: sectionView.cut.map((p) =>
+                  p.kind === 'free'
+                    ? { x: p.at[0], y: p.at[1], editable: true }
+                    : { x: 0, y: 0, editable: false },
+                ),
+                onMove: (i: number, x: number, y: number) =>
+                  put(
+                    { ...sectionView, cut: moveVertex(sectionView.cut, i, [x, y]) },
+                    'Edit cut line',
+                  ),
+                onAdd: () =>
+                  put({ ...sectionView, cut: addVertex(sectionView.cut) }, 'Add cut vertex'),
+                onRemove: (i: number) =>
+                  put(
+                    { ...sectionView, cut: removeVertex(sectionView.cut, i) },
+                    'Remove cut vertex',
+                  ),
+                ...(half
+                  ? {
+                      onHalf: () => put({ ...sectionView, cut: half }, 'Make half section'),
+                    }
+                  : {}),
+                ...(offset
+                  ? {
+                      onOffset: () => put({ ...sectionView, cut: offset }, 'Make offset section'),
+                    }
+                  : {}),
+              },
             },
           }
         : {})}
@@ -230,7 +273,8 @@ export function AnnotationPanelBody({
   const state = res?.state ?? 'needsAttention';
   const problems = problemsOf(b, a.id);
   const measured =
-    res?.measured !== undefined
+    // T1: a number only while the annotation resolved; needing attention shows none.
+    state === 'ok' && res?.measured !== undefined
       ? a.kind === 'angle'
         ? (res.measured * 180) / Math.PI
         : res.measured
@@ -258,6 +302,21 @@ export function AnnotationPanelBody({
       onRemoveFromView={() => removePlacement(c, placement.id)}
       onDelete={() => deleteAnnotation(c, a.id)}
       onReattach={() => startReattach(c, a.id)}
+      size={size}
+    />
+  );
+}
+
+export function TablePanelBody({ c, b, size }: { c: DrawingController; b: Built; size: Touch }) {
+  const sel = c.ui.get().selected;
+  const table = sel?.kind === 'table' ? b.drawing.tables.find((t) => t.id === sel.id) : undefined;
+  if (table?.kind !== 'partProperties') return null;
+  return (
+    <TableInspector
+      table={table}
+      evaluate={(e) => c.wb.evaluate(e)}
+      onChange={(next, label) => updateTable(c, next, label)}
+      onDelete={() => removeTable(c, table.id)}
       size={size}
     />
   );
@@ -578,6 +637,7 @@ export function ExportPanelBody({
         : {})}
       attentionCount={b.build.attention.filter((e) => e.severity === 'attention').length}
       onExport={(format, scope) => void exportDrawing(c, format, scope)}
+      onPrint={(scope) => void printDrawing(c, scope)}
       size={size}
     />
   );

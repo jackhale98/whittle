@@ -16,6 +16,7 @@ import {
   SheetSettings,
   SheetViewer,
   StandardChoice,
+  TableInspector,
   TitleBlockEditor,
   ToleranceField,
   ViewInspector,
@@ -383,6 +384,64 @@ describe('ViewInspector', () => {
     />
   );
 
+  it('a section’s cut line: bend a straight cut, type a vertex, add and remove vertices', async () => {
+    const cut = {
+      kind: 'full' as const,
+      points: [
+        { x: 0, y: 10, editable: true },
+        { x: 40, y: 10, editable: true },
+      ],
+      onMove: vi.fn(),
+      onAdd: vi.fn(),
+      onRemove: vi.fn(),
+      onHalf: vi.fn(),
+      onOffset: vi.fn(),
+    };
+    const section = {
+      letter: 'A',
+      look: 'left' as const,
+      depth: 'full' as const,
+      onLetter: () => {},
+      onFlip: () => {},
+      onDepth: () => {},
+      aligned: false,
+      cut,
+    };
+    const { rerender } = renderUI(base({ kind: 'section', section }));
+    expect(screen.getByTestId('cut-kind')).toHaveTextContent('full section');
+    await userEvent.click(screen.getByRole('button', { name: 'Make a half section' }));
+    expect(cut.onHalf).toHaveBeenCalledTimes(1);
+    await userEvent.click(screen.getByRole('button', { name: 'Make an offset section' }));
+    expect(cut.onOffset).toHaveBeenCalledTimes(1);
+    // A vertex is typed: one commit, on Enter.
+    const y = screen.getByRole('textbox', { name: 'Cut vertex 2 Y (mm)' });
+    await userEvent.clear(y);
+    await userEvent.type(y, '12');
+    expect(cut.onMove).not.toHaveBeenCalled();
+    await userEvent.type(y, '{Enter}');
+    expect(cut.onMove).toHaveBeenCalledWith(1, 40, 12);
+    // Two points cannot be reduced; three can.
+    expect(screen.queryByRole('button', { name: /Remove vertex/ })).toBeNull();
+    const { onHalf: _half, onOffset: _offset, ...bent } = cut;
+    rerender(
+      base({
+        kind: 'section',
+        section: {
+          ...section,
+          cut: {
+            ...bent,
+            kind: 'half',
+            points: [...cut.points, { x: 40, y: 30, editable: true }],
+          },
+        },
+      }),
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Remove vertex 3' }));
+    expect(cut.onRemove).toHaveBeenCalledWith(2);
+    await userEvent.click(screen.getByRole('button', { name: 'Add a vertex' }));
+    expect(cut.onAdd).toHaveBeenCalledTimes(1);
+  });
+
   it('shows an inherited scale as inherited, and an own scale with a way back', async () => {
     const onScale = vi.fn();
     const { rerender } = renderUI(base({ onScale }));
@@ -480,6 +539,50 @@ const inspector = (over: Partial<AnnotationInspectorProps> = {}): AnnotationInsp
   ...over,
 });
 
+describe('TableInspector', () => {
+  const table = {
+    id: 'T1',
+    sheetId: 'S1',
+    kind: 'partProperties' as const,
+    position: [400, 280] as [number, number],
+    anchor: 'topRight' as const,
+    columns: ['partNumber', 'mass'] as ('partNumber' | 'mass')[],
+    rows: { kind: 'drawing' as const },
+  };
+
+  it('toggles columns in order, keeps the last one, and types the position with units', async () => {
+    const onChange = vi.fn();
+    renderUI(
+      <TableInspector table={table} evaluate={evalOk} onChange={onChange} onDelete={() => {}} />,
+    );
+    await userEvent.click(screen.getByRole('switch', { name: 'Material' }));
+    expect(onChange).toHaveBeenLastCalledWith(
+      { ...table, columns: ['partNumber', 'material', 'mass'] },
+      'Edit part properties table',
+    );
+    const x = screen.getByRole('textbox', { name: 'Table position X (mm)' });
+    await userEvent.clear(x);
+    await userEvent.type(x, '310{Enter}');
+    expect(onChange).toHaveBeenLastCalledWith({ ...table, position: [310, 280] }, 'Move table');
+    await userEvent.click(screen.getByRole('radio', { name: 'kg' }));
+    expect(onChange).toHaveBeenLastCalledWith({ ...table, massUnit: 'kg' }, 'Edit part properties table');
+  });
+
+  it('a table keeps at least one column', async () => {
+    const onChange = vi.fn();
+    renderUI(
+      <TableInspector
+        table={{ ...table, columns: ['mass'] }}
+        evaluate={evalOk}
+        onChange={onChange}
+        onDelete={() => {}}
+      />,
+    );
+    await userEvent.click(screen.getByRole('switch', { name: 'Mass' }));
+    expect(onChange).not.toHaveBeenCalled();
+  });
+});
+
 describe('AnnotationInspector', () => {
   it('shows the value, edits the stated value and the tolerance, and moves the lane inline', async () => {
     const onChange = vi.fn();
@@ -495,8 +598,14 @@ describe('AnnotationInspector', () => {
       tolerance: { kind: 'symmetric', value: '0.1 mm' },
     });
     // The inline alternative to dragging.
-    const lane = screen.getByRole('spinbutton', { name: 'Lane (0 is nearest the view)' });
-    fireEvent.change(lane, { target: { value: '2' } });
+    // It takes an expression, and commits once, on Enter: not a step per keystroke.
+    const lane = screen.getByRole('textbox', { name: 'Lane (0 is nearest the view)' });
+    onPlacement.mockClear();
+    await userEvent.clear(lane);
+    await userEvent.type(lane, '2');
+    expect(onPlacement).not.toHaveBeenCalled();
+    await userEvent.type(lane, '{Enter}');
+    expect(onPlacement).toHaveBeenCalledTimes(1);
     expect(onPlacement).toHaveBeenLastCalledWith({
       ...placement,
       layout: { kind: 'lane', side: 'bottom', lane: 2 },

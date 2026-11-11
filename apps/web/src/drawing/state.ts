@@ -9,6 +9,9 @@ export type DrawingTool =
   | 'section'
   | 'detail'
   | 'dimension'
+  | 'angle'
+  | 'ordinate'
+  | 'chamfer'
   | 'datum'
   | 'gdt'
   | 'finish'
@@ -21,6 +24,7 @@ export type Selected =
   | { kind: 'view'; id: Id }
   | { kind: 'placement'; id: Id }
   | { kind: 'note'; id: Id }
+  | { kind: 'table'; id: Id }
   | { kind: 'cell'; slot: string }
   | null;
 

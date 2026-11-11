@@ -34,6 +34,14 @@ import type { ConfigData, ConfigDataSource, ConfigLookup } from './config-data';
 import { host } from './host';
 import type { DrawingKernel } from './kernel';
 
+const COLUMN_TITLES: Record<string, string> = {
+  partNumber: 'PART NO.',
+  description: 'DESCRIPTION',
+  material: 'MATERIAL',
+  mass: 'MASS',
+  configuration: 'CONFIGURATION',
+};
+
 export interface Built {
   drawing: Drawing;
   part: Part;
@@ -62,6 +70,26 @@ const evalWith = (doc: WrenDoc) => {
     return r.ok && Number.isFinite(r.value) ? r.value : undefined;
   };
 };
+
+/**
+ * A chamfer feature's callout numbers (mm, radians): one distance is a 45° chamfer, a distance and
+ * an angle are as stated. Absent when the feature is not a chamfer or a value does not evaluate.
+ */
+export function chamferCalloutData(
+  doc: WrenDoc,
+  a: Extract<Annotation, { kind: 'chamfer' }>,
+): { distance?: number; angle?: number } | undefined {
+  if (a.source?.kind !== 'feature') return undefined;
+  const featureId = a.source.featureId;
+  const f = doc.parts[0]?.features.find((x) => x.id === featureId);
+  if (f?.type !== 'chamfer') return undefined;
+  const ev = evalWith(doc);
+  const distance = ev(f.mode.distance, 'length');
+  if (distance === undefined) return undefined;
+  if (f.mode.kind === 'distance') return { distance, angle: Math.PI / 4 };
+  const angle = ev(f.mode.angle, 'angle');
+  return angle === undefined ? { distance } : { distance, angle };
+}
 
 /** A hole feature's callout numbers, from the table and the feature's own values. */
 export function holeCalloutData(
@@ -216,18 +244,27 @@ export async function runPipeline(
     titleBlock,
     ...(wbDoc.drawingDefaults?.fields ? { projectFields: wbDoc.drawingDefaults.fields } : {}),
     fitDeviations: drawingDocument().fitToleranceDeviations,
-    features: { hole: holeFor },
+    features: { hole: holeFor, chamfer: (a) => chamferCalloutData(main.doc, a) },
     tables: (t): TableData | undefined => {
       if (t.kind !== 'partProperties') return undefined;
       const tb = titleBlock(drawing.sheets[0] as Sheet, 1, drawing.sheets.length);
+      const kg = t.massUnit === 'kg';
       const cells: Record<string, string> = {
         partNumber: tb.partNumber,
         description: tb.description ?? '',
         material: tb.material ?? '',
-        mass: typeof tb.mass === 'number' ? `${Number(tb.mass.toPrecision(4))} g` : '',
+        mass:
+          typeof tb.mass === 'number'
+            ? kg
+              ? `${Number((tb.mass / 1000).toPrecision(4))} kg`
+              : `${Number(tb.mass.toPrecision(4))} g`
+            : '',
         configuration: tb.configuration ?? 'Default',
       };
-      return { header: t.columns, rows: [t.columns.map((c) => cells[c] ?? '')] };
+      return {
+        header: t.columns.map((c) => COLUMN_TITLES[c] ?? c),
+        rows: [t.columns.map((c) => cells[c] ?? '')],
+      };
     },
   });
   return {

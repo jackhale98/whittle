@@ -78,6 +78,8 @@
   --z-overlay: 10;
   --z-panel: 20;
   --z-sheet: 30;
+  /* The drawing route covers the app but sits under popovers (keypad, parameter lists, tooltips). */
+  --z-drawing: 35;
   --z-popover: 40;
   --z-modal: 50;
   /* Translucent floating panel fill; opaque where backdrop-filter is unsupported. */

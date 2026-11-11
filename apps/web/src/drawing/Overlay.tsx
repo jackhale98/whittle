@@ -2,7 +2,7 @@
 
 import { viewOutline } from '@wren-cad/drawing';
 import type { Size } from '@wren-cad/ui/drawing';
-import { handlesOf } from './interact';
+import { cutHandlesOf, handlesOf } from './interact';
 import type { Built } from './pipeline';
 import type { DrawingUiState } from './state';
 
@@ -71,6 +71,36 @@ export function SheetOverlay({
         }
       }
     }
+  }
+  // The cut line's vertices of a selected section sit on its parent: drag to reshape (half and
+  // offset sections); the inspector has the same vertices as typed fields.
+  if (sel?.kind === 'view' && ui.tool === 'select') {
+    const hs = cutHandlesOf(b, sel.id);
+    if (hs.length > 1)
+      out.push(
+        <polyline
+          key="cut-line"
+          points={hs.map((h) => h.at.join(',')).join(' ')}
+          fill="none"
+          stroke={ACCENT}
+          strokeWidth={1.2 * mm}
+          strokeDasharray={`${8 * mm} ${3 * mm}`}
+        />,
+      );
+    for (const h of hs)
+      out.push(
+        <circle
+          key={`cut${h.index}`}
+          cx={h.at[0]}
+          cy={h.at[1]}
+          r={5 * mm}
+          fill="var(--color-surface)"
+          stroke={ACCENT}
+          strokeWidth={1.5 * mm}
+          data-testid="cut-handle"
+          data-index={h.index}
+        />,
+      );
   }
   const g = ui.ghost;
   if (g?.kind === 'line')

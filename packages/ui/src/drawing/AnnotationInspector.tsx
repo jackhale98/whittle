@@ -18,6 +18,7 @@ import { Link2Off, Trash2, TriangleAlert } from 'lucide-react';
 import { Field, Section, Segmented, Switch } from '../components/controls';
 import { ExpressionInput } from '../components/ExpressionInput';
 import { Button, cn } from '../components/primitives';
+import { SheetValueField } from './SheetValueField';
 import { ToleranceField } from './ToleranceField';
 
 export const CHARACTERISTIC_LABELS: Record<GeometricCharacteristic, string> = {
@@ -103,24 +104,26 @@ function layoutFields(
   layout: PlacementLayout,
   set: (l: PlacementLayout) => void,
   sz: 'md' | 'touch',
+  evaluate: (expr: Expr) => EvalResult,
 ) {
-  const num = (label: string, value: number, on: (n: number) => void, step = 1) => (
-    <Field label={label} key={label}>
-      <input
-        aria-label={label}
-        type="number"
-        step={step}
-        value={Number.isFinite(value) ? value : 0}
-        onChange={(e) => {
-          const n = Number(e.target.value);
-          if (Number.isFinite(n)) on(n);
-        }}
-        className={cn(
-          'tnum rounded-control bg-surface-2 px-2.5 text-ui outline-none focus-visible:shadow-[inset_0_0_0_2px_var(--color-accent)]',
-          sz === 'touch' ? 'h-11 text-sm' : 'h-8',
-        )}
-      />
-    </Field>
+  // Each field commits once, on Enter or blur, so one edit is one undo step (SheetValueField).
+  const num = (
+    label: string,
+    value: number,
+    on: (n: number) => void,
+    step = 1,
+    unit: 'mm' | 'deg' = 'mm',
+  ) => (
+    <SheetValueField
+      key={label}
+      label={label}
+      value={value}
+      unit={unit}
+      step={step}
+      evaluate={evaluate}
+      onCommit={on}
+      size={sz}
+    />
   );
   switch (layout.kind) {
     case 'lane':
@@ -159,7 +162,7 @@ function layoutFields(
     case 'radial':
       return (
         <>
-          {num('Leader angle (°)', layout.angle, (angle) => set({ ...layout, angle }), 5)}
+          {num('Leader angle (°)', layout.angle, (angle) => set({ ...layout, angle }), 5, 'deg')}
           {num(
             'Text distance (mm)',
             layout.distance,
@@ -169,7 +172,21 @@ function layoutFields(
         </>
       );
     case 'arc':
-      return num('Arc radius (mm)', layout.radius, (radius) => set({ ...layout, radius }), 0.5);
+      return (
+        <>
+          {num('Arc radius (mm)', layout.radius, (radius) => set({ ...layout, radius }), 0.5)}
+          <Switch
+            checked={layout.opposite === true}
+            onChange={(on) => {
+              const next = { ...layout };
+              if (on) next.opposite = true;
+              else delete next.opposite;
+              set(next);
+            }}
+            label="Opposite angle (same value)"
+          />
+        </>
+      );
     case 'leader':
       return (
         <>
@@ -378,6 +395,7 @@ export function AnnotationInspector(p: AnnotationInspectorProps) {
             p.placement.layout,
             (layout) => p.onPlacement({ ...(p.placement as AnnotationPlacement), layout }),
             sz,
+            p.evaluate,
           )}
           <p className="text-2xs text-fg-subtle">
             Or drag it on the sheet. The placement keeps its lane or offset when the model changes.

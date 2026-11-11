@@ -20,24 +20,29 @@ const slug = (s: string): string =>
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '') || 'drawing';
 
-/** Builds the files of an export (no download): the unit under test. */
-export async function buildExport(
-  c: DrawingController,
-  format: DrawingExportFormat,
-  scope: 'sheet' | 'all',
-): Promise<ExportedFile[]> {
+/** The sheets to write or print, from the exact edges (never the draft). */
+export async function exactSheets(c: DrawingController, scope: 'sheet' | 'all') {
   if (!c.built()) throw new Error('The drawing has not been built yet.');
   if (c.ui.get().pending) throw new Error('The model is updating: try again in a moment.');
-  // Always from the exact edges, never the draft.
   await c.ensureExact();
   const b = c.built();
-  if (!b || b.quality !== 'exact')
+  if (b?.quality !== 'exact')
     throw new Error(
       `The exact edges could not be computed${b?.problems[0] ? `: ${b.problems[0].message}` : '.'}`,
     );
   const current = c.sheet()?.id;
   const sheets = b.build.sheets.filter((s) => scope === 'all' || s.sheetId === current);
   if (sheets.length === 0) throw new Error('There is no sheet to export.');
+  return { b, sheets };
+}
+
+/** Builds the files of an export (no download): the unit under test. */
+export async function buildExport(
+  c: DrawingController,
+  format: DrawingExportFormat,
+  scope: 'sheet' | 'all',
+): Promise<ExportedFile[]> {
+  const { b, sheets } = await exactSheets(c, scope);
   const base = slug(b.drawing.name);
   const nameOf = (id: string) => slug(b.drawing.sheets.find((s) => s.id === id)?.name ?? 'sheet');
   const suffix = (id: string) => (sheets.length > 1 ? `-${nameOf(id)}` : '');

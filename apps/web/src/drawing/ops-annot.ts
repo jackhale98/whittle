@@ -11,13 +11,20 @@ import type {
   EntityRef,
   GeometricToleranceAnnotation,
   Id,
+  LinearDimension,
   PlacementLayout,
   RefPoint,
   SurfaceFinishAnnotation,
   Vec2,
   Vec3,
 } from '@wren-cad/contracts';
-import { importCommand, planImport, type SolvedView, viewOutline } from '@wren-cad/drawing';
+import {
+  importCommand,
+  planImport,
+  type SolvedView,
+  viewOutline,
+  viewToSheet,
+} from '@wren-cad/drawing';
 import type { DrawingController } from './controller';
 import { host } from './host';
 import type { Built } from './pipeline';
@@ -104,6 +111,52 @@ function laneFor(b: Built, viewId: Id, side: 'top' | 'bottom' | 'left' | 'right'
     : Math.max(...used.map((p) => (p.layout.kind === 'lane' ? p.layout.lane : 0))) + 1;
 }
 
+const cross2 = (a: Vec2, b: Vec2) => a[0] * b[1] - a[1] * b[0];
+
+/** The angle between two straight edges of one view: an arc around where they meet. */
+export function planAngle(c: DrawingController, picks: EdgePick[]): DimensionPlan {
+  const b = c.built();
+  const first = picks[0];
+  const second = picks[1];
+  if (!b || !first || !second) return { ok: false, message: 'Pick two straight edges.' };
+  if (second.viewId !== first.viewId)
+    return { ok: false, message: 'Both edges must be on the same view.' };
+  const sv = b.build.views.get(first.viewId);
+  if (!sv?.ok) return { ok: false, message: 'That view is not available.' };
+  const ea = ends(first);
+  const eb = ends(second);
+  if (!ea || !eb) return { ok: false, message: 'An angle is between two straight edges.' };
+  if (first.name === second.name) return { ok: false, message: 'Pick two different edges.' };
+  const ta = dir(ea[0], ea[1]);
+  const tb = dir(eb[0], eb[1]);
+  const x = cross2(ta, tb);
+  // Within a degree of parallel there is no vertex worth drawing.
+  if (Math.abs(x) < 0.0175)
+    return {
+      ok: false,
+      message:
+        'Those edges are parallel, so there is no angle between them. Pick two edges that meet.',
+    };
+  const s = cross2(sub(eb[0], ea[0]), tb) / x;
+  const vertex: Vec2 = [ea[0][0] + ta[0] * s, ea[0][1] + ta[1] * s];
+  const vs = viewToSheet(sv, vertex);
+  const radius = Math.min(
+    30,
+    Math.max(8, 0.5 * Math.min(len(sub(first.at, vs)), len(sub(second.at, vs)))),
+  );
+  return {
+    ok: true,
+    viewId: first.viewId,
+    annotation: {
+      kind: 'angle',
+      origin: { kind: 'drawing' as const, drawingId: b.drawing.id },
+      refs: [],
+      at: ['self', 'self'],
+    } as Omit<Annotation, 'id'>,
+    layout: { kind: 'arc', radius: Math.round(radius * 10) / 10 },
+  };
+}
+
 /** Which dimension the picks mean, and where it goes. Pure: refs are attached by the caller. */
 export function planDimension(
   c: DrawingController,
@@ -173,11 +226,8 @@ export function planDimension(
   } else if (ea && eb) {
     const ta = dir(ea[0], ea[1]);
     const tb = dir(eb[0], eb[1]);
-    if (Math.abs(ta[0] * tb[0] + ta[1] * tb[1]) < 0.985)
-      return {
-        ok: false,
-        message: 'Those edges are not parallel. Pick two parallel edges, or an edge and a circle.',
-      };
+    // Not parallel: the angle between them (the same plan the Angle tool makes).
+    if (Math.abs(ta[0] * tb[0] + ta[1] * tb[1]) < 0.985) return planAngle(c, picks);
     const n: Vec2 = [-ta[1], ta[0]];
     measuredAxis = Math.abs(n[0]) > 0.98 ? 'x' : Math.abs(n[1]) > 0.98 ? 'y' : null;
     direction = measuredAxis === 'x' ? frame.x : measuredAxis === 'y' ? frame.y : undefined;
@@ -249,6 +299,148 @@ export async function createDimension(
     c.select({ kind: 'placement', id: placement.id });
     c.patch({ hint: null });
   }
+  return ok;
+}
+
+/**
+ * An ordinate dimension: the coordinate of `picks[1]` from the origin `picks[0]`, along the view
+ * axis the two differ most on. Ordinates with the same origin and direction share a lane, so they
+ * read as one group (one `0`, the rest as coordinates).
+ */
+export async function createOrdinate(c: DrawingController, picks: EdgePick[]): Promise<boolean> {
+  const b = c.built();
+  const origin = picks[0];
+  const feature = picks[1];
+  if (!b || !origin || !feature) return false;
+  const plan = planDimension(c, [origin, feature]);
+  const lin =
+    plan.ok && plan.annotation.kind === 'linear'
+      ? (plan.annotation as Omit<LinearDimension, 'id'>)
+      : undefined;
+  const dir = lin?.direction;
+  if (!plan.ok || !lin || !dir) {
+    c.toast(
+      plan.ok
+        ? 'An ordinate runs along the view’s horizontal or vertical: pick features that differ along one of them.'
+        : plan.message,
+      'error',
+    );
+    return false;
+  }
+  const refs = await Promise.all([origin, feature].map((p) => refOf(c, p.name)));
+  const id = host.ulid();
+  const annotation = {
+    ...plan.annotation,
+    kind: 'ordinate',
+    id,
+    refs,
+    direction: dir,
+  } as Annotation;
+  // The group's lane: the one the first ordinate from this origin along this axis took.
+  let layout = plan.layout;
+  if (layout.kind === 'lane') {
+    const sibling = (b.part.annotations ?? []).find(
+      (a) =>
+        a.kind === 'ordinate' &&
+        a.refs[0]?.name === origin.name &&
+        Math.abs(
+          Math.abs(a.direction[0] * dir[0] + a.direction[1] * dir[1] + a.direction[2] * dir[2]) - 1,
+        ) < 1e-6,
+    );
+    const placed = sibling
+      ? b.drawing.placements.find(
+          (p) =>
+            p.annotationId === sibling.id && p.viewId === plan.viewId && p.layout.kind === 'lane',
+        )
+      : undefined;
+    if (placed?.layout.kind === 'lane') layout = placed.layout;
+  }
+  const placement: AnnotationPlacement = {
+    id: host.ulid(),
+    viewId: plan.viewId,
+    annotationId: id,
+    layout,
+  };
+  const ok = c.apply(
+    {
+      kind: 'addAnnotation',
+      partId: b.part.id,
+      annotation,
+      place: { drawingId: b.drawing.id, placement },
+    },
+    'Add ordinate dimension',
+  );
+  if (ok) c.select({ kind: 'placement', id: placement.id });
+  return ok;
+}
+
+/** The chamfer face's name inside an edge name (`F…:chamfer(…)`, balanced), if the edge has one. */
+export function chamferFaceName(name: string): { featureId: Id; face: string } | null {
+  const m = /F([0-9A-Za-z]+):chamfer\(/.exec(name);
+  if (!m) return null;
+  const start = m.index;
+  let depth = 0;
+  for (let i = start + m[0].length - 1; i < name.length; i++) {
+    if (name[i] === '(') depth++;
+    else if (name[i] === ')' && --depth === 0)
+      return { featureId: m[1] as Id, face: name.slice(start, i + 1) };
+  }
+  return null;
+}
+
+/**
+ * A chamfer callout for the chamfer feature that made the picked edge. The numbers come from the
+ * feature; an edge no chamfer feature made is refused, never guessed at.
+ */
+export async function addChamfer(c: DrawingController, pick: EdgePick): Promise<boolean> {
+  const b = c.built();
+  if (!b) return false;
+  const found = chamferFaceName(pick.name);
+  const feature = found
+    ? b.part.features.find((f) => f.id === found.featureId && f.type === 'chamfer')
+    : undefined;
+  if (!found || !feature) {
+    c.toast(
+      'That edge is not on a chamfer made by a Chamfer feature. Pick an edge of the chamfer’s face.',
+      'error',
+    );
+    return false;
+  }
+  const taken = (b.part.annotations ?? []).find(
+    (a) =>
+      a.kind === 'chamfer' && a.source?.kind === 'feature' && a.source.featureId === feature.id,
+  );
+  if (taken) {
+    const placed = b.drawing.placements.find((p) => p.annotationId === taken.id);
+    if (placed) c.select({ kind: 'placement', id: placed.id });
+    c.toast('This chamfer already has a callout.');
+    return false;
+  }
+  const mode = feature.type === 'chamfer' ? feature.mode.kind : 'distance';
+  const annotation: Annotation = {
+    id: host.ulid(),
+    kind: 'chamfer',
+    origin: { kind: 'drawing', drawingId: b.drawing.id },
+    form: mode === 'distanceAngle' || mode === 'distance' ? 'distanceAngle' : 'twoDistances',
+    refs: [{ name: found.face, kind: 'face' }],
+    source: { kind: 'feature', featureId: feature.id },
+  };
+  const placement: AnnotationPlacement = {
+    id: host.ulid(),
+    viewId: pick.viewId,
+    annotationId: annotation.id,
+    layout: LEADER,
+  };
+  const ok = c.apply(
+    {
+      kind: 'addAnnotation',
+      partId: b.part.id,
+      annotation,
+      place: { drawingId: b.drawing.id, placement },
+    },
+    'Add chamfer callout',
+  );
+  if (ok) c.select({ kind: 'placement', id: placement.id });
   return ok;
 }
 
