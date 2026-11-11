@@ -327,6 +327,14 @@ export interface RectPickOptions {
 }
 
 /** M2 surface; folds into `InteractiveViewport` once implemented. */
+/** Canvas px covered on each side by floating chrome (ADR-086). */
+export interface FrameInsets {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+}
+
 export interface TouchViewport extends InteractiveViewport {
   setInputPolicy(policy: InputPolicy): void;
   /** Discrete gestures; returns an unsubscribe function. */
@@ -338,6 +346,11 @@ export interface TouchViewport extends InteractiveViewport {
   /** Animated zoom so `point` is centred and `radius` mm fills about half the view. */
   zoomTo(point: Vec3, radius: number, animate?: boolean): void;
   setSection(section: SectionPlane | null): void;
+  /**
+   * M3.8 (ADR-086): canvas px covered by floating chrome (top bar, bottom sheet, overlay stack).
+   * Fits and the view cube use the uncovered area, so the model is framed where it can be seen.
+   */
+  setFrameInsets?(insets: Partial<FrameInsets>): void;
   /** Adds/replaces a preview by id; `null` removes it. */
   setPreview(id: string, preview: PreviewSpec | null): void;
   setHandle(id: string, handle: HandleSpec | null): void;

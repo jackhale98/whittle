@@ -2380,3 +2380,7 @@ Owner screenshot: after "section by face" on a phone, the selection bubble, a fl
 - **Where Accept lives.** `localStorage` on this device, per document id, keyed by feature, kind, path and name, bound to the value it acknowledged (the surviving name, or the size rounded to 0.1). It clears again when that value changes. It is not in the document, so it does not sync and is not undoable. **Proposed contract change** for a synced version: `Feature.acknowledged?: { path: string; name: string; value: string }[]`, written by an undoable command; the app's `refAcks.apply` would read it instead of storage. Not done here because contracts are lead-owned.
 - Re-pick reuses `wb.repick(featureId, path)`; nothing is re-picked silently and the regen is never blocked.
 - `grown` is not produced yet (kernel-client owns it). E2E stubs the status through the `stubRefNotes` test hook, an overlay applied wherever statuses are read.
+
+- **Lead decisions (2026-11-11).**
+  - **Accepted:** `TouchViewport.setFrameInsets?(insets: Partial<FrameInsets>)` and `FrameInsets` are in the contracts. The app no longer uses a local widening type.
+  - **Declined for now:** a synced `Feature.acknowledged` field. Accepting a reference note stays per device (`localStorage`, per document and reference). A note that comes back on another device is harmless, and it is not worth a schema bump yet. Revisit if notes become common, for example once imported parts merge faces.
