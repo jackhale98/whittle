@@ -9,6 +9,7 @@ import {
   identifierAtCaret,
   insertParam,
   isParamName,
+  isPrefixMatch,
   matchParams,
   paramExprFrom,
   paramRefs,
@@ -62,6 +63,15 @@ describe('matchParams', () => {
   });
 });
 
+describe('matchParams is a hint, never a rewrite', () => {
+  it('prefix matches rank first and substring matches are flagged as non-prefix', () => {
+    const p = [{ name: 'pitch' }, { name: 'spindle' }, { name: 'width' }];
+    expect(matchParams(p, 'pi').map((x) => x.name)).toEqual(['pitch', 'spindle']);
+    expect(isPrefixMatch('pitch', 'pi')).toBe(true);
+    expect(isPrefixMatch('spindle', 'pi')).toBe(false);
+  });
+});
+
 describe('insertParam', () => {
   it('replaces the range and puts the caret after the name', () => {
     expect(insertParam('2*wi + 5', 2, 4, 'width')).toEqual({ text: '2*width + 5', caret: 7 });
@@ -78,6 +88,9 @@ describe('paramRefs / isParamName', () => {
   it('ignores units after numbers, calls, and unknown names', () => {
     expect(paramRefs('5mm', ['mm'])).toEqual([]);
     expect(paramRefs('5 mm', ['mm'])).toEqual([]);
+    // Engine rule: after a number a name is a unit only if it IS a unit.
+    expect(paramRefs('2 width', ['width'])).toEqual(['width']);
+    expect(paramRefs('5width', ['width'])).toEqual(['width']);
     expect(paramRefs('width(2)', ['width'])).toEqual([]);
     expect(paramRefs('depth', names)).toEqual([]);
   });

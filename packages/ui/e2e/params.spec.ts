@@ -70,7 +70,8 @@ for (const theme of themes) {
       );
       await expect(page).toHaveScreenshot(`params-${tier}-${theme}-autocomplete.png`);
       await a11y(page);
-      // The keyboard works: down, Enter accepts.
+      // Nothing is highlighted until an arrow key; then Enter accepts the entry.
+      await page.keyboard.press('ArrowDown');
       await page.keyboard.press('ArrowDown');
       await page.keyboard.press('Enter');
       await expect(depth).toHaveValue('wall');

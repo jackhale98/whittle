@@ -10,6 +10,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import { BirdMark } from '../brand/Bird';
@@ -140,26 +141,34 @@ export function ShellRoot({
   // What every value field below knows about the parameters (ADR-080). The values come from the
   // host's `evaluate`; the memo key is their text so fields re-render only when one changes.
   const pt = props.paramsTable;
-  const infos: ParamInfo[] = (pt?.params ?? []).map((p) => {
-    const r = p.expr.trim() ? pt?.evaluate(p.expr) : undefined;
-    const value = r?.ok ? (pt?.formatValue ?? defaultFormatValue)(r.value, r.dimension) : undefined;
-    return {
-      name: p.name,
-      ...(value !== undefined ? { value } : {}),
-      ...(p.description ? { description: p.description } : {}),
-    };
-  });
-  const infoKey = JSON.stringify(infos);
-  const onMake = pt?.onMake;
-  const onMakeDone = pt?.onMakeDone;
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `infoKey` is the content of `infos`
+  const ptRef = useRef(pt);
+  ptRef.current = pt;
+  const hasMake = !!pt?.onMake;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `params` and `version` are the triggers; the body reads the latest props through the ref
   const links = useMemo<ParamLinks>(
     () => ({
-      params: infos,
-      ...(onMake ? { make: onMake } : {}),
-      ...(onMakeDone ? { makeDone: onMakeDone } : {}),
+      params: (ptRef.current?.params ?? []).map((p): ParamInfo => {
+        const t = ptRef.current;
+        const r = p.expr.trim() ? t?.evaluate(p.expr) : undefined;
+        const value = r?.ok
+          ? (t?.formatValue ?? defaultFormatValue)(r.value, r.dimension)
+          : undefined;
+        return {
+          name: p.name,
+          ...(value !== undefined ? { value } : {}),
+          ...(p.description ? { description: p.description } : {}),
+        };
+      }),
+      // Stable callbacks: the host's closures change every render.
+      ...(hasMake
+        ? {
+            make: (name: string, expr: string) => ptRef.current?.onMake?.(name, expr),
+            makeDone: () => ptRef.current?.onMakeDone?.(),
+          }
+        : {}),
     }),
-    [infoKey, onMake, onMakeDone],
+    // Re-evaluated only when the parameters or the host's `version` change, not on every render.
+    [pt?.params, pt?.version, hasMake],
   );
 
   const openPalette = useCallback(() => {

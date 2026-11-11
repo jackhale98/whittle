@@ -38,6 +38,7 @@ import {
   type DocumentStoreImpl,
   expressionEngine,
   scopeOf,
+  UNITS,
   ulid,
   validateParamName,
 } from '@wren-cad/document';
@@ -526,6 +527,7 @@ export class Workbench {
   makeParameter(name: string, expr: Expr): string | undefined {
     const bad = validateParamName(name);
     if (bad) return bad;
+    if (UNITS.has(name)) return `‘${name}’ is a unit; pick another name`;
     if (this.doc.params.some((p) => p.name === name)) return `“${name}” is already used`;
     const key = `make-param:${ulid()}`;
     const param = { id: ulid(), name, expr };

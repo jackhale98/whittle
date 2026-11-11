@@ -2210,7 +2210,7 @@ Owner feedback: "how do we apply parameters to actual dimensions? I couldn't fin
 
 **Values come from the host.** The shell builds `ParamLinksContext` from `paramsTable.params` and the app's own `evaluate`, so the list shows exactly what the document evaluates to (including the resolved configuration once `evaluate` takes it). The UI never evaluates parameters itself.
 
-**Bundle.** The initial route grew by 1.07 kB gzip (248.0 to 249.07 kB). The list, form, fx button, badge and drop registration are one lazy chunk (`ParamAssist`) loaded when a field first has parameters to offer; `ExpressionInput` keeps only the slots and the key/blur hooks. `paramUsage` and `selectParamUse` are lazy too.
+**Bundle.** Measured on the dev branch at the gate-fix merge: 246.79 kB gzip of 250 kB (the feature itself added about 1.1 kB to the initial route; the list, form, fx button, badge and drop registration are one lazy chunk, `ParamAssist`, and `paramUsage` / `selectParamUse` are lazy too).
 
 **Parameter edits redraw an open sketch.** The document stores the last solved geometry, so a parameter change used to leave an open sketch stale until its next solve. `Workbench.applyRefit` (used by `ConfigController.updateParam`, both Default and override edits) applies the parameter edit under a join key, then `SketchSession.refit()` re-solves with the new values (the resolved configuration) and writes the moved geometry and carried labels. The refit joins the parameter edit's undo step, so there is no step of its own and undo restores both. A drag in flight is left alone (its next step solves with the new values anyway), and an unchanged solve writes nothing.
 
@@ -2281,3 +2281,8 @@ M5 then becomes:
 - M4 is slightly larger. M5 is smaller and less risky.
 - Drawings and the STEP export can never disagree about a dimension, because they show the same object.
 
+**Gate fixes (ADR-080 amendment).**
+- **Enter never rewrites typed text.** Nothing in the list is highlighted until the user presses an arrow key; Enter and Tab accept only a highlighted entry, and otherwise Enter commits the field as typed (so `2*pi` stays `2*pi` with a parameter `pitch`). Only prefix matches open the list; substring matches may follow but never open it alone.
+- **One rule for names after numbers: the engine's.** A name after a number is a unit only if it is a unit (`5 mm`); `2 width` is 2 * width. `paramRefs` (badge, "Used by") follows that, and the test evaluator in the UI harness does too.
+- **Used by covers configurations.** Parameter overrides and feature field overrides in `part.configurations` are listed with the configuration's name; choosing one switches to that configuration, then selects the feature.
+- A wrong-kind drop on a dimension label opens its editor with the name and the error (`seedDraft`), and the drag reports it as not dropped. The popup measures on open, resize and scroll, not every frame. Tab in the Make parameter form cancels it. IME composition is not treated as Enter or an arrow. `Workbench.makeParameter` refuses unit names. The shell re-evaluates parameter values only when `params` or the host's `version` token changes.

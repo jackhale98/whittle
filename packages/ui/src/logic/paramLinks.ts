@@ -1,4 +1,5 @@
 import type { KeyboardEvent } from 'react';
+import { UNIT_WORDS } from './paramName';
 
 /**
  * Pure helpers behind parameter autocomplete and "link" display (ADR-080). No React, no DOM.
@@ -43,6 +44,10 @@ export function identifierAtCaret(text: string, caret: number): IdentifierAtCare
   return { start, end, prefix: text.slice(start, caret) };
 }
 
+/** True when `name` starts with `prefix` (case-insensitive): only those may open the list. */
+export const isPrefixMatch = (name: string, prefix: string): boolean =>
+  name.toLowerCase().startsWith(prefix.toLowerCase());
+
 /** Parameters matching `prefix`: prefix matches first, then substrings; case-insensitive. */
 export function matchParams(params: readonly ParamInfo[], prefix: string, limit = 50): ParamInfo[] {
   const q = prefix.toLowerCase();
@@ -75,10 +80,11 @@ export function paramRefs(expr: string, names: ReadonlySet<string> | readonly st
   for (const m of expr.matchAll(re)) {
     const at = m.index ?? 0;
     if (!known.has(m[0]) || out.includes(m[0])) continue;
-    if (at > 0 && /[\p{N}.]/u.test(expr[at - 1] ?? '')) continue; // `2mm`: glued to a number
+    // The engine's rule: a name straight after a number is a unit only if it IS a unit; any
+    // other name there is a parameter (`2 width` is 2 * width).
     let k = at - 1;
     while (k >= 0 && expr[k] === ' ') k--;
-    if (k >= 0 && /[\d.]/.test(expr[k] ?? '')) continue; // `2 mm`: a unit
+    if (k >= 0 && /[\d.]/.test(expr[k] ?? '') && UNIT_WORDS.includes(m[0])) continue;
     const after = expr.slice(at + m[0].length).trimStart();
     if (after.startsWith('(')) continue; // a function call
     out.push(m[0]);

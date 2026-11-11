@@ -78,7 +78,9 @@ describe('parameter autocomplete (ARIA combobox)', () => {
     const box = screen.getByRole('combobox', { name: 'Depth' });
     expect(box).toHaveAttribute('aria-expanded', 'true');
     expect(box).toHaveAttribute('aria-controls', list.id);
-    expect(box).toHaveAttribute('aria-activedescendant', options()[0]?.id ?? '?');
+    // Nothing is highlighted until an arrow key moves onto an entry.
+    expect(box).not.toHaveAttribute('aria-activedescendant');
+    expect(options().every((o) => o.getAttribute('aria-selected') === 'false')).toBe(true);
   });
 
   it('is a plain textbox, with no list, for number entry', async () => {
@@ -105,7 +107,7 @@ describe('parameter autocomplete (ARIA combobox)', () => {
     await userEvent.click(field());
     await userEvent.keyboard('w');
     await screen.findByRole('listbox');
-    await userEvent.keyboard('{ArrowDown}');
+    await userEvent.keyboard('{ArrowDown}{ArrowDown}');
     expect(options()[1]).toHaveAttribute('aria-selected', 'true');
     await userEvent.keyboard('{Enter}');
     expect(field()).toHaveValue('wall');
@@ -136,7 +138,7 @@ describe('parameter autocomplete (ARIA combobox)', () => {
     fireEvent.select(el);
     await userEvent.keyboard('h');
     await screen.findByRole('listbox');
-    await userEvent.keyboard('{Enter}');
+    await userEvent.keyboard('{ArrowDown}{Enter}');
     expect(field()).toHaveValue('2* hole_d + 5mm');
     await waitFor(() => expect(el.selectionStart).toBe(9));
   });
@@ -185,7 +187,7 @@ describe('parameter autocomplete (ARIA combobox)', () => {
     expect(options()).toHaveLength(4);
     expect(field()).toHaveValue('');
     expect(screen.queryByRole('alert')).toBeNull();
-    await userEvent.keyboard('{ArrowDown}{ArrowDown}{Enter}');
+    await userEvent.keyboard('{ArrowDown}{ArrowDown}{ArrowDown}{Enter}');
     expect(field()).toHaveValue('hole_d');
   });
 
@@ -480,10 +482,129 @@ describe('dimension editor autocomplete does not end the edit', () => {
     await screen.findByRole('textbox', { name: 'length dimension' });
     await userEvent.keyboard('wi');
     await screen.findByRole('listbox');
-    await userEvent.keyboard('{Enter}');
+    await userEvent.keyboard('{ArrowDown}{Enter}');
     expect(screen.getByRole('textbox', { name: 'length dimension' })).toHaveValue('width');
     expect(onCommit).not.toHaveBeenCalled();
     await userEvent.keyboard('{Enter}');
     await waitFor(() => expect(onCommit).toHaveBeenCalledWith('width'));
+  });
+});
+
+describe('Enter never rewrites what was typed (a built-in, unit or complete name)', () => {
+  const links: ParamLinks = {
+    params: [
+      { name: 'pitch', value: '2 mm' },
+      { name: 'spindle', value: '8 mm' },
+      { name: 'width', value: '80 mm' },
+      { name: 'wall', value: '2.5 mm' },
+      { name: 'wallet', value: '1 mm' },
+    ],
+  };
+
+  it('2*pi + Enter commits 2*pi, not 2*pitch', async () => {
+    const onCommit = vi.fn();
+    await renderReady(<Harness links={links} onCommit={onCommit} />);
+    await userEvent.click(field());
+    await userEvent.keyboard('2*pi');
+    await screen.findByRole('listbox'); // the prefix matches are offered, nothing is highlighted
+    // The substring match (spindle) may follow, but nothing is highlighted.
+    expect(options().map((o) => o.textContent)).toEqual(['pitch2 mm', 'spindle8 mm']);
+    await userEvent.keyboard('{Enter}');
+    expect(onCommit).toHaveBeenCalledWith('2*pi');
+  });
+
+  it('pi alone, and sqrt(pi at the end, commit as typed', async () => {
+    const onCommit = vi.fn();
+    await renderReady(<Harness links={links} onCommit={onCommit} />);
+    await userEvent.click(field());
+    await userEvent.keyboard('pi{Enter}');
+    expect(onCommit).toHaveBeenLastCalledWith('pi');
+    await userEvent.keyboard('{Control>}a{/Control}(pi){ArrowLeft}');
+    await screen.findByRole('listbox'); // the caret is on `pi`: pitch is offered
+    await userEvent.keyboard('{Enter}');
+    expect(onCommit).toHaveBeenLastCalledWith('(pi)');
+  });
+
+  it('a substring match (spindle for "pi") never opens the list alone', async () => {
+    await renderReady(<Harness links={links} />);
+    await userEvent.click(field());
+    await userEvent.keyboard('dle');
+    expect(screen.queryByRole('listbox')).toBeNull();
+  });
+
+  it('a pasted formula ending in pi is not rewritten by Enter', async () => {
+    const onCommit = vi.fn();
+    await renderReady(<Harness links={links} onCommit={onCommit} />);
+    await userEvent.click(field());
+    await userEvent.paste('2*pi');
+    await userEvent.keyboard('{Enter}');
+    expect(onCommit).toHaveBeenCalledWith('2*pi');
+  });
+
+  it('a name that is a prefix of another parameter commits as typed; Tab does not accept', async () => {
+    const onCommit = vi.fn();
+    await renderReady(<Harness links={links} onCommit={onCommit} />);
+    await userEvent.click(field());
+    await userEvent.keyboard('wall');
+    await screen.findByRole('listbox'); // wall and wallet
+    await userEvent.keyboard('{Enter}');
+    expect(onCommit).toHaveBeenCalledWith('wall');
+    await userEvent.keyboard('{Control>}a{/Control}wid');
+    await screen.findByRole('listbox');
+    await userEvent.tab();
+    expect(field()).toHaveValue('wid'); // Tab did not complete it
+  });
+
+  it('an arrow key then Enter does accept the highlighted entry', async () => {
+    await renderReady(<Harness links={links} />);
+    await userEvent.click(field());
+    await userEvent.keyboard('2*pi{ArrowDown}{Enter}');
+    expect(field()).toHaveValue('2*pitch');
+  });
+
+  it('a wrong-kind drop on a dimension label opens its editor with the error', async () => {
+    const dimEval = makeEvaluator(params);
+    const onDropParam = vi.fn();
+    renderUI(
+      <DimensionLabel
+        x={50}
+        y={50}
+        kind="length"
+        expr="30"
+        driving
+        evaluate={(e) => dimEval(e, 'length')}
+        onDropParam={onDropParam}
+      />,
+    );
+    const btn = screen.getByRole('button', { name: /Dimension: 30/ });
+    const ended = vi.fn();
+    const { beginParamDrag } = await import('../src/logic/paramDrag');
+    document.elementsFromPoint = () => [btn];
+    act(() => {
+      beginParamDrag({ clientX: 0, clientY: 0, pointerId: 21 }, 'tilt', ended);
+      window.dispatchEvent(
+        new PointerEvent('pointermove', { pointerId: 21, clientX: 20, clientY: 0 }),
+      );
+      window.dispatchEvent(
+        new PointerEvent('pointerup', { pointerId: 21, clientX: 20, clientY: 0 }),
+      );
+    });
+    expect(onDropParam).not.toHaveBeenCalled();
+    expect(ended).toHaveBeenCalledWith(false);
+    expect(await screen.findByRole('textbox', { name: 'length dimension' })).toHaveValue('tilt');
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
+    // The click that follows a drop is swallowed for a moment; let that pass.
+    await new Promise((r) => setTimeout(r, 80));
+  });
+
+  it('Tab in the make form cancels it and returns to the field', async () => {
+    const links2: ParamLinks = { ...links, make: () => undefined };
+    await renderReady(<Harness links={links2} initial="12" />);
+    await userEvent.click(await screen.findByRole('button', { name: /parameters for Depth/i }));
+    await userEvent.click(await screen.findByRole('option', { name: /Make parameter from/ }));
+    const name = await screen.findByRole('textbox', { name: 'Name of the new parameter' });
+    await userEvent.type(name, '{Tab}');
+    expect(screen.queryByRole('textbox', { name: 'Name of the new parameter' })).toBeNull();
+    expect(field()).toHaveFocus();
   });
 });

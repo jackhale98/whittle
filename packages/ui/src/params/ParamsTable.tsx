@@ -42,6 +42,9 @@ export interface ParamUse {
   /** For a sketch dimension: the constraint. */
   constraintId?: Id;
   paramId?: Id;
+  /** The use is an override in this configuration (the entry says so; choosing it switches to it). */
+  configurationId?: Id;
+  configurationName?: string;
 }
 
 /**
@@ -78,6 +81,11 @@ export interface ParamsTableProps {
   onMove?(id: Id, toIndex: number): MoveResult | Promise<MoveResult> | undefined;
   /** How many expressions reference each param, to warn before deleting it. */
   usage?: Readonly<Record<Id, number>>;
+  /**
+   * Changes whenever an evaluated value can (document or configuration edits). The shell re-evaluates
+   * the parameters for the value fields only when `params` or this changes.
+   */
+  version?: unknown;
   /** What uses each param (ADR-080): "Used by N", expandable to the list. Supersedes `usage`. */
   usedBy?: Readonly<Record<Id, readonly ParamUse[]>>;
   /** Choose an entry of a "Used by" list: select the feature, open the sketch at the dimension. */
@@ -317,7 +325,7 @@ function ParamRow({
                         type="button"
                         data-testid="param-use"
                         onClick={() =>
-                          u.kind === 'param'
+                          u.kind === 'param' && !u.configurationId
                             ? onFocusParam(u.paramId ?? '')
                             : props.onSelectUse?.(u)
                         }

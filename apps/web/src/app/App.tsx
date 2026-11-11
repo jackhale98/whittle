@@ -271,6 +271,9 @@ export function App({ wb }: { wb: Workbench }) {
     // biome-ignore lint/correctness/useExhaustiveDependencies: `doc` carries the configurations
   }, [doc, part, configs, wb]);
   const activeConfig = wb.config.active;
+  // A new token whenever an evaluated value can change: the shell re-evaluates parameters on it.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the token is the dependency
+  const paramsVersion = useMemo(() => ({}), [doc, configState]);
 
   return (
     <>
@@ -319,6 +322,7 @@ export function App({ wb }: { wb: Workbench }) {
               }
             : {}),
           evaluate: (e) => wb.evaluate(e),
+          version: paramsVersion,
           onAdd: () => {
             const names = new Set(doc.params.map((p) => p.name));
             let n = doc.params.length + 1;
