@@ -1,36 +1,45 @@
 /**
- * "Import model annotations" (PLAN §12 M4, ADR-090 §6): a deterministic, previewed plan that
+ * "Import model annotations" (PLAN §12 M4, ADR-090 §6, ADR-091): a deterministic, previewed plan
+ * that
  *
  *  1. lists candidates: the part's annotations not yet placed in this drawing (checked by
  *     default) and the driving sketch and feature dimensions that can be promoted (unchecked:
  *     they carry no tolerance);
- *  2. picks for each the view where it is seen true length (linear: direction in the view
- *     plane; diameters and callouts: the circle face-on; angles: the angle's plane), breaking
- *     ties by visible refs, then longer projected length, then base before projected, then id;
- *  3. never places an annotation twice in a drawing, and never promotes a source that already
- *     has an annotation (that annotation is placed instead);
- *  4. assigns lanes per view side, shortest nearest the outline, sharing a lane when spans do
- *     not overlap (text overlaps move outward);
- *  5. commits as one `placeAnnotations` command.
+ *  2. never places a dimension twice: not an annotation already placed, not a promotion of a
+ *     source that already has an annotation (that annotation is listed instead), and not a second
+ *     dimension of the same measurement (same direction, same measured geometry; `dedupe.ts`),
+ *     keeping the driving (sourced) one;
+ *  3. picks for each the view where it is seen true length (linear: direction in the view
+ *     plane; diameters and callouts: the circle face-on; angles: the angle's plane); a promotion's
+ *     sketch frame or feature direction decides, its anchors give the length; then visible refs,
+ *     longer projected length, base before projected, id;
+ *  4. assigns lanes clear of every other view, cut line, table and the title block (`lanes.ts`):
+ *     the free side, else an aligned view pushed out (`moveViews`), else `layoutDoesNotFit`,
+ *     never an overlap;
+ *  5. commits as one undo step: `importCommand` (one `placeAnnotations`) or, with pushed views,
+ *     `importCommands` (their `updateView`s and the `placeAnnotations`, applied with one
+ *     coalescing key).
  *
- * Geometry comes from the regen's resolutions for existing annotations, and from sketch frames
- * plus an injected anchor resolver for promoted ones. A candidate with no geometry is listed with
- * the reason; nothing is placed on a guessed view.
+ * Geometry comes from the regen's resolutions for existing annotations, and for promoted ones
+ * from one `annotationAnchors` call (`anchors`, see `anchors.ts`) or the sketch's own geometry. A
+ * candidate with no geometry is listed with the reason; nothing is placed on a guessed view or
+ * attached to a guessed entity.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
 import type {
+  AnchorAnswer,
   Annotation,
   AnnotationAnchor,
   AnnotationPlacement,
   AnnotationResolution,
-  AnnotationSource,
   Command,
-  DimensionConstraint,
   Drawing,
+  DrawingTable,
+  DrawingView,
   EntityRef,
-  Feature,
+  Expr,
   Id,
   Part,
   RefPoint,
@@ -40,21 +49,33 @@ import type {
   ViewProjection,
 } from '@wren-cad/contracts';
 import { dist2, dot2, dot3, len3, norm2, norm3, sub2 } from '../annotation/geom';
+import { layoutDimensionLabel, type TextBlock } from '../annotation/label-layout';
+import { formatLength } from '../annotation/numbers';
+import { textWidth } from '../annotation/text';
+import { dimensionLabel, evaluateTolerance } from '../annotation/tolerance';
 import {
   anchorDirection,
   anchorPoints,
+  attachPoint,
   projectCircle,
   projectedSegment,
   spanNormal,
 } from '../placement/anchors';
+import type { TableData } from '../sheet/compose';
 import { partToSheet, type SolvedView, type ViewSolution, viewOutline } from '../view/solve';
+import { anchorQueryKey, sketchAnchor } from './anchors';
+import { measureKey } from './dedupe';
+import { type LaneRequest, type LaneSide, type LeaderRequest, planLanes } from './lanes';
+import {
+  type AnnotationDraft,
+  collectPromotions,
+  type NotPromotable,
+  type PromotionHint,
+  type SketchFrame,
+  sourceKey,
+} from './promote';
 
-export interface SketchFrame {
-  origin: Vec3;
-  x: Vec3;
-  y: Vec3;
-  z: Vec3;
-}
+export type { AnnotationDraft, NotPromotable, SketchFrame };
 
 export interface ImportInput {
   drawing: Drawing;
@@ -66,13 +87,39 @@ export interface ImportInput {
   projections?: ReadonlyMap<Id, ViewProjection>;
   /** Sketch plane frames by sketch feature id (`SketchResult.frame`). */
   sketchFrames?: ReadonlyMap<Id, SketchFrame>;
-  /** Geometry of a model entity for promoted dimensions (drawing worker or regen). */
+  /**
+   * Answers to `importAnchorQueries(part, sketchFrames)` from one
+   * `ModelingApi.annotationAnchors` call, as `anchorLookup(queries, answers)`. Places fillet,
+   * chamfer and revolve promotions, and picks extrude-depth refs that resolve.
+   */
+  anchors?: ReadonlyMap<string, AnchorAnswer>;
+  /** Older single-ref form of `anchors` (used only when `anchors` is absent). */
   resolveAnchor?: (ref: EntityRef, at?: RefPoint) => AnnotationAnchor | undefined;
+  /** Annotation expressions (tolerances), for label sizes; absent: a typical width is assumed. */
+  evaluate?: (expr: Expr, kind: 'length' | 'angle') => number | undefined;
+  /** Table rows (as the sheet's), so lanes keep clear of tables. */
+  tables?: (table: DrawingTable) => TableData | undefined;
+  /** Outline growth lanes keep free for later model edits (default 0.1 = 10 %). */
+  headroom?: number;
+  /**
+   * Allow pushing an aligned view's distance out when a dimension fits on neither side
+   * (`plan.viewMoves`, committed by `importCommands`). Default false: such a dimension is
+   * reported as `layoutDoesNotFit`.
+   */
+  moveViews?: boolean;
   /** Mints ids (ULIDs) for promoted annotations and new placements, in call order. */
   newId: () => Id;
 }
 
-export type CandidateReason = 'needsAttention' | 'suppressed' | 'noSuitableView' | 'noGeometry';
+export type CandidateReason =
+  | 'needsAttention'
+  | 'suppressed'
+  | 'noSuitableView'
+  | 'noGeometry'
+  /** Measures what another candidate (or a placed annotation) measures: see `duplicateOf`. */
+  | 'duplicate'
+  /** No lane clear of the neighbouring views, cut lines, tables and the title block. */
+  | 'layoutDoesNotFit';
 
 export interface ImportCandidate {
   /** Stable key: `annotation:<id>`, `sketch:<feature>:<constraint>`, `feature:<feature>:<path>`. */
@@ -85,12 +132,15 @@ export interface ImportCandidate {
   placement?: AnnotationPlacement;
   /** Why it cannot be placed (then `viewId` and `placement` are absent). */
   reason?: CandidateReason;
+  /** `reason: 'duplicate'`: the key of the candidate kept, or `annotation:<id>` already placed. */
+  duplicateOf?: string;
 }
 
-export interface NotPromotable {
-  featureId: Id;
-  path: string;
-  message: string;
+/** An aligned view pushed out to make room, and the candidates laid out with that room. */
+export interface ViewMove {
+  view: DrawingView;
+  /** Candidate keys that need the move; it is committed when one of them is checked. */
+  for: string[];
 }
 
 export interface ImportPlan {
@@ -99,256 +149,8 @@ export interface ImportPlan {
   alreadyPlaced: Id[];
   /** Driving values import cannot promote in M4; the panel offers the dimension tool instead. */
   notPromotable: NotPromotable[];
-}
-
-// ---------------------------------------------------------------------------------------------
-// Promotion
-// ---------------------------------------------------------------------------------------------
-
-function sourceKey(s: AnnotationSource): string {
-  switch (s.kind) {
-    case 'sketchDimension':
-      return `sketch:${s.featureId}:${s.constraintId}`;
-    case 'featureField':
-      return `feature:${s.featureId}:${s.path}`;
-    case 'feature':
-      return `feature:${s.featureId}:`;
-  }
-}
-
-function sketchRef(f: SketchFeature, id: Id): EntityRef {
-  const e = f.entities.find((x) => x.id === id);
-  const point = e?.kind === 'point' || id === '@origin';
-  return { name: `S${f.id}:${point ? 'p' : 'e'}(${id})`, kind: point ? 'vertex' : 'edge' };
-}
-
-/** An annotation without its id (distributes over the union, unlike `Omit`). */
-export type AnnotationDraft = Annotation extends infer A
-  ? A extends Annotation
-    ? Omit<A, 'id'>
-    : never
-  : never;
-
-interface Promotion {
-  key: string;
-  draft: AnnotationDraft;
-  /** Geometry hints for the view choice. */
-  hint:
-    | { kind: 'inPlane'; normal: Vec3; direction?: Vec3 }
-    | { kind: 'direction'; direction: Vec3 }
-    | { kind: 'circleNormal'; normal: Vec3 }
-    | { kind: 'anchors' };
-}
-
-function promoteSketch(
-  f: SketchFeature,
-  c: DimensionConstraint,
-  frame: SketchFrame | undefined,
-): Promotion | NotPromotable {
-  const source: AnnotationSource = { kind: 'sketchDimension', featureId: f.id, constraintId: c.id };
-  const key = sourceKey(source);
-  const origin = { kind: 'model' as const };
-  const kindOf = (id: Id) =>
-    f.entities.find((e) => e.id === id)?.kind ?? (id === '@origin' ? 'point' : 'line');
-  const normal = frame?.z;
-  if (!normal)
-    return {
-      featureId: f.id,
-      path: `/constraints/${c.id}`,
-      message: 'The sketch plane is not known yet',
-    };
-  switch (c.kind) {
-    case 'hDistance':
-    case 'vDistance': {
-      const direction = c.kind === 'hDistance' ? frame.x : frame.y;
-      return {
-        key,
-        draft: {
-          kind: 'linear',
-          origin,
-          refs: [sketchRef(f, c.a), sketchRef(f, c.b)],
-          direction,
-          source,
-        },
-        hint: { kind: 'inPlane', normal, direction },
-      };
-    }
-    case 'distance': {
-      const points = kindOf(c.a) === 'point' && kindOf(c.b) === 'point';
-      return {
-        key,
-        draft: points
-          ? { kind: 'aligned', origin, refs: [sketchRef(f, c.a), sketchRef(f, c.b)], source }
-          : { kind: 'linear', origin, refs: [sketchRef(f, c.a), sketchRef(f, c.b)], source },
-        hint: { kind: 'inPlane', normal },
-      };
-    }
-    case 'length': {
-      const line = f.entities.find((e) => e.id === c.line);
-      if (line?.kind !== 'line')
-        return {
-          featureId: f.id,
-          path: `/constraints/${c.id}`,
-          message: 'Only straight lengths can be promoted',
-        };
-      return {
-        key,
-        draft: {
-          kind: 'aligned',
-          origin,
-          refs: [sketchRef(f, line.start), sketchRef(f, line.end)],
-          source,
-        },
-        hint: { kind: 'inPlane', normal },
-      };
-    }
-    case 'radius':
-    case 'diameter':
-      return {
-        key,
-        draft: { kind: c.kind, origin, refs: [sketchRef(f, c.curve)], source },
-        hint: { kind: 'circleNormal', normal },
-      };
-    case 'angle':
-      return {
-        key,
-        draft: { kind: 'angle', origin, refs: [sketchRef(f, c.a), sketchRef(f, c.b)], source },
-        hint: { kind: 'inPlane', normal },
-      };
-    case 'offset':
-      return {
-        featureId: f.id,
-        path: `/constraints/${c.id}`,
-        message: 'Offset dimensions are not promotable in M4: use the dimension tool',
-      };
-  }
-}
-
-/** The sketch id a profile or point name comes from (`S<id>:…`). */
-function sketchIdOf(name: string | undefined): Id | undefined {
-  const m = name ? /^S([^:]+):/.exec(name) : null;
-  return m?.[1];
-}
-
-function promoteFeature(
-  f: Feature,
-  frames: ReadonlyMap<Id, SketchFrame>,
-): (Promotion | NotPromotable)[] {
-  const origin = { kind: 'model' as const };
-  const out: (Promotion | NotPromotable)[] = [];
-  const no = (path: string, message: string) => out.push({ featureId: f.id, path, message });
-  switch (f.type) {
-    case 'extrude': {
-      if (f.end.kind !== 'blind') break;
-      const sk = sketchIdOf(f.profile[0]?.name);
-      const z = sk ? frames.get(sk)?.z : undefined;
-      if (!z) {
-        no('/end/depth', 'The profile sketch plane is not known yet');
-        break;
-      }
-      const source: AnnotationSource = {
-        kind: 'featureField',
-        featureId: f.id,
-        path: '/end/depth',
-      };
-      out.push({
-        key: sourceKey(source),
-        draft: {
-          kind: 'linear',
-          origin,
-          refs: [
-            { name: `F${f.id}:start`, kind: 'face' },
-            { name: `F${f.id}:end`, kind: 'face' },
-          ],
-          direction: z,
-          source,
-        },
-        hint: { kind: 'direction', direction: z },
-      });
-      break;
-    }
-    case 'fillet': {
-      const edge = f.edges[0];
-      if (!edge) break;
-      const source: AnnotationSource = { kind: 'featureField', featureId: f.id, path: '/radius' };
-      out.push({
-        key: sourceKey(source),
-        draft: {
-          kind: 'radius',
-          origin,
-          refs: [{ name: `F${f.id}:fillet(${edge.name})`, kind: 'face' }],
-          source,
-        },
-        hint: { kind: 'anchors' },
-      });
-      break;
-    }
-    case 'chamfer': {
-      const edge = f.edges[0];
-      if (!edge) break;
-      const source: AnnotationSource = { kind: 'feature', featureId: f.id };
-      out.push({
-        key: sourceKey(source),
-        draft: {
-          kind: 'chamfer',
-          origin,
-          form:
-            f.mode.kind === 'distanceAngle' || f.mode.kind === 'distance'
-              ? 'distanceAngle'
-              : 'twoDistances',
-          refs: [{ name: `F${f.id}:chamfer(${edge.name})`, kind: 'face' }],
-          source,
-        },
-        hint: { kind: 'anchors' },
-      });
-      break;
-    }
-    case 'hole': {
-      const sk = sketchIdOf(f.points[0]?.name);
-      const z = sk ? frames.get(sk)?.z : undefined;
-      const source = { kind: 'feature' as const, featureId: f.id };
-      if (!z) {
-        no('', 'The hole sketch plane is not known yet');
-        break;
-      }
-      out.push({
-        key: sourceKey(source),
-        draft: { kind: 'holeCallout', origin, refs: [], source },
-        hint: { kind: 'circleNormal', normal: z },
-      });
-      break;
-    }
-    case 'revolve': {
-      const source: AnnotationSource = { kind: 'featureField', featureId: f.id, path: '/angle' };
-      out.push({
-        key: sourceKey(source),
-        draft: {
-          kind: 'angle',
-          origin,
-          refs: [
-            { name: `F${f.id}:start`, kind: 'face' },
-            { name: `F${f.id}:end`, kind: 'face' },
-          ],
-          source,
-        },
-        hint: { kind: 'anchors' },
-      });
-      break;
-    }
-    case 'shell':
-      no('/thickness', 'Shell thickness is not promotable in M4: use the dimension tool');
-      break;
-    case 'draft':
-      no('/angle', 'Draft angles are not promotable in M4: use the dimension tool');
-      break;
-    case 'linearPattern':
-    case 'circularPattern':
-      no('', 'Pattern spacing is not promotable in M4: use the dimension tool');
-      break;
-    default:
-      break;
-  }
-  return out;
+  /** Views to push out (only with `moveViews`; otherwise empty). */
+  viewMoves: ViewMove[];
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -432,7 +234,7 @@ function anchorsSuit(
   }
 }
 
-function hintSuit(h: Promotion['hint'], v: SolvedView): number | null {
+function hintSuit(h: PromotionHint, v: SolvedView): number | null {
   const n = v.frame.n;
   switch (h.kind) {
     case 'inPlane':
@@ -484,20 +286,10 @@ function chooseView(
 // Layout of the chosen placements
 // ---------------------------------------------------------------------------------------------
 
-type LaneSide = 'top' | 'bottom' | 'left' | 'right';
-
-interface LaneItem {
-  key: string;
-  side: LaneSide;
-  span: [number, number];
-  length: number;
-  set: (lane: number) => void;
-}
-
 function laneSideAndSpan(
   a: Annotation,
   anchors: (AnnotationAnchor | null)[] | undefined,
-  hint: Promotion['hint'] | undefined,
+  hint: PromotionHint | undefined,
   v: SolvedView,
 ): { side: LaneSide; span: [number, number] } | null {
   let d: Vec3 | undefined;
@@ -547,36 +339,28 @@ function spanOf(pts: Vec2[], axis: 0 | 1): [number, number] {
   return [Math.min(...xs), Math.max(...xs)];
 }
 
-/** Greedy lane packing: shortest first; a lane is shared when spans (plus text room) don't overlap. */
-function assignLanes(
-  items: LaneItem[],
-  occupied: Map<string, [number, number][][]>,
-  margin: number,
-): void {
-  const sorted = [...items].sort((a, b) => a.length - b.length || (a.key < b.key ? -1 : 1));
-  for (const it of sorted) {
-    const key = it.side;
-    const lanes = occupied.get(key) ?? [];
-    let lane = 0;
-    for (; ; lane++) {
-      const used = lanes[lane] ?? [];
-      const clash = used.some(([a, b]) => it.span[0] < b + margin && a < it.span[1] + margin);
-      if (!clash) break;
-    }
-    const row = lanes[lane] ?? [];
-    row.push(it.span);
-    lanes[lane] = row;
-    occupied.set(key, lanes);
-    it.set(lane);
-  }
+/** The leader angle of a radial layout: an arc's middle, else 45°. */
+function radialAngle(anchor: AnnotationAnchor | null | undefined, v: SolvedView): number {
+  if (anchor?.kind !== 'circle' || !anchor.start || !anchor.end) return 45;
+  const c = partToSheet(v, anchor.center);
+  const s = norm2(sub2(partToSheet(v, anchor.start), c));
+  const e = norm2(sub2(partToSheet(v, anchor.end), c));
+  const m: Vec2 = [s[0] + e[0], s[1] + e[1]];
+  if (Math.hypot(m[0], m[1]) < 1e-6) return 45;
+  return Math.round((Math.atan2(m[1], m[0]) * 180) / Math.PI);
 }
 
-function defaultLayout(a: Annotation, style: Drawing['style']): AnnotationPlacement['layout'] {
+function defaultLayout(
+  a: Annotation,
+  style: Drawing['style'],
+  anchors: (AnnotationAnchor | null)[] | undefined,
+  v: SolvedView,
+): AnnotationPlacement['layout'] {
   const h = style.text.dimension;
   switch (a.kind) {
     case 'radius':
     case 'diameter':
-      return { kind: 'radial', angle: 45, distance: 2 * h };
+      return { kind: 'radial', angle: radialAngle(anchors?.[0], v), distance: 2 * h };
     case 'angle':
       return { kind: 'arc', radius: 6 * h };
     case 'datumFeature':
@@ -586,6 +370,201 @@ function defaultLayout(a: Annotation, style: Drawing['style']): AnnotationPlacem
     default:
       return { kind: 'leader', attach: { kind: 'ref', index: 0 }, text: [4 * h, 4 * h] };
   }
+}
+
+/** The label a lane dimension will show, for its size (the layout makes the real one). */
+function laneLabel(
+  a: Extract<Annotation, { kind: 'linear' | 'aligned' | 'ordinate' }>,
+  value: number,
+  input: ImportInput,
+): TextBlock {
+  const style = input.drawing.style;
+  const tol = a.tolerance
+    ? evaluateTolerance(a.tolerance, (e) => input.evaluate?.(e, 'length') ?? 0.05)
+    : null;
+  const label = dimensionLabel({
+    value,
+    quantity: 'length',
+    ...(tol ? { tolerance: tol } : {}),
+    ...(a.text ? { text: a.text } : {}),
+    numbers: style.numbers,
+    fitDeviations: () => ({ upper: 0.05, lower: -0.05 }),
+  });
+  return layoutDimensionLabel(label, style.text.dimension);
+}
+
+interface Pending {
+  key: string;
+  kind: 'existing' | 'promote';
+  annotation: Annotation;
+  checked: boolean;
+  /** The kernel's anchors (resolution, or the anchor lookup), parallel to refs. */
+  anchors?: (AnnotationAnchor | null)[];
+  /** Anchors for layout and duplicates: `anchors`, else the sketch's own geometry. */
+  layout?: (AnnotationAnchor | null)[];
+  hint?: PromotionHint;
+  reason?: CandidateReason;
+  duplicateOf?: string;
+}
+
+/** The first ref choice whose refs all resolve (unmerged first), and its anchors. */
+function chooseRefs(
+  choices: EntityRef[][],
+  draft: AnnotationDraft,
+  input: ImportInput,
+): { refs: EntityRef[]; anchors?: AnnotationAnchor[] } {
+  const answer = (ref: EntityRef, i: number) => {
+    const at = draft.at?.[i];
+    return input.anchors?.get(
+      anchorQueryKey({ ref, ...(at && at !== 'self' ? { at } : {}), annotationKind: draft.kind }),
+    );
+  };
+  if (input.anchors) {
+    for (const strict of [true, false])
+      for (const refs of choices) {
+        const got = refs.map(answer);
+        if (got.length && got.every((g) => g?.anchor && (!strict || !g.merged)))
+          return { refs, anchors: got.map((g) => g?.anchor as AnnotationAnchor) };
+      }
+    return { refs: choices[0] as EntityRef[] };
+  }
+  if (input.resolveAnchor)
+    for (const refs of choices) {
+      const got = refs.map((r, i) => input.resolveAnchor?.(r, draft.at?.[i]));
+      if (got.length && got.every(Boolean)) return { refs, anchors: got as AnnotationAnchor[] };
+    }
+  return { refs: choices[0] as EntityRef[] };
+}
+
+/** Marks every candidate that measures what another (or a placed annotation) measures. */
+function markDuplicates(pending: Pending[], annotations: Annotation[], input: ImportInput): void {
+  const placedIds = new Set(input.drawing.placements.map((p) => p.annotationId));
+  const placedKey = new Map<string, Id>();
+  for (const a of annotations) {
+    if (!placedIds.has(a.id)) continue;
+    const r = input.resolutions.get(a.id);
+    const k = r?.state === 'ok' ? measureKey(a, r.anchors) : null;
+    if (k && !placedKey.has(k)) placedKey.set(k, a.id);
+  }
+  const groups = new Map<string, Pending[]>();
+  for (const p of pending) {
+    if (p.reason) continue;
+    const k = measureKey(p.annotation, p.layout);
+    if (!k) continue;
+    const g = groups.get(k) ?? [];
+    g.push(p);
+    groups.set(k, g);
+  }
+  // Kept: a placed annotation; else the driving (sourced) one, an existing annotation before a
+  // promotion, then the key order. The kept one is checked when a dropped one was.
+  const rank = (p: Pending) =>
+    ('source' in p.annotation && p.annotation.source ? 0 : 2) + (p.kind === 'existing' ? 0 : 1);
+  for (const [k, g] of groups) {
+    const placed = placedKey.get(k);
+    const sorted = [...g].sort(
+      (x, y) => rank(x) - rank(y) || (x.key < y.key ? -1 : x.key > y.key ? 1 : 0),
+    );
+    const keep = placed ? null : (sorted[0] as Pending);
+    for (const p of sorted) {
+      if (p === keep) continue;
+      if (keep && p.checked) keep.checked = true;
+      p.reason = 'duplicate';
+      p.duplicateOf = keep ? keep.key : `annotation:${placed}`;
+      p.checked = false;
+    }
+  }
+}
+
+/** Width of a radius or diameter label, or of a callout's text, for the clearance check. */
+function leaderWidth(a: Annotation, value: number | undefined, style: Drawing['style']): number {
+  const h = style.text.dimension;
+  const num = value !== undefined ? formatLength(value, style.numbers) : '00';
+  switch (a.kind) {
+    case 'radius':
+      return textWidth(`R${num}`, h);
+    case 'diameter':
+      return textWidth(`Ø${num}`, h);
+    case 'chamfer':
+      return textWidth('00 × 45°', h);
+    case 'note':
+      return Math.max(...a.text.split('\n').map((l) => textWidth(l, style.text.note)));
+    default:
+      return 10 * h;
+  }
+}
+
+/**
+ * The clearance request of a default leader or radial layout: its options in order (the default
+ * first), and how an option becomes the layout.
+ */
+function leaderRequest(
+  key: string,
+  a: Annotation,
+  layout: AnnotationPlacement['layout'],
+  anchors: (AnnotationAnchor | null)[] | undefined,
+  v: SolvedView,
+  input: ImportInput,
+): { request: LeaderRequest; apply: (option: number) => AnnotationPlacement['layout'] } | null {
+  const style = input.drawing.style;
+  const h = style.text.dimension;
+  const an = anchors?.[0];
+  if (!an) return null;
+  if (layout.kind === 'radial') {
+    if (an.kind !== 'circle') return null;
+    const pc = projectCircle(v, an);
+    if (pc.kind !== 'faceOn') return null;
+    const base = layout.angle;
+    const options = [0, 45, -45, 90, -90, 135, -135, 180].map((d) => base + d);
+    const value = a.kind === 'diameter' ? (2 * pc.radius) / v.scale : pc.radius / v.scale;
+    return {
+      request: {
+        key,
+        viewId: v.view.id,
+        from: pc.center,
+        options,
+        radius: pc.radius,
+        distance: layout.distance,
+        width: leaderWidth(a, value, style),
+        height: 1.6 * h,
+      },
+      apply: (i) => ({ ...layout, angle: options[i] as number }),
+    };
+  }
+  if (layout.kind === 'leader' && layout.attach.kind === 'ref') {
+    if (a.kind === 'surfaceFinish') return null;
+    const [dx, dy] = layout.text;
+    const options: Vec2[] =
+      dx === 0
+        ? [
+            [0, dy],
+            [0, -dy],
+            [dy, 0],
+            [-dy, 0],
+          ]
+        : [
+            [dx, dy],
+            [-dx, dy],
+            [dx, -dy],
+            [-dx, -dy],
+            [2 * dx, 2 * dy],
+            [-2 * dx, 2 * dy],
+            [2 * dx, -2 * dy],
+            [-2 * dx, -2 * dy],
+          ];
+    const lines = a.kind === 'holeCallout' ? 3 : 1;
+    return {
+      request: {
+        key,
+        viewId: v.view.id,
+        from: attachPoint(v, an),
+        options,
+        width: leaderWidth(a, undefined, style),
+        height: (lines === 1 ? 2 : 1.6 * lines) * h,
+      },
+      apply: (i) => ({ ...layout, text: options[i] as Vec2 }),
+    };
+  }
+  return null;
 }
 
 /** Builds the import plan (deterministic for a given `newId` sequence). */
@@ -600,17 +579,7 @@ export function planImport(input: ImportInput): ImportPlan {
     if (s) sourced.set(sourceKey(s), a);
   }
 
-  interface Pending {
-    key: string;
-    kind: 'existing' | 'promote';
-    annotation: Annotation;
-    checked: boolean;
-    anchors?: (AnnotationAnchor | null)[];
-    hint?: Promotion['hint'];
-    reason?: CandidateReason;
-  }
   const pending: Pending[] = [];
-
   for (const a of annotations) {
     if (placedIds.has(a.id)) continue;
     const r = input.resolutions.get(a.id);
@@ -618,38 +587,25 @@ export function planImport(input: ImportInput): ImportPlan {
     if (a.suppressed || r?.state === 'suppressed')
       pending.push({ ...base, checked: false, reason: 'suppressed' });
     else if (r?.state !== 'ok') pending.push({ ...base, checked: false, reason: 'needsAttention' });
-    else pending.push({ ...base, checked: true, anchors: r.anchors ?? [] });
-  }
-
-  const notPromotable: NotPromotable[] = [];
-  const frames = input.sketchFrames ?? new Map();
-  const promotions: Promotion[] = [];
-  const active = part.features.slice(0, part.rollbackIndex).filter((f) => !f.suppressed);
-  for (const f of active) {
-    if (f.type === 'sketch') {
-      for (const c of f.constraints) {
-        if (!('value' in c) || !(c as DimensionConstraint).driving) continue;
-        const p = promoteSketch(f, c as DimensionConstraint, frames.get(f.id));
-        if ('draft' in p) promotions.push(p);
-        else notPromotable.push(p);
-      }
-    } else {
-      for (const p of promoteFeature(f, frames)) {
-        if ('draft' in p) promotions.push(p);
-        else notPromotable.push(p);
-      }
+    else {
+      const anchors = r.anchors ?? [];
+      pending.push({ ...base, checked: true, anchors, layout: anchors });
     }
   }
-  promotions.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+
+  const frames = input.sketchFrames ?? new Map<Id, SketchFrame>();
+  const sketches = new Map<Id, SketchFeature>();
+  for (const f of part.features) if (f.type === 'sketch') sketches.set(f.id, f);
+  const { promotions, notPromotable } = collectPromotions(part, frames);
   for (const p of promotions) {
     if (sourced.has(p.key)) continue; // already an annotation: listed above as existing
-    const annotation = { ...p.draft, id: input.newId() } as Annotation;
-    let anchors: (AnnotationAnchor | null)[] | undefined;
-    if (p.hint.kind === 'anchors' || input.resolveAnchor) {
-      const got = annotation.refs.map(
-        (r, i) => input.resolveAnchor?.(r, annotation.at?.[i]) ?? null,
-      );
-      if (got.length && got.every(Boolean)) anchors = got;
+    const chosen = chooseRefs(p.choices ?? [p.draft.refs], p.draft, input);
+    const annotation = { ...p.draft, refs: chosen.refs, id: input.newId() } as Annotation;
+    const anchors = chosen.anchors;
+    let layout: (AnnotationAnchor | null)[] | undefined = anchors;
+    if (!layout) {
+      const own = annotation.refs.map((r) => sketchAnchor(r, sketches, frames) ?? null);
+      if (own.length && own.every(Boolean)) layout = own;
     }
     pending.push({
       key: p.key,
@@ -657,13 +613,14 @@ export function planImport(input: ImportInput): ImportPlan {
       annotation,
       checked: false,
       ...(anchors ? { anchors } : {}),
+      ...(layout ? { layout } : {}),
       hint: p.hint,
       ...(p.hint.kind === 'anchors' && !anchors ? { reason: 'noGeometry' as const } : {}),
     });
   }
+  markDuplicates(pending, annotations, input);
 
   // View choice.
-  const candidates: ImportCandidate[] = [];
   const chosen: { c: ImportCandidate; view: SolvedView; p: Pending }[] = [];
   // Frames bound to a size dimension go last, preferring that dimension's view.
   const bound = (p: Pending) =>
@@ -683,11 +640,18 @@ export function planImport(input: ImportInput): ImportPlan {
     byIndex[slot.get(p) ?? 0] = c;
     if (p.reason) {
       c.reason = p.reason;
+      if (p.duplicateOf) c.duplicateOf = p.duplicateOf;
       c.checked = false;
       continue;
     }
-    const suit = (v: SolvedView) =>
-      p.anchors ? anchorsSuit(p.annotation, p.anchors, v) : p.hint ? hintSuit(p.hint, v) : null;
+    // A promotion's sketch frame or feature direction decides; its anchors give the length.
+    const suit = (v: SolvedView): number | null => {
+      if (p.hint && p.hint.kind !== 'anchors') {
+        if (hintSuit(p.hint, v) === null) return null;
+        return (p.anchors ? anchorsSuit(p.annotation, p.anchors, v) : null) ?? 1;
+      }
+      return p.anchors ? anchorsSuit(p.annotation, p.anchors, v) : null;
+    };
     const a = p.annotation;
     const preferId =
       a.kind === 'geometricTolerance' && a.appliesTo ? viewOf.get(a.appliesTo) : undefined;
@@ -702,16 +666,19 @@ export function planImport(input: ImportInput): ImportPlan {
     viewOf.set(a.id, view.view.id);
     chosen.push({ c, view, p });
   }
-  candidates.push(...byIndex.filter(Boolean));
+  const candidates: ImportCandidate[] = byIndex.filter(Boolean);
 
   // Layout: lanes for linear kinds, defaults otherwise; frames go under their size dimension.
   const style = drawing.style;
-  const laneItems = new Map<Id, LaneItem[]>();
+  const requests: LaneRequest[] = [];
+  const leaders: LeaderRequest[] = [];
+  const leaderApply = new Map<string, (option: number) => void>();
+  const lanePlacement = new Map<string, AnnotationPlacement>();
   for (const { c, view, p } of chosen) {
     const a = c.annotation;
     const placementId = input.newId();
     const lanes = a.kind === 'linear' || a.kind === 'aligned' || a.kind === 'ordinate';
-    const ls = lanes ? laneSideAndSpan(a, p.anchors, p.hint, view) : null;
+    const ls = lanes ? laneSideAndSpan(a, p.layout, p.hint, view) : null;
     if (lanes && ls) {
       const placement: AnnotationPlacement = {
         id: placementId,
@@ -720,41 +687,67 @@ export function planImport(input: ImportInput): ImportPlan {
         layout: { kind: 'lane', side: ls.side, lane: 0 },
       };
       c.placement = placement;
-      const list = laneItems.get(view.view.id) ?? [];
-      list.push({
+      lanePlacement.set(c.key, placement);
+      const r = c.kind === 'existing' ? input.resolutions.get(a.id) : undefined;
+      const value = r?.value ?? (ls.span[1] - ls.span[0]) / view.scale;
+      requests.push({
         key: c.key,
+        viewId: view.view.id,
         side: ls.side,
         span: ls.span,
-        length: ls.span[1] - ls.span[0],
-        set: (lane) => {
-          placement.layout = { kind: 'lane', side: ls.side, lane };
-        },
+        label: laneLabel(a, value, input),
       });
-      laneItems.set(view.view.id, list);
     } else {
-      c.placement = {
+      const layout = lanes
+        ? { kind: 'offset' as const, distance: style.dimension.firstLane }
+        : defaultLayout(a, style, p.layout, view);
+      const placement: AnnotationPlacement = {
         id: placementId,
         viewId: view.view.id,
         annotationId: a.id,
-        layout: lanes
-          ? { kind: 'offset', distance: style.dimension.firstLane }
-          : defaultLayout(a, style),
+        layout,
       };
+      c.placement = placement;
+      const lr = leaderRequest(c.key, a, layout, p.layout, view, input);
+      if (lr) {
+        leaders.push(lr.request);
+        leaderApply.set(c.key, (i) => {
+          placement.layout = lr.apply(i);
+        });
+      }
     }
   }
-  // Existing lane placements of the drawing occupy their lanes (the whole lane: spans unknown).
-  for (const [viewId, items] of laneItems) {
-    const occupied = new Map<string, [number, number][][]>();
-    for (const pl of drawing.placements) {
-      if (pl.viewId !== viewId || pl.layout.kind !== 'lane') continue;
-      const lanes = occupied.get(pl.layout.side) ?? [];
-      const row = lanes[pl.layout.lane] ?? [];
-      row.push([Number.NEGATIVE_INFINITY, Number.POSITIVE_INFINITY]);
-      lanes[pl.layout.lane] = row;
-      occupied.set(pl.layout.side, lanes);
+  const lanePlan = planLanes({
+    drawing,
+    views: input.views,
+    requests,
+    ...(input.tables ? { tables: input.tables } : {}),
+    ...(input.headroom !== undefined ? { headroom: input.headroom } : {}),
+    ...(input.moveViews ? { moveViews: true } : {}),
+    leaders,
+  });
+  for (const c of candidates) {
+    const option = lanePlan.leaders.get(c.key);
+    if (option !== undefined) {
+      if (option === null) {
+        delete c.placement;
+        delete c.viewId;
+        c.reason = 'layoutDoesNotFit';
+        c.checked = false;
+      } else leaderApply.get(c.key)?.(option);
+      continue;
     }
-    // Room for the text between neighbours sharing a lane.
-    assignLanes(items, occupied, 4 * style.text.dimension);
+    const placement = lanePlacement.get(c.key);
+    const r = lanePlan.results.get(c.key);
+    if (!placement || !r) continue;
+    if ('fail' in r) {
+      delete c.placement;
+      delete c.viewId;
+      c.reason = 'layoutDoesNotFit';
+      c.checked = false;
+      continue;
+    }
+    placement.layout = { kind: 'lane', side: r.side, lane: r.lane };
   }
   // A frame bound to a size dimension placed in the same view sits under that dimension's text.
   const placementOf = new Map(chosen.map(({ c }) => [c.annotation.id, c.placement]));
@@ -773,16 +766,21 @@ export function planImport(input: ImportInput): ImportPlan {
         text: [0, 0],
       };
   }
-  return { candidates, alreadyPlaced, notPromotable };
+  const viewMoves: ViewMove[] = [...lanePlan.moved]
+    .sort(([x], [y]) => (x < y ? -1 : x > y ? 1 : 0))
+    .map(([id, view]) => ({ view, for: [...(lanePlan.movedFor.get(id) ?? [])].sort() }));
+  return { candidates, alreadyPlaced, notPromotable, viewMoves };
+}
+
+function defaultChecked(plan: ImportPlan): Set<string> {
+  return new Set(plan.candidates.filter((c) => c.checked).map((c) => c.key));
 }
 
 /** The one command that commits the checked candidates (`placeAnnotations`). */
 export function importCommand(
   plan: ImportPlan,
   drawingId: Id,
-  checked: ReadonlySet<string> = new Set(
-    plan.candidates.filter((c) => c.checked).map((c) => c.key),
-  ),
+  checked: ReadonlySet<string> = defaultChecked(plan),
 ): Extract<Command, { kind: 'placeAnnotations' }> {
   const items = plan.candidates
     .filter((c) => checked.has(c.key) && c.placement)
@@ -791,4 +789,22 @@ export function importCommand(
       ...(c.kind === 'promote' ? { annotation: c.annotation } : {}),
     }));
   return { kind: 'placeAnnotations', drawingId, items };
+}
+
+/**
+ * Every command of the import, in order: an `updateView` for each pushed view a checked
+ * candidate needs, then the `placeAnnotations`. Apply them with one coalescing key, so the import
+ * stays one undo step; without pushed views this is `[importCommand(…)]`.
+ */
+export function importCommands(
+  plan: ImportPlan,
+  drawingId: Id,
+  checked: ReadonlySet<string> = defaultChecked(plan),
+): Command[] {
+  const place = importCommand(plan, drawingId, checked);
+  if (place.items.length === 0) return [place];
+  const moves: Command[] = plan.viewMoves
+    .filter((m) => m.for.some((k) => checked.has(k)))
+    .map((m) => ({ kind: 'updateView', drawingId, view: m.view }));
+  return [...moves, place];
 }

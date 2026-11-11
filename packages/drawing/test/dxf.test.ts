@@ -1,7 +1,8 @@
 /**
  * DXF goldens and a structure audit written here (ezdxf-style checks: sections, handles, owners,
- * table references). The real ezdxf audit and LibreCAD's dxf2pdf conversion run when the tools
- * are installed (CI); they are skipped otherwise.
+ * table references). The real ezdxf audit runs when ezdxf is installed (always in CI, where
+ * WREN_REQUIRE_EZDXF=1 turns a missing ezdxf into a failure). The LibreCAD dxf2pdf conversion is
+ * scripts/dxf-interop.sh.
  */
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -285,32 +286,40 @@ function python(code: string): boolean {
 }
 
 const HAS_EZDXF = python('import ezdxf');
+// CI sets WREN_REQUIRE_EZDXF=1 (ADR-091 amendment): there a missing ezdxf fails instead of skipping.
+const REQUIRE_EZDXF = process.env.WREN_REQUIRE_EZDXF === '1';
 
-describe.skipIf(!HAS_EZDXF)('ezdxf audit (CI; skipped without python ezdxf)', () => {
-  it('reads both profiles without audit errors', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'wren-dxf-'));
-    try {
-      const sheet = bracketBuild().sheets[0]!;
-      for (const [name, dxf] of [
-        ['r12.dxf', renderDxfR12(sheet.list, style)],
-        ['r2000.dxf', renderDxfR2000(sheet.list, style)],
-      ] as const) {
-        const f = join(dir, name);
-        writeFileSync(f, dxf);
-        const out = execFileSync(
-          'python3',
-          [
-            '-I',
-            '-c',
-            'import sys, ezdxf\ndoc = ezdxf.readfile(sys.argv[1])\na = doc.audit()\nprint(len(a.errors))',
-            f,
-          ],
-          { encoding: 'utf8' },
-        );
-        expect(out.trim(), name).toBe('0');
+describe.skipIf(!HAS_EZDXF && !REQUIRE_EZDXF)(
+  'ezdxf audit (skipped without python ezdxf unless WREN_REQUIRE_EZDXF=1)',
+  () => {
+    it('has ezdxf when it is required', () => {
+      expect(HAS_EZDXF, 'WREN_REQUIRE_EZDXF=1 but `python3 -c "import ezdxf"` fails').toBe(true);
+    });
+    it('reads both profiles without audit errors', () => {
+      const dir = mkdtempSync(join(tmpdir(), 'wren-dxf-'));
+      try {
+        const sheet = bracketBuild().sheets[0]!;
+        for (const [name, dxf] of [
+          ['r12.dxf', renderDxfR12(sheet.list, style)],
+          ['r2000.dxf', renderDxfR2000(sheet.list, style)],
+        ] as const) {
+          const f = join(dir, name);
+          writeFileSync(f, dxf);
+          const out = execFileSync(
+            'python3',
+            [
+              '-I',
+              '-c',
+              'import sys, ezdxf\ndoc = ezdxf.readfile(sys.argv[1])\na = doc.audit()\nprint(len(a.errors))',
+              f,
+            ],
+            { encoding: 'utf8' },
+          );
+          expect(out.trim(), name).toBe('0');
+        }
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
       }
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-});
+    });
+  },
+);

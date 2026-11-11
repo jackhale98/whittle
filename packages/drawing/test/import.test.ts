@@ -7,7 +7,14 @@ import type {
   ViewProjection,
 } from '@wren-cad/contracts';
 import { describe, expect, it } from 'vitest';
-import { type ImportInput, importCommand, planImport, type SketchFrame } from '../src/import';
+import {
+  anchorLookup,
+  type ImportInput,
+  importAnchorQueries,
+  importCommand,
+  planImport,
+  type SketchFrame,
+} from '../src/import';
 import { solveViews } from '../src/view';
 import { ANNOTATIONS, drawing, evaluate, PART_BOUNDS, resolutions } from './fixtures';
 
@@ -29,13 +36,13 @@ function part(annotations: Annotation[] = ANNOTATIONS): Part {
         on: { name: 'origin:XY', kind: 'face' },
         entities: [
           { id: 'p1', kind: 'point', construction: false, x: 0, y: 0 },
-          { id: 'p2', kind: 'point', construction: false, x: 100, y: 0 },
-          { id: 'p3', kind: 'point', construction: false, x: 100, y: 60 },
+          { id: 'p2', kind: 'point', construction: false, x: 90, y: 0 },
+          { id: 'p3', kind: 'point', construction: false, x: 90, y: 60 },
           { id: 'l1', kind: 'line', construction: false, start: 'p1', end: 'p2' },
           { id: 'l2', kind: 'line', construction: false, start: 'p2', end: 'p3' },
         ],
         constraints: [
-          { id: 'c1', kind: 'hDistance', a: 'p1', b: 'p2', value: '100 mm', driving: true },
+          { id: 'c1', kind: 'hDistance', a: 'p1', b: 'p2', value: '90 mm', driving: true },
           { id: 'c2', kind: 'length', line: 'l2', value: '60 mm', driving: true },
           { id: 'c3', kind: 'distance', a: 'p1', b: 'p3', value: '116 mm', driving: false },
           {
@@ -200,8 +207,11 @@ describe('import model annotations', () => {
       { annotationId: 'A6', state: 'ok', value: 20, anchors: [pt([0, 0, 40]), pt([20, 0, 40])] },
       { annotationId: 'A7', state: 'ok', value: 30, anchors: [pt([70, 0, 40]), pt([100, 0, 40])] },
     ];
+    // Without the section: its cut line pokes out of the front view (see the next test).
+    const d = drawing();
+    d.views = d.views.filter((v) => v.id !== 'V4');
     const plan = planImport(
-      input({ part: part(extra), resolutions: new Map(res.map((r) => [r.annotationId, r])) }),
+      input({ part: part(extra), resolutions: new Map(res.map((r) => [r.annotationId, r])) }, d),
     );
     const c = byKey(plan);
     const lane = (k: string) => {
@@ -309,5 +319,74 @@ describe('import model annotations', () => {
     );
     expect(c.get('annotation:A1')).toMatchObject({ reason: 'suppressed', checked: false });
     expect(c.get('annotation:A2')).toMatchObject({ reason: 'needsAttention', checked: false });
+  });
+  it('promotes a revolve angle as the supplement of its faces’ normals, placed by anchors', () => {
+    const revolve = {
+      id: 'RV1',
+      type: 'revolve' as const,
+      name: 'Revolve',
+      suppressed: false,
+      profile: [{ name: 'SSK1:region(l1,l2)', kind: 'region' as const }],
+      axis: { name: 'origin:Z', kind: 'edge' as const },
+      angle: '90 deg',
+      direction: 'normal' as const,
+      op: 'add' as const,
+    };
+    const p0 = part();
+    const p1: Part = {
+      ...p0,
+      features: [...p0.features.slice(0, 5), revolve, ...p0.features.slice(5)],
+      rollbackIndex: 7,
+    };
+    const queries = importAnchorQueries(p1, new Map([['SK1', XY]]));
+    const faces = queries.filter((q) => q.ref.name.startsWith('FRV1:'));
+    expect(faces.map((q) => [q.ref.name, q.annotationKind])).toEqual([
+      ['FRV1:start', 'angle'],
+      ['FRV1:end', 'angle'],
+    ]);
+    // Start face in the XZ plane, end face in the YZ plane: normals 90° apart about Z.
+    const answers = queries.map((q) =>
+      q.ref.name === 'FRV1:start'
+        ? {
+            anchor: {
+              kind: 'plane' as const,
+              origin: [0, 0, 0] as Vec3,
+              normal: [0, -1, 0] as Vec3,
+              outline: [
+                [10, 0, 0],
+                [50, 0, 0],
+                [50, 0, 40],
+              ] as Vec3[],
+            },
+          }
+        : q.ref.name === 'FRV1:end'
+          ? {
+              anchor: {
+                kind: 'plane' as const,
+                origin: [0, 0, 0] as Vec3,
+                normal: [-1, 0, 0] as Vec3,
+                outline: [
+                  [0, 10, 0],
+                  [0, 50, 0],
+                  [0, 50, 40],
+                ] as Vec3[],
+              },
+            }
+          : { anchor: null },
+    );
+    const c = byKey(planImport(input({ part: p1, anchors: anchorLookup(queries, answers) })));
+    const rv = c.get('feature:RV1:/angle');
+    expect(rv?.annotation).toMatchObject({
+      kind: 'angle',
+      measure: 'supplement',
+      refs: [{ name: 'FRV1:start' }, { name: 'FRV1:end' }],
+      source: { kind: 'featureField', featureId: 'RV1', path: '/angle' },
+    });
+    expect(rv?.viewId).toBe('V2'); // the angle's plane is face-on from above
+    expect(rv?.placement?.layout.kind).toBe('arc');
+    // Without answers it is listed, never placed on a guess.
+    const none = byKey(planImport(input({ part: p1 })));
+    expect(none.get('feature:RV1:/angle')).toMatchObject({ reason: 'noGeometry', checked: false });
+    expect(none.get('feature:RV1:/angle')?.annotation).toMatchObject({ measure: 'supplement' });
   });
 });

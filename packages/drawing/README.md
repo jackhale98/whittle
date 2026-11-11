@@ -25,7 +25,7 @@ The app loads it lazily with the drawing route, never on the initial route.
 - **Styles:** `stylePreset`, `standardPreset`.
 - **Views:** `solveViews` resolves frames, scales, aligned positions, section and detail requests. Also `projectionRequest`.
 - **Placement:** `layoutView` and `layoutPlacement` turn placements into display items.
-- **Import:** `planImport` and `importCommand` ("Import model annotations").
+- **Import:** `planImport`, then `importCommand` (or `importCommands` when views were pushed) ("Import model annotations"). `importAnchorQueries` and `anchorLookup` turn one `annotationAnchors` call into the planner's `anchors`. Lanes keep clear of other views, cut lines, tables and the title block (`sheetObstacles`); duplicates are found by `measureKey` (ADR-091 amendment).
 - **Needs attention:** `aggregateAttention`, `searchAttention`.
 - **Sheets:** `composeSheet`, and `buildDrawing` for everything at once.
 

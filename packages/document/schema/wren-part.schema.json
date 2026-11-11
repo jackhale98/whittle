@@ -432,6 +432,10 @@
         "type": {
           "const": "axis",
           "type": "string"
+        },
+        "visibility": {
+          "$ref": "#/definitions/SketchVisibility",
+          "description": "Viewport visibility of reference geometry (ADR-093). Absent or `'auto'` = shown (reference geometry is not consumed away like a sketch); `'hidden'` hides it on every shell, persisted."
         }
       },
       "required": [
@@ -3360,6 +3364,10 @@
         "type": {
           "const": "plane",
           "type": "string"
+        },
+        "visibility": {
+          "$ref": "#/definitions/SketchVisibility",
+          "description": "Viewport visibility of reference geometry (ADR-093). Absent or `'auto'` = shown (reference geometry is not consumed away like a sketch); `'hidden'` hides it on every shell, persisted."
         }
       },
       "required": [
@@ -3492,6 +3500,10 @@
         "type": {
           "const": "point",
           "type": "string"
+        },
+        "visibility": {
+          "$ref": "#/definitions/SketchVisibility",
+          "description": "Viewport visibility of reference geometry (ADR-093). Absent or `'auto'` = shown (reference geometry is not consumed away like a sketch); `'hidden'` hides it on every shell, persisted."
         }
       },
       "required": [
@@ -4353,7 +4365,7 @@
       "type": "object"
     },
     "SketchVisibility": {
-      "description": "See `SketchFeature.visibility`.",
+      "description": "See `SketchFeature.visibility` (sketches) and `PlaneFeature.visibility` (reference geometry).",
       "enum": [
         "auto",
         "shown",
