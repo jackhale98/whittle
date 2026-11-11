@@ -1,6 +1,13 @@
-# Cloudflare Pages / Netlify-style headers (PLAN §8.2). GitHub Pages ignores this file and relies
-# on the service worker (src/sw.ts) for the same COOP/COEP headers.
-# `require-corp` (not `credentialless`): Safari does not support `credentialless`.
+# Cloudflare Pages headers (PLAN §8.2, ADR-082). GitHub Pages ignores this file and relies on the
+# service worker (src/sw.ts) for the same isolation headers; the values must stay identical to
+# src/platform/isolation-headers.ts (a unit test compares them).
+#
+# COEP is `require-corp`, not `credentialless`, to match the service worker: Safari/WebKit has no
+# `credentialless`, and one policy everywhere means every browser, and the GitHub Pages build, sees
+# the same breakage if a cross-origin no-cors load ever sneaks in. Wren self-hosts every asset.
+#
+# Cloudflare applies every matching rule and joins duplicate header names with ", ", so the
+# rules below set Cache-Control on disjoint paths only.
 
 /*
   Cross-Origin-Opener-Policy: same-origin
@@ -9,17 +16,20 @@
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
 
-# The service worker and manifest must always revalidate so updates ship promptly.
+# The shell, service worker and manifest always revalidate so a deploy reaches users promptly.
+# (`/` is the shell too; unknown paths fall back to index.html and are revalidated by default.)
+/
+  Cache-Control: no-cache
+/index.html
+  Cache-Control: no-cache
 /sw.js
   Cache-Control: no-cache
 /manifest.webmanifest
   Cache-Control: no-cache
-/index.html
-  Cache-Control: no-cache
 
-# Hashed build output is immutable.
+# Hashed build output (chunks, CSS, and the kernel .js/.wasm, whose names carry a content hash).
 /assets/*
   Cache-Control: public, max-age=31536000, immutable
 
-/*.wasm
+/assets/*.wasm
   Content-Type: application/wasm

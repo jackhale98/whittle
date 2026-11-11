@@ -14,6 +14,31 @@ function opaque(type: ResponseType): Response {
   return response;
 }
 
+describe('already isolated responses (Cloudflare Pages _headers, PLAN §8.2)', () => {
+  const stamped = () =>
+    new Response('x', {
+      status: 200,
+      headers: { ...ISOLATION_HEADERS, 'content-type': 'text/html' },
+    });
+
+  it('are returned untouched: the shim is a no-op', () => {
+    const original = stamped();
+    expect(withIsolationHeaders(original)).toBe(original);
+  });
+
+  it('are still rebuilt when redirected or when a policy differs', () => {
+    const redirected = stamped();
+    Object.defineProperty(redirected, 'redirected', { value: true });
+    expect(withIsolationHeaders(redirected)).not.toBe(redirected);
+    const weak = new Response('x', {
+      headers: { ...ISOLATION_HEADERS, 'Cross-Origin-Embedder-Policy': 'credentialless' },
+    });
+    expect(withIsolationHeaders(weak).headers.get('cross-origin-embedder-policy')).toBe(
+      'require-corp',
+    );
+  });
+});
+
 describe('withIsolationHeaders', () => {
   it('adds COOP, COEP and CORP and keeps status, body and other headers', async () => {
     const original = new Response('<html></html>', {

@@ -16,7 +16,8 @@
     "e2e": "vite build && playwright test --project=chromium --project=chromium-reference",
     "e2e:all": "vite build && playwright test",
     "perf": "vite build && playwright test --project=perf",
-    "perf:run": "playwright test --project=perf"
+    "perf:run": "playwright test --project=perf",
+    "e2e:cloudflare": "playwright test -c playwright.cloudflare.config.ts"
   },
   "dependencies": {
     "@wren-cad/contracts": "workspace:*",

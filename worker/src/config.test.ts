@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import worker, { type Env } from './index';
 
@@ -41,6 +42,21 @@ describe('wren worker configuration', () => {
     expect(await as('http://localhost:5173')).toBe(200);
     expect(await as('https://jackhale98.github.io.evil.example')).toBe(403);
     expect(await as('http://localhost:9999')).toBe(403);
+  });
+
+  it('ships wrangler.jsonc allowing wren-cad.app, GitHub Pages and localhost, nothing wider', async () => {
+    vi.stubGlobal('fetch', ok());
+    const text = readFileSync(new URL('../wrangler.jsonc', import.meta.url), 'utf8');
+    const listed = /"ALLOWED_ORIGINS":\s*"([^"]+)"/.exec(text)?.[1] ?? '';
+    const cfg = { ...env, ALLOWED_ORIGINS: listed };
+    const as = async (origin: string) =>
+      (await call(`/github.com/a/b.git${refs}`, cfg, {}, origin)).status;
+    expect(await as('https://wren-cad.app')).toBe(200);
+    expect(await as('https://jackhale98.github.io')).toBe(200);
+    expect(await as('https://www.wren-cad.app')).toBe(403);
+    expect(await as('http://wren-cad.app')).toBe(403);
+    expect(await as('https://wren-cad.app.evil.example')).toBe(403);
+    expect(listed.split(',')).not.toContain('*');
   });
 
   it('has no reminder or push routes', async () => {

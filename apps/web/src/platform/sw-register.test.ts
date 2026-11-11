@@ -14,6 +14,14 @@ describe('shouldReloadForIsolation', () => {
     ).toBe(false);
   });
 
+  it('never reloads on a first visit that real server headers already isolated (Cloudflare)', () => {
+    // First visit: no worker controls the page yet, nothing was reloaded, but the document came
+    // with COOP/COEP from `_headers`, so crossOriginIsolated is already true.
+    expect(
+      shouldReloadForIsolation({ isolated: true, controlled: false, alreadyReloaded: false }),
+    ).toBe(false);
+  });
+
   it('never reloads twice (loop guard)', () => {
     expect(
       shouldReloadForIsolation({ isolated: false, controlled: true, alreadyReloaded: true }),
