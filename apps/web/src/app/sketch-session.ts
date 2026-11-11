@@ -450,7 +450,9 @@ export class SketchSession {
       this.solvedFor &&
       (this.solvedFor.entities !== f.entities || this.solvedFor.constraints !== f.constraints)
     )
-      void this.resolve();
+      // Not while dragging (the drag solves itself); otherwise the display state is recomputed too,
+      // so an undo/redo of a move, add or delete in a configuration draws what it should.
+      void (this.drag ? this.resolve() : this.redraw());
   }
 
   onRegen(result: RegenResult): void {
@@ -474,8 +476,10 @@ export class SketchSession {
     return withPending(this.data(), this.unsettled);
   }
 
+  /** The sketch as drawn (a configuration may resize it): snaps and inference must land on it. */
   private data(): SketchData {
-    const f = this.feature();
+    const stored = this.feature();
+    const f = stored ? displayFeature(stored, this.ui()?.shown) : stored;
     return f
       ? { entities: f.entities, constraints: f.constraints }
       : { entities: [], constraints: [] };

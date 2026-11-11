@@ -2,9 +2,13 @@
 // Owner feedback (2026-11-10): "how do we apply parameters to actual dimensions? I couldn't find a
 // way to utilize them." ADR-080: autocomplete in value fields, Make parameter, the link shown on
 // dimensions and fields, "Used by" in the Params tab, and dragging a parameter onto a value.
-import { expect, type Locator, type Page, test } from '@playwright/test';
+import { expect as baseExpect, type Locator, type Page, test } from '@playwright/test';
 import type { DimensionConstraint, SketchFeature } from '@wren-cad/contracts';
-import { addBox, app, boot, clickAt, sketchOn, tool } from './helpers';
+import { addBox, app, boot, clickAt, sketchOn, tool, toPage } from './helpers';
+
+// The sketch toolbar and the lazy parameter list can take a while on a loaded machine: every wait
+// below is on app state, with a generous bound instead of a fixed sleep.
+const expect = baseExpect.configure({ timeout: 15_000 });
 
 async function sketchOf(page: Page): Promise<SketchFeature> {
   const f = (await app(page).doc()).parts[0]?.features.find((x) => x.type === 'sketch');
@@ -72,6 +76,10 @@ test('dimension a circle by typing a parameter name; changing the parameter resi
     'true',
   );
   await page.keyboard.press('ArrowDown'); // highlight `dia`; Enter alone would commit the typed text
+  await expect(page.getByRole('combobox', { name: 'diameter dimension' })).toHaveAttribute(
+    'aria-activedescendant',
+    /.+/,
+  ); // the highlight is in state before Enter
   await page.keyboard.press('Enter'); // accepts `dia`
   await expect(editor).toHaveValue('dia');
   await expect(list).toBeHidden();
@@ -354,4 +362,78 @@ test('a configuration-only edit with the sketch open redraws it without writing 
   await list.getByRole('button', { name: /^Big/ }).click();
   await expect(label).toContainText('Ø50');
   expect(radiusOf(await sketchOf(page))).toBeCloseTo(15, 6);
+});
+
+test('undo and redo of a drag in a configuration draw the right geometry', async ({ page }) => {
+  test.slow();
+  await boot(page);
+  await page.getByRole('button', { name: 'Close welcome' }).click();
+  await addParam(page, 'dia', '30 mm');
+  const pill = page.getByTestId('configuration-pill');
+  await pill.click();
+  const list = page.getByTestId('configuration-list');
+  await list.getByRole('button', { name: 'New configuration…' }).click();
+  await list.getByRole('textbox', { name: 'New configuration name' }).fill('Big');
+  await list.getByRole('radio', { name: 'From Default' }).click();
+  await list.getByRole('button', { name: 'Create' }).click();
+  await expect(pill).toContainText('Big');
+  const a = app(page);
+  await a.idle();
+  await page.getByRole('tab', { name: 'Features' }).click();
+  await page.keyboard.press('s');
+  await sketchOn(page, 'Top');
+  await page.keyboard.press('Shift+C');
+  await clickAt(page, 10, 10);
+  await clickAt(page, 25, 10);
+  await a.settled();
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('d');
+  await clickAt(page, 25, 10);
+  await clickAt(page, 35, 20);
+  const editor = page.getByTestId('dimension-editor').getByRole('textbox');
+  await editor.fill('dia');
+  await editor.press('Enter');
+  await a.settled();
+  await page.keyboard.press('Escape'); // the select tool
+  const shownRadius = async () => (await a.ui()).sketch?.shownRadius ?? null;
+
+  // Big: dia = 50 mm. The stored circle stays r = 15; the display is r = 25.
+  await page.getByRole('tab', { name: 'Params' }).click();
+  await page.getByRole('listitem', { name: 'Parameter dia' }).getByTestId('scope-chip').click();
+  const expr = page.getByRole('textbox', { name: 'Expression for dia', exact: true });
+  await expr.fill('50 mm');
+  await expr.press('Enter');
+  await a.idle();
+  await expect.poll(shownRadius).toBeCloseTo(25, 6);
+
+  // Drag the centre: the edit solves with Big's values and is one undo step.
+  const f0 = await sketchOf(page);
+  const c = f0.entities.find((e) => e.kind === 'circle');
+  const p = f0.entities.find(
+    (e) => e.kind === 'point' && c?.kind === 'circle' && e.id === c.center,
+  );
+  if (p?.kind !== 'point') throw new Error('no centre');
+  const at = await toPage(page, [p.x, p.y, 0]);
+  const before = (await a.history()).past.length;
+  await page.mouse.move(at.x, at.y, { steps: 3 });
+  await page.mouse.down();
+  await page.mouse.move(at.x + 40, at.y, { steps: 8 });
+  await page.mouse.move(at.x + 80, at.y + 20, { steps: 8 });
+  await page.mouse.up();
+  await a.settled();
+  expect((await a.history()).past.length).toBe(before + 1);
+  const moved = radiusOf(await sketchOf(page));
+
+  // Undo the drag: the stored geometry goes back; what is drawn is still the Big solve.
+  await page.getByRole('button', { name: /^Undo/ }).click();
+  await a.settled();
+  await expect.poll(async () => radiusOf(await sketchOf(page))).toBeCloseTo(15, 6);
+  await expect.poll(shownRadius).toBeCloseTo(25, 6);
+  await expect(page.locator('button[data-kind="diameter"]')).toContainText('Ø50');
+
+  // Redo: the drag is back; the display agrees with the stored geometry.
+  await page.getByRole('button', { name: /^Redo/ }).click();
+  await a.settled();
+  await expect.poll(async () => radiusOf(await sketchOf(page))).toBeCloseTo(moved, 6);
+  await expect.poll(async () => (await shownRadius()) ?? moved).toBeCloseTo(25, 6);
 });

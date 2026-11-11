@@ -58,6 +58,8 @@ export interface AppHooks {
       tool: string | null;
       dimPicks: string[];
       editDimension: string | null;
+      /** Radius of the first circle of the display-only solved sketch (null: the stored one is drawn). */
+      shownRadius: number | null;
       selected: string[];
       /** The entity under the pointer (preselect). */
       hover: string | null;
