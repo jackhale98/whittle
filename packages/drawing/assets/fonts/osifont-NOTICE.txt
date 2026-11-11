@@ -1,0 +1,25 @@
+osifont-lgpl3fe.ttf — Osifont, ISO 3098 lookalike lettering for technical drawings.
+
+Upstream:   https://github.com/hikikomori82/osifont (file osifont-lgpl3fe.ttf on master)
+Fetched:    2026-11-11 (raw.githubusercontent.com)
+Version:    "Version 0.1.20221020"; FontForge build stamp "osifont : 16-4-2026" (name table IDs 5 and 3)
+SHA-256:    81880ba0a1ba2e15752f5ec536f227a69bec98b73ae8200780804b66750320b6
+Size:       126,556 bytes (unmodified)
+
+Licence (upstream README: "osifont-lgpl3fe.ttf - GNU LGPL licence version 3 with font exception";
+font name table ID 0, verbatim):
+
+  Created by Zefram Cochrane, hikikomori82@gmail.com, with FontForge 2.0 (http://fontforge.sf.net)
+  Project hosted on: http://github.com/hikikomori82/osifont/
+  Distributed under GNU LGPL version 3 with GPL font exception:
+
+  As a special exception, if you create a document which uses this font, and embed this font or
+  unaltered portions of this font into the document, this font does not by itself cause the
+  resulting document to be covered by the GNU General Public License. This exception does not
+  however invalidate any other reasons why the document might be covered by the GNU General Public
+  License. If you modify this font, you may extend this exception to your version of the font, but
+  you are not obligated to do so. If you do not wish to do so, delete this exception statement
+  from your version.
+
+The LGPL-3.0 text is in licenses/LGPL-3.0.txt; it supplements the GPL-3.0 in LICENSE. Wren's PDF
+writer embeds unaltered portions of the font (a subset of whole glyphs), which the exception covers.
