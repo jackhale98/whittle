@@ -821,6 +821,16 @@ Owner feedback 2026-11-10. Small; right after M3.7, before M4 (drawings dimensio
   - Compare a reference's measure (area or length) with its stored fingerprint, and flag a large growth as "check this reference", with Accept and Re-pick.
   - Never block the regen. Never re-pick silently.
   - Accept: E2E on the bracket: the grown fillet edge is flagged, and Accept clears the flag.
+- **Phone overlays stay out of the way** (owner screenshot, 2026-11-11: a section on a face of the demo bracket left the model almost hidden). Fixes:
+  - **The selection bubble closes once an action is chosen from it.** It may come back on the next selection, never on its own.
+  - **One home for a mode's controls on phone.** While the bottom sheet shows a tool's tab (Section, Measure), the floating tool chip hides, because the tab already offers Exit, Flip and the other controls. With the sheet collapsed, the chip shows.
+  - **No two floating overlays intersect.** That covers the bubble, the tool chip, the view cube, the kernel pill and toasts. Collision-aware placement keeps them apart, and the lower-priority one moves or collapses.
+  - **The camera frames the model in the unobstructed area** (the viewport minus the sheet, the top bar and floating chrome) when a mode starts and when the sheet changes height.
+  - **Value fields never truncate their unit.** For example, the section offset showed "-40.00n" for "-40.00 mm". The field widens, or abbreviates the number before the unit.
+  - **Accept:**
+    - Phone E2E on the demo bracket: section by face. After the action, no bubble. Overlay bounding boxes never intersect. At least 60 % of the model's projected area is visible above the sheet. The offset field shows its unit.
+    - The same E2E for measure.
+    - Visual baselines at 390 × 844, light and dark.
 - **Two-point splines.** A through-point spline with two points is valid: a straight cubic with free end tangents that can be dragged or constrained later. A control-point spline with two poles is a degree-1 segment, offered as such. Today a two-point spline can't be finished.
 - **Accept (sketch items):**
   - Unit tests per tool: glyphs shown equal constraints committed. Dropping a point on an existing point merges it, with no duplicate.
