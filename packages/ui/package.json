@@ -10,6 +10,7 @@
   ],
   "exports": {
     ".": "./src/index.ts",
+    "./config-table": "./src/config/ConfigurationTable.tsx",
     "./styles.css": "./src/styles/index.css"
   },
   "scripts": {

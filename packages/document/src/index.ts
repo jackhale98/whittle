@@ -7,11 +7,13 @@
  *  - Files:                `projectCodec`, `canonicalJson`, `packFiles` / `unpackFiles`
  *  - Materials:            `MATERIALS`, `resolveDensity`
  *  - Factories:            `newDoc`, `newPart`, `ulid`
+ *  - Configurations (M3.7): `resolveConfiguration`, `CONFIGURABLE_OPTIONS`, `partNumberFor`, `exportFileNames`
  *  - Hole tables (M3):     `ISO_HOLES`, `ANSI_HOLES`, `holeRow`, `resolveHoleSize`
  */
 
 export * from './codec';
 export * from './commands';
+export * from './configurations';
 export * from './evaluate';
 export * from './expressions';
 export * from './factory';

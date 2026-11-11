@@ -4,7 +4,7 @@
 // Build note: the libcascade toolchain compiles `scope: 'main'` custom bindings by concatenating
 // their *contents* into one translation unit, so relative includes cannot be resolved there.
 // scripts/amalgamate.mjs inlines, in this order:
-//   whittle_kernel.h, whittle_core.cpp, whittle_modeling.cpp, whittle_pushpull.cpp,
+//   whittle_kernel.h, whittle_core.cpp, whittle_unify.cpp, whittle_modeling.cpp, whittle_pushpull.cpp,
 //   whittle_shape_ops.cpp, whittle_copies.cpp, whittle_reference.cpp, whittle_measure.cpp,
 //   whittle_io.cpp, whittle_kernel.cpp, whittle_bindings.cpp
 // into .libcascade/whittle_facade.cpp, which is what libcascade.config.ts points at. The files

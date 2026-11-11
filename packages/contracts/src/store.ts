@@ -7,6 +7,8 @@
  */
 
 import type {
+  Configuration,
+  ConfiguredValue,
   Expr,
   Feature,
   FeatureFolder,
@@ -14,6 +16,7 @@ import type {
   Material,
   Param,
   Part,
+  PartProperties,
   SketchVisibility,
   WrenDoc,
 } from './document';
@@ -27,6 +30,15 @@ export type JsonPatchOp =
   | { op: 'move'; from: JsonPointer; path: JsonPointer }
   | { op: 'copy'; from: JsonPointer; path: JsonPointer }
   | { op: 'test'; path: JsonPointer; value: unknown };
+
+/** What a configuration override applies to (M3.7). */
+export type ConfigTarget =
+  | { kind: 'param'; paramId: Id }
+  | { kind: 'field'; featureId: Id; path: string }
+  | { kind: 'suppressed'; featureId: Id }
+  | { kind: 'material' }
+  | { kind: 'color' }
+  | { kind: 'property'; key: keyof PartProperties };
 
 /** High-level, intention-revealing edits. The store compiles them to patches. */
 export type Command =
@@ -66,6 +78,32 @@ export type Command =
    * taken out (0 = top of the tree). Fails if that lands inside another folder's run.
    */
   | { kind: 'moveFolder'; partId: Id; folderId: Id; toIndex: number }
+  /**
+   * M3.7 configurations (ADR-074). `from`: start as a copy of Default (no overrides, the default)
+   * or of another configuration's overrides (owner D3: the UI offers Default / Active). The new
+   * configuration does not become active by itself.
+   */
+  | { kind: 'addConfiguration'; partId: Id; configuration: Configuration; from?: 'default' | Id }
+  | { kind: 'renameConfiguration'; partId: Id; configurationId: Id; name: string }
+  /** Removing the active configuration makes Default active. */
+  | { kind: 'removeConfiguration'; partId: Id; configurationId: Id }
+  /** `null` = Default. Not an edit of the design: undoable, but merges as a plain field. */
+  | { kind: 'setActiveConfiguration'; partId: Id; configurationId: Id | null }
+  /**
+   * Set or clear (`value` absent) overrides, several at once in one undo entry (a table paste).
+   * Editing Default is an ordinary command (`updateParam`, `updateFeature`, `setSuppressed`,
+   * `setMaterial`, `setPartProperties`) and so applies to every configuration that inherits.
+   */
+  | {
+      kind: 'setConfigurationOverrides';
+      partId: Id;
+      edits: {
+        configurationId: Id;
+        target: ConfigTarget;
+        value?: ConfiguredValue | Material | null;
+      }[];
+    }
+  | { kind: 'setPartProperties'; partId: Id; properties: PartProperties }
   | { kind: 'addParam'; param: Param }
   | { kind: 'updateParam'; paramId: Id; name?: string; expr?: Expr; description?: string }
   | { kind: 'removeParam'; paramId: Id }

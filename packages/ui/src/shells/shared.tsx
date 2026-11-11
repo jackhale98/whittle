@@ -248,6 +248,18 @@ export function ViewportOverlays({ props }: { props: ShellProps }) {
     <Suspense fallback={null}>
       {props.contextBubble ? <ContextBubbleLazy {...props.contextBubble} /> : null}
       {props.valueChip ? <ValueChipLazy {...props.valueChip} /> : null}
+      {props.configurationPanel ? (
+        <div
+          data-testid="configuration-panel-slot"
+          style={{
+            top: 'calc(var(--safe-top, 0px) + var(--chrome-top, 3.5rem))',
+            bottom: 'calc(var(--chrome-bottom, 5.75rem) + 12px)',
+          }}
+          className="pointer-events-none absolute right-3 left-[max(var(--safe-left,0px),var(--chrome-left,0.75rem))] flex items-start"
+        >
+          {props.configurationPanel}
+        </div>
+      ) : null}
     </Suspense>
   );
 }
@@ -509,6 +521,7 @@ export function ExportControl({
         className={className}
         onExport={props.onExportRequest}
         bodies={props.exportBodies}
+        configurations={props.exportConfigurations}
         unavailable={props.exportUnavailable}
         notes={props.exportNotes}
         onTargetChange={props.onExportTargetChange}

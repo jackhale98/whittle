@@ -46,9 +46,9 @@ export const FEATURE_TYPES = [
 ] as const satisfies readonly Feature['type'][];
 
 /**
- * Every feature type the contracts define, for load validation. `FEATURE_TYPES` above is the M1
- * set the evaluation fixtures cover; the M3 types were missing here, so a saved document with a
- * hole, thread, shell, pattern (and the rest) failed validation on load. Compile-time exhaustive.
+ * Every feature type the format knows, for validation. `FEATURE_TYPES` above is the original
+ * M0–M2 list that tests use as "the types the reference fixture covers"; this one is complete,
+ * and the type check below fails the build when a new feature type is not listed.
  */
 export const KNOWN_FEATURE_TYPES = [
   ...FEATURE_TYPES,

@@ -5,6 +5,7 @@
   "license": "GPL-3.0-or-later",
   "description": "2D sketch solver (planegcs in a worker), inference, tool helpers and geometry utilities.",
   "type": "module",
+  "sideEffects": false,
   "exports": {
     ".": "./src/index.ts",
     "./worker": "./src/worker.ts",

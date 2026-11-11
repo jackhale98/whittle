@@ -121,6 +121,23 @@ export interface AppHooks {
   /** Extra file paths stored with a library entry. */
   libraryFiles(id: string): Promise<string[]>;
   cacheSaved(): Promise<boolean>;
+  /** M3.7: the active configuration and each configuration's status, mass (kg) and build time. */
+  configurations(): {
+    active: string | null;
+    missing: boolean;
+    builds: Record<
+      string,
+      { status: string; mass: number | null; ms: number | null; message?: string }
+    >;
+    building: string | null;
+    lastSwitch: { toId: string | null; regenMs: number; renderMs: number; cached: boolean } | null;
+  };
+  /** Waits for the live regen and the background builds of the other configurations. */
+  configurationsBuilt(): Promise<boolean>;
+  regenCalls(): number;
+  holdExport(on: boolean): void;
+  slowExport(ms: number): void;
+  kernelSlots(): Promise<string[]>;
 }
 
 type W = { __wren: WrenTestHooks; __wrenApp: AppHooks };
@@ -165,6 +182,15 @@ export const app = (page: Page) => ({
   pendingHeals: () => page.evaluate(() => (window as unknown as W).__wrenApp.pendingHeals()),
   library: () => page.evaluate(() => (window as unknown as W).__wrenApp.library()),
   cacheSaved: () => page.evaluate(() => (window as unknown as W).__wrenApp.cacheSaved()),
+  configurations: () => page.evaluate(() => (window as unknown as W).__wrenApp.configurations()),
+  configurationsBuilt: () =>
+    page.evaluate(() => (window as unknown as W).__wrenApp.configurationsBuilt()),
+  regenCalls: () => page.evaluate(() => (window as unknown as W).__wrenApp.regenCalls()),
+  slowExport: (ms: number) =>
+    page.evaluate((v) => (window as unknown as W).__wrenApp.slowExport(v), ms),
+  kernelSlots: () => page.evaluate(() => (window as unknown as W).__wrenApp.kernelSlots()),
+  holdExport: (on: boolean) =>
+    page.evaluate((v) => (window as unknown as W).__wrenApp.holdExport(v), on),
   libraryFiles: (id: string) =>
     page.evaluate((x) => (window as unknown as W).__wrenApp.libraryFiles(x), id),
 });

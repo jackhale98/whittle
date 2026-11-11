@@ -115,10 +115,13 @@ function sameKeys(a: string[], b: string[]): boolean {
   return sa.every((k, i) => k === sb[i]);
 }
 
+/** The first name per index of `kind` (merge aliases come later in a naming map). */
 function namesByIndex(naming: NamingMap, kind: 'face' | 'edge', count: number): string[] {
   const out = new Array<string>(count).fill('');
+  const seen = new Set<number>();
   for (const n of naming) {
-    if (n.kind !== kind || n.index < 0 || n.index >= count) continue;
+    if (n.kind !== kind || n.index < 0 || n.index >= count || seen.has(n.index)) continue;
+    seen.add(n.index);
     if (!n.name.startsWith(INTERNAL_PREFIX)) out[n.index] = n.name;
   }
   return out;

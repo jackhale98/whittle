@@ -674,8 +674,8 @@ describe('v1 → v2 migration', () => {
     const r = migrateDoc(v1);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
-    expect(r.applied).toEqual([2]);
-    expect(r.doc).toEqual({ ...d, schemaVersion: 2 });
+    expect(r.applied).toEqual([2, 3]);
+    expect(r.doc).toEqual({ ...d, schemaVersion: 3 });
     expect((r.doc.parts[0] as Part).folders).toBeUndefined();
     // and the result can use the new fields straight away
     const store = createDocumentStore(r.doc);

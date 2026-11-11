@@ -33,6 +33,10 @@ export function describeStatus(
       sentence,
     };
   }
+  if (s.state === 'needsAttention' && s.error && !s.unresolved?.length) {
+    // A configuration override that no longer applies (M3.7): the message names it.
+    return { tone: 'warning', message: s.error.message, hint: s.error.hint, sentence };
+  }
   if (s.state === 'needsAttention') {
     const n = s.unresolved?.length ?? 0;
     return {

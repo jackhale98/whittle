@@ -52,12 +52,24 @@ export function useTreeProps(wb: Workbench, o: TreeOptions): TreeProps {
   }, [doc, selectedId]);
 
   // The eye of each sketch matches the viewport exactly: `shown` comes from the same resolver.
-  const items = useMemo<FeatureTreeItem[]>(
+  // M3.7: the rows show suppression as the active configuration sees it.
+  const effective = wb.config.resolved().doc.parts[0];
+  const items = useMemo<FeatureTreeItem[]>(() => {
+    const eff = new Map((effective?.features ?? []).map((f) => [f.id, f.suppressed === true]));
+    return (part?.features ?? []).map((f) => {
+      const e = eff.get(f.id);
+      const g = e === undefined || e === (f.suppressed === true) ? f : { ...f, suppressed: e };
+      return g.type === 'sketch' ? { ...g, shown: shownIds.has(f.id) } : g;
+    });
+  }, [part?.features, effective?.features, shownIds]);
+  const active = wb.config.active;
+  const configurationCount = part?.configurations?.length ?? 0;
+  const overriddenSuppression = useMemo(
     () =>
-      (part?.features ?? []).map((f) =>
-        f.type === 'sketch' ? { ...f, shown: shownIds.has(f.id) } : f,
-      ),
-    [part?.features, shownIds],
+      Object.entries(active?.features ?? {})
+        .filter(([, o]) => o.suppressed !== undefined)
+        .map(([id]) => id),
+    [active],
   );
   const folders = part?.folders;
   const liveFolders = useMemo(() => new Set((folders ?? []).map((f) => f.id)), [folders]);
@@ -119,6 +131,19 @@ export function useTreeProps(wb: Workbench, o: TreeOptions): TreeProps {
         wb.apply({ kind: 'setSuppressed', partId: part.id, featureId: id, suppressed });
         wb.commit();
       },
+      ...(configurationCount > 0
+        ? {
+            configuration: {
+              activeName: active?.name ?? 'Default',
+              isDefault: !active,
+              count: configurationCount,
+              overriddenSuppression,
+              onSuppress: (id: Id, suppressed: boolean, scope: 'configuration' | 'all') =>
+                wb.config.suppress(id, suppressed, scope),
+              onResetSuppression: (id: Id) => wb.config.resetSuppression(id),
+            },
+          }
+        : {}),
       onDelete: (id, alsoIds) => {
         // One undo step for the feature and the sketches deleted with it.
         const key = alsoIds?.length ? `delete:${id}` : undefined;
@@ -162,6 +187,9 @@ export function useTreeProps(wb: Workbench, o: TreeOptions): TreeProps {
     reorder,
     folders,
     collapsedLive,
+    active,
+    configurationCount,
+    overriddenSuppression,
   ]);
 
   const commands = useMemo<PaletteCommand[]>(() => {

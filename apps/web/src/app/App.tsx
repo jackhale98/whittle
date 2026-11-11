@@ -1,5 +1,5 @@
 import type { Feature, Id, TouchViewport } from '@wren-cad/contracts';
-import { ulid } from '@wren-cad/document';
+import { exportFileNames, ulid } from '@wren-cad/document';
 import {
   AppShell,
   type ExportTarget,
@@ -23,6 +23,7 @@ import { isFeatureTool } from '../features/factories';
 import { getDiagnostics } from '../platform/diagnostics';
 import { getRuntimeState, subscribeRuntimeState } from '../platform/runtime-state';
 import { applySwUpdate, checkForSwUpdateNow, onSwUpdateAvailable } from '../platform/sw-register';
+import { ConfigNotices } from '../ui/ConfigNotices';
 import { Inspector, useDoc } from '../ui/Inspector';
 import {
   useBracketTutorial,
@@ -42,6 +43,9 @@ import type { Workbench } from './workbench';
 
 // Version menu and sync chip: a small chunk fetched right after first paint (PLAN §10 budget).
 const ProjectBar = lazy(() => import('../ui/ProjectBar').then((m) => ({ default: m.ProjectBar })));
+// M3.7: the configuration pill is its own chunk, the table panel another (opened on demand).
+const ConfigurationBar = lazy(() => import('../ui/ConfigurationBar'));
+const ConfigurationPanel = lazy(() => import('../ui/ConfigurationPanel'));
 
 function isolationLabel(isolation: ReturnType<typeof getRuntimeState>['isolation']): string {
   if (isolation === 'pending') return 'checking isolation';
@@ -64,6 +68,10 @@ function kernelLoadingNote(engine: EngineState): string | undefined {
   if (s.state === 'compiling' || s.state === 'ready') return 'Starting the geometry kernel…';
   return undefined;
 }
+
+/** "Default, Long and Thick". */
+const joinNames = (names: string[]): string =>
+  names.length < 2 ? (names[0] ?? '') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
 
 /** Every tool of the command bar and rail (M3: all of them work). */
 const ENABLED_TOOLS: readonly ToolId[] = shellTools.map((t) => t.id);
@@ -244,6 +252,25 @@ export function App({ wb }: { wb: Workbench }) {
   // Export) boots it, so they are only unavailable when it failed to start.
   const engineFailed = engine.error ? 'The geometry kernel failed to start' : undefined;
   const engineNote = kernelLoadingNote(engine);
+  const configState = useObservable(wb.config.state);
+  const configs = part?.configurations ?? [];
+  const exportConfigurations = useMemo(() => {
+    if (!part || configs.length === 0) return undefined;
+    const ids = [null, ...configs.map((c) => c.id)];
+    const { collisions } = exportFileNames(doc, part.id, ids);
+    const nameOf = (id: string | null) =>
+      id === null ? 'Default' : (configs.find((c) => c.id === id)?.name ?? id);
+    return {
+      activeName: wb.config.activeName,
+      count: ids.length,
+      warnings: collisions.map(
+        (c) =>
+          `${joinNames(c.configurationIds.map(nameOf))} would both be written to ${c.fileName}. Give them different part numbers.`,
+      ),
+    };
+    // biome-ignore lint/correctness/useExhaustiveDependencies: `doc` carries the configurations
+  }, [doc, part, configs, wb]);
+  const activeConfig = wb.config.active;
 
   return (
     <>
@@ -259,6 +286,21 @@ export function App({ wb }: { wb: Workbench }) {
             <ProjectBar wb={wb} tier={diagnostics.tier} />
           </Suspense>
         }
+        configurationBar={
+          <Suspense fallback={null}>
+            <ConfigurationBar wb={wb} tier={diagnostics.tier} />
+          </Suspense>
+        }
+        {...(configState.panel && diagnostics.tier !== 'phone'
+          ? {
+              configurationPanel: (
+                <Suspense fallback={null}>
+                  <ConfigurationPanel wb={wb} touch={touch} />
+                </Suspense>
+              ),
+            }
+          : {})}
+        {...(exportConfigurations ? { exportConfigurations } : {})}
         theme={theme.setting}
         onThemeChange={theme.setSetting}
         {...(canUndo ? { onUndo: () => wb.undo() } : {})}
@@ -266,6 +308,16 @@ export function App({ wb }: { wb: Workbench }) {
         {...(tree.featureTree ? { featureTree: tree.featureTree } : {})}
         paramsTable={{
           params: doc.params,
+          ...(configs.length > 0
+            ? {
+                configuration: {
+                  activeId: activeConfig?.id ?? null,
+                  activeName: wb.config.activeName,
+                  overrides: activeConfig?.params ?? {},
+                  onReset: (id: string) => wb.config.resetOverride({ kind: 'param', paramId: id }),
+                },
+              }
+            : {}),
           evaluate: (e) => wb.evaluate(e),
           onAdd: () => {
             const names = new Set(doc.params.map((p) => p.name));
@@ -274,10 +326,7 @@ export function App({ wb }: { wb: Workbench }) {
             wb.apply({ kind: 'addParam', param: { id: ulid(), name: `param${n}`, expr: '10 mm' } });
             wb.commit();
           },
-          onUpdate: (paramId, patch) => {
-            wb.apply({ kind: 'updateParam', paramId, ...patch });
-            wb.commit();
-          },
+          onUpdate: (paramId, patch, scope) => wb.config.updateParam(paramId, patch, scope),
           onRemove: (paramId) => {
             wb.apply({ kind: 'removeParam', paramId });
             wb.commit();
@@ -328,6 +377,7 @@ export function App({ wb }: { wb: Workbench }) {
               onError={onViewportError}
             />
             <ViewportOverlays wb={wb} touch={touch} />
+            <ConfigNotices wb={wb} touch={touch} />
             {viewportError && (
               <div
                 role="alert"

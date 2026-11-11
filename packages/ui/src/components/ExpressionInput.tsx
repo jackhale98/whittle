@@ -136,6 +136,8 @@ export function ExpressionInput({
   const [assist, setAssist] = useState<AssistState | null>(null);
   const assistApi = useRef<AssistApi>({});
   const input = useRef<HTMLInputElement>(null);
+  /** A preview was sent since the last commit or cancel. */
+  const previewed = useRef(false);
   const mirror = useRef<HTMLSpanElement>(null);
   const errorId = useId();
   const listId = useId();
@@ -185,7 +187,10 @@ export function ExpressionInput({
       if (!r.ok) return false;
     }
     setDraft(null);
-    if (raw !== value) onCommit(raw);
+    // A value that was already previewed is committed too: the host closes its undo group (and,
+    // with configurations, ends the one-shot scope) when the edit ends, not when it first changed.
+    if (raw !== value || previewed.current) onCommit(raw);
+    previewed.current = false;
     return true;
   }
 
@@ -193,11 +198,15 @@ export function ExpressionInput({
     setDraft(next);
     assistApi.current.onEdit?.();
     if (!onPreview) return;
-    if (!evaluate || (next.trim() && evaluate(next).ok)) onPreview(next);
+    if (!evaluate || (next.trim() && evaluate(next).ok)) {
+      previewed.current = true;
+      onPreview(next);
+    }
   }
 
   function revert() {
     const was = draft !== null;
+    previewed.current = false;
     setDraft(null);
     if (was) onCancel?.();
   }

@@ -4,7 +4,12 @@ import type { PaletteCommand } from '../components/CommandPalette';
 import type { ContextBubbleProps } from '../components/ContextBubble';
 import type { ToolId } from '../components/tools';
 import type { ValueChipProps } from '../components/ValueChip';
-import type { ExportBody, ExportRequest, ExportTarget } from '../export/types';
+import type {
+  ExportBody,
+  ExportConfigurations,
+  ExportRequest,
+  ExportTarget,
+} from '../export/types';
 import type { FeatureTreeProps } from '../features/FeatureTree';
 import type { SheetSnap } from '../logic/sheet';
 import type { MeasurePanelProps } from '../panels/MeasurePanel';
@@ -107,4 +112,18 @@ export interface ShellProps {
    * `SyncStatusChip`). Desktop: takes the place of the version-menu placeholder. Omit to keep it.
    */
   projectBar?: ReactNode;
+
+  /* ---- M3.7 part configurations ---- */
+  /** The part's configurations for the export form (active or all, one file each). */
+  exportConfigurations?: ExportConfigurations;
+  /**
+   * The active-configuration pill for the top bar (`ConfigurationPill`; the `chip` variant on the
+   * phone). Sits before the project bar. Omit when the part has no configurations.
+   */
+  configurationBar?: ReactNode;
+  /**
+   * The configuration table panel, shown over the viewport (desktop and tablet; never a modal).
+   * The app lazy-loads the table and renders its own frame; the shell only positions it.
+   */
+  configurationPanel?: ReactNode;
 }

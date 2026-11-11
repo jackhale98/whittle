@@ -89,6 +89,11 @@ export function TabletShell(props: ShellProps) {
                   onClick={core.openPalette}
                 />
                 <ThemeToggle theme={core.theme} size="touch" />
+                {props.configurationBar ? (
+                  <div className="flex items-center" data-testid="configuration-bar">
+                    {props.configurationBar}
+                  </div>
+                ) : null}
                 {props.projectBar ? (
                   <div className="flex items-center gap-1" data-testid="project-bar">
                     {props.projectBar}

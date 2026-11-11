@@ -350,6 +350,125 @@ void nameFromProfileEdges(BRepBuilderAPI_MakeShape& algo, const Topo& topo,
 // face, lying in its plane) is F…:rim(<open face>).
 // ---------------------------------------------------------------------------------------------
 
+// Is an open face tangent (G1 within 1e-6 rad) to a kept neighbour across one of its edges?
+bool openFaceTangentToKept(const TopoDS_Shape& solid, const std::vector<int>& openIdx) {
+  const Topo topo(solid);
+  ShapeListMap edgeFaces;
+  TopExp::MapShapesAndAncestors(solid, TopAbs_EDGE, TopAbs_FACE, edgeFaces);
+  auto isOpen = [&](int fi) { return std::find(openIdx.begin(), openIdx.end(), fi) != openIdx.end(); };
+  for (int fi : openIdx) {
+    const TopoDS_Face& f = TopoDS::Face(topo.faces(fi));
+    for (TopExp_Explorer ex(f, TopAbs_EDGE); ex.More(); ex.Next()) {
+      const TopoDS_Edge& e = TopoDS::Edge(ex.Current());
+      if (BRep_Tool::Degenerated(e)) continue;
+      const ShapeList* faces = edgeFaces.Seek(e);
+      if (faces == nullptr) continue;
+      for (const TopoDS_Shape& g : *faces) {
+        const int gi = topo.faces.FindIndex(g);
+        if (gi <= 0 || gi == fi || isOpen(gi)) continue;
+        if (BRepLib::ContinuityOfFaces(e, f, TopoDS::Face(g), 1e-6) >= GeomAbs_G1) return true;
+      }
+    }
+  }
+  return false;
+}
+
+// Inward shell with open faces by booleans, for bodies where BRepOffset's thick solid fails: an
+// open face tangent to a kept face (a plate's front between corner fillets, a top running into a
+// bend fillet), which OCCT cannot intersect. The void is the closed inward offset of the whole
+// body (which works there) plus, for each planar open face, a prism of its offset image swept
+// back to the face's plane; the shell is the body minus that void. Where the thick solid works
+// this gives the same solid (the void reaches the open face's plane); where it doesn't, the walls
+// along tangent faces end flush at the opening. Names: kept faces keep theirs, offset faces are
+// F…:shell(<face>), the open faces' remains and the prisms' sides are F…:rim(<open face>).
+// Returns false (and leaves `out` alone) when any step fails.
+bool shellByCavity(const ShapeRecord& target, const TopoDS_Shape& solid, const std::vector<int>& openIdx,
+                   const std::vector<std::string>& openNames, double t, const std::string& tag,
+                   NamedShape& out) {
+  const Topo topo(solid);
+  const std::string prefix = "F" + tag + ":";
+  const std::string fallback = prefix + "unnamed";
+  const double before = solidVolume(solid);
+  try {
+    BRepOffset_MakeOffset mo;
+    mo.Initialize(solid, -t, 1e-6, BRepOffset_Skin, /*Intersection=*/false, /*SelfInter=*/false,
+                  GeomAbs_Intersection, /*Thickening=*/false, /*RemoveIntEdges=*/false);
+    mo.MakeOffsetShape();
+    if (!mo.IsDone()) return false;
+    TopoDS_Shape inner = mo.Shape();
+    if (countSolids(inner) == 0) {
+      BRepBuilderAPI_MakeSolid ms;
+      for (TopExp_Explorer ex(inner, TopAbs_SHELL); ex.More(); ex.Next()) ms.Add(TopoDS::Shell(ex.Current()));
+      if (!ms.IsDone()) return false;
+      inner = ms.Solid();
+    }
+    const double innerVolume = solidVolume(inner);
+    if (innerVolume < 0) inner.Reverse();
+    if (!(std::fabs(innerVolume) > 1e-9) || std::fabs(innerVolume) >= before || selfIntersects(inner)) return false;
+
+    // The offset body, named; the prisms through the open faces.
+    const Topo it(inner);
+    NamedInput innerNamed{inner, std::vector<std::string>(static_cast<size_t>(it.faces.Extent()))};
+    std::vector<NamedInput> prisms;
+    for (int fi = 1; fi <= topo.faces.Extent(); ++fi) {
+      const std::string n = faceNameIn(target, topo.faces(fi));
+      const auto open = std::find(openIdx.begin(), openIdx.end(), fi);
+      for (const TopoDS_Shape& g : mo.Generated(topo.faces(fi))) {
+        if (g.ShapeType() != TopAbs_FACE) continue;
+        const int gi = it.faces.FindIndex(g);
+        if (open == openIdx.end()) {
+          if (gi > 0 && !n.empty()) innerNamed.faceNames[static_cast<size_t>(gi - 1)] = prefix + "shell(" + n + ")";
+          continue;
+        }
+        gp_Pln plane;
+        gp_Dir normal;
+        if (!planeOf(TopoDS::Face(topo.faces(fi)), plane, normal)) return false;
+        BRepBuilderAPI_Copy copier(g, /*copyGeom=*/true, /*copyMesh=*/false);
+        BRepPrimAPI_MakePrism prism(copier.Shape(), gp_Vec(normal) * t, /*Copy=*/false, /*Canonize=*/true);
+        prism.Build();
+        if (!prism.IsDone()) return false;
+        TopoDS_Shape p = prism.Shape();
+        if (solidVolume(p) < 0) p.Reverse();
+        const Topo pt(p);
+        const std::string rim =
+            prefix + "rim(" + openNames[static_cast<size_t>(open - openIdx.begin())] + ")";
+        std::vector<std::string> pn(static_cast<size_t>(pt.faces.Extent()));
+        for (TopExp_Explorer ex(g, TopAbs_EDGE); ex.More(); ex.Next()) {
+          for (const TopoDS_Shape& copied : copier.Modified(ex.Current())) {
+            for (const TopoDS_Shape& side : prism.Generated(copied)) {
+              const int si = pt.faces.FindIndex(side);
+              if (si > 0) pn[static_cast<size_t>(si - 1)] = rim;
+            }
+          }
+        }
+        prisms.push_back(NamedInput{p, std::move(pn)});
+      }
+    }
+    if (prisms.empty()) return false;
+    const NamedShape cavity = booleanNamed(BOPAlgo_FUSE, {innerNamed}, prisms, nullptr, fallback);
+    if (countSolids(cavity.shape) != 1) return false;
+
+    // Body minus the void; the open faces' remains are the rims.
+    NamedInput body{solid, std::vector<std::string>(static_cast<size_t>(topo.faces.Extent()))};
+    for (int fi = 1; fi <= topo.faces.Extent(); ++fi) {
+      const std::string n = faceNameIn(target, topo.faces(fi));
+      const auto open = std::find(openIdx.begin(), openIdx.end(), fi);
+      body.faceNames[static_cast<size_t>(fi - 1)] = open == openIdx.end() || n.empty() ? n : prefix + "rim(" + n + ")";
+    }
+    NamedShape result = booleanNamed(BOPAlgo_CUT, {body}, {namedInputOf(cavity)}, nullptr, fallback);
+    const double after = solidVolume(result.shape);
+    if (countSolids(result.shape) != 1 || !isValidShape(result.shape) || !(after > 1e-9) || after >= before) {
+      return false;
+    }
+    out = std::move(result);
+    return true;
+  } catch (const Standard_Failure&) {
+    return false;
+  } catch (const FacadeError&) {
+    return false;
+  }
+}
+
 std::string execShell(const Json& feature, const Json& inputs, const std::string& tag) {
   const Json& values = valuesOf(inputs);
   const double t = requireValue(values, "/thickness", "shell thickness");
@@ -389,12 +508,13 @@ std::string execShell(const Json& feature, const Json& inputs, const std::string
   }
   auto isOpen = [&](int fi) { return std::find(openIdx.begin(), openIdx.end(), fi) != openIdx.end(); };
 
-  const double offset = direction == "inward" ? -t : t;
   const double before = solidVolume(solid);
   // Sharp (intersection) joins, like other CAD shells; when OCCT cannot intersect the offset
   // faces (some curved bodies), rounded (arc) joins, with a warning.
   std::string detail;
-  auto attempt = [&](GeomAbs_JoinType join, std::unique_ptr<BRepOffset_MakeOffset>& mo) -> TopoDS_Shape {
+  auto attemptAt = [&](double wall, GeomAbs_JoinType join,
+                       std::unique_ptr<BRepOffset_MakeOffset>& mo) -> TopoDS_Shape {
+    const double offset = direction == "inward" ? -wall : wall;
     mo = std::make_unique<BRepOffset_MakeOffset>();
     TopoDS_Shape result;
     try {
@@ -441,16 +561,39 @@ std::string execShell(const Json& feature, const Json& inputs, const std::string
     }
     return result;
   };
+  auto attempt = [&](GeomAbs_JoinType join, std::unique_ptr<BRepOffset_MakeOffset>& mo) {
+    return attemptAt(t, join, mo);
+  };
   std::vector<KernelError> warnings;
   std::unique_ptr<BRepOffset_MakeOffset> moPtr;
   TopoDS_Shape result = attempt(GeomAbs_Intersection, moPtr);
   if (result.IsNull()) {
     const std::string sharpDetail = detail;
     result = attempt(GeomAbs_Arc, moPtr);
+    if (result.IsNull() && direction == "inward" && !openIdx.empty() &&
+        openFaceTangentToKept(solid, openIdx)) {
+      // Open faces tangent to kept faces, which OCCT's thick solid cannot intersect: hollow by
+      // booleans instead (see shellByCavity). Only then: other failures (too thick) stay errors.
+      NamedShape viaCavity;
+      if (shellByCavity(*target, solid, openIdx, openNames, t, tag, viaCavity)) {
+        return storeResult(viaCavity, warnings);
+      }
+    }
     if (result.IsNull()) {
-      raiseError("OPERATION_FAILED", "The shell is too thick for this body",
-                 "Try a thinner wall (thinner than half the body's smallest width).",
-                 sharpDetail + "; arc joins: " + detail, openNames);
+      const std::string failDetail = sharpDetail + "; arc joins: " + detail;
+      // Only call it "too thick" when a much thinner wall works: otherwise the cause is the
+      // body's topology (faces OCCT cannot offset or join), and a thinner wall won't help.
+      std::unique_ptr<BRepOffset_MakeOffset> probe;
+      const double thin = std::min(t / 4, 0.25);
+      if (!attemptAt(thin, GeomAbs_Intersection, probe).IsNull()) {
+        raiseError("OPERATION_FAILED", "The shell is too thick for this body",
+                   "Try a thinner wall (thinner than half the body's thinnest section).",
+                   failDetail + "; a " + fmtMm(thin) + " mm wall works", openNames);
+      }
+      raiseError("OPERATION_FAILED", "The shell could not be built for this body",
+                 "OCCT cannot offset these faces even with a much thinner wall. Try removing other "
+                 "faces, or simplify the faces and edges around them.",
+                 failDetail + "; a " + fmtMm(thin) + " mm wall fails too: " + detail, openNames);
     }
     warnings.push_back(warning("OPERATION_FAILED", "The shell has rounded outside corners",
                                "OCCT could not build sharp corners for this body; the offset uses "

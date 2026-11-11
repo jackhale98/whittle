@@ -2122,6 +2122,45 @@ Owner: "hard to turn off, and section doesn't let you rotate the cut plane at al
 - **Phone tree.** The 44 px touch rollback bar now has its own 44 px gap in the list flow, where it sits (the bar is no longer drawn over the rows around it). The gap is excluded from the rollback stops, so they do not move while the bar is dragged, and a pointer position is mapped back to the layout without the gap.
 - **Contract proposal (not made).** If arcs need to be first-class: `HandleSpec` gains `{ kind: 'arc'; origin: Vec3; axis: Vec3; start: Vec3; sweep: number; radius?: number }` (radius in CSS px, constant while zooming), drawn as a thick arc and hit-tested against the arc; `PickHit` for it stays `{ kind: 'handle', entity: <id> }`.
 
+
+
+## ADR-074 — Part configurations: sparse overrides over an implicit Default, resolved before regen (M3.7, 2026-11-10)
+
+Owner decisions D1–D4 are in PLAN §M3.7; the research is `docs/ux-research/reports/Drawings and configurations UX.md` (List 1).
+
+- **Model.** `Part.configurations: Configuration[]` sits over an implicit **Default**, which is the part as stored, with `Part.activeConfigurationId` (absent = Default) and `Part.properties` (Default's part number and description).
+  - **What a configuration stores:** only what differs from Default.
+    - `params`: paramId → Expr. A configuration's override of a document-level parameter applies only while that part regenerates (D1).
+    - `features`: featureId → `{ suppressed?, fields? }`. `fields` maps a JSON pointer inside the feature to a value: any `Expr` field, plus the option fields the document package lists in `CONFIGURABLE_OPTIONS` (D2).
+    - `material` (`null` = none), `color` and `properties`.
+  - **Identity:** everything is keyed by id, so renames never break merges or consumers.
+  - **No derived configurations** (trap T5).
+- **Resolution before regen.** The document package's `resolveConfiguration(doc, partId, configurationId?)` returns the effective document: Default plus overrides. Regen, the kernel and the cache need no changes. Cache keys are value-based, so switching between already-built configurations reuses results.
+  - Background builds of non-active configurations use `RegenSlot` `config:<id>`, which keeps them in separate cache slots. They serve the rebuild-all status, per-configuration export and mass, and later drawings and assemblies.
+  - An override that no longer applies (its feature, parameter or path is gone) makes that configuration's feature "needs attention". It is never silently dropped.
+- **Edit scope at the point of edit** (Fusion's rule). The UI decides scope; the commands only express it.
+  - Editing an inherited value edits Default with the ordinary commands, so it applies to all configurations that inherit. The UI shows an undoable "Changed in all N configurations" notice.
+  - Editing an overridden value, or using the explicit "this configuration only" chip, writes `setConfigurationOverrides`.
+  - There is no sticky scope mode (trap T1).
+  - New features are never suppressed in other configurations automatically (T3).
+- **Commands:**
+  - `addConfiguration`, with `from: 'default' | id` (D3: the UI offers Default or Active, defaulting to Active);
+  - `renameConfiguration`;
+  - `removeConfiguration` (if it was active, Default becomes active);
+  - `setActiveConfiguration`;
+  - `setConfigurationOverrides`, a batch with one undo entry, used for a table paste;
+  - `setPartProperties`.
+- **Part number (D4).** When unset, a part number resolves to "<document name>-<configuration name>". Exports name files after it, and collisions warn, never overwrite.
+- **Merge.** Structural merge (ADR-0xx M2.5) treats configurations as id-keyed records and each override as a cell. Edits to different cells merge cleanly; the same cell edited on both sides conflicts. A delete on one side against an edit on the other conflicts. Two sides adding the same name keep both ids, and the duplicate name is flagged.
+- **Schema.** All additions are optional fields, so `schemaVersion` goes from 2 to 3 with a no-op migration (FILE_FORMAT §7).
+- **Two kinds of "no longer applies"** (clarified at merge time):
+  1. An override whose **feature or parameter is deleted** is removed together with it. This happens in the same undo entry when deleting in the app, and with a plain-language merge note when a merge deletes it ("Overrides of Fillet 3 in Long were removed with the feature"). The target is gone, so there is nothing left to attend to.
+  2. An override whose target still exists but no longer fits (an invalid pointer, a wrong option value, a required expression left empty by a kind change) is **kept** and reported by `resolveConfiguration` as an issue. That configuration's feature shows "needs attention"; it is never silently dropped.
+
+## ADR-075 — `packages/sketch` is `sideEffects: false`: the barrel stays out of the initial route (2026-11-10)
+
+The initial route imports only `Namer` and `constraintLabel` from `@wren-cad/sketch`, but without a `sideEffects` flag Rollup kept every barrel module it could not prove pure. `bspline`, `geometry`, `tools`, `draft`, `curve-ops`, `annotation`, `inference` and `explain` then landed in the entry chunk or a shared `curve-ops` chunk that `index.html` loads eagerly (about 18 kB gzip). Marking the package `"sideEffects": false` lets the bundler drop them: the initial route went from 248.2 to 230.2 kB gzip (headroom 1.8 to 19.8 kB). The sketch modules are pure (no top-level mutation or registration); `./worker` and `./core` are entry points and are unaffected. If a sketch module ever needs an import-time side effect, list it in `sideEffects` instead of removing the flag.
+
 ## ADR-076 — The radial menu draws at once; flicks keep a 250 ms window (2026-11-10)
 
 Owner feedback: on desktop, the right-click menu "takes a while to load". There were two causes:
@@ -2176,3 +2215,69 @@ Owner feedback: "how do we apply parameters to actual dimensions? I couldn't fin
 **Known limit.** While a sketch is open, changing a parameter does not redraw the sketch overlay until the next solve (the document stores the last solved geometry); the extruded body and a reopened sketch do follow. Fixing it means re-solving on parameter change, which writes to the document, so it needs its own decision.
 
 **Contracts.** No change. Proposal for the lead, optional: a `ParamUse` shape in `contracts` if the sync/compare features want to show where a parameter is used.
+
+## ADR-078 — Booleans merge the coplanar faces they create; absorbed names resolve as reported aliases (2026-11-10)
+
+Owner: "Faces don't seem to merge properly. On the demo bracket the back face is split to two faces, and shelling even 2mm failed." (ADR-074 and ADR-075 were taken in parallel work; renumber on merge if needed.)
+
+**Root causes.** (1) Only push/pull ran `ShapeUpgrade_UnifySameDomain` (ADR-013). Every other boolean (extrude/revolve/primitive/sweep/loft add, cut and intersect, the `boolean` feature, multi-region tools, pattern and mirror fuses, holes, imports with an op) left a tool face flush with a body face as two faces. The demo bracket had 19 faces: the back, left and right faces were each split at the plate's top (the M1 test bracket: 17 instead of 14). (2) `BRepOffsetAPI_MakeThickSolid`/`BRepOffset_MakeOffset` fails on those seams: before the merge, every bracket shell with an open face failed at 1, 2 and 5 mm, and the closed one at 2 and 5 mm (only closed 1 mm worked). The error was always "The shell is too thick for this body" (`OPERATION_FAILED`; OCCT `BRepOffset_Error 1`, a `Standard_NoSuchObject` "BRep_Tool:: no parameter on edge", or a result no smaller than the body). After the merge, 1 and 2 mm work closed and with the top, bottom or back open. (3) Separately, an open face that runs **tangentially** into a kept face (the plate front between the corner fillets, the sides, the plate top into the bend fillet, the upright front) fails in OCCT at any thickness ("result volume ≥ body"). (4) 5 mm inward cannot exist on the demo bracket: its plate and upright are 8 mm thick, and with the top open the 2 mm chamfer's inward offset meets the inner back wall below the top for t > (T − c)/(1 + √2) = 2.49 mm. 5 mm outward closes the Ø6 holes. These stay errors, now with the right message.
+
+**Decision.**
+1. **When unification runs.** After every boolean that goes through `booleanNamed` (packages/kernel `whittle_unify.cpp`), restricted to the seams that operation created: an edge between exactly two faces on the same surface where one face came from a tool (or the operation), or both are pieces of the same body face that the operation split. Two faces that were already on the body never merge (earlier topology stays stable, and imported splits stay). A merge group never absorbs a second pre-existing face, even through a tool face (the seam to it stays). Faces of different result solids never merge (edges shared by two solids are kept, and cut/intersect still give one result per scope body). Vertices that touch no merging face are kept, so collinear edges elsewhere keep their split. `UnifyFaces` + `UnifyEdges`, `SetSafeInputMode(true)`, `KeepShapes` for everything else. A same-surface prefilter (same `Geom_Surface`, or equal plane / cylinder / cone / sphere within 1e-6 mm, 1e-9 rad) skips the call when nothing can merge, which is most booleans. A merge that changes the solid count or the volume (beyond 1e-9 relative), or turns a valid result invalid, is dropped and the seams stay. Push/pull keeps its ADR-013 rules.
+2. **Naming rule for merged faces.** The merged face keeps the name of the earliest-created face: one that was on the body before the operation beats one the operation created; among equals, the smaller name (feature tags are ULIDs, so this is the earlier feature). On the bracket the back face is the plate's `F<plate>:side(…L3)`. Edges merge the same way: the merged edge's name is derived from the surviving face names, as for any edge.
+3. **Absorbed names are aliases.** Every absorbed face name, and every edge and vertex name that changed because of the merge, stays in the feature's `NamingMap` as an extra entry with the same `kind` and `index` as the surviving sub-shape, after all primary entries. The first entry per index is the sub-shape's name, which is already how coincident sketch points work. Names that only lose or change a `#k` suffix get no alias; the resolver's name-family rule covers them.
+4. **How absorbed references resolve: a resolved alias with a recorded `via`, never silently.** The regen engine excludes alias entries from candidates. It collects them per walk (`ModelState.merged`, absorbed → survivor, including chains), because only the merging feature's result lists them. Resolution order is now: exact name, then merge alias, then name family, then fingerprint. A ref resolved through an alias gets `via: 'merged'` and is reported in `FeatureStatus.merged: [{path, name, into}]`. It is not healed, so the stored name stays, and an edit that un-merges the faces (the upright moved off the back edge) brings the ref back to its own face by exact name. Shell open faces given as several now-merged faces map to the one merged face (one rim). A ref is never re-picked onto an unrelated face: no alias means the old order applies, and unresolved still means "needs attention".
+5. **Shell.** When both joins fail and an inward shell's open face is G1 to a kept neighbour (`BRepLib::ContinuityOfFaces`), the shell is built by booleans: the void is the closed inward offset (which works there) plus, for each planar open face, a prism of its offset image back to the face's plane; the result is the body minus the void. Where the thick solid works this is the same solid. Where it doesn't, the walls along tangent faces end flush at the opening, and the open face's remains and the prism sides are `F…:rim(<open face>)`. Other failures stay errors. "The shell is too thick for this body" is reported only when a much thinner wall (min(t/4, 0.25 mm)) works; otherwise "The shell could not be built for this body", with OCCT's reasons in `detail`.
+
+**Performance** (single-threaded kernel in Node, the same machine and load, old and new builds run back to back; the machine is shared, so ranges over three runs). The upright add that merges three face pairs on the bracket costs 10–12 ms per feature (median of 10 cold regens), against 8–10 ms before: about +2 ms for the seam scan, the unify, the validity and volume checks and the naming before and after. Booleans where nothing can merge pay only the edge scan with the same-surface prefilter. That is not measurable on the 50-feature part (24 hole cuts), where the one-dimension edit of the last feature has a median of 45–52 ms against 40–50 ms before (budget 300 ms, PLAN §10); its cold regen is 645–1005 ms against 748–822 ms. The bracket's full regen (9 features, fine) was 98–118 ms before and 122–170 ms after; the noise is larger than the difference. Kernel size: +9.3 KiB brotli single-threaded (4.54 MiB → 4.55 MiB), +7.2 KiB threaded.
+
+**Changed expectations** (volumes and masses unchanged everywhere):
+- kernel `pushpull.golden` "one of two coplanar adjacent top faces pulled": a two-box fuse is now 6 faces, not 10, so the split body comes from an imported IGES box with a split top (`igesBox(…, splitTopAt)`); after the pull it has 8 faces (was 11 from the 10-face body). The wall's name, centroid, normal and area, and the grown neighbours, are unchanged in meaning.
+- kernel-client `fixtures/import-naming.golden.json`: re-recorded for the bracket-derived entries only (`bracket*`). The source STEP is the merged bracket: faces 17 → 14, edges 43 → 36, vertices 28 → 24 (bracket-add-moved 25/59/38 → 20/48/32; bracket-cut keeps 18/36/24 with renumbered `#k`). The box entries are byte-identical.
+- Face counts that tests now assert: M1 bracket 17 → 14, demo bracket 19 → 16.
+
+**Contract proposals** (lead-owned; not applied): (1) naming.ts: the merge rule and alias entries of items 1–3. (2) `FeatureStatus.merged?: { path: string; name: string; into: string }[]` (kernel-client `RegenFeatureStatus` carries it meanwhile). Wording in packages/kernel-client/README.md, "Kernel gaps and contract notes".
+
+**Dependencies.** None new: `ShapeUpgrade_UnifySameDomain`, `BRepLib::ContinuityOfFaces` and the offset algorithms were already linked.
+
+## ADR-079 — M3.7 in the app: pill placement, background builds, export and ExpressionInput commits (2026-11-10)
+
+- **Pill.** Desktop and tablet always show it (so a part with no configuration can make its first from the pill); the phone shows the chip only when the part has a configuration or the active id is missing, and only switches. The pill, the table panel and its table are separate lazy chunks.
+- **Regen.** The workbench regenerates `wb.config.resolved().doc` (memoised per stored document, so its identity is stable for the regen loop). "Current" regen results, heals and the push/pull tool compare against that resolved document; the mesh cache is keyed by the stored document, which is what a reload reads.
+- **Background builds.** After the active regen settles, the other configurations (Default included) regenerate one at a time on idle at coarse quality with `slot: config:<id>`. Only a summary (status, message, mass) is kept; the key is `valueKey` of the resolved document without configuration data, so unrelated configuration edits rebuild nothing. The current `kernel-client` accepts only `main` and `version:<id>` slots; until it accepts `config:`, the build falls back once per session to `version:config-<id>`. A missing active configuration is never built or exported.
+- **Export of other configurations.** `exportPart` exports the latest `main` regen only, so "export all" runs inside `RegenLoop.exclusive`: regenerate each configuration in `main`, export, then regenerate the live model again (value-cached). Several files are plain downloads (a save dialog per file cannot hold a user gesture); the single-file export keeps the save dialog. A proposal for the kernel: an optional `slot` on `exportPart`.
+- **ExpressionInput commits after previews.** It now calls `onCommit` when an edit that was previewed ends, even if the value equals the previewed one. Without it a preview-only edit never ended, so the undo group stayed open and the one-shot scope chip (trap T1) would have stayed on for the next edit.
+- **Edit scope.** `planFeatureEdit` diffs the feature as the configuration shows it against the edited one: overridden pointers (or any configurable one with the chip) become overrides, everything else edits Default; Default never receives an override's value, and an override edited back to Default's value is cleared. "Suppress in all configurations" also clears the active configuration's own suppression override.
+
+- **Gate-review amendments.**
+  - `kernel-client` now accepts `config:<id>` regen slots with their own LRU budget (8 per part, separate from the 2 version slots of compare and merge preview); the `version:config-*` fallback is gone. A live `main` regen still waits behind a background build already running in the worker (the engine is serial and OCCT calls cannot be cancelled); builds run one at a time at coarse quality, so the wait is one build.
+  - "Export all" holds the viewport while it uses `main` for other configurations: picks, `refFor` and measurements are refused with a visible "model is locked" state, because `EntityQuery` is an ordinal mesh index and would otherwise resolve against the wrong configuration. A configuration with resolved issues is skipped and named (the active one is refused on a single export too); a failed regen stops the export with a toast naming it and the files already saved.
+  - Previews and sketch solves evaluate against the resolved active configuration. Sketch dimensions are not configurable (D2): editing one changes Default, and the sketch panel says so. A missing active configuration blocks edits (it would otherwise change Default silently); the Params tab clears an override typed back to Default's value.
+  - **The golden configuration part is synthetic.** It is a plate, boss and hole built from primitives (`apps/web/e2e/support/config-part.ts`) with closed-form masses, not a §12A reference part checked in FreeCAD. It tests the configuration machinery (resolution, slots, masses per configuration), not modelling capability, and its volumes are exact sums and differences of boxes and a cylinder, so an independent solver would only repeat the formula. Configuring the real reference parts, FreeCAD-checked, is left to the certification-style suite.
+
+## ADR-081 — Drawings before MBD, on one shared 3D annotation core (owner, 2026-11-10)
+
+**Context.** The owner asked whether M5 (STEP AP242 MBD/PMI) should come before M4 (drawings). Modern CAD defines annotations once on the 3D model and lets drawings reuse them. Building drawings first risks a drawing-only dimension model that has to be rebuilt for MBD. On the other side:
+- Wren's users (makers, small shops, engineers working alone) get parts made from PDF and DXF drawings. Few of the tools those shops use consume semantic PMI.
+- M5 is harder to verify: OCCT has gaps with third-party PMI, and acceptance needs the NIST analyzer and third-party CAD.
+- M4's acceptance is concrete: 1:1 PDF prints, and DXF opened in LibreCAD in CI.
+- Most of what M5 needs is drawing work anyway: tolerance and fit formatting, GD&T frames, text and leader layout, attachment and dangling detection.
+
+**Decision.** Keep M4 before M5, but M4 builds the **shared annotation core** first:
+- **Storage.** A part-level, id-keyed `Part.annotations` set replaces `FeatureBase.annotations` (with a migration).
+- **Semantics.** Annotations reference model geometry by `EntityRef`. They are optionally bound to a driving dimension (`source`). Drawing views store only per-view placements.
+- **Shared code.** Formatting and layout are written once.
+- **References.** Unresolved references are "needs attention".
+- **Configuration overrides.** Overrides on annotations are id-keyed, which closes the M3.7 gate finding.
+
+M5 then becomes:
+- 3D display and editing on annotation planes, with saved views;
+- the XCAF semantic plus presentation export, reusing M4's layout code;
+- PMI import;
+- validation.
+
+**Consequences.**
+- The M4 contracts step changes `document.ts` (`Part.annotations`, an annotation `source`, drawing view placements) and needs a schema bump with a migration. The lead owns this.
+- M4 is slightly larger. M5 is smaller and less risky.
+- Drawings and the STEP export can never disagree about a dimension, because they show the same object.
+

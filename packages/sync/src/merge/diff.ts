@@ -7,7 +7,9 @@
  * moves many points), while sketch dimension edits are listed one by one. Feature tree folders
  * (M3.6) get their own lines: "Added folder Mounting with Extrude 2 and Fillet 3", "Renamed
  * folder Mounting → Mounts", "Folder Mounting: added Chamfer 4", "Moved folder Mounting after
- * Plane 5"; a sketch's visibility reads "Sketch 1: visibility automatic → shown".
+ * Plane 5"; a sketch's visibility reads "Sketch 1: visibility automatic → shown". Part
+ * configurations (M3.7) read "Added configuration Long", "Long: width 40 mm → 45 mm", "Active
+ * configuration: Default → Long" (`configuration-diff.ts`).
  */
 
 import type {
@@ -27,6 +29,7 @@ import type {
 } from '@wren-cad/contracts';
 import { isDimension } from '@wren-cad/contracts';
 import { Namer } from '@wren-cad/sketch';
+import { configurationChanges } from './configuration-diff';
 import { visibilityOf } from './folders';
 import { featureDims, formatValue, listText, plural, type Units } from './format';
 import { constraintText, fieldLabel, subjectAt, visibilityText } from './labels';
@@ -283,6 +286,7 @@ class DiffRun {
     }
     const bm = byId(old.features);
     const am = byId(part.features);
+    for (const c of configurationChanges(this.before, this.after, old, part)) this.push(c);
     const { moved, folderMoves } = this.featureMoves(old, part);
     for (const f of part.features) {
       const prev = bm.get(f.id) as Feature | undefined;
