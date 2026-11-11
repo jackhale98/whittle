@@ -26,6 +26,7 @@ export type {
 } from './kernel-api';
 export type { KernelMemoryStats, ModelingWorkerApi, RegenWorkerOptions } from './modeling-api';
 export { isStatusMessage, STATUS_MESSAGE_TAG, type StatusMessage } from './protocol';
+export type { AnchorAnswer, AnchorQuery } from './regen/annotations';
 export type { CompareOutput } from './regen/compare';
 export type {
   ReboundRef,

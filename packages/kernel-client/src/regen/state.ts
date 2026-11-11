@@ -148,6 +148,12 @@ export interface PartCache {
     density?: number;
     /** That walk's merge table (`ModelState.merged`), for what `refFor` records in `absorbed`. */
     merged?: Map<string, string[]>;
+    /**
+     * That regen's walk context after the last feature (its final state, document and walk), for
+     * anchor queries against it (`annotationAnchors`). Attachments are dropped. Its handles are
+     * the latest regen's, live until the next regen of the slot replaces `latest`.
+     */
+    context?: WalkContext;
   } | null;
   lastGood: { bodies: BodyState[]; keys: Set<string> } | null;
   /** Imported attachments by sha256. */

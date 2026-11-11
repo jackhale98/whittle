@@ -31,15 +31,21 @@
 
 import type {
   Annotation,
+  AnnotationAnchor,
   AnnotationResolution,
   AnnotationSource,
   AttentionCause,
   EntityRef,
   Feature,
+  Fingerprint,
+  GrownRef,
+  HoleFeature,
   Id,
   KernelError,
+  MergedRef,
   NamedDimension,
   RefPoint,
+  UnresolvedRef,
   Vec3,
 } from '@wren-cad/contracts';
 import {
@@ -50,7 +56,14 @@ import {
   resolveHoleSize,
   scopeOf,
 } from '@wren-cad/document';
-import { anchorOf, measureAnnotation, type RefGeo, subGeometry } from './annotation-geometry';
+import {
+  type AxisGeo,
+  anchorOf,
+  measureAnnotation,
+  type RefGeo,
+  rimAnchor,
+  subGeometry,
+} from './annotation-geometry';
 import { causeLabel } from './attribution';
 import {
   type CauseEnv,
@@ -61,7 +74,7 @@ import {
   type Walk,
 } from './cause';
 import type { EngineCore } from './core';
-import { normalize, ORIGIN_AXES, ORIGIN_PLANES } from './geometry';
+import { dot, normalize, ORIGIN_AXES, ORIGIN_PLANES, sub } from './geometry';
 import { hashKey } from './hash';
 import { kerr } from './helpers';
 import { AXIS_NAME, fingerprintOf, PLANE_NAME, POINT_NAME, resolveSub } from './refs';
@@ -325,7 +338,7 @@ async function resolveOne(
     res.anchors = [];
     for (let i = 0; i < geos.length; i++) {
       const g = geos[i];
-      res.anchors.push(g ? await anchorOf(core, g, at(i)) : null);
+      res.anchors.push(g ? await anchorFor(core, ctx, g, at(i), a.kind) : null);
     }
   }
 
@@ -339,9 +352,18 @@ async function resolveOne(
   }
   if (instances) {
     res.instances = await instanceRefs(core, instances);
-    if (a.kind === 'holeCallout' && instances[0] && sourceFeature?.type === 'hole') {
-      const g = await subGeometry(core, { ...instances[0], kind: 'face' });
-      if (g?.t === 'axis' && g.radius !== undefined) measured = 2 * g.radius;
+    const first = instances[0];
+    if (a.kind === 'holeCallout' && first && sourceFeature) {
+      const g = await subGeometry(core, { ...first, kind: 'face' });
+      if (sourceFeature.type === 'hole' && g?.t === 'axis' && g.radius !== undefined) {
+        measured = 2 * g.radius;
+      }
+      // ADR-092 proposal 1: a callout without refs of its own is anchored by the first instance's
+      // rim at the entry face, so its leader has a circle to point at.
+      if (a.refs.length === 0 && g?.t === 'axis') {
+        g.name = first.name;
+        res.anchors = [await calloutAnchor(core, ctx, g)];
+      }
     }
   }
   if (measured !== undefined) res.measured = measured;
@@ -652,7 +674,234 @@ async function refGeometry(
   }
   const t = await resolveSub(core, ctx, ref, path, unresolved);
   if (!t) return null;
-  return subGeometry(core, { shape: t.shape, kind: t.kind, index: t.index });
+  const g = await subGeometry(core, { shape: t.shape, kind: t.kind, index: t.index });
+  if (g?.t === 'axis') g.name = t.name;
+  return g;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Anchors by kind: rims of round faces, hole callouts
+// ---------------------------------------------------------------------------------------------
+
+/** Kinds whose ref is a size: a round face is anchored by its rim circle, not its axis. */
+const SIZE_KINDS = new Set<Annotation['kind']>(['radius', 'diameter']);
+
+/**
+ * The anchor of one resolved ref for an annotation of `kind`. A cylindrical face (`self`) of a
+ * radius or diameter is its rim circle, as the drawing dimensions circles: a hole wall's at its
+ * entry, any other at the far end of its canonical axis. A hole callout's ref on a hole wall is
+ * the callout's rim (`calloutAnchor`). Everything else is `anchorOf`.
+ */
+async function anchorFor(
+  core: EngineCore,
+  ctx: WalkContext,
+  g: RefGeo,
+  at: RefPoint,
+  kind: Annotation['kind'] | undefined,
+): Promise<AnnotationAnchor> {
+  if (g.t === 'axis' && at === 'self' && g.target && kind !== undefined) {
+    if (kind === 'holeCallout' && g.radius !== undefined) return calloutAnchor(core, ctx, g);
+    if (SIZE_KINDS.has(kind) && g.radius !== undefined) {
+      const hole = holeWallOf(ctx, g.name);
+      const entry = hole ? await wallEntry(core, ctx, g, hole) : null;
+      const rim = await rimAnchor(core, g, entry ?? 1, entry !== null);
+      if (rim) return rim;
+    }
+  }
+  return anchorOf(core, g, at);
+}
+
+/**
+ * A hole callout's anchor: the rim of the first instance at the hole's entry face. That is the
+ * counterbore's rim for a counterbored hole, the countersink's outer rim for a countersunk one,
+ * else the bore's; its normal points out of the hole. A thread's callout (no entry face in the
+ * model) is the rim at the far end of its face's canonical axis. Without a radius (a cone):
+ * the axis.
+ */
+async function calloutAnchor(
+  core: EngineCore,
+  ctx: WalkContext,
+  wall: AxisGeo,
+): Promise<AnnotationAnchor> {
+  const hole = holeWallOf(ctx, wall.name);
+  const entry = hole ? await wallEntry(core, ctx, wall, hole) : null;
+  if (hole && entry !== null && wall.target) {
+    // The outermost rim at the entry: counterbore wall, else countersink cone, else the bore.
+    for (const suffix of ['cbore.wall', 'csink']) {
+      const s = siblingFaces(ctx, wall, hole, suffix)[0];
+      if (s === undefined) continue;
+      const g = await subGeometry(core, { shape: wall.target.shape, kind: 'face', index: s });
+      if (g?.t !== 'axis') continue;
+      const end = dot(g.dir, wall.dir) >= 0 ? entry : entry === 0 ? 1 : 0;
+      const rim = await rimAnchor(core, g, end, true);
+      if (rim) return rim;
+    }
+  }
+  return (
+    (await rimAnchor(core, wall, entry ?? 1, entry !== null)) ??
+    (await anchorOf(core, wall, 'self'))
+  );
+}
+
+/** A hole wall's hole: its feature and the wall's name without copies and split suffix. */
+interface HoleWall {
+  feature: HoleFeature;
+  /** `F<hole>:hole(<point>)`, the prefix every face of this instance shares. */
+  stem: string;
+}
+
+const WALL = /^(F([0-9A-Za-z]+):hole\(.*\)):wall(?:#\d+)?$/;
+
+/** The hole whose wall (an instance or a pattern or mirror copy of one) `name` is. */
+function holeWallOf(ctx: WalkContext, name: string | undefined): HoleWall | null {
+  if (!name) return null;
+  let inner = name;
+  for (let m = COPY.exec(inner); m; m = COPY.exec(inner)) inner = m[1] as string;
+  const w = WALL.exec(inner);
+  if (!w) return null;
+  const i = ctx.index.get(w[2] as string);
+  const f = i === undefined ? undefined : ctx.part.features[i];
+  return f?.type === 'hole' ? { feature: f, stem: w[1] as string } : null;
+}
+
+/**
+ * Faces of the same hole instance as `wall` (same copy wrappers) with another suffix (`bottom`,
+ * `tip`, `cbore.wall`, `cbore.floor`, `csink`), by the body's primary names; split pieces too.
+ */
+function siblingFaces(ctx: WalkContext, wall: AxisGeo, hole: HoleWall, suffix: string): number[] {
+  const t = wall.target;
+  const name = wall.name;
+  if (!t || !name) return [];
+  const body = [...ctx.state.bodies.values()].find((b) => b.shape === t.shape);
+  if (!body) return [];
+  const strip = (n: string) => n.replace(/#\d+$/, '');
+  const own = strip(name);
+  const at = own.lastIndexOf(`${hole.stem}:wall`);
+  if (at < 0) return [];
+  const want = `${own.slice(0, at)}${hole.stem}:${suffix}${own.slice(at + hole.stem.length + 5)}`;
+  return primaryNaming(body.naming)
+    .filter((n) => n.kind === 'face' && strip(n.name) === want)
+    .map((n) => n.index);
+}
+
+/**
+ * Which end of a hole wall (0 or 1 along its canonical axis) is towards the hole's entry face.
+ * Evidence, in order: the instance's own faces (a blind hole's bottom or tip is at the far end; a
+ * counterbore floor or a countersink is at the entry), then the hole's placement face, whose
+ * outward normal points out of the entry (exact for the hole's own instances and translated
+ * copies). Null when there is none: the caller then uses a fixed end and says nothing about the
+ * entry.
+ */
+async function wallEntry(
+  core: EngineCore,
+  ctx: WalkContext,
+  wall: AxisGeo,
+  hole: HoleWall,
+): Promise<0 | 1 | null> {
+  const t = wall.target;
+  if (!t) return null;
+  const fp = await core.fingerprints(t.shape);
+  const station = (index: number) => {
+    const c = fp?.faces[index]?.centroid;
+    return c ? dot(sub(c, wall.origin), wall.dir) : null;
+  };
+  const [lo, hi] = wall.extent;
+  for (const [suffix, atEntry] of [
+    ['bottom', false],
+    ['tip', false],
+    ['cbore.floor', true],
+    ['csink', true],
+  ] as const) {
+    const s = siblingFaces(ctx, wall, hole, suffix)[0];
+    const at = s === undefined ? null : station(s);
+    if (at === null) continue;
+    const nearHi = Math.abs(at - hi) < Math.abs(at - lo);
+    return nearHi === atEntry ? 1 : 0;
+  }
+  // The placement face, resolved as the hole feature resolves it (its reports stay out).
+  const mine = ctx.current;
+  ctx.current = { featureId: hole.feature.id, rebound: [], merged: [], grown: [] };
+  const face = await resolveSub(core, ctx, hole.feature.face, '/face', []);
+  ctx.current = mine;
+  const n = face ? (await core.fingerprints(face.shape))?.faces[face.index]?.normal : undefined;
+  if (!n) return null;
+  const s = dot(normalize(n), wall.dir);
+  return Math.abs(s) < 1e-9 ? null : s > 0 ? 1 : 0;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Anchor queries (ADR-092 proposal 2)
+// ---------------------------------------------------------------------------------------------
+
+/** One anchor request: a ref, its point qualifier and the kind of annotation it is for. */
+export interface AnchorQuery {
+  ref: EntityRef;
+  /** As `Annotation.at[i]`; default `'self'`. */
+  at?: RefPoint;
+  /**
+   * The annotation kind the anchor is for, as in a resolution: `radius` / `diameter` anchor a
+   * cylindrical face by its rim circle, `holeCallout` a hole wall by the callout's entry rim.
+   * Omitted: the plain anchor (a cylindrical face is its axis).
+   */
+  annotationKind?: Annotation['kind'];
+}
+
+/** The answer to one `AnchorQuery`; `path` fields are `/<index in the query list>`. */
+export interface AnchorAnswer {
+  /** Null when the ref did not resolve (`unresolved` says why): never a guessed entity. */
+  anchor: AnnotationAnchor | null;
+  unresolved?: UnresolvedRef;
+  merged?: MergedRef;
+  grown?: GrownRef;
+  rebound?: { path: string; name: string; fingerprint?: Fingerprint };
+}
+
+/** The consumer id of anchor queries (after every feature, like an annotation). */
+const QUERY = 'A:anchors';
+
+/**
+ * Anchors of arbitrary refs against a regen's final state (`final`: that regen's walk context),
+ * resolved exactly as annotation refs are: exact name, merge alias, name family, fingerprints for
+ * weak names; otherwise unresolved with its structural cause (deleted, suppressed, failed). It
+ * reads the slot's state and never writes it: the `lastKnown` and `grown` memories are copies.
+ */
+export async function queryAnchors(
+  core: EngineCore,
+  final: WalkContext,
+  queries: readonly AnchorQuery[],
+): Promise<AnchorAnswer[]> {
+  const pc = { ...final.pc, lastResolved: new Map(), absorbed: new Map(final.pc.absorbed) };
+  const ctx: WalkContext = { ...final, pc };
+  const env: CauseEnv = {
+    part: ctx.part,
+    index: ctx.index,
+    walk: ctx.walk,
+    prev: null,
+    label: causeLabel,
+  };
+  const out: AnchorAnswer[] = [];
+  for (let i = 0; i < queries.length; i++) {
+    const q = queries[i] as AnchorQuery;
+    ctx.current = { featureId: QUERY, rebound: [], merged: [], grown: [] };
+    const unresolved: RegenUnresolvedRef[] = [];
+    const g = await refGeometry(core, ctx, q.ref, `/${i}`, unresolved);
+    const answer: AnchorAnswer = {
+      anchor: g ? await anchorFor(core, ctx, g, q.at ?? 'self', q.annotationKind) : null,
+    };
+    const u = unresolved[0];
+    if (u) {
+      const cause = structuralCause(env, QUERY, u.ref.name, u.ref.kind);
+      answer.unresolved = cause ? { ...u, cause } : u;
+    }
+    const [merged] = ctx.current.merged;
+    const [grown] = ctx.current.grown;
+    const [rebound] = ctx.current.rebound;
+    if (merged) answer.merged = merged;
+    if (grown) answer.grown = grown;
+    if (rebound) answer.rebound = rebound;
+    out.push(answer);
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------------------------

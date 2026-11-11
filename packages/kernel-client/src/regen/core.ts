@@ -17,7 +17,7 @@ import type {
   ShapeFingerprints,
   ShapeHandle,
 } from '@wren-cad/contracts';
-import type { ShapeBounds } from '../kernel-api';
+import type { ShapeBounds, SubShapeGeometry } from '../kernel-api';
 import { edgeCircle, edgeEndpoints, edgeLine, faceAxis, type GeoQuery } from './datums';
 import { type ReprojectLinked, reprojectLinkedFallback } from './linked';
 import type { CacheEntry, RawImport } from './state';
@@ -43,6 +43,8 @@ export class EngineCore {
   private readonly meshes = new Map<string, MeshBuffers>();
   /** Every handle owned by a cache entry (the UI must never release these). */
   readonly ownedHandles = new Set<ShapeHandle>();
+  /** False once the kernel reported it has no `subShapeGeometry` entry (a build before M4). */
+  private exactAvailable = true;
 
   constructor(deps: RegenEngineDeps) {
     this.kernel = deps.kernel;
@@ -148,6 +150,28 @@ export class EngineCore {
     const v = await fn();
     this.geoMemo.set(k, v);
     return v;
+  }
+
+  /**
+   * Exact geometry of a sub-shape (`subShapeGeometry`, M4), memoised per handle. Null when the
+   * kernel has no such entry (engine fakes, builds before M4: callers probe instead) or the call
+   * failed. One kernel call per sub-shape and handle.
+   */
+  async exactOf(t: {
+    shape: ShapeHandle;
+    kind: 'face' | 'edge' | 'vertex';
+    index: number;
+  }): Promise<SubShapeGeometry | null> {
+    const call = this.kernel.subShapeGeometry;
+    if (!call || !this.exactAvailable) return null;
+    return this.memo(t.shape, `exact:${t.kind}:${t.index}`, async () => {
+      const r = await call.call(this.kernel, t.shape, t.kind, t.index);
+      if (r.ok) return r.value;
+      if (r.error.code === 'UNSUPPORTED_FEATURE' && r.error.detail === 'subShapeGeometry') {
+        this.exactAvailable = false;
+      }
+      return null;
+    });
   }
 
   lineOfEdge(t: { shape: ShapeHandle; index: number }) {

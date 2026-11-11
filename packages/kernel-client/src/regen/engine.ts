@@ -58,7 +58,12 @@ import type {
 import { evaluateFeatureValues, featureReferences } from '@wren-cad/document';
 import { zipSync } from 'fflate';
 import type { MeasureSubject } from '../kernel-api';
-import { resolveAnnotations } from './annotations';
+import {
+  type AnchorAnswer,
+  type AnchorQuery,
+  queryAnchors,
+  resolveAnnotations,
+} from './annotations';
 import { attachCauses, fieldLabel, walkDelta, walkEntry } from './attribution';
 import { newWalk, pushWalk, type WalkEntry } from './cause';
 import { type CompareOutput, type DiffSide, geometricDiff } from './compare';
@@ -395,6 +400,39 @@ export class RegenEngine {
     });
   }
 
+  /**
+   * M4 (ADR-092 proposal 2): anchors of arbitrary refs in the latest regen of a part in `slot`,
+   * resolved with the annotation rules (`queryAnchors`), one answer per query in order. For
+   * dimensions that are not annotations yet (the drawing import's promoted fillet, chamfer and
+   * revolve values). Reads the slot, never changes it.
+   */
+  annotationAnchors(
+    partId: Id,
+    queries: readonly AnchorQuery[],
+    slot: RegenSlot = 'main',
+  ): Promise<Result<AnchorAnswer[]>> {
+    return this.serial(async (): Promise<Result<AnchorAnswer[]>> => {
+      if (!isSlot(slot)) {
+        return {
+          ok: false,
+          error: kerr('INVALID_INPUT', `${JSON.stringify(slot)} is not a regen slot`, {
+            hint: "Use 'main', 'version:<id>' or 'config:<id>'.",
+          }),
+        };
+      }
+      const context = this.cache.slotCache(partId, slot)?.latest?.context;
+      if (!context) {
+        return {
+          ok: false,
+          error: kerr('INVALID_INPUT', `${capitalise(slotLabel(slot))} has not been regenerated`, {
+            hint: 'Regenerate the part first.',
+          }),
+        };
+      }
+      return { ok: true, value: await queryAnchors(this.core, context, queries) };
+    });
+  }
+
   importFile(bytes: Uint8Array, format: ExportFormat): Promise<ImportResult> {
     return this.serial(async () => {
       const r = await this.core.kernel.importShapes(bytes, format);
@@ -682,6 +720,8 @@ export class RegenEngine {
       keys: new Set(ctx.used),
       partName: part.name,
       merged: ctx.state.merged,
+      // For anchor queries against this final state (ADR-092 proposal 2); no attachment bytes.
+      context: { ...ctx, attachments: {}, rec: null },
     };
     if (density !== undefined) pc.latest.density = density;
     await this.cache.evict(pc);

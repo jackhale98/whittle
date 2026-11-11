@@ -43,6 +43,7 @@ import {
   type RawExportResult,
   type RawImportResult,
   type RawKernelInfo,
+  type SubShapeGeometry,
   type WhittleKernelModule,
 } from '@wren-cad/kernel';
 import { transfer } from 'comlink';
@@ -76,6 +77,7 @@ export type {
   ProjectedCurve,
   ProjectedEdge,
   ProjectedOutline,
+  SubShapeGeometry,
 } from '@wren-cad/kernel';
 
 /**
@@ -137,6 +139,17 @@ export interface KernelLowLevelApi extends Partial<ProjectionApi> {
    * gives its intrinsic values, two the minimum distance (+ angle). See whittle_kernel.h.
    */
   measureShapes(a: MeasureSubject, b?: MeasureSubject): Promise<Result<Measurement>>;
+  /**
+   * M4: exact geometry of one sub-shape (`index` in TopExp order): plane, cylinder and cone
+   * (axis, radius, axial extent, `concave`), sphere, torus, line, circle, ellipse or vertex. A
+   * kernel build without the entry point gives `UNSUPPORTED_FEATURE` with `detail`
+   * `'subShapeGeometry'` (callers then fall back to probing with `measureShapes`).
+   */
+  subShapeGeometry(
+    shape: ShapeHandle,
+    kind: 'face' | 'edge' | 'vertex',
+    index: number,
+  ): Promise<Result<SubShapeGeometry>>;
 }
 
 /** The M3 "convert entities" calls as the kernel worker implements them. */
@@ -667,6 +680,33 @@ export function createKernelApi(
         );
       } catch (e) {
         return caught('measure', e);
+      }
+    },
+
+    async subShapeGeometry(
+      shape: ShapeHandle,
+      kind: 'face' | 'edge' | 'vertex',
+      index: number,
+    ): Promise<Result<SubShapeGeometry>> {
+      if (kernel === null) return notReady();
+      const k = kernel;
+      try {
+        // Optional in the façade (ADR-090 amendment): older dists lack it.
+        if (typeof k.subShapeGeometry !== 'function') {
+          return fail(
+            error(
+              'UNSUPPORTED_FEATURE',
+              'This kernel build has no exact sub-shape geometry',
+              'subShapeGeometry',
+            ),
+          );
+        }
+        return parseResult<SubShapeGeometry>(
+          k.subShapeGeometry(shape, kind, index),
+          'subShapeGeometry',
+        );
+      } catch (e) {
+        return caught('subShapeGeometry', e);
       }
     },
 

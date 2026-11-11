@@ -3,11 +3,19 @@
  * line, a circle, an axis, a point…), the `AnnotationAnchor` a drawing view projects, and the value
  * an annotation measures from its refs (`AnnotationResolution.measured`).
  *
- * Everything is read from the façade's exact data: fingerprints (planar face centroids and normals,
- * vertex points), exact measurements (`measureShapes`: radii, distances, angles) and the memoised
- * probes of datums.ts for line end points, circle centres and cylinder axes. Every probe is
- * memoised per shape handle (`EngineCore.memo`), so a body that did not change costs only lookups.
- * Curves other than lines and circles are anchored by the body's coarse mesh polyline.
+ * Everything is read from the façade's exact data: fingerprints (planar face centroids and outward
+ * normals, vertex points) and `subShapeGeometry` (line end points; circle centres, normals and
+ * radii; cylinder and cone axes with their axial extent; sphere centres): one kernel call per round
+ * or straight ref, memoised per shape handle (`EngineCore.exactOf`), so a body that did not change
+ * costs only lookups. Against a kernel build without `subShapeGeometry` (and engine fakes) the
+ * same values are probed with `measureShapes` (datums.ts, about 27 measurements per round ref).
+ * Distances and angles that need the kernel come from `measureShapes`. Curves other than lines
+ * and circles are anchored by the body's coarse mesh polyline.
+ *
+ * Exact data is put in the probes' canonical form, so an anchor does not depend on which path ran
+ * or on how OCCT parametrised the curve: a line's ends and an arc's ends in `compareKey` order,
+ * circle normals and axis directions by `canonicalDir`, an axis' origin at the foot of the world
+ * origin.
  *
  * Conventions (part mm and radians):
  *  - linear with `direction`: the distance between the two refs' measuring points projected on it
@@ -33,10 +41,10 @@ import type {
   Vec2,
   Vec3,
 } from '@wren-cad/contracts';
-import type { ExactProjectedCurve, ProjectedLoopEdge } from '../kernel-api';
+import type { ExactProjectedCurve, ProjectedLoopEdge, SubShapeGeometry } from '../kernel-api';
 import type { EngineCore } from './core';
 import { ellipsePoint, prepareBSpline, sampleBSpline } from './curves';
-import { sphereCentre } from './datums';
+import { canonicalDir, compareKey, footOnLine, sphereCentre } from './datums';
 import {
   add,
   cross,
@@ -57,6 +65,22 @@ export interface SubTarget {
   index: number;
 }
 
+/** An axis: a cylinder's, a cone's, a construction axis or an origin axis. */
+export interface AxisGeo {
+  t: 'axis';
+  origin: Vec3;
+  dir: Vec3;
+  /** Axial range of the face along `dir` from `origin` (`[0, 0]` for construction axes). */
+  extent: [number, number];
+  /** A cylinder's radius (a size); absent for cones and construction axes. */
+  radius?: number;
+  /** Radii at `extent[0]` and `extent[1]` (cylinders and cones, exact path only). */
+  ends?: [number, number];
+  target?: SubTarget;
+  /** The face's current persistent name (set by the resolver; hole walls are read from it). */
+  name?: string;
+}
+
 /** What a resolved ref is, geometrically. */
 export type RefGeo =
   | { t: 'plane'; origin: Vec3; normal: Vec3; target?: SubTarget }
@@ -70,14 +94,7 @@ export type RefGeo =
       end?: Vec3;
       target?: SubTarget;
     }
-  | {
-      t: 'axis';
-      origin: Vec3;
-      dir: Vec3;
-      extent: [number, number];
-      radius?: number;
-      target?: SubTarget;
-    }
+  | AxisGeo
   | { t: 'sphere'; center: Vec3; radius: number; target: SubTarget }
   | { t: 'point'; at: Vec3; target?: SubTarget }
   /** Another face or edge: its centroid, and a polyline for edges. */
@@ -94,48 +111,22 @@ export async function subGeometry(core: EngineCore, t: SubTarget): Promise<RefGe
   if (t.kind === 'face') {
     const f = fp.faces[t.index];
     if (!f) return null;
-    if (f.normal) {
-      const normal = await outwardNormal(core, t, normalize(f.normal));
-      return { t: 'plane', origin: f.centroid, normal, target: t };
-    }
-    if (f.surface === 'cylinder') {
-      const a = await core.axisOfFace(t);
-      if (a) {
-        const extent = await core.memo(t.shape, `extent:${t.index}`, () =>
-          axisExtent(core, t, a.origin, a.dir, Math.sqrt(Math.max(f.area, 0)) + a.radius),
-        );
-        return { t: 'axis', origin: a.origin, dir: a.dir, extent, radius: a.radius, target: t };
-      }
-    }
-    if (f.surface === 'sphere') {
-      const c = await core.memo(t.shape, `sphere:${t.index}`, () =>
-        sphereCentre(core.geo(), t.shape, t.index),
-      );
-      const r = c ? await radiusOf(core, t) : undefined;
-      if (c && r !== undefined) return { t: 'sphere', center: c, radius: r, target: t };
-    }
-    return { t: 'other', centroid: f.centroid, target: t };
+    // The fingerprint's centroid and normal are exact, and the normal is outward: `planeOf`
+    // reverses left-handed planes too since the M4 kernel build (chamfer faces, mirrored copies).
+    // Faces of sketches and planes have no material side and keep their frame's normal.
+    if (f.normal) return { t: 'plane', origin: f.centroid, normal: normalize(f.normal), target: t };
+    const other: RefGeo = { t: 'other', centroid: f.centroid, target: t };
+    if (f.surface !== 'cylinder' && f.surface !== 'cone' && f.surface !== 'sphere') return other;
+    const x = await core.exactOf(t);
+    if (x) return exactFace(x, t) ?? other;
+    return (await probedFace(core, t, f.surface, f.area)) ?? other;
   }
   const e = fp.edges[t.index];
   if (!e) return null;
-  if (e.curve === 'line') {
-    const l = await core.lineOfEdge(t);
-    if (l) return { t: 'line', a: l.a, b: l.b, target: t };
-  }
-  if (e.curve === 'circle') {
-    const c = await core.circleOfEdge(t);
-    if (c) {
-      const g: RefGeo = { t: 'circle', center: c.centre, normal: c.normal, radius: c.radius };
-      g.target = t;
-      if (!c.full) {
-        const ends = await core.endpointsOf(t, Math.max(1e-6, 1e-6 * c.radius));
-        if (ends.length === 2) {
-          g.start = ends[0] as Vec3;
-          g.end = ends[1] as Vec3;
-        }
-      }
-      return g;
-    }
+  if (e.curve === 'line' || e.curve === 'circle') {
+    const x = await core.exactOf(t);
+    const g = x ? exactEdge(x, t) : await probedEdge(core, t, e.curve);
+    if (g) return g;
   }
   const points = await edgePolyline(core, t);
   return points
@@ -143,33 +134,126 @@ export async function subGeometry(core: EngineCore, t: SubTarget): Promise<RefGe
     : { t: 'other', centroid: e.centroid, target: t };
 }
 
-/**
- * A planar face's outward normal. The fingerprint's normal is exact but, in the current kernel
- * build, reversed on faces whose plane has a left-handed (indirect) frame, such as chamfer faces
- * (`planeOf` in whittle_modeling.cpp reverses for `TopAbs_REVERSED` faces only; reported as a
- * façade gap). The render mesh's vertex normals follow the face orientation, so their sign
- * decides; the exact fingerprint direction is kept. Faces of sketches and planes have no
- * material side and keep the fingerprint's. Memoised per handle; the mesh is the regen's own.
- */
-async function outwardNormal(core: EngineCore, t: SubTarget, n: Vec3): Promise<Vec3> {
-  return core.memo(t.shape, `outward:${t.index}`, async () => {
-    const m = core.cachedMesh(t.shape) ?? (await core.meshOf(t.shape, 'coarse'));
-    const first = m?.faceRanges[2 * t.index];
-    const count = m?.faceRanges[2 * t.index + 1];
-    if (!m || first === undefined || !count) return n;
-    let s = 0;
-    for (let k = 0; k < 3; k++) {
-      const v = m.indices[3 * first + k] as number;
-      s +=
-        (m.normals[3 * v] as number) * n[0] +
-        (m.normals[3 * v + 1] as number) * n[1] +
-        (m.normals[3 * v + 2] as number) * n[2];
-    }
-    return s < 0 ? scale(n, -1) : n;
-  });
+/** A face's `subShapeGeometry` as a ref geometry (null for surfaces anchored by their centroid). */
+function exactFace(x: SubShapeGeometry, t: SubTarget): RefGeo | null {
+  if (x.kind !== 'face') return null;
+  if (x.surface === 'cylinder' && x.radius > 0) {
+    const a = canonicalAxis(x.origin, x.axis, x.extent);
+    return { t: 'axis', ...a, radius: x.radius, ends: [x.radius, x.radius], target: t };
+  }
+  if (x.surface === 'cone') {
+    // A cone has no single radius: an axis for anchors and angles, never a size. Its radius at
+    // an axial station is the distance from the apex times tan(semi-angle), whatever the sign
+    // conventions of OCCT's parametrisation.
+    const a = canonicalAxis(x.origin, x.axis, x.extent);
+    const slope = Math.abs(Math.tan(x.semiAngle));
+    const apex = dot(sub(x.apex, a.origin), a.dir);
+    const ends: [number, number] = [
+      Math.abs(a.extent[0] - apex) * slope,
+      Math.abs(a.extent[1] - apex) * slope,
+    ];
+    return { t: 'axis', ...a, ends, target: t };
+  }
+  if (x.surface === 'sphere' && x.radius > 0) {
+    return { t: 'sphere', center: x.center, radius: x.radius, target: t };
+  }
+  return null;
 }
 
-/** Exact radius of a circular edge, cylindrical or spherical face (memoised). */
+/** An edge's `subShapeGeometry` as a line or circle (null for other curves). */
+function exactEdge(x: SubShapeGeometry, t: SubTarget): RefGeo | null {
+  if (x.kind !== 'edge') return null;
+  if (x.curve === 'line') {
+    const [a, b] = ordered(x.start, x.end);
+    return { t: 'line', a, b, target: t };
+  }
+  if (x.curve === 'circle' && x.radius > 0) {
+    const g: RefGeo = {
+      t: 'circle',
+      center: x.center,
+      normal: canonicalDir(x.normal),
+      radius: x.radius,
+      target: t,
+    };
+    if (!x.full) [g.start, g.end] = ordered(x.start, x.end);
+    return g;
+  }
+  return null;
+}
+
+/** Two points in `compareKey` order (the probes' order, independent of parametrisation). */
+const ordered = (a: Vec3, b: Vec3): [Vec3, Vec3] => (compareKey(a, b) <= 0 ? [a, b] : [b, a]);
+
+/**
+ * An axis in canonical form: direction by `canonicalDir`, origin at the foot of the world origin
+ * (as the probes give it), the extent re-measured from there along that direction.
+ */
+export function canonicalAxis(
+  origin: Vec3,
+  axis: Vec3,
+  extent: [number, number],
+): { origin: Vec3; dir: Vec3; extent: [number, number] } {
+  const a = normalize(axis);
+  const dir = canonicalDir(a);
+  const o = footOnLine({ origin, dir }, [0, 0, 0]);
+  const t0 = dot(sub(add(origin, scale(a, extent[0])), o), dir);
+  const t1 = dot(sub(add(origin, scale(a, extent[1])), o), dir);
+  return { origin: o, dir, extent: [Math.min(t0, t1), Math.max(t0, t1)] };
+}
+
+/**
+ * Fallback for kernel builds without `subShapeGeometry` (and engine fakes): the datums.ts probes,
+ * memoised per handle. Cones stay `other` here.
+ */
+async function probedFace(
+  core: EngineCore,
+  t: SubTarget,
+  surface: 'cylinder' | 'cone' | 'sphere',
+  area: number,
+): Promise<RefGeo | null> {
+  if (surface === 'cylinder') {
+    const a = await core.axisOfFace(t);
+    if (!a) return null;
+    const extent = await core.memo(t.shape, `extent:${t.index}`, () =>
+      axisExtent(core, t, a.origin, a.dir, Math.sqrt(Math.max(area, 0)) + a.radius),
+    );
+    return { t: 'axis', origin: a.origin, dir: a.dir, extent, radius: a.radius, target: t };
+  }
+  if (surface === 'sphere') {
+    const c = await core.memo(t.shape, `sphere:${t.index}`, () =>
+      sphereCentre(core.geo(), t.shape, t.index),
+    );
+    const r = c ? await radiusOf(core, t) : undefined;
+    if (c && r !== undefined) return { t: 'sphere', center: c, radius: r, target: t };
+  }
+  return null;
+}
+
+/** Fallback for kernel builds without `subShapeGeometry`: probed lines and circles. */
+async function probedEdge(
+  core: EngineCore,
+  t: SubTarget,
+  curve: 'line' | 'circle',
+): Promise<RefGeo | null> {
+  if (curve === 'line') {
+    const l = await core.lineOfEdge(t);
+    return l ? { t: 'line', a: l.a, b: l.b, target: t } : null;
+  }
+  const c = await core.circleOfEdge(t);
+  if (!c) return null;
+  const g: RefGeo = { t: 'circle', center: c.centre, normal: c.normal, radius: c.radius };
+  g.target = t;
+  if (!c.full) {
+    const ends = await core.endpointsOf(t, Math.max(1e-6, 1e-6 * c.radius));
+    if (ends.length === 2) {
+      g.start = ends[0] as Vec3;
+      g.end = ends[1] as Vec3;
+    }
+  }
+  return g;
+}
+
+/** Exact radius of a circular edge, cylindrical or spherical face (probe fallback, memoised). */
 async function radiusOf(core: EngineCore, t: SubTarget): Promise<number | undefined> {
   return core.memo(t.shape, `radius:${t.kind}:${t.index}`, async () => {
     const m = await core.kernel.measureShapes(t);
@@ -179,8 +263,9 @@ async function radiusOf(core: EngineCore, t: SubTarget): Promise<number | undefi
 }
 
 /**
- * Where a cylindrical face runs along its axis: parameters (along `dir`, from `origin`) of the
- * face's closest points to two far points on the axis, one each way (exact, two measurements).
+ * Where a cylindrical face runs along its axis (probe fallback): parameters (along `dir`, from
+ * `origin`) of the face's closest points to two far points on the axis, one each way (exact, two
+ * measurements).
  */
 async function axisExtent(
   core: EngineCore,
@@ -224,6 +309,67 @@ async function edgePolyline(core: EngineCore, t: SubTarget): Promise<Vec3[] | nu
 // ---------------------------------------------------------------------------------------------
 // Anchors
 // ---------------------------------------------------------------------------------------------
+
+/**
+ * The circle of a round face at one end of its axial extent (`end` 0 or 1, along the canonical
+ * `dir`): the rim a size dimension or a hole callout points at. `outward`: the normal points away
+ * from the face at that end (out of a hole's entry); otherwise it is the canonical `dir`. A face
+ * that is not a full turn (a fillet) gets the arc's end points from its boundary arc at that end,
+ * when exactly one boundary arc lies there; a full rim, or one in several pieces, is a full
+ * circle. Null for an axis without a radius at that end.
+ */
+export async function rimAnchor(
+  core: EngineCore,
+  g: AxisGeo,
+  end: 0 | 1,
+  outward: boolean,
+): Promise<AnnotationAnchor | null> {
+  const r = g.ends?.[end] ?? g.radius;
+  if (r === undefined || !(r > 0)) return null;
+  const center = add(g.origin, scale(g.dir, g.extent[end]));
+  const normal = outward && end === 0 ? scale(g.dir, -1) : g.dir;
+  const a: AnnotationAnchor = { kind: 'circle', center, normal, radius: r };
+  const arc = g.target ? await rimArc(core, g.target, center, g.dir, r) : null;
+  if (arc) {
+    a.start = arc[0];
+    a.end = arc[1];
+  }
+  return noNegativeZero(a);
+}
+
+/**
+ * The end points of the one partial boundary arc of a round face at a station (centre, axis,
+ * radius), from the exact geometry of its shape's circular edges there. Null when the rim is a
+ * full circle, is in several pieces, or the kernel has no exact geometry: never a guessed arc.
+ */
+async function rimArc(
+  core: EngineCore,
+  face: SubTarget,
+  center: Vec3,
+  dir: Vec3,
+  r: number,
+): Promise<[Vec3, Vec3] | null> {
+  const fp = await core.fingerprints(face.shape);
+  if (!fp) return null;
+  const tol = 1e-6 * (1 + r);
+  let found: [Vec3, Vec3] | null = null;
+  for (let i = 0; i < fp.edges.length; i++) {
+    const e = fp.edges[i];
+    if (e?.curve !== 'circle') continue;
+    // An arc's centroid lies in its plane, inside its circle.
+    const d = sub(e.centroid, center);
+    if (Math.abs(dot(d, dir)) > tol || norm(d) > r + tol) continue;
+    const x = await core.exactOf({ shape: face.shape, kind: 'edge', index: i });
+    if (x?.kind !== 'edge' || x.curve !== 'circle') {
+      if (!x) return null;
+      continue;
+    }
+    if (dist(x.center, center) > tol || Math.abs(x.radius - r) > tol) continue;
+    if (x.full || found) return null;
+    found = ordered(x.start, x.end);
+  }
+  return found;
+}
 
 /** The anchor of a resolved ref for its point qualifier (`at`). */
 export async function anchorOf(
@@ -326,15 +472,26 @@ async function planeOutline(
     const edges = items
       .filter((e) => (e.loop ?? 0) === 0)
       .map((e) => (e.curves ? e.curves : e.kind ? [e as unknown as ExactProjectedCurve] : []));
-    const loop: Vec2[] = [];
+    // The edges come in wire order, each in its curve's own direction: chain them end to start.
+    let loop: Vec2[] = [];
+    let chained = 0;
     for (const curves of edges) {
       let pts: Vec2[] = [];
       for (const c of curves) pts.push(...samplePlaneCurve(c));
       if (pts.length === 0) continue;
-      const last = loop[loop.length - 1];
-      if (last && d2(last, pts[0] as Vec2) > d2(last, pts[pts.length - 1] as Vec2)) {
-        pts = pts.reverse();
+      const head = pts[0] as Vec2;
+      const tail = pts[pts.length - 1] as Vec2;
+      // The first edge's direction is only known from the second: it ends where that one touches.
+      if (chained === 1) {
+        const first = loop[0] as Vec2;
+        const last = loop[loop.length - 1] as Vec2;
+        if (Math.min(d2(first, head), d2(first, tail)) < Math.min(d2(last, head), d2(last, tail))) {
+          loop = loop.reverse();
+        }
       }
+      chained++;
+      const last = loop[loop.length - 1];
+      if (last && d2(last, head) > d2(last, tail)) pts = pts.reverse();
       for (const p of pts) {
         const prev = loop[loop.length - 1];
         if (!prev || d2(prev, p) > 1e-18) loop.push(p);
@@ -592,9 +749,10 @@ function centroidOf(g: RefGeo): Vec3 {
 }
 
 /**
- * Angle between two refs ([0, π]). Two planes: between their outward normals (exact fingerprint
- * directions, `outwardNormal`; the kernel's face–face angle reads the normal that is reversed on
- * left-handed planes). Pairs with a straight edge: the kernel's exact angle where it gives one.
+ * Angle between two refs ([0, π]). Two planes: between their outward normals, from the exact
+ * fingerprint directions already at hand (the kernel's face–face angle is the same since the M4
+ * `planeOf` fix, at the price of a call). Pairs with a straight edge: the kernel's exact angle
+ * where it gives one.
  */
 async function angleBetween(core: EngineCore, a: RefGeo, b: RefGeo): Promise<number | null> {
   const da = directionOf(a);

@@ -182,6 +182,35 @@ function withConfigurations(doc: WrenDoc, configurations: Configuration[]): Wren
   return next;
 }
 
+/**
+ * Deep equality with numbers compared to `digits` decimals (exact geometry: 1e-12 mm), and no
+ * extra or missing keys.
+ */
+function expectClose(actual: unknown, expected: unknown, digits = 12, at = '$'): void {
+  if (typeof expected === 'number') {
+    expect(typeof actual, at).toBe('number');
+    expect(actual as number, at).toBeCloseTo(expected, digits);
+    return;
+  }
+  if (Array.isArray(expected)) {
+    expect(Array.isArray(actual), at).toBe(true);
+    expect((actual as unknown[]).length, at).toBe(expected.length);
+    expected.forEach((x, i) => {
+      expectClose((actual as unknown[])[i], x, digits, `${at}[${i}]`);
+    });
+    return;
+  }
+  if (expected && typeof expected === 'object') {
+    expect(actual !== null && typeof actual === 'object', at).toBe(true);
+    const a = actual as Record<string, unknown>;
+    const e = expected as Record<string, unknown>;
+    expect(Object.keys(a).sort(), at).toEqual(Object.keys(e).sort());
+    for (const k of Object.keys(e)) expectClose(a[k], e[k], digits, `${at}.${k}`);
+    return;
+  }
+  expect(actual, at).toEqual(expected);
+}
+
 function byId(r: RegenOutput): Map<string, AnnotationResolution> {
   return new Map((r.annotations ?? []).map((a) => [a.annotationId, a]));
 }
@@ -221,22 +250,25 @@ describe.skipIf(!m3)(`regen golden (M4): annotations after the walk${note}`, () 
     expect(get(r, A.width).value).toBeCloseTo(80, 9);
     expect(get(r, A.width).measured).toBeCloseTo(80, 9);
 
-    // The hole: Ø6 from the sketch's diameter dimension, measured on the cylinder; axis anchor.
+    // The hole: Ø6 from the sketch's diameter dimension, measured on the cylinder. A diameter of
+    // a cylindrical face is anchored by its rim (the drawing dimensions circles): the cut is not a
+    // hole feature, so the rim at the far end of the canonical axis (+Z), exact.
     const hole = get(r, A.hole);
     expect(hole.value).toBeCloseTo(6, 9);
-    expect(hole.measured).toBeCloseTo(6, 9);
-    const axis = hole.anchors?.[0];
-    if (axis?.kind !== 'axis') throw new Error(`axis anchor: ${JSON.stringify(axis)}`);
-    expect(Math.abs(axis.direction[2])).toBeCloseTo(1, 9);
-    expect(axis.extent[1] - axis.extent[0]).toBeCloseTo(8, 6);
+    expect(hole.measured).toBeCloseTo(6, 12);
+    const holeRim = hole.anchors?.[0];
+    if (holeRim?.kind !== 'circle') throw new Error(`rim anchor: ${JSON.stringify(holeRim)}`);
+    expectClose(holeRim, { kind: 'circle', center: [20, 21, 8], normal: [0, 0, 1], radius: 3 });
 
-    // The hole's top rim: a circle anchor, measured Ø6.
+    // The hole's top rim edge: a circle anchor, measured Ø6, exact from `subShapeGeometry`.
     const rim = get(r, A.rim);
-    expect(rim.value).toBeCloseTo(6, 9);
-    const circle = rim.anchors?.[0];
-    if (circle?.kind !== 'circle') throw new Error(`circle anchor: ${JSON.stringify(circle)}`);
-    expect(circle.radius).toBeCloseTo(3, 9);
-    expect(circle.center[2]).toBeCloseTo(8, 9);
+    expect(rim.value).toBeCloseTo(6, 12);
+    expectClose(rim.anchors?.[0], {
+      kind: 'circle',
+      center: [20, 21, 8],
+      normal: [0, 0, 1],
+      radius: 3,
+    });
 
     // 45° between the upright's top and its chamfer (outward normals), exact from the kernel.
     expect(get(r, A.chamferAngle).value).toBeCloseTo(Math.PI / 4, 9);
@@ -456,9 +488,11 @@ describe.skipIf(!m3)(`regen golden (M4): annotations after the walk${note}`, () 
     const k = core.kernel as {
       measureShapes: (...args: unknown[]) => Promise<unknown>;
       projectFaceOutline?: (...args: unknown[]) => Promise<unknown>;
+      subShapeGeometry?: (...args: unknown[]) => Promise<unknown>;
     };
     const measure = k.measureShapes;
     const outline = k.projectFaceOutline;
+    const exact = k.subShapeGeometry;
     let calls = 0;
     k.measureShapes = (...args) => {
       calls++;
@@ -468,6 +502,12 @@ describe.skipIf(!m3)(`regen golden (M4): annotations after the walk${note}`, () 
       k.projectFaceOutline = (...args) => {
         calls++;
         return outline(...args);
+      };
+    }
+    if (exact) {
+      k.subShapeGeometry = (...args) => {
+        calls++;
+        return exact(...args);
       };
     }
     try {
@@ -485,8 +525,112 @@ describe.skipIf(!m3)(`regen golden (M4): annotations after the walk${note}`, () 
     } finally {
       k.measureShapes = measure;
       if (outline) k.projectFaceOutline = outline;
+      if (exact) k.subShapeGeometry = exact;
     }
   }, 120_000);
+
+  describe('exact geometry (subShapeGeometry)', () => {
+    type CountedKernel = Record<string, (...args: unknown[]) => Promise<unknown>>;
+    const kernelOf = () =>
+      (api.engine as unknown as { core: { kernel: CountedKernel } }).core.kernel;
+
+    /** Runs `fn` counting the calls of the named kernel entries. */
+    async function counting<T>(names: string[], fn: () => Promise<T>) {
+      const k = kernelOf();
+      const saved = new Map(names.map((n) => [n, k[n]]));
+      const calls: Record<string, number> = Object.fromEntries(names.map((n) => [n, 0]));
+      for (const n of names) {
+        const f = saved.get(n);
+        if (!f) continue;
+        k[n] = (...args) => {
+          calls[n] = (calls[n] ?? 0) + 1;
+          return f(...args);
+        };
+      }
+      try {
+        return { value: await fn(), calls };
+      } finally {
+        for (const [n, f] of saved) if (f) k[n] = f;
+      }
+    }
+
+    it('round and straight refs cost one exact call each, no probes', async () => {
+      const doc = annotated(bracketDoc());
+      // New shapes (an upstream edit), so nothing is memoised per handle.
+      const edited = withParams(doc, { hole_d: '6.5 mm' });
+      const { value: r, calls } = await counting(['measureShapes', 'subShapeGeometry'], () =>
+        regen(edited),
+      );
+      for (const a of r.annotations ?? []) expect(a.state, a.annotationId).toBe('ok');
+      // One call per sub-shape: the hole wall, its rim edge (shared with the wall's rim search),
+      // the corner fillet face and its rim arc. Planes need none (fingerprint centroid and
+      // outward normal). The probes take 85 measurements for the same refs (next test).
+      expect(calls.measureShapes).toBe(0);
+      expect(calls.subShapeGeometry).toBe(4);
+      expect(get(r, A.hole).measured).toBeCloseTo(6.5, 12);
+      expect(get(r, A.rim).measured).toBeCloseTo(6.5, 12);
+      // The corner fillet: a radius of a quarter cylinder is its rim arc at the top of the plate,
+      // with the arc's ends (exact, in key order).
+      expectClose(get(r, A.corner).anchors?.[0], {
+        kind: 'circle',
+        center: [5, 5, 8],
+        normal: [0, 0, 1],
+        radius: 5,
+        start: [0, 5, 8],
+        end: [5, 0, 8],
+      });
+      expect(get(r, A.corner).measured).toBeCloseTo(5, 12);
+    }, 120_000);
+
+    it('chamfer faces have outward normals now (planeOf fix): 45° and an outward plane anchor', async () => {
+      const r = await regen(annotated(bracketDoc()));
+      const angle = get(r, A.chamferAngle);
+      expect(angle.value).toBeCloseTo(Math.PI / 4, 12);
+      const chamfer = angle.anchors?.[1];
+      if (chamfer?.kind !== 'plane') throw new Error(`plane anchor: ${JSON.stringify(chamfer)}`);
+      // The upright's top front edge (y = 42, z = 48) chamfered 2 mm: outward is −Y +Z.
+      expectClose(chamfer.normal, [0, -Math.SQRT1_2, Math.SQRT1_2]);
+      // Its outline is the 80 × 2√2 rectangle, in order (the outline chains the face's wire).
+      expectClose(
+        chamfer.outline,
+        [
+          [0, 44, 48],
+          [0, 42, 46],
+          [80, 42, 46],
+          [80, 44, 48],
+        ],
+        9,
+      );
+    }, 120_000);
+
+    it('a kernel build without subShapeGeometry gives the same anchors and values by probing', async () => {
+      const doc = annotated(bracketDoc());
+      const exact = await regen(doc);
+      const k = kernelOf();
+      const saved = k.subShapeGeometry;
+      delete k.subShapeGeometry;
+      try {
+        // Another slot: its own result cache, so new handles and no per-handle memo.
+        const C = fid('CFGPROBE');
+        const { value: probed, calls } = await counting(['measureShapes'], () =>
+          regen(doc, { slot: `config:${C}` }),
+        );
+        // 85 measurements for the four sub-shapes the exact path reads with 4 calls.
+        expect(calls.measureShapes).toBeGreaterThan(40);
+        const strip = (rs: AnnotationResolution[] | undefined) =>
+          (rs ?? []).map((a) => {
+            // The probes find no arc ends for a partial cylinder (exact path only).
+            const anchors = a.anchors?.map((x) =>
+              x?.kind === 'circle' ? { ...x, start: undefined, end: undefined } : x,
+            );
+            return JSON.parse(JSON.stringify({ ...a, anchors }));
+          });
+        expectClose(strip(probed.annotations), strip(exact.annotations), 6);
+      } finally {
+        if (saved) k.subShapeGeometry = saved;
+      }
+    }, 120_000);
+  });
 
   describe('hole callouts', () => {
     const S1 = fid('HS1');
@@ -496,7 +640,13 @@ describe.skipIf(!m3)(`regen golden (M4): annotations after the walk${note}`, () 
     const P = fid('HP');
     const CALL = fid('HCALL');
     const top = `F${E1}:end`;
-    function holeDoc(n: string): WrenDoc {
+    const bottom = `F${E1}:start`;
+    /**
+     * An 80 × 50 × 10 plate with an ISO M6 hole at (15, 25) patterned `n` times along X. `patch`
+     * edits the hole; `fromBelow` drills it from the bottom face (points sketched on origin:XY,
+     * which is that face's plane).
+     */
+    function holeDoc(n: string, patch?: (h: HoleFeature) => void, fromBelow = false): WrenDoc {
       const s1 = new Sk();
       const r1 = s1.rect('p', 'L', 0, 0, 80, 50, '80 mm', '50 mm');
       s1.geo({ kind: 'fix', entity: r1.a });
@@ -510,13 +660,14 @@ describe.skipIf(!m3)(`regen golden (M4): annotations after the walk${note}`, () 
         name: 'Hole',
         suppressed: false,
         points: [{ name: `S${S2}:p(p)`, kind: 'vertex' }],
-        face: face(top),
+        face: face(fromBelow ? bottom : top),
         standard: 'ISO',
         kind: 'simple',
         size: 'M6',
         fit: 'normal',
         end: { kind: 'throughAll' },
       };
+      patch?.(hole);
       const pattern: LinearPatternFeature = {
         id: P,
         type: 'linearPattern',
@@ -533,7 +684,7 @@ describe.skipIf(!m3)(`regen golden (M4): annotations after the walk${note}`, () 
         [
           s1.feature(S1),
           extrude(E1, [region(S1, 'L1,L2,L3,L4')], '10 mm'),
-          s2.feature(S2, face(top), 'Hole points'),
+          s2.feature(S2, fromBelow ? 'origin:XY' : face(top), 'Hole points'),
           hole,
           pattern,
         ],
@@ -571,6 +722,82 @@ describe.skipIf(!m3)(`regen golden (M4): annotations after the walk${note}`, () 
       expect(get(four, CALL).instances).toHaveLength(4);
     }, 120_000);
 
+    // ADR-092 proposal 1: the callout's anchor is the first instance's rim at the entry face, so
+    // the drawing needs no mesh workaround. Exact (`subShapeGeometry`); the normal points out.
+    it('the anchor is the first instance’s rim at the entry face (through hole from the top)', async () => {
+      const c = get(await regen(holeDoc('3')), CALL);
+      expect(c.anchors).toHaveLength(1);
+      expectClose(c.anchors?.[0], {
+        kind: 'circle',
+        center: [15, 25, 10],
+        normal: [0, 0, 1],
+        radius: 3.3,
+      });
+    }, 120_000);
+
+    it('a through hole drilled from the bottom face has its entry rim there', async () => {
+      const r = await regen(holeDoc('3', undefined, true));
+      expect(states(r), describeFailures(r)).toEqual(Array(5).fill('ok'));
+      const c = get(r, CALL);
+      expect(c.state).toBe('ok');
+      expectClose(c.anchors?.[0], {
+        kind: 'circle',
+        center: [15, 25, 0],
+        normal: [0, 0, -1],
+        radius: 3.3,
+      });
+    }, 120_000);
+
+    it('a blind counterbored hole: the counterbore’s rim; a countersunk one: the outer rim', async () => {
+      const cbore = await regen(
+        holeDoc('2', (h) => {
+          h.kind = 'counterbore';
+          h.end = { kind: 'blind', depth: '8 mm' };
+          h.counterbore = { diameter: '11 mm', depth: '4 mm' };
+        }),
+      );
+      expect(states(cbore), describeFailures(cbore)).toEqual(Array(5).fill('ok'));
+      expectClose(get(cbore, CALL).anchors?.[0], {
+        kind: 'circle',
+        center: [15, 25, 10],
+        normal: [0, 0, 1],
+        radius: 5.5,
+      });
+      // The bore itself is still what is measured.
+      expect(get(cbore, CALL).measured).toBeCloseTo(6.6, 12);
+
+      const csink = await regen(
+        holeDoc('2', (h) => {
+          h.kind = 'countersink';
+          h.countersink = { diameter: '12 mm', angle: '90 deg' };
+        }),
+      );
+      expect(states(csink), describeFailures(csink)).toEqual(Array(5).fill('ok'));
+      expectClose(get(csink, CALL).anchors?.[0], {
+        kind: 'circle',
+        center: [15, 25, 10],
+        normal: [0, 0, 1],
+        radius: 6,
+      });
+    }, 120_000);
+
+    it('a diameter on a blind hole’s wall is anchored at the entry, not the bottom', async () => {
+      const D = fid('HDIA');
+      const doc = holeDoc('2', (h) => {
+        h.end = { kind: 'blind', depth: '6 mm' };
+      });
+      const wall = `F${H}:hole(S${S2}:p(p)):wall`;
+      part(doc).annotations?.push({ id: D, kind: 'diameter', origin: model, refs: [face(wall)] });
+      const r = await regen(doc);
+      expect(get(r, D).value).toBeCloseTo(6.6, 12);
+      expectClose(get(r, D).anchors?.[0], {
+        kind: 'circle',
+        center: [15, 25, 10],
+        normal: [0, 0, 1],
+        radius: 3.3,
+      });
+    }, 120_000);
+
     it('a suppressed hole makes its callout suppressed', async () => {
       const doc = holeDoc('3');
       const h = part(doc).features.find((f) => f.id === H) as HoleFeature;
@@ -581,6 +808,192 @@ describe.skipIf(!m3)(`regen golden (M4): annotations after the walk${note}`, () 
         state: 'suppressed',
         cause: { featureId: H, kind: 'suppressed' },
       });
+    }, 120_000);
+  });
+
+  // ADR-092 proposal 2: anchors of refs that are not annotations yet, for the drawing import's
+  // promoted fillet, chamfer and revolve values (packages/drawing `ImportInput.resolveAnchor`).
+  describe('anchor queries (annotationAnchors)', () => {
+    it('a fillet radius: the rim arc of the fillet face; plain: its axis', async () => {
+      const doc = bracketDoc();
+      await regen(doc);
+      const q = await api.annotationAnchors(PART, [
+        { ref: face(filletFace), annotationKind: 'radius' },
+        { ref: face(filletFace) },
+        { ref: face(filletFace), at: 'center' },
+      ]);
+      if (!q.ok) throw new Error(JSON.stringify(q.error));
+      const [rim, axis, centre] = q.value;
+      expectClose(rim, {
+        anchor: {
+          kind: 'circle',
+          center: [5, 5, 8],
+          normal: [0, 0, 1],
+          radius: 5,
+          start: [0, 5, 8],
+          end: [5, 0, 8],
+        },
+      });
+      expectClose(axis, {
+        anchor: { kind: 'axis', origin: [5, 5, 0], direction: [0, 0, 1], extent: [0, 8] },
+      });
+      expectClose(centre, { anchor: { kind: 'point', at: [5, 5, 4] } });
+    }, 120_000);
+
+    it('a chamfer: its face as an outward plane with its outline', async () => {
+      await regen(bracketDoc());
+      const q = await api.annotationAnchors(PART, [
+        { ref: face(chamferFace), annotationKind: 'chamfer' },
+      ]);
+      if (!q.ok) throw new Error(JSON.stringify(q.error));
+      const a = q.value[0]?.anchor;
+      if (a?.kind !== 'plane') throw new Error(`plane anchor: ${JSON.stringify(a)}`);
+      expectClose(a.normal, [0, -Math.SQRT1_2, Math.SQRT1_2]);
+      expectClose(a.origin, [40, 43, 47]);
+      // 80 mm along X by 2√2 across.
+      const xs = a.outline.map((p) => p[0]);
+      expect(Math.min(...xs)).toBeCloseTo(0, 9);
+      expect(Math.max(...xs)).toBeCloseTo(80, 9);
+      for (const p of a.outline) {
+        expect(p[1] - 42).toBeCloseTo(p[2] - 46, 9);
+        expect(p[1]).toBeGreaterThan(42 - 1e-9);
+        expect(p[1]).toBeLessThan(44 + 1e-9);
+      }
+      expect(q.value[0]?.unresolved).toBeUndefined();
+    }, 120_000);
+
+    it('a revolve angle: start and end faces; the angle is the supplement of the normals’', async () => {
+      const SK = fid('QRS');
+      const RV = fid('QRV');
+      const ANG = fid('QANG');
+      const s = new Sk();
+      s.rect('p', 'L', 10, 0, 20, 5);
+      for (const p of ['pa', 'pb', 'pc', 'pd']) s.geo({ kind: 'fix', entity: p });
+      const doc = makeDoc(
+        {},
+        [
+          s.feature(SK, 'origin:XZ'),
+          {
+            id: RV,
+            type: 'revolve',
+            name: 'Revolve',
+            suppressed: false,
+            profile: [region(SK, 'L1,L2,L3,L4')],
+            axis: { name: 'origin:Z', kind: 'edge' },
+            angle: '120 deg',
+            direction: 'normal',
+            op: 'new',
+          },
+        ],
+        PART,
+      );
+      const refs = [face(`F${RV}:start`), face(`F${RV}:end`)];
+      // What the import would promote, with `measure: 'supplement'` (see the ADR-090 amendment).
+      part(doc).annotations = [
+        {
+          id: ANG,
+          kind: 'angle',
+          origin: model,
+          refs,
+          measure: 'supplement',
+          source: { kind: 'featureField', featureId: RV, path: '/angle' },
+        },
+      ];
+      const r = await regen(doc);
+      expect(states(r), describeFailures(r)).toEqual(['ok', 'ok']);
+      const q = await api.annotationAnchors(
+        PART,
+        refs.map((ref) => ({ ref, annotationKind: 'angle' as const })),
+      );
+      if (!q.ok) throw new Error(JSON.stringify(q.error));
+      const [p0, p1] = q.value.map((x) => x.anchor);
+      if (p0?.kind !== 'plane' || p1?.kind !== 'plane') throw new Error('plane anchors');
+      // Both faces contain the Z axis: normals in XY, outlines from radius 10 to 20.
+      expect(p0.normal[2]).toBeCloseTo(0, 12);
+      expect(p1.normal[2]).toBeCloseTo(0, 12);
+      const between = Math.acos(p0.normal[0] * p1.normal[0] + p0.normal[1] * p1.normal[1]);
+      expect(between).toBeCloseTo(Math.PI / 3, 12);
+      expect(Math.PI - between).toBeCloseTo((2 * Math.PI) / 3, 12);
+      // The start face is the sketch region on XZ.
+      for (const p of p0.outline) expect(p[1]).toBeCloseTo(0, 9);
+      // The anchors are the resolution's own.
+      expectClose(get(r, ANG).anchors, [p0, p1]);
+      expect(get(r, ANG).value).toBeCloseTo((2 * Math.PI) / 3, 12);
+      expect(get(r, ANG).measured).toBeCloseTo((2 * Math.PI) / 3, 12);
+    }, 120_000);
+
+    it('a hole wall for a callout: the entry rim, as the callout resolves it', async () => {
+      // The bracket's holes are cuts, not hole features: the rim at the canonical far end.
+      await regen(bracketDoc());
+      const q = await api.annotationAnchors(PART, [
+        { ref: face(holeWall), annotationKind: 'diameter' },
+      ]);
+      if (!q.ok) throw new Error(JSON.stringify(q.error));
+      expectClose(q.value[0], {
+        anchor: { kind: 'circle', center: [20, 21, 8], normal: [0, 0, 1], radius: 3 },
+      });
+    }, 120_000);
+
+    it('unresolved refs: no anchor, never a guess; the structural cause', async () => {
+      const doc = bracketDoc();
+      await regen(withoutFeature(doc, B.C1));
+      const q = await api.annotationAnchors(PART, [
+        { ref: face(plateTop) },
+        { ref: face(chamferFace), annotationKind: 'chamfer' },
+      ]);
+      if (!q.ok) throw new Error(JSON.stringify(q.error));
+      expect(q.value[0]?.anchor?.kind).toBe('plane');
+      expect(q.value[1]).toEqual({
+        anchor: null,
+        unresolved: {
+          path: '/1',
+          ref: face(chamferFace),
+          reason: 'missing',
+          cause: { featureId: B.C1, kind: 'deleted' },
+        },
+      });
+
+      // Suppressed in a configuration slot: the cause says so (not in this configuration).
+      const C = fid('CFGQ');
+      const configured = withConfigurations(doc, [
+        { id: C, name: 'No fillet', features: { [B.F1]: { suppressed: true } } },
+      ]);
+      await regen(resolved(configured, C), { slot: `config:${C}` });
+      const s = await api.annotationAnchors(
+        PART,
+        [{ ref: face(filletFace), annotationKind: 'radius' }],
+        `config:${C}`,
+      );
+      if (!s.ok) throw new Error(JSON.stringify(s.error));
+      expect(s.value[0]?.anchor).toBeNull();
+      expect(s.value[0]?.unresolved?.cause).toEqual({ featureId: B.F1, kind: 'suppressed' });
+    }, 120_000);
+
+    it('a merged face is reported merged and anchored on the face it merged into', async () => {
+      await regen(bracketDoc());
+      const q = await api.annotationAnchors(PART, [{ ref: face(uprightBack) }]);
+      if (!q.ok) throw new Error(JSON.stringify(q.error));
+      expect(q.value[0]?.merged).toEqual({ path: '/0', name: uprightBack, into: plateBack });
+      expect(q.value[0]?.anchor?.kind).toBe('plane');
+    }, 120_000);
+
+    it('queries read the slot and never change it; refused before a regen', async () => {
+      const doc = annotated(bracketDoc());
+      const a = await regen(doc);
+      const q = await api.annotationAnchors(PART, [
+        { ref: face(filletFace), annotationKind: 'radius' },
+        { ref: face(`F${fid('GONE')}:end`) },
+      ]);
+      expect(q.ok).toBe(true);
+      const b = await regen(doc);
+      expect(b.cache.misses).toBe(0);
+      expect(b.annotations).toEqual(a.annotations);
+
+      const none = await api.annotationAnchors(fid('NOPART'), [{ ref: face(plateTop) }]);
+      expect(none.ok).toBe(false);
+      if (!none.ok) expect(none.error.code).toBe('INVALID_INPUT');
+      const bad = await api.annotationAnchors(PART, [], 'nope' as never);
+      expect(bad.ok).toBe(false);
     }, 120_000);
   });
 });
