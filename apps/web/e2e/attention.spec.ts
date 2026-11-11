@@ -23,7 +23,7 @@ async function clickEdge(page: Page, p: [number, number, number]): Promise<void>
   await page.mouse.up();
 }
 
-test('an edit removes a fillet edge → needs attention, ghost, one-click re-pick → ok', async ({
+test('an edit removes a fillet edge → needs attention, ghost, one-click re-pick → ok @smoke', async ({
   page,
 }) => {
   test.slow();

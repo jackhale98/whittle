@@ -112,8 +112,12 @@ Some details:
 - **CI mode.** `CI=1` matches the CI run: one worker, one retry, `test.only` is forbidden, and the
   GitHub reporter is used (`apps/web/playwright.config.ts`). Set it locally to reproduce a CI failure.
 - **All browsers.** `pnpm --filter @wren-cad/web e2e:all` runs the Chromium, Firefox and WebKit
-  projects. CI runs Firefox headed under a virtual display (`xvfb-run`), because headless Firefox has
-  no WebGL on CI runners. Locally, set `WREN_HEADED=1` to get the same headed mode.
+  projects. The nightly soak workflow runs Firefox (headed under `xvfb-run`, because headless Firefox
+  has no WebGL on CI runners) and WebKit; they do not run on pushes. Locally, set `WREN_HEADED=1` to get the same headed mode.
+- **Smoke tier.** `pnpm --filter @wren-cad/web exec playwright test --grep @smoke --project=chromium --project=chromium-touch`
+  runs the ~13 tests tagged `@smoke` in their titles (about 3 minutes). CI runs them first and
+  starts the full E2E shards only if they pass, so tag a new test only if a broken build should
+  stop the pipeline (ADR-083).
 - **One file.** Run one spec with
   `pnpm --filter @wren-cad/web exec playwright test e2e/bracket.spec.ts --project=chromium`.
 - **Traces.** The config sets `trace: 'off'`, and the package scripts pass `--trace off`. To record
@@ -147,10 +151,18 @@ Notes:
   `TopTools_*` typedefs.
 - A C++ syntax check is faster than a full build: see the kernel README.
 
+### CI pipeline
+
+`ci.yml` runs on pushes to `main` and `claude/**` and on pull requests (docs-only pushes are
+skipped). A newer push cancels the older run on the same branch; `main` is never cancelled. Order:
+lint, kernel, test and build in parallel, then the `smoke` job (about 5 minutes after the build),
+then the eight chromium shards, the reference-part shards, the package suites and perf. One failing
+chromium shard cancels the others. Only pushes to `main` deploy. Firefox and WebKit run nightly in
+`soak.yml` (ADR-083).
+
 ### CI cache
 
-`.github/workflows/kernel.yml` is a reusable workflow, called by `ci.yml` on pull requests and on
-pushes to `main`. It caches
+`.github/workflows/kernel.yml` is a reusable workflow, called by `ci.yml` and `soak.yml`. It caches
 `packages/kernel/dist` with a key made from:
 
 - `packages/kernel/src/**`, `packages/kernel/scripts/**`, `packages/kernel/libcascade.config.ts` and

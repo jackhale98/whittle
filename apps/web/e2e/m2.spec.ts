@@ -30,7 +30,7 @@ async function alongZ(page: Page, p: [number, number, number], px: number) {
   return { x: a.x + ((b.x - a.x) / l) * px, y: a.y + ((b.y - a.y) / l) * px };
 }
 
-test('push/pull: arrow on the face, same-frame preview, chip, release records the feature', async ({
+test('push/pull: arrow on the face, same-frame preview, chip, release records the feature @smoke', async ({
   page,
 }) => {
   test.slow();

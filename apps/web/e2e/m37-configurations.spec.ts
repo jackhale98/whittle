@@ -104,7 +104,7 @@ test('golden masses: every configuration regenerates to its closed-form mass', a
   expect((await a.configurations()).missing).toBe(false);
 });
 
-test('create two configurations, switch, suppress in one only, export both, save and reload', async ({
+test('create two configurations, switch, suppress in one only, export both, save and reload @smoke', async ({
   page,
 }) => {
   test.slow();

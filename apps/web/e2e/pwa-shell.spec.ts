@@ -24,7 +24,7 @@ const scroll = (page: Page) =>
       (document.scrollingElement?.scrollHeight ?? 0) - document.documentElement.clientHeight,
   }));
 
-test('page-level CSS: manipulation touch-action, no overscroll, no selection on chrome', async ({
+test('page-level CSS: manipulation touch-action, no overscroll, no selection on chrome @smoke', async ({
   page,
 }) => {
   await open(page);
@@ -105,7 +105,7 @@ test('a double-tap on the chrome does not zoom the page', async ({ page }) => {
   expect(await scale(page)).toBe(1);
 });
 
-test('the page does not scroll', async ({ page, browserName }) => {
+test('the page does not scroll @smoke', async ({ page, browserName }) => {
   await open(page);
   await page.evaluate(() => window.scrollTo(0, 5000));
   if (browserName === 'chromium') {
