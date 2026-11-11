@@ -33,6 +33,8 @@ import { useConfigurationView } from './config-view';
 const FeatureInspectorPane = lazy(() => import('./FeatureInspectorPane'));
 const MeasureView = lazy(() => import('./InspectPanels').then((m) => ({ default: m.MeasureView })));
 const SectionView = lazy(() => import('./InspectPanels').then((m) => ({ default: m.SectionView })));
+// M4: the document's drawings (list, open, rename, delete) are their own small chunk.
+export const DrawingsSection = lazy(() => import('./DrawingsSection'));
 
 function category(m: Material): string {
   const id = m.libraryId ?? '';
@@ -341,6 +343,9 @@ export function Inspector({
         density={density}
       />
       <DocumentSection wb={wb} />
+      <Suspense fallback={null}>
+        <DrawingsSection wb={wb} touch={density === 'touch'} reviewOnly={false} />
+      </Suspense>
     </>
   );
 }

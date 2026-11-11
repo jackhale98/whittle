@@ -240,6 +240,8 @@ export interface UiState {
   radial: RadialRequest | null;
   box: BoxSelect | null;
   settings: SettingsTab | null;
+  /** M4: the drawing route is open (`id` null = a new drawing of the part). */
+  drawing: { id: Id | null } | null;
 }
 
 export const initialSection: SectionUi = {
@@ -280,6 +282,7 @@ export const initialUi: UiState = {
   radial: null,
   box: null,
   settings: null,
+  drawing: null,
 };
 
 export interface RegenView {

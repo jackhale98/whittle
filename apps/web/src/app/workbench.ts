@@ -1377,6 +1377,15 @@ export class Workbench {
   }
 
   /** Opens an editable copy of the demo bracket (saved to the library right away). */
+  /** Opens the drawing route (M4); `null` starts a new drawing of the part. */
+  openDrawing(id: Id | null = null): void {
+    this.patchUi({ drawing: { id }, radial: null, bubble: null });
+  }
+
+  closeDrawing(): void {
+    this.patchUi({ drawing: null });
+  }
+
   openDemo(): Promise<void> {
     return fileOps.openDemo(this);
   }

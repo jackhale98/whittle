@@ -165,6 +165,21 @@ export default defineConfig(({ command }) => {
       target: 'es2022',
       sourcemap: false,
       cssCodeSplit: true,
+      rolldownOptions: {
+        output: {
+          // The drawing route (ADR-092) shares a few small modules with the initial route; without
+          // this each became its own chunk and the initial route grew by about 0.6 kB gzip.
+          codeSplitting: {
+            groups: [
+              {
+                name: 'shared-small',
+                test: /packages[\\/](sketch[\\/]src[\\/]references|document[\\/]src[\\/](check|annotation-fields|hole-tables))\.ts$/,
+                minShareCount: 2,
+              },
+            ],
+          },
+        },
+      },
       // Never inline wasm into a data: URI (it must stay a cacheable, streamable asset).
       assetsInlineLimit: (file) => (file.endsWith('.wasm') ? false : undefined),
     },

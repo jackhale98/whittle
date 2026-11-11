@@ -96,6 +96,8 @@ export function onKey(wb: Workbench, e: KeyboardEvent): void {
       return; // the shell's command palette handles its own key
   }
   if (typing || chord || e.altKey) return;
+  // The drawing route has its own keys; model tools must not fire under it.
+  if (u.drawing) return;
   switch (cmd.id) {
     case 'cancel':
       if (!sketching && wb.cancel()) e.preventDefault();

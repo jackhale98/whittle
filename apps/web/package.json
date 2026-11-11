@@ -23,6 +23,7 @@
   },
   "dependencies": {
     "@wren-cad/contracts": "workspace:*",
+    "@wren-cad/drawing": "workspace:*",
     "@wren-cad/document": "workspace:*",
     "@wren-cad/io": "workspace:*",
     "@wren-cad/kernel-client": "workspace:*",
@@ -36,6 +37,7 @@
     "workbox-window": "7.4.1"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.14.0",
     "@playwright/test": "1.63.0",
     "@size-limit/file": "14.3.0",
     "@tailwindcss/vite": "4.3.5",

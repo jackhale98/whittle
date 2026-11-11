@@ -19,12 +19,12 @@ import {
   type ValueChipProps,
 } from '@wren-cad/ui';
 import { CircleMinus, Maximize, Redo2, Scissors, Undo2 } from 'lucide-react';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { type BubbleActionId, bubbleActions, VIEW_ACTIONS } from '../app/gestures';
 import { useObservable } from '../app/observable';
 import { stepDone, trackParams } from '../app/tutorial';
 import type { Workbench } from '../app/workbench';
-import { useDoc } from './Inspector';
+import { DrawingsSection, useDoc } from './Inspector';
 import { chromeObstacles } from './obstacles';
 
 const icon = 'size-[22px]';
@@ -220,6 +220,12 @@ export function usePartsProps(wb: Workbench): PartsPanelProps {
     }),
     onSelect: (id) => wb.focusPart(id),
     onToggleVisible: (id, visible) => wb.setPartVisible(id, visible),
+    // M4: drawings, review only on a phone (PLAN §9.1: editing there is parameters and simple features).
+    footer: (
+      <Suspense fallback={null}>
+        <DrawingsSection wb={wb} touch reviewOnly />
+      </Suspense>
+    ),
   };
 }
 
