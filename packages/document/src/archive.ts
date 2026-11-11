@@ -89,6 +89,7 @@ export function fromFiles(files: ProjectFiles): WrenDoc {
     assemblies: readEntries(files, manifest.assemblies, 'assemblies'),
     drawings: readEntries(files, manifest.drawings, 'drawings'),
     meta: manifest.meta,
+    drawingDefaults: manifest.drawingDefaults,
   };
   const r = migrateDoc(raw);
   if (!r.ok) throw new ProjectFormatError(r.error);

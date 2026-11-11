@@ -2,7 +2,7 @@
 
 # Wren project file format
 
-Version: **schema 1** · Status: M1 · Licence of this specification: **CC-BY-4.0** (the reference
+Version: **schema 4** · Status: M1 · Licence of this specification: **CC-BY-4.0** (the reference
 implementation, `packages/document`, is GPL-3.0-or-later).
 
 A Wren project is a **folder of deterministic text files**. A `.wrencad` file is that folder
@@ -120,7 +120,11 @@ reused.
 ```jsonc
 {
   "assemblies": [],
-  "drawings": [{ "file": "drawings/sheet-1.drawing.json", "id": "01J…", "name": "Sheet 1" }],
+  "drawingDefaults": {                 // optional (v4): set by the explicit choice at the first drawing
+    "projection": "third",
+    "standard": { "family": "iso", "gps": "ISO 1101:2017", "surfaceFinish": "ISO 21920-1:2021" }
+  },
+  "drawings": [{ "file": "drawings/bracket-drawing.drawing.json", "id": "01J…", "name": "Bracket drawing" }],
   "format": "wren-project",            // constant
   "meta": {
     "app": "wren/0.1.0",               // writer
@@ -130,13 +134,18 @@ reused.
     "partNumber": "BR-001"                // optional
   },
   "parts": [{ "file": "parts/bracket.part.json", "id": "01J…", "name": "Bracket" }],
-  "schemaVersion": 1,
+  "schemaVersion": 4,
   "units": { "angle": "deg", "length": "mm" }
 }
 ```
 
 - `parts`, `drawings`, `assemblies`: document order. `name` is an informational copy; the file
   is authoritative.
+- `drawingDefaults` (v4, optional) = `{ standard, projection, fields? }`: the standard family and
+  editions (`gps`, `surfaceFinish`, optional `generalTolerance`), the projection method
+  (`first` | `third`) and the title-block text every new drawing starts with. It is absent until
+  the user makes the explicit choice at the first drawing (trap T4: never implied). The `gps`
+  edition must belong to `family` (ISO 1101 with `iso`, ASME Y14.5 with `asme`).
 - `units` are the **display / unit-less input** defaults (see §5). They do not change the unit of
   stored geometry numbers, which are always millimetres and radians.
 
@@ -160,9 +169,11 @@ reference other parameters. Parameters are global; feature-local scopes are a la
 ```jsonc
 {
   "activeConfigurationId": "01J…",    // optional (v3); absent = Default
+  "annotations": [ /* Annotation[] sorted by id; optional (v4); absent = none, never written empty */ ],
   "color": "#9aa4b2",                 // optional; overrides the material's appearance
   "configurations": [                 // optional (v3); absent = only Default, never written empty
     {
+      "annotations": { "01J…": { "fields": { "/nominal": "12mm" }, "suppressed": true } },  // optional (v4)
       "features": { "01J…": { "fields": { "/end/depth": "60mm" }, "suppressed": true } },
       "id": "01J…",
       "material": null,               // null = no material; absent = inherited
@@ -238,7 +249,7 @@ parameter removes its overrides from every configuration in the same edit. Keys 
 every object (§2), including the pointer keys of `fields`; the order of the `configurations`
 array is preserved.
 
-**Features** all have `id`, `type`, `name`, `suppressed` and optional `annotations` (PMI). Fields
+**Features** all have `id`, `type`, `name`, `suppressed`. (Annotations are not on features: they moved to the part in v4, below.) Fields
 holding user numbers are **expression strings**; the table in §5.4 gives each one's dimension.
 
 | `type` | Fields (besides the common ones) |
@@ -281,13 +292,85 @@ the naming grammar in [`naming.ts`](../packages/contracts/src/naming.ts) (e.g. `
 an entity when its name no longer resolves. A reference that cannot be resolved unambiguously is
 reported as *needs attention*, never silently guessed.
 
-**Annotations** (`PmiAnnotation`: `id`, `kind`, `refs`, optional `value`, `tolerance`, `gdt`,
-`placement`) are model-based-definition data; their `Expr` fields follow §5.4 too.
+**Annotations** (v4, `Part.annotations`, optional; absent = none). Dimensions, GD&T frames,
+datums, notes, surface finish and hole callouts measure the finished part, so they belong to the
+part and not to a feature (ADR-081, ADR-090). The array is a set kept **sorted by id** (the
+writer, the loader and the merger all sort it). Every annotation has `id`, `kind`, `origin`
+(`{kind:"model"}`, `{kind:"drawing", drawingId}` for a dimension drawn on a view, or
+`{kind:"import", file}`), `refs` (`EntityRef[]`, the only place geometry is named), optional `at`
+(`RefPoint[]`, parallel to `refs`, at most as long), optional `suppressed` and a reserved
+`modelPlacement`.
+
+| `kind` | refs | kind-specific fields |
+|---|---|---|
+| `linear` `aligned` `ordinate` | 2 | `direction` (unit `Vec3`; required for `ordinate`, optional for `linear`) |
+| `radius` `diameter` | 1 | |
+| `angle` | 2 | `measure` (`between` \| `supplement`) |
+| `chamfer` | 1 | `form` (`distanceAngle` \| `twoDistances`) |
+| `datumFeature` | 1 | `label`, `standard?` |
+| `geometricTolerance` | 1, or 0 with `appliesTo` | `characteristic`, `zone`, `datums` (at most 3 compartments of `{datum: id}` or `{label}`), `allAround`, `appliesTo` (annotation id), `standard?`, `text` |
+| `note` | at least 1 | `text` |
+| `surfaceFinish` | 1 | `process`, `requirements`, `allAround`, `method`, `lay`, `allowance`, `standard?` |
+| `holeCallout` | any | `source` = `{kind:"feature", featureId}`, `show`, `tolerance`, `text` |
+
+Dimensions share `source` (`sketchDimension`, `featureField` or `feature`), `nominal` (an `Expr`),
+`tolerance` and `text`. A dimension shows its `source`, else its `nominal`, else the value
+measured from its refs; `source` and `nominal` are mutually exclusive. `tolerance` is one of
+`symmetric {value}`, `bilateral {upper, lower}`, `limits {upper, lower}` (deviations relative to
+the nominal), `basic`, `reference`, or `fit {hole?, shaft?, show}` with ISO 286 classes
+(`/^[A-Z]{1,2}(01|[1-9]|1[0-8])$/` for the hole, its lower-case form for the shaft). Datum
+references in a frame are ids, so renaming a letter updates every frame; `{label}` is the unbound
+form, shown as needs attention until bound. Arity per kind, datum letters (no I, O or Q, unique
+per part), legality per standard and duplicate hole callouts are *semantic* checks
+(`annotationIssues`), not load errors. Their `Expr` fields follow §5.4.
+
+`Configuration.annotations` (v4) = `{ [annotationId]: { suppressed?, fields? } }`; `fields` maps a
+JSON pointer **inside the annotation** to a value. Overrides are keyed by annotation id, never by
+list position.
 
 ### 4.4 `drawings/*.drawing.json`, `assemblies/*.assembly.json`
 
-Currently only `{ "id", "name" }`. They are placeholders so M1 documents are forward-compatible
-with M4 (drawings) and M6 (assemblies).
+**Drawing (v4).** One file per drawing, the `Drawing` JSON of
+[`drawing.ts`](../packages/contracts/src/drawing.ts). It stores **intent only**: HLR output,
+resolved values, the frame and title block and table rows are derived and cached under `.wren/`.
+
+```jsonc
+{
+  "id": "01J…", "name": "Bracket drawing",
+  "subject": { "kind": "part", "partId": "01J…" },
+  "configurationId": "01J…",            // optional: absent = Default
+  "standard": { "family": "iso", "gps": "ISO 1101:2017", "surfaceFinish": "ISO 21920-1:2021" },
+  "projection": "third",                // explicit, never implied
+  "units": "mm",                        // fixed in M4
+  "style": { … },                       // stored in full, in sheet mm
+  "template": { "id": "iso-5457", "version": 1, "fields": { "owner": "…" } },
+  "sheets": [ … ], "views": [ … ], "placements": [ … ], "centerMarks": [ … ],
+  "tables": [ … ], "notes": [ … ], "markup": [ … ]   // markup optional
+}
+```
+
+- **Units and coordinates.** Every sheet quantity is in **sheet millimetres**, origin at the
+  sheet's bottom-left, x right, y up; the writer rounds them to 0.001 mm. Projected geometry
+  (section cut points, detail centre and radius) is in part mm in the parent view's plane.
+- **Order.** Only `sheets` is ordered (it is the sheet numbering). `views`, `placements`,
+  `centerMarks`, `tables`, `notes` and `markup` are id-keyed sets **sorted by id**; they reference
+  their sheet or view by id (`sheetId`, `viewId`, `parentId`), so moving a view to another sheet
+  is one leaf edit.
+- **Views** (`kind`): `base` (`orientation` named, isometric or matrix; `rotation?`; free layout),
+  `projected` (`parentId`, `from` top | bottom | left | right; `aligned {distance}` or free),
+  `iso` (`parentId`, `corner`), `section` (`parentId`, `letter`, `cut` of at least two anchored
+  points, `look`, `depth?`, `hatch?`) and `detail` (`parentId`, `letter`, `center`, `radius`,
+  required `scale`). A projected view stores only its `distance` from the parent; the side
+  follows the drawing's `projection`.
+- **Placements** say how one view shows one annotation (`lane`, `offset`, `radial`, `arc` or
+  `leader` layout, all relative to the geometry and in sheet mm). At most one per (view,
+  annotation). The drawing never copies an annotation.
+- **Tables** `partProperties` and `holeTable`; **notes** are free sheet text; **markup** is
+  review strokes pinned to a version, never exported.
+- `template.version` pins the layout generator and is at most the app's latest version
+  (`LATEST_TEMPLATE_VERSION`).
+
+**Assemblies** are still `{ "id", "name" }` placeholders until M6.
 
 ## 5. Units and expressions
 
@@ -364,14 +447,17 @@ Compound units are plain arithmetic: `g/cm^3`, `kg/m^3`, `lb/in^3`, `mm^2`.
 | chamfer | `/mode/angle` (distanceAngle) | angle |
 | pushPull | `/distance` | length |
 | plane (offset) | `/definition/distance` | length |
-| any feature, annotation | `/annotations/N/value`, `/tolerance/upper`, `/tolerance/lower` | angle for `angle` annotations, else length |
-| any feature, annotation | `/annotations/N/gdt/zone` | length |
+| part annotation, dimension | `/nominal`, `/tolerance/value`, `/tolerance/upper`, `/tolerance/lower` (pointers inside the annotation) | angle for `angle`, else length |
+| part annotation, hole callout | `/tolerance/value`, `/tolerance/upper`, `/tolerance/lower` | length |
+| part annotation, tolerance frame | `/zone/value`, `/zone/projected`, `/zone/unequal`, `/zone/perUnit/value`, `/zone/perUnit/length`, `/zone/perUnit/width` | length |
+| part annotation, surface finish | `/requirements/N/value`, `/allowance` | length |
 | part material | `density` | density |
 | material properties | `youngsModulus`, `yieldStrength` | pressure; `poissonsRatio` plain number |
 
 Driven (reference) sketch dimensions (`driving: false`) are not evaluated: the solver measures them.
 `evaluateFeatureValues(feature, doc, engine)` in `@wren-cad/document` walks exactly this table and
 returns `{ values, errors }` keyed by JSON pointer, in millimetres / radians.
+`evaluateAnnotationValues(annotation, doc)` does the same for an annotation (`annotationExprFields`).
 
 ## 6. Materials
 
@@ -397,27 +483,25 @@ returns `{ values, errors }` keyed by JSON pointer, in millimetres / radians.
 
 ## 7. Versioning and migrations
 
-`schemaVersion` (manifest and in-memory document) is an integer, currently **3**.
+`schemaVersion` (manifest and in-memory document) is an integer, currently **4**.
 
 - Readers **must** reject a `schemaVersion` greater than they understand, with a message telling
   the user to update ("This file uses document version N, but this copy of Wren understands up
   to version M").
-- Readers **must** migrate older versions forward in memory, one step at a time
-  (`n → n+1`), then validate. A missing `schemaVersion` is treated as 0 (pre-release); the 0→1
-  migration only fills missing collections (`params`, `parts`, `assemblies`, `drawings`) with `[]`.
+- **Before 1.0, schema bumps do not migrate.** Nobody has files to carry over, so a file whose
+  `schemaVersion` is below the current one (or missing) is refused with "This file was made by an
+  earlier preview of Wren and can't be opened". Nothing is converted. The migration registry in
+  `packages/document/src/migrations.ts` exists but has no steps.
+- From 1.0 on, readers **must** migrate older versions forward in memory, one step at a time
+  (`n → n+1`), then validate. Every such bump ships with a migration function and a test with a
+  fixture of the old shape.
 - Writers always write the current version. Files are not downgraded.
 - **Version history.**
-  - **v1:** the baseline.
-  - **v2 (M3.6):** additive. Adds `Part.folders` and `SketchFeature.visibility` (above). The same bump
-    covers the M3.5 sketch entity kinds `ellipticArc` and `bspline`, which were added under v1
-    without a bump, so a v1 file may contain them. The 1→2 migration changes no data; its purpose
-    is that an older Wren answers "update Wren" instead of a validation error. A file that uses
-    none of these is still valid v1 content, and is rewritten as v2 on the next save.
-  - **v3 (M3.7):** additive. Adds `Part.configurations`, `Part.activeConfigurationId` and
-    `Part.properties` (§4.3). The 2→3 migration changes no data; its purpose is that an older Wren
-    answers "update Wren" instead of dropping configurations on save.
-- Every bump ships with a migration function in `packages/document/src/migrations.ts` and a test
-  with a fixture of the old shape.
+  - **v1 to v3 (pre-release):** baseline, folders and sketch visibility (M3.6), configurations
+    (M3.7). Not readable any more (see above).
+  - **v4 (M4):** annotations move from features to the part (`Part.annotations`, §4.3), drawings
+    become real (§4.4), `Configuration.annotations` overrides are keyed by annotation id, and the
+    manifest gains `drawingDefaults` (§4.1). `Feature.annotations` and `PmiAnnotation` are gone.
 - Within a version, readers ignore unknown *files* but treat unknown *properties* in the files
   above as invalid (the schemas set `additionalProperties: false`); additive changes therefore
   bump the version.
@@ -443,7 +527,40 @@ returns `{ values, errors }` keyed by JSON pointer, in millimetres / radians.
    `suppressed` is a boolean and `material` is `null` or a material. An override whose feature,
    parameter or field no longer exists is **not** a load error: resolution reports it and the
    configuration shows "needs attention"; the override is never dropped silently.
-5. Semantic problems (an expression that does not evaluate, an unresolved reference) are *not*
+5. Annotations (v4). *Structure* always fails a load: `kind` is one of the twelve, `origin`, `refs`
+   (entity references) and `at` (at most as long as `refs`), every `annotationExprFields` pointer
+   holds a string, a dimension has not both `source` and `nominal`, `direction` is a finite unit
+   vector (required for `ordinate`), `tolerance` kinds and fit classes match their patterns, a
+   frame has a known `characteristic`, at most three datum compartments of at least one `{datum}`
+   or `{label}` each, a surface finish has a `process` and `requirements`, and a hole callout's
+   `source.kind` is `feature`. *Semantics* are issues, never load errors (`annotationIssues`): arity
+   per kind, datum letters (not I, O, Q; unique per part), one callout per feature, illegal for the
+   standard ("ASME Y14.5-2018 has no concentricity; use position or profile"), a source or an
+   `appliesTo` that no longer exists. The rules are provisional (secondary sources) until the
+   standards are bought; they refuse and explain and never convert.
+   `Configuration.annotations` has non-empty keys and values like feature overrides; a key whose
+   annotation was deleted is not an error (resolution reports it, ADR-074).
+6. Drawings (v4). *Structure* always fails a load: `subject.kind` is `part`; `standard.family` is
+   `iso` or `asme` and `gps` belongs to it; `projection` is `first` or `third`; `units` is `mm`;
+   `style` numbers are finite and positive (precisions are integers 0 to 6; hatch angles may be
+   any finite number); `template.id` is known and `template.version` is a positive integer at
+   most the app's latest; `sheets` has at least one sheet; each view, placement, centre mark, table,
+   note and markup has the shape above and a layout kind its view kind allows; `section.cut` has at
+   least two points and `detail` has a positive `radius` and a `scale`. Ids (drawings, sheets,
+   views, placements, marks, tables, notes, markup) share the document-wide id space.
+7. Dangling references inside a drawing never fail a load. A missing subject part, a missing
+   configuration, or a missing or cyclic parent view are kept and shown as needs attention.
+   Everything else is repaired deterministically by `normalizeDrawings` on load and after a merge
+   (the repairs are reported once as notes):
+   - a placement whose view, or whose annotation in the subject part, is missing is dropped (only
+     when the subject part exists; otherwise the drawing is left intact);
+   - of two placements with the same (view, annotation) the smaller id stays;
+   - a view, table, note or markup whose sheet is missing moves to the first sheet, layout kept;
+   - a centre mark or hole table whose view is missing is dropped;
+   - a markup anchor to a missing placement or view is cleared (the markup stays);
+   - unordered collections and `Part.annotations` are sorted by id; sheet quantities are rounded
+     to 0.001 mm.
+8. Semantic problems (an expression that does not evaluate, an unresolved reference) are *not*
    load errors; they surface in the UI as inline errors / "needs attention".
 
 ## 9. Version history (`.wren-history/`)

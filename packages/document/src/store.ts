@@ -238,14 +238,15 @@ export class DocumentStoreImpl implements DocumentStore {
     return found;
   }
 
-  load(raw: unknown): ApplyResult {
+  /** `notes`: what loading repaired (dangling drawing references); show them once. */
+  load(raw: unknown): ApplyResult & { notes?: string[] } {
     const r = migrateDoc(raw, this.migrations ? { migrations: this.migrations } : {});
     if (!r.ok) return { ok: false, error: r.error };
     this.doc = r.doc;
     this.past = [];
     this.future = [];
     this.notify([{ op: 'replace', path: '', value: r.doc }]);
-    return { ok: true, doc: this.doc };
+    return r.notes ? { ok: true, doc: this.doc, notes: r.notes } : { ok: true, doc: this.doc };
   }
 }
 

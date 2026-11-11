@@ -5,6 +5,7 @@
  */
 
 import type {
+  Annotation,
   EvalResult,
   EvalScope,
   ExprError,
@@ -15,6 +16,7 @@ import type {
   SketchFeature,
   WrenDoc,
 } from '@wren-cad/contracts';
+import { annotationExprFields } from './annotations';
 import { type AnyResult, ExpressionEngineImpl, expressionEngine } from './expressions';
 import { type ExprField, exprFields } from './features';
 import { getAt } from './patch';
@@ -62,8 +64,27 @@ export function evaluateFeatureValues(
   return out;
 }
 
+/**
+ * Evaluates every `Expr` field of a part annotation (`annotationExprFields`): nominal, tolerance
+ * deviations, zone and surface-finish values. Results are mm / rad keyed by the pointer inside the
+ * annotation. Pass the document with a configuration applied (`resolveConfiguration`) to evaluate
+ * in that configuration.
+ */
+export function evaluateAnnotationValues(
+  annotation: Annotation,
+  doc: Pick<WrenDoc, 'params' | 'units'>,
+  engine: ExpressionEngine = expressionEngine,
+): FeatureValues {
+  const evaluate = evaluatorFor(engine, scopeOf(doc));
+  const out: FeatureValues = { values: {}, errors: {} };
+  for (const field of annotationExprFields(annotation)) {
+    evaluateField(annotation, field, evaluate, out);
+  }
+  return out;
+}
+
 function evaluateField(
-  feature: Feature,
+  feature: Feature | Annotation,
   field: ExprField,
   evaluate: Evaluator,
   out: FeatureValues,

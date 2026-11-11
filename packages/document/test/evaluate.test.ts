@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-import type { Feature, SketchFeature } from '@wren-cad/contracts';
+import type { Annotation, Feature, SketchFeature } from '@wren-cad/contracts';
 import { describe, expect, it } from 'vitest';
 import {
   type ExpressionEngineImpl,
   entityRefs,
+  evaluateAnnotationValues,
   evaluateFeatureValues,
   evaluateParams,
   expressionEngine,
@@ -119,16 +120,27 @@ describe('evaluateFeatureValues', () => {
     expect(run(planeFrame(22))).toEqual({ values: {}, errors: {} });
   });
 
-  it('PMI annotations: value / tolerance / gdt zone', () => {
-    const f = sampleDoc().parts[0]?.features[3] as Feature;
-    const r = run(f);
-    expect(r.errors).toEqual({});
-    expect(r.values['/annotations/0/value']).toBe(12.5);
-    expect(r.values['/annotations/0/tolerance/upper']).toBeCloseTo(0.1, 12);
-    expect(r.values['/annotations/0/tolerance/lower']).toBeCloseTo(-0.1, 12);
-    expect(r.values['/annotations/0/gdt/zone']).toBeCloseTo(0.05, 12);
-    expect(r.values['/annotations/1/value']).toBeCloseTo(30 * DEG, 12);
-    expect(r.values['/annotations/1/tolerance/upper']).toBeCloseTo(DEG, 12);
+  it('annotation expression fields: nominal, tolerance, zone, surface finish', () => {
+    const d = sampleDoc();
+    const anns = d.parts[0]?.annotations ?? [];
+    const at = (n: number) => anns.find((a) => a.id === id(n)) as Annotation;
+    const lin = evaluateAnnotationValues(at(900), d);
+    expect(lin.errors).toEqual({});
+    expect(lin.values).toEqual({
+      '/tolerance/upper': expect.closeTo(0.1, 12),
+      '/tolerance/lower': expect.closeTo(-0.1, 12),
+    });
+    const ang = evaluateAnnotationValues(at(901), d);
+    expect(ang.values['/nominal']).toBeCloseTo(30 * DEG, 12);
+    expect(ang.values['/tolerance/value']).toBeCloseTo(DEG, 12);
+    expect(evaluateAnnotationValues(at(902), d).values['/nominal']).toBe(10);
+    expect(evaluateAnnotationValues(at(905), d).values['/zone/value']).toBeCloseTo(0.1, 12);
+    const sf = evaluateAnnotationValues(at(907), d);
+    expect(sf.values['/requirements/0/value']).toBeCloseTo(0.0016, 12);
+    expect(sf.values['/allowance']).toBeCloseTo(0.2, 12);
+    // a length where an angle is expected is an error, like for features
+    const bad = { ...(at(901) as object), nominal: '5mm' } as Annotation;
+    expect(Object.keys(evaluateAnnotationValues(bad, d).errors)).toEqual(['/nominal']);
   });
 
   it('covers every feature type in the document fixture', () => {

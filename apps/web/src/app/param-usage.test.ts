@@ -163,6 +163,33 @@ describe('fieldLabel', () => {
   });
 });
 
+describe('paramUsage of annotations (M4)', () => {
+  it('lists annotation expressions under the part, and their configuration overrides', () => {
+    const doc = docWith([['width', '80 mm']], [extrude('width')]);
+    const part = doc.parts[0];
+    if (!part) throw new Error('no part');
+    part.annotations = [
+      {
+        id: 'A1',
+        kind: 'diameter',
+        origin: { kind: 'model' },
+        refs: [],
+        nominal: 'width / 4',
+        tolerance: { kind: 'symmetric', value: '0.1 mm' },
+      },
+    ];
+    part.configurations = [
+      { id: 'C1', name: 'Wide', annotations: { A1: { fields: { '/nominal': 'width / 2' } } } },
+    ];
+    const use = paramUsage(doc).P1 ?? [];
+    expect(use.map((u) => [u.label, u.detail, u.configurationName])).toEqual([
+      ['Extrude 1', 'depth', undefined],
+      ['Part 1: diameter dimension', 'nominal', undefined],
+      ['Part 1: diameter dimension', 'nominal in Wide', 'Wide'],
+    ]);
+  });
+});
+
 describe('the UI word lists match the document', () => {
   it('every unit the document knows is refused as a new parameter name', () => {
     for (const unit of UNITS.keys()) expect(UNIT_WORDS).toContain(unit);

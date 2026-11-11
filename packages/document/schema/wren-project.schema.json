@@ -36,6 +36,66 @@
       ],
       "type": "object"
     },
+    "DrawingDefaults": {
+      "additionalProperties": false,
+      "description": "Project-wide drawing defaults (D10): set by the explicit choice at the first drawing.",
+      "properties": {
+        "fields": {
+          "$ref": "#/definitions/TitleBlockFields",
+          "description": "Title-block text every new drawing starts with (ISO 7200 legal owner, drawn by …)."
+        },
+        "projection": {
+          "$ref": "#/definitions/Projection"
+        },
+        "standard": {
+          "$ref": "#/definitions/DrawingStandard"
+        }
+      },
+      "required": [
+        "standard",
+        "projection"
+      ],
+      "type": "object"
+    },
+    "DrawingStandard": {
+      "additionalProperties": false,
+      "description": "The drawing's standard family and editions (shown in the title block, used for validation).",
+      "properties": {
+        "family": {
+          "enum": [
+            "iso",
+            "asme"
+          ],
+          "type": "string"
+        },
+        "generalTolerance": {
+          "description": "General tolerance note, e.g. `ISO 2768-mK`; absent = none stated.",
+          "type": "string"
+        },
+        "gps": {
+          "$ref": "#/definitions/GpsStandard",
+          "description": "Must belong to `family` (ISO 1101 with iso, ASME Y14.5 with asme)."
+        },
+        "surfaceFinish": {
+          "$ref": "#/definitions/SurfaceFinishStandard"
+        }
+      },
+      "required": [
+        "family",
+        "gps",
+        "surfaceFinish"
+      ],
+      "type": "object"
+    },
+    "GpsStandard": {
+      "description": "Standard an annotation's GD&T semantics are validated against. Stamped by the authoring tool from the drawing (or, in M5, the project default); absent on an annotation = \"not stated\", and it is then checked against each displaying drawing's standard. Never converted silently: a symbol that is illegal under the standard is refused or flagged with an explanation (ASME Y14.5-2018 has no concentricity or symmetry).",
+      "enum": [
+        "ISO 1101:2017",
+        "ASME Y14.5-2018",
+        "ASME Y14.5-2009"
+      ],
+      "type": "string"
+    },
     "Id": {
       "description": "ULID (26-char Crockford base32).",
       "type": "string"
@@ -62,6 +122,91 @@
         "file"
       ],
       "type": "object"
+    },
+    "Projection": {
+      "enum": [
+        "first",
+        "third"
+      ],
+      "type": "string"
+    },
+    "SurfaceFinishStandard": {
+      "description": "Surface texture standard (default ISO 21920-1; ISO 1302 is legacy, kept for old drawings).",
+      "enum": [
+        "ISO 21920-1:2021",
+        "ISO 1302:2002",
+        "ASME Y14.36-2018"
+      ],
+      "type": "string"
+    },
+    "TitleBlockFields": {
+      "additionalProperties": false,
+      "properties": {
+        "approvedBy": {
+          "type": "string"
+        },
+        "checkedBy": {
+          "type": "string"
+        },
+        "configuration": {
+          "type": "string"
+        },
+        "date": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "documentStatus": {
+          "type": "string"
+        },
+        "documentType": {
+          "type": "string"
+        },
+        "drawnBy": {
+          "type": "string"
+        },
+        "generalTolerance": {
+          "type": "string"
+        },
+        "language": {
+          "type": "string"
+        },
+        "mass": {
+          "type": "string"
+        },
+        "material": {
+          "type": "string"
+        },
+        "owner": {
+          "type": "string"
+        },
+        "partNumber": {
+          "type": "string"
+        },
+        "projection": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "string"
+        },
+        "scale": {
+          "type": "string"
+        },
+        "sheet": {
+          "type": "string"
+        },
+        "standard": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "units": {
+          "type": "string"
+        }
+      },
+      "type": "object"
     }
   },
   "description": "`wren.project.json`",
@@ -71,6 +216,10 @@
         "$ref": "#/definitions/ManifestEntry"
       },
       "type": "array"
+    },
+    "drawingDefaults": {
+      "$ref": "#/definitions/DrawingDefaults",
+      "description": "M4: the explicit standard and projection choice made at the first drawing."
     },
     "drawings": {
       "items": {
