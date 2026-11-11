@@ -1,6 +1,7 @@
 /** The demo bracket loads into the store and regenerates with the real engine (Node). */
 import { existsSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import type { EntityRef } from '@wren-cad/contracts';
 import { createDocumentStore } from '@wren-cad/document';
 import type { KernelInitModule } from '@wren-cad/kernel';
 import { describe, expect, it } from 'vitest';
@@ -110,6 +111,46 @@ describe('demo bracket', () => {
         });
         expect(r.features.map((f) => f.state)).toEqual(Array(9).fill('ok'));
         expect(r.features.filter((f) => f.grown)).toEqual([]);
+      }
+
+      // Review N1: a shell whose open face is the merged back face, picked on the model (3840
+      // mm²), then width 130 mm (6240 mm²). It absorbed nothing after the pick: no note.
+      const r0 = await api.regenerate({ doc, partId, quality: 'coarse', massProperties: false });
+      const body = r0.bodies[0];
+      if (!body) throw new Error('no body');
+      let back: EntityRef | null = null;
+      for (let i = 0; i < body.mesh.faceNames.length; i++) {
+        const ref = await api.refFor(partId, { bodyId: body.id, kind: 'face', index: i });
+        const fp = ref?.fingerprint;
+        if (fp?.normal && Math.abs(fp.normal[1]) > 0.99 && (fp.area ?? 0) > 3000) back = ref;
+      }
+      expect(back?.fingerprint?.area).toBeCloseTo(3840, 6);
+      const shelled = structuredClone(doc);
+      const part = shelled.parts[0];
+      if (!part || !back) throw new Error('no part');
+      part.features.push({
+        id: 'SHX',
+        type: 'shell',
+        name: 'Shell',
+        suppressed: false,
+        openFaces: [back],
+        thickness: '1 mm',
+        direction: 'inward',
+      });
+      part.rollbackIndex = part.features.length;
+      const width = shelled.params.find((x) => x.name === 'width');
+      if (!width) throw new Error('no width');
+      for (const w of ['130 mm', '80 mm', '130 mm']) {
+        width.expr = w;
+        const r = await api.regenerate({
+          doc: shelled,
+          partId,
+          quality: 'coarse',
+          massProperties: false,
+        });
+        const st = r.features.find((f) => f.featureId === 'SHX');
+        expect(st?.state).toBe('ok');
+        expect(st?.grown, w).toBeUndefined();
       }
       await api.closePart(partId);
     },

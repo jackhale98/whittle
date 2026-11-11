@@ -34,6 +34,8 @@ export function testHooks(wb: Workbench) {
               state: f.state,
               ...(f.unresolved ? { unresolved: f.unresolved } : {}),
               ...(f.rebound ? { rebound: f.rebound } : {}),
+              ...(f.merged ? { merged: f.merged } : {}),
+              ...(f.grown ? { grown: f.grown } : {}),
               ...(f.error ? { error: f.error.message } : {}),
             })),
             sketches: r.sketches.map((s) => ({
@@ -310,8 +312,9 @@ export function testHooks(wb: Workbench) {
       return (m?.regen.slots ?? []).map((s) => s.slot);
     },
     /**
-     * Reports merged / grown references for a feature as the kernel would (the real `grown` is not
-     * produced yet); `null` removes the stub. The UI treats them like reported ones.
+     * Adds merged / grown references to a feature's status as the kernel would report them (for
+     * UI states a model can't easily reach); `null` removes the stub. The UI treats them like
+     * reported ones.
      */
     stubRefNotes: (featureId: Id, notes: StubNotes | null) => refAcks.stub(featureId, notes),
     /** Simulates "Export all" holding the live slot (picks and measurements are refused). */

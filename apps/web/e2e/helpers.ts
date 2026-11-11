@@ -23,6 +23,9 @@ export interface AppHooks {
       state: string;
       unresolved?: { path: string; reason: string; candidates?: string[] }[];
       rebound?: { path: string; name: string }[];
+      /** As the kernel reported them (acknowledged notes are not filtered out here). */
+      merged?: { path: string; name: string; into: string }[];
+      grown?: { path: string; name: string; was: number; now: number }[];
       error?: string;
     }[];
     sketches: { id: string; regions: string[] }[];

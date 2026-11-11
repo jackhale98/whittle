@@ -31,7 +31,7 @@ const noteId = (featureId: string, kind: 'merged' | 'grown', path: string, name:
 const mergedValue = (r: MergedRef) => r.into;
 const grownValue = (r: GrownRef) => `${Math.round(r.now * 10) / 10}`;
 
-/** Test-only overlay: statuses a stubbed kernel would report (the real `grown` is not produced yet). */
+/** Test-only overlay: statuses added as if the kernel reported them (UI states a model can't reach). */
 export type StubNotes = { merged?: MergedRef[]; grown?: GrownRef[] };
 
 class RefAcks {

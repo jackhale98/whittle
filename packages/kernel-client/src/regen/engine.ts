@@ -68,7 +68,7 @@ import { planSketch } from './exec-sketch';
 import { planSolid, planSweepLoft } from './exec-solids';
 import { allBodiesFor, copiedFeatures, kerr, meshOnlyError } from './helpers';
 import { bodyResult, densityOf, sketchResult } from './outputs';
-import { fingerprintOf } from './refs';
+import { absorbedInto, fingerprintOf, rememberAbsorbed } from './refs';
 import {
   capitalise,
   DEFAULT_VERSION_SLOTS,
@@ -191,6 +191,14 @@ export class RegenEngine {
       const ref: EntityRef = { name: entry.name, kind: query.kind };
       const fingerprint = fp ? fingerprintOf(fp, query.kind, query.index) : undefined;
       if (fingerprint) ref.fingerprint = fingerprint;
+      // What the picked face/edge has absorbed now: later `grown` checks only count names
+      // absorbed after the pick (ADR-084 amendment).
+      if (fingerprint && query.kind !== 'vertex' && latest?.merged) {
+        const pc = this.cache.slotCache(partId, 'main');
+        if (pc) {
+          rememberAbsorbed(pc, ref, absorbedInto(latest.merged, query.kind, entry.name));
+        }
+      }
       return ref;
     });
   }
@@ -567,7 +575,12 @@ export class RegenEngine {
         if (out) ghosts.push(out);
       }
     }
-    pc.latest = { bodies: finalBodies, keys: new Set(ctx.used), partName: part.name };
+    pc.latest = {
+      bodies: finalBodies,
+      keys: new Set(ctx.used),
+      partName: part.name,
+      merged: ctx.state.merged,
+    };
     if (density !== undefined) pc.latest.density = density;
     await this.cache.evict(pc);
     await this.cache.evictImports(pc, ctx.usedImports);

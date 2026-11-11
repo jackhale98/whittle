@@ -272,6 +272,39 @@ describe.skipIf(!m3)(`regen golden: booleans merge coplanar faces (ADR-078)${not
     const r2 = await regen(withFeatures(full, fillet(fid('UGF'), [now as EntityRef], '2 mm')));
     expect(states(r2), describeFailures(r2)).toEqual(Array(10).fill('ok'));
     expect((r2.features[9] as RegenFeatureStatus).grown).toBeUndefined();
+
+    // The pre-merge pick keeps its note across ordinary edits, and in a new session (no
+    // baseline: the reopened document is compared with its stored fingerprint).
+    const doc = withFeatures(full, fillet(fid('UGF'), [picked as EntityRef], '2 mm'));
+    const wide = await regen(withParams(doc, { width: '130 mm' }));
+    expect((wide.features[9] as RegenFeatureStatus).grown?.[0]?.path).toBe('/edges/0');
+    await api.closePart(PART);
+    const reopened = await regen(doc);
+    expect((reopened.features[9] as RegenFeatureStatus).grown?.[0]?.name).toBe(corner);
+  }, 120_000);
+
+  it('M3.8 grown: a face picked after the merge is not reported when a parameter grows it', async () => {
+    // Review N1: the shell's open face is the merged back face (80 × 48 = 3840 mm² when picked);
+    // widening to 130 mm makes it 6240 mm². It absorbed nothing after the pick: no note.
+    const full = bracketDoc();
+    const body = only(await regen(full));
+    const index = body.mesh.faceNames.indexOf(plateBack);
+    const picked = await api.refFor(PART, { bodyId: body.id, kind: 'face', index });
+    expect(picked?.name).toBe(plateBack);
+    relClose(picked?.fingerprint?.area ?? 0, 80 * 48, 1e-9);
+    const doc = withFeatures(full, shell([picked as EntityRef], '1 mm'));
+    // First regen with the shell already widened: only the pick's record (refFor) says what it had.
+    const edits: Record<string, string>[] = [
+      { width: '130 mm' },
+      {},
+      { width: '130 mm', height: '60 mm' },
+    ];
+    for (const params of edits) {
+      const r = await regen(withParams(doc, params));
+      expect(states(r), describeFailures(r)).toEqual(Array(10).fill('ok'));
+      const st = r.features[9] as RegenFeatureStatus;
+      expect(st.grown, JSON.stringify(params)).toBeUndefined();
+    }
   }, 120_000);
 
   it('a ref to a merged #k piece moves the merged face, never the piece that took its index', async () => {

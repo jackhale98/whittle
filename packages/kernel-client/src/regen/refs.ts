@@ -50,6 +50,7 @@ import {
   type BodyState,
   type ModelState,
   mergeLookup,
+  type PartCache,
   primaryNaming,
   type WalkContext,
 } from './state';
@@ -221,11 +222,17 @@ export async function resolveSub(
 
 /**
  * M3.8 `FeatureStatus.grown`: a ref that resolved by its exact name (or a merge alias) to a body
- * face or edge that absorbed other names in this walk (a merge survivor, ADR-078) and whose area /
- * length is now more than `GROWN.ratio` times the stored fingerprint's, and more than `GROWN.min`
- * (mm², mm) larger: the name still holds, but a merge may have made it mean more than was picked
- * (a fillet edge that the upright's merge made 8 → 48 mm long). Growth alone is not enough: a
- * parameter edit (the bracket's width) grows faces as intended. Report only, never a reason to
+ * face or edge that absorbed other names (a merge survivor, ADR-078) it had not absorbed when the
+ * ref was made, and whose area / length is now more than `GROWN.ratio` times the stored
+ * fingerprint's, and more than `GROWN.min` (mm², mm) larger: the name still holds, but a merge may
+ * have made it mean more than was picked (a fillet edge that the upright's merge made 8 → 48 mm
+ * long). Growth alone is not enough: a parameter edit (the bracket's width) grows faces as
+ * intended, including a face that was already merged when it was picked (ADR-084 amendment).
+ *
+ * What the entity had absorbed when the ref was made is session-local (`PartCache.absorbed`, no
+ * document field): `refFor` records it, and it moves forward whenever the ref resolves without
+ * being reported. A ref first seen in this session (a reopened document) has no baseline: any
+ * survivor grown past the threshold is reported, as before. Report only, never a reason to
  * re-resolve. Vertices have no size; sketch regions and planes are left out. Only refs with a
  * stored fingerprint are measured, from the per-handle fingerprints (memoised per sub-shape,
  * ADR-084).
@@ -237,29 +244,67 @@ async function noteGrowth(
   t: ResolvedTarget,
   path: string,
 ): Promise<void> {
-  const was =
-    t.kind === 'face'
-      ? ref.fingerprint?.area
-      : t.kind === 'edge'
-        ? ref.fingerprint?.length
-        : undefined;
+  if (t.kind !== 'face' && t.kind !== 'edge') return;
+  const was = t.kind === 'face' ? ref.fingerprint?.area : ref.fingerprint?.length;
   if (was === undefined || !Number.isFinite(was) || !ctx.state.bodies.has(t.owner)) return;
-  if (!isMergeSurvivor(ctx.state, t.kind, t.name)) return;
+  const absorbed = absorbedInto(ctx.state.merged, t.kind, t.name);
+  const base = ctx.pc.absorbed.get(growthKey(ref));
+  if (absorbed.every((n) => base?.has(n) === true)) {
+    rememberAbsorbed(ctx.pc, ref, absorbed);
+    return;
+  }
   const fp = await core.fingerprints(t.shape);
   const now = t.kind === 'face' ? fp?.faces[t.index]?.area : fp?.edges[t.index]?.length;
   if (now === undefined || !Number.isFinite(now)) return;
   if (now > GROWN.ratio * Math.abs(was) && now - Math.abs(was) > GROWN.min) {
+    // The baseline stays: the note holds until the ref is picked again (the app hides accepted ones).
     ctx.current.grown.push({ path, name: ref.name, was, now });
+  } else {
+    rememberAbsorbed(ctx.pc, ref, absorbed);
   }
 }
 
-/** `name` absorbed another name of `kind` in this walk (it is a survivor in the merge table). */
-function isMergeSurvivor(state: ModelState, kind: SubKind, name: string): boolean {
+/** The names of `kind` merged into `name` (it is their survivor) in a walk's merge table. */
+export function absorbedInto(
+  merged: ReadonlyMap<string, readonly string[]>,
+  kind: 'face' | 'edge',
+  name: string,
+): string[] {
   const prefix = `${kind}|`;
-  for (const [key, survivors] of state.merged) {
-    if (key.startsWith(prefix) && survivors.includes(name)) return true;
+  const out: string[] = [];
+  for (const [key, survivors] of merged) {
+    if (key.startsWith(prefix) && survivors.includes(name)) out.push(key.slice(prefix.length));
   }
-  return false;
+  return out;
+}
+
+/** Identity of a stored ref in `PartCache.absorbed`: kind, name and exact fingerprint. */
+function growthKey(ref: EntityRef): string {
+  const f = ref.fingerprint;
+  const fp = f
+    ? `${f.centroid.join(',')}|${f.normal?.join(',') ?? ''}|${f.area ?? ''}|${f.length ?? ''}`
+    : '';
+  return `${ref.kind}|${ref.name}|${fp}`;
+}
+
+/** Most ref identities `PartCache.absorbed` keeps (least recently used out). */
+const ABSORBED_MAX = 4096;
+
+/**
+ * Adds `names` to what `ref`'s entity is known to have absorbed. Never removes: a merge that an
+ * edit undoes and a later edit redoes is still the merge the ref was made on.
+ */
+export function rememberAbsorbed(pc: PartCache, ref: EntityRef, names: readonly string[]): void {
+  const key = growthKey(ref);
+  const set = pc.absorbed.get(key) ?? new Set<string>();
+  for (const n of names) set.add(n);
+  pc.absorbed.delete(key);
+  pc.absorbed.set(key, set);
+  while (pc.absorbed.size > ABSORBED_MAX) {
+    const oldest = pc.absorbed.keys().next().value;
+    if (oldest === undefined) break;
+    pc.absorbed.delete(oldest);
+  }
 }
 
 /** `grown` threshold (M3.8): more than 1.5× the stored size and more than 1 mm² / 1 mm larger. */
