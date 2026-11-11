@@ -58,7 +58,7 @@ export function drawing(over: Partial<Drawing> = {}, views?: DrawingView[]): Dra
         sheetId: 'S1',
         kind: 'base',
         orientation: { kind: 'named', name: 'front' },
-        layout: { kind: 'free', position: [150, 180] },
+        layout: { kind: 'free', position: [190, 190] },
       },
       {
         id: 'V2',
@@ -87,7 +87,7 @@ export function drawing(over: Partial<Drawing> = {}, views?: DrawingView[]): Dra
           { kind: 'free', at: [50, 50] },
         ],
         look: 'right',
-        layout: { kind: 'free', position: [330, 180] },
+        layout: { kind: 'free', position: [330, 200] },
       },
       {
         id: 'V5',
@@ -95,7 +95,7 @@ export function drawing(over: Partial<Drawing> = {}, views?: DrawingView[]): Dra
         kind: 'iso',
         parentId: 'V1',
         corner: 'topRight',
-        layout: { kind: 'free', position: [330, 80] },
+        layout: { kind: 'free', position: [330, 125] },
       },
     ],
     placements: [],

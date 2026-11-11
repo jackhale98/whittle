@@ -89,8 +89,8 @@ describe('solveViews', () => {
     const { get } = solved();
     const v = get('V1');
     expect(v.center).toEqual([50, 20]);
-    expect(partToSheet(v, [50, 0, 20])).toEqual([150, 180]);
-    expect(viewOutline(v)).toEqual({ min: [100, 160], max: [200, 200] });
+    expect(partToSheet(v, [50, 0, 20])).toEqual([190, 190]);
+    expect(viewOutline(v)).toEqual({ min: [140, 170], max: [240, 210] });
   });
   it('derives scales: sheet for base, parent for projected, own for detail', () => {
     const d = drawing();
