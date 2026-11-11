@@ -2333,3 +2333,40 @@ The owner's complaint: a 30-minute wait to fail, then another 30 after the fix. 
 - **Rule.** A `verified` job in `ci.yml` asks the Actions API, on pushes to `main`, for a completed run of this same workflow with `head_sha == github.sha`, `event == push`, `conclusion == success`, a `claude/**` branch and `head_repository == this repository`, other than the current run. If one exists, `main` skips lint, test, smoke, both e2e jobs, package-e2e, perf and Lighthouse, and runs only kernel (cache hit), build and the two deploys. The run URL goes to the job summary. Fork and pull request runs never count.
 - **Fallback.** A direct push to `main`, a failed or cancelled dev run, or any API error gives `verified=false` and the full pipeline runs as before. The deploy `if:` is `!cancelled()` and build succeeded and (verified or all seven gating jobs succeeded), so a failed gating job never deploys.
 - **Trade-off.** The dev run tested the commit, but on the dev branch's runners at that time: a merge commit that differs from every tested commit is unverified and runs in full, and a flake-free dev run is trusted even if the base image moved since. The build for deploy is still redone on main with the main-only base path settings. Perf now needs only `build` and package-e2e only `lint`, so both run beside smoke; smoke still gates the chromium and reference shards.
+
+## ADR-084 — Sketch input: implied constraints by click role, a right click finishes, two-point splines (M3.8, 2026-11-11)
+
+Owner feedback: "putting a point over an existing visible point [should add] the coincident constraint", "no way to finish … one spline line with two points", "maybe a right click should finish the current tool".
+
+**Decision.**
+- **What is shown is what is committed.** `move()` (apps/web `sketch/draw.ts`) gives each click a role from the tool and how many clicks are placed (`nextRole`):
+  - `point`: a corner, centre, end or pole. Every point snap is kept.
+  - `curve`: the new curve passes through it without a point of its own (a circle's rim, the three points of a 3-point circle, a 3-point arc's middle, an ellipse's axis end). Only a snap onto an existing point is kept, as `pointOn(existing, curve)`.
+  - `free`: a size or direction (a slot's width, a 3-point rectangle's depth, an ellipse's second radius, a centre arc's end, an elliptic arc's axis and ends). No snap at all.
+  
+  `glyphs` lists exactly what the click commits. `bindAnchors` applies it to any tool fragment, and a per-tool test checks shown == committed (`sketch/implied.test.ts`).
+- **Reuse, not coincident.** A `point` click on an existing point makes the fragment use that point (`reusePoints` in packages/sketch): no duplicate point, no `coincident`. Fragment points are matched by position, visible ones first, so construction points (a polygon's or centre rectangle's centre, a control spline's inner poles) bind too. They did not before. Pencil open ends reuse the same way. The Point tool on an existing point adds nothing and selects it.
+- **Alignment guides are display only.** A horizontal/vertical guide to another point still snaps, but it is drawn as a dashed preview line, not as a glyph, and adds nothing. Committing guides to arbitrary points would over-constrain (closing a line rectangle made `verticalPoints` + `vertical` redundant). Mainstream sketchers treat these inference lines the same way. The axes are covered by the `pointOn` axis snap and by the H/V line direction.
+- **No redundant H/V.** `AlignmentClasses` (packages/sketch `implied.ts`) is a union-find of points that share an x or a y through coincident, horizontal/vertical lines and pairs, axis `pointOn` and `fix`. A line's H/V snap whose two ends are already aligned shows no glyph and is not committed. This replaces the narrower "both ends on one axis" rule.
+- **Finish without Esc.** `finishTool`: a spline is committed open with the points so far, a line chain ends where it is, and any other partly placed shape is dropped (it cannot be finished early). `gestureAction` maps a mouse `contextMenu` click to `finish` in sketch mode while a shape is in progress, under every preset and for a quick `rightOrbitRepeat` click too. Otherwise the radial menu opens as before. Right-drag is untouched, because the viewport only reports a click inside its drag threshold.
+  - The toggle "Right click finishes the current sketch tool" (Settings → Navigation → Sketching, default on) is stored per device under `wren.sketchInput`. It is not in `NavigationOptions`, which is a contract. The shortcut overlay lists it as a fixed row (`ShortcutOverlay.extras`).
+  - Touch shows **Finish** beside Done while a chain or spline is in progress.
+  - Enter now also ends a line chain.
+- **Two-point splines** were already valid in the tools and the solver (through: a clamped Bézier cubic with chord-direction end tangents and two free handles, 8 DOF; control: degree 1). Both now finish by Enter, a right click and Finish, and they regenerate (E2E).
+
+**Not done.** An elliptic arc's start and end, and a centre arc's end, are projected onto the curve, so they never bind to a point. Binding them would need the solver to move the curve to the point, which the preview cannot show.
+
+**Contracts.** No change.
+
+## ADR-085 — Sketch solver calls have a deadline; the edit queue always moves on (2026-11-11)
+
+CI run 42966684008, shard 7: `sketch-touch.spec.ts` "a one-finger drag on empty space orbits…" hung twice in `sketchSettled()` after a Pencil line, Esc and deselecting the tool. Every await in the sketch session's edit queue (`serial`) is a solver call, and that sequence has no drag. So a settle can only hang there if a call to the sketch worker is never answered. Comlink never rejects a call to a worker that died or stopped responding, so the queue, `whenSettled` and the app's `idle()` waited forever. It did not reproduce locally: 22 repeats under load, 10 of them with 4× CPU throttling.
+
+**Decision.**
+- **A deadline on every call.** `createSketchSolverClient` gives each call a deadline (`timeoutMs`, default 20 s; a 200-entity solve takes a few ms, and the first call includes compiling planegcs). Past the deadline, or on the worker's `error` event, all of that worker's unanswered calls reject (`SketchSolverTimeout`). The worker is then terminated and the next call spawns a fresh one; old drag sessions reject.
+- **Failures don't stall the queue.**
+  - `commitEdit` lands an edit unsolved when its solve fails, so a click is never lost.
+  - Redraw and DOF re-solves keep the last display, with no unhandled rejection.
+  - `endDrag` keeps what the drag steps applied.
+- **A latent drag hang, fixed.** A drag step that rejected left `inFlight` set forever. The release's queued task polled it and blocked every later edit. Drag steps are now one promise that always settles (`try/finally`), and `endDrag` and `whenSettled` await it instead of polling.
+- **Diagnosable.** `SketchSession.settleState()` (test hook `sketchSettleState`) names the queued task that is running and for how long. The E2E `settled()` helper fails after 45 s with that state, instead of timing out the whole test silently.

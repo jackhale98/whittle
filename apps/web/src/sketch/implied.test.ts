@@ -31,7 +31,6 @@ const pointId = (x: number, y: number) =>
   (base.entities.find((e) => e.kind === 'point' && e.x === x && e.y === y) as SketchEntity).id;
 const A = pointId(100, 100);
 const B = pointId(140, 100);
-const L = (base.entities.find((e) => e.kind === 'line') as SketchEntity).id;
 const baseIds = new Set<Id>(base.entities.map((e) => e.id));
 
 // Click positions (tolerance 1 mm): near A, B, Q, the origin, on L, at L's midpoint.

@@ -7,7 +7,7 @@
 import type { SketchSolverApi } from '@wren-cad/contracts';
 import { expose } from 'comlink';
 import { afterAll, describe, expect, it } from 'vitest';
-import { createSketchSolverClient } from '../src/client';
+import { createSketchSolverClient, SketchSolverTimeout } from '../src/client';
 import { createSketchSolver } from '../src/core';
 import { rectangle, SketchBuilder } from './helpers';
 
@@ -59,5 +59,79 @@ describe('createSketchSolverClient', () => {
   it('dispose terminates the worker', () => {
     client.dispose();
     expect(terminated).toBe(true);
+  });
+});
+
+describe('a worker that stops answering (M3.8 settle hang)', () => {
+  it('rejects past the deadline, terminates it and answers from a fresh worker', async () => {
+    // The first worker swallows every message (a crashed or hung worker); the second one works.
+    const solver = createSketchSolver();
+    const spawned: { terminated: boolean; port: MessagePort }[] = [];
+    const channels: MessageChannel[] = [];
+    const createWorker = () => {
+      const channel = new MessageChannel();
+      channels.push(channel);
+      if (spawned.length > 0)
+        expose(
+          {
+            solve: (i: Parameters<SketchSolverApi['solve']>[0]) => solver.solve(i),
+          } as unknown as SketchSolverApi,
+          channel.port1,
+        );
+      const rec = { terminated: false, port: channel.port2 };
+      spawned.push(rec);
+      return Object.assign(channel.port2, {
+        terminate() {
+          rec.terminated = true;
+          channel.port2.close();
+        },
+      }) as unknown as Worker;
+    };
+    const client = createSketchSolverClient({ createWorker, timeoutMs: 150 });
+    const b = new SketchBuilder();
+    rectangle(b);
+    try {
+      // Without the deadline this await never returned, and nor did anything queued behind it.
+      await expect(client.api.solve(b.input())).rejects.toBeInstanceOf(SketchSolverTimeout);
+      expect(spawned[0]?.terminated).toBe(true);
+      const res = await client.api.solve(b.input());
+      expect(res.status).toBe('solved');
+      expect(spawned).toHaveLength(2);
+    } finally {
+      client.dispose();
+      for (const c of channels) c.port1.close();
+      solver.dispose();
+    }
+  });
+
+  it('a worker error fails its unanswered calls at once', async () => {
+    const ports: MessagePort[] = [];
+    const client = createSketchSolverClient({
+      createWorker: () => {
+        const c = new MessageChannel();
+        ports.push(c.port1, c.port2);
+        return Object.assign(c.port2, { terminate() {} }) as unknown as Worker;
+      },
+      timeoutMs: 60_000,
+    });
+    try {
+      const call = client.api.solve({ entities: [], constraints: [], values: {} });
+      ports[1]?.dispatchEvent(new Event('error'));
+      await expect(call).rejects.toThrow(/restarted/);
+    } finally {
+      client.dispose();
+      for (const p of ports) p.close();
+    }
+  });
+
+  it('a disposed client rejects instead of spawning', async () => {
+    const client = createSketchSolverClient({
+      createWorker: () =>
+        Object.assign(new MessageChannel().port2, { terminate() {} }) as unknown as Worker,
+    });
+    client.dispose();
+    await expect(client.api.solve({ entities: [], constraints: [], values: {} })).rejects.toThrow(
+      /disposed/,
+    );
   });
 });

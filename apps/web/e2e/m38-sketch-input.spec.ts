@@ -43,7 +43,7 @@ async function regenerated(page: Page, splines: number): Promise<void> {
 }
 
 test.describe('mouse', () => {
-  test('a right click ends a line chain and a three-point spline; idle it opens the radial menu; right-drag navigates @smoke', async ({
+  test('a right click ends a line chain and a three-point spline; idle it opens the radial menu; right-drag navigates', async ({
     page,
   }) => {
     test.slow();

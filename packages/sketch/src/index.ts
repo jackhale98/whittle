@@ -36,8 +36,11 @@ export {
 } from './bspline';
 export {
   createSketchSolverClient,
+  DEFAULT_SOLVER_TIMEOUT_MS,
+  type SketchSolverCalls,
   type SketchSolverClient,
   type SketchSolverClientOptions,
+  SketchSolverTimeout,
 } from './client';
 export {
   constraintLabel,

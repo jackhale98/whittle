@@ -125,6 +125,8 @@ interface DragState {
   entity: Id;
   key: string;
   inFlight: boolean;
+  /** The running drag steps; always settles (a failed step ends the run, never hangs it). */
+  steps: Promise<void> | null;
   pending: Vec2 | null;
   moved: boolean;
   start: { x: number; y: number };
@@ -502,10 +504,11 @@ export class SketchSession {
 
   /** Re-solves the current sketch for DOF/conflict display (no document change). */
   private resolve(): Promise<void> {
-    return this.serial(async () => {
+    return this.serial('resolve', async () => {
       const f = this.feature();
       if (!f || this.disposed) return;
-      const res = await this.solveData(f);
+      const res = await this.solveData(f).catch(() => null);
+      if (!res) return;
       this.solvedFor = f;
       this.patch({ solve: res, conflictsDismissed: false });
       this.scheduleOverlay();
@@ -523,7 +526,7 @@ export class SketchSession {
    * values anyway. A configuration-scoped edit never comes here (it redraws, display only).
    */
   refit(): Promise<void> {
-    return this.serial(async () => {
+    return this.serial('refit', async () => {
       this.refitPending = false;
       const f = this.feature();
       const part = this.wb.part;
@@ -573,16 +576,41 @@ export class SketchSession {
 
   /** A parameter or configuration change moved the dimension values: redraw (display only). */
   private redraw(): Promise<void> {
-    return this.serial(() => this.redrawNow());
+    // Display only: a solver failure leaves the last drawing (never an unhandled rejection).
+    return this.serial('redraw', () => this.redrawNow()).catch(() => undefined);
   }
 
-  private serial<T>(fn: () => Promise<T>): Promise<T> {
+  private serial<T>(label: string, fn: () => Promise<T>): Promise<T> {
     this.pending++;
-    const next = this.queue.then(fn, fn).finally(() => {
+    const run = () => {
+      this.running = { label, since: performance.now() };
+      return fn();
+    };
+    const next = this.queue.then(run, run).finally(() => {
       this.pending--;
+      this.running = null;
     });
     this.queue = next.catch(() => undefined);
     return next;
+  }
+
+  /** The queued task running now (diagnostics: what a settle that hangs is waiting on). */
+  private running: { label: string; since: number } | null = null;
+
+  /** What `whenSettled` waits on: queued tasks, the one running and for how long, a drag. */
+  settleState(): {
+    pending: number;
+    running: string | null;
+    runningMs: number;
+    drag: { inFlight: boolean; moved: boolean } | null;
+  } {
+    const r = this.running;
+    return {
+      pending: this.pending,
+      running: r?.label ?? null,
+      runningMs: r ? Math.round(performance.now() - r.since) : 0,
+      drag: this.drag ? { inFlight: this.drag.inFlight, moved: this.drag.moved } : null,
+    };
   }
 
   /** Solves/edits queued or running (an edit lands in the document only after its solve). */
@@ -598,7 +626,7 @@ export class SketchSession {
    */
   async whenSettled(): Promise<void> {
     while (this.pending > 0) await this.queue;
-    while (this.drag?.inFlight) await new Promise((r) => setTimeout(r, 4));
+    while (this.drag?.inFlight && this.drag.steps) await this.drag.steps;
     if (this.overlayQueued || this.pushedFor !== this.feature()?.entities) this.pushOverlay();
   }
 
@@ -612,15 +640,17 @@ export class SketchSession {
     label: string | (() => string),
     key?: string,
   ): Promise<void> {
-    return this.serial(async () => {
+    return this.serial('commit', async () => {
       const f = this.feature();
       const part = this.wb.part;
       if (!f || !part || this.disposed) return;
       const next = edit(f);
       // An edit that changed nothing (a refused operation) is not an undo step.
       if (next.entities === f.entities && next.constraints === f.constraints) return;
-      const res = await this.solveData(next);
-      const entities = res.status === 'solved' ? res.entities : [...next.entities];
+      // A solver that failed or never answered (it is restarted) still lands the edit, unsolved:
+      // the click is not lost and the queue moves on.
+      const res = await this.solveData(next).catch(() => null);
+      const entities = res?.status === 'solved' ? res.entities : [...next.entities];
       // Placed labels follow the geometry the solve moved.
       const constraints = carryLabels(next, { entities, constraints: next.constraints });
       const feature: SketchFeature = { ...f, entities, constraints: [...constraints] };
@@ -631,7 +661,7 @@ export class SketchSession {
       );
       if (!key) this.wb.commit();
       this.solvedFor = this.feature();
-      this.patch({ solve: res, conflictsDismissed: false });
+      if (res) this.patch({ solve: res, conflictsDismissed: false });
       this.scheduleOverlay();
     });
   }
@@ -1055,6 +1085,7 @@ export class SketchSession {
       entity,
       key: `drag:${newId()}`,
       inFlight: false,
+      steps: null,
       pending: null,
       moved: false,
       start,
@@ -1143,15 +1174,18 @@ export class SketchSession {
       this.patch({ highlightEntities: null });
       this.pushHighlights();
     }
-    void this.serial(async () => {
-      const session = await d.session;
-      // Let an in-flight drag step land first.
-      while (d.inFlight) await new Promise((r) => setTimeout(r, 4));
-      const res = await solver().api.endDrag(session);
-      if (d.moved) {
-        this.applyDragResult(res, d.key);
-        this.wb.commit();
-      } else onStill?.(d.entity);
+    void this.serial('endDrag', async () => {
+      // Let an in-flight drag step land first (it always settles).
+      await d.steps;
+      try {
+        const session = await d.session;
+        const res = await solver().api.endDrag(session);
+        if (d.moved) this.applyDragResult(res, d.key);
+        else onStill?.(d.entity);
+      } catch {
+        // The solver lost the session (restarted): what the drag steps applied is kept.
+      }
+      if (d.moved) this.wb.commit();
     });
   }
 
@@ -1301,16 +1335,23 @@ export class SketchSession {
       return;
     }
     d.inFlight = true;
-    void (async () => {
-      let to: Vec2 | null = at;
-      while (to && this.drag === d) {
-        d.pending = null;
-        const session = await d.session;
-        const res = await solver().api.drag(session, to);
-        this.applyDragResult(res, d.key);
-        to = d.pending;
+    d.steps = (async () => {
+      try {
+        let to: Vec2 | null = at;
+        while (to && this.drag === d) {
+          d.pending = null;
+          const session = await d.session;
+          const res = await solver().api.drag(session, to);
+          this.applyDragResult(res, d.key);
+          to = d.pending;
+        }
+      } catch {
+        // A step the solver refused or never answered: the drag keeps what already landed, and
+        // the release still ends it. Before, `inFlight` stayed set and the release's queued task
+        // waited for it forever, jamming every later edit and `whenSettled`.
+      } finally {
+        d.inFlight = false;
       }
-      d.inFlight = false;
     })();
   }
 
