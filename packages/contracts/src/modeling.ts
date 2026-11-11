@@ -6,6 +6,7 @@
  * resolved values, input result hashes). Editing feature k re-runs k…n only.
  */
 
+import type { Annotation, RefPoint } from './annotation';
 import type { EntityRef, Fingerprint, Id, Vec3, WrenDoc } from './document';
 import type {
   KernelApi,
@@ -220,11 +221,37 @@ export interface AnnotationResolution {
   value?: number;
   /** Measured from the geometry, when it can be (cross-check for sourced and stated values). */
   measured?: number;
-  /** Parallel to `refs` (empty for refs that did not resolve). */
+  /**
+   * Parallel to `refs` (null for refs that did not resolve). A hole callout without refs has one
+   * entry: the first instance's entry rim.
+   */
   anchors?: (AnnotationAnchor | null)[];
   /** Hole callouts: resolved hole faces of every instance (count and leader targets). */
   instances?: EntityRef[];
   error?: KernelError;
+}
+
+/** One anchor request: a ref, its point qualifier and the kind of annotation it is for. */
+export interface AnchorQuery {
+  ref: EntityRef;
+  /** As `Annotation.at[i]`; default `'self'`. */
+  at?: RefPoint;
+  /**
+   * The annotation kind the anchor is for, as in a resolution: `radius` / `diameter` anchor a
+   * cylindrical face by its rim circle, `holeCallout` a hole wall by the callout's entry rim.
+   * Omitted: the plain anchor (a cylindrical face is its axis).
+   */
+  annotationKind?: Annotation['kind'];
+}
+
+/** The answer to one `AnchorQuery`; `path` fields are `/<index in the query list>`. */
+export interface AnchorAnswer {
+  /** Null when the ref did not resolve (`unresolved` says why): never a guessed entity. */
+  anchor: AnnotationAnchor | null;
+  unresolved?: UnresolvedRef;
+  merged?: MergedRef;
+  grown?: GrownRef;
+  rebound?: { path: string; name: string; fingerprint?: Fingerprint };
 }
 
 /**
@@ -369,4 +396,14 @@ export interface ModelingApi extends KernelApi {
   ): Promise<Result<GeometricDiff>>;
   /** M4: the final shape of the latest regen of a part in a slot, for the drawing worker. */
   shapeForDrawing(partId: Id, slot?: RegenSlot): Promise<Result<ShapeForDrawing>>;
+  /**
+   * M4: anchors of arbitrary refs in the latest regen of a part in `slot` (default `'main'`),
+   * resolved with the annotation rules; one answer per query, in order (ADR-092 proposal 2). The
+   * drawing import places promoted fillet, chamfer and revolve values with it. Read-only.
+   */
+  annotationAnchors(
+    partId: Id,
+    queries: AnchorQuery[],
+    slot?: RegenSlot,
+  ): Promise<Result<AnchorAnswer[]>>;
 }

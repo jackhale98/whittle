@@ -10,6 +10,8 @@
  */
 
 import type {
+  AnchorAnswer,
+  AnchorQuery,
   Id,
   MeshQuality,
   ModelingApi,
@@ -25,7 +27,6 @@ import {
   type KernelApiInternals,
   type KernelLowLevelApi,
 } from './kernel-api';
-import type { AnchorAnswer, AnchorQuery } from './regen/annotations';
 import { meshListTransferables, regenTransferables } from './regen/buffers';
 import type { CompareOutput } from './regen/compare';
 import {

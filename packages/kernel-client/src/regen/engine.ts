@@ -33,6 +33,8 @@
  */
 
 import type {
+  AnchorAnswer,
+  AnchorQuery,
   AttentionCause,
   BodyResult,
   EntityQuery,
@@ -58,12 +60,7 @@ import type {
 import { evaluateFeatureValues, featureReferences } from '@wren-cad/document';
 import { zipSync } from 'fflate';
 import type { MeasureSubject } from '../kernel-api';
-import {
-  type AnchorAnswer,
-  type AnchorQuery,
-  queryAnchors,
-  resolveAnnotations,
-} from './annotations';
+import { queryAnchors, resolveAnnotations } from './annotations';
 import { attachCauses, fieldLabel, walkDelta, walkEntry } from './attribution';
 import { newWalk, pushWalk, type WalkEntry } from './cause';
 import { type CompareOutput, type DiffSide, geometricDiff } from './compare';

@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-export type { AnchorAnswer, AnchorQuery } from './annotations';
+export type { AnchorAnswer, AnchorQuery } from '@wren-cad/contracts';
 export { changeCause, nameTags, structuralCause, type Walk, type WalkEntry } from './cause';
 export { chainOrder } from './chain';
 export {

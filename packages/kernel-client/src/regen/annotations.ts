@@ -30,6 +30,8 @@
  */
 
 import type {
+  AnchorAnswer,
+  AnchorQuery,
   Annotation,
   AnnotationAnchor,
   AnnotationResolution,
@@ -833,28 +835,7 @@ async function wallEntry(
 // Anchor queries (ADR-092 proposal 2)
 // ---------------------------------------------------------------------------------------------
 
-/** One anchor request: a ref, its point qualifier and the kind of annotation it is for. */
-export interface AnchorQuery {
-  ref: EntityRef;
-  /** As `Annotation.at[i]`; default `'self'`. */
-  at?: RefPoint;
-  /**
-   * The annotation kind the anchor is for, as in a resolution: `radius` / `diameter` anchor a
-   * cylindrical face by its rim circle, `holeCallout` a hole wall by the callout's entry rim.
-   * Omitted: the plain anchor (a cylindrical face is its axis).
-   */
-  annotationKind?: Annotation['kind'];
-}
-
-/** The answer to one `AnchorQuery`; `path` fields are `/<index in the query list>`. */
-export interface AnchorAnswer {
-  /** Null when the ref did not resolve (`unresolved` says why): never a guessed entity. */
-  anchor: AnnotationAnchor | null;
-  unresolved?: UnresolvedRef;
-  merged?: MergedRef;
-  grown?: GrownRef;
-  rebound?: { path: string; name: string; fingerprint?: Fingerprint };
-}
+// `AnchorQuery` / `AnchorAnswer` are contract types (modeling.ts).
 
 /** The consumer id of anchor queries (after every feature, like an annotation). */
 const QUERY = 'A:anchors';
