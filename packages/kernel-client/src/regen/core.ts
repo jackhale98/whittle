@@ -99,6 +99,11 @@ export class EngineCore {
     return r.value;
   }
 
+  /** A mesh of `shape` already computed at either quality (no meshing), or null. */
+  cachedMesh(shape: ShapeHandle): MeshBuffers | null {
+    return this.meshes.get(`${shape}|coarse`) ?? this.meshes.get(`${shape}|fine`) ?? null;
+  }
+
   async releaseHandle(shape: ShapeHandle): Promise<void> {
     this.ownedHandles.delete(shape);
     this.fps.delete(shape);

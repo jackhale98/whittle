@@ -412,7 +412,66 @@ candidates as one plane, since any of them gives the same frame.
 Search spaces: `S<id>:…` names and `region` refs → that sketch; `F<id>:plane` → that plane; other
 face/edge/vertex refs → all current bodies; `body` refs → the body table by id.
 
+## M4 annotations and drawings (`src/regen/annotations.ts`, ADR-090)
+
+- **When.** After the last feature, against the final state of the slot being regenerated, only
+  when asked: `request.annotations ?? part.annotations.length > 0` (`false` never). The engine
+  takes the configuration-resolved document as it does for features. Annotations never enter a
+  feature's definition, values, cache key or walk entry, so adding or editing one regenerates no
+  feature.
+- **Refs.** Each `refs[i]` resolves with the feature rules through `resolveSub` (exact name, merge
+  alias reported as `merged`, name family with containment, fingerprints for weak names), plus
+  origin planes, axes and point, `F…:plane` / `:axis` / `:point` and bodies by id. `source`
+  (`/source`): the feature must exist and be ok in this walk; `sketchDimension` reads the driving
+  value or the solver's driven value (`SketchState.driven`), `featureField` must be one of the
+  feature's `exprFields`, `feature` gives a chamfer's distance, a hole's diameter (the thread's
+  nominal for tapped holes), a thread's major diameter or a fillet's radius. Radius and diameter
+  sources are converted to the annotation's kind. `appliesTo` and datum ids (`{ datum }`) must name
+  an annotation of the right kind; `{ label }` is always unresolved (needs a bind, never guessed).
+- **States.** `suppressed` when the annotation is, when its source feature is, or when every
+  unresolved ref has the structural cause `suppressed` (also a suppressed datum or applied-to
+  dimension). Otherwise anything unresolved or a value that cannot be had is `needsAttention`
+  with `error` and the first `cause`. Causes use cause.ts with the annotation as a consumer after
+  the walk: structural (deleted, suppressed, failed), then this regen's change when the same
+  stored ref resolved in the regen right before, then the carried-over cause. Datum letters and
+  annotation ids get no cause. `value` = source ?? nominal ?? measured, set **only** when `ok`.
+- **Geometry** (`annotation-geometry.ts`). Planar faces: fingerprint centroid and normal, with the
+  sign taken from the render mesh (see the kernel gap below), outline from `projectFaceOutline`.
+  Cylinders: the probed axis, the exact radius and the extent (two measurements). Lines and
+  circles: the probed end points, centre and normal. Spheres: the centre. Other edges: the coarse
+  mesh polyline. All are memoised per handle. `measured` follows the conventions in that file's
+  header; for hole callouts it is the bore of the first instance. `instances` lists every
+  `F<hole>:hole(<p>):wall` face, with pattern and mirror copies unwrapped. Split pieces count
+  once (the largest stands for the instance), the originals first.
+- **Reuse.** A resolution is reused while the final state's content keys, merge table, feature
+  states and keys, parameters and the annotation (plus its datums and applied-to dimension) are
+  unchanged. A needs-attention one is reused only from the regen right before, so its cause stays
+  correct. Memo entries are per slot and by id; deleted annotations' entries are dropped.
+- **Cost** (stress part, 409 faces, 50 annotations: 20 linear, 15 diameters on cylinders, 10 radii
+  on circles, 5 notes on lines; Node, single-threaded kernel). First resolution about 100 ms. An
+  unchanged regen costs 24 ms, the same as without annotations. Fresh resolutions on a new final
+  body (the shape after any edit) cost about 50 ms, of which 869 exact measurements and 40 outline
+  projections are about 28 ms. Editing the last feature: 191 ms CPU median with annotations, 145
+  ms without (PLAN §10 budget 300 ms). With no annotations the stress benchmark is unchanged (last
+  edit 177 ms, ADR-084 recorded 181 ms).
+- **`shapeForDrawing(partId, slot = 'main')`** writes one BREP of the latest regen's non-mesh
+  bodies (a compound for several, in body order) through `exportShapes(…, 'brep')`, and transfers
+  the fresh bytes. `faceNames` / `edgeNames` are each body's primary names by TopExp index,
+  concatenated (the compound's `MapShapes` order: bodies share no sub-shapes, and the BREP keeps
+  sub-shape order). Counts come from the cheap `bounds`. `key` = hash of the bodies' (id, content
+  key): equal keys mean equal shapes and names, and the key does not move for annotation-only or
+  configuration-only edits. `bounds` = union of the bodies' boxes.
+
 ## Tests
+
+M4: `annotations.golden.test.ts` (the bracket with linear, diameter on a face and on an edge,
+radius, angle, surface finish, datum, a position frame bound to the hole and a stated value; hole
+callouts with a pattern of 3 and 4 holes; deleting the chamfer, the fillet, the sketch dimension;
+the merged upright back face; an upstream edit that removes a hole wall, with the cause; a
+configuration with a different depth; suppression by configuration; the M3.7 finding that reorder
+and delete never retarget an override; feature cache keys untouched; no kernel calls on an
+unchanged regen) and `shape-for-drawing.test.ts` (BREP round trip for one and two bodies: counts,
+names and per-index fingerprints; the key; refusals).
 
 `pnpm --filter @wren-cad/kernel-client test` runs the golden suite in Node against the real kernel
 (`packages/kernel/dist`, skipped when missing) and real planegcs: plate, the M1 bracket with three
@@ -483,6 +542,20 @@ method.
 
 ## Kernel gaps and contract notes
 
+- **Kernel (M4, bug, not edited here)**: `planeOf` (whittle_modeling.cpp) reverses the normal for
+  `TopAbs_REVERSED` faces only and reads `gp_Pln::Axis().Direction()`. For a plane whose `gp_Ax3`
+  is left-handed (`!Position().Direct()`), such as the bracket's chamfer face, that is the inward
+  normal. Fingerprints, `measureShapes` face–face angles (135° instead of 45° on the bracket
+  chamfer), sketches on such a face and holes drilled into it all read it. The render mesh normals
+  are correct. Fix: also reverse when `!pln.Position().Direct()`. Note that this changes the
+  fingerprints of those faces. Until then annotations take the sign from the mesh
+  (`outwardNormal`).
+- **Kernel (M4, proposed, minimal)**: `subShapeGeometry(shape, kind, index)` returning exact
+  geometry. For a line, its end points. For a circle, centre, normal and radius (and the arc ends).
+  For a cylinder or cone, its axis, radius and extent. For a sphere, its centre and radius. For a
+  plane, origin and normal (outward). One call would replace about 27 probe measurements per
+  circle or cylinder, which are most of the annotation cost on a fresh body (869 calls for 50
+  annotations on the stress part). Not required: today's probes are exact.
 - **Kernel**: the M1 gaps (no transform call, no naming call, no IGES reader) are closed by the M3
   kernel `import` feature and IGES reader; the engine uses both. Mesh imports are still placed in
   TS (`placeMesh`) because OBJ/3MF/GLB are parsed in TS.
