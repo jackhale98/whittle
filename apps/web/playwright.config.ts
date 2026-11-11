@@ -14,6 +14,10 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,
+  // Pixel baselines are recorded outside CI (font and GL rasterisation differ on the runners), as in
+  // packages/ui (ADR-086): CI runs every functional assertion of those specs but skips the pixel
+  // comparison; locally they compare.
+  ignoreSnapshots: Boolean(process.env.CI),
   // One test at a time on CI: the 2-vCPU runners render with SwiftShader (software GL) and run
   // the kernel's Wasm threads; parallel pages starve each other into timeouts.
   ...(process.env.CI ? { workers: 1 } : {}),
