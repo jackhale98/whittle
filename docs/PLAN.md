@@ -816,6 +816,11 @@ Owner feedback 2026-11-10. Small; right after M3.7, before M4 (drawings dimensio
   - **Persistence.** Stored with the keymap: per device, exported and imported with settings. Schema-versioned, with unknown command ids dropped and reported.
   - **Flick window setting.** 0–400 ms, default 250; 0 turns flicks off. An optional "Draw after a delay" setting for blind-flick purists (default off).
   - **Accept:** unit tests for the layout, persistence and migration of a customised ring; E2E for customising the face context, reloading, then a right-click shows the custom ring and a flick runs the custom item; the editor passes axe, keyboard-only checks and phone width.
+- **Show references that changed meaning (from the ADR-078 face-merge review).** The regen reports references resolved through a merge alias (`FeatureStatus.merged`), but the app shows nothing. An exact-name reference can also now cover more geometry: a fillet on `edge(plateBack|plateLeft)` grew from 8 mm to 48 mm with no report.
+  - Show a quiet "uses merged face/edge" badge on the feature, with the detail in the inspector.
+  - Compare a reference's measure (area or length) with its stored fingerprint, and flag a large growth as "check this reference", with Accept and Re-pick.
+  - Never block the regen. Never re-pick silently.
+  - Accept: E2E on the bracket: the grown fillet edge is flagged, and Accept clears the flag.
 - **Two-point splines.** A through-point spline with two points is valid: a straight cubic with free end tangents that can be dragged or constrained later. A control-point spline with two poles is a degree-1 segment, offered as such. Today a two-point spline can't be finished.
 - **Accept (sketch items):**
   - Unit tests per tool: glyphs shown equal constraints committed. Dropping a point on an existing point merges it, with no duplicate.
