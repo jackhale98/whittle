@@ -29,7 +29,9 @@ export interface RegenEngineOptions {
   /**
    * Cache entries kept beyond those the latest regen (and the last all-ok regen, for ghosts)
    * uses, per part, least recently used first out. Each holds one or two B-rep shapes plus their
-   * meshes. Default 128; the tablet tier should use ~32 (PLAN §8.4 memory budget).
+   * meshes. Default: 128, or three earlier full states of the part when that is more (a part of
+   * more than 42 features), until the Wasm heap passes 1.5 GiB (ADR-083). A configured value is
+   * a hard bound; the tablet and phone tiers use 4 and 2 (PLAN §8.4 memory budget).
    */
   maxSpareResults?: number;
   /**
@@ -49,9 +51,13 @@ export interface RegenEngineDeps {
   /**
    * The kernel worker surface. `projectEdges` / `projectFaceOutline` (M3, kernel engineer) are
    * used for linked sketch entities when present; without them straight edges and circles parallel
-   * to the sketch are projected in TypeScript and other sources are an error.
+   * to the sketch are projected in TypeScript and other sources are an error. Without `bounds`
+   * (engine fakes) the bounding-box checks read `massProperties` instead.
    */
-  kernel: KernelWorkerApi & Partial<KernelApiInternals> & Partial<ProjectionApi>;
+  kernel: Omit<KernelWorkerApi, 'bounds'> &
+    Partial<Pick<KernelWorkerApi, 'bounds'>> &
+    Partial<KernelApiInternals> &
+    Partial<ProjectionApi>;
   /** Lazily loads planegcs (only when a sketch misses the cache). */
   sketchSolver: () => Promise<SketchSolve>;
   /**

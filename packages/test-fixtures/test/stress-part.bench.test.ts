@@ -11,6 +11,11 @@
  * `WREN_STRESS_OUT=<file>` also writes the table as JSON; `WREN_KERNEL_DIST=<dir>` benchmarks a
  * different kernel build (the A/B of the face-merge change).
  *
+ * `WREN_STRESS_MASS=deferred` (ADR-083) regenerates without mass properties, as the app does for a
+ * part without a material: the document's material is dropped and the request does not ask for
+ * them. The default (`inline`) asks for them, as a part with a material gets them today. Deferred
+ * runs add a row for the separate `massProperties(shape)` fetch of the final body after an edit.
+ *
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
@@ -31,7 +36,7 @@ import {
   withParam,
 } from './stress-support';
 
-/** `WREN_STRESS_ONLY=cold,last,wall` runs just those groups (cold, cached, last, mid, wall, fillet, length, suppress, memory, rollback). */
+/** `WREN_STRESS_ONLY=cold,last,wall` runs just those groups (cold, cached, last, mid, wall, fillet, length, suppress, undo2, memory, rollback). */
 const only = process.env.WREN_STRESS_ONLY?.split(',');
 const want = (tag: string) => only === undefined || only.includes(tag);
 /** Runs of the cheap scenarios (edits of late features). */
@@ -39,6 +44,8 @@ const RUNS = Number(process.env.WREN_STRESS_RUNS ?? 3);
 /** Runs of the expensive ones (a full regen is minutes on a loaded machine). */
 const FULL = Number(process.env.WREN_STRESS_FULL_RUNS ?? 2);
 const PART = ENCLOSURE_PART_ID;
+/** Mass properties in the regen (`inline`, default) or fetched separately (`deferred`). */
+const DEFERRED = process.env.WREN_STRESS_MASS === 'deferred';
 const ids = enclosureFeatureIds();
 
 interface Row {
@@ -63,13 +70,14 @@ describe.skipIf(!kernelBuilt || !stressEnabled)('stress part benchmark', () => {
   beforeAll(async () => {
     api = await loadApi();
     base = enclosureDoc();
+    if (DEFERRED) delete (base.parts[0] as { material?: unknown }).material;
   }, 120_000);
   afterAll(async () => {
     await api?.closePart(PART);
     const bold = (s: string) => s;
     log(bold(`\n[stress] kernel ${kernelDist}`));
     log(
-      `[stress] ${loadNote()}; ${RUNS} runs (cheap) or ${FULL} (full regen) per scenario; features=${n()}`,
+      `[stress] ${loadNote()}; ${RUNS} runs (cheap) or ${FULL} (full regen) per scenario; features=${n()}; mass properties ${DEFERRED ? 'deferred (no material, fetched separately)' : 'inline (requested)'}`,
     );
     const head = `${'scenario'.padEnd(46)} ${'first changed'.padEnd(12)} ${'hit/miss'.padEnd(9)} ${'wall med'.padStart(9)} ${'wall p90'.padStart(9)} ${'cpu med'.padStart(9)} ${'cpu p90'.padStart(9)}`;
     log(head);
@@ -87,7 +95,12 @@ describe.skipIf(!kernelBuilt || !stressEnabled)('stress part benchmark', () => {
   });
 
   const regen = (doc: WrenDoc, quality: 'coarse' | 'fine' = 'coarse') =>
-    api.regenerate({ doc, partId: PART as Id, quality, massProperties: true });
+    api.regenerate({
+      doc,
+      partId: PART as Id,
+      quality,
+      ...(DEFERRED ? {} : { massProperties: true }),
+    });
 
   async function scenario(
     name: string,
@@ -163,6 +176,34 @@ describe.skipIf(!kernelBuilt || !stressEnabled)('stress part benchmark', () => {
         }),
       );
       expect(rows.at(-1)?.misses).toBe(1);
+      if (DEFERRED) {
+        // What the app then fetches off the critical path: the edited body's mass properties.
+        const wall: number[] = [];
+        const cpu: number[] = [];
+        for (let i = 0; i < RUNS; i++) {
+          const r = await regen(
+            withFeature(base, ids.ear_f as string, (f) => {
+              if (f.type === 'fillet') f.radius = `${3.5 + 0.1 * (i + 1)} mm`;
+            }),
+          );
+          const t = await timed(() => api.massProperties(r.bodies[0]?.shape ?? 0));
+          expect(t.value.ok).toBe(true);
+          wall.push(t.wallMs);
+          cpu.push(t.cpuMs);
+        }
+        rows.push({
+          scenario: '  then massProperties(final body), deferred',
+          firstChanged: 'ear_f',
+          runs: RUNS,
+          wallMedian: median(wall),
+          wallP90: p90(wall),
+          cpuMedian: median(cpu),
+          cpuP90: p90(cpu),
+          hits: 0,
+          misses: 0,
+          coarse: true,
+        });
+      }
     },
     600_000,
   );
@@ -234,6 +275,34 @@ describe.skipIf(!kernelBuilt || !stressEnabled)('stress part benchmark', () => {
       await scenario('undo of a late edit (ear_t back: hit)', 'ear', RUNS, () => base, {
         before: async () => {
           await regen(withParam(base, 'ear_t', '3.7 mm'));
+        },
+      });
+    },
+    7_200_000,
+  );
+
+  it.skipIf(!want('undo2'))(
+    'two early edits, then undo both (the second undo must stay a cache hit)',
+    async () => {
+      await rebase();
+      const edits = [withParam(base, 'wall', '2.6 mm'), withParam(base, 'wall', '2.7 mm')];
+      await scenario(
+        'undo twice after two early edits: 1st undo',
+        'shell',
+        FULL,
+        () => edits[0] as WrenDoc,
+        {
+          before: async () => {
+            await rebase();
+            for (const d of edits) await regen(d);
+          },
+        },
+      );
+      await scenario('undo twice after two early edits: 2nd undo', 'shell', FULL, () => base, {
+        before: async () => {
+          await rebase();
+          for (const d of edits) await regen(d);
+          await regen(edits[0] as WrenDoc);
         },
       });
     },

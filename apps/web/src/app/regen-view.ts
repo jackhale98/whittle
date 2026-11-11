@@ -69,6 +69,25 @@ export function onRegen(wb: Workbench, raw: RegenView): void {
   }
 }
 
+/**
+ * Mass properties fetched after the geometry (ADR-083, `RegenLoopOptions.onMass`): added to the
+ * displayed live result when it still shows those shapes. Nothing else changes (no viewport sync:
+ * the meshes are the same), so only the readouts that use them re-render.
+ */
+export function onMass(wb: Workbench, result: RegenResult): void {
+  const view = wb.regen.get();
+  if (view?.source !== 'live' || view.result.partId !== result.partId) return;
+  const byShape = new Map(result.bodies.map((b) => [b.shape, b.massProperties] as const));
+  let changed = false;
+  const bodies = view.result.bodies.map((b) => {
+    const mp = b.massProperties ? undefined : byShape.get(b.shape);
+    if (!mp) return b;
+    changed = true;
+    return { ...b, massProperties: mp };
+  });
+  if (changed) wb.regen.set({ ...view, result: { ...view.result, bodies } });
+}
+
 export function keepInView(wb: Workbench, view: RegenView): void {
   const v = wb.viewport;
   if (!v || !wb.fitPending || wb.ui.get().sketch) return;

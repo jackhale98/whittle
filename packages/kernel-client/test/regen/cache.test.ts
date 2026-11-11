@@ -57,6 +57,27 @@ function fiftyFeatures(): Feature[] {
   return features;
 }
 
+/** Plate (thickness `t`) + 49 through holes: an edit of `t` misses all 50 solid features. */
+function hundredFeatures(): Feature[] {
+  const s = new Sk();
+  const r = s.rect('p', 'L', 0, 0, 280, 140, '280', '140');
+  s.geo({ kind: 'fix', entity: r.a });
+  const features: Feature[] = [
+    s.feature(fid('HQ0')),
+    extrude(fid('HQE'), [region(fid('HQ0'), 'L1,L2,L3,L4')], 't'),
+  ];
+  for (let i = 0; i < 49; i++) {
+    const hs = new Sk();
+    hs.circle('C', 10 + (i % 7) * 40, 10 + Math.floor(i / 7) * 20, 3);
+    hs.geo({ kind: 'fix', entity: 'Cc' });
+    hs.dim({ kind: 'radius', curve: 'C' }, '3');
+    const sid = fid(`HQS${i}`);
+    features.push(hs.feature(sid));
+    features.push(extrude(fid(`HQC${i}`), [region(sid, 'C')], 'throughAll', 'cut'));
+  }
+  return features;
+}
+
 const fiftyVolume = (lastDepth: number) =>
   240 * 100 * 10 - 23 * PI * 16 * 10 - PI * 16 * Math.min(10, lastDepth);
 
@@ -194,6 +215,34 @@ describe.skipIf(!built)(`regen golden: cache and handles${skipNote}`, () => {
     await api.closePart(PART);
     expect((await api.memoryStats()).liveHandles).toBe(m0.liveHandles);
   });
+
+  it('the default spare budget keeps three earlier states of a large part (ADR-083)', async () => {
+    const doc = makeDoc({ t: '10 mm' }, hundredFeatures());
+    const undoAfterThreeEdits = async (a: Api) => {
+      const r0 = await a.regenerate({ doc, partId: PART, quality: 'coarse' });
+      expect(states(r0), describeFailures(r0)).toEqual(Array(100).fill('ok'));
+      for (const t of ['11 mm', '12 mm', '13 mm']) {
+        const r = await a.regenerate({
+          doc: withParams(doc, { t }),
+          partId: PART,
+          quality: 'coarse',
+        });
+        expect(r.cache.misses).toBe(50);
+      }
+      // 150 spare entries now: back to the first state is a hit only if all of them were kept.
+      const back = await a.regenerate({ doc, partId: PART, quality: 'coarse' });
+      await a.closePart(PART);
+      return back.cache;
+    };
+    await api.closePart(PART);
+    expect(await undoAfterThreeEdits(api)).toEqual({ hits: 100, misses: 0 });
+    expect((await api.memoryStats()).regen.limits.maxSpareResults).toBe(128);
+    // A configured bound stays a hard bound: 128 keeps 128 of the 150.
+    const bounded = await loadApi({ maxSpareResults: 128 });
+    const cache = await undoAfterThreeEdits(bounded);
+    expect(cache.misses).toBeGreaterThan(0);
+    expect(cache.hits + cache.misses).toBe(100);
+  }, 120_000);
 
   it('configureRegen lowers the spare budget at runtime (device tiers)', async () => {
     const doc = bracketDoc();

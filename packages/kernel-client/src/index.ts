@@ -21,6 +21,7 @@ export type {
   ProjectedCurve,
   ProjectedEdge,
   ProjectedLoopEdge,
+  ShapeBounds,
   ShapeImportFormat,
 } from './kernel-api';
 export type { KernelMemoryStats, ModelingWorkerApi, RegenWorkerOptions } from './modeling-api';

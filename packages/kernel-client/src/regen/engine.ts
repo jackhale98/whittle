@@ -41,6 +41,7 @@ import type {
   Feature,
   Id,
   KernelError,
+  MassProperties,
   Measurement,
   MeasureTarget,
   MeshBuffers,
@@ -127,7 +128,7 @@ export class RegenEngine {
     this.core = new EngineCore(deps);
     this.cache = new ResultCache(
       this.core,
-      validSpare(deps.options?.maxSpareResults) ?? 128,
+      validSpare(deps.options?.maxSpareResults),
       validSlots(deps.options?.maxVersionSlots) ?? DEFAULT_VERSION_SLOTS,
     );
     this.now = deps.options?.now ?? (() => performance.now());
@@ -166,7 +167,10 @@ export class RegenEngine {
   ): Promise<void> {
     return this.serial(async () => {
       const spare = validSpare(options.maxSpareResults);
-      if (spare !== undefined) this.cache.maxSpare = spare;
+      if (spare !== undefined) {
+        this.cache.maxSpare = spare;
+        this.cache.auto = false;
+      }
       const slots = validSlots(options.maxVersionSlots);
       if (slots !== undefined) {
         this.cache.maxSlots = slots;
@@ -411,6 +415,22 @@ export class RegenEngine {
       side.keys.push(body.key);
     }
     return side;
+  }
+
+  /**
+   * `KernelApi.massProperties` through the engine (ADR-083): serialised with regens, and for
+   * shapes the regen cache owns, memoised per handle and density with the mass properties regens
+   * compute, so the app's deferred fetch after a regen never integrates a body twice.
+   */
+  massProperties(shape: ShapeHandle, density?: number): Promise<Result<MassProperties>> {
+    return this.serial(async () => {
+      const valid = density === undefined || (Number.isFinite(density) && density > 0);
+      if (valid && this.core.ownedHandles.has(shape)) {
+        const mp = await this.core.massOf(shape, density);
+        if (mp) return { ok: true, value: mp };
+      }
+      return this.core.kernel.massProperties(shape, density);
+    });
   }
 
   /** Is `shape` owned by the regen cache (released by the engine, never by callers)? */

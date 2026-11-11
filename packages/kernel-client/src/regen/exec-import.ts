@@ -346,7 +346,7 @@ async function runImport(
   if (scoped.mode === 'default' && candidates.length > 0) {
     const tb = emptyBox();
     for (const t of tools) {
-      const mp = await core.massOf(t.shape);
+      const mp = await core.boundsOf(t.shape);
       if (mp) {
         extendBox(tb, mp.bbox.min);
         extendBox(tb, mp.bbox.max);
@@ -355,7 +355,7 @@ async function runImport(
     const tol = 1e-6 * Math.max(1, boxDiagonal(tb));
     const kept: BodyState[] = [];
     for (const b of candidates) {
-      const bb = await core.massOf(b.shape);
+      const bb = await core.boundsOf(b.shape);
       if (!bb || boxesOverlap(bb.bbox, tb, tol)) kept.push(b);
     }
     candidates = kept;

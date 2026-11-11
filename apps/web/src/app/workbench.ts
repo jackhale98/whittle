@@ -406,6 +406,7 @@ export class Workbench {
       fine: this.policy.meshQuality === 'fine',
       getDoc: () => this.viewDoc(),
       onResult: (o) => this.onRegen({ ...o, source: 'live' }),
+      onMass: (o) => regenView.onMass(this, o.result),
       onError: (e) => this.toast(e.message, 'error'),
       attachments: (doc) => this.attachmentsFor(doc),
     });

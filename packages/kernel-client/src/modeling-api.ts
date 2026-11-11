@@ -112,12 +112,14 @@ export function createModelingApi(deps: ModelingApiDeps): ModelingApiImpl {
     init: (options) => kernel.init(options),
     execFeature: (feature, inputs) => kernel.execFeature(feature, inputs),
     mesh: (shape, options) => kernel.mesh(shape, options),
-    massProperties: (shape, density) => kernel.massProperties(shape, density),
+    // Through the engine: cached per handle for regen-owned shapes, serialised with regens.
+    massProperties: (shape, density) => engine.massProperties(shape, density),
     // Shapes in regen results belong to the engine's cache; releasing one would corrupt it.
     release: async (shape) => {
       if (!engine.ownsHandle(shape)) await kernel.release(shape);
     },
     fingerprints: (shape) => kernel.fingerprints(shape),
+    bounds: (shape) => kernel.bounds(shape),
     exportShapes: (shapes, format, options) => kernel.exportShapes(shapes, format, options),
     importShapes: (bytes, format) => kernel.importShapes(bytes, format),
     configureThreads: (count) => kernel.configureThreads(count),

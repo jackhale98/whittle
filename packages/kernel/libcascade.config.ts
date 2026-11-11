@@ -13,6 +13,7 @@ const facadeSymbols = [
   'mesh',
   'massProperties',
   'fingerprints',
+  'bounds',
   'exportShapes',
   'importFile',
   'measure',

@@ -1,4 +1,4 @@
-import type { RegenRequest, RegenResult, WrenDoc } from '@wren-cad/contracts';
+import type { MassProperties, RegenRequest, RegenResult, WrenDoc } from '@wren-cad/contracts';
 import { newDoc } from '@wren-cad/document';
 import { describe, expect, it } from 'vitest';
 import {
@@ -201,5 +201,105 @@ describe('regen loop', () => {
       'imports/A.step',
       'imports/B.stl',
     ]);
+  });
+
+  it('ADR-083: mass properties come after the geometry, inline again once they are cheap', async () => {
+    let doc: WrenDoc = newDoc({ firstPart: 'P' });
+    const calls: { request: RegenRequest; resolve(r: RegenResult): void }[] = [];
+    const massCalls: { shape: number; resolve(): void }[] = [];
+    const mp = (volume: number): MassProperties => ({
+      volume,
+      area: 1,
+      centroid: [0, 0, 0],
+      bbox: { min: [0, 0, 0], max: [1, 1, 1] },
+      faceCount: 6,
+      edgeCount: 12,
+      vertexCount: 8,
+    });
+    const port: ModelingPort = {
+      regenerate: (request) => new Promise((resolve) => calls.push({ request, resolve })),
+      refFor: async () => null,
+      exportPart: async () => ({ ok: true, bytes: new Uint8Array() }),
+      importFile: async () => ({ ok: true, bodies: [] }),
+      closePart: async () => {},
+      massProperties: (shape) =>
+        new Promise((resolve) =>
+          massCalls.push({ shape, resolve: () => resolve({ ok: true, value: mp(shape * 10) }) }),
+        ),
+    };
+    const result = (i: number, shapes: number[], totalMs = 1, withMass = false): RegenResult => ({
+      partId: calls[i]?.request.partId ?? '',
+      revision: i + 1,
+      features: [],
+      bodies: shapes.map((shape) => ({
+        id: `B${shape}`,
+        shape,
+        mesh: { faceNames: [] } as unknown as RegenResult['bodies'][number]['mesh'],
+        ...(withMass ? { massProperties: mp(shape * 10) } : {}),
+      })),
+      sketches: [],
+      totalMs,
+      cache: { hits: 0, misses: 0 },
+    });
+    const got: RegenOutcome[] = [];
+    const massed: RegenOutcome[] = [];
+    const loop = createRegenLoop({
+      port,
+      getDoc: () => doc,
+      onResult: (o) => got.push(o),
+      onMass: (o) => massed.push(o),
+      fine: false,
+    });
+
+    // 1. Unknown cost: the regen does not ask for mass; they follow, and idle waits for them.
+    loop.request();
+    expect(calls[0]?.request.massProperties).toBeUndefined();
+    let idle = false;
+    void loop.whenIdle().then(() => {
+      idle = true;
+    });
+    calls[0]?.resolve(result(0, [7]));
+    await tick();
+    expect(got[0]?.result.bodies[0]?.massProperties).toBeUndefined();
+    expect(massCalls.map((c) => c.shape)).toEqual([7]);
+    expect(idle).toBe(false);
+    massCalls[0]?.resolve();
+    await tick();
+    expect(massed[0]?.result.bodies[0]?.massProperties?.volume).toBe(70);
+    expect(massed[0]?.result.revision).toBe(1);
+    expect(idle).toBe(true);
+
+    // 2. That fetch was fast: the next regen asks for them inline, nothing is fetched after it.
+    doc = { ...doc };
+    loop.request();
+    expect(calls[1]?.request.massProperties).toBe(true);
+    calls[1]?.resolve(result(1, [7, 8], 500, true));
+    await tick();
+    expect(massCalls).toHaveLength(1);
+    expect(massed).toHaveLength(1);
+
+    // 3. That inline regen blew the edit budget: deferred again. Known shapes are filled in at
+    // once (no gap in the readout), only the new one is fetched, and an edit goes first.
+    doc = { ...doc };
+    loop.request();
+    expect(calls[2]?.request.massProperties).toBeUndefined();
+    calls[2]?.resolve(result(2, [7, 9]));
+    await tick();
+    expect(got[2]?.result.bodies.map((b) => b.massProperties?.volume)).toEqual([70, undefined]);
+    expect(massCalls.map((c) => c.shape)).toEqual([7, 9]);
+    doc = { ...doc };
+    loop.request(); // an edit while the mass of 9 is in flight: it is dropped, the regen goes first
+    massCalls[1]?.resolve();
+    await tick();
+    expect(calls).toHaveLength(4);
+    expect(massed).toHaveLength(1);
+    calls[3]?.resolve(result(3, [7, 10]));
+    await tick();
+    expect(got[3]?.result.bodies[0]?.massProperties?.volume).toBe(70);
+    expect(massCalls.map((c) => c.shape)).toEqual([7, 9, 10]);
+    massCalls[2]?.resolve();
+    await tick();
+    expect(massed.at(-1)?.result.revision).toBe(4);
+    expect(massed.at(-1)?.result.bodies.map((b) => b.massProperties?.volume)).toEqual([70, 100]);
   });
 });

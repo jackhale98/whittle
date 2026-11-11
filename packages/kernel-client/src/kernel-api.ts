@@ -113,6 +113,12 @@ export interface ImportedBody {
 export interface KernelLowLevelApi extends Partial<ProjectionApi> {
   /** Geometric fingerprints of every face/edge/vertex (TopExp order). */
   fingerprints(shape: ShapeHandle): Promise<Result<ShapeFingerprints>>;
+  /**
+   * `massProperties`' bounding box and topology counts without integrating anything (ADR-083):
+   * the regen engine's bounding-box prefilters and "the boolean left the body unchanged" checks.
+   * Against a kernel build without the `bounds` entry point it falls back to `massProperties`.
+   */
+  bounds(shape: ShapeHandle): Promise<Result<ShapeBounds>>;
   /** Writes STEP/STL/BREP of the given shapes; one file unless STL `stlPerBody`. */
   exportShapes(
     shapes: ExportShape[],
@@ -157,6 +163,9 @@ export interface KernelProjectionApi {
     plane: Frame,
   ): Promise<Result<ProjectedLoopEdge[]>>;
 }
+
+/** The cheap part of `MassProperties` (`KernelLowLevelApi.bounds`): exactly the same values. */
+export type ShapeBounds = Pick<MassProperties, 'bbox' | 'faceCount' | 'edgeCount' | 'vertexCount'>;
 
 /** Everything the kernel worker exposes over Comlink. */
 export type KernelWorkerApi = KernelApi & KernelLowLevelApi;
@@ -551,6 +560,23 @@ export function createKernelApi(
         return parseResult<ShapeFingerprints>(kernel.fingerprints(shape), 'fingerprints');
       } catch (e) {
         return caught('fingerprints', e);
+      }
+    },
+
+    async bounds(shape: ShapeHandle): Promise<Result<ShapeBounds>> {
+      if (kernel === null) return notReady();
+      const k = kernel;
+      try {
+        if (typeof k.bounds !== 'function') {
+          // A kernel build from before ADR-083: the same values, at the price of integrating.
+          const mp = parseResult<MassProperties>(k.massProperties(shape, 0), 'bounds');
+          if (!mp.ok) return mp;
+          const { bbox, faceCount, edgeCount, vertexCount } = mp.value;
+          return { ok: true, value: { bbox, faceCount, edgeCount, vertexCount } };
+        }
+        return parseResult<ShapeBounds>(k.bounds(shape), 'bounds');
+      } catch (e) {
+        return caught('bounds', e);
       }
     },
 

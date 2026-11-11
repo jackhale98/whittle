@@ -7,7 +7,13 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import type { Feature, FeatureInputs, SketchEntity, Vec2 } from '@wren-cad/contracts';
+import type {
+  Feature,
+  FeatureInputs,
+  MassProperties,
+  SketchEntity,
+  Vec2,
+} from '@wren-cad/contracts';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import type {
   ExactProjectedCurve,
@@ -380,6 +386,29 @@ for (const { variant } of VARIANTS) {
         expect(fp.faces[indexOf(ex, `${E}:side(${S}:e(B1))`, 'face')]?.surface).toBe('extrusion');
         const top = indexOf(ex, `edge(${E}:end|${E}:side(${S}:e(B1)))`, 'edge');
         expect(fp.edges[top]?.curve).toBe('bspline');
+      });
+
+      it('bounds of a swept spline: massProperties bbox and counts, far cheaper (ADR-083)', () => {
+        const ss = session();
+        const { ex } = sketchAndExtrude(ss, archEntities(), ARCH_REGION);
+        const bounds = k.bounds as (shape: number) => string;
+        const t0 = performance.now();
+        const b = ok<Pick<MassProperties, 'bbox' | 'faceCount' | 'edgeCount' | 'vertexCount'>>(
+          bounds(ex.shape),
+        );
+        const tBounds = performance.now() - t0;
+        const t1 = performance.now();
+        const mp = ss.mass(ex.shape);
+        const tMass = performance.now() - t1;
+        const { bbox, faceCount, edgeCount, vertexCount } = mp;
+        expect(b).toEqual({ bbox, faceCount, edgeCount, vertexCount });
+        expect(b.faceCount).toBe(4);
+        // The arch spans x 0..40 and is extruded DEPTH along z.
+        vecClose(b.bbox.min, [0, 0, 0]);
+        vecClose([b.bbox.max[0], b.bbox.max[2]], [40, DEPTH]);
+        console.info(
+          `[${variant}] swept-spline bounds ${tBounds.toFixed(2)} ms vs massProperties ${tMass.toFixed(2)} ms`,
+        );
       });
 
       it('regenerates byte-identically (naming and fingerprints)', () => {

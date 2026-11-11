@@ -278,13 +278,13 @@ async function throughAllDepth(
 ): Promise<number> {
   const box = emptyBox();
   const profile = emptyBox();
-  const tb = await core.massOf(target.shape);
+  const tb = await core.boundsOf(target.shape);
   if (tb) {
     extendBox(box, tb.bbox.min);
     extendBox(box, tb.bbox.max);
   }
   for (const s of profiles) {
-    const pb = await core.massOf(s);
+    const pb = await core.boundsOf(s);
     if (!pb) continue;
     for (const p of [pb.bbox.min, pb.bbox.max]) {
       extendBox(box, p);

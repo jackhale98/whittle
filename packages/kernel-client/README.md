@@ -17,7 +17,7 @@ only ever holds shape ids and transferred render buffers.
 ```ts
 import { createKernelClient } from '@wren-cad/kernel-client';
 
-const kernel = createKernelClient({ regen: { maxSpareResults: 32 } }); // tablet tier; default 128
+const kernel = createKernelClient({ regen: { maxSpareResults: 4 } }); // tablet tier; default: auto (128+)
 await kernel.ready();
 let doc = bracketDoc;                                 // a WrenDoc from the document store
 const partId = doc.parts[0].id;
@@ -115,9 +115,20 @@ resolved refs as (input content key, kind, index), frames, content keys of the s
 Content keys chain through results, so editing feature k invalidates k and whatever consumes its
 output — e.g. a sketch on a face only depends on that face's plane and stays cached when the body
 under it changes. Entries own the handles they create and hold deltas only; after each regen, all
-entries not used by it (or by the last all-ok regen) beyond `maxSpareResults` (default 128; use ~32
-on tablets) are evicted LRU and their handles released. Meshes, fingerprints and mass properties
-are cached per handle. Results carry fresh copies of cached meshes, transferred over Comlink.
+entries not used by it (or by the last all-ok regen) beyond `maxSpareResults` are evicted LRU and
+their handles released. The default is 128, or three times the latest regen's entries when that is
+more (three earlier full states of a large part, so undoing early edits stays a cache hit), until
+the Wasm heap passes 1.5 GiB; a configured value (tablet 4, phone 2) is a hard bound (ADR-083).
+Meshes, fingerprints, bounds and mass properties are cached per handle. Results carry fresh copies
+of cached meshes, transferred over Comlink.
+
+**Mass properties** (ADR-083) are a full volume and area integration (seconds for a few hundred
+B-spline faces), so a regen only computes them for its final bodies, and only on request or with a
+material (`RegenRequest.massProperties`). Bounding-box prefilters, the through-all depth of copied
+cuts and the "the cut left the body unchanged" check read `bounds` (the façade's same box and
+topology counts, nothing integrated); that check integrates only when face and edge counts and the
+box all agree. `massProperties(shape)` on a regen-owned handle is served from the same per-handle
+cache, serialised with regens, so the app can fetch them after the geometry is on screen.
 
 Viewport meshing (`MESH_QUALITY`, relative to each shape's bbox): coarse 0.4 % / 0.5 rad, fine
 0.06 % / 0.25 rad.

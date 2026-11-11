@@ -194,12 +194,13 @@ async function runSolid(
     const t = await core.exec({ ...f, op: 'new', scope: undefined } as Feature, inputs);
     if (!t.ok) return fail(t.error);
     tool = t.value;
-    const tb = await core.massOf(tool.shape);
+    // Bounds only (ADR-083): the same boxes massOf gave, without integrating the body.
+    const tb = await core.boundsOf(tool.shape);
     if (tb && candidates.length > 0) {
       const tol = 1e-6 * Math.max(1, boxDiagonal(tb.bbox));
       const kept: BodyState[] = [];
       for (const b of candidates) {
-        const bb = await core.massOf(b.shape);
+        const bb = await core.boundsOf(b.shape);
         if (!bb || boxesOverlap(bb.bbox, tb.bbox, tol)) kept.push(b);
       }
       candidates = kept;
@@ -350,12 +351,22 @@ async function runSolid(
   return { result: { ok: true, set, remove: [], touched, warnings }, owned };
 }
 
-/** Same volume and topology counts: the boolean left the body unchanged. */
+/**
+ * Same volume and topology counts: the boolean left the body unchanged. Cheap invariants first
+ * (ADR-083): different face or edge counts already answer "changed" (they always did), and so does
+ * a bounding box that moved by more than the prefilter tolerance (a cut that removed material at
+ * the box's extremes). Only bodies that agree on both are integrated, to compare their volumes.
+ */
 export async function sameSolid(
   core: EngineCore,
   a: ShapeHandle,
   b: ShapeHandle,
 ): Promise<boolean> {
+  const ba = await core.boundsOf(a);
+  const bb = await core.boundsOf(b);
+  if (!ba || !bb) return false;
+  if (ba.faceCount !== bb.faceCount || ba.edgeCount !== bb.edgeCount) return false;
+  if (!sameBox(ba.bbox, bb.bbox)) return false;
   const ma = await core.massOf(a);
   const mb = await core.massOf(b);
   if (!ma || !mb) return false;
@@ -364,6 +375,19 @@ export async function sameSolid(
     ma.faceCount === mb.faceCount &&
     ma.edgeCount === mb.edgeCount
   );
+}
+
+/**
+ * Equal boxes within the prefilter's tolerance (1e-6 of the diagonal, at least 1e-6 mm). Loose on
+ * purpose: boxes this close fall through to the volume comparison, i.e. the old behaviour.
+ */
+function sameBox(a: { min: Vec3; max: Vec3 }, b: { min: Vec3; max: Vec3 }): boolean {
+  const tol = 1e-6 * Math.max(1, boxDiagonal(a));
+  for (let i = 0; i < 3; i++) {
+    if (Math.abs((a.min[i] as number) - (b.min[i] as number)) > tol) return false;
+    if (Math.abs((a.max[i] as number) - (b.max[i] as number)) > tol) return false;
+  }
+  return true;
 }
 
 export async function planSweepLoft(
