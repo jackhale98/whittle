@@ -20,6 +20,7 @@ import {
   term,
 } from '../lib/geom';
 import type { PartDef } from '../lib/types';
+import { FRONT } from '../lib/views';
 
 const PI = Math.PI;
 
@@ -172,7 +173,19 @@ export const rp02: PartDef = {
     const H = l1 + l2 + l3;
     const dim = (name: string) => ({ name, value: d(name), unit: 'mm' as const });
     // View coordinates: x along the shaft axis (Z), y radial.
-    const v = dr.view('Front', 62, 120, 3.4).caption(0, R1 + 22, 'Front');
+    const v = dr
+      .view(
+        {
+          ...FRONT,
+          // The shaft is drawn lying down: the front view turned a quarter turn clockwise.
+          rotation: -90,
+          axes: ['Z', '-X'],
+        },
+        62,
+        120,
+        3.4,
+      )
+      .caption(0, R1 + 22, 'Front');
     const outline: [number, number][] = [
       [0, 0],
       [0, R1],
@@ -193,7 +206,15 @@ export const rp02: PartDef = {
     v.dimV(0, -R1, 0, R1, -9, dim('d1'));
     v.dimV(l1 + l2 / 2, -R2, l1 + l2 / 2, R2, 0, dim('d2'));
     v.dimV(H, -R3, H, R3, 9, dim('d3'));
-    v.leader(l1 + d('fillet_r'), R2 + d('fillet_r'), d('fillet_r'), 135, 14, dim('fillet_r'));
-    v.leader(H - c, R3, c, 90, 12, dim('chamfer_c'));
+    v.leader(
+      l1 + d('fillet_r'),
+      R2 + d('fillet_r'),
+      d('fillet_r'),
+      135,
+      14,
+      dim('fillet_r'),
+      'radius',
+    );
+    v.leader(H - c, R3, c, 90, 12, dim('chamfer_c'), 'chamfer');
   },
 };

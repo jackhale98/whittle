@@ -392,7 +392,204 @@
       }
     }
   ],
-  "drawing": "rp01-base-plate.svg",
+  "drawing": {
+    "file": "rp01-base-plate.svg",
+    "projection": "third",
+    "views": [
+      {
+        "id": "top",
+        "caption": "Top",
+        "kind": "projected",
+        "orientation": "top",
+        "parent": "front",
+        "side": "above",
+        "axes": [
+          "X",
+          "Y"
+        ]
+      },
+      {
+        "id": "front",
+        "caption": "Front",
+        "kind": "base",
+        "orientation": "front",
+        "axes": [
+          "X",
+          "Z"
+        ]
+      }
+    ],
+    "dimensions": [
+      {
+        "name": "length",
+        "kind": "linear",
+        "value": 120,
+        "unit": "mm",
+        "view": "top",
+        "axis": "h",
+        "from": [
+          -60,
+          -40
+        ],
+        "to": [
+          60,
+          -40
+        ]
+      },
+      {
+        "name": "width",
+        "kind": "linear",
+        "value": 80,
+        "unit": "mm",
+        "view": "top",
+        "axis": "v",
+        "from": [
+          60,
+          -40
+        ],
+        "to": [
+          60,
+          40
+        ]
+      },
+      {
+        "name": "hole_x",
+        "kind": "linear",
+        "value": 45,
+        "unit": "mm",
+        "view": "top",
+        "axis": "h",
+        "from": [
+          0,
+          40
+        ],
+        "to": [
+          45,
+          40
+        ]
+      },
+      {
+        "name": "hole_y",
+        "kind": "linear",
+        "value": 25,
+        "unit": "mm",
+        "view": "top",
+        "axis": "v",
+        "from": [
+          -60,
+          0
+        ],
+        "to": [
+          -60,
+          25
+        ]
+      },
+      {
+        "name": "hole_d",
+        "kind": "diameter",
+        "value": 10,
+        "unit": "mm",
+        "view": "top",
+        "at": [
+          45,
+          -25
+        ],
+        "radius": 5
+      },
+      {
+        "name": "bore_d",
+        "kind": "diameter",
+        "value": 30,
+        "unit": "mm",
+        "view": "top",
+        "at": [
+          0,
+          0
+        ],
+        "radius": 15
+      },
+      {
+        "name": "pocket_w",
+        "kind": "linear",
+        "value": 40,
+        "unit": "mm",
+        "view": "top",
+        "axis": "h",
+        "from": [
+          -20,
+          34
+        ],
+        "to": [
+          20,
+          34
+        ]
+      },
+      {
+        "name": "pocket_h",
+        "kind": "linear",
+        "value": 14,
+        "unit": "mm",
+        "view": "top",
+        "axis": "v",
+        "from": [
+          20,
+          20
+        ],
+        "to": [
+          20,
+          34
+        ]
+      },
+      {
+        "name": "pocket_y",
+        "kind": "linear",
+        "value": 20,
+        "unit": "mm",
+        "view": "top",
+        "axis": "v",
+        "from": [
+          -20,
+          0
+        ],
+        "to": [
+          -20,
+          20
+        ]
+      },
+      {
+        "name": "thickness",
+        "kind": "linear",
+        "value": 12,
+        "unit": "mm",
+        "view": "front",
+        "axis": "v",
+        "from": [
+          60,
+          0
+        ],
+        "to": [
+          60,
+          12
+        ]
+      },
+      {
+        "name": "pocket_d",
+        "kind": "linear",
+        "value": 5,
+        "unit": "mm",
+        "view": "front",
+        "axis": "v",
+        "from": [
+          -20,
+          7
+        ],
+        "to": [
+          -20,
+          12
+        ]
+      }
+    ]
+  },
   "independent": {
     "tool": "FreeCAD",
     "script": "freecad/rp01.py",

@@ -20,6 +20,7 @@ import {
   term,
 } from '../lib/geom';
 import type { PartDef, Pick } from '../lib/types';
+import { FRONT, TOP_OF_FRONT } from '../lib/views';
 
 const PI = Math.PI;
 
@@ -232,7 +233,7 @@ export const rp04: PartDef = {
     const a = d('boss_d') / 2;
     const hb = d('boss_h') + d('boss_up');
     const dim = (name: string) => ({ name, value: d(name), unit: 'mm' as const });
-    const top = dr.view('Top', 140, 90, 1.6).caption(-L / 2, W / 2 + 8, 'Top');
+    const top = dr.view(TOP_OF_FRONT, 140, 90, 1.6).caption(-L / 2, W / 2 + 8, 'Top');
     top.path(
       [
         [-L / 2 + Rc, -W / 2],
@@ -251,22 +252,19 @@ export const rp04: PartDef = {
     top.dimH(-L / 2, -W / 2, L / 2, -W / 2, -9, dim('plate_l'));
     top.dimV(L / 2, -W / 2, L / 2, W / 2, 14, dim('plate_w'));
     top.leader(0, 0, a, 120, 20, dim('boss_d'));
-    top.leader(
-      L / 2 - Rc + Rc * Math.SQRT1_2,
-      W / 2 - Rc + Rc * Math.SQRT1_2,
-      0.01,
-      45,
-      14,
-      dim('corner_r'),
-    );
-    const front = dr.view('Front', 140, 215, 1.6).caption(-L / 2, T + hb + 8, 'Front');
+    top.leader(L / 2 - Rc, W / 2 - Rc, Rc, 45, 14, dim('corner_r'), 'radius');
+    const front = dr.view(FRONT, 140, 215, 1.6).caption(-L / 2, T + hb + 8, 'Front');
     front.rect(-L / 2, 0, L / 2, T);
     front.rect(-a, T, a, T + hb);
     front.dimV(L / 2, 0, L / 2, T, 12, dim('plate_t'));
     front.dimV(a, T, a, T + d('boss_h'), 10, dim('boss_h'));
     front.dimV(-a, T + d('boss_h'), -a, T + hb, -10, dim('boss_up'));
-    front.leader(L / 2, T, d('top_r'), 45, 16, dim('top_r'));
-    front.leader(-L / 2, 0, d('bot_c'), 225, 16, dim('bot_c'));
-    front.leader(a, T + hb, d('boss_c'), 45, 14, dim('boss_c'));
+    // The fillet is seen edge-on: its arc is centred top_r in from the corner.
+    front.leader(L / 2, T, d('top_r'), 45, 16, dim('top_r'), 'radius', [
+      L / 2 - d('top_r'),
+      T - d('top_r'),
+    ]);
+    front.leader(-L / 2, 0, d('bot_c'), 225, 16, dim('bot_c'), 'chamfer');
+    front.leader(a, T + hb, d('boss_c'), 45, 14, dim('boss_c'), 'chamfer');
   },
 };

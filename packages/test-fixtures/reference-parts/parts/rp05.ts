@@ -6,6 +6,7 @@
 
 import { face, origin, region, side, sum, term } from '../lib/geom';
 import type { PartDef } from '../lib/types';
+import { frontSection, TOP } from '../lib/views';
 
 const DEG = Math.PI / 180;
 
@@ -121,13 +122,25 @@ export const rp05: PartDef = {
     const tw = d('wall');
     const s = tw / Math.cos(d('draft_a') * DEG);
     const dim = (name: string, unit: 'mm' | 'deg' = 'mm') => ({ name, value: d(name), unit });
-    const top = dr.view('Top', 118, 85, 1.6).caption(-L / 2, W / 2 + 8, 'Top');
+    const top = dr.view(TOP, 118, 85, 1.6).caption(-L / 2, W / 2 + 8, 'Top');
     top.rect(-L / 2, -W / 2, L / 2, W / 2);
     top.rect(-L / 2 + H * t, -W / 2 + H * t, L / 2 - H * t, W / 2 - H * t, 'hidden');
     top.dimH(-L / 2, -W / 2, L / 2, -W / 2, -9, dim('base_l'));
     top.dimV(L / 2, -W / 2, L / 2, W / 2, 14, dim('base_w'));
     const front = dr
-      .view('Front (section)', 118, 235, 1.6)
+      .view(
+        frontSection(
+          'Front (section)',
+          [
+            [-L / 2 - 5, 0],
+            [L / 2 + 5, 0],
+          ],
+          'below',
+        ),
+        118,
+        235,
+        1.6,
+      )
       .caption(-L / 2, H + 12, 'Section through the centre');
     const lo = L / 2;
     const hi = L / 2 - H * t;
@@ -145,6 +158,6 @@ export const rp05: PartDef = {
     front.line(-lo + s + tw * t, tw, -(hi - s), H);
     front.dimV(lo, 0, lo, H, 14, dim('height'));
     front.dimH(-lo, 0, -lo + tw, 0, -8, dim('wall'));
-    front.note(hi + 2, H - 6, dim('draft_a', 'deg'));
+    front.note(hi + 2, H - 6, dim('draft_a', 'deg'), 'angle');
   },
 };

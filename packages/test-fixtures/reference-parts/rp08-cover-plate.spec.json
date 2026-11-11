@@ -414,7 +414,285 @@
       }
     }
   ],
-  "drawing": "rp08-cover-plate.svg",
+  "drawing": {
+    "file": "rp08-cover-plate.svg",
+    "projection": "third",
+    "views": [
+      {
+        "id": "top",
+        "caption": "Top",
+        "kind": "base",
+        "orientation": "top",
+        "axes": [
+          "X",
+          "Y"
+        ]
+      },
+      {
+        "id": "front-section",
+        "caption": "Front (section)",
+        "kind": "section",
+        "orientation": "front",
+        "parent": "top",
+        "side": "below",
+        "axes": [
+          "X",
+          "Z"
+        ],
+        "section": {
+          "letter": "A",
+          "cut": [
+            [
+              -55,
+              18
+            ],
+            [
+              0,
+              18
+            ],
+            [
+              0,
+              -18
+            ],
+            [
+              55,
+              -18
+            ]
+          ],
+          "look": "left"
+        }
+      }
+    ],
+    "dimensions": [
+      {
+        "name": "plate_l",
+        "kind": "linear",
+        "value": 100,
+        "unit": "mm",
+        "view": "top",
+        "axis": "h",
+        "from": [
+          -50,
+          -35
+        ],
+        "to": [
+          50,
+          -35
+        ]
+      },
+      {
+        "name": "plate_w",
+        "kind": "linear",
+        "value": 70,
+        "unit": "mm",
+        "view": "top",
+        "axis": "v",
+        "from": [
+          50,
+          -35
+        ],
+        "to": [
+          50,
+          35
+        ]
+      },
+      {
+        "name": "cb_x",
+        "kind": "linear",
+        "value": -30,
+        "unit": "mm",
+        "view": "top",
+        "axis": "h",
+        "from": [
+          0,
+          18
+        ],
+        "to": [
+          -30,
+          18
+        ]
+      },
+      {
+        "name": "cb_y",
+        "kind": "linear",
+        "value": 18,
+        "unit": "mm",
+        "view": "top",
+        "axis": "v",
+        "from": [
+          -50,
+          0
+        ],
+        "to": [
+          -50,
+          18
+        ]
+      },
+      {
+        "name": "cb_d",
+        "kind": "diameter",
+        "value": 11,
+        "unit": "mm",
+        "view": "top",
+        "at": [
+          -30,
+          18
+        ],
+        "radius": 5.5
+      },
+      {
+        "name": "cs_x",
+        "kind": "linear",
+        "value": 30,
+        "unit": "mm",
+        "view": "top",
+        "axis": "h",
+        "from": [
+          0,
+          18
+        ],
+        "to": [
+          30,
+          18
+        ]
+      },
+      {
+        "name": "cs_y",
+        "kind": "linear",
+        "value": 18,
+        "unit": "mm",
+        "view": "top",
+        "axis": "v",
+        "from": [
+          50,
+          0
+        ],
+        "to": [
+          50,
+          18
+        ]
+      },
+      {
+        "name": "cs_d",
+        "kind": "diameter",
+        "value": 12.4,
+        "unit": "mm",
+        "view": "top",
+        "at": [
+          30,
+          18
+        ],
+        "radius": 6.2
+      },
+      {
+        "name": "tap_x0",
+        "kind": "linear",
+        "value": -36,
+        "unit": "mm",
+        "view": "top",
+        "axis": "h",
+        "from": [
+          0,
+          -18
+        ],
+        "to": [
+          -36,
+          -18
+        ]
+      },
+      {
+        "name": "tap_dx",
+        "kind": "linear",
+        "value": 24,
+        "unit": "mm",
+        "view": "top",
+        "axis": "h",
+        "from": [
+          -36,
+          -24
+        ],
+        "to": [
+          -12,
+          -24
+        ]
+      },
+      {
+        "name": "tap_y",
+        "kind": "linear",
+        "value": -18,
+        "unit": "mm",
+        "view": "top",
+        "axis": "v",
+        "from": [
+          -50,
+          0
+        ],
+        "to": [
+          -50,
+          -18
+        ]
+      },
+      {
+        "name": "tap_n",
+        "kind": "count",
+        "value": 4,
+        "unit": "",
+        "view": "top",
+        "at": [
+          -50,
+          -53
+        ]
+      },
+      {
+        "name": "plate_t",
+        "kind": "linear",
+        "value": 14,
+        "unit": "mm",
+        "view": "front-section",
+        "axis": "v",
+        "from": [
+          50,
+          0
+        ],
+        "to": [
+          50,
+          14
+        ]
+      },
+      {
+        "name": "cb_h",
+        "kind": "linear",
+        "value": 6.5,
+        "unit": "mm",
+        "view": "front-section",
+        "axis": "v",
+        "from": [
+          -35.5,
+          7.5
+        ],
+        "to": [
+          -35.5,
+          14
+        ]
+      },
+      {
+        "name": "tap_depth",
+        "kind": "linear",
+        "value": 12,
+        "unit": "mm",
+        "view": "front-section",
+        "axis": "v",
+        "from": [
+          -36,
+          2
+        ],
+        "to": [
+          -36,
+          14
+        ]
+      }
+    ]
+  },
   "independent": {
     "tool": "FreeCAD",
     "script": "freecad/rp08.py",

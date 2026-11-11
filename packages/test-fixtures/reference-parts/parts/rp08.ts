@@ -7,6 +7,7 @@
 
 import { face, frustumVolumeBeyond, origin, region, sum, term } from '../lib/geom';
 import type { PartDef } from '../lib/types';
+import { frontSection, TOP } from '../lib/views';
 
 const PI = Math.PI;
 
@@ -203,7 +204,7 @@ export const rp08: PartDef = {
       value: d(name),
       unit: name === 'tap_n' ? ('' as const) : ('mm' as const),
     });
-    const top = dr.view('Top', 150, 95, 1.55).caption(-L / 2, W / 2 + 8, 'Top');
+    const top = dr.view(TOP, 150, 95, 1.55).caption(-L / 2, W / 2 + 8, 'Top');
     top.rect(-L / 2, -W / 2, L / 2, W / 2);
     top.circle(d('cb_x'), d('cb_y'), CLEAR_M6 / 2);
     top.circle(d('cb_x'), d('cb_y'), d('cb_d') / 2);
@@ -233,9 +234,25 @@ export const rp08: PartDef = {
       dim('tap_dx'),
     );
     top.dimV(-L / 2, 0, -L / 2, d('tap_y'), -12, dim('tap_y'));
-    top.note(-L / 2, -W / 2 - 18, dim('tap_n'));
+    top.note(-L / 2, -W / 2 - 18, dim('tap_n'), 'count');
     const front = dr
-      .view('Front (section)', 150, 235, 1.55)
+      .view(
+        // Through both hole rows: the cut steps from the counterbore and countersink row to the
+        // tapped row, an offset section.
+        frontSection(
+          'Front (section)',
+          [
+            [-L / 2 - 5, d('cb_y')],
+            [0, d('cb_y')],
+            [0, d('tap_y')],
+            [L / 2 + 5, d('tap_y')],
+          ],
+          'below',
+        ),
+        150,
+        235,
+        1.55,
+      )
       .caption(-L / 2, T + 14, 'Section through the hole rows');
     front.rect(-L / 2, 0, L / 2, T);
     front.rect(d('cb_x') - d('cb_d') / 2, T - d('cb_h'), d('cb_x') + d('cb_d') / 2, T, 'hidden');

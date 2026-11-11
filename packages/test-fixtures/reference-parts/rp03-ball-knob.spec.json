@@ -335,7 +335,100 @@
       }
     }
   ],
-  "drawing": "rp03-ball-knob.svg",
+  "drawing": {
+    "file": "rp03-ball-knob.svg",
+    "projection": "third",
+    "views": [
+      {
+        "id": "front",
+        "caption": "Front",
+        "kind": "base",
+        "orientation": "front",
+        "axes": [
+          "X",
+          "Z"
+        ]
+      }
+    ],
+    "dimensions": [
+      {
+        "name": "flat_h",
+        "kind": "linear",
+        "value": 18,
+        "unit": "mm",
+        "view": "front",
+        "axis": "v",
+        "from": [
+          31,
+          0
+        ],
+        "to": [
+          31,
+          18
+        ]
+      },
+      {
+        "name": "ball_d",
+        "kind": "linear",
+        "value": 50,
+        "unit": "mm",
+        "view": "front",
+        "axis": "h",
+        "from": [
+          -25,
+          0
+        ],
+        "to": [
+          25,
+          0
+        ]
+      },
+      {
+        "name": "stem_d",
+        "kind": "linear",
+        "value": 16,
+        "unit": "mm",
+        "view": "front",
+        "axis": "h",
+        "from": [
+          -8,
+          -40
+        ],
+        "to": [
+          8,
+          -40
+        ]
+      },
+      {
+        "name": "stem_l",
+        "kind": "linear",
+        "value": 40,
+        "unit": "mm",
+        "view": "front",
+        "axis": "v",
+        "from": [
+          31,
+          -40
+        ],
+        "to": [
+          31,
+          0
+        ]
+      },
+      {
+        "name": "chamfer_c",
+        "kind": "chamfer",
+        "value": 1.5,
+        "unit": "mm",
+        "view": "front",
+        "at": [
+          6.5,
+          -40
+        ],
+        "radius": 1.5
+      }
+    ]
+  },
   "independent": {
     "tool": "FreeCAD",
     "script": "freecad/rp03.py",
