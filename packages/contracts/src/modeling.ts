@@ -123,7 +123,7 @@ export interface BodyResult {
   id: string;
   shape: ShapeHandle;
   mesh: MeshBuffers;
-  /** Present when the part has a material (density) or on request. */
+  /** Present when requested (`RegenRequest.massProperties`, which defaults to "the part has a material"). */
   massProperties?: MassProperties;
 }
 
@@ -151,7 +151,12 @@ export interface RegenRequest {
    */
   attachments?: Record<string, Uint8Array>;
   quality: MeshQuality;
-  /** Compute mass properties for every body (always on when the part has a material). */
+  /**
+   * Mass properties for every body (ADR-084). Omitted: computed when the part has a material.
+   * `true`: always. `false`: never, even with a material; the caller fetches them separately with
+   * `ModelingApi.massProperties(shape, density)` (the app defers this until the queue is idle, so a
+   * large part's last-feature edit is not held up by integrating the whole body).
+   */
   massProperties?: boolean;
   /**
    * M2.5: which regeneration this is. `'main'` (default) is the live model; `version:<id>` holds
