@@ -369,6 +369,43 @@ jobs:
         if: matrix.suite == 'ui'
         run: pnpm --filter @wren-cad/ui exec playwright test --trace off --ignore-snapshots
 
+  # PLAN §12 M4 Accept: the DXF is valid and opens in LibreCAD, checked automatically (ADR-091
+  # amendment). ezdxf audit (a missing ezdxf fails, never skips) plus headless `librecad dxf2pdf`
+  # of both goldens and a fresh export. Needs no kernel or build output; it waits for the build
+  # only so a broken tree fails there first. Gates the deploy like the other checks.
+  dxf-interop:
+    name: DXF interop (ezdxf, LibreCAD)
+    needs: [build, verified]
+    if: ${{ needs.verified.outputs.verified != 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      WREN_REQUIRE_EZDXF: "1"
+      WREN_REQUIRE_INTEROP: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Cache pip downloads
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/pip
+          key: pip-ezdxf-1.4.5
+      # A venv, because the ezdxf test runs `python3 -I`, which ignores the user site directory.
+      - name: Install ezdxf (pinned)
+        run: |
+          python3 -m venv "$RUNNER_TEMP/dxf-venv"
+          "$RUNNER_TEMP/dxf-venv/bin/pip" install --disable-pip-version-check ezdxf==1.4.5
+          echo "$RUNNER_TEMP/dxf-venv/bin" >> "$GITHUB_PATH"
+      - name: Install LibreCAD, xvfb and poppler (apt, time-boxed with a retry)
+        run: scripts/ci-install-dxf-tools.sh
+      - name: Run the interop checks
+        run: pnpm --filter @wren-cad/drawing dxf:interop
+
   # Performance budgets (PLAN §10) enforced as a test, with the SwiftShader factor from
   # apps/web/e2e/perf/budgets.ts (ADR-009). Gates the deploy.
   perf:
@@ -468,8 +505,8 @@ jobs:
   # Deploys only after every gating check passed on a push to main (reviewer M0 defect 6).
   pages:
     name: Deploy to GitHub Pages
-    if: ${{ !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.build.result == 'success' && (needs.verified.outputs.verified == 'true' || (needs.lint.result == 'success' && needs.test.result == 'success' && needs.smoke.result == 'success' && needs.e2e.result == 'success' && needs.e2e-reference.result == 'success' && needs.package-e2e.result == 'success' && needs.perf.result == 'success')) }}
-    needs: [verified, lint, test, build, smoke, e2e, e2e-reference, package-e2e, perf]
+    if: ${{ !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.build.result == 'success' && (needs.verified.outputs.verified == 'true' || (needs.lint.result == 'success' && needs.test.result == 'success' && needs.smoke.result == 'success' && needs.e2e.result == 'success' && needs.e2e-reference.result == 'success' && needs.package-e2e.result == 'success' && needs.perf.result == 'success' && needs.dxf-interop.result == 'success')) }}
+    needs: [verified, lint, test, build, smoke, e2e, e2e-reference, package-e2e, perf, dxf-interop]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     concurrency:
@@ -505,8 +542,8 @@ jobs:
   # `pages`. The only job with contents: write. Pushes made with GITHUB_TOKEN start no workflow.
   cloudflare:
     name: Publish to cloudflare-pages branch
-    if: ${{ !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.build.result == 'success' && (needs.verified.outputs.verified == 'true' || (needs.lint.result == 'success' && needs.test.result == 'success' && needs.smoke.result == 'success' && needs.e2e.result == 'success' && needs.e2e-reference.result == 'success' && needs.package-e2e.result == 'success' && needs.perf.result == 'success')) }}
-    needs: [verified, lint, test, build, smoke, e2e, e2e-reference, package-e2e, perf]
+    if: ${{ !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.build.result == 'success' && (needs.verified.outputs.verified == 'true' || (needs.lint.result == 'success' && needs.test.result == 'success' && needs.smoke.result == 'success' && needs.e2e.result == 'success' && needs.e2e-reference.result == 'success' && needs.package-e2e.result == 'success' && needs.perf.result == 'success' && needs.dxf-interop.result == 'success')) }}
+    needs: [verified, lint, test, build, smoke, e2e, e2e-reference, package-e2e, perf, dxf-interop]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     concurrency:
