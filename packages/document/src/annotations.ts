@@ -20,14 +20,9 @@
 
 import type {
   Annotation,
-  AnnotationKind,
-  ConfiguredValue,
   EntityRef,
   GeometricCharacteristic,
   GpsStandard,
-  Id,
-  NamedDimension,
-  Part,
   RefPoint,
   SurfaceFinishStandard,
   ZoneModifier,
@@ -35,14 +30,11 @@ import type {
 import {
   ANNOTATION_KINDS,
   annotationExprFields,
-  annotationOptionAt,
-  describeAnnotation,
   isDimensionKind,
   isHoleFitClass,
   isShaftFitClass,
 } from './annotation-fields';
 import { Checker, isObj, type Obj } from './check';
-import type { ExprField } from './features';
 
 export const GEOMETRIC_CHARACTERISTICS = [
   'straightness',

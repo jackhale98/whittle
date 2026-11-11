@@ -252,7 +252,8 @@ function viewLabel(v: SolvedView, drawing: Drawing): string | null {
   return view.showLabel ? '' : null;
 }
 
-function labelItems(v: SolvedView, drawing: Drawing): DisplayItem[] {
+/** The view's label (section `A–A`, detail `B (2:1)`, or the stored one), as drawn on the sheet. */
+export function labelItems(v: SolvedView, drawing: Drawing): DisplayItem[] {
   const text = viewLabel(v, drawing);
   if (!text) return [];
   const o = viewOutline(v);
@@ -275,7 +276,7 @@ function labelItems(v: SolvedView, drawing: Drawing): DisplayItem[] {
 }
 
 /** Cutting-plane line, arrows and letters on the parent view of a section. */
-function cuttingPlaneItems(
+export function cuttingPlaneItems(
   section: SolvedView,
   parent: SolvedView,
   drawing: Drawing,
@@ -329,7 +330,8 @@ function cuttingPlaneItems(
   return items;
 }
 
-function detailCircleItems(
+/** A detail view's circle and letter on its parent view. */
+export function detailCircleItems(
   detail: SolvedView,
   parent: SolvedView,
   drawing: Drawing,
@@ -472,7 +474,8 @@ function noteItems(
   }));
 }
 
-function tableItems(t: DrawingTable, data: TableData, drawing: Drawing): DisplayItem[] {
+/** A table's grid and text at its anchored position. */
+export function tableItems(t: DrawingTable, data: TableData, drawing: Drawing): DisplayItem[] {
   const h = drawing.style.text.note * 0.8;
   const rowH = 2 * h;
   const pad = 1.5;
