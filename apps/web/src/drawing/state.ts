@@ -83,7 +83,8 @@ export interface DrawingUiState {
   exporting: string | null;
   /** Title block slot being edited inline. */
   editingCell: string | null;
-  kernel: 'placeholder' | 'hlr';
+  /** The shown edges are the draft; the exact ones are on their way (idle). */
+  refining: boolean;
 }
 
 export const initialDrawingUi: DrawingUiState = {
@@ -106,5 +107,5 @@ export const initialDrawingUi: DrawingUiState = {
   toast: null,
   exporting: null,
   editingCell: null,
-  kernel: 'placeholder',
+  refining: false,
 };

@@ -9,6 +9,26 @@ import type { DrawingController } from './controller';
 
 export interface DrawingHooks {
   settled(): Promise<void>;
+  /** Replaces the drawing kernel with one that fails to load, as a failed Wasm fetch would. */
+  failKernel(): void;
+  /** Waits until the shown edges are the exact ones (what an export waits for). */
+  exact(): Promise<void>;
+  /** The kernel's output for a view, part mm (not sheet mm). */
+  projection(viewId: string): {
+    quality: string;
+    curves: {
+      role: string;
+      edge: string;
+      name?: string;
+      kind: string;
+      radius?: number;
+      center?: [number, number];
+      sweep?: number;
+    }[];
+    sectionFaces: { face: string; loops: number }[];
+    /** The kernel's own wall time for this projection. */
+    ms: number;
+  } | null;
   /** Named visible edges of a view on the sheet (sheet mm): where a test can click. */
   edges(viewId: string): {
     name: string;
@@ -35,7 +55,10 @@ export interface DrawingHooks {
     selected: unknown;
     pending: boolean;
     error: string | null;
-    kernel: string;
+    quality: string;
+    refining: boolean;
+    projectionProblems: string[];
+    hatchLines: number;
     panel: string;
     hint: string | null;
     projection: string | null;
@@ -66,6 +89,41 @@ declare global {
 export function installDrawingHooks(c: DrawingController): void {
   window.__wrenDrawing = {
     settled: () => c.settled(),
+    exact: () => c.ensureExact(),
+    failKernel() {
+      c.kernel.dispose();
+      c.kernel = {
+        project: async () => ({
+          ok: false,
+          error: { code: 'INTERNAL', message: 'Failed to load the threaded drawing kernel.' },
+        }),
+        dispose: () => {},
+      };
+      c.schedule(0);
+    },
+    projection(viewId) {
+      const b = c.ui.get().built;
+      const p = b?.projections.get(viewId);
+      if (!b || !p) return null;
+      return {
+        quality: b.quality,
+        ms: p.ms,
+        curves: p.curves.map((k) => ({
+          role: k.role,
+          edge: k.edge,
+          ...(k.name ? { name: k.name } : {}),
+          kind: k.curve.kind,
+          ...(k.curve.kind === 'arc'
+            ? {
+                radius: k.curve.radius,
+                center: k.curve.center as [number, number],
+                sweep: k.curve.end - k.curve.start,
+              }
+            : {}),
+        })),
+        sectionFaces: (p.sectionFaces ?? []).map((f) => ({ face: f.face, loops: f.loops.length })),
+      };
+    },
     placements() {
       const b = c.ui.get().built;
       return (b?.drawing.placements ?? []).map((p) => {
@@ -128,7 +186,10 @@ export function installDrawingHooks(c: DrawingController): void {
         selected: ui.selected,
         pending: ui.pending,
         error: ui.error,
-        kernel: ui.kernel,
+        quality: b?.quality ?? 'none',
+        refining: ui.refining,
+        projectionProblems: (b?.problems ?? []).map((p) => p.message),
+        hatchLines: (composed?.list.items ?? []).filter((i) => i.role === 'hatch').length,
         panel: ui.panel,
         hint: ui.hint?.text ?? null,
         projection: b?.drawing.projection ?? null,

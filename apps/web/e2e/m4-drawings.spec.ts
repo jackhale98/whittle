@@ -17,9 +17,9 @@ import {
 } from './support/drawing-ui';
 
 /**
- * M4 drawings (PLAN §12 M4 Accept) on the demo bracket, desktop, with the PLACEHOLDER drawing
- * kernel (ADR-092): the geometry of the views is approximate, the dimensions are exact (the real
- * regen resolves them). Tablet and phone are in m4-touch.spec.ts.
+ * M4 drawings (PLAN §12 M4 Accept) on the demo bracket, desktop, against the real HLR drawing
+ * kernel (ADR-090 amendment, ADR-092 amendment): its worker and Wasm run in the page. Tablet and
+ * phone are in m4-touch.spec.ts.
  */
 
 test.use({ viewport: { width: 1440, height: 900 } });
@@ -129,6 +129,25 @@ test.describe('create a drawing (D10)', () => {
   });
 });
 
+test('a drawing kernel that fails to load says so on the sheet; nothing is faked', async ({
+  page,
+}) => {
+  await openDemo(page);
+  await newDrawing(page);
+  await addStandardViews(page);
+  await expect(page.getByTestId('projection-problem')).toHaveCount(0);
+  // As a failed fetch of the Wasm would leave it.
+  await drawing(page).failKernel();
+  await expect(page.getByTestId('projection-problem')).toBeVisible();
+  await expect(page.getByTestId('projection-problem')).toContainText('could not be drawn');
+  await expect(page.getByTestId('placeholder-badge')).toHaveCount(0);
+  const s = await built(page);
+  expect(s.views.every((v) => v.curves === 0)).toBe(true);
+  // The sheet and the model's values are still there.
+  expect(s.texts).toContain('Aluminium 6061-T6');
+  await a11y(page);
+});
+
 test.describe('views', () => {
   test('standard views align to the parent and follow the projection method', async ({ page }) => {
     await openDemo(page);
@@ -145,9 +164,29 @@ test.describe('views', () => {
     expect((side?.position?.[0] ?? 0) > (front?.position?.[0] ?? 0)).toBe(true);
     expect(side?.position?.[1] ?? 0).toBeCloseTo(front?.position?.[1] ?? 0, 3);
     expect(s.views.every((v) => v.problems.length === 0 && v.curves > 0)).toBe(true);
-    // The placeholder says what it is.
-    await expect(page.getByTestId('placeholder-badge')).toBeVisible();
+    // The real kernel: nothing says "approximate", nothing failed to project.
+    await expect(page.getByTestId('placeholder-badge')).toHaveCount(0);
+    await expect(page.getByTestId('projection-problem')).toHaveCount(0);
+    expect((await drawing(page).state()).projectionProblems).toEqual([]);
     await a11y(page);
+
+    // Draft first, exact when idle: the exact output is what the plate's holes are measured from.
+    await drawing(page).exact();
+    await expect.poll(async () => (await drawing(page).state()).quality).toBe('exact');
+    await expect.poll(async () => (await drawing(page).state()).refining).toBe(false);
+    const topProj = await drawing(page).projection(top?.id ?? '');
+    expect(topProj?.quality).toBe('exact');
+    // The bracket's four Ø6 holes, seen along their axes: whole circles of exact radius 3, named
+    // after their model edge, not polylines fitted to a tessellation.
+    const holes = (topProj?.curves ?? []).filter(
+      (k) =>
+        k.role === 'visible' && k.kind === 'arc' && Math.abs((k.sweep ?? 0) - 2 * Math.PI) < 1e-6,
+    );
+    const rims = holes.filter((k) => Math.abs((k.radius ?? 0) - 3) < 1e-6);
+    expect(rims.length).toBeGreaterThanOrEqual(4);
+    expect(rims.every((k) => (k.name ?? '').length > 0)).toBe(true);
+    // Exact output has no polylines for what has an exact form.
+    expect((topProj?.curves ?? []).filter((k) => k.kind === 'polyline')).toEqual([]);
 
     // An isometric view and the base-view picker.
     await page.getByTestId('add-iso-view').click();
@@ -207,6 +246,17 @@ test.describe('views', () => {
     expect(s.texts.filter((t) => t === 'A').length).toBeGreaterThanOrEqual(2);
     const sec = ((await drawings(page))[0] as Drawing).views.find((v) => v.kind === 'section');
     expect(sec && 'cut' in sec && sec.cut.length).toBe(2);
+    // The cut face is hatched from the kernel's section loops. The faces carry synthetic ids
+    // (`section:<segment>#<k>`), which are not model names.
+    await drawing(page).exact();
+    const secProj = await drawing(page).projection(section?.id ?? '');
+    expect(secProj?.quality).toBe('exact');
+    expect(secProj?.sectionFaces.length).toBeGreaterThan(0);
+    for (const f of secProj?.sectionFaces ?? []) {
+      expect(f.face).toMatch(/^section:\d+#\d+$/);
+      expect(f.loops).toBeGreaterThan(0);
+    }
+    expect((await drawing(page).state()).hatchLines).toBeGreaterThan(10);
 
     // Detail: a circle dragged on the top view, enlarged beyond its parent's scale.
     await page.locator('[data-tool="detail"]').click();
@@ -596,7 +646,12 @@ test.describe('annotations', () => {
       .toBe(1);
     await expect(page.getByLabel('Geometric characteristic')).toBeVisible();
     await page.locator('[data-tool="finish"]').click();
-    await click(page, right.at);
+    // A quarter of the way along the edge: the frame's leader sits at its middle.
+    if (!right.a || !right.b) throw new Error('no edge ends');
+    await click(page, [
+      right.a[0] + (right.b[0] - right.a[0]) * 0.25,
+      right.a[1] + (right.b[1] - right.a[1]) * 0.25,
+    ]);
     await expect
       .poll(async () => (await annotations(page)).filter((x) => x.kind === 'surfaceFinish').length)
       .toBe(1);
@@ -741,7 +796,9 @@ test.describe('export', () => {
     expect(Number(m?.[1])).toBeCloseTo((420 * 72) / 25.4, 1);
     expect(Number(m?.[2])).toBeCloseTo((297 * 72) / 25.4, 1);
     expect(text).toContain('/PrintScaling /None');
-    expect(bytes.length).toBeGreaterThan(20_000);
+    expect(bytes.length).toBeGreaterThan(12_000);
+    // Exported from the exact edges (waited for, never the draft).
+    expect((await drawing(page).state()).quality).toBe('exact');
     await expect(page.getByTestId('drawing-toast')).toContainText('.pdf');
   });
 
@@ -768,6 +825,11 @@ test.describe('export', () => {
     const r2000 = await get('dxf-r2000');
     expect(r2000.text).toContain('AC1015');
     expect(r2000.text).toContain('$INSUNITS');
+    // An export is made from the exact edges, and those have exact circles: the bracket's Ø6 holes
+    // are CIRCLE entities of radius 3 (at 1:1; scaled otherwise), not polylines.
+    expect((await drawing(page).state()).quality).toBe('exact');
+    expect(r2000.text).toMatch(/\n\s*0\nCIRCLE\n/);
+    expect(r2000.text).toMatch(/\n\s*40\n3(\.0*)?\n/);
   });
 });
 

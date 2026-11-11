@@ -112,16 +112,28 @@ describe('the drawing kernel wrapper', () => {
       loadShape: vi.fn(async () => ({ ok: true as const })),
       project: vi.fn(async () => ({ ok: true as const, value: projection })),
     };
-    const k = drawingKernelOver(api, {
-      kind: 'placeholder',
-      shapeFor: () => shape,
-      dispose: () => {},
-    });
+    const k = drawingKernelOver(api, { dispose: () => {} });
     await Promise.all([k.project(shape, request()), k.project(shape, request({ hidden: true }))]);
     await k.project(shape, request());
     expect(api.loadShape).toHaveBeenCalledTimes(1);
     expect(api.project).toHaveBeenCalledTimes(2); // the repeated request came from the cache
-    expect(k.kind).toBe('placeholder');
+  });
+
+  it('sends a transferred copy of the BREP and keeps its own, so an evicted shape can load again', async () => {
+    const sent: Uint8Array[] = [];
+    const api = {
+      loadShape: vi.fn(async (s: ShapeForDrawing) => {
+        sent.push(s.brep);
+        return { ok: true as const };
+      }),
+      project: vi.fn(async () => ({ ok: true as const, value: projection })),
+    };
+    const own = { ...shape, brep: new Uint8Array([1, 2, 3, 4]) };
+    const k = drawingKernelOver(api, { transfer: true, dispose: () => {} });
+    await k.project(own, request());
+    expect(sent[0]).toEqual(new Uint8Array([1, 2, 3, 4]));
+    expect(sent[0]?.buffer).not.toBe(own.brep.buffer);
+    expect(own.brep.byteLength).toBe(4);
   });
 
   it('loads the shape again when the worker has dropped it, and gives up on a refused load', async () => {
@@ -139,7 +151,7 @@ describe('the drawing kernel wrapper', () => {
         return { ok: true as const, value: projection };
       }),
     };
-    const k = drawingKernelOver(api, { kind: 'hlr', shapeFor: () => shape, dispose: () => {} });
+    const k = drawingKernelOver(api, { dispose: () => {} });
     const r = await k.project(shape, request());
     expect(r.ok).toBe(true);
     expect(api.loadShape).toHaveBeenCalledTimes(2);
@@ -151,7 +163,7 @@ describe('the drawing kernel wrapper', () => {
         }),
         project: vi.fn(),
       },
-      { kind: 'placeholder', shapeFor: () => shape, dispose: () => {} },
+      { dispose: () => {} },
     );
     expect(await refused.project(shape, request())).toMatchObject({
       ok: false,

@@ -107,6 +107,11 @@ test.describe('tablet', () => {
     );
     expect(child).toBeTruthy();
     expect((child?.position?.[0] ?? 0) > (top.position?.[0] ?? 0)).toBe(true);
+    // Every view is projected by the real kernel (draft first, exact when idle).
+    expect(s2.projectionProblems).toEqual([]);
+    expect(s2.views.every((v) => v.curves > 0)).toBe(true);
+    await drawing(page).exact();
+    expect((await drawing(page).state()).quality).toBe('exact');
     void s0;
 
     // Two fingers zoom the sheet, one finger pans it, a double tap fits it.
@@ -193,6 +198,24 @@ test.describe('phone: review only', () => {
     const s = await openFixtureDrawing(page);
     expect(s.views.map((v) => v.kind)).toEqual(['base', 'projected']);
     expect(s.views.every((v) => v.curves > 0 && v.problems.length === 0)).toBe(true);
+    // The real drawing kernel's exact edges, with their model names: a phone shows what an export
+    // contains. The Ø6 holes are whole circles of radius 3 in the view that looks down them.
+    await expect(page.getByTestId('placeholder-badge')).toHaveCount(0);
+    await drawing(page).exact();
+    expect((await drawing(page).state()).projectionProblems).toEqual([]);
+    const projections = await Promise.all(s.views.map((v) => drawing(page).projection(v.id)));
+    expect(projections.every((p) => p?.quality === 'exact')).toBe(true);
+    const circles = projections
+      .flatMap((p) => p?.curves ?? [])
+      .filter(
+        (k) =>
+          k.role === 'visible' &&
+          k.kind === 'arc' &&
+          Math.abs((k.sweep ?? 0) - 2 * Math.PI) < 1e-6 &&
+          Math.abs((k.radius ?? 0) - 3) < 1e-6,
+      );
+    expect(circles.length).toBeGreaterThanOrEqual(4);
+    expect(circles.every((k) => (k.name ?? '').length > 0)).toBe(true);
     await expect(page.getByTestId('drawing-shell')).toHaveAttribute('data-tier', 'phone');
     await expect(page.getByTestId('drawing-toolbar')).toHaveCount(0);
     await expect(page.getByTestId('drawing-undo')).toHaveCount(0);

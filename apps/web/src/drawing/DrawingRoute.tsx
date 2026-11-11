@@ -335,15 +335,6 @@ export default function DrawingRoute({ wb, id, tier, onClose }: DrawingRouteProp
                 : {})}
             />
           ) : null}
-          {ui.kernel === 'placeholder' ? (
-            <span
-              data-testid="placeholder-badge"
-              className="rounded-full bg-warning-soft px-2 py-0.5 text-2xs font-medium text-warning-text"
-              title="Edges are approximate until the exact hidden-line engine lands. Dimensions are exact."
-            >
-              Approximate edges
-            </span>
-          ) : null}
         </div>
       }
       {...(readOnly
@@ -436,6 +427,23 @@ export default function DrawingRoute({ wb, id, tier, onClose }: DrawingRouteProp
               {pendingNote}
             </output>
           ) : null}
+          {b && b.problems.length > 0 ? (
+            <div
+              role="alert"
+              data-testid="projection-problem"
+              className="pointer-events-auto max-w-prose rounded-panel bg-warning-soft px-3 py-2 text-xs text-warning-text shadow-pop"
+            >
+              {projectionNotice(b.problems.length, b.problems[0]?.message ?? '')}
+            </div>
+          ) : null}
+          {ui.refining && !pendingNote ? (
+            <span
+              data-testid="refining-chip"
+              className="pointer-events-none rounded-full bg-surface px-3 py-1 text-xs text-fg-subtle shadow-pop"
+            >
+              Refining edges…
+            </span>
+          ) : null}
           {!b && !ui.error ? (
             <output
               data-testid="building-chip"
@@ -469,6 +477,11 @@ export default function DrawingRoute({ wb, id, tier, onClose }: DrawingRouteProp
       onPanel={(p) => c.patch({ panel: p as DrawingPanel })}
     />
   );
+}
+
+/** What the sheet says when the drawing kernel could not project a view (its Wasm failed to load). */
+function projectionNotice(count: number, message: string): string {
+  return `${count === 1 ? 'One view' : `${count} views`} could not be drawn: ${message.replace(/\.$/, '')}. Dimensions and the rest of the sheet are unaffected. Reload the page to try the drawing kernel again.`;
 }
 
 export type { Vec2 };

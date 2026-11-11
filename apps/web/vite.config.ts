@@ -109,7 +109,13 @@ export default defineConfig(({ command }) => {
           // devices to download it eagerly. It is cached at runtime (CacheFirst, versioned
           // cache) the first time the kernel loads. See src/sw.ts.
           globPatterns: ['**/*.{js,css,html,svg,png,ico,webmanifest,woff2}'],
-          globIgnores: ['404.html', '**/whittle-kernel*', '**/*.wasm', '**/__e2e__/**'],
+          globIgnores: [
+            '404.html',
+            '**/whittle-kernel*',
+            '**/wren-drawing*',
+            '**/*.wasm',
+            '**/__e2e__/**',
+          ],
           maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
           rollupFormat: 'iife',
         },
