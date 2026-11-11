@@ -41,6 +41,14 @@
  *    overrides of features and parameters the merge deleted, falls back to Default from an active
  *    configuration that no longer exists, and flags configurations that now share a name, each
  *    with a note.
+ *  - M4 (ADR-090, proposal §5): part annotations and the drawing collections other than `sheets`
+ *    are sets: merged by id, written sorted by id, never an `order` conflict. The dependent-edit
+ *    rule (`drawing-merge.ts`): deleting an annotation, view or sheet against new or changed
+ *    dependents on the other side is one `modifiedDeleted` conflict on the owner, listing them
+ *    (`dependents`), and the dependents follow its resolution; unchanged dependents go with it,
+ *    with a note. Markup is an append-mostly set. Afterwards `normalizeDrawings` restores the
+ *    drawing invariants, overrides of removed annotations are dropped, and the report notes what
+ *    went, duplicate placements, datum letters and promotions.
  */
 
 import type {
@@ -57,6 +65,7 @@ import type {
   WrenDoc,
 } from '@wren-cad/contracts';
 import { normalizeFolders, validateDoc } from '@wren-cad/document';
+import { normalizeDrawings, registerDrawingSupport } from '@wren-cad/document/drawing';
 import {
   type ConfigurationNote,
   configurationValueText,
@@ -67,6 +76,19 @@ import {
   reconcileConfigurations,
   reconcileResolved,
 } from './configurations';
+import {
+  type ConflictDependent,
+  conflictDependents,
+  type DependentConflict,
+  type DrawingMergeNote,
+  dependentPlan,
+  drawingMergeNotes,
+  isMarkupItemPath,
+  keepLastSheets,
+  keptText,
+  markupDeletedAgainstResolved,
+  type NormalizeNote,
+} from './drawing-merge';
 import {
   type FolderChange,
   isFolderMembersPath,
@@ -87,8 +109,10 @@ import {
   isAtomicObject,
   isCollectionPath,
   isObj,
+  isUnorderedCollectionPath,
   type Obj,
   type Segs,
+  sortById,
   toPointer,
 } from './tree';
 
@@ -109,7 +133,7 @@ export interface FolderMergeNote {
  * folder kept whole (M3.6), or a configuration rule (M3.7): "Overrides of Fillet 3 in Long were
  * removed with the feature".
  */
-export type MergeNote = FolderMergeNote | ConfigurationNote;
+export type MergeNote = FolderMergeNote | ConfigurationNote | DrawingMergeNote;
 
 /**
  * A conflict from `StructuralMerger`. `text` (configuration values, M3.7) holds each side's value
@@ -118,6 +142,12 @@ export type MergeNote = FolderMergeNote | ConfigurationNote;
  */
 export interface StructuralMergeConflict extends MergeConflict {
   text?: { base?: string; ours?: string; theirs?: string };
+  /**
+   * M4, the dependent-edit rule: an annotation, view or sheet one side deleted while the other
+   * changed it or what hangs on it. These items follow the conflict's resolution: kept, they are
+   * restored as `value` (the keeping side's version); deleted, they go.
+   */
+  dependents?: ConflictDependent[];
 }
 
 /** A `MergeResult` from `StructuralMerger`: `notes` is present when there is something to say. */
@@ -132,12 +162,20 @@ export function mergeNotes(result: MergeResult): MergeNote[] {
   return Array.isArray(notes) ? notes : [];
 }
 
+/** Restores the drawing invariants (`normalizeDrawings`, ADR-090) and says what it repaired. */
+export type NormalizeDrawings = (doc: WrenDoc) => {
+  doc: WrenDoc;
+  notes: readonly NormalizeNote[];
+};
+
 export interface StructuralMergerOptions {
   /**
    * Restores the folder invariant after a merge. Default: `normalizeFolders` from
    * `@wren-cad/document` (ADR-066).
    */
   normalizeFolders?: NormalizeFolders;
+  /** Default: `normalizeDrawings` from `@wren-cad/document/drawing`. */
+  normalizeDrawings?: NormalizeDrawings;
 }
 
 interface Sides {
@@ -168,20 +206,74 @@ class MergeRun {
   readonly conflicts: StructuralMergeConflict[] = [];
   readonly notes: MergeNote[] = [];
   autoMerged = 0;
+  /** Values decided before the walk (dependent-edit rule), by pointer; `undefined` = absent. */
+  private readonly forced = new Map<string, unknown>();
+  /** Pointers above a forced value: the walk descends into them even where sides agree. */
+  private readonly above = new Set<string>();
 
   constructor(
     private readonly sides: Sides,
     private readonly choices: ReadonlyMap<string, Choice>,
     private readonly normalize: NormalizeFolders,
+    private readonly normalizeDrawings: NormalizeDrawings,
   ) {}
 
   run(): WrenDoc {
     const { base, ours, theirs } = this.sides;
+    this.dependents();
     // A copy: the walk returns the inputs' own objects where nothing changed.
-    const doc = clone(this.node([], base, ours, theirs)) as WrenDoc;
+    let doc = clone(this.node([], base, ours, theirs)) as WrenDoc;
     this.paramNames(doc);
+    sortAnnotations(doc);
     this.notes.push(...reconcileConfigurations(doc, this.sides));
+    const sheetNotes = keepLastSheets(doc, this.sides);
+    const normalized = this.normalizeDrawings(doc);
+    doc = normalized.doc;
+    this.notes.push(...sheetNotes, ...drawingMergeNotes(doc, this.sides, normalized.notes));
     return doc;
+  }
+
+  /**
+   * The dependent-edit rule (`drawing-merge.ts`): one conflict per owner deleted against changes,
+   * decided now so the owner's dependents can follow it wherever the walk meets them.
+   */
+  private dependents(): void {
+    const { base, ours, theirs } = this.sides;
+    const plan = dependentPlan(this.sides);
+    const owners = plan.conflicts;
+    for (const segs of plan.quiet) this.force(segs, undefined);
+    const decided = new Map<string, boolean[]>();
+    for (const owner of owners) {
+      const b = getAt(base, owner.segs);
+      const o = getAt(ours, owner.segs);
+      const t = getAt(theirs, owner.segs);
+      const keeper = owner.deletedBy === 'ours' ? theirs : ours;
+      const choice = this.choose(
+        'modifiedDeleted',
+        owner.segs,
+        { base: b, ours: o, theirs: t },
+        owner,
+        [keeper, base],
+      );
+      const value = this.pick(choice, b, o, t);
+      this.force(owner.segs, value);
+      for (const item of owner.closure) {
+        const key = toPointer(item.segs);
+        decided.set(key, [...(decided.get(key) ?? []), value !== undefined]);
+      }
+    }
+    // A dependent of several owners stays only when all of them stay.
+    for (const owner of owners) {
+      for (const item of owner.closure) {
+        const keep = (decided.get(toPointer(item.segs)) ?? []).every(Boolean);
+        this.force(item.segs, keep ? item.value : undefined);
+      }
+    }
+  }
+
+  private force(segs: Segs, value: unknown): void {
+    this.forced.set(toPointer(segs), value);
+    for (let i = 0; i < segs.length; i++) this.above.add(toPointer(segs.slice(0, i)));
   }
 
   /** Records a conflict and returns the user's choice for it, if `resolve` is re-running. */
@@ -189,6 +281,8 @@ class MergeRun {
     kind: MergeConflictKind,
     segs: Segs,
     values: { base?: unknown; ours?: unknown; theirs?: unknown },
+    owner?: DependentConflict,
+    names?: WrenDoc[],
   ): Choice | undefined {
     const id = conflictId(kind, segs);
     const { base, ours, theirs } = this.sides;
@@ -211,6 +305,11 @@ class MergeRun {
       }
       if (Object.keys(text).length > 0) c.text = text;
     }
+    if (owner !== undefined) {
+      const kept = owner.deletedBy === 'ours' ? 'theirs' : 'ours';
+      c.text = { [kept]: keptText(owner), [owner.deletedBy]: 'deleted' };
+      if (owner.closure.length > 0) c.dependents = conflictDependents(owner, names ?? docs);
+    }
     this.conflicts.push(c);
     return this.choices.get(id);
   }
@@ -222,6 +321,32 @@ class MergeRun {
   }
 
   private node(segs: Segs, b: unknown, o: unknown, t: unknown): unknown {
+    if (this.forced.size > 0) {
+      const key = toPointer(segs);
+      if (this.forced.has(key)) return this.forced.get(key);
+      if (this.above.has(key)) {
+        const forcedList = (v: unknown) => v === undefined || Array.isArray(v);
+        if (isCollectionPath(segs) && forcedList(b) && forcedList(o) && forcedList(t)) {
+          return this.collection(
+            segs,
+            (b ?? []) as unknown[],
+            (o ?? []) as unknown[],
+            (t ?? []) as unknown[],
+          );
+        }
+        const objOrNone = (v: unknown) => v === undefined || isObj(v);
+        if (objOrNone(b) && objOrNone(o) && objOrNone(t) && (o !== undefined || t !== undefined)) {
+          return this.object(segs, (b ?? {}) as Obj, (o ?? {}) as Obj, (t ?? {}) as Obj);
+        }
+      }
+    }
+    if (isMarkupItemPath(segs)) {
+      const closed = markupDeletedAgainstResolved(b, o, t);
+      if (closed !== null) {
+        if (closed.theirs) this.autoMerged++;
+        return closed.value;
+      }
+    }
     if (isVisibilityPath(segs)) return this.visibility(segs, b, o, t);
     const objOrNone = (v: unknown) => v === undefined || isObj(v);
     if (isConfigRecordPath(segs) && objOrNone(b) && objOrNone(o) && objOrNone(t)) {
@@ -481,6 +606,8 @@ class MergeRun {
       const v = this.node([...segs, id], bm.get(id), om.get(id), tm.get(id));
       if (v !== undefined) merged.set(id, v);
     }
+    // Sets (annotations, drawing content): sorted by id, no order to conflict about.
+    if (isUnorderedCollectionPath(segs)) return sortById([...merged.values()]);
     const common = (ids: string[]) => ids.filter((id) => bm.has(id) && om.has(id) && tm.has(id));
     const [bo, oo, to] = [common(bIds), common(oIds), common(tIds)];
     const values = { base: bIds, ours: oIds, theirs: tIds };
@@ -667,6 +794,7 @@ function resolveByPath(
   result: MergeResult,
   choices: ReadonlyMap<string, Choice>,
   normalize: NormalizeFolders,
+  normalizeDrawings: NormalizeDrawings,
 ): WrenDoc {
   const doc = clone(result.doc) as unknown as Obj;
   const counts = new Map<Obj, number>();
@@ -693,7 +821,24 @@ function resolveByPath(
       const items = byId(list);
       const order = weave(normaliseOrder(value, ids), ids, [ids]);
       list.splice(0, list.length, ...order.map((id) => items.get(id)));
-    } else setAt(doc, segs, value);
+    } else {
+      setAt(doc, segs, value);
+      // The dependent-edit rule: the owner's dependents follow it.
+      const dependents = (c as StructuralMergeConflict).dependents;
+      for (const d of Array.isArray(dependents) ? dependents : []) {
+        setAt(doc, fromPointer(d.path), value === undefined ? undefined : clone(d.value));
+      }
+    }
+  }
+  // Sets stay sorted by id (`setAt` appends what it restores; drawings: `normalizeDrawings`).
+  for (const part of (doc.parts ?? []) as Obj[]) {
+    if (Array.isArray(part.annotations)) part.annotations = sortById(part.annotations);
+  }
+  // A drawing needs a sheet: one the choices emptied keeps the merged sheets (`keepLastSheets`).
+  for (const d of (doc.drawings ?? []) as Obj[]) {
+    if (!Array.isArray(d.sheets) || d.sheets.length > 0) continue;
+    const before = result.doc.drawings.find((x) => x.id === d.id);
+    if (before && before.sheets.length > 0) d.sheets = clone(before.sheets);
   }
   // Configurations: no override of what the resolution removed, no active one that is gone.
   reconcileResolved(doc as unknown as WrenDoc, result.doc);
@@ -711,7 +856,26 @@ function resolveByPath(
       else if (part.folders.length > 0) delete part.folders;
     }
   }
-  return doc as unknown as WrenDoc;
+  return normalizeDrawings(doc as unknown as WrenDoc).doc;
+}
+
+/** Part annotations are a set kept sorted by id (ADR-090 decision 1). */
+function sortAnnotations(doc: WrenDoc): void {
+  for (const part of doc.parts) {
+    if (Array.isArray(part.annotations)) part.annotations = sortById(part.annotations);
+  }
+}
+
+/** The value at an id path in one side. */
+function getAt(root: unknown, segs: Segs): unknown {
+  let node: unknown = root;
+  for (const seg of segs) {
+    if (Array.isArray(node)) node = node.find((x) => (x as Identified).id === seg);
+    else if (isObj(node)) node = node[seg];
+    else return undefined;
+    if (node === undefined) return undefined;
+  }
+  return node;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -720,14 +884,18 @@ function resolveByPath(
 
 export class StructuralMerger implements DocMerger {
   private readonly normalize: NormalizeFolders;
+  private readonly normalizeDrawings: NormalizeDrawings;
 
   constructor(options: StructuralMergerOptions = {}) {
     this.normalize = options.normalizeFolders ?? normalizeFolders;
+    this.normalizeDrawings = options.normalizeDrawings ?? normalizeDrawings;
   }
 
   merge(base: WrenDoc, ours: WrenDoc, theirs: WrenDoc): StructuralMergeResult {
+    // The merged document is validated and loaded next; drawings need the support registered.
+    registerDrawingSupport();
     const sides = { base: clone(base), ours: clone(ours), theirs: clone(theirs) };
-    const run = new MergeRun(sides, new Map(), this.normalize);
+    const run = new MergeRun(sides, new Map(), this.normalize, this.normalizeDrawings);
     const doc = run.run();
     const result: StructuralMergeResult = {
       doc,
@@ -760,8 +928,9 @@ export class StructuralMerger implements DocMerger {
       choices.size === 0
         ? clone(result.doc)
         : sides
-          ? new MergeRun(sides, choices, this.normalize).run()
-          : resolveByPath(result, choices, this.normalize);
+          ? new MergeRun(sides, choices, this.normalize, this.normalizeDrawings).run()
+          : resolveByPath(result, choices, this.normalize, this.normalizeDrawings);
+    registerDrawingSupport();
     const errors = validateDoc(doc);
     if (errors.length > 0) {
       throw new MergeResolutionError(

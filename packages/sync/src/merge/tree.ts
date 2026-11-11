@@ -13,6 +13,17 @@ import type { EntityKind, JsonPointer } from '@wren-cad/contracts';
 export type Segs = readonly string[];
 export type Obj = Record<string, unknown>;
 
+/** The drawing collections that are sets kept sorted by id (ADR-090 decision 8). */
+export const DRAWING_SETS = [
+  'views',
+  'placements',
+  'centerMarks',
+  'tables',
+  'notes',
+  'markup',
+] as const;
+export type DrawingSet = (typeof DRAWING_SETS)[number];
+
 /**
  * Every array in document.ts / sketch.ts whose items carry a stable `id`. `*` matches one item id.
  * Everything else that is an array (EntityRef lists, Vec3, frames, `skip`, `CopySource.features`)
@@ -32,13 +43,39 @@ export const COLLECTIONS: readonly Segs[] = [
   ['parts', '*', 'configurations'],
   ['parts', '*', 'features', '*', 'entities'],
   ['parts', '*', 'features', '*', 'constraints'],
-  ['parts', '*', 'features', '*', 'annotations'],
+  // M4 (ADR-090): part annotations and the drawing's flat collections. Only `sheets` is ordered.
+  ['parts', '*', 'annotations'],
+  ['drawings', '*', 'sheets'],
+  ...DRAWING_SETS.map((k) => ['drawings', '*', k]),
 ];
 
+/**
+ * Collections whose order carries no meaning: the merge writes them sorted by id and never
+ * reports an `order` conflict for them (M4 proposal §5).
+ */
+export const UNORDERED_COLLECTIONS: readonly Segs[] = [
+  ['parts', '*', 'annotations'],
+  ...DRAWING_SETS.map((k) => ['drawings', '*', k]),
+];
+
+const matches = (pat: Segs, segs: Segs): boolean =>
+  pat.length === segs.length && pat.every((p, i) => p === '*' || p === segs[i]);
+
 export function isCollectionPath(segs: Segs): boolean {
-  return COLLECTIONS.some(
-    (pat) => pat.length === segs.length && pat.every((p, i) => p === '*' || p === segs[i]),
-  );
+  return COLLECTIONS.some((pat) => matches(pat, segs));
+}
+
+export function isUnorderedCollectionPath(segs: Segs): boolean {
+  return UNORDERED_COLLECTIONS.some((pat) => matches(pat, segs));
+}
+
+/** A copy of `list` sorted by `id` (code-unit order, as the document package sorts). */
+export function sortById<T>(list: readonly T[]): T[] {
+  return list.slice().sort((a, b) => {
+    const x = (a as Identified).id;
+    const y = (b as Identified).id;
+    return x < y ? -1 : x > y ? 1 : 0;
+  });
 }
 
 export const isObj = (v: unknown): v is Obj =>
@@ -117,6 +154,23 @@ export function fromPointer(p: JsonPointer): string[] {
   if (p === '') return [];
   if (!p.startsWith('/')) throw new Error(`Invalid JSON pointer ‘${p}’`);
   return p.slice(1).split('/').map(unescapeSeg);
+}
+
+/** The value at a JSON pointer inside a feature or annotation, or `undefined`. */
+export function atPointer(root: unknown, pointer: string): unknown {
+  let segs: string[];
+  try {
+    segs = fromPointer(pointer);
+  } catch {
+    return undefined;
+  }
+  let node = root;
+  for (const s of segs) {
+    if (isObj(node)) node = node[s];
+    else if (Array.isArray(node) && /^\d+$/.test(s)) node = node[Number(s)];
+    else return undefined;
+  }
+  return node;
 }
 
 export interface Identified {
