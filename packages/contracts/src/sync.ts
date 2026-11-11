@@ -264,11 +264,21 @@ export interface DiffSubject {
     | 'sketchEntity'
     | 'sketchConstraint'
     | 'drawing'
-    | 'assembly';
+    | 'assembly'
+    // M4
+    | 'annotation'
+    | 'sheet'
+    | 'view'
+    | 'placement'
+    | 'drawingTable'
+    | 'sheetNote'
+    | 'markup';
   id?: Id;
   partId?: Id;
   /** For sketch entities and constraints: the sketch feature. */
   featureId?: Id;
+  /** For sheets, views, placements, tables, notes and markup: the drawing. */
+  drawingId?: Id;
   /** For features: its type, so the UI can show the feature's icon. */
   featureType?: FeatureType;
   /** Display name at the time of the change: "Fillet 3", "width", "Line 2 in Sketch 1". */
@@ -320,6 +330,15 @@ export interface MergeResult {
    */
   notes?: MergeReportNote[];
 }
+
+/** `MergeReportNote.kind` values the drawing merge adds (the field stays a string). */
+export type DrawingMergeNoteKind =
+  | 'placementRemovedWithAnnotation'
+  | 'placementRemovedWithView'
+  | 'duplicatePlacementDropped'
+  | 'overrideRemovedWithAnnotation'
+  | 'duplicateDatumLabel'
+  | 'duplicatePromotion';
 
 /** One line of a merge report; `kind` lets the UI group or icon it (`'folderMembership'`). */
 export interface MergeReportNote {

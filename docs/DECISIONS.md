@@ -2454,3 +2454,47 @@ Result: 234.7 kB, headroom 15.3 kB. No behaviour change. `sideEffects: false` on
 ### ADR-084 amendment — the no-overlap rule covers tablet and desktop (2026-11-11)
 - The iPad tutorial broke because the inline extrude depth field (anchored at its profile) sat under the picking chip's Cancel button. The rule now holds on every tier: `apps/web/src/ui/obstacles.ts` measures the floating chrome (top bar, rail, sheets, view cube, Library, keypad, the bottom stack), and anchored overlays avoid it. Priority, high to low: shell chrome, bottom stack, inline value fields (extrude depth, push/pull `ValueChip`, new `obstacles` prop), context bubble. The lower one moves (`placeBubble`) or, for the bubble, hides.
 - `ExtrudeDepth` moved to its own lazy chunk (initial route 231.9 kB gzip). E2E `m38-tablet-overlays.spec.ts` asserts the depth field is the `elementFromPoint` target and that no overlay boxes intersect.
+
+## ADR-090 — M4 contracts: part-level annotations, flat id-keyed drawings, HLR in a drawing worker; schema v4 (2026-11-11)
+
+Applied from the drawing-engineer's proposal (`docs/proposals/M4-contracts.md`, the rationale, migration and validation rules). New contract files `annotation.ts` (shared core, ADR-081) and `drawing.ts`; changes in `document.ts`, `store.ts`, `modeling.ts`, `sync.ts`. `SCHEMA_VERSION` is 4.
+
+**Decisions (proposal §9):**
+1. Annotations live on `Part.annotations`, id-keyed and sorted by id. `origin` records provenance. Drawings store placements, never copies.
+2. All of an annotation's geometry is in `refs: EntityRef[]` with a parallel `at: RefPoint[]`: one resolution and one reattach path for every kind.
+3. A dimension's value is `source`, else `nominal`, else measured. `AnnotationResolution.value` is absent whenever the state is not `ok`, so a stale number is never shown.
+4. Datum references are ids, with an unbound `{ label }` form that needs attention.
+5. GD&T and surface finish carry a standard. Illegal symbols are refused or flagged with an explanation, never converted.
+6. Configuration overrides of annotations are keyed by annotation id (`Configuration.annotations`). This closes the M3.7 gate finding about list positions.
+7. Suppression in a configuration shows as "not in this configuration", not as needs attention.
+8. Drawing collections are flat, with `sheetId` / `viewId`. Only `sheets` is ordered.
+9. Projected and section views are stored relative to their parent. The side follows the projection, so switching first/third angle needs no edit.
+10. The view centre is the projected 3D bounding box.
+11. Everything on a sheet is in sheet mm, origin bottom-left, y up. The style is stored in full and the template version is pinned, so app updates never move an existing drawing.
+12. A missing configuration id needs attention, never a fallback.
+13. The v3 → v4 migration mints no ids. Feature-level `PmiAnnotation`s move to `Part.annotations`. Placeholder drawings (id + name only) are removed with a note.
+14. HLR runs in a separate drawing worker. `ModelingApi.shapeForDrawing` hands over BREP bytes plus persistent edge and face names. Draft (PolyAlgo) output comes first, then exact.
+15. Formatting and layout are one worker-safe module, `@wren-cad/drawing/annotation`, shared with M5.
+
+**Changes while applying:**
+- The drawing's hole table is `DrawingHoleTable`, because `HoleTable` is already the standards hole-size table.
+- `DrawingDefaults` lives in `drawing.ts`. `RegenRequest.annotations` and `RegenResult.annotations` are plain optional fields; the proposal's `*4` interfaces are folded into the real types.
+- New commands not yet implemented return "not available yet" from `compileCommand`. `shapeForDrawing` returns `UNSUPPORTED_FEATURE` until the workstreams land.
+
+**Owner decisions (2026-11-11):**
+- **D4, DXF:** in-house writer, no new dependency. R12 CNC-safe profile first, then R2000.
+- **D5, font:** Osifont, if its licence checks out upstream. Record it in DEPENDENCIES first. Fallback is Noto Sans (OFL-1.1). GD&T and hole symbols are vector glyphs in both cases.
+- **D6:** drawing dimensions are read-only in M4.
+- **D7:** PDF/A and PDF layers are deferred. M4 writes vector PDF 1.7 at true scale.
+- **D8:** markup is local-first, in `Drawing.markup`.
+- **D9, standards:** provisional for now. Goldens built from public and secondary sources are marked "provisional (secondary sources)". The owner buys or borrows ISO 1101 and ASME Y14.5 first, then we re-verify.
+- **D10:** an explicit standard and projection choice at the first drawing, remembered in `drawingDefaults`.
+
+**Lead answers to the open questions:**
+- **Q1:** composite frames are rejected with a clear message until P2.
+- **Q2:** placeholder drawings are removed (no file in the wild has one).
+- **Q3:** an unreleased output shows the last release with `*` and "Not released".
+- **Q4:** markup goes in its own `drawings/<slug>.markup.json` once markup ships.
+- **Q5:** `direction` stays a `Vec3` for now; an additive change later if needed.
+- **Q6:** plain arrays for now; packed polylines only if the budget needs them.
+- **Q7:** custom title-block templates are P2.

@@ -6,9 +6,11 @@
  * `coalesceKey` and collapse into one undo step.
  */
 
+import type { Annotation, RefPoint } from './annotation';
 import type {
   Configuration,
   ConfiguredValue,
+  EntityRef,
   Expr,
   Feature,
   FeatureFolder,
@@ -20,6 +22,24 @@ import type {
   SketchVisibility,
   WrenDoc,
 } from './document';
+import type {
+  AnnotationPlacement,
+  CenterMark,
+  Drawing,
+  DrawingDefaults,
+  DrawingStandard,
+  DrawingStyle,
+  DrawingSubject,
+  DrawingTable,
+  DrawingView,
+  Markup,
+  Projection,
+  Sheet,
+  SheetFormat,
+  SheetNote,
+  TemplateBinding,
+  TitleBlockSlot,
+} from './drawing';
 
 export type JsonPointer = string;
 
@@ -38,7 +58,10 @@ export type ConfigTarget =
   | { kind: 'suppressed'; featureId: Id }
   | { kind: 'material' }
   | { kind: 'color' }
-  | { kind: 'property'; key: keyof PartProperties };
+  | { kind: 'property'; key: keyof PartProperties }
+  /** M4: an annotation's `Expr` or option field (`AnnotationOverride.fields`). */
+  | { kind: 'annotationField'; annotationId: Id; path: JsonPointer }
+  | { kind: 'annotationSuppressed'; annotationId: Id };
 
 /** High-level, intention-revealing edits. The store compiles them to patches. */
 export type Command =
@@ -108,7 +131,129 @@ export type Command =
   | { kind: 'updateParam'; paramId: Id; name?: string; expr?: Expr; description?: string }
   | { kind: 'removeParam'; paramId: Id }
   | { kind: 'setDocName'; name: string }
-  | { kind: 'patch'; ops: JsonPatchOp[] };
+  | { kind: 'patch'; ops: JsonPatchOp[] }
+  | AnnotationCommand
+  | DrawingCommand;
+
+/** Fields `updateDrawing` may set; absent = unchanged. `configurationId: null` = Default. */
+export interface DrawingChanges {
+  name?: string;
+  subject?: DrawingSubject;
+  configurationId?: Id | null;
+  standard?: DrawingStandard;
+  projection?: Projection;
+  style?: DrawingStyle;
+}
+
+export type AnnotationCommand =
+  /**
+   * Adds a part annotation; with `place`, also its placement in a view (a dimension drawn on a
+   * drawing: one step).
+   */
+  | {
+      kind: 'addAnnotation';
+      partId: Id;
+      annotation: Annotation;
+      place?: { drawingId: Id; placement: AnnotationPlacement };
+    }
+  /** Whole replacement, like `updateFeature`. Refuses to change `id`. */
+  | { kind: 'updateAnnotation'; partId: Id; annotationId: Id; annotation: Annotation }
+  /**
+   * Removes the annotations, their placements in every drawing and their configuration overrides.
+   * Frames bound to a removed datum keep its letter as `{ label }`, and `appliesTo` pointing at a
+   * removed dimension stays: both then show as needs attention, never a silent rebinding.
+   */
+  | { kind: 'removeAnnotation'; partId: Id; annotationIds: Id[] }
+  /** User-confirmed reattach (works for every kind). Clears nothing else. */
+  | {
+      kind: 'reattachAnnotation';
+      partId: Id;
+      annotationId: Id;
+      refs: EntityRef[];
+      at?: RefPoint[];
+    };
+
+export type DrawingCommand =
+  /** D10: the explicit project choice (also offered again from drawing settings). */
+  | { kind: 'setDrawingDefaults'; defaults: DrawingDefaults }
+  | { kind: 'addDrawing'; drawing: Drawing; index?: number }
+  | { kind: 'updateDrawing'; drawingId: Id; changes: DrawingChanges }
+  /**
+   * `annotations`: `'removeOwn'` (default) also removes annotations whose origin is this drawing
+   * and that no other drawing places; `'keep'` leaves them in the part.
+   */
+  | { kind: 'removeDrawing'; drawingId: Id; annotations?: 'removeOwn' | 'keep' }
+  | { kind: 'moveDrawing'; drawingId: Id; toIndex: number }
+  /**
+   * "Duplicate drawing for configuration": a copy with `ids` mapping every sheet, view, placement,
+   * centre mark, table and note id of the source to a fresh ULID (the store fails if one is missing
+   * or taken). Annotations are shared, not copied. Markup is not copied.
+   */
+  | {
+      kind: 'duplicateDrawing';
+      drawingId: Id;
+      newDrawingId: Id;
+      name: string;
+      configurationId: Id | null;
+      ids: Record<Id, Id>;
+    }
+  /**
+   * Re-apply (or switch) the template: sets `template.id` and `version`, optionally sheet formats.
+   * Views, placements, tables and notes are kept; title-block text for slots the template doesn't
+   * have is kept and listed as unused.
+   */
+  | {
+      kind: 'applyTemplate';
+      drawingId: Id;
+      template: { id: TemplateBinding['id']; version: number };
+      formats?: { sheetId: Id; format: SheetFormat }[];
+    }
+  /** Title-block text on the drawing (`sheetId` absent) or one sheet; `null` clears a slot. */
+  | {
+      kind: 'setTitleBlockFields';
+      drawingId: Id;
+      sheetId?: Id;
+      fields: Partial<Record<TitleBlockSlot, string | null>>;
+    }
+  | { kind: 'addSheet'; drawingId: Id; sheet: Sheet; index?: number }
+  | { kind: 'updateSheet'; drawingId: Id; sheet: Sheet }
+  /** Also removes the sheet's views (with their placements and marks), tables, notes and markup. */
+  | { kind: 'removeSheet'; drawingId: Id; sheetId: Id }
+  | { kind: 'moveSheet'; drawingId: Id; sheetId: Id; toIndex: number }
+  | { kind: 'addView'; drawingId: Id; view: DrawingView }
+  /** Whole replacement (move, scale, display, cut-line edit, re-orient). Drags share a coalesceKey. */
+  | { kind: 'updateView'; drawingId: Id; view: DrawingView }
+  /**
+   * Removes views with their placements and marks. `dependents`: `'remove'` (default) removes the
+   * views derived from them too; `'detach'` turns direct children into base views with the same
+   * resolved orientation and position.
+   */
+  | { kind: 'removeViews'; drawingId: Id; viewIds: Id[]; dependents?: 'remove' | 'detach' }
+  /**
+   * Import model annotations (and the dimension tool's batch paths): places existing annotations
+   * and creates promoted ones (`annotation` set) in one step. Refuses an item whose annotation is
+   * already placed in this drawing unless `allowDuplicate`.
+   */
+  | {
+      kind: 'placeAnnotations';
+      drawingId: Id;
+      items: { placement: AnnotationPlacement; annotation?: Annotation }[];
+      allowDuplicate?: boolean;
+    }
+  | { kind: 'updatePlacements'; drawingId: Id; placements: AnnotationPlacement[] }
+  /** Hides annotations from views; the part annotations stay. */
+  | { kind: 'removePlacements'; drawingId: Id; placementIds: Id[] }
+  | { kind: 'addCenterMark'; drawingId: Id; mark: CenterMark }
+  | { kind: 'removeCenterMarks'; drawingId: Id; markIds: Id[] }
+  | { kind: 'addTable'; drawingId: Id; table: DrawingTable }
+  | { kind: 'updateTable'; drawingId: Id; table: DrawingTable }
+  | { kind: 'removeTable'; drawingId: Id; tableId: Id }
+  | { kind: 'addSheetNote'; drawingId: Id; note: SheetNote }
+  | { kind: 'updateSheetNote'; drawingId: Id; note: SheetNote }
+  | { kind: 'removeSheetNote'; drawingId: Id; noteId: Id }
+  | { kind: 'addMarkup'; drawingId: Id; markup: Markup }
+  | { kind: 'setMarkupResolved'; drawingId: Id; markupId: Id; resolved: boolean }
+  | { kind: 'removeMarkup'; drawingId: Id; markupId: Id };
 
 export interface ApplyOptions {
   /** Human label for the undo history, e.g. "Edit Fillet 2 radius". */

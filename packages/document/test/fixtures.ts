@@ -156,29 +156,11 @@ export const sphere = (n: number): PrimitiveFeature => ({
   radius: 'depth / 4',
 });
 
-/** A document exercising every feature type, a material, params and an annotation. */
+/** A document exercising every feature type, a material and params. */
 export function sampleDoc(): WrenDoc {
   const doc = newDoc({ name: 'Bracket', now: '2026-01-02T03:04:05.000Z', app: 'wren/test' });
-  const filletF: Feature = {
-    ...fillet(14, 12),
-    annotations: [
-      {
-        id: id(900),
-        kind: 'linear',
-        refs: [ref(`F${id(12)}:start`)],
-        value: '12.5',
-        tolerance: { kind: 'bilateral', upper: '0.1mm', lower: '-0.1mm' },
-        gdt: { characteristic: 'flatness', zone: '0.05mm' },
-      },
-      {
-        id: id(901),
-        kind: 'angle',
-        refs: [],
-        value: '30deg',
-        tolerance: { kind: 'symmetric', upper: '1deg' },
-      },
-    ],
-  };
+  // v4: annotations are part-level (ADR-090); the M4 document workstream adds them here.
+  const filletF: Feature = fillet(14, 12);
   const features: Feature[] = [
     sketch(11),
     extrude(12, 11),
@@ -221,7 +203,8 @@ export function sampleDoc(): WrenDoc {
     },
     { id: id(4), name: 'Bracket', features: [box(40)], rollbackIndex: 1 },
   ];
-  doc.drawings = [{ id: id(5), name: 'Sheet 1' }];
+  // v4: a full drawing fixture comes with the M4 document workstream.
+  doc.drawings = [];
   doc.assemblies = [{ id: id(6), name: 'Asm' }];
   return doc;
 }

@@ -66,6 +66,10 @@ export function groupOf(target: ConfigTarget): ConfigGroupId {
       return 'material';
     case 'property':
       return 'properties';
+    case 'annotationField':
+      return 'parameters';
+    case 'annotationSuppressed':
+      return 'suppression';
   }
 }
 
@@ -84,6 +88,10 @@ export function configTargetKey(t: ConfigTarget): string {
       return 'color';
     case 'property':
       return `property:${t.key}`;
+    case 'annotationField':
+      return `annotationField:${t.annotationId}:${t.path}`;
+    case 'annotationSuppressed':
+      return `annotationSuppressed:${t.annotationId}`;
   }
 }
 

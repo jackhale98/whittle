@@ -163,6 +163,12 @@ export interface RegenRequest {
    * another version beside it (compare, merge preview) with its own cache and latest state.
    */
   slot?: RegenSlot;
+  /**
+   * M4: resolve the part's annotations after the walk (`RegenResult.annotations`). Default: only
+   * when the part has annotations and a drawing or (M5) the 3D annotation display is open; the app
+   * passes `true` for those consumers. Measurement costs about one exact distance per annotation.
+   */
+  annotations?: boolean;
 }
 
 export interface RegenResult {
@@ -176,6 +182,66 @@ export interface RegenResult {
   cache: { hits: number; misses: number };
   /** Last all-ok geometry of bodies that differ now while some feature fails (PLAN §9.2 ghost). */
   ghosts?: BodyResult[];
+  /** M4: one resolution per annotation of the part, in this slot (see `RegenRequest.annotations`). */
+  annotations?: AnnotationResolution[];
+}
+
+/**
+ * Resolved geometry of one annotation ref in part coordinates, for projection into views (M4)
+ * and annotation planes (M5).
+ */
+export type AnnotationAnchor =
+  | { kind: 'point'; at: Vec3 }
+  | { kind: 'line'; a: Vec3; b: Vec3 }
+  | { kind: 'circle'; center: Vec3; normal: Vec3; radius: number; start?: Vec3; end?: Vec3 }
+  | { kind: 'axis'; origin: Vec3; direction: Vec3; extent: [number, number] }
+  | { kind: 'plane'; origin: Vec3; normal: Vec3; outline: Vec3[] }
+  | { kind: 'curve'; points: Vec3[] };
+
+/**
+ * Regen engine output per annotation (kernel-client, in the worker, after the last feature):
+ * reference resolution with the feature rules (exact name, merge alias, family with containment,
+ * fingerprint for weak names; ADR-078), the measured value and the anchors. One per annotation of
+ * the regenerated part, in the regenerated configuration (slot).
+ */
+export interface AnnotationResolution {
+  annotationId: Id;
+  state: 'ok' | 'needsAttention' | 'suppressed';
+  /** Paths inside the annotation: `/refs/1`, `/source`, `/appliesTo`, `/datums/0/datums/0`. */
+  unresolved?: UnresolvedRef[];
+  cause?: AttentionCause;
+  merged?: MergedRef[];
+  grown?: GrownRef[];
+  rebound?: { path: string; name: string; fingerprint?: Fingerprint }[];
+  /**
+   * The value to display, mm or rad: the source's, the nominal's or the measurement. **Absent
+   * whenever `state` is not `ok`** (trap T1: no stale number to show).
+   */
+  value?: number;
+  /** Measured from the geometry, when it can be (cross-check for sourced and stated values). */
+  measured?: number;
+  /** Parallel to `refs` (empty for refs that did not resolve). */
+  anchors?: (AnnotationAnchor | null)[];
+  /** Hole callouts: resolved hole faces of every instance (count and leader targets). */
+  instances?: EntityRef[];
+  error?: KernelError;
+}
+
+/**
+ * The final shape of a part in one slot, handed from the kernel worker to the drawing worker
+ * (PLAN §3: HLR runs in a separate worker). Bytes are transferred. `edgeNames[i]` / `faceNames[i]`
+ * are the persistent names of the i-th edge / face in `TopExp::MapShapes` order of the BREP, so
+ * the drawing worker can name projected curves without the regen engine. New
+ * `ModelingApi.shapeForDrawing(partId, slot): Promise<Result<ShapeForDrawing>>`.
+ */
+export interface ShapeForDrawing {
+  /** Value key of the resolved part (ADR-079 `valueKey`): equal keys = equal shapes. */
+  key: string;
+  brep: Uint8Array;
+  edgeNames: string[];
+  faceNames: string[];
+  /** Part 3D bounding box (ADR-084 cheap bounds), for view centring. */
+  bounds: { min: Vec3; max: Vec3 };
 }
 
 /** Answers "what is under the cursor" in persistent terms for selection → EntityRef. */
@@ -301,4 +367,6 @@ export interface ModelingApi extends KernelApi {
     b: RegenSlot,
     quality: MeshQuality,
   ): Promise<Result<GeometricDiff>>;
+  /** M4: the final shape of the latest regen of a part in a slot, for the drawing worker. */
+  shapeForDrawing(partId: Id, slot?: RegenSlot): Promise<Result<ShapeForDrawing>>;
 }
