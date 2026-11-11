@@ -489,7 +489,10 @@ export interface ViewProjection {
   /** Cache key: shape key plus every request field (results cached under `.wren/`). */
   key: string;
   curves: ProjectedCurve[];
-  /** Section views: closed loops of each cut face (`face` = persistent name), for hatching in the worker. */
+  /**
+   * Section views: closed loops of each cut face, for hatching. `face` is a synthetic id
+   * (`section:<segment>#<k>`), not a persistent name: cut faces have no model face.
+   */
   sectionFaces?: { face: string; loops: Curve2[][] }[];
   /** Projection of the part's 3D bounding box: the view's centre for layout (see the .md). */
   bounds: { min: Vec2; max: Vec2 };
