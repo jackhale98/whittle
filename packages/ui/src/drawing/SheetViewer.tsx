@@ -417,6 +417,15 @@ export function SheetViewer({
     e.preventDefault();
   };
 
+  // The sheet's elements are made again only when the model or the selection changes, not on
+  // every pan or zoom frame.
+  const drawn = useMemo(
+    () =>
+      model?.children?.map((c, i) =>
+        typeof c === 'string' || c.tag === 'rect' ? null : renderNode(c, i, selected, hover),
+      ),
+    [model, selected, hover],
+  );
   const mm = 1 / view.k;
   const conv = useCallback((p: Vec2) => toScreen(view, sheet, p), [view, sheet]);
   const flip = `matrix(1 0 0 -1 0 ${sheet.h})`;
@@ -425,6 +434,8 @@ export function SheetViewer({
     <div
       ref={box}
       role="application"
+      // biome-ignore lint/a11y/noNoninteractiveTabindex: the sheet is a keyboard-operable canvas (pan, zoom, tools)
+      tabIndex={0}
       aria-label={label}
       aria-roledescription="drawing sheet"
       aria-busy={pending || undefined}
@@ -473,9 +484,7 @@ export function SheetViewer({
               pending && 'sheet-model-pending',
             )}
           >
-            {model?.children?.map((c, i) =>
-              typeof c === 'string' || c.tag === 'rect' ? null : renderNode(c, i, selected, hover),
-            )}
+            {drawn}
           </g>
           {overlay ? (
             <g transform={flip} data-testid="sheet-overlay">
