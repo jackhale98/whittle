@@ -11,6 +11,7 @@ import type {
   AnnotationSource,
   DimensionConstraint,
   EntityRef,
+  Expr,
   Feature,
   Id,
   Part,
@@ -165,10 +166,22 @@ function sketchIdOf(name: string | undefined): Id | undefined {
   return m?.[1];
 }
 
+/** Evaluates an expression to mm or rad; `undefined` when it does not evaluate. */
+export type PromotionEvaluate = (expr: Expr, kind: 'length' | 'angle') => number | undefined;
+
+/** A full turn (360°, within 1e-9 rad): a revolve with no start and end faces. */
+function isFullTurn(expr: Expr, evaluate: PromotionEvaluate | undefined): boolean {
+  const v = evaluate?.(expr, 'angle');
+  if (v !== undefined) return Math.abs(Math.abs(v) - 2 * Math.PI) < 1e-9;
+  // No evaluator: only the literal spellings of a full turn.
+  return /^\s*360\s*(deg|°)?\s*$/i.test(expr);
+}
+
 function promoteFeature(
   f: Feature,
   frames: ReadonlyMap<Id, SketchFrame>,
   sketches: ReadonlyMap<Id, SketchFeature>,
+  evaluate?: PromotionEvaluate,
 ): (Promotion | NotPromotable)[] {
   const origin = { kind: 'model' as const };
   const out: (Promotion | NotPromotable)[] = [];
@@ -262,6 +275,8 @@ function promoteFeature(
       break;
     }
     case 'revolve': {
+      // A full revolve has no start and end faces: nothing to measure the angle between.
+      if (isFullTurn(f.angle, evaluate)) break;
       const source: AnnotationSource = { kind: 'featureField', featureId: f.id, path: '/angle' };
       out.push({
         key: sourceKey(source),
@@ -301,6 +316,7 @@ function promoteFeature(
 export function collectPromotions(
   part: Part,
   frames: ReadonlyMap<Id, SketchFrame>,
+  evaluate?: PromotionEvaluate,
 ): { promotions: Promotion[]; notPromotable: NotPromotable[] } {
   const notPromotable: NotPromotable[] = [];
   const promotions: Promotion[] = [];
@@ -316,7 +332,7 @@ export function collectPromotions(
         else notPromotable.push(p);
       }
     } else {
-      for (const p of promoteFeature(f, frames, sketches)) {
+      for (const p of promoteFeature(f, frames, sketches, evaluate)) {
         if ('draft' in p) promotions.push(p);
         else notPromotable.push(p);
       }

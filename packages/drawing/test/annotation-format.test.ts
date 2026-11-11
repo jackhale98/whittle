@@ -159,6 +159,13 @@ describe('dimension labels', () => {
     extra: Partial<Parameters<typeof dimensionLabel>[0]> = {},
   ) => labelText(dimensionLabel({ value, quantity: 'length', numbers: iso, ...extra }));
 
+  it('prefixes N× from the resolved count only when asked and only above one', () => {
+    expect(label(6, { text: { count: true }, count: 4 })).toBe('4× 6');
+    expect(label(6, { text: { count: true }, count: 1 })).toBe('6');
+    expect(label(6, { text: { count: true } })).toBe('6');
+    expect(label(6, { count: 4 })).toBe('6');
+    expect(label(undefined, { text: { count: true }, count: 4 })).toBe('4× ?');
+  });
   it('shows ? and no number when the value is absent (trap T1)', () => {
     expect(label(undefined, { tolerance: { kind: 'symmetric', value: 0.1 } })).toBe('?');
   });

@@ -111,6 +111,11 @@ export interface DimensionLabelInput {
   text?: DimensionText;
   numbers: NumberStyle;
   fitDeviations?: FitDeviationLookup;
+  /**
+   * Resolved instance count (`AnnotationResolution.count`) for `text.count`: `N×` before the value
+   * when it is more than 1. Absent with `text.count` set: no prefix (never a guessed count).
+   */
+  count?: number;
 }
 
 const SIZE_RUNS: Record<SizeSymbol, TextRun[]> = {
@@ -129,6 +134,8 @@ export function dimensionLabel(input: DimensionLabelInput): DimensionLabel {
       ? formatAngle(x, numbers, { precision, sign })
       : formatLength(x, numbers, { precision, sign });
   const main: TextRun[] = [];
+  if (input.text?.count && input.count !== undefined && input.count > 1)
+    main.push({ kind: 'text', text: `${input.count}× ` });
   if (input.text?.prefix) main.push({ kind: 'text', text: input.text.prefix });
   if (input.size) main.push(...SIZE_RUNS[input.size]);
   const warnings: string[] = [];

@@ -289,6 +289,7 @@ function labelFor(
     ...(size ? { size } : {}),
     ...(tol ? { tolerance: tol } : {}),
     ...(a.text ? { text: a.text } : {}),
+    ...(res?.state === 'ok' && res.count !== undefined ? { count: res.count } : {}),
     numbers: ctx.style.numbers,
     ...(ctx.fitDeviations ? { fitDeviations: ctx.fitDeviations } : {}),
   });

@@ -15,6 +15,7 @@ import {
   planImport,
   type SketchFrame,
 } from '../src/import';
+import { collectPromotions } from '../src/import/promote';
 import { solveViews } from '../src/view';
 import { ANNOTATIONS, drawing, evaluate, PART_BOUNDS, resolutions } from './fixtures';
 
@@ -319,6 +320,31 @@ describe('import model annotations', () => {
     );
     expect(c.get('annotation:A1')).toMatchObject({ reason: 'suppressed', checked: false });
     expect(c.get('annotation:A2')).toMatchObject({ reason: 'needsAttention', checked: false });
+  });
+  it('does not promote a full-turn revolve angle (no start or end faces)', () => {
+    const p0 = part();
+    for (const angle of ['360 deg', '360', '2*pi rad']) {
+      const revolve = {
+        id: 'RV1',
+        type: 'revolve' as const,
+        name: 'Revolve',
+        suppressed: false,
+        profile: [{ name: 'SSK1:region(l1,l2)', kind: 'region' as const }],
+        axis: { name: 'origin:Z', kind: 'edge' as const },
+        angle,
+        direction: 'normal' as const,
+        op: 'add' as const,
+      };
+      const p1: Part = {
+        ...p0,
+        features: [...p0.features.slice(0, 5), revolve, ...p0.features.slice(5)],
+        rollbackIndex: 7,
+      };
+      const full = (e: string) =>
+        e === '2*pi rad' || e.startsWith('360') ? 2 * Math.PI : undefined;
+      const { promotions } = collectPromotions(p1, new Map([['SK1', XY]]), (e) => full(e));
+      expect(promotions.some((p) => p.key.includes('RV1'))).toBe(false);
+    }
   });
   it('promotes a revolve angle as the supplement of its faces’ normals, placed by anchors', () => {
     const revolve = {

@@ -596,7 +596,7 @@ export function planImport(input: ImportInput): ImportPlan {
   const frames = input.sketchFrames ?? new Map<Id, SketchFrame>();
   const sketches = new Map<Id, SketchFeature>();
   for (const f of part.features) if (f.type === 'sketch') sketches.set(f.id, f);
-  const { promotions, notPromotable } = collectPromotions(part, frames);
+  const { promotions, notPromotable } = collectPromotions(part, frames, input.evaluate);
   for (const p of promotions) {
     if (sourced.has(p.key)) continue; // already an annotation: listed above as existing
     const chosen = chooseRefs(p.choices ?? [p.draft.refs], p.draft, input);
