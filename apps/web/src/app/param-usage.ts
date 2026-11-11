@@ -70,6 +70,40 @@ export function paramUsage(doc: Pick<WrenDoc, 'params' | 'parts'>): Record<Id, P
         }
       }
     }
+    // M3.7: a configuration's overrides use parameters too (a parameter override's expression, a
+    // feature field override), and the entry says which configuration.
+    const featureName = new Map(part.features.map((f) => [f.id, f.name]));
+    const paramName = new Map(doc.params.map((p) => [p.id, p.name]));
+    for (const c of part.configurations ?? []) {
+      const where = { configurationId: c.id, configurationName: c.name };
+      for (const [paramId, expr] of Object.entries(c.params ?? {})) {
+        for (const name of paramRefs(expr, names)) {
+          add(name, {
+            key: `cfg:${c.id}:param:${paramId}`,
+            kind: 'param',
+            label: paramName.get(paramId) ?? paramId,
+            detail: `in ${c.name}`,
+            paramId,
+            ...where,
+          });
+        }
+      }
+      for (const [featureId, over] of Object.entries(c.features ?? {})) {
+        for (const [pointer, value] of Object.entries(over.fields ?? {})) {
+          if (typeof value !== 'string') continue;
+          for (const name of paramRefs(value, names)) {
+            add(name, {
+              key: `cfg:${c.id}:${featureId}:${pointer}`,
+              kind: 'feature',
+              label: featureName.get(featureId) ?? featureId,
+              detail: `${fieldLabel(pointer)} in ${c.name}`,
+              featureId,
+              ...where,
+            });
+          }
+        }
+      }
+    }
   }
   return out;
 }

@@ -90,7 +90,7 @@ describe('paramUsage (Params tab "Used by")', () => {
     expect(paramUsage(doc).P1).toHaveLength(1);
   });
 
-  it('does not read a unit, a function call or a self-reference as a use', () => {
+  it('does not read a function call or a self-reference as a use; a name after a number is one', () => {
     const doc = docWith(
       [
         ['mm_', '1 mm'],
@@ -101,7 +101,47 @@ describe('paramUsage (Params tab "Used by")', () => {
     );
     const use = paramUsage(doc);
     expect(use.P2).toEqual([]);
-    expect(use.P3).toEqual([]); // `5 a`: a name straight after a number is a unit
+    // The engine reads `5 a` as 5 * a: a name after a number is a unit only if it IS a unit.
+    expect(use.P3?.map((u) => u.label)).toEqual(['Extrude 1']);
+  });
+
+  it('a real unit after a number is not a use, even when a parameter has that name', () => {
+    const doc = docWith([['mm', '1 mm']], [extrude('5 mm')]);
+    expect(paramUsage(doc).P1).toEqual([]);
+  });
+
+  it('lists configuration overrides, naming the configuration', () => {
+    const base = docWith(
+      [
+        ['w', '10 mm'],
+        ['v', '2 mm'],
+      ],
+      [extrude('5 mm')],
+    );
+    const part = base.parts[0];
+    if (!part) throw new Error('no part');
+    const doc: WrenDoc = {
+      ...base,
+      parts: [
+        {
+          ...part,
+          configurations: [
+            {
+              id: 'K1',
+              name: 'Long',
+              params: { P2: 'w * 2' },
+              features: { X1: { fields: { '/end/depth': '3 w', '/draft': 5 } } },
+            },
+          ],
+        },
+      ],
+    };
+    const use = paramUsage(doc).P1 ?? [];
+    expect(use.map((u) => [u.kind, u.label, u.detail, u.configurationName])).toEqual([
+      ['param', 'v', 'in Long', 'Long'],
+      ['feature', 'Extrude 1', 'depth in Long', 'Long'],
+    ]);
+    expect(use[1]).toMatchObject({ featureId: 'X1', configurationId: 'K1' });
   });
 
   it('numbers dimensions in a sketch in order', () => {

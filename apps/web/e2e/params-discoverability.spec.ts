@@ -71,6 +71,7 @@ test('dimension a circle by typing a parameter name; changing the parameter resi
     'aria-expanded',
     'true',
   );
+  await page.keyboard.press('ArrowDown'); // highlight `dia`; Enter alone would commit the typed text
   await page.keyboard.press('Enter'); // accepts `dia`
   await expect(editor).toHaveValue('dia');
   await expect(list).toBeHidden();
@@ -252,4 +253,38 @@ test('changing a parameter with the sketch open redraws it at once, in the same 
   await page.getByRole('button', { name: /^Undo/ }).click();
   await expect.poll(async () => radiusOf(await sketchOf(page))).toBeCloseTo(15, 6);
   expect((await a.doc()).params[0]?.expr).toBe('30 mm');
+});
+
+test('make a parameter from a sketch dimension: one undo step', async ({ page }) => {
+  test.slow();
+  await boot(page);
+  await page.getByRole('button', { name: 'Close welcome' }).click();
+  await page.keyboard.press('s');
+  await sketchOn(page, 'Top');
+  const a = app(page);
+  await page.keyboard.press('Shift+C');
+  await clickAt(page, 10, 10);
+  await clickAt(page, 25, 10);
+  await a.settled();
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('d');
+  await clickAt(page, 25, 10);
+  await clickAt(page, 35, 20);
+  const editor = page.getByTestId('dimension-editor').getByRole('textbox');
+  await expect(editor).toBeFocused();
+  await editor.fill('30');
+  await page.getByRole('button', { name: /parameters for diameter dimension/i }).click();
+  await page.getByRole('option', { name: /Make parameter from/ }).click();
+  const name = page.getByRole('textbox', { name: 'Name of the new parameter' });
+  await name.fill('dia');
+  const before = (await a.history()).past.length;
+  await name.press('Enter');
+  await a.settled();
+  const doc = await a.doc();
+  expect(doc.params.map((p) => [p.name, p.expr])).toEqual([['dia', '30 mm']]);
+  expect(dimOf(await sketchOf(page))?.value).toBe('dia');
+  expect((await a.history()).past.length).toBe(before + 1);
+  await page.getByRole('button', { name: /^Undo/ }).click();
+  await expect.poll(async () => (await a.doc()).params.length).toBe(0);
+  await expect.poll(async () => dimOf(await sketchOf(page))?.value).toMatch(/mm$/);
 });

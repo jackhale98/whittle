@@ -13,6 +13,7 @@ import {
   identifierAtCaret,
   insertParam,
   isParamName,
+  isPrefixMatch,
   matchParams,
   optionId,
   type ParamInfo,
@@ -47,7 +48,7 @@ export interface ParamAssistProps {
   edit(next: string): void;
   /** The new parameter exists: commit its name into the field. */
   onMade(name: string): void;
-  onDrop(name: string): void;
+  onDrop(name: string): boolean;
   /** Ends the edit like a blur (commits a valid draft). */
   leave(): void;
   linkId: string;
@@ -63,7 +64,9 @@ export default function ParamAssist(p: ParamAssistProps) {
   // `openAll`: the whole list was asked for (fx, `=`, Alt+↓) and stays until the text changes.
   const [openAll, setOpenAll] = useState(false);
   const [dismissed, setDismissed] = useState(false);
-  const [active, setActive] = useState(0);
+  // -1: nothing highlighted. Only an explicit arrow key highlights, so Enter never rewrites a typed
+  // name (`2*pi` stays `2*pi` even with a parameter `pitch`).
+  const [active, setActive] = useState(-1);
   const [making, setMaking] = useState(false);
 
   const infos = useMemo<readonly ParamInfo[]>(() => {
@@ -88,7 +91,8 @@ export default function ParamAssist(p: ParamAssistProps) {
     focused &&
     !dismissed &&
     !!ident &&
-    matches.length > 0 &&
+    // Only prefix matches open the list; substring matches follow them but never open it alone.
+    matches.some((m) => isPrefixMatch(m.name, ident.prefix)) &&
     !(matches.length === 1 && matches[0]?.name === ident.prefix);
   const entries = useMemo<PickerEntry[]>(() => {
     const out: PickerEntry[] = matches.map((info) => ({ kind: 'param', info }));
@@ -97,13 +101,13 @@ export default function ParamAssist(p: ParamAssistProps) {
   }, [matches, openAll, canMake, text]);
   const listOpen =
     !making && (openAll || autoOpen) && entries.length > 0 && (!p.keypadOn || openAll);
-  const activeIdx = Math.min(active, Math.max(0, entries.length - 1));
+  const activeIdx = Math.min(active, entries.length - 1);
   const activeEntry = entries[activeIdx];
   const fxOpen = listOpen && openAll;
   const linked = refs.length > 0 ? refs.join(', ') : null;
 
   const { onState } = p;
-  const activeId = listOpen ? optionId(p.listId, activeIdx) : undefined;
+  const activeId = listOpen && activeIdx >= 0 ? optionId(p.listId, activeIdx) : undefined;
   useEffect(() => {
     onState({ listOpen, listId: p.listId, activeId, linked });
   }, [onState, listOpen, p.listId, activeId, linked]);
@@ -146,7 +150,7 @@ export default function ParamAssist(p: ParamAssistProps) {
     if (p.keypadOn) p.closeKeypad();
     setOpenAll(true);
     setDismissed(false);
-    setActive(0);
+    setActive(-1);
     input.current?.focus();
   }
 
@@ -194,13 +198,20 @@ export default function ParamAssist(p: ParamAssistProps) {
   useEffect(() => {
     api.current = {
       onKeyDown(e) {
+        if (e.nativeEvent.isComposing) return false; // an IME owns Enter and the arrows
         const s = state.current;
         if (s.listOpen) {
           const n = s.entries.length;
           if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
             e.preventDefault();
             e.stopPropagation();
-            setActive((s.activeIdx + (e.key === 'ArrowDown' ? 1 : n - 1)) % n);
+            setActive(
+              s.activeIdx < 0
+                ? e.key === 'ArrowDown'
+                  ? 0
+                  : n - 1
+                : (s.activeIdx + (e.key === 'ArrowDown' ? 1 : n - 1)) % n,
+            );
             return true;
           }
           if (e.key === 'Escape') {
@@ -211,16 +222,13 @@ export default function ParamAssist(p: ParamAssistProps) {
             setDismissed(true);
             return true;
           }
+          // Only an entry the user moved onto is accepted; otherwise Enter commits the field as
+          // typed and Tab leaves it.
           if ((e.key === 'Enter' || e.key === 'Tab') && s.activeEntry && !e.shiftKey) {
-            const same =
-              s.activeEntry.kind === 'param' && !s.openAll && s.activeEntry.info.name === s.typed;
-            // Enter on a name that is already complete commits as usual.
-            if (!(same && e.key === 'Enter')) {
-              e.preventDefault();
-              e.stopPropagation();
-              fns.current.pick(s.activeEntry);
-              return true;
-            }
+            e.preventDefault();
+            e.stopPropagation();
+            fns.current.pick(s.activeEntry);
+            return true;
           }
         } else if (e.altKey && e.key === 'ArrowDown') {
           e.preventDefault();
@@ -242,7 +250,7 @@ export default function ParamAssist(p: ParamAssistProps) {
       onEdit() {
         setDismissed(false);
         setOpenAll(false);
-        setActive(0);
+        setActive(-1);
       },
       onBlur(related) {
         if (popup.current?.contains(related)) return true;
@@ -263,23 +271,21 @@ export default function ParamAssist(p: ParamAssistProps) {
     <>
       {p.startSlot
         ? createPortal(
-            <>
-              {linked ? (
-                <>
-                  <span
-                    aria-hidden
-                    data-testid="param-link-badge"
-                    title={`Linked to ${linked}`}
-                    className="-ml-1 shrink-0 rounded-[5px] bg-accent-soft px-1 text-2xs font-semibold text-accent-text italic"
-                  >
-                    fx
-                  </span>
-                  <span id={p.linkId} className="sr-only">
-                    Linked to {refs.length === 1 ? 'parameter' : 'parameters'} {linked}
-                  </span>
-                </>
-              ) : null}
-            </>,
+            linked ? (
+              <>
+                <span
+                  aria-hidden
+                  data-testid="param-link-badge"
+                  title={`Linked to ${linked}`}
+                  className="-ml-1 shrink-0 rounded-[5px] bg-accent-soft px-1 text-2xs font-semibold text-accent-text italic"
+                >
+                  fx
+                </span>
+                <span id={p.linkId} className="sr-only">
+                  Linked to {refs.length === 1 ? 'parameter' : 'parameters'} {linked}
+                </span>
+              </>
+            ) : null,
             p.startSlot,
           )
         : null}

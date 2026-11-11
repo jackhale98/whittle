@@ -114,6 +114,10 @@ export function makeEvaluator(params: readonly Pick<Param, 'name' | 'expr'>[]) {
           const unit = UNITS[u.t] as Q;
           q = { v: q.v * unit.v, d: unit.d };
           i++;
+        } else if (u?.k === 'i') {
+          // Like the engine: a name after a number that is not a unit is a parameter (`2 width`).
+          const r = atom();
+          q = { v: q.v * r.v, d: q.d.map((x, k) => x + (r.d[k] ?? 0)) as unknown as Q['d'] };
         }
         return q;
       }

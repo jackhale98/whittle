@@ -6,7 +6,8 @@
  * registry can live in the initial chunk while the dragging chip lives with the Params tab.
  */
 
-type Handler = (name: string) => void;
+/** Returns false when it refused the parameter (it may still show why). */
+type Handler = (name: string) => boolean | undefined;
 
 const targets = new WeakMap<Element, Handler>();
 
@@ -102,8 +103,8 @@ export function beginParamDrag(
     const swallow = (c: Event) => c.stopPropagation();
     window.addEventListener('click', swallow, { capture: true, once: true });
     setTimeout(() => window.removeEventListener('click', swallow, true), 60);
-    if (handler) handler(name);
-    onEnd?.(!!handler);
+    const accepted = handler ? handler(name) !== false : false;
+    onEnd?.(accepted);
   };
   const up = (ev: PointerEvent) => finish(ev, false);
   const cancel = (ev: PointerEvent) => finish(ev, true);

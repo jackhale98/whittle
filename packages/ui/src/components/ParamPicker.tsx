@@ -27,31 +27,39 @@ function Popup({
   children: React.ReactNode;
 }) {
   const [pos, setPos] = useState<Pos | null>(null);
+  // Placed on open, then again only when the window resizes or something scrolls: no per-frame
+  // layout reads.
   useLayoutEffect(() => {
-    let raf = 0;
     let last = '';
     const place = () => {
       const el = popup.current;
-      if (el) {
-        const a = anchor.getBoundingClientRect();
-        const vw = document.documentElement.clientWidth || window.innerWidth;
-        const vh = document.documentElement.clientHeight || window.innerHeight;
-        const width = Math.min(Math.max(a.width, minWidth), vw - 16);
-        const h = el.offsetHeight;
-        const left = Math.max(8, Math.min(a.left, vw - width - 8));
-        const below = vh - a.bottom - 8;
-        const above = below < h && a.top - 8 > below;
-        const top = above ? Math.max(8, a.top - h - 4) : a.bottom + 4;
-        const key = `${left}|${top}|${width}|${above}|${h}`;
-        if (key !== last) {
-          last = key;
-          setPos({ left, top, width, above });
-        }
+      if (!el) return;
+      const a = anchor.getBoundingClientRect();
+      const vw = document.documentElement.clientWidth || window.innerWidth;
+      const vh = document.documentElement.clientHeight || window.innerHeight;
+      const width = Math.min(Math.max(a.width, minWidth), vw - 16);
+      const h = el.offsetHeight;
+      const left = Math.max(8, Math.min(a.left, vw - width - 8));
+      const below = vh - a.bottom - 8;
+      const above = below < h && a.top - 8 > below;
+      const top = above ? Math.max(8, a.top - h - 4) : a.bottom + 4;
+      const key = `${left}|${top}|${width}|${above}|${h}`;
+      if (key !== last) {
+        last = key;
+        setPos({ left, top, width, above });
       }
-      raf = requestAnimationFrame(place);
     };
     place();
-    return () => cancelAnimationFrame(raf);
+    window.addEventListener('resize', place);
+    window.addEventListener('scroll', place, true);
+    const ro = new ResizeObserver(place);
+    if (popup.current) ro.observe(popup.current);
+    ro.observe(anchor);
+    return () => {
+      window.removeEventListener('resize', place);
+      window.removeEventListener('scroll', place, true);
+      ro.disconnect();
+    };
   }, [anchor, popup, minWidth]);
 
   return createPortal(
@@ -224,7 +232,13 @@ export function MakeParamForm({
             setName(e.target.value);
           }}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') {
+            if (e.nativeEvent.isComposing) return;
+            if (e.key === 'Tab' && !e.shiftKey) {
+              // Leaving the form by Tab cancels it explicitly: nothing is left half done.
+              e.preventDefault();
+              e.stopPropagation();
+              onCancel();
+            } else if (e.key === 'Enter') {
               e.preventDefault();
               e.stopPropagation();
               submit();

@@ -148,3 +148,44 @@ describe('a parameter edit with a sketch open (ADR-080)', () => {
     expect(wb.store.history().past.length).toBe(before + 2);
   });
 });
+
+describe('Make parameter on a sketch dimension (the edit lands through the sketch queue)', () => {
+  it('the dimension edit that lands after endMakeParameter still joins the one undo step', async () => {
+    const { wb, partId } = bench();
+    let pending = 0;
+    let queue: Promise<void> = Promise.resolve();
+    wb.sketch = {
+      get busy() {
+        return pending > 0;
+      },
+      whenSettled: async () => {
+        while (pending > 0) await queue;
+      },
+    } as unknown as WorkbenchClass['sketch'];
+    const before = wb.store.history().past.length;
+    expect(wb.makeParameter('dia', '30 mm')).toBeUndefined();
+    // The field commits the name: the session queues the solve, which writes later (as commitEdit).
+    pending++;
+    queue = queue.then(async () => {
+      await new Promise((r) => setTimeout(r, 10));
+      wb.apply({ kind: 'updateFeature', partId, featureId: 'X1', feature: extrude('dia') });
+      wb.commit(); // commitEdit commits when it has no key: a no-op while the step is open
+      pending--;
+    });
+    wb.endMakeParameter(); // the field's makeDone, before the solve has landed
+    await new Promise((r) => setTimeout(r, 60));
+    wb.sketch = null;
+    expect(depth(wb)).toBe('dia');
+    expect(wb.store.history().past.length).toBe(before + 1);
+    wb.undo();
+    expect(wb.doc.params).toEqual([]);
+    expect(depth(wb)).toBe('10 mm');
+  });
+
+  it('refuses a unit as a name', () => {
+    const { wb } = bench();
+    expect(wb.makeParameter('mm', '1 mm')).toMatch(/unit/);
+    expect(wb.makeParameter('in', '1 mm')).toMatch(/unit/);
+    expect(wb.doc.params).toEqual([]);
+  });
+});
