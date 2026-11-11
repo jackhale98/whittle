@@ -190,21 +190,22 @@ describe('decodeProjection', () => {
     expect(r.value.curves[1]).toMatchObject({ role: 'hidden', edge: 'outline' });
   });
 
-  it('only outlines carry a face name', () => {
+  it('a seam on a silhouette keeps its edge name and names its face', () => {
     const r = decodeProjection(
-      raw([{ role: 'visible', edge: 'sharp', index: 0, face: 0, curve: line }]),
+      raw([
+        { role: 'visible', edge: 'sharp', index: 0, face: 0, curve: line },
+        { role: 'hidden', edge: 'sewn', index: 2, face: -1, curve: line },
+      ]),
       names,
       faces,
       false,
     );
     expect(r.ok).toBe(true);
     if (!r.ok) return;
-    expect(r.value.curves[0]).toEqual({
-      role: 'visible',
-      edge: 'sharp',
-      name: 'F1:edge(a|b)',
-      curve: line,
-    });
+    expect(r.value.curves).toEqual([
+      { role: 'visible', edge: 'sharp', name: 'F1:edge(a|b)', face: 'F1:face.side', curve: line },
+      { role: 'hidden', edge: 'sewn', name: 'F1:edge(c|d)', curve: line },
+    ]);
   });
 
   it('an unnamed shape gives unnamed outlines', () => {

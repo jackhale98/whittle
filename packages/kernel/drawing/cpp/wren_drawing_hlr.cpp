@@ -19,6 +19,13 @@
 //    copy of an input face, and HLRTopoBRep_OutLiner::ProcessFace records both the copy and the
 //    outline edge against the input face (HLRTopoBRep_Data::AddOldS). Both records must agree.
 //  - Draft: HLRBRep_PolyAlgo::Hide returns the input face of an outline segment.
+// A seam that lies on a silhouette names its face as well (and keeps its edge index): the
+// outliner drops an outline that coincides with an edge and flags the edge instead, so without
+// this one side of a revolved part would have no face in the view through its profile plane.
+//  - Exact: the sharp pass draws such a seam from the face it is closed on (FaceIterator OutLine
+//    and Double); that face maps back like an outline's.
+//  - Draft: PolyAlgo marks the segment `outl`; the edge is a seam when its only face is closed on
+//    it (BRep_Tool::IsClosed).
 // A face that cannot be determined is −1 (unnamed), never a guess.
 // The classification (sharp, smooth, sewn, outline) reproduces HLRBRep_HLRToShape and
 // HLRBRep_PolyHLRToShape exactly; they build new 2D edges and drop the link to the input edge,
@@ -202,7 +209,7 @@ struct HlrPiece {
   bool visible;
   double u1;
   double u2;
-  int iface = 0;   // outlines: the HLRBRep_Data face (1-based) the outline is internal to; 0 = none
+  int iface = 0;   // outlines (seams on the silhouette): their HLRBRep_Data face, 1-based; 0 = none
   int index = -1;  // input edge (TopExp order), −1 = none (set before merging)
   int face = -1;   // outlines: input face (TopExp order), −1 = none (set before merging)
   // Merge keys (mergePieces): the input edge or −edge, and the 3D curve with its location.
@@ -269,7 +276,11 @@ class ExactCollector {
         todraw = !itf.IsoLine() && !itf.Internal() && (!edf.Rg1Line() || itf.OutLine());
       }
       if (todraw) {
-        edge(visible, true, typ, ie, typ == 2 ? iface : 0);
+        // A seam (an edge closed on this face, Double) that an outline coincides with (OutLine):
+        // the outliner drops that outline and the sharp pass draws the seam, which then outlines
+        // this face too.
+        const bool seamOutline = typ == 5 && itf.OutLine() && itf.Double();
+        edge(visible, true, typ, ie, typ == 2 || seamOutline ? iface : 0);
         edf.Used(true);
       } else if ((typ > 4 || typ == 2) && (edf.Rg1Line() && !itf.OutLine())) {
         const int hc = edf.HideCount();
@@ -284,7 +295,8 @@ class ExactCollector {
     }
   }
 
-  // iface: for outlines (typ 2), the face whose internal edge `ie` is; 0 otherwise.
+  // iface: for outlines (typ 2), the face whose internal edge `ie` is; for a seam on the
+  // silhouette, the face it is closed on; 0 otherwise.
   void edge(bool visible, bool inFace, int typ, int ie, int iface) {
     HLRBRep_EdgeData& ed = ds_->EDataArray().ChangeValue(ie);
     bool todraw;
@@ -340,12 +352,13 @@ void mergePieces(const occ::handle<HLRBRep_Data>& ds, std::vector<HlrPiece>& pie
     if (a.group != b.group) return a.group < b.group;
     if (a.cls != b.cls) return a.cls < b.cls;
     if (a.visible != b.visible) return a.visible > b.visible;
+    if (a.face != b.face) return a.face < b.face;
     if (a.curve != b.curve) return std::less<const Geom_Curve*>()(a.curve, b.curve);
     return a.u1 < b.u1;
   });
   auto same = [](const HlrPiece& a, const HlrPiece& b) {
-    return a.group == b.group && a.cls == b.cls && a.visible == b.visible && a.curve != nullptr &&
-           a.curve == b.curve && a.loc.IsEqual(b.loc);
+    return a.group == b.group && a.cls == b.cls && a.visible == b.visible && a.face == b.face &&
+           a.curve != nullptr && a.curve == b.curve && a.loc.IsEqual(b.loc);
   };
   auto touches = [](double u, double v) {
     return std::fabs(u - v) <= 1e-9 * std::max(1.0, std::fabs(u));
@@ -427,17 +440,19 @@ void runExact(const TopoDS_Shape& shape, const ViewRequest& req, const EdgeOrigi
     cached = idx;
     return idx;
   };
-  // An outline's input face, from the face it is internal to and from the outline edge itself
-  // (HLRTopoBRep_OutLiner::ProcessFace records both against the input face). Either alone is
-  // enough; if both are known they must agree. −1 when neither is known.
+  // The input face of an HLRBRep_Data face: the OutLiner's copy maps back to it
+  // (HLRTopoBRep_OutLiner::ProcessFace, AddOldS). −1 when unknown.
   const int nbFaces = ds->NbFaces();
+  auto inputFaceOf = [&](int iface) {
+    if (iface < 1 || iface > nbFaces || iface > ds->FaceMap().Extent()) return -1;
+    const TopoDS_Shape old = topoData.NewSOldS(ds->FaceMap().FindKey(iface));
+    return !old.IsNull() && old.ShapeType() == TopAbs_FACE ? faceOriginOf(old) : -1;
+  };
+  // An outline's input face, from the face it is internal to and from the outline edge itself
+  // (ProcessFace records both against the input face). Either alone is enough; if both are known
+  // they must agree. −1 when neither is known.
   auto outlineFace = [&](const HlrPiece& p) {
-    int byFace = -1;
-    if (p.iface >= 1 && p.iface <= nbFaces && p.iface <= ds->FaceMap().Extent()) {
-      const TopoDS_Shape& copy = ds->FaceMap().FindKey(p.iface);
-      const TopoDS_Shape old = topoData.NewSOldS(copy);
-      if (!old.IsNull() && old.ShapeType() == TopAbs_FACE) byFace = faceOriginOf(old);
-    }
+    const int byFace = inputFaceOf(p.iface);
     int byEdge = -1;
     const TopoDS_Shape old = topoData.NewSOldS(ds->EdgeMap().FindKey(p.edge));
     if (!old.IsNull() && old.ShapeType() == TopAbs_FACE) byEdge = faceOriginOf(old);
@@ -450,6 +465,8 @@ void runExact(const TopoDS_Shape& shape, const ViewRequest& req, const EdgeOrigi
       p.face = outlineFace(p);
     } else {
       p.index = inputIndex(p.edge);
+      // A seam on the silhouette: the face it is closed on (it has no other).
+      p.face = inputFaceOf(p.iface);
     }
   }
   mergePieces(ds, pieces);
@@ -551,12 +568,43 @@ void runDraft(const TopoDS_Shape& shape, const ViewRequest& req, const EdgeOrigi
   algo->Update();
   const gp_Trsf& T = algo->Projector().Transformation();
 
-  // Group key: visible, class, input edge, outline face (outlines of different faces stay apart).
+  // Group key: visible, class, input edge, outlined face (outlines of different faces stay apart,
+  // and a seam's segments on the silhouette apart from its others).
   using Key = std::tuple<bool, int, int, int>;
   std::map<Key, std::vector<std::pair<gp_XY, gp_XY>>> groups;
   ShapeMap outlineFaces;
-  // By outlineFaces index (1-based; 0 = not an outline): the input face, or −1.
+  // By outlineFaces index (1-based; 0 = outlines no face): the input face, or −1.
   std::vector<int> outlineFaceOrigin{-1};
+  auto faceKey = [&](const TopoDS_Shape& f) {
+    const int key = outlineFaces.Add(f);
+    if (key == static_cast<int>(outlineFaceOrigin.size())) {
+      outlineFaceOrigin.push_back(!f.IsNull() && f.ShapeType() == TopAbs_FACE ? faceOriginOf(f)
+                                                                              : -1);
+    }
+    return key;
+  };
+  // Seams on the silhouette: PolyAlgo marks a segment `outl` when the triangles on its two sides
+  // face opposite ways. On a seam (an edge closed on its only face) that segment outlines the face.
+  ShapeListMap edgeFaces;
+  auto seamFaceOf = [&](const TopoDS_Shape& e) {
+    TopoDS_Shape none;
+    if (e.IsNull() || e.ShapeType() != TopAbs_EDGE) return none;
+    if (edgeFaces.IsEmpty()) {
+      TopExp::MapShapesAndAncestors(shape, TopAbs_EDGE, TopAbs_FACE, edgeFaces);
+    }
+    const int i = edgeFaces.FindIndex(e);
+    if (i < 1) return none;
+    TopoDS_Shape face;
+    for (const TopoDS_Shape& f : edgeFaces(i)) {
+      if (face.IsNull()) {
+        face = f;
+      } else if (!face.IsSame(f)) {
+        return none;  // between two faces: not a seam
+      }
+    }
+    if (face.IsNull() || !BRep_Tool::IsClosed(TopoDS::Edge(e), TopoDS::Face(face))) return none;
+    return face;
+  };
   HLRAlgo_EdgeStatus status;
   TopoDS_Shape S;
   bool reg1 = false;
@@ -594,13 +642,13 @@ void runDraft(const TopoDS_Shape& shape, const ViewRequest& req, const EdgeOrigi
     int face = 0;
     if (intl) {
       // S is the face of the loaded shape the outline segment lies on (PolyAlgo's face map).
-      face = outlineFaces.Add(S);
-      if (face == static_cast<int>(outlineFaceOrigin.size())) {
-        outlineFaceOrigin.push_back(!S.IsNull() && S.ShapeType() == TopAbs_FACE ? faceOriginOf(S)
-                                                                                : -1);
-      }
+      face = faceKey(S);
     } else {
       index = originOf(S);
+      if (outl) {
+        const TopoDS_Shape seamFace = seamFaceOf(S);
+        if (!seamFace.IsNull()) face = faceKey(seamFace);
+      }
     }
     HLRAlgo_EdgeIterator it;
     for (it.InitVisible(status); it.MoreVisible(); it.NextVisible()) {

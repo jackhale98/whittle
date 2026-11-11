@@ -11,8 +11,11 @@
  *  - right: y right, z up (looks along −x);
  *  - top: x right, y up (looks down);
  *  - iso: from (1, −1, 1).
- * The cylinders' and the shaft's seams lie at +x: on the right silhouette in the front view, facing
- * the viewer in the right view. So the right view is the side view with two outlines per cylinder.
+ * The cylinders' and the shafts' seams lie at +x: on the right silhouette in the front view, facing
+ * the viewer in the right view. A seam on a silhouette names its face too (contracts
+ * `ProjectedCurve.face`), so a cylinder seen side-on has two face-named sides either way: two
+ * outlines in the right view, an outline and its seam in the front view. A second shaft follows
+ * rp02 (Ø40 × 15, Ø30 × 40, Ø20 × 30, an r3 fillet at the shoulder and a 2 mm end chamfer).
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
@@ -82,6 +85,27 @@ const SHAFT_STEPS = [
   { line: 'L5', r: 4, z0: 35, z1: 45 },
 ] as const;
 const shaftSide = (l: string) => `F${SHAFT}:side(S${SHAFT_SK}:e(${l}))`;
+const RP02_SK = '01JRP02SK000000000000HLR09';
+const RP02 = '01JRP02SHAFT000000000HLR08';
+const RP02_FILLET = '01JRP02FIL00000000000HLR10';
+const RP02_CHAMFER = '01JRP02CHAM0000000000HLR11';
+const RP02_PROFILE: [number, number][] = [
+  [0, 0],
+  [20, 0],
+  [20, 15],
+  [15, 15],
+  [15, 55],
+  [10, 55],
+  [10, 85],
+  [0, 85],
+];
+/** rp02's cylinders: the r3 fillet trims d2 to z ≥ 18, the 2 mm chamfer trims d3 to z ≤ 83. */
+const RP02_STEPS = [
+  { line: 'L1', r: 20, z0: 0, z1: 15 },
+  { line: 'L3', r: 15, z0: 18, z1: 55 },
+  { line: 'L5', r: 10, z0: 55, z1: 83 },
+] as const;
+const rp02Side = (l: string) => `F${RP02}:side(S${RP02_SK}:e(${l}))`;
 const TWO_PI = 2 * Math.PI;
 const s2 = Math.SQRT2;
 const s6 = Math.sqrt(6);
@@ -175,6 +199,7 @@ for (const variant of ['single', 'threaded'] as const) {
     let shaft: ShapeForDrawing;
     let ball: ShapeForDrawing;
     let knob: ShapeForDrawing;
+    let rp02: ShapeForDrawing;
     /** TopExp index of the hole's top and bottom rims and of its seam, from fingerprints. */
     let rimTop = -1;
     let rimBottom = -1;
@@ -221,31 +246,76 @@ for (const variant of ['single', 'threaded'] as const) {
         },
         { values: { '/radius': 10, '/height': 20 } },
       );
-      // The shaft: the half profile revolved 360° about world z.
-      const p = SHAFT_PROFILE;
-      const sk = s.exec(
-        sketch(SHAFT_SK, [
-          ...p.map(([x, y], i) => pt(`p${i}`, x, y)),
-          ...p.map((_, i) => line(`L${i}`, `p${i}`, `p${(i + 1) % p.length}`)),
-        ]),
-        sketchInputs(frameAt([0, 0, 0], [0, -1, 0], [1, 0, 0])),
-      );
-      const regionName = `S${SHAFT_SK}:region(${p.map((_, i) => `L${i}`).join(',')})`;
-      const revolved = s.exec(
+      // A shaft: a half profile on the XZ plane revolved 360° about world z.
+      const revolve = (id: string, skId: string, p: [number, number][]) => {
+        const sk = s.exec(
+          sketch(skId, [
+            ...p.map(([x, y], i) => pt(`p${i}`, x, y)),
+            ...p.map((_, i) => line(`L${i}`, `p${i}`, `p${(i + 1) % p.length}`)),
+          ]),
+          sketchInputs(frameAt([0, 0, 0], [0, -1, 0], [1, 0, 0])),
+        );
+        const regionName = `S${skId}:region(${p.map((_, i) => `L${i}`).join(',')})`;
+        return s.exec(
+          {
+            ...base,
+            id,
+            type: 'revolve',
+            profile: [{ name: 'region', kind: 'region' }],
+            axis: { name: 'origin:Z', kind: 'edge' },
+            angle: String(TWO_PI),
+            direction: 'normal',
+            op: 'new',
+          },
+          {
+            values: { '/angle': TWO_PI },
+            refs: profileRefs(sk.shape, [indexOf(sk, regionName, 'face')]),
+            frames: { axis: frameAt([0, 0, 0], [0, 0, 1], [1, 0, 0]) },
+          },
+        );
+      };
+      const revolved = revolve(SHAFT, SHAFT_SK, SHAFT_PROFILE);
+      // rp02: the shoulder circle (z = 15, r = 15) filleted r3, the end rim (z = 85) chamfered 2.
+      const blank = revolve(RP02, RP02_SK, RP02_PROFILE);
+      const circleAt = (r: RawFeatureResult, z: number, radius?: number) =>
+        s
+          .fingerprints(r.shape)
+          .edges.findIndex(
+            (e) =>
+              e.curve === 'circle' &&
+              close(e.centroid[2], z, 1e-6) &&
+              (radius === undefined || close(e.length, TWO_PI * radius, 1e-6)),
+          );
+      const filleted = s.exec(
         {
           ...base,
-          id: SHAFT,
-          type: 'revolve',
-          profile: [{ name: 'region', kind: 'region' }],
-          axis: { name: 'origin:Z', kind: 'edge' },
-          angle: String(TWO_PI),
-          direction: 'normal',
-          op: 'new',
+          id: RP02_FILLET,
+          type: 'fillet',
+          edges: [{ name: 'shoulder', kind: 'edge' }],
+          radius: '3',
         },
         {
-          values: { '/angle': TWO_PI },
-          refs: profileRefs(sk.shape, [indexOf(sk, regionName, 'face')]),
-          frames: { axis: frameAt([0, 0, 0], [0, 0, 1], [1, 0, 0]) },
+          values: { '/radius': 3 },
+          target: blank.shape,
+          refs: {
+            '/edges/0': { shape: blank.shape, kind: 'edge', index: circleAt(blank, 15, 15) },
+          },
+        },
+      );
+      const chamfered = s.exec(
+        {
+          ...base,
+          id: RP02_CHAMFER,
+          type: 'chamfer',
+          edges: [{ name: 'end', kind: 'edge' }],
+          mode: { kind: 'distance', distance: '2' },
+        },
+        {
+          values: { '/mode/distance': 2 },
+          target: filleted.shape,
+          refs: {
+            '/edges/0': { shape: filleted.shape, kind: 'edge', index: circleAt(filleted, 85) },
+          },
         },
       );
       const sphere = s.exec(
@@ -270,6 +340,7 @@ for (const variant of ['single', 'threaded'] as const) {
       shaft = forDrawing(k, s, revolved, 'shaft@1');
       ball = forDrawing(k, s, sphere, 'ball@1');
       knob = forDrawing(k, s, withStem, 'knob@1');
+      rp02 = forDrawing(k, s, chamfered, 'rp02@1');
       const fp = s.fingerprints(holed.shape);
       fp.edges.forEach((e, i) => {
         if (e.curve !== 'circle') return;
@@ -287,7 +358,7 @@ for (const variant of ['single', 'threaded'] as const) {
       const info = await api.init({ variant });
       if (!info.ok) throw new Error(JSON.stringify(info.error));
       expect(info.value.occtVersion).toBe('8.0.1');
-      for (const shape of [boxHole, cylinder, shaft, ball, knob]) {
+      for (const shape of [boxHole, cylinder, shaft, ball, knob, rp02]) {
         const r = await api.loadShape({ ...shape, brep: shape.brep.slice() });
         if (!r.ok) throw new Error(JSON.stringify(r.error));
       }
@@ -296,7 +367,7 @@ for (const variant of ['single', 'threaded'] as const) {
     afterAll(async () => {
       s?.releaseAll();
       if (api) {
-        for (const shape of [boxHole, cylinder, shaft, ball, knob]) {
+        for (const shape of [boxHole, cylinder, shaft, ball, knob, rp02]) {
           await api.releaseShape(shape.key);
         }
         expect((await api.stats()).liveHandles).toBe(0);
@@ -366,12 +437,21 @@ for (const variant of ['single', 'threaded'] as const) {
         for (const [p, q] of rect)
           expect(visible.some((c) => sameSegment(c.curve, p, q))).toBe(true);
         // The hole: its silhouettes at x = 15 (an outline: no edge name, the hole's face) and
-        // x = 25 (its seam, named as an edge).
+        // x = 25 (its seam: named as an edge, and the hole's face).
         const outline = v.curves.find((c) => c.edge === 'outline');
         expect(outline?.name).toBeUndefined();
         expect(boxHole.faceNames).toContain(`F${HOLE}:face.side`);
         expect(outline?.face).toBe(`F${HOLE}:face.side`);
         expect(outline && sameSegment(outline.curve, [15, 0], [15, 10])).toBe(true);
+        const seam = v.curves.filter((c) => c.edge !== 'outline' && c.face !== undefined);
+        expect(seam).toHaveLength(1);
+        expect(seam[0]).toMatchObject({
+          role: 'hidden',
+          edge: 'sharp',
+          face: `F${HOLE}:face.side`,
+        });
+        expect(seam[0]?.name).toMatch(/HLR02:face\.side\|.*HLR02:face\.side\)$/);
+        expect(sameSegment(seam[0]?.curve ?? NO_CURVE, [25, 0], [25, 10])).toBe(true);
         expect(v.bounds).toEqual({ min: [0, 0], max: [40, 10] });
       });
 
@@ -435,6 +515,12 @@ for (const variant of ['single', 'threaded'] as const) {
         const outline = v.curves.find((c) => c.edge === 'outline');
         expect(outline && sameSegment(outline.curve, [-10, 0], [-10, 20])).toBe(true);
         expect(outline?.face).toBe(`F${CYL}:face.side`);
+        // The seam on the right silhouette names the side face too: both sides of the diameter.
+        const sides = v.curves.filter((c) => c.face === `F${CYL}:face.side`);
+        expect(sides).toHaveLength(2);
+        const seam = sides.find((c) => c.edge === 'sharp');
+        expect(seam?.name).toBe(`F${CYL}:edge(face.side|face.side)`);
+        expect(sameSegment(seam?.curve ?? NO_CURVE, [10, 0], [10, 20])).toBe(true);
         expect(v.bounds).toEqual({ min: [-10, 0], max: [10, 20] });
       });
 
@@ -454,7 +540,7 @@ for (const variant of ['single', 'threaded'] as const) {
         for (const x of [-10, 10]) {
           expect(out.some((c) => sameSegment(c.curve, [x, 0], [x, 20]))).toBe(true);
         }
-        // Only outlines carry a face.
+        // The seam faces us, off the silhouette: it names no face, nor does any other edge.
         for (const c of v.curves) if (c.edge !== 'outline') expect(c.face).toBeUndefined();
       });
 
@@ -510,22 +596,68 @@ for (const variant of ['single', 'threaded'] as const) {
         }
       });
 
-      it('stepped shaft, front view: the seams are the right silhouettes, named as edges', async () => {
+      it('stepped shaft, front view: an outline and the seam, both naming each cylinder', async () => {
         const v = await view(shaft, FRONT);
-        const out = outlines(v.curves);
-        expect(out).toHaveLength(3);
+        expect(outlines(v.curves)).toHaveLength(3);
         for (const step of SHAFT_STEPS) {
-          const left = out.filter((c) => c.face === shaftSide(step.line));
+          const sides = v.curves.filter((c) => c.face === shaftSide(step.line));
+          expect(sides).toHaveLength(2);
+          // Left: the outline (no edge name).
+          const left = sides.filter((c) => c.edge === 'outline');
           expect(left).toHaveLength(1);
+          expect(left[0]?.name).toBeUndefined();
           const l = left[0]?.curve ?? NO_CURVE;
           expect(sameSegment(l, [-step.r, step.z0], [-step.r, step.z1])).toBe(true);
-          const seamName = `edge(${shaftSide(step.line)}|${shaftSide(step.line)})`;
-          const seam = v.curves.filter((c) => c.name === seamName);
+          // Right: the seam on the silhouette, named as its edge as well.
+          const seam = sides.filter((c) => c.edge !== 'outline');
           expect(seam).toHaveLength(1);
-          expect(seam[0]).toMatchObject({ role: 'visible', edge: 'sharp' });
-          expect(seam[0]?.face).toBeUndefined();
+          expect(seam[0]).toMatchObject({
+            role: 'visible',
+            edge: 'sharp',
+            name: `edge(${shaftSide(step.line)}|${shaftSide(step.line)})`,
+          });
           const r = seam[0]?.curve ?? NO_CURVE;
           expect(sameSegment(r, [step.r, step.z0], [step.r, step.z1])).toBe(true);
+        }
+        // Every face-named curve is one of those six, or another face's.
+        expect(v.curves.filter((c) => c.face !== undefined)).toHaveLength(6);
+      });
+
+      it('rp02, front view: two face-named curves per cylinder, the diameter apart', async () => {
+        const v = await view(rp02, FRONT);
+        for (const step of RP02_STEPS) {
+          expect(rp02.faceNames).toContain(rp02Side(step.line));
+          const sides = v.curves.filter((c) => c.face === rp02Side(step.line));
+          expect(sides).toHaveLength(2);
+          const left = sides.find((c) => c.edge === 'outline');
+          const right = sides.find((c) => c.edge === 'sharp');
+          expect(left?.name).toBeUndefined();
+          expect(right?.name).toBe(`edge(${rp02Side(step.line)}|${rp02Side(step.line)})`);
+          const [a, b] = [left?.curve ?? NO_CURVE, right?.curve ?? NO_CURVE];
+          expect(sameSegment(a, [-step.r, step.z0], [-step.r, step.z1], 1e-6)).toBe(true);
+          expect(sameSegment(b, [step.r, step.z0], [step.r, step.z1], 1e-6)).toBe(true);
+        }
+      });
+
+      it('rp02, front view, draft: both sides of each cylinder name it', async () => {
+        const v = await view(rp02, FRONT, { quality: 'draft' });
+        for (const step of RP02_STEPS) {
+          const sides = v.curves.filter((c) => c.face === rp02Side(step.line));
+          expect(sides.length).toBeGreaterThanOrEqual(2);
+          const xs = new Set<number>();
+          for (const c of sides) {
+            for (const q of pointsOf(c.curve)) {
+              expect(Math.abs(Math.abs(q[0]) - step.r)).toBeLessThan(1e-6);
+              xs.add(Math.sign(q[0]));
+            }
+          }
+          expect([...xs].sort()).toEqual([-1, 1]);
+          // The right side is the seam: it keeps its edge name.
+          const seam = sides.filter((c) => c.edge === 'sharp');
+          expect(seam.length).toBeGreaterThan(0);
+          for (const c of seam) {
+            expect(c.name).toBe(`edge(${rp02Side(step.line)}|${rp02Side(step.line)})`);
+          }
         }
       });
 
@@ -743,6 +875,16 @@ for (const variant of ['single', 'threaded'] as const) {
         expect(out).toHaveLength(1);
         expect(out[0]?.face).toBe(`F${BALL}:face.sphere`);
         expect(out[0]?.curve).toMatchObject({ kind: 'arc', center: [0, 0], radius: 10 });
+        // The seam half (on the silhouette) names the sphere too: the whole equator is picked.
+        const equator = v.curves.filter((c) => c.face === `F${BALL}:face.sphere`);
+        expect(equator).toHaveLength(2);
+        let span = 0;
+        for (const c of equator) {
+          if (c.curve.kind !== 'arc') throw new Error('expected arcs on the equator');
+          expect(close(c.curve.radius, 10)).toBe(true);
+          span += c.curve.end - c.curve.start;
+        }
+        expect(close(span, TWO_PI, 1e-9)).toBe(true);
       });
 
       it('a cut line along the viewing direction is refused', async () => {

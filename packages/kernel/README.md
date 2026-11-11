@@ -158,9 +158,10 @@ Façade calls: `drawingInfo()`, `loadShape(memfsPath)` (`{handle, edges, faces, 
   outliner, and must agree. Draft: `HLRBRep_PolyAlgo::Hide` returns the face. Section views map
   faces through the cut's history too. A face that cannot be determined is left out, never
   guessed. A seam that lies on a silhouette (a revolved part's seam in the view through its
-  profile plane) is drawn as that edge (`sharp`, named, no `face`): the outliner drops an outline
-  that coincides with an edge. So a cylinder seen side-on has two outlines only when its seam is
-  not on the silhouette.
+  profile plane) is drawn as that edge, because the outliner drops an outline that coincides with
+  an edge: it is `sharp`, keeps its edge `name` and also carries `face` (exact: the face iterator's
+  OutLine and Double flags; draft: an `outl` segment of an edge closed on its only face). So a
+  cylinder seen side-on always has two face-named sides: two outlines, or an outline and its seam.
 - **Sections**: each cut-line segment not parallel to the viewing direction is a prism tool (the
   quad from the segment towards the viewer, swept along `along`), so full, offset and half sections
   are one boolean cut; `sectionFaces` are the images of the tools' segment faces, named

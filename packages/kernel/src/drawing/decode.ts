@@ -6,7 +6,8 @@
  * Names: `index` is the input edge in TopExp::MapShapes order of the loaded BREP, so it names
  * `ShapeForDrawing.edgeNames[index]`. Outlines have no edge; their `face` is the input face they
  * outline, in the same order, so it names `ShapeForDrawing.faceNames[face]` (ADR-090 amendment,
- * second gate round). An empty name, an index of −1 or an unnamed shape leaves the curve without
+ * second gate round). A seam that lies on a silhouette carries both: its edge and the face it
+ * outlines. An empty name, an index of −1 or an unnamed shape leaves the curve without
  * that name. An index past the names is a mismatch between shape and names and fails the call: a
  * curve is never given a guessed name (CLAUDE.md, never silently guess a topological reference).
  *
@@ -147,9 +148,9 @@ export function decodeProjection(
       const name = edgeNames[index];
       if (name !== undefined && name !== '' && edge !== 'outline') out.name = name;
     }
-    // Only outlines name a face; the façade sets `face` on nothing else.
+    // The façade sets `face` on outlines and on seams that lie on a silhouette.
     const face = c.face === undefined ? -1 : (c.face as number);
-    if (edge === 'outline' && face >= 0 && faceNames.length > 0) {
+    if (face >= 0 && faceNames.length > 0) {
       if (face >= faceNames.length) {
         return internal(
           "The part's face names do not match its shape",

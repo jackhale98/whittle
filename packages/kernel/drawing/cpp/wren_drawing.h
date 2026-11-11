@@ -69,7 +69,8 @@ std::string loadShape(const std::string& path);
 //    "clip"?:{"center":[2],"radius":mm}}
 // Result<{"curves":[{"role":"visible"|"hidden","edge":"sharp"|"smooth"|"outline"|"sewn",
 //                    "index":int (input edge, TopExp order; −1 = none),
-//                    "face":int (outlines: the input face outlined, TopExp order; −1 = none),
+//                    "face":int (outlines and seams on a silhouette: the input face
+//                                outlined, TopExp order; −1 = none),
 //                    "curve":Curve2}],
 //         "sectionFaces":[{"segment":int,"loops":[[Curve2…]…]}],
 //         "stats":{"hlrMs":number,"cutMs":number,"edges":int,"faces":int}}>
