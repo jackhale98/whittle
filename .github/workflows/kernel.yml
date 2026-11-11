@@ -12,6 +12,15 @@ name: Kernel
 
 on:
   workflow_call:
+    inputs:
+      # A verified main push (ADR-083) passes the dev-branch run that already built and tested this
+      # exact commit: its `kernel-dist` artefact is reused instead of rebuilding in Docker. Main
+      # cannot read caches saved on claude/** branches, so without this every kernel change would
+      # rebuild on main (about 45 minutes) before the deploy.
+      from_run:
+        type: string
+        required: false
+        default: ""
   workflow_dispatch:
 
 permissions:
@@ -27,6 +36,9 @@ jobs:
     name: Build and test kernel
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    permissions:
+      contents: read
+      actions: read
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -54,8 +66,19 @@ jobs:
           # cached kernel instead of rebuilding it in Docker.
           key: kernel-${{ env.KERNEL_CACHE_VERSION }}-${{ hashFiles('packages/kernel/src/**', 'packages/kernel/scripts/**', 'packages/kernel/libcascade.config.ts', 'packages/kernel/package.json') }}
 
+      # On a cache miss the downloaded dist is saved to this branch's cache by the cache step's post
+      # job, so the next main run hits.
+      - name: Reuse the verified dev run's kernel
+        if: steps.kernel-cache.outputs.cache-hit != 'true' && inputs.from_run != ''
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: kernel-dist
+          path: packages/kernel/dist
+          run-id: ${{ inputs.from_run }}
+          github-token: ${{ github.token }}
+
       - name: Free disk space for the toolchain images
-        if: steps.kernel-cache.outputs.cache-hit != 'true'
+        if: steps.kernel-cache.outputs.cache-hit != 'true' && inputs.from_run == ''
         run: |
           # The two toolchain images are ~12 GB each on disk; a stock runner has ~14 GB free.
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL \
@@ -64,10 +87,12 @@ jobs:
           df -h /
 
       - name: Build kernel (Docker)
-        if: steps.kernel-cache.outputs.cache-hit != 'true'
+        if: steps.kernel-cache.outputs.cache-hit != 'true' && inputs.from_run == ''
         run: pnpm kernel:build
 
+      # A reused kernel was already tested by the run that built it.
       - name: Test kernel
+        if: inputs.from_run == ''
         run: pnpm kernel:test
 
       - name: Upload kernel artefact

@@ -2694,3 +2694,10 @@ Decisions:
 - Exact B-spline → Bézier conversion in the PDF.
 - The ezdxf and LibreCAD CI jobs.
 - Re-verifying every provisional golden against the standards (D9).
+
+### ADR-083 amendment: a verified main push reuses the dev run's kernel (2026-11-11)
+- **Problem:** GitHub's cache is scoped by branch, so main cannot restore a kernel cached on a `claude/**` branch. The first main push after any kernel change therefore rebuilt OCCT in Docker, about 45 minutes, before the deploy.
+- **Change:** the `verified` job now also outputs the id of the dev run that passed the commit. `kernel.yml` takes it as `from_run`. On a cache miss it downloads that run's `kernel-dist` artefact instead of building.
+  - It skips `kernel:test`, because that run already tested the same commit.
+  - The cache step's post job saves the downloaded dist to main's cache.
+  - With no verified run, the old path runs unchanged.
