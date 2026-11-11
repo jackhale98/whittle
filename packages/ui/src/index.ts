@@ -297,6 +297,7 @@ export { RESERVED_WORDS, UNIT_WORDS, validateNewParamName } from './logic/paramN
 export {
   clampCenter,
   layoutSlots,
+  RADIAL_FILL_ORDER,
   RADIAL_SLOTS,
   type RadialSlot,
   slotDirection,
@@ -378,6 +379,12 @@ export {
   type NavigationSettingsProps,
 } from './panels/NavigationSettings';
 export { type PartListItem, PartsPanel, type PartsPanelProps } from './panels/PartsPanel';
+export {
+  RadialEditor,
+  type RadialEditorCommand,
+  type RadialEditorContext,
+  type RadialEditorProps,
+} from './panels/RadialEditor';
 export { type SectionAxis, SectionPanel, type SectionPanelProps } from './panels/SectionPanel';
 export {
   type ParamsConfiguration,

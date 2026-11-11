@@ -14,6 +14,7 @@ import type { FeatureTool, ModelTool } from '../features/factories';
 import { hitKey } from '../selection/pick';
 import type { BubbleActionId } from './gestures';
 import { commandFor, type InputSettings, withKeymap, withNavigation } from './input';
+import type { SettingsTab } from './state';
 import type { Workbench } from './workbench';
 
 const isTyping = (t: EventTarget | null) => {
@@ -137,7 +138,7 @@ export function setKeymapOverrides(wb: Workbench, overrides: KeymapOverrides): v
   wb.input.set((s) => withKeymap(s, overrides));
 }
 
-export function openSettings(wb: Workbench, tab: 'navigation' | 'keyboard' = 'navigation'): void {
+export function openSettings(wb: Workbench, tab: SettingsTab = 'navigation'): void {
   wb.patchUi({ settings: tab, radial: null, chooser: null });
 }
 

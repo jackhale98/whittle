@@ -86,7 +86,14 @@ import * as regenView from './regen-view';
 import { SectionTool } from './section-tool';
 import type { SketchSession } from './sketch-session';
 import * as sketchVis from './sketch-visibility-sync';
-import { type EngineState, initialUi, type RegenView, type SectionUi, type UiState } from './state';
+import {
+  type EngineState,
+  initialUi,
+  type RegenView,
+  type SectionUi,
+  type SettingsTab,
+  type UiState,
+} from './state';
 import * as hooks from './test-hooks';
 import { failBoot, mark, markOnce } from './timing';
 import * as tools from './tools';
@@ -1221,7 +1228,7 @@ export class Workbench {
     keys.setKeymapOverrides(this, overrides);
   }
 
-  openSettings(tab: 'navigation' | 'keyboard' = 'navigation'): void {
+  openSettings(tab: SettingsTab = 'navigation'): void {
     keys.openSettings(this, tab);
   }
 
