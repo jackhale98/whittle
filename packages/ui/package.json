@@ -11,6 +11,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./config-table": "./src/config/ConfigurationTable.tsx",
+    "./drawing": "./src/drawing/index.ts",
     "./styles.css": "./src/styles/index.css"
   },
   "scripts": {
@@ -29,6 +30,7 @@
     "@radix-ui/react-toolbar": "1.2.1",
     "@radix-ui/react-tooltip": "1.4.1",
     "@wren-cad/contracts": "workspace:*",
+    "@wren-cad/drawing": "workspace:*",
     "lucide-react": "1.70.0",
     "motion": "14.10.1"
   },
