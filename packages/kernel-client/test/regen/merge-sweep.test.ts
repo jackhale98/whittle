@@ -84,6 +84,13 @@ const MERGE0: Step[] = [
   box('SWT', [0, 0, 5], [40, 10, 5], 'add'),
 ];
 
+/** Scenarios that start with merge0: the fixture keeps only their own later steps. */
+const PREFIX: Record<string, string> = {
+  merge0ThenSplit: 'merge0',
+  merge0ThenSlot: 'merge0',
+  merge0ThenBoss: 'merge0',
+};
+
 const SCENARIOS: Record<string, Step[]> = {
   merge0: MERGE0,
   // Later features on the merged body (review): a notch that splits the bottom front edge (an old
@@ -274,7 +281,7 @@ describe.skipIf(!built)(
         const out: Fixture = {};
         for (const [name, steps] of Object.entries(SCENARIOS)) {
           const { results, handles } = build(k, steps);
-          out[name] = results.map((r) => {
+          out[name] = results.slice(PREFIX[name] ? MERGE0.length : 0).map((r) => {
             const fp = JSON.parse(k.fingerprints(r.shape)).value as ShapeFingerprints;
             return r.naming.map((n) => ({
               name: n.name,
@@ -284,7 +291,13 @@ describe.skipIf(!built)(
           });
           for (const h of handles) k.release(h);
         }
-        writeFileSync(FIXTURE, `${JSON.stringify(out, null, 1)}\n`);
+        // Compact: numbers to 1e-7 mm, one scenario per line (the file stays small and diffable).
+        const round = (_: string, v: unknown) =>
+          typeof v === 'number' ? Math.round(v * 1e7) / 1e7 || 0 : v;
+        const lines = Object.entries(out).map(
+          ([n, s]) => `${JSON.stringify(n)}:${JSON.stringify(s, round)}`,
+        );
+        writeFileSync(FIXTURE, `{\n${lines.join(',\n')}\n}\n`);
       }, 120_000);
       return;
     }
@@ -294,7 +307,8 @@ describe.skipIf(!built)(
       async (name) => {
         const k = await loadKernel();
         const { results, handles } = build(k, SCENARIOS[name] as Step[]);
-        const steps = fixture[name] ?? [];
+        const prefix = PREFIX[name];
+        const steps = [...(prefix ? (fixture[prefix] ?? []) : []), ...(fixture[name] ?? [])];
         expect(steps.length).toBe(results.length);
         const state = new ModelState();
         const wrong: string[] = [];
