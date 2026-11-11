@@ -283,10 +283,12 @@ export async function touch(page: Page) {
      */
     doubleTap: async (p: { x: number; y: number }) => {
       const t0 = Date.now() / 1000;
-      await send('touchStart', [p], t0);
-      await send('touchEnd', [], t0 + 0.04);
-      await send('touchStart', [p], t0 + 0.12);
-      await send('touchEnd', [], t0 + 0.16);
+      await Promise.all([
+        send('touchStart', [p], t0),
+        send('touchEnd', [], t0 + 0.04),
+        send('touchStart', [p], t0 + 0.12),
+        send('touchEnd', [], t0 + 0.16),
+      ]);
     },
     down: (pts: Array<{ x: number; y: number }>) => send('touchStart', pts),
     move: (pts: Array<{ x: number; y: number }>) => send('touchMove', pts),
@@ -294,8 +296,12 @@ export async function touch(page: Page) {
     /** A tap with `pts.length` fingers (lifted 50 ms later in event time). */
     tap: async (pts: Array<{ x: number; y: number }>) => {
       const t0 = Date.now() / 1000;
-      await send('touchStart', pts, t0);
-      await send('touchEnd', [], t0 + 0.05);
+      // Both commands are queued at once, in order. Awaiting the start's ack before sending the
+      // end let a starved renderer (software GL, a busy machine) sit on a held finger for longer
+      // than the 500 ms long-press timer, which then turned the tap into a long press: the radial
+      // menu or a plain select instead of the tool's pick (the Measure tap flaked about a third
+      // of the time under 4 workers).
+      await Promise.all([send('touchStart', pts, t0), send('touchEnd', [], t0 + 0.05)]);
     },
     /** A one-finger drag in `steps` moves. */
     drag: async (from: { x: number; y: number }, to: { x: number; y: number }, steps = 12) => {
