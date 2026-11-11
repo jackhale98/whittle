@@ -21,7 +21,7 @@ Aluminium 7075-T6 (`whittle:aluminium-7075-t6`), density 2.81 g/cm^3.
 | `top_r` | 3 mm | Fillet on the whole top edge loop |
 | `bot_c` | 2 mm | Chamfer on the whole bottom edge loop |
 | `boss_d` | 30 mm | Boss diameter |
-| `boss_h` | 20 mm | Boss height as first extruded |
+| `boss_h` | 26 mm | Boss height above the plate, as built (extruded boss_h - boss_up, then pulled up by boss_up; corrected from 20, see the README) |
 | `boss_up` | 6 mm | Push/pull distance added to the boss top |
 | `boss_c` | 2 mm | Chamfer on the boss top edge |
 
@@ -33,7 +33,7 @@ Aluminium 7075-T6 (`whittle:aluminium-7075-t6`), density 2.81 g/cm^3.
 4. **fillet** (`ft`): Fillet ONE top edge with "propagate along tangent edges" on, radius top_r: the whole rounded top loop follows.
 5. **chamfer** (`cb`): Chamfer the bottom loop by bot_c with "propagate" OFF: pick all eight edges (four straight, four corner arcs) one by one.
 6. **sketch** (`boss_sk`): Sketch on the top face: a circle of boss_d at the origin.
-7. **extrude** (`boss`): Extrude the circle upwards by boss_h as a NEW body (a second body touching the plate).
+7. **extrude** (`boss`): Extrude the circle upwards by boss_h - boss_up as a NEW body (a second body touching the plate).
 8. **boolean** (`join`): Combine: add the boss body to the plate body.
 9. **pushPull** (`pull`): Push/pull the boss top face outwards by boss_up.
 10. **chamfer** (`cboss`): Chamfer the boss top edge by boss_c (propagate off: it is a single circular edge).
@@ -54,7 +54,7 @@ Aluminium 7075-T6 (`whittle:aluminium-7075-t6`), density 2.81 g/cm^3.
 | Four corner fillets | `-4 (1 - pi/4) corner_r^2 plate_t` | -879.009 |
 | Top edge loop fillet | `-(1 - pi/4) r^2 [straight + 4 (pi/2)(Rc - 0.2234 r)]` | -583.394 |
 | Bottom edge loop chamfer | `-(c^2/2) [straight + 4 (pi/2)(Rc - c/3)]` | -604.153 |
-| Boss after push/pull | `pi (boss_d/2)^2 (boss_h + boss_up)` | 18378.317 |
+| Boss after push/pull | `pi (boss_d/2)^2 boss_h` | 18378.317 |
 | Boss top chamfer | `-(cb^2/2) x 2 pi (a - cb/3)` | -180.118 |
 | **Total** | | **112131.642** |
 
@@ -68,7 +68,7 @@ Method and accuracy: Exact. Every blend runs along a loop of straight edges and 
 | --- | --- | --- |
 | Stage 1: as drawn | 112131.642 | 315.0899 |
 | Stage 2: plate_l -> 120 mm | 131174.386 | 368.6000 |
-| Stage 3: boss_d -> 36 mm and boss_up -> 10 mm | 124251.907 | 349.1479 |
+| Stage 3: boss_d -> 36 mm, boss_up -> 10 mm with the boss as first extruded unchanged (boss_h -> 30) | 124251.907 | 349.1479 |
 | Stage 4: corner_r -> 12 mm and top_r -> 4 mm | 110621.263 | 310.8457 |
 
 ## Independent check
@@ -79,6 +79,6 @@ Built in FreeCAD 26.3.0 with `freecad/rp04.py` (a different construction than Wr
 | --- | --- | --- | --- |
 | Stage 1: as drawn | 112131.642 | 112131.642 | 2.2e-12 |
 | Stage 2: plate_l -> 120 mm | 131174.386 | 131174.386 | 5.7e-13 |
-| Stage 3: boss_d -> 36 mm and boss_up -> 10 mm | 124251.907 | 124251.907 | -1.6e-12 |
+| Stage 3: boss_d -> 36 mm, boss_up -> 10 mm with the boss as first extruded unchanged (boss_h -> 30) | 124251.907 | 124251.907 | -1.6e-12 |
 | Stage 4: corner_r -> 12 mm and top_r -> 4 mm | 110621.263 | 110621.263 | 2.7e-12 |
 

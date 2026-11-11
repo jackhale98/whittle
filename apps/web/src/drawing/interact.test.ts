@@ -1,9 +1,9 @@
 import type { Drawing, PlacementLayout, Vec2, ViewProjection } from '@wren-cad/contracts';
-import { solveViews, type ViewSolution } from '@wren-cad/drawing';
+import { solveViews, type ViewSolution, viewToSheet } from '@wren-cad/drawing';
 import { describe, expect, it } from 'vitest';
 import type { DrawingController } from './controller';
 import { dragLayout, handlesOf } from './interact';
-import { nextDatumLabel, planAngle, planDimension } from './ops-annot';
+import { nextDatumLabel, pickEdge, planAngle, planDimension } from './ops-annot';
 import type { Built } from './pipeline';
 import type { EdgePick } from './state';
 
@@ -292,5 +292,97 @@ describe('the arrows around a selected view', () => {
     // The outline's right edge plus 14 px.
     expect(right.at[0]).toBeCloseTo(view.position[0] + 40 + 14 * mm, 6);
     expect(right.at[1]).toBeCloseTo(view.position[1], 6);
+  });
+});
+
+describe('outlines named by their face (ProjectedCurve.face)', () => {
+  /** A cylinder of radius 10 seen side-on in the front view (its outline and its seam), and a sphere. */
+  function shaft() {
+    const f = fixture();
+    const face = 'F1:side(S1:e(L2))';
+    const proj = {
+      viewId: 'V',
+      quality: 'exact',
+      curves: [
+        {
+          role: 'visible',
+          edge: 'outline',
+          face,
+          curve: { kind: 'line', a: [0, 34], b: [40, 34] },
+        },
+        {
+          role: 'visible',
+          edge: 'sharp',
+          name: SEAM,
+          face,
+          curve: { kind: 'line', a: [0, 14], b: [40, 14] },
+        },
+        {
+          role: 'visible',
+          edge: 'outline',
+          face: 'F1:side(S1:e(A1))',
+          curve: { kind: 'arc', center: [60, 24], radius: 8, start: 0.2, end: 6 },
+        },
+      ],
+    } as unknown as ViewProjection;
+    ((f.c.built() as Built).projections as Map<string, ViewProjection>).set('V', proj);
+    return { ...f, face };
+  }
+  const SEAM = 'edge(F1:side(S1:e(L2))|F1:side(S1:e(L2)))';
+
+  it('a pick on an outline is the face, on the side under the pointer', () => {
+    const { c, view, face } = shaft();
+    const top = pickEdge(c, 'V', face, viewToSheet(view, [20, 34]), 'face');
+    expect(top).toMatchObject({ name: face, ref: 'face', face, shape: 'line' });
+    expect(top?.geom).toEqual({ a: [0, 34], b: [40, 34] });
+    // Near the other side, the seam (an edge that also carries the face) is that side.
+    const bottom = pickEdge(c, 'V', face, viewToSheet(view, [20, 15]), 'face');
+    expect(bottom?.geom).toEqual({ a: [0, 14], b: [40, 14] });
+    // A seam picked as an edge keeps its edge name, with its face.
+    const seam = pickEdge(c, 'V', SEAM, viewToSheet(view, [20, 14]));
+    expect(seam).toMatchObject({ name: SEAM, face, shape: 'line' });
+    expect(seam?.ref).toBeUndefined();
+  });
+
+  it('two sides of one face are its diameter, across the silhouettes in a lane', () => {
+    const { c, view, face } = shaft();
+    const outline = pickEdge(c, 'V', face, viewToSheet(view, [20, 34]), 'face') as EdgePick;
+    const seam = pickEdge(c, 'V', SEAM, viewToSheet(view, [20, 14])) as EdgePick;
+    for (const picks of [
+      [seam, outline],
+      [outline, outline],
+    ]) {
+      expect(planDimension(c, picks)).toMatchObject({
+        ok: true,
+        annotation: { kind: 'diameter' },
+        layout: { kind: 'lane' },
+        faceRef: face,
+      });
+    }
+  });
+
+  it('a face-named outline circle (a sphere) is its diameter, radial', () => {
+    const { c, view } = shaft();
+    const ball = pickEdge(
+      c,
+      'V',
+      'F1:side(S1:e(A1))',
+      viewToSheet(view, [68, 24]),
+      'face',
+    ) as EdgePick;
+    expect(planDimension(c, [ball])).toMatchObject({
+      ok: true,
+      annotation: { kind: 'diameter' },
+      layout: { kind: 'radial' },
+      faceRef: 'F1:side(S1:e(A1))',
+    });
+  });
+
+  it('an outline with an edge not on its face stays a linear dimension between them', () => {
+    const { c, view, face } = shaft();
+    const outline = pickEdge(c, 'V', face, viewToSheet(view, [20, 34]), 'face') as EdgePick;
+    const d = planDimension(c, [line('other', [0, 0], [40, 0]), outline]);
+    expect(d).toMatchObject({ ok: true, annotation: { kind: 'linear' } });
+    expect(d.ok && d.faceRef).toBeFalsy();
   });
 });

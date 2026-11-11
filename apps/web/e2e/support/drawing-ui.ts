@@ -37,16 +37,28 @@ export interface DrawingState {
   placements: number;
   attention: { key: string; severity: string; message: string }[];
   texts: string[];
-  resolutions: { id: string; state: string; value: number | null }[];
+  resolutions: {
+    id: string;
+    state: string;
+    value: number | null;
+    measured: number | null;
+    count: number | null;
+  }[];
 }
 
 export interface Edge {
+  /** The model edge's name; empty for an outline, which has `face` instead. */
   name: string;
+  /** The face an outline (or a seam on a silhouette) outlines. */
+  face?: string;
   kind: string;
   at: [number, number];
   a?: [number, number];
   b?: [number, number];
   radius?: number;
+  /** Arcs: start and end angle on the sheet (radians, counter-clockwise). */
+  start?: number;
+  end?: number;
 }
 
 /** The kernel's own output for a view (part mm), not the sheet's. */
@@ -56,10 +68,13 @@ export interface Projection {
     role: string;
     edge: string;
     name?: string;
+    face?: string;
     kind: string;
     radius?: number;
     center?: [number, number];
     sweep?: number;
+    a?: [number, number];
+    b?: [number, number];
   }[];
   sectionFaces: { face: string; loops: number }[];
   ms: number;
@@ -76,8 +91,34 @@ export interface PlacementInfo {
   attention: boolean;
 }
 
+/** A placed annotation's real extent from the display list (sheet mm). */
+export interface Extent {
+  placementId: string;
+  annotationId: string;
+  viewId: string;
+  text: string;
+  texts: { min: [number, number]; max: [number, number] }[];
+  segments: [[number, number], [number, number]][];
+  bounds: { min: [number, number]; max: [number, number] } | null;
+}
+
+/** One candidate of the open import plan. */
+export interface ImportRow {
+  key: string;
+  kind: string;
+  annotationKind: string;
+  checked: boolean;
+  viewId: string | null;
+  reason: string | null;
+  duplicateOf: string | null;
+  count: boolean;
+}
+
 type W = {
   __wrenDrawing: {
+    extents(): Extent[];
+    hit(at: [number, number], tol: number): { source: unknown; pick: unknown };
+    importPlan(): ImportRow[] | null;
     settled(): Promise<void>;
     exact(): Promise<void>;
     failKernel(): void;
@@ -103,6 +144,15 @@ export const drawing = (page: Page) => ({
     page.evaluate((id) => (window as unknown as W).__wrenDrawing.edges(id), viewId),
   placements: (): Promise<PlacementInfo[]> =>
     page.evaluate(() => (window as unknown as W).__wrenDrawing.placements()),
+  hit: (at: [number, number], tol = 1): Promise<{ source: unknown; pick: unknown }> =>
+    page.evaluate(
+      ([p, t]) => (window as unknown as W).__wrenDrawing.hit(p as [number, number], t as number),
+      [at, tol] as const,
+    ),
+  extents: (): Promise<Extent[]> =>
+    page.evaluate(() => (window as unknown as W).__wrenDrawing.extents()),
+  importPlan: (): Promise<ImportRow[] | null> =>
+    page.evaluate(() => (window as unknown as W).__wrenDrawing.importPlan()),
 });
 
 /** Waits until the route's build is current (no pending regen, nothing queued). */

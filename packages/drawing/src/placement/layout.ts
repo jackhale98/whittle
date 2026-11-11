@@ -26,6 +26,7 @@ import type {
   HoleCalloutAnnotation,
   Id,
   Vec2,
+  Vec3,
 } from '@wren-cad/contracts';
 import {
   chamferText,
@@ -66,7 +67,7 @@ import {
   type SizeSymbol,
   type TextRun,
 } from '../annotation/tolerance';
-import { type SolvedView, viewOutline } from '../view/solve';
+import { partToSheet, type SolvedView, viewOutline } from '../view/solve';
 import {
   anchorDirection,
   attachPoint,
@@ -428,9 +429,26 @@ function dimensionGeometry(
       b.issues.push({ kind: 'anchorsMissing' });
       return null;
     }
-    if (an.kind !== 'circle') return notMeasurable();
-    const pc = projectCircle(v, an);
-    const size: SizeSymbol = a.kind === 'radius' ? 'radius' : 'diameter';
+    // A sphere is anchored by its centre (kernel-client): it is seen as a circle of its own radius
+    // in every view, so it is laid out like a circle seen face-on, with S before the symbol.
+    const sphere = an.kind === 'point' && res?.state === 'ok' && res.value !== undefined;
+    if (an.kind !== 'circle' && !sphere) return notMeasurable();
+    const pc: ReturnType<typeof projectCircle> =
+      an.kind === 'circle'
+        ? projectCircle(v, an)
+        : {
+            kind: 'faceOn',
+            center: partToSheet(v, (an as { at: Vec3 }).at),
+            radius: (a.kind === 'diameter' ? 0.5 : 1) * (res?.value as number) * v.scale,
+          };
+    const size: SizeSymbol =
+      a.kind === 'radius'
+        ? sphere
+          ? 'sphericalRadius'
+          : 'radius'
+        : sphere
+          ? 'sphericalDiameter'
+          : 'diameter';
     if (placement.layout.kind === 'radial') {
       if (pc.kind !== 'faceOn') return notMeasurable();
       return radialLayout({

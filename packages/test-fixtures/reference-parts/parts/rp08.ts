@@ -41,9 +41,10 @@ export const rp08: PartDef = {
     tap_x0: { value: -36, unit: 'mm', description: 'X of the first tapped hole' },
     tap_dx: { value: 24, unit: 'mm', description: 'Pattern spacing along X' },
     tap_n: {
-      value: 4,
+      value: 3,
       unit: '',
-      description: 'Pattern count (including the original and the skipped one)',
+      description:
+        'Number of tapped holes: the pattern has tap_n + 1 positions, position 1 skipped (corrected from the pattern setting 4, see the README)',
     },
     tap_y: { value: -18, unit: 'mm', description: 'Y of the tapped row' },
     tap_depth: { value: 12, unit: 'mm', description: 'Tapped hole depth (drill depth)' },
@@ -62,7 +63,7 @@ export const rp08: PartDef = {
     { ref: 'ISO 261/262 coarse tap drill, M8 (pitch 1.25)', value: `${TAP_DRILL_M8} mm` },
   ],
   method:
-    'Exact. Every hole is a cylinder, a step or a cone frustum. The counterbore and countersink diameters and depths are the named dimensions above (so the model does not depend on a table row that might be edited); only the clearance diameter (M6, normal fit, 6.6 mm) and the tap drill (M8, 6.8 mm) come from the ISO tables. The tapped hole is its drill diameter, flat-bottomed, to tap_depth; the cosmetic thread adds no geometry. The pattern has tap_n instances; instance 1 is skipped. Accuracy: floating point (1e-12 relative). If the kernel hole tables ever change these two values the golden fails by design.',
+    'Exact. Every hole is a cylinder, a step or a cone frustum. The counterbore and countersink diameters and depths are the named dimensions above (so the model does not depend on a table row that might be edited); only the clearance diameter (M6, normal fit, 6.6 mm) and the tap drill (M8, 6.8 mm) come from the ISO tables. The tapped hole is its drill diameter, flat-bottomed, to tap_depth; the cosmetic thread adds no geometry. The pattern has tap_n + 1 positions; position 1 is skipped, so tap_n holes are drilled. Accuracy: floating point (1e-12 relative). If the kernel hole tables ever change these two values the golden fails by design.',
   steps: (d) => {
     const T = d('plate_t');
     return [
@@ -142,11 +143,11 @@ export const rp08: PartDef = {
       {
         tool: 'linearPattern',
         id: 'pat',
-        say: 'Linear pattern of the tapped hole along X: tap_n instances, spacing tap_dx, skip instance 1.',
+        say: 'Linear pattern of the tapped hole along X: tap_n + 1 instances, spacing tap_dx, skip instance 1 (tap_n holes).',
         source: { kind: 'features', features: ['h_tap'] },
         direction: origin('origin:X'),
         reverse: false,
-        count: 'tap_n',
+        count: 'tap_n + 1',
         spacing: 'tap_dx',
         skip: [1],
       },
@@ -160,7 +161,7 @@ export const rp08: PartDef = {
     const cbR = d('cb_d') / 2;
     const csR = d('cs_d') / 2;
     const csDepth = csR - rc; // 90 degree cone: depth equals the radial step
-    const nTap = Math.round(d('tap_n')) - 1; // one instance skipped
+    const nTap = Math.round(d('tap_n')); // tap_n + 1 positions, one skipped
     const terms = [
       term('Plate', 'plate_l x plate_w x plate_t', L * W * T),
       term('Counterbored hole: clearance bore', `-pi (${CLEAR_M6}/2)^2 plate_t`, -PI * rc * rc * T),
@@ -176,8 +177,8 @@ export const rp08: PartDef = {
         -frustumVolumeBeyond(csR, rc, csDepth),
       ),
       term(
-        'Tapped holes (instances minus the skipped one)',
-        `-(tap_n - 1) pi (${TAP_DRILL_M8}/2)^2 tap_depth`,
+        'Tapped holes (tap_n + 1 positions minus the skipped one)',
+        `-tap_n pi (${TAP_DRILL_M8}/2)^2 tap_depth`,
         -nTap * PI * (TAP_DRILL_M8 / 2) ** 2 * d('tap_depth'),
       ),
     ];
@@ -191,8 +192,8 @@ export const rp08: PartDef = {
     { name: 'Stage 2: plate_t -> 18 mm', set: { plate_t: 18 } },
     { name: 'Stage 3: cb_h -> 8 mm and cs_d -> 13 mm', set: { cb_h: 8, cs_d: 13 } },
     {
-      name: 'Stage 4: tap_n -> 5, tap_dx -> 16 mm, tap_x0 -> -32 mm',
-      set: { tap_n: 5, tap_dx: 16, tap_x0: -32 },
+      name: 'Stage 4: tap_n -> 4 (five positions, one skipped), tap_dx -> 16 mm, tap_x0 -> -32 mm',
+      set: { tap_n: 4, tap_dx: 16, tap_x0: -32 },
     },
   ],
   draw: (d, dr) => {
@@ -210,7 +211,7 @@ export const rp08: PartDef = {
     top.circle(d('cb_x'), d('cb_y'), d('cb_d') / 2);
     top.circle(d('cs_x'), d('cs_y'), CLEAR_M6 / 2);
     top.circle(d('cs_x'), d('cs_y'), d('cs_d') / 2);
-    const n = Math.round(d('tap_n'));
+    const n = Math.round(d('tap_n')) + 1; // positions, the skipped one included
     for (let k = 0; k < n; k++) {
       const x = d('tap_x0') + k * d('tap_dx');
       top.circle(x, d('tap_y'), TAP_DRILL_M8 / 2, k === 1 ? 'hidden' : 'visible');
@@ -225,12 +226,14 @@ export const rp08: PartDef = {
     top.dimV(L / 2, 0, L / 2, d('cs_y'), 8, dim('cs_y'));
     top.leader(d('cs_x'), d('cs_y'), d('cs_d') / 2, 70, 14, dim('cs_d'));
     top.dimH(0, d('tap_y'), d('tap_x0'), d('tap_y'), -10, dim('tap_x0'));
+    // The spacing between two holes that exist (positions 2 and 3; position 1 is skipped), measured
+    // centre to centre, its dimension line 12 mm below the row as before.
     top.dimH(
-      d('tap_x0'),
-      d('tap_y') - 6,
-      d('tap_x0') + d('tap_dx'),
-      d('tap_y') - 6,
-      -6,
+      d('tap_x0') + 2 * d('tap_dx'),
+      d('tap_y'),
+      d('tap_x0') + 3 * d('tap_dx'),
+      d('tap_y'),
+      -12,
       dim('tap_dx'),
     );
     top.dimV(-L / 2, 0, -L / 2, d('tap_y'), -12, dim('tap_y'));

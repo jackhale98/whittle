@@ -35,6 +35,7 @@ import type {
   AnnotationPlacement,
   AnnotationResolution,
   Command,
+  DimensionText,
   Drawing,
   DrawingTable,
   DrawingView,
@@ -48,7 +49,7 @@ import type {
   Vec3,
   ViewProjection,
 } from '@wren-cad/contracts';
-import { dist2, dot2, dot3, len3, norm2, norm3, sub2 } from '../annotation/geom';
+import { cross3, dist2, dot2, dot3, len3, norm2, norm3, sub2 } from '../annotation/geom';
 import { layoutDimensionLabel, type TextBlock } from '../annotation/label-layout';
 import { formatLength } from '../annotation/numbers';
 import { textWidth } from '../annotation/text';
@@ -64,7 +65,7 @@ import {
 import type { TableData } from '../sheet/compose';
 import { partToSheet, type SolvedView, type ViewSolution, viewOutline } from '../view/solve';
 import { anchorQueryKey, sketchAnchor } from './anchors';
-import { measureKey } from './dedupe';
+import { measuredLength, measureKey } from './dedupe';
 import { type LaneRequest, type LaneSide, type LeaderRequest, planLanes } from './lanes';
 import {
   type AnnotationDraft,
@@ -119,7 +120,14 @@ export type CandidateReason =
   /** Measures what another candidate (or a placed annotation) measures: see `duplicateOf`. */
   | 'duplicate'
   /** No lane clear of the neighbouring views, cut lines, tables and the title block. */
-  | 'layoutDoesNotFit';
+  | 'layoutDoesNotFit'
+  /** The value is zero: the two measured entities coincide along its direction (no dimension). */
+  | 'zeroLength'
+  /**
+   * The driving value is not what the model measures between its refs (a later feature moved one
+   * of them, as a push/pull does an extrude's end): placed, it would be flagged at once.
+   */
+  | 'differsFromModel';
 
 export interface ImportCandidate {
   /** Stable key: `annotation:<id>`, `sketch:<feature>:<constraint>`, `feature:<feature>:<path>`. */
@@ -436,17 +444,214 @@ function chooseRefs(
   return { refs: choices[0] as EntityRef[] };
 }
 
+/** The driving expression a promoted annotation shows (its source's value). */
+function sourceExpr(part: Part, a: Annotation): Expr | undefined {
+  const s = 'source' in a ? a.source : undefined;
+  if (!s) return undefined;
+  const f = part.features.find((x) => x.id === s.featureId);
+  if (!f) return undefined;
+  if (s.kind === 'sketchDimension') {
+    if (f.type !== 'sketch') return undefined;
+    const c = f.constraints.find((x) => x.id === s.constraintId) as { value?: unknown } | undefined;
+    return typeof c?.value === 'string' ? c.value : undefined;
+  }
+  if (s.kind !== 'featureField') return undefined;
+  let v: unknown = f;
+  for (const k of s.path.split('/').filter(Boolean)) v = (v as Record<string, unknown>)?.[k];
+  return typeof v === 'string' ? v : undefined;
+}
+
+/**
+ * A promoted length dimension that would not be a dimension: zero (its entities coincide along its
+ * direction: a circle centred on the origin's `x = 0`), or, with the kernel's anchors, a driving
+ * value the model no longer measures (an extrude depth whose end a push/pull moved). Listed with
+ * the reason, never placed to be flagged at once.
+ */
+function promotedMismatch(
+  a: Annotation,
+  layout: readonly (AnnotationAnchor | null)[] | undefined,
+  fromKernel: boolean,
+  part: Part,
+  evaluate: ImportInput['evaluate'],
+): CandidateReason | undefined {
+  const m = measuredLength(a, layout);
+  if (m === null) return undefined;
+  if (m < 1e-9) return 'zeroLength';
+  if (!fromKernel) return undefined;
+  const expr = sourceExpr(part, a);
+  const v = expr !== undefined ? evaluate?.(expr, 'length') : undefined;
+  if (v === undefined || !Number.isFinite(v)) return undefined;
+  return Math.abs(Math.abs(v) - m) > 1e-6 * Math.max(1, Math.abs(v))
+    ? 'differsFromModel'
+    : undefined;
+}
+
+/** Removes `text.count` (and an emptied `text`) from a promoted dimension. */
+function dropCount(a: Annotation): void {
+  const t = (a as { text?: unknown }).text;
+  if (typeof t !== 'object' || t === null) return;
+  const { count: _count, ...rest } = t as DimensionText;
+  if (Object.keys(rest).length > 0) (a as { text?: DimensionText }).text = rest;
+  else delete (a as { text?: DimensionText }).text;
+}
+
+/**
+ * Where a dimension's measured geometry lies, for telling apart two dimensions with the same
+ * measured coordinates (`measureKey`): its sketch's plane normal (a sketch dimension) and points
+ * of what it measures (its anchors, and for a sketch dimension every point of the sketch loops
+ * the measured entities belong to: a rectangle's width covers the rectangle).
+ */
+interface Where {
+  normal?: Vec3;
+  points: Vec3[];
+  /** It locates or sizes a circle or arc (ISO 129-1: dimension it where it is seen as one). */
+  circle: boolean;
+}
+
+function whereOf(
+  a: Annotation,
+  anchors: readonly (AnnotationAnchor | null)[] | undefined,
+  sketches: ReadonlyMap<Id, SketchFeature>,
+  frames: ReadonlyMap<Id, SketchFrame>,
+): Where {
+  const points: Vec3[] = [];
+  let circle = false;
+  (anchors ?? []).forEach((an, i) => {
+    if (!an) return;
+    points.push(...anchorPoints(an, a.at?.[i]));
+    if (an.kind === 'circle') circle = true;
+  });
+  const s = 'source' in a ? a.source : undefined;
+  if (s?.kind !== 'sketchDimension') return { points, circle };
+  const f = sketches.get(s.featureId);
+  const frame = frames.get(s.featureId);
+  const c = f?.constraints.find((x) => x.id === s.constraintId) as
+    | Record<string, unknown>
+    | undefined;
+  if (!f || !frame || !c) return { points, circle };
+  const ids = ['a', 'b', 'line', 'curve']
+    .map((k) => c[k])
+    .filter((v): v is Id => typeof v === 'string' && v !== '@origin');
+  const to3 = (x: number, y: number): Vec3 => [
+    frame.origin[0] + x * frame.x[0] + y * frame.y[0],
+    frame.origin[1] + x * frame.x[1] + y * frame.y[1],
+    frame.origin[2] + x * frame.x[2] + y * frame.y[2],
+  ];
+  const byId = new Map(f.entities.map((e) => [e.id, e]));
+  for (const id of loopOf(f, ids)) {
+    const e = byId.get(id);
+    if (e?.kind === 'point') points.push(to3(e.x, e.y));
+    if (e?.kind === 'circle') {
+      const c0 = byId.get(e.center);
+      if (c0?.kind === 'point')
+        for (const [dx, dy] of [
+          [1, 0],
+          [-1, 0],
+          [0, 1],
+          [0, -1],
+        ] as const)
+          points.push(to3(c0.x + dx * e.radius, c0.y + dy * e.radius));
+    }
+  }
+  // A circle or arc measured, or one whose centre is measured.
+  for (const id of ids) {
+    const e = byId.get(id);
+    if (e?.kind === 'circle' || e?.kind === 'arc') circle = true;
+    if (
+      e?.kind === 'point' &&
+      f.entities.some((x) => (x.kind === 'circle' || x.kind === 'arc') && x.center === id)
+    )
+      circle = true;
+  }
+  return { normal: frame.z, points, circle };
+}
+
+/** The sketch entities connected to `ids` through shared points (their loops). */
+function loopOf(f: SketchFeature, ids: readonly Id[]): Set<Id> {
+  const links = new Map<Id, Id[]>();
+  const link = (x: Id, y: Id) => {
+    links.set(x, [...(links.get(x) ?? []), y]);
+    links.set(y, [...(links.get(y) ?? []), x]);
+  };
+  for (const e of f.entities) {
+    if (e.kind === 'line') {
+      link(e.id, e.start);
+      link(e.id, e.end);
+    } else if (e.kind === 'arc') {
+      link(e.id, e.start);
+      link(e.id, e.end);
+      link(e.id, e.center);
+    } else if (e.kind === 'circle') link(e.id, e.center);
+  }
+  const seen = new Set<Id>();
+  const todo = [...ids];
+  while (todo.length) {
+    const id = todo.pop() as Id;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    for (const n of links.get(id) ?? []) if (!seen.has(n)) todo.push(n);
+  }
+  return seen;
+}
+
+/**
+ * Two dimensions with the same `measureKey` are one dimension unless they are dimensions of
+ * parallel sketch planes whose measured geometry lies apart across the measuring direction in
+ * that plane: a slot's width and an ear's width at the same two y values are two features, each
+ * dimensioned once; a hole column from the origin, or an upright flush with the plate it stands
+ * on, share their extension lines and are one.
+ */
+function sameMeasure(key: string, a: Where, b: Where): boolean {
+  if (!key.startsWith('L|') || !a.normal || !b.normal) return true;
+  if (Math.abs(Math.abs(dot3(norm3(a.normal), norm3(b.normal))) - 1) > TOL) return true;
+  const u = (key.split('|')[1] as string).split(',').map(Number) as Vec3;
+  const c = cross3(norm3(a.normal), u);
+  if (len3(c) < 1e-9 || a.points.length === 0 || b.points.length === 0) return true;
+  const cn = norm3(c);
+  const range = (ps: Vec3[]): [number, number] => {
+    const v = ps.map((p) => dot3(p, cn));
+    return [Math.min(...v), Math.max(...v)];
+  };
+  const [a0, a1] = range(a.points);
+  const [b0, b1] = range(b.points);
+  return a1 >= b0 - 1e-3 && b1 >= a0 - 1e-3;
+}
+
 /** Marks every candidate that measures what another (or a placed annotation) measures. */
-function markDuplicates(pending: Pending[], annotations: Annotation[], input: ImportInput): void {
+/** How well a view shows a candidate: a promotion's sketch frame or feature direction decides, its anchors give the length. */
+function suitOf(p: Pending): (v: SolvedView) => number | null {
+  return (v) => {
+    if (p.hint && p.hint.kind !== 'anchors') {
+      if (hintSuit(p.hint, v) === null) return null;
+      return (p.anchors ? anchorsSuit(p.annotation, p.anchors, v) : null) ?? 1;
+    }
+    return p.anchors ? anchorsSuit(p.annotation, p.anchors, v) : null;
+  };
+}
+
+function markDuplicates(
+  pending: Pending[],
+  annotations: Annotation[],
+  input: ImportInput,
+  /** Where a candidate would go: lower is the more principal view (base first, then drawing order). */
+  viewRank: (p: Pending) => number,
+): void {
+  const sketches = new Map<Id, SketchFeature>();
+  for (const f of input.part.features) if (f.type === 'sketch') sketches.set(f.id, f);
+  const frames = input.sketchFrames ?? new Map<Id, SketchFrame>();
   const placedIds = new Set(input.drawing.placements.map((p) => p.annotationId));
-  const placedKey = new Map<string, Id>();
+  const placedByKey = new Map<string, { id: Id; where: Where }[]>();
   for (const a of annotations) {
     if (!placedIds.has(a.id)) continue;
     const r = input.resolutions.get(a.id);
     const k = r?.state === 'ok' ? measureKey(a, r.anchors) : null;
-    if (k && !placedKey.has(k)) placedKey.set(k, a.id);
+    if (!k) continue;
+    const l = placedByKey.get(k) ?? [];
+    l.push({ id: a.id, where: whereOf(a, r?.anchors, sketches, frames) });
+    placedByKey.set(k, l);
   }
   const groups = new Map<string, Pending[]>();
+  const where = new Map<Pending, Where>();
   for (const p of pending) {
     if (p.reason) continue;
     const k = measureKey(p.annotation, p.layout);
@@ -454,22 +659,47 @@ function markDuplicates(pending: Pending[], annotations: Annotation[], input: Im
     const g = groups.get(k) ?? [];
     g.push(p);
     groups.set(k, g);
+    where.set(p, whereOf(p.annotation, p.layout, sketches, frames));
   }
-  // Kept: a placed annotation; else the driving (sourced) one, an existing annotation before a
-  // promotion, then the key order. The kept one is checked when a dropped one was.
+  // Kept: a placed annotation; else the driving (sourced) one, the one on the more principal
+  // view (ISO 129-1: dimensions go on the view that shows the part best, the base view first),
+  // one that locates or sizes a circle (seen as a circle in its view), an existing annotation
+  // before a promotion, then the key order. The kept one is checked when a dropped one was.
   const rank = (p: Pending) =>
-    ('source' in p.annotation && p.annotation.source ? 0 : 2) + (p.kind === 'existing' ? 0 : 1);
+    ('source' in p.annotation && p.annotation.source ? 0 : 4) +
+    (where.get(p)?.circle ? 0 : 2) +
+    (p.kind === 'existing' ? 0 : 1);
+  const sourced = (p: Pending) => ('source' in p.annotation && p.annotation.source ? 0 : 1);
+  const viewOrder = new Map<Pending, number>();
+  const vr = (p: Pending) => {
+    let r = viewOrder.get(p);
+    if (r === undefined) {
+      r = viewRank(p);
+      viewOrder.set(p, r);
+    }
+    return r;
+  };
   for (const [k, g] of groups) {
-    const placed = placedKey.get(k);
+    const placed = placedByKey.get(k) ?? [];
     const sorted = [...g].sort(
-      (x, y) => rank(x) - rank(y) || (x.key < y.key ? -1 : x.key > y.key ? 1 : 0),
+      (x, y) =>
+        sourced(x) - sourced(y) ||
+        vr(x) - vr(y) ||
+        rank(x) - rank(y) ||
+        (x.key < y.key ? -1 : x.key > y.key ? 1 : 0),
     );
-    const keep = placed ? null : (sorted[0] as Pending);
+    const kept: Pending[] = [];
     for (const p of sorted) {
-      if (p === keep) continue;
+      const w = where.get(p) as Where;
+      const on = placed.find((x) => sameMeasure(k, x.where, w));
+      const keep = on ? undefined : kept.find((x) => sameMeasure(k, where.get(x) as Where, w));
+      if (!on && !keep) {
+        kept.push(p);
+        continue;
+      }
       if (keep && p.checked) keep.checked = true;
       p.reason = 'duplicate';
-      p.duplicateOf = keep ? keep.key : `annotation:${placed}`;
+      p.duplicateOf = keep ? keep.key : `annotation:${on?.id}`;
       p.checked = false;
     }
   }
@@ -599,14 +829,26 @@ export function planImport(input: ImportInput): ImportPlan {
   const { promotions, notPromotable } = collectPromotions(part, frames, input.evaluate);
   for (const p of promotions) {
     if (sourced.has(p.key)) continue; // already an annotation: listed above as existing
-    const chosen = chooseRefs(p.choices ?? [p.draft.refs], p.draft, input);
+    const choices = p.choices ?? [p.draft.refs];
+    const chosen = chooseRefs(choices, p.draft, input);
     const annotation = { ...p.draft, refs: chosen.refs, id: input.newId() } as Annotation;
+    // An instance count only from the refs that count the copies (`Promotion.countChoice`).
+    if (
+      p.countChoice !== undefined &&
+      chosen.refs !== choices[p.countChoice] &&
+      'text' in annotation
+    )
+      dropCount(annotation);
     const anchors = chosen.anchors;
     let layout: (AnnotationAnchor | null)[] | undefined = anchors;
     if (!layout) {
       const own = annotation.refs.map((r) => sketchAnchor(r, sketches, frames) ?? null);
       if (own.length && own.every(Boolean)) layout = own;
     }
+    const reason: CandidateReason | undefined =
+      p.hint.kind === 'anchors' && !anchors
+        ? 'noGeometry'
+        : promotedMismatch(annotation, layout, anchors !== undefined, part, input.evaluate);
     pending.push({
       key: p.key,
       kind: 'promote',
@@ -615,10 +857,16 @@ export function planImport(input: ImportInput): ImportPlan {
       ...(anchors ? { anchors } : {}),
       ...(layout ? { layout } : {}),
       hint: p.hint,
-      ...(p.hint.kind === 'anchors' && !anchors ? { reason: 'noGeometry' as const } : {}),
+      ...(reason ? { reason } : {}),
     });
   }
-  markDuplicates(pending, annotations, input);
+  markDuplicates(pending, annotations, input, (p) => {
+    const v = chooseView(p.annotation, suitOf(p), input);
+    if (!v) return 1e9;
+    return (
+      (KIND_ORDER[v.view.kind] ?? 9) * 1e4 + drawing.views.findIndex((x) => x.id === v.view.id)
+    );
+  });
 
   // View choice.
   const chosen: { c: ImportCandidate; view: SolvedView; p: Pending }[] = [];
@@ -644,14 +892,7 @@ export function planImport(input: ImportInput): ImportPlan {
       c.checked = false;
       continue;
     }
-    // A promotion's sketch frame or feature direction decides; its anchors give the length.
-    const suit = (v: SolvedView): number | null => {
-      if (p.hint && p.hint.kind !== 'anchors') {
-        if (hintSuit(p.hint, v) === null) return null;
-        return (p.anchors ? anchorsSuit(p.annotation, p.anchors, v) : null) ?? 1;
-      }
-      return p.anchors ? anchorsSuit(p.annotation, p.anchors, v) : null;
-    };
+    const suit = suitOf(p);
     const a = p.annotation;
     const preferId =
       a.kind === 'geometricTolerance' && a.appliesTo ? viewOf.get(a.appliesTo) : undefined;

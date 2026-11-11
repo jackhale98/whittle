@@ -21,7 +21,7 @@ Acetal (POM) (`whittle:acetal-pom`), density 1.41 g/cm^3.
 | `slot_w` | 24 mm | Slot size along Y |
 | `slot_x0` | -45 mm | X of the first slot centre |
 | `slot_pitch` | 18 mm | Slot pattern spacing |
-| `slot_n` | 6 | Slot pattern count (including the original and the skipped one) |
+| `slot_n` | 5 | Number of slots: the pattern has slot_n + 1 positions, position 3 skipped (corrected from the pattern setting 6, see the README) |
 | `ear_l` | 20 mm | Ear length beyond the plate end |
 | `ear_w` | 24 mm | Ear width (Y) |
 | `ear_hole_d` | 8 mm | Ear hole diameter |
@@ -32,7 +32,7 @@ Acetal (POM) (`whittle:acetal-pom`), density 1.41 g/cm^3.
 2. **extrude** (`base`): Extrude by plate_t as a new body.
 3. **sketch** (`slot_sk`): Sketch on Top: one slot, slot_l x slot_w, centred on y = 0 with its centre at slot_x0.
 4. **extrude** (`slot`): Cut-extrude the slot through all (both ways from the sketch plane).
-5. **linearPattern** (`slots`): Linear pattern of the slot along X: slot_n instances, spacing slot_pitch, skip instance 3.
+5. **linearPattern** (`slots`): Linear pattern of the slot along X: slot_n + 1 instances, spacing slot_pitch, skip instance 3 (slot_n slots).
 6. **sketch** (`ear_sk`): Sketch on Top: the +X ear, a rectangle ear_l x ear_w against the plate end.
 7. **extrude** (`ear`): Extrude the ear by plate_t, adding to the plate.
 8. **sketch** (`eh_sk`): Sketch on Top: a circle of ear_hole_d at the centre of the ear.
@@ -53,21 +53,21 @@ Acetal (POM) (`whittle:acetal-pom`), density 1.41 g/cm^3.
 | Term | Formula | Volume (mm^3) |
 | --- | --- | --- |
 | Plate | `plate_l x plate_w x plate_t` | 38400.000 |
-| Slots (instances minus the skipped one) | `-(slot_n - 1) slot_l slot_w plate_t` | -5760.000 |
+| Slots (slot_n + 1 positions minus the skipped one) | `-slot_n slot_l slot_w plate_t` | -5760.000 |
 | Two ears | `2 ear_l ear_w plate_t` | 7680.000 |
 | Two ear holes | `-2 pi (ear_hole_d/2)^2 plate_t` | -804.248 |
 | **Total** | | **39515.752** |
 
 Mass = volume x density = 39515.752 mm^3 x 1.41 g/cm^3 / 1000 = **55.7172 g**.
 
-Method and accuracy: Exact. Plate, ears and slots are boxes and the ear holes are cylinders. The slot pattern has slot_n instances; instance 3 is skipped, so slot_n - 1 slots are cut. The mirror copies the ear and its hole, so there are two of each. Accuracy: floating point (1e-12 relative). The surface area is the top and bottom faces plus the side walls (outer outline with the ears attached, slot walls, ear hole walls).
+Method and accuracy: Exact. Plate, ears and slots are boxes and the ear holes are cylinders. The slot pattern has slot_n + 1 positions; position 3 is skipped, so slot_n slots are cut. The mirror copies the ear and its hole, so there are two of each. Accuracy: floating point (1e-12 relative). The surface area is the top and bottom faces plus the side walls (outer outline with the ears attached, slot walls, ear hole walls).
 
 ## Modification stages (CSWP style)
 
 | Stage | Expected volume (mm^3) | Expected mass (g) |
 | --- | --- | --- |
 | Stage 1: as drawn | 39515.752 | 55.7172 |
-| Stage 2: slot_n -> 7 and slot_pitch -> 15 mm | 38363.752 | 54.0929 |
+| Stage 2: slot_n -> 6 (seven positions, one skipped) and slot_pitch -> 15 mm | 38363.752 | 54.0929 |
 | Stage 3: ear_l -> 26 mm and ear_hole_d -> 10 mm | 41367.363 | 58.3280 |
 | Stage 4: plate_t -> 10 mm and slot_w -> 20 mm | 50594.690 | 71.3385 |
 
@@ -78,7 +78,7 @@ Built in FreeCAD 26.3.0 with `freecad/rp10.py` (a different construction than Wr
 | Stage | Analytic volume (mm^3) | FreeCAD volume (mm^3) | Difference |
 | --- | --- | --- | --- |
 | Stage 1: as drawn | 39515.752 | 39515.752 | -4.8e-13 |
-| Stage 2: slot_n -> 7 and slot_pitch -> 15 mm | 38363.752 | 38363.752 | -4.9e-13 |
+| Stage 2: slot_n -> 6 (seven positions, one skipped) and slot_pitch -> 15 mm | 38363.752 | 38363.752 | -4.9e-13 |
 | Stage 3: ear_l -> 26 mm and ear_hole_d -> 10 mm | 41367.363 | 41367.363 | -8.7e-13 |
 | Stage 4: plate_t -> 10 mm and slot_w -> 20 mm | 50594.690 | 50594.690 | -9.6e-13 |
 

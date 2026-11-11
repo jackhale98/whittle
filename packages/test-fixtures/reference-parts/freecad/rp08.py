@@ -24,8 +24,8 @@ def build(d):
     depth = d["cs_d"] / 2 - CLEARANCE_M6 / 2
     tools.append(cyl(d["cs_x"], d["cs_y"], -1, CLEARANCE_M6 / 2, T + 2))
     tools.append(Part.makeCone(CLEARANCE_M6 / 2, d["cs_d"] / 2, depth, V(d["cs_x"], d["cs_y"], T - depth), V(0, 0, 1)))
-    # Tapped holes: n instances, instance 1 skipped.
-    for k in range(int(d["tap_n"])):
+    # Tapped holes: tap_n + 1 positions, position 1 skipped (tap_n holes).
+    for k in range(int(d["tap_n"]) + 1):
         if k == 1:
             continue
         tools.append(cyl(d["tap_x0"] + k * d["tap_dx"], d["tap_y"], T - d["tap_depth"], TAP_DRILL_M8 / 2, d["tap_depth"] + 1))

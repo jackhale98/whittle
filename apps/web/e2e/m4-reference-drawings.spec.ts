@@ -3,7 +3,7 @@ import type { Drawing } from '@wren-cad/contracts';
 import { buildDoc, PARTS } from '@wren-cad/test-fixtures/reference-parts';
 import { app, boot } from './helpers';
 import { PERF_FACTOR } from './perf/budgets';
-import { built, drawing, newDrawing } from './support/drawing-ui';
+import { built, drawing, type Extent, newDrawing } from './support/drawing-ui';
 import {
   addViews,
   bindImported,
@@ -13,38 +13,84 @@ import {
   showsValue,
   viewPlane,
 } from './support/reference-drawing';
-import { ATTENTION_BUGS, GAPS } from './support/reference-drawing-gaps';
+import { GAPS } from './support/reference-drawing-gaps';
 
 /**
  * M4 acceptance, certification-style suite (PLAN section 12 M4 Accept, 12A): for every reference
  * part the spec drawing is recreated with Wren's drawing tools (views, the section cut, Import
- * model annotations, the Dimension tool) and checked against the spec's `drawing` section: every
- * requested view is present, every specified dimension is on its view with an equal resolved value,
- * nothing needs attention, and no dimension sits on another view.
+ * model annotations, the Dimension and Chamfer tools) and checked against the spec's `drawing`
+ * section: every requested view is present, every specified dimension is on its view with a
+ * resolved value equal to the spec's and to the model's geometry, every instance count is drawn as
+ * `N×` on its view, nothing needs attention, and no annotation is drawn over another view.
  *
  * Setup. The part is built from the spec by the same builder the M3 UI script is generated from
  * (`buildDoc`) and loaded through the `load` hook: building a part through the UI takes minutes
  * (m3-reference-parts.spec.ts does that, and checks mass), far over this suite's per-part budget.
  * The hooks are otherwise only read.
  *
- * Product gaps are listed in `support/reference-drawing-gaps.ts`, each with the spec item and the
- * reason. The dimensions in it must stay unmet: the test fails when one starts to pass, so the table
- * cannot go stale. Each gap is also a `test.fixme` below, so it shows in the report.
+ * Product gaps are listed in `support/reference-drawing-gaps.ts`, each with a gap id and the
+ * reason. The dimensions in it must stay unmet: the test fails when one starts to pass, so the
+ * table cannot go stale. Each gap is also a `test.fixme` below, so it shows in the report.
+ *
+ * `WREN_CERT_ALL=1` tries the listed gaps too and reports every dimension met or not (as test
+ * annotations) instead of failing on the first: for re-baselining the table.
  */
 
 test.use({ viewport: { width: 1440, height: 900 } });
 
 const TOL = { mm: 0.005, deg: 0.05, '': 1e-9 } as const;
+const ALL = !!process.env.WREN_CERT_ALL;
+
+type Box = { min: [number, number]; max: [number, number] };
+const overlaps = (a: Box, b: Box) =>
+  a.max[0] > b.min[0] && a.min[0] < b.max[0] && a.max[1] > b.min[1] && a.min[1] < b.max[1];
+
+/** Does segment p–q enter box `b` (Liang–Barsky clip)? */
+function segmentInBox(p: [number, number], q: [number, number], b: Box): boolean {
+  let t0 = 0;
+  let t1 = 1;
+  const d = [q[0] - p[0], q[1] - p[1]];
+  for (let i = 0; i < 2; i++) {
+    const di = d[i] as number;
+    const pi = p[i] as number;
+    for (const [lim, sign] of [
+      [b.min[i] as number, -1],
+      [b.max[i] as number, 1],
+    ] as const) {
+      const num = sign * (lim - pi);
+      const den = sign * di;
+      if (Math.abs(den) < 1e-12) {
+        if (num < 0) return false;
+      } else {
+        const t = num / den;
+        if (den < 0) t0 = Math.max(t0, t);
+        else t1 = Math.min(t1, t);
+      }
+    }
+  }
+  return t1 - t0 > 1e-9;
+}
+
+/** Strictly inside: a line that only touches a view's outline does not count. */
+const shrink = (b: Box, by: number): Box => ({
+  min: [b.min[0] + by, b.min[1] + by],
+  max: [b.max[0] - by, b.max[1] - by],
+});
 
 for (const part of PARTS) {
   test(`M4 reference drawing ${part.id}: views and dimensions of the spec drawing`, async ({
     page,
   }, info) => {
-    test.setTimeout(90_000 * PERF_FACTOR);
+    test.setTimeout((ALL ? 300_000 : 120_000) * PERF_FACTOR);
     const spec = loadPartSpec(part.id);
     const gaps = GAPS[part.id] ?? [];
-    const gapNames = new Set(gaps.flatMap((g) => g.dims));
+    const gapNames = ALL ? new Set<string>() : new Set(gaps.flatMap((g) => g.dims));
 
+    const errors: string[] = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    page.on('console', (m) => {
+      if (m.type() === 'error') errors.push(m.text());
+    });
     await boot(page);
     await app(page).load(buildDoc(part));
     await app(page).idle();
@@ -52,13 +98,15 @@ for (const part of PARTS) {
       projection: spec.drawing.projection === 'third' ? 'Third angle' : 'First angle',
     });
     const views = await addViews(page, spec);
-    await importAll(page);
+    const imported = await importAll(page);
     const bound = await bindImported(page, spec, views);
     const notes = new Map<string, string>();
 
-    // What the import did not give, the Dimension tool adds on the view the spec shows it in.
+    // What the import did not give, the Dimension (or Chamfer) tool adds on the view the spec
+    // shows it in. An instance count is not a dimension of its own: it is the `N×` of a callout
+    // or a dimension (checked below).
     for (const d of spec.drawing.dimensions) {
-      if (bound.has(d.name) || gapNames.has(d.name)) continue;
+      if (d.kind === 'count' || bound.has(d.name) || gapNames.has(d.name)) continue;
       const v = views.find((x) => x.spec.id === d.view);
       if (!v) throw new Error(`no view ${d.view}`);
       const r = await dimensionTool(page, spec, v, d);
@@ -67,6 +115,7 @@ for (const part of PARTS) {
     }
     const state = await built(page);
     const placements = await drawing(page).placements();
+    const extents = await drawing(page).extents();
     info.annotations.push({
       type: 'dimensions',
       description: `${spec.drawing.dimensions.length} on the spec drawing, ${bound.size} placed`,
@@ -125,66 +174,96 @@ for (const part of PARTS) {
     }
     expect(state.projection).toBe(spec.drawing.projection);
 
-    // 2. Every specified dimension appears on its view with an equal resolved value, or is a
-    // listed gap (which must really be unmet).
+    // 2. Every specified dimension appears on its view with a resolved value equal to the spec's
+    // and to the geometry (a sourced value the model no longer has, "differs from the model", is
+    // not met), shown on the sheet; every count is a drawn `N×` on its view. Or it is a listed gap
+    // (which must really be unmet).
     const unmet: string[] = [];
+    const met: string[] = [];
     for (const d of spec.drawing.dimensions) {
-      const id = bound.get(d.name);
       const v = views.find((x) => x.spec.id === d.view) as (typeof views)[number];
-      const res = state.resolutions.find((r) => r.id === id);
-      const onView = placements.some((p) => p.annotationId === id && p.viewId === v.id);
-      const equal =
-        res?.state === 'ok' &&
-        res.value !== null &&
-        Math.abs(Math.abs(res.value) - Math.abs(d.value)) <= TOL[d.unit];
-      const shown = equal && showsValue(state.texts, Math.abs(d.value));
-      const met = id !== undefined && onView && equal && shown;
+      let ok: boolean;
+      let why: string;
+      if (d.kind === 'count') {
+        const n = Math.abs(d.value);
+        const re = new RegExp(`(^|\\s)${n}×`);
+        const on = extents.filter((e) => e.viewId === v.id && re.test(e.text));
+        ok = on.length > 0;
+        why = `no label on ${v.spec.caption} shows ${n}× (labels: ${extents
+          .filter((e) => e.viewId === v.id && /×/.test(e.text))
+          .map((e) => JSON.stringify(e.text))
+          .join(', ')})`;
+      } else {
+        const id = bound.get(d.name);
+        const res = state.resolutions.find((r) => r.id === id);
+        const onView = placements.some((p) => p.annotationId === id && p.viewId === v.id);
+        const tol = TOL[d.unit];
+        const equal =
+          res?.state === 'ok' &&
+          res.value !== null &&
+          Math.abs(Math.abs(res.value) - Math.abs(d.value)) <= tol &&
+          (res.measured === null || Math.abs(Math.abs(res.measured) - Math.abs(res.value)) <= tol);
+        const shown = equal && showsValue(state.texts, Math.abs(d.value));
+        ok = id !== undefined && onView && equal && shown;
+        why =
+          notes.get(d.name) ??
+          (id
+            ? `resolved ${res?.state} ${res?.value} (measured ${res?.measured}), on view ${onView}, shown ${shown}`
+            : 'not placed');
+      }
+      if (ok) met.push(d.name);
       if (gapNames.has(d.name)) {
-        expect(met, `${d.name} is listed as a product gap but now works: remove it from GAPS`).toBe(
+        expect(ok, `${d.name} is listed as a product gap but now works: remove it from GAPS`).toBe(
           false,
         );
         continue;
       }
-      if (!met) {
-        const why =
-          notes.get(d.name) ??
-          (id
-            ? `resolved ${res?.state} ${res?.value}, on view ${onView}, shown ${shown}`
-            : 'not placed');
-        unmet.push(`${d.name} (${d.kind} ${d.value} on ${v.spec.caption}): ${why}`);
-      }
+      if (!ok) unmet.push(`${d.name} (${d.kind} ${d.value} on ${v.spec.caption}): ${why}`);
     }
-    expect(unmet, 'specified dimensions missing from the recreated drawing').toEqual([]);
+    info.annotations.push({ type: 'met', description: met.join(', ') });
+    if (ALL) {
+      info.annotations.push({ type: 'errors', description: errors.join(' | ') });
+      info.annotations.push({
+        type: 'labels',
+        description: await (async () => {
+          const anns = (await app(page).doc()).parts[0]?.annotations ?? [];
+          return extents
+            .map((e) => {
+              const a = anns.find((x) => x.id === e.annotationId);
+              const r = state.resolutions.find((x) => x.id === e.annotationId);
+              return `${e.viewId.slice(-4)}:${JSON.stringify(e.text)}[${a?.kind} ${a?.refs.map((x) => `${x.kind}:${x.name.slice(-30)}`).join(',')} v=${r?.value} m=${r?.measured}]`;
+            })
+            .join(' ');
+        })(),
+      });
+      info.annotations.push({ type: 'unmet', description: unmet.join(' | ') });
+      info.annotations.push({
+        type: 'import',
+        description: imported.plan
+          .filter((r) => r.reason)
+          .map((r) => `${r.key} ${r.annotationKind}: ${r.reason} ${r.duplicateOf ?? ''}`)
+          .join(' | '),
+      });
+    } else expect(unmet, 'specified dimensions missing from the recreated drawing').toEqual([]);
 
-    // 3. Nothing needs attention, apart from the annotations the known import bugs leave.
+    // 3. Nothing needs attention.
     const bad = state.resolutions.filter((r) => r.state !== 'ok');
-    expect(
-      bad.length,
-      'annotations that need attention (known import bugs: see ATTENTION_BUGS)',
-    ).toBe(ATTENTION_BUGS[part.id]?.count ?? 0);
+    expect(bad, 'annotations that need attention').toEqual([]);
 
-    // 4. PENDING packages/drawing fix (dimension boxes overlapping other views, fixed in parallel):
-    // no dimension's text box may sit on a view other than the one it dimensions. The box is the
-    // text anchor from the placements hook with a generous size; it should pass once the fix merges.
-    const overlaps: string[] = [];
-    for (const p of placements) {
-      if (!p.text) continue;
+    // 4. No annotation is drawn over another view: its text boxes and its lines (dimension,
+    // extension and leader lines), as the display list draws them, stay off every other view's
+    // outline.
+    const crossing: string[] = [];
+    const who = (e: Extent) => `${e.annotationId} ${JSON.stringify(e.text)} (on ${e.viewId})`;
+    for (const e of extents)
       for (const s of state.views) {
-        if (s.id === p.viewId || !s.outline) continue;
-        const [x, y] = p.text;
-        const box = { x0: x - 4, x1: x + 4, y0: y - 2, y1: y + 2 };
-        if (
-          box.x1 > s.outline.min[0] &&
-          box.x0 < s.outline.max[0] &&
-          box.y1 > s.outline.min[1] &&
-          box.y0 < s.outline.max[1]
-        )
-          overlaps.push(`${p.annotationId} (on ${p.viewId}) overlaps view ${s.id}`);
+        if (s.id === e.viewId || !s.outline) continue;
+        const o = shrink(s.outline, 0.01);
+        if (e.texts.some((t) => overlaps(t, o))) crossing.push(`${who(e)}: text over view ${s.id}`);
+        else if (e.segments.some(([p, q]) => segmentInBox(p, q, o)))
+          crossing.push(`${who(e)}: a line over view ${s.id}`);
       }
-    }
-    expect
-      .soft(overlaps, 'PENDING overlap fix in packages/drawing: no dimension box over another view')
-      .toEqual([]);
+    expect(crossing, 'annotations drawn over another view').toEqual([]);
   });
 }
 
@@ -193,5 +272,3 @@ for (const part of PARTS) {
 for (const [id, gaps] of Object.entries(GAPS))
   for (const g of gaps)
     test.fixme(`M4 reference drawing ${id}: ${g.dims.join(', ')} (${g.what}): ${g.reason}`, () => {});
-for (const [id, b] of Object.entries(ATTENTION_BUGS))
-  test.fixme(`M4 reference drawing ${id}: nothing needs attention after Import: ${b.reason}`, () => {});

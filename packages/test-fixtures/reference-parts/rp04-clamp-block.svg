@@ -45,11 +45,11 @@
 <path d="M239.2 189.4 L240 191.8 L238.4 191.8 Z" fill="#111"/>
 <text data-dim="plate_t" data-value="16" x="240.4" y="202.2" text-anchor="start" font-size="3.2" font-family="monospace" fill="#111">plate_t = 16 mm</text>
 <line x1="164" y1="189.4" x2="178.8" y2="189.4" stroke="#444" stroke-width="0.2"/>
-<line x1="164" y1="157.4" x2="178.8" y2="157.4" stroke="#444" stroke-width="0.2"/>
-<line x1="180" y1="189.4" x2="180" y2="157.4" stroke="#111" stroke-width="0.25"/>
+<line x1="160.8" y1="147.8" x2="178.8" y2="147.8" stroke="#444" stroke-width="0.2"/>
+<line x1="180" y1="189.4" x2="180" y2="147.8" stroke="#111" stroke-width="0.25"/>
 <path d="M180 189.4 L179.2 187 L180.8 187 Z" fill="#111"/>
-<path d="M180 157.4 L180.8 159.8 L179.2 159.8 Z" fill="#111"/>
-<text data-dim="boss_h" data-value="20" x="181.2" y="173.4" text-anchor="start" font-size="3.2" font-family="monospace" fill="#111">boss_h = 20 mm</text>
+<path d="M180 147.8 L180.8 150.2 L179.2 150.2 Z" fill="#111"/>
+<text data-dim="boss_h" data-value="26" x="181.2" y="168.6" text-anchor="start" font-size="3.2" font-family="monospace" fill="#111">boss_h = 26 mm</text>
 <line x1="116" y1="157.4" x2="101.2" y2="157.4" stroke="#444" stroke-width="0.2"/>
 <line x1="116" y1="147.8" x2="101.2" y2="147.8" stroke="#444" stroke-width="0.2"/>
 <line x1="100" y1="157.4" x2="100" y2="147.8" stroke="#111" stroke-width="0.25"/>

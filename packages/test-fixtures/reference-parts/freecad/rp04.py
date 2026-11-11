@@ -17,7 +17,7 @@ def build(d):
     plate = plate.makeFillet(d["corner_r"], vertical)
     plate = plate.makeFillet(d["top_r"], edges_where(plate, lambda e: all_vertices_z(e, T)))
     plate = plate.makeChamfer(d["bot_c"], edges_where(plate, lambda e: all_vertices_z(e, 0)))
-    a, H = d["boss_d"] / 2, T + d["boss_h"] + d["boss_up"]
+    a, H = d["boss_d"] / 2, T + d["boss_h"]  # boss_h is the boss as built (the push included)
     body = plate.fuse(cyl(0, 0, T, a, H - T)).removeSplitter()
     circle = edges_where(body, lambda e: all_vertices_z(e, H) and abs(e.BoundBox.XLength - 2 * a) < 1e-6)
     return body.makeChamfer(d["boss_c"], circle)

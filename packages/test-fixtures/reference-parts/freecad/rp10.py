@@ -19,7 +19,7 @@ def build(d):
     mirrored = ear.mirror(V(0, 0, 0), V(1, 0, 0))
     body = fuse_all(plate, [ear, mirrored])
     slots = []
-    for k in range(int(d["slot_n"])):
+    for k in range(int(d["slot_n"]) + len(SKIP)):  # positions: slot_n slots plus the skipped one
         if k in SKIP:
             continue
         x = d["slot_x0"] + k * d["slot_pitch"]

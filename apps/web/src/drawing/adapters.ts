@@ -124,6 +124,8 @@ const REASON: Record<string, string> = {
   noGeometry: 'No geometry to place it on',
   duplicate: 'Measures the same as another annotation',
   layoutDoesNotFit: 'No room for it on a view, even after moving views apart',
+  zeroLength: 'Measures nothing: the two are at the same place along it',
+  differsFromModel: 'The model no longer has this value (a later feature changed it)',
 };
 
 function sourceName(part: Part, a: Annotation): string {
