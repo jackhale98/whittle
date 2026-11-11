@@ -313,8 +313,13 @@ export interface AnnotationPlacement {
   viewId: Id;
   annotationId: Id;
   layout: PlacementLayout;
-  /** Text shift along the dimension line from its auto-centred position, sheet mm (ADR-055 rules). */
-  text?: { shift?: number };
+  /**
+   * The dimension's text, moved by the user (ADR-094): `shift` along the dimension line from its
+   * auto-centred position, sheet mm (ADR-055 rules; beyond the extension lines the text sits
+   * outside with a short leader); `side` puts it above or below the dimension line (absent = the
+   * standard's default: ISO above, ASME in a break of the line).
+   */
+  text?: { shift?: number; side?: 'above' | 'below' | 'inline' };
   /** Witness (extension) lines: mirror to the other end; hide one or both. */
   witness?: { flip?: boolean; hide?: [boolean, boolean] };
   arrows?: 'auto' | 'inside' | 'outside';

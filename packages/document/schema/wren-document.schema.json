@@ -326,10 +326,18 @@
         },
         "text": {
           "additionalProperties": false,
-          "description": "Text shift along the dimension line from its auto-centred position, sheet mm (ADR-055 rules).",
+          "description": "The dimension's text, moved by the user (ADR-094): `shift` along the dimension line from its auto-centred position, sheet mm (ADR-055 rules; beyond the extension lines the text sits outside with a short leader); `side` puts it above or below the dimension line (absent = the standard's default: ISO above, ASME in a break of the line).",
           "properties": {
             "shift": {
               "type": "number"
+            },
+            "side": {
+              "enum": [
+                "above",
+                "below",
+                "inline"
+              ],
+              "type": "string"
             }
           },
           "type": "object"

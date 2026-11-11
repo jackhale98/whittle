@@ -3182,3 +3182,23 @@ The suite (`apps/web/e2e/m4-reference-drawings.spec.ts`) passes on all ten parts
 **Open (fixme, with ids):** GAP-PICK-CONSTRUCTION (centre lines and planes, the pitch circle, a pre-push/pull level: rp03 `flat_h`, rp04 `boss_up`, rp08 `cs_x` `cs_y`, rp09 `pcd`, rp10 `slot_x0`), GAP-PICK-SECTION (section cut-face edges have no name or face: rp05 `wall` `draft_a`, rp08 `tap_depth`, rp09 `hub_h`), GAP-PICK-TANGENT (rp06 `rod_h` `rod_tail`), GAP-PICK-HIDDEN (rp07 `inset`), GAP-PICK-OUTLINE-SPLINE (rp02 `fillet_r`: the torus outline on the spec's side is a B-spline), GAP-PICK-EXTREMES (rp09 `flange_d` as a linear dimension across a circle), GAP-TOOL-CENTRES (rp08 `tap_dx`: the Dimension tool makes a diameter on the first circle, so two centres cannot be picked in turn).
 
 **Proposals for the lead:** (1) the Dimension tool waits for a second pick after a circle (as it does after a line: "or the same circle again for its diameter"), which closes GAP-TOOL-CENTRES; (2) the drawing kernel names section cut-face edges by the model face they cut (GAP-PICK-SECTION); (3) centre lines and the sketch origin drawn as pickable construction geometry on the views (GAP-PICK-CONSTRUCTION).
+
+## ADR-094 — Drawing usability round after M4 (owner feedback, 2026-11-11)
+
+The owner tried M4 on the live site and reported five problems:
+1. There is no way to go from one sheet to another.
+2. Dimension text can't be moved, for example above or below the line.
+3. Dragging on the sheet is slow and jittery.
+4. Datums can only sit at a point; they must attach to surfaces and to features of size with leaders.
+5. A detail view's circle can't be resized after placing.
+
+**Contract.** `AnnotationPlacement.text.side` (`'above' | 'below' | 'inline'`) sits beside `shift`, so the text can be dragged along the dimension line (past the extension lines, where it gets a short leader) and to either side.
+
+**Datums.** They use the existing `LeaderAttach` forms. A datum on a surface is a leader from the face's edge in the view, with the triangle on the face line or an extension of it (ISO 5459, ASME Y14.5 §6). A datum on a feature of size attaches to that size dimension's line (`kind: 'dimensionLine'`), in line with the dimension.
+
+**Dragging.** A drag never writes to the store or rebuilds the drawing per pointer event:
+- the moved item is drawn as a transient overlay at display rate;
+- the sheet is rebuilt and committed once, on release (one undo step, coalesced);
+- the budget is 16 ms per frame on the tablet tier, with a perf probe.
+
+**Sheets.** Sheet tabs along the sheet edge on every tier: switch, add, rename, delete and reorder sheets, and move a view to another sheet. The phone is review-only and gets switching only.
