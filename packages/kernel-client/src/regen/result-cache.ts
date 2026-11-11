@@ -157,9 +157,14 @@ export class ResultCache {
         });
       }
     }
+    // The effective bound (ADR-084): with the automatic budget, the largest slot's.
+    let effective = this.maxSpare;
+    for (const bySlot of this.parts.values()) {
+      for (const pc of bySlot.values()) effective = Math.max(effective, this.spareFor(pc));
+    }
     return {
       limits: {
-        maxSpareResults: this.maxSpare,
+        maxSpareResults: effective,
         maxVersionSlots: this.maxSlots,
         importSpare: IMPORT_SPARE,
       },

@@ -231,16 +231,19 @@ describe.skipIf(!built)(`regen golden: cache and handles${skipNote}`, () => {
       }
       // 150 spare entries now: back to the first state is a hit only if all of them were kept.
       const back = await a.regenerate({ doc, partId: PART, quality: 'coarse' });
+      const limit = (await a.memoryStats()).regen.limits.maxSpareResults;
       await a.closePart(PART);
-      return back.cache;
+      return { ...back.cache, limit };
     };
     await api.closePart(PART);
-    expect(await undoAfterThreeEdits(api)).toEqual({ hits: 100, misses: 0 });
-    expect((await api.memoryStats()).regen.limits.maxSpareResults).toBe(128);
+    // The reported limit is the effective one: three states of the 100 entries.
+    expect(await undoAfterThreeEdits(api)).toEqual({ hits: 100, misses: 0, limit: 300 });
+    expect((await api.memoryStats()).regen.limits.maxSpareResults).toBe(128); // no part: the floor
     // A configured bound stays a hard bound: 128 keeps 128 of the 150.
     const bounded = await loadApi({ maxSpareResults: 128 });
     const cache = await undoAfterThreeEdits(bounded);
     expect(cache.misses).toBeGreaterThan(0);
+    expect(cache.limit).toBe(128);
     expect(cache.hits + cache.misses).toBe(100);
   }, 120_000);
 

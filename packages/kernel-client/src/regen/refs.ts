@@ -221,12 +221,14 @@ export async function resolveSub(
 
 /**
  * M3.8 `FeatureStatus.grown`: a ref that resolved by its exact name (or a merge alias) to a body
- * face or edge whose area / length is now more than `GROWN.ratio` times the stored fingerprint's,
- * and more than `GROWN.min` (mm², mm) larger: the name still holds, but it may now mean more than
- * was picked (a fillet edge that a face merge made 8 → 48 mm long). Report only, never a reason to
- * re-resolve. Vertices have no size; sketch regions and planes are left out (editing a sketch is
- * meant to change its regions). Only refs with a stored fingerprint are measured, from the
- * per-handle fingerprints (memoised in the kernel per sub-shape, ADR-084).
+ * face or edge that absorbed other names in this walk (a merge survivor, ADR-078) and whose area /
+ * length is now more than `GROWN.ratio` times the stored fingerprint's, and more than `GROWN.min`
+ * (mm², mm) larger: the name still holds, but a merge may have made it mean more than was picked
+ * (a fillet edge that the upright's merge made 8 → 48 mm long). Growth alone is not enough: a
+ * parameter edit (the bracket's width) grows faces as intended. Report only, never a reason to
+ * re-resolve. Vertices have no size; sketch regions and planes are left out. Only refs with a
+ * stored fingerprint are measured, from the per-handle fingerprints (memoised per sub-shape,
+ * ADR-084).
  */
 async function noteGrowth(
   core: EngineCore,
@@ -242,12 +244,22 @@ async function noteGrowth(
         ? ref.fingerprint?.length
         : undefined;
   if (was === undefined || !Number.isFinite(was) || !ctx.state.bodies.has(t.owner)) return;
+  if (!isMergeSurvivor(ctx.state, t.kind, t.name)) return;
   const fp = await core.fingerprints(t.shape);
   const now = t.kind === 'face' ? fp?.faces[t.index]?.area : fp?.edges[t.index]?.length;
   if (now === undefined || !Number.isFinite(now)) return;
   if (now > GROWN.ratio * Math.abs(was) && now - Math.abs(was) > GROWN.min) {
     ctx.current.grown.push({ path, name: ref.name, was, now });
   }
+}
+
+/** `name` absorbed another name of `kind` in this walk (it is a survivor in the merge table). */
+function isMergeSurvivor(state: ModelState, kind: SubKind, name: string): boolean {
+  const prefix = `${kind}|`;
+  for (const [key, survivors] of state.merged) {
+    if (key.startsWith(prefix) && survivors.includes(name)) return true;
+  }
+  return false;
 }
 
 /** `grown` threshold (M3.8): more than 1.5× the stored size and more than 1 mm² / 1 mm larger. */

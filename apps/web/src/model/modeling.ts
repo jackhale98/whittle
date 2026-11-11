@@ -195,6 +195,14 @@ export function createRegenLoop(options: RegenLoopOptions): RegenLoop {
   /** Mass properties by shape handle (never reused) and density, pruned to the latest bodies. */
   let massMemo = new Map<string, MassProperties>();
   const wantMass = options.onMass !== undefined && port.massProperties !== undefined;
+  /** The caller's density, `undefined` when it cannot say (a throwing resolver never breaks a regen). */
+  const densityOf = (doc: WrenDoc, partId: Id): number | undefined => {
+    try {
+      return options.density?.(doc, partId);
+    } catch {
+      return undefined;
+    }
+  };
   /** Ask for mass properties in the regen request (cheap for this part, see `onMass`). */
   let inlineMass = !wantMass;
 
@@ -237,7 +245,7 @@ export function createRegenLoop(options: RegenLoopOptions): RegenLoop {
       if (!stale) {
         lastDelivered = mySeq;
         lastRevision.set(result.partId, result.revision);
-        const density = options.density?.(doc, result.partId);
+        const density = densityOf(doc, result.partId);
         const outcome = { result: withKnownMass(result, massMemo, density), quality, doc };
         // The memo follows the latest bodies (inline mass properties included).
         const memo = new Map<string, MassProperties>();
@@ -260,7 +268,7 @@ export function createRegenLoop(options: RegenLoopOptions): RegenLoop {
     if (!port.massProperties) return;
     busy = true;
     try {
-      const density = options.density?.(o.doc, o.result.partId);
+      const density = densityOf(o.doc, o.result.partId);
       const memo = new Map<string, MassProperties>();
       let spent = 0;
       let fetched = 0;
@@ -276,7 +284,8 @@ export function createRegenLoop(options: RegenLoopOptions): RegenLoop {
         // A new edit goes first; the rest waits for the next idle moment.
         if (dirty || disposed) break;
         const t0 = performance.now();
-        const r = await port.massProperties?.(b.shape, density);
+        // A rejected call (worker gone) counts as a failed fetch: the result still settles.
+        const r = await port.massProperties?.(b.shape, density).catch(() => null);
         spent += performance.now() - t0;
         fetched++;
         if (r?.ok) memo.set(key, r.value);
@@ -290,7 +299,9 @@ export function createRegenLoop(options: RegenLoopOptions): RegenLoop {
       });
       options.onMass?.({ ...o, result: { ...o.result, bodies } });
     } catch {
-      // Informational only: the inspector shows no mass until the next result.
+      // Informational only. Still settle this result (no mass shown), so no readout stays
+      // "Calculating…" for ever.
+      if (!disposed && !dirty) options.onMass?.(o);
     } finally {
       busy = false;
     }
