@@ -3116,3 +3116,7 @@ Kernel-client fixes for GAP-ORIGIN, GAP-EXTRUDE-DEPTH and counts. No contract ch
 
 **Not changed**
 - A full 360° revolve has no `F<id>:start` / `F<id>:end`. The promoted revolve angle on rp02, rp03 and rp09 stays unresolved. The planner should not promote it, which is drawing work.
+
+### ADR-090 amendment: lead decisions on counts and rp04 (2026-11-11)
+- **Counts are instance counts.** An `N×` prefix counts the instances that exist in the final model; skipped pattern positions are not instances. A "4×" beside three holes would make the drawing false. Where the reference specs list the pattern setting instead (rp08 `tap_n` 4, rp09 `bolt_n` 8, rp10 `slot_n` 6), the certification round checks the spec SVG. If the SVG shows fewer holes, the spec value is corrected to the visible count. If the SVG shows all of them, the part builder is skipping positions it shouldn't, and the builder is corrected.
+- **rp04 `boss_h`.** The promoted depth stays honest: value 20, measured 26, flagged "differs from the model". The model has no face 20 mm above the plate, so the anchor is never moved to agree. The certification round decides which is wrong, the spec (20) or the builder's push/pull (+6), from the spec drawing and the FreeCAD reference mass. The wrong side is corrected; the check is not relaxed.
