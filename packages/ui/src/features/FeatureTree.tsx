@@ -22,6 +22,7 @@ import {
   effectiveSketchShown,
   folderOf,
   folderRange,
+  isReferenceType,
   membershipAfterMove,
   planBlockMove,
   planFolderMove,
@@ -55,10 +56,13 @@ export interface FeatureTreeItem {
   type: FeatureType;
   name: string;
   suppressed: boolean;
-  /** Sketches only: the document's `visibility` (absent = `'auto'`). */
+  /**
+   * Sketches and reference geometry (plane, axis, point; ADR-093): the document's `visibility`
+   * (absent = `'auto'`: sketches follow the consumed rule, reference geometry is shown).
+   */
   visibility?: SketchVisibilityMode;
   /**
-   * Sketches only: whether the viewport shows it. Pass it when the app resolves visibility itself
+   * Sketches and reference geometry: whether the viewport shows it. Pass it when the app resolves visibility itself
    * (ADR-060: it also counts a revolve axis as consumed). Otherwise the tree computes it from
    * `visibility` and the features that use the sketch.
    */
@@ -749,7 +753,10 @@ export function FeatureTree({
   const sketchesIn = (ids: readonly Id[]) =>
     ids.filter((id) => features[indexOf.get(id) ?? -1]?.type === 'sketch');
   const isShown = (f: FeatureTreeItem) =>
-    f.shown ?? effectiveSketchShown(f.visibility, consumers.has(f.id));
+    f.shown ??
+    (isReferenceType(f.type)
+      ? f.visibility !== 'hidden'
+      : effectiveSketchShown(f.visibility, consumers.has(f.id)));
 
   /* ----------------------------------------------------------- row keyboard */
   function rowKey(e: KeyboardEvent<HTMLDivElement>, row: TreeRow) {
@@ -1003,7 +1010,9 @@ export function FeatureTree({
     const suppressed = f.suppressed || status?.state === 'suppressed';
     const selected = effective.includes(f.id);
     const isSketch = f.type === 'sketch';
-    const shown = isSketch ? isShown(f) : false;
+    const isReference = isReferenceType(f.type);
+    const hasEye = isSketch || isReference;
+    const shown = hasEye ? isShown(f) : false;
     const stateText = [
       suppressed ? 'suppressed' : '',
       rolled ? 'rolled back' : '',
@@ -1018,7 +1027,7 @@ export function FeatureTree({
     ]
       .filter(Boolean)
       .join(', ');
-    const auto = f.visibility === undefined || f.visibility === 'auto';
+    const auto = !isReference && (f.visibility === undefined || f.visibility === 'auto');
     const suppressOverridden = !!configuration?.overriddenSuppression?.includes(f.id);
     const hidden = [
       `${meta.label}${stateText ? `, ${stateText}` : ''}.`,
@@ -1027,7 +1036,7 @@ export function FeatureTree({
       suppressOverridden
         ? `Suppression overridden in ${configuration?.activeName ?? 'this configuration'}.`
         : '',
-      isSketch && onSketchVisibility
+      hasEye && onSketchVisibility
         ? `${shown ? 'Shown' : 'Hidden'} in the viewport${auto ? ' (automatic)' : ''}.`
         : '',
       row.folderId ? `In the folder ${folderName(row.folderId)}.` : '',
@@ -1118,7 +1127,8 @@ export function FeatureTree({
           hidden={hidden}
           onSelect={onSelect}
           shared={shared}
-          isSketch={isSketch}
+          hasEye={hasEye}
+          isReference={isReference}
           onSketchVisibility={onSketchVisibility}
           shown={shown}
           setFocusKey={setFocusKey}

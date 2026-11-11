@@ -7,7 +7,12 @@ import { TOOL_NEEDS } from '../features/factories';
 import { sketchShown, type VisibilityContext } from '../model/sketch-visibility';
 import type { Workbench } from './workbench';
 
+let referenceSync: Promise<typeof import('./reference-sync')> | null = null;
+
 export function refreshSketchVisibility(wb: Workbench): void {
+  // The reference drawing and picking code is split off the initial route (ADR-093).
+  referenceSync ??= import('./reference-sync');
+  void referenceSync.then((m) => m.syncReferences(wb));
   const part = wb.part;
   const u = wb.ui.get();
   const pickKinds = wb.pickAccepts()?.kinds ?? [];

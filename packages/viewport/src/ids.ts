@@ -160,3 +160,10 @@ export function deriveVertices(
   }
   return Float32Array.from(out);
 }
+
+/**
+ * `PickHit.entity` / `HighlightItem.entity` of reference geometry (ADR-093). The hit bodyId is the
+ * persistent name (F<id>:plane, F<id>:axis, F<id>:point, origin:XY, origin:X, ...) and its kind is
+ * face / edge / vertex, so the app maps it to an EntityRef without asking the kernel.
+ */
+export const REFERENCE_ENTITY = 'reference';

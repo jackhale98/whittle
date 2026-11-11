@@ -146,6 +146,8 @@ function repairFolders(doc: Obj): void {
 
 const LENGTH_UNITS = ['mm', 'cm', 'm', 'in', 'ft'];
 const ANGLE_UNITS = ['deg', 'rad'];
+/** Feature types that carry `visibility`: sketches and reference geometry (ADR-093). */
+const VISIBILITY_TYPES = ['sketch', 'plane', 'axis', 'point'];
 const SKETCH_VISIBILITY = ['auto', 'shown', 'hidden'];
 
 /** Human-readable problems; empty when the document is structurally sound. */
@@ -293,8 +295,9 @@ function validatePart(
     id(f.id, `${fa}.id`);
     str(f.name, `${fa}.name`);
     if (f.visibility !== undefined) {
-      if (f.type !== 'sketch') errs.push(`${fa}.visibility is only valid on sketches`);
-      else if (!SKETCH_VISIBILITY.includes(f.visibility as string)) {
+      if (!VISIBILITY_TYPES.includes(f.type as string)) {
+        errs.push(`${fa}.visibility is only valid on sketches and reference geometry`);
+      } else if (!SKETCH_VISIBILITY.includes(f.visibility as string)) {
         errs.push(`${fa}.visibility must be one of ${SKETCH_VISIBILITY.join(', ')}`);
       }
     }

@@ -11,7 +11,13 @@ import {
   Trash2,
 } from 'lucide-react';
 import type { MenuItem } from '../components/floating';
-import { canFolder, folderRange, type TreeFolder, toggledVisibility } from '../logic/treeFolders';
+import {
+  canFolder,
+  folderRange,
+  isReferenceType,
+  type TreeFolder,
+  toggledVisibility,
+} from '../logic/treeFolders';
 import { type allowedRollbacks, snapRollback } from '../logic/treeNesting';
 import { folderKey } from '../logic/treeRows';
 import type { FeatureTreeItem, FeatureTreeProps } from './FeatureTree';
@@ -164,7 +170,7 @@ export function menuItems(c: MenuCtx, id: Id, i: number): MenuItem[] {
       icon: f.suppressed ? <Eye className="size-4" /> : <EyeOff className="size-4" />,
       onSelect: () => onSuppress(id, !f.suppressed),
     });
-  if (onSketchVisibility && f.type === 'sketch') {
+  if (onSketchVisibility && (f.type === 'sketch' || isReferenceType(f.type))) {
     const shown = isShown(f);
     items.push({
       id: 'viewport',
@@ -172,7 +178,7 @@ export function menuItems(c: MenuCtx, id: Id, i: number): MenuItem[] {
       icon: shown ? <EyeOff className="size-4" /> : <Eye className="size-4" />,
       onSelect: () => onSketchVisibility([id], toggledVisibility(shown)),
     });
-    if (!c.review && (f.visibility === 'shown' || f.visibility === 'hidden'))
+    if (f.type === 'sketch' && !c.review && (f.visibility === 'shown' || f.visibility === 'hidden'))
       items.push({
         id: 'viewport-auto',
         label: 'Reset to automatic',

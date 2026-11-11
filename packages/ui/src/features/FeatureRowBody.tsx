@@ -55,7 +55,8 @@ export function FeatureRowBody({
   hidden,
   onSelect,
   shared,
-  isSketch,
+  hasEye,
+  isReference,
   onSketchVisibility,
   shown,
   setFocusKey,
@@ -95,7 +96,9 @@ export function FeatureRowBody({
   hidden: string;
   onSelect: FeatureTreeProps['onSelect'];
   shared: number;
-  isSketch: boolean;
+  /** The row has a viewport eye: a sketch, or reference geometry. */
+  hasEye: boolean;
+  isReference: boolean;
   onSketchVisibility: FeatureTreeProps['onSketchVisibility'];
   shown: boolean;
   setFocusKey(key: string): void;
@@ -287,8 +290,9 @@ export function FeatureRowBody({
           aria-hidden
         />
       ) : null}
-      {isSketch && onSketchVisibility ? (
+      {hasEye && onSketchVisibility ? (
         <SketchEye
+          reference={isReference}
           name={f.name}
           shown={shown}
           visibility={f.visibility}

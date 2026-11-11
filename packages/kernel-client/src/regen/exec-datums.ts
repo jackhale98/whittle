@@ -143,6 +143,7 @@ export async function planPlane(
     ? { ...f, definition: { kind: 'frame', frame: computed } }
     : { ...f };
   delete kernelFeature.flip;
+  delete kernelFeature.visibility;
   const flipAfter = !computed && f.flip === true;
   const key = hashKey({
     t: 'plane',

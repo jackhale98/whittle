@@ -214,6 +214,7 @@ export function renderOnce(vp: ViewportImpl): void {
     p11,
     heightCss,
   );
+  vp.references.size(p11, heightCss);
   for (const h of vp.handles.values()) {
     h.place(worldPerPixel(depthOf(vp, h.origin), p11, heightCss));
   }

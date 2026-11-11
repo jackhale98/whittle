@@ -256,6 +256,11 @@ export function effectiveSketchShown(
   return !consumed;
 }
 
+/** Plane, axis and point features: reference geometry with a viewport eye (ADR-093). */
+export function isReferenceType(type: string): boolean {
+  return type === 'plane' || type === 'axis' || type === 'point';
+}
+
 /** The explicit value a click on the eye writes: the opposite of what is shown now. */
 export function toggledVisibility(shown: boolean): 'shown' | 'hidden' {
   return shown ? 'hidden' : 'shown';

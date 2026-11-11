@@ -139,6 +139,7 @@ export function setTheme(vp: ViewportImpl, theme: 'light' | 'dark'): void {
   applyPalette(vp);
   for (const e of vp.bodies.values()) applyDisplay(vp, e);
   vp.cube?.setColors(vp.ui);
+  vp.references.rebuild();
   rebuildHighlights(vp);
   for (const [id, s] of [...vp.sketches]) vp.setSketch(id, s.overlay);
   for (const [id, g] of [...vp.ghosts]) rebuildGhostColors(vp, id, g);
@@ -328,6 +329,7 @@ export function updateSceneBounds(vp: ViewportImpl): void {
     .multiplyScalar(vp.sceneRadius * 6)
     .add(new Vector3(cx, cy, 0));
   placeCaps(vp);
+  vp.references.sceneChanged();
 }
 
 export function applyPalette(vp: ViewportImpl): void {

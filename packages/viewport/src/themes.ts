@@ -59,6 +59,8 @@ export interface OverlayColors {
   borderStrong: string;
   fg: string;
   fgMuted: string;
+  /** Reference planes, axes and points (ADR-093). */
+  reference: string;
 }
 
 export const OVERLAY_COLORS: Readonly<Record<'light' | 'dark', OverlayColors>> = {
@@ -74,6 +76,7 @@ export const OVERLAY_COLORS: Readonly<Record<'light' | 'dark', OverlayColors>> =
     borderStrong: '#76839a',
     fg: '#0f1729',
     fgMuted: '#46536b',
+    reference: '#0f766e',
   },
   dark: {
     accent: '#5b9bff',
@@ -87,6 +90,7 @@ export const OVERLAY_COLORS: Readonly<Record<'light' | 'dark', OverlayColors>> =
     borderStrong: '#6e7a93',
     fg: '#e8ecf4',
     fgMuted: '#a5b0c5',
+    reference: '#2dd4bf',
   },
 };
 

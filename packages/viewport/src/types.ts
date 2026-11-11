@@ -8,6 +8,41 @@ export interface CameraState {
   distance: number;
 }
 
+/** A reference frame; `z` is a plane's normal and an axis' direction. */
+export interface ReferenceFrame {
+  origin: Vec3;
+  x: Vec3;
+  y: Vec3;
+  z: Vec3;
+}
+
+/**
+ * Reference geometry to draw and pick (ADR-093). `name` is the persistent name (`F<id>:plane`,
+ * `F<id>:axis`, `F<id>:point`, `origin:XY`, …); picks and highlights use it as their `bodyId`.
+ * Planes are a square of half-size `extent`; axes run over `[-extent, extent]` along `frame.z`.
+ */
+export interface ViewportReference {
+  name: string;
+  kind: 'plane' | 'axis' | 'point';
+  /** Small label next to it (the feature's name). */
+  label?: string;
+  frame: ReferenceFrame;
+  extent: number;
+  /** An origin plane / axis / point (set by the viewport's own origin toggle). */
+  origin?: boolean;
+}
+
+/** Diagnostics for tests (the `__viewport` probe). */
+export interface ReferenceStats {
+  planes: number;
+  axes: number;
+  points: number;
+  /** The origin planes and axes are drawn (`setOriginReferences(true)`). */
+  originShown: boolean;
+  /** Names of everything drawn and pickable, origin ones included. */
+  names: string[];
+}
+
 export interface ViewportEngineOptions extends ViewportOptions {
   /** Render the view cube in the canvas' top-right corner. Default true. */
   viewCube?: boolean;
@@ -56,6 +91,14 @@ export interface ViewportEngine extends CompareViewport {
   /** Canvas px covered by floating chrome; fits frame the model in the rest. */
   setFrameInsets(insets: Partial<FrameInsets>): void;
   getCompareStats(): CompareStats;
+  /**
+   * Reference planes, axes and points (ADR-093), replacing the previous set. Pass only what is
+   * shown: what is not passed is neither drawn nor pickable. Drawn after the bodies, no depth write.
+   */
+  setReferences(refs: readonly ViewportReference[]): void;
+  /** Draw the world origin planes and axes (a per-device view toggle; the sketch plane chooser shows them). */
+  setOriginReferences(show: boolean): void;
+  getReferenceStats(): ReferenceStats;
   /** Live material state of a body (tests: ghosting is restored exactly on `setCompare(null)`). */
   getBodyMaterialState(id: string): BodyMaterialState | null;
   readonly canvas: HTMLCanvasElement;

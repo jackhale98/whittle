@@ -74,7 +74,7 @@ import { planSketch } from './exec-sketch';
 import { planSolid, planSweepLoft } from './exec-solids';
 import { hashKey } from './hash';
 import { allBodiesFor, copiedFeatures, kerr, meshOnlyError } from './helpers';
-import { bodyResult, densityOf, sketchResult } from './outputs';
+import { bodyResult, densityOf, referenceResults, sketchResult } from './outputs';
 import { absorbedInto, fingerprintOf, rememberAbsorbed } from './refs';
 import {
   capitalise,
@@ -685,6 +685,7 @@ export class RegenEngine {
       const out = await bodyResult(this.core, b, request.quality, wantMass, density);
       if (out) bodies.push(out);
     }
+    const references = await referenceResults(this.core, part, ctx.state, finalBodies);
     const sketches: SketchResult[] = [];
     for (const s of ctx.state.sketches.values()) {
       sketches.push(await sketchResult(this.core, s, request.quality));
@@ -734,6 +735,7 @@ export class RegenEngine {
       cache: { hits: ctx.hits, misses: ctx.misses },
     };
     if (ghosts && ghosts.length > 0) result.ghosts = ghosts;
+    if (references.length > 0) result.references = references;
     if (annotations) result.annotations = annotations;
     return result;
   }

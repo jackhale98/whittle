@@ -3,7 +3,7 @@ import { BufferGeometry, Group } from 'three/webgpu';
 import { HANDLE_PICK_PAD_PX } from './constants';
 import { meshBuffersToGeometry } from './geometry';
 import { ArrowHandle, worldPerPixel } from './handles';
-import { faceDrawRange } from './ids';
+import { faceDrawRange, REFERENCE_ENTITY } from './ids';
 import { type PreviewEntry, sameFaces } from './internal';
 import {
   type Dot,
@@ -68,6 +68,11 @@ export function addHighlight(
   order: number,
 ): void {
   const ui = vp.ui;
+  if (item.entity === REFERENCE_ENTITY) {
+    // Reference geometry (ADR-093): the plane / axis / point, in the accent colour.
+    vp.references.highlight(item, style.edge, style.fill, style.width, order);
+    return;
+  }
   const onTopSketch = vp.sketches.get(item.bodyId)?.overlay.active === true;
   if (item.kind === 'face') {
     const e = vp.bodies.get(item.bodyId);
