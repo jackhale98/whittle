@@ -5,6 +5,7 @@
 import type { Id, ProjectFiles, Vec3, WrenDoc } from '@wren-cad/contracts';
 import { ulid } from '@wren-cad/document';
 import type { ExportRequest } from '@wren-cad/ui';
+import { ensureDrawingSupport } from '../doc/drawing-support';
 import type { OpenedFile, ProjectBundle } from '../doc/library';
 import { pruneAttachments as pruneAttachmentFiles, savedExtra } from '../model/attachments';
 import { IMPORT_EXTENSIONS, importFeature, importFormat } from '../model/import';
@@ -258,6 +259,7 @@ export async function openBytes(
   if (/\.(wrencad|whittle)$/i.test(name)) {
     try {
       const { fromWrenBytes } = await import('../doc/library');
+      await ensureDrawingSupport();
       await wb.openProject(fromWrenBytes(bytes));
     } catch (e) {
       wb.toast(e instanceof Error ? e.message : 'That file could not be read', 'error');

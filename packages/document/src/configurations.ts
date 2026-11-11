@@ -30,7 +30,7 @@ import {
   ANNOTATION_CONFIGURABLE_OPTIONS,
   annotationExprFields,
   annotationOptionAt,
-} from './annotations';
+} from './annotation-fields';
 import { exprFields } from './features';
 import { HOLE_TABLES } from './hole-tables';
 import { applyPatch, diff, existsAt, getAt, parsePointer } from './patch';

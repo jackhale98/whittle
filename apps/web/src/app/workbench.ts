@@ -52,6 +52,7 @@ import {
   type ToolId,
 } from '@wren-cad/ui';
 import { type Autosaver, createAutosaver } from '../doc/autosave';
+import { ensureDrawingSupport } from '../doc/drawing-support';
 import type { DocLibrary, OpenedFile, ProjectBundle } from '../doc/library';
 import {
   contextFeatureTools,
@@ -351,6 +352,9 @@ export class Workbench {
       }
     }
     this.ui.set((u) => ({ ...u, ready: true }));
+    // Annotations and drawings are a separate chunk; fetch it once the screen is up (a stored
+    // document that needs it already waited for it in the library).
+    void ensureDrawingSupport().catch(() => undefined);
     if (bundle) this.persistedDoc = this.doc;
     this.projectOpened();
     this.loop?.request();

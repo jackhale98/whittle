@@ -11,16 +11,15 @@ import type {
   WrenDoc,
 } from '@wren-cad/contracts';
 import { describe, expect, it } from 'vitest';
+import { createDocumentStore, validateDoc } from '../src';
 import {
-  createDocumentStore,
   drawingContentIds,
   normalizeDrawings,
   planDuplicateDrawing,
   remapDrawing,
   resolveViewFrame,
   resolveViewPosition,
-  validateDoc,
-} from '../src';
+} from '../src/drawing';
 import { id, ref, sampleDoc, sampleDrawing, style } from './fixtures';
 
 const D = id(5);

@@ -7,7 +7,8 @@
   "type": "module",
   "description": "Wren document model: expression engine with units, JSON-patch store with undo/redo, canonical project serialisation, materials. Worker-safe (no DOM).",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./drawing": "./src/drawing.ts"
   },
   "scripts": {
     "typecheck": "tsc -p .",

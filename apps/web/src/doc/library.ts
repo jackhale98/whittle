@@ -17,6 +17,7 @@ import {
   openLibrary,
   saveFile,
 } from '@wren-cad/io/browser';
+import { ensureDrawingSupport } from './drawing-support';
 
 export interface ProjectBundle {
   doc: WrenDoc;
@@ -43,6 +44,7 @@ export interface DocLibrary {
 }
 
 export async function createDocLibrary(): Promise<DocLibrary> {
+  await ensureDrawingSupport();
   const lib = await openLibrary({ codec: projectCodec });
   const open = async (id: string): Promise<ProjectBundle> => {
     const r = await lib.open(id);

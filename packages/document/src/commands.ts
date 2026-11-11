@@ -25,12 +25,11 @@ import type {
   SketchFeature,
   WrenDoc,
 } from '@wren-cad/contracts';
-import { compileAnnotationCommand } from './annotation-commands';
-import { annotationExprFields, annotationProblems } from './annotations';
+import { annotationExprFields } from './annotation-fields';
 import { type Compiled, err, usedIds } from './command-support';
 import { compileConfigCommand } from './config-commands';
 import { configurationPruneOps } from './configurations';
-import { compileDrawingCommand } from './drawing-commands';
+import { DRAWING_SUPPORT_MISSING, drawingSupport } from './drawing-hooks';
 import { validateParamName } from './expressions';
 import { exprFields, featureReferences } from './features';
 import { folderOps, foldersAfterPlace, foldersAfterRemove, normalizeFolders } from './folders';
@@ -64,14 +63,16 @@ export function renameInExpr(expr: string, from: string, to: string): string {
 type M4Command = Extract<Command, { kind: AnnotationCommand['kind'] | DrawingCommand['kind'] }>;
 
 function compileM4Command(doc: WrenDoc, cmd: M4Command): Compiled {
+  const support = drawingSupport();
+  if (!support) return err(DRAWING_SUPPORT_MISSING);
   switch (cmd.kind) {
     case 'addAnnotation':
     case 'updateAnnotation':
     case 'removeAnnotation':
     case 'reattachAnnotation':
-      return compileAnnotationCommand(doc, cmd, usedIds(doc));
+      return support.compileAnnotationCommand(doc, cmd, usedIds(doc));
     default:
-      return compileDrawingCommand(doc, cmd, usedIds(doc));
+      return support.compileDrawingCommand(doc, cmd, usedIds(doc));
   }
 }
 
@@ -101,8 +102,9 @@ export function compileCommand(doc: WrenDoc, cmd: Command): Compiled {
         return err('The part’s active configuration does not exist');
       }
       const seenAnnotations = new Set<string>();
+      if (part.annotations?.length && !drawingSupport()) return err(DRAWING_SUPPORT_MISSING);
       for (const a of part.annotations ?? []) {
-        const bad = annotationProblems(a);
+        const bad = drawingSupport()?.annotationProblems(a) ?? [];
         if (bad.length > 0) return err(`Invalid annotation: ${bad[0]}`);
         if (seenAnnotations.has(a.id) || usedIds(doc).has(a.id)) {
           return err(`The id ‘${a.id}’ is already in use`);

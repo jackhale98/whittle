@@ -19,7 +19,7 @@ import type {
   PartProperties,
   WrenDoc,
 } from '@wren-cad/contracts';
-import { annotationExprFields, annotationOptionAt, describeAnnotation } from './annotations';
+import { annotationExprFields, annotationOptionAt, describeAnnotation } from './annotation-fields';
 import type { Compiled } from './commands';
 import {
   CONFIGURABLE_OPTIONS,
