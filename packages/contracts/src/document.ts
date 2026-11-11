@@ -269,7 +269,7 @@ export interface SketchFeature extends FeatureBase {
   visibility?: SketchVisibility;
 }
 
-/** See `SketchFeature.visibility`. */
+/** See `SketchFeature.visibility` (sketches) and `PlaneFeature.visibility` (reference geometry). */
 export type SketchVisibility = 'auto' | 'shown' | 'hidden';
 
 /**
@@ -383,6 +383,11 @@ export interface PlaneFeature extends FeatureBase {
     | { kind: 'throughPoint'; from: EntityRef; point: EntityRef };
   /** Flip the plane normal (and so the sketch's orientation on it). */
   flip?: boolean;
+  /**
+   * Viewport visibility of reference geometry (ADR-093). Absent or `'auto'` = shown (reference
+   * geometry is not consumed away like a sketch); `'hidden'` hides it on every shell, persisted.
+   */
+  visibility?: SketchVisibility;
 }
 
 // ---- M3: reference geometry ----------------------------------------------------------------
@@ -399,6 +404,11 @@ export interface AxisFeature extends FeatureBase {
     | { kind: 'twoPlanes'; a: EntityRef; b: EntityRef }
     /** Through a point, normal to a plane. */
     | { kind: 'pointNormal'; point: EntityRef; plane: EntityRef };
+  /**
+   * Viewport visibility of reference geometry (ADR-093). Absent or `'auto'` = shown (reference
+   * geometry is not consumed away like a sketch); `'hidden'` hides it on every shell, persisted.
+   */
+  visibility?: SketchVisibility;
 }
 
 /** A construction point (sketch references, measure, axes and planes). */
@@ -411,6 +421,11 @@ export interface PointFeature extends FeatureBase {
     | { kind: 'center'; of: EntityRef }
     | { kind: 'alongEdge'; edge: EntityRef; t: Expr }
     | { kind: 'intersection'; a: EntityRef; b: EntityRef };
+  /**
+   * Viewport visibility of reference geometry (ADR-093). Absent or `'auto'` = shown (reference
+   * geometry is not consumed away like a sketch); `'hidden'` hides it on every shell, persisted.
+   */
+  visibility?: SketchVisibility;
 }
 
 // ---- M3: modelling features ----------------------------------------------------------------

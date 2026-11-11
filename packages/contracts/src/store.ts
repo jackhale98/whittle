@@ -76,7 +76,10 @@ export type Command =
   /** Several features at once, one undo entry (a folder's "Suppress all"). */
   | { kind: 'setSuppressedMany'; partId: Id; featureIds: Id[]; suppressed: boolean }
   | { kind: 'setRollback'; partId: Id; index: number }
-  /** `'auto'` restores the consumed-sketch default. Non-sketch ids are ignored. */
+  /**
+   * Sketches and reference geometry (plane, axis, point features; ADR-093). `'auto'` restores the
+   * default: consumed sketches hidden, reference geometry shown. Other ids are ignored.
+   */
   | {
       kind: 'setSketchVisibility';
       partId: Id;

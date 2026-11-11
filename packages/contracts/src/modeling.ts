@@ -183,6 +183,8 @@ export interface RegenResult {
   cache: { hits: number; misses: number };
   /** Last all-ok geometry of bodies that differ now while some feature fails (PLAN §9.2 ghost). */
   ghosts?: BodyResult[];
+  /** ADR-093: evaluated reference planes, axes and points (suppressed and failed ones omitted). */
+  references?: ReferenceResult[];
   /** M4: one resolution per annotation of the part, in this slot (see `RegenRequest.annotations`). */
   annotations?: AnnotationResolution[];
 }
@@ -269,6 +271,19 @@ export interface ShapeForDrawing {
   faceNames: string[];
   /** Part 3D bounding box (ADR-084 cheap bounds), for view centring. */
   bounds: { min: Vec3; max: Vec3 };
+}
+
+/**
+ * Reference geometry for display and picking (ADR-093): one per evaluated plane, axis or point
+ * feature, in its final position. Planes: `frame.z` is the normal, `extent` the half-size of the
+ * square drawn (mm, sized to the part); axes: `frame.origin` + `frame.z`, drawn over
+ * `[-extent, extent]`; points: `frame.origin`. Persistent names: `F<id>:plane` / `:axis` / `:point`.
+ */
+export interface ReferenceResult {
+  featureId: Id;
+  kind: 'plane' | 'axis' | 'point';
+  frame: { origin: Vec3; x: Vec3; y: Vec3; z: Vec3 };
+  extent: number;
 }
 
 /** Answers "what is under the cursor" in persistent terms for selection → EntityRef. */

@@ -3012,3 +3012,22 @@ The route now runs the drawing worker of `@wren-cad/kernel/drawing` (ADR-090 ame
 - `hole-anchors.ts` stays: kernel-client's hole callout resolution still has no `anchors` at this commit.
 
 **Tests (E2E, real kernel)**: the bracket's top view has at least four whole circles of radius 3 (the Ø6 holes), named after their model edge, no polylines in exact output; a section has `sectionFaces` with synthetic ids and hatch lines on the sheet; PDF and DXF come from the exact build, and the R2000 file has `CIRCLE` entities of radius 3; the phone review shows the same exact circles.
+
+## ADR-093 — Reference geometry is drawn in the view, with a visibility toggle (2026-11-11)
+
+**Owner report:** a reference plane made in the model view "isn't shown at all", and it should be possible to toggle whether it is visible.
+
+**Cause:** the regen evaluates plane, axis and point features internally, for sketches and references, but never returned them, so the viewport had nothing to draw.
+
+**Decisions:**
+- **Regen output:** `RegenResult.references: ReferenceResult[]`, one per evaluated plane, axis or point feature. Each carries its final frame and a display `extent` in mm, sized to the part. Suppressed and failed features are left out.
+- **Drawing:**
+  - Planes are a translucent square with an outline and a name label, tinted with the reference-geometry token.
+  - Axes are dash-dot lines; points are small crosshair dots.
+  - They are drawn after the bodies, with no depth write, so they never hide geometry.
+  - They are pickable as `F<id>:plane`, `F<id>:axis` and `F<id>:point`: sketch on a plane, use an axis for revolves and patterns, measure.
+- **Visibility:**
+  - Plane, axis and point features gain the sketches' `visibility` field. Absent or `'auto'` means shown, because reference geometry is not consumed away the way a profile sketch is. `'hidden'` persists in the document.
+  - The existing `setSketchVisibility` command now also covers reference geometry, so the tree's eye toggle works the same for both. No new command.
+- **Origin planes and axes** (XY, YZ, ZX and the X, Y, Z axes) are a per-device view toggle, not stored in the document. They are hidden by default and shown while the sketch plane chooser is open.
+- **No backward compatibility** is needed (owner, 2026-11-11).
