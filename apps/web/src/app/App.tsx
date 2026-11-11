@@ -123,6 +123,12 @@ export function App({ wb }: { wb: Workbench }) {
         hint: 'Edit the keymap',
         run: () => wb.openSettings('keyboard'),
       },
+      {
+        id: 'radial-settings',
+        label: 'Radial menu settings',
+        hint: 'Choose what the right-click wheel offers',
+        run: () => wb.openSettings('radial'),
+      },
       { id: 'welcome', label: 'Welcome / samples', run: () => wb.patchUi({ welcome: true }) },
       {
         id: 'tour',

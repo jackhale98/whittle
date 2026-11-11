@@ -17,6 +17,7 @@ import { useEffect, useRef, useState } from 'react';
 import { APP_COMMANDS } from '../app/input';
 import { useObservable } from '../app/observable';
 import type { Workbench } from '../app/workbench';
+import { RadialSettings } from './RadialSettings';
 
 export default function SettingsPanel({ wb, touch }: { wb: Workbench; touch: boolean }) {
   const ui = useObservable(wb.ui);
@@ -79,6 +80,7 @@ export default function SettingsPanel({ wb, touch }: { wb: Workbench; touch: boo
           options={[
             { value: 'navigation', label: 'Navigation' },
             { value: 'keyboard', label: 'Keyboard' },
+            { value: 'radial', label: 'Radial menu' },
           ]}
         />
       </div>
@@ -89,6 +91,8 @@ export default function SettingsPanel({ wb, touch }: { wb: Workbench; touch: boo
             onChange={(n) => wb.setNavigationSettings(n)}
             size={touch ? 'touch' : 'md'}
           />
+        ) : tab === 'radial' ? (
+          <RadialSettings size={touch ? 'touch' : 'md'} />
         ) : (
           <KeymapEditor
             commands={APP_COMMANDS}

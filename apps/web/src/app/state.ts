@@ -202,7 +202,7 @@ export interface BoxSelect {
 }
 
 /** Settings surface (a panel, never a dialog): which tab is showing. */
-export type SettingsTab = 'navigation' | 'keyboard';
+export type SettingsTab = 'navigation' | 'keyboard' | 'radial';
 
 export interface UiState {
   /** The initial document is resolved (library or new). */

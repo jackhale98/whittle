@@ -7,7 +7,16 @@ export const RADIAL_SLOTS = ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw'] as cons
 export type RadialSlot = (typeof RADIAL_SLOTS)[number];
 
 /** Default fill order for items without an explicit slot. North is reserved for "Repeat". */
-const FILL_ORDER: readonly RadialSlot[] = ['ne', 'e', 'se', 's', 'sw', 'w', 'nw', 'n'];
+export const RADIAL_FILL_ORDER: readonly RadialSlot[] = [
+  'ne',
+  'e',
+  'se',
+  's',
+  'sw',
+  'w',
+  'nw',
+  'n',
+];
 
 export interface Vec {
   x: number;
@@ -56,7 +65,7 @@ export function layoutSlots<T extends SlotItem>(
     } else loose.push(item);
   }
   for (const item of loose) {
-    const free = FILL_ORDER.find((s) => !taken.has(s));
+    const free = RADIAL_FILL_ORDER.find((s) => !taken.has(s));
     if (!free) overflow.push(item);
     else {
       placed[free] = item;
