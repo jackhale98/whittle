@@ -29,7 +29,9 @@ describe('service worker request rules', () => {
 
 describe('the drawing font', () => {
   it('is the only other runtime-cached file: a hashed .ttf, never a script', () => {
-    expect(isDrawingFont(new URL('https://x/wren-cad/assets/osifont-lgpl3fe-abc123.ttf'))).toBe(true);
+    expect(isDrawingFont(new URL('https://x/wren-cad/assets/osifont-lgpl3fe-abc123.ttf'))).toBe(
+      true,
+    );
     expect(isDrawingFont(new URL('https://x/wren-cad/assets/index-abc.js'))).toBe(false);
     expect(isKernelAsset(new URL('https://x/wren-cad/assets/osifont-abc.ttf'))).toBe(false);
   });

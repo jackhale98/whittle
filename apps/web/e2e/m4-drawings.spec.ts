@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs';
 import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page, test } from '@playwright/test';
-import type { Annotation, Drawing, WrenDoc } from '@wren-cad/contracts';
+import type { Annotation, Drawing, HoleFeature, WrenDoc } from '@wren-cad/contracts';
+import { docWith, extrude, fid, region, Sk } from './fixtures';
 import { app, boot, palette } from './helpers';
 import { CFG_LONG, configPartDoc } from './support/config-part';
 import {
@@ -819,4 +820,78 @@ test('configurations: per drawing and per view, badged; a missing one is never a
   await expect(
     page.locator(`[data-view-row="${front.id}"]`).getByTestId('config-badge'),
   ).toHaveAttribute('data-missing', 'true');
+});
+
+/** A plate with one ISO M6 clearance hole (normal fit, through all) on a sketch point. */
+function holeDoc(): WrenDoc {
+  const S1 = fid('S1');
+  const E1 = fid('E1');
+  const S2 = fid('S2');
+  const H = fid('H1');
+  const plate = new Sk();
+  const r = plate.rect('p', 'L', 0, 0, 80, 50, '80 mm', '50 mm');
+  plate.geo({ kind: 'fix', entity: r.a });
+  const top = { name: `F${E1}:end`, kind: 'face' as const };
+  const pts = new Sk();
+  pts.point('p', 15, 25);
+  pts.dim({ kind: 'hDistance', a: '@origin', b: 'p' }, '15 mm');
+  pts.dim({ kind: 'vDistance', a: '@origin', b: 'p' }, '25 mm');
+  const hole: HoleFeature = {
+    id: H,
+    type: 'hole',
+    name: 'Hole',
+    suppressed: false,
+    points: [{ name: `S${S2}:p(p)`, kind: 'vertex' }],
+    face: top,
+    standard: 'ISO',
+    kind: 'simple',
+    size: 'M6',
+    fit: 'normal',
+    end: { kind: 'throughAll' },
+  };
+  return docWith('Hole plate', {}, [
+    plate.feature(S1, 'Plate sketch'),
+    extrude(E1, 'Plate', [region(S1, 'L1,L2,L3,L4')], '10'),
+    pts.feature(S2, 'Hole point', top),
+    hole,
+  ]);
+}
+
+test('a hole feature is imported as a hole callout: size, fit and depth come from the feature', async ({
+  page,
+}) => {
+  await boot(page);
+  await app(page).load(holeDoc());
+  await app(page).idle();
+  await newDrawing(page);
+  await addStandardViews(page);
+  await importAll(page);
+  const list = await annotations(page);
+  const callout = list.find((a) => a.kind === 'holeCallout');
+  expect(callout).toBeTruthy();
+  expect(callout && 'source' in callout ? callout.source : null).toMatchObject({
+    kind: 'feature',
+    featureId: fid('H1'),
+  });
+  const s = await built(page);
+  // ISO 273 M6 normal clearance is 6.6 mm, through all.
+  expect(s.texts.some((t) => t.includes('Ø6.6'))).toBe(true);
+  expect(s.texts.some((t) => /THRU/.test(t))).toBe(true);
+  // The callout is on the view that shows the hole face-on, and the model value is not stated.
+  const row = s.resolutions.find((r) => r.id === callout?.id);
+  expect(row?.state).toBe('ok');
+  // Changing the hole's size changes the callout: one source of truth.
+  const doc = await app(page).doc();
+  const feature = doc.parts[0]?.features.find((f) => f.id === fid('H1')) as HoleFeature;
+  expect(
+    await app(page).apply({
+      kind: 'updateFeature',
+      partId: doc.parts[0]?.id,
+      featureId: feature.id,
+      feature: { ...feature, size: 'M8' },
+    }),
+  ).toBe(true);
+  await expect
+    .poll(async () => (await drawing(page).state()).texts.some((t) => t.includes('Ø9')))
+    .toBe(true);
 });

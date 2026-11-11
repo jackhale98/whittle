@@ -16,6 +16,7 @@ import type {
   WrenDoc,
 } from '@wren-cad/contracts';
 import type { Workbench } from '../app/workbench';
+import { withHoleAnchors } from './hole-anchors';
 import { host } from './host';
 
 export interface ConfigData {
@@ -117,7 +118,9 @@ export class ConfigDataSource {
       configId,
       doc,
       result,
-      resolutions: new Map((result.annotations ?? []).map((r) => [r.annotationId, r])),
+      resolutions: new Map(
+        withHoleAnchors(result, doc.parts[0]?.annotations ?? []).map((r) => [r.annotationId, r]),
+      ),
       shape: this.shapeFor(result),
       ...withMass(massOf(result, doc)),
     };
