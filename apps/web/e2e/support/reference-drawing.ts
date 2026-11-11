@@ -26,6 +26,7 @@ import {
   drag,
   drawing,
   type Edge,
+  type ImportRow,
   panelTab,
   sheetToPage,
 } from './drawing-ui';
@@ -275,10 +276,13 @@ export async function addViews(page: Page, spec: PartSpec): Promise<Placed[]> {
 // Annotations: import, binding to the spec's dimensions, the Dimension tool
 // ------------------------------------------------------------------------------------------
 
-export async function importAll(page: Page): Promise<number> {
+/** Runs Import model annotations with every candidate checked; returns what it placed and the plan. */
+export async function importAll(page: Page): Promise<{ placed: number; plan: ImportRow[] }> {
   await panelTab(page, 'Import').click();
   await page.getByTestId('import-open').click();
   await page.getByRole('button', { name: 'Check all' }).click();
+  await expect.poll(async () => (await drawing(page).importPlan()) !== null).toBe(true);
+  const plan = (await drawing(page).importPlan()) ?? [];
   const place = page.getByTestId('import-place');
   const n = Number(/(\d+)/.exec(await place.innerText())?.[1] ?? 0);
   if (n > 0) {
@@ -286,7 +290,7 @@ export async function importAll(page: Page): Promise<number> {
     await expect(page.getByTestId('drawing-toast')).toContainText('Placed');
   } else await page.getByRole('button', { name: 'Cancel' }).click();
   await built(page);
-  return n;
+  return { placed: n, plan };
 }
 
 /** The expression a promoted annotation's value comes from (`hole_x`, `thickness`...). */
@@ -356,7 +360,47 @@ export async function bindImported(
  * whose centre it is (a circle seen face-on; `radius` narrows it to one of concentric circles).
  */
 function edgeAt(edges: Edge[], p: V2, axis?: 'h' | 'v', radius?: number): Edge | undefined {
+  return (
+    edgeNear(edges, p, axis, radius, 0) ??
+    // A corner the spec measures to may be chamfered or rounded off: the straight edge (or
+    // outline) through it then stops a little short of it.
+    (axis !== undefined ? edgeNear(edges, p, axis, undefined, SLACK) : undefined)
+  );
+}
+
+/** How far short of a measured corner a straight edge may stop (sheet mm). */
+const SLACK = 3.5;
+
+function edgeNear(
+  edges: Edge[],
+  p: V2,
+  axis: 'h' | 'v' | undefined,
+  radius: number | undefined,
+  slack: number,
+): Edge | undefined {
   const TOL = 0.4;
+  /** Off the line across it, and how far past its ends along it. */
+  const offLine = (a: V2, b: V2): { across: number; past: number } => {
+    const dx = b[0] - a[0];
+    const dy = b[1] - a[1];
+    const l = Math.hypot(dx, dy) || 1;
+    const s = ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / l;
+    return {
+      across: Math.abs((p[0] - a[0]) * dy - (p[1] - a[1]) * dx) / l,
+      past: Math.max(0, -s, s - l),
+    };
+  };
+  if (slack > 0) {
+    let best: { e: Edge; d: number } | undefined;
+    for (const e of edges) {
+      if (e.kind !== 'line' || !e.a || !e.b) continue;
+      if (axis === 'h' ? Math.abs(e.a[0] - e.b[0]) > 0.01 : Math.abs(e.a[1] - e.b[1]) > 0.01)
+        continue;
+      const o = offLine(e.a, e.b);
+      if (o.across < TOL && o.past <= slack && (!best || o.past < best.d)) best = { e, d: o.past };
+    }
+    return best?.e;
+  }
   let line: { e: Edge; d: number } | undefined;
   if (axis !== undefined)
     for (const e of edges) {
@@ -374,6 +418,40 @@ function edgeAt(edges: Edge[], p: V2, axis?: 'h' | 'v', radius?: number): Edge |
       if (d < TOL && (!line || d < line.d)) line = { e, d };
     }
   if (line) return line.e;
+  // A side of a curved face seen side-on (an outline, `face` set) through the point: a straight
+  // outline along the axis, or a sphere's outline circle the point lies on.
+  if (axis !== undefined) {
+    let side: { e: Edge; d: number } | undefined;
+    for (const e of edges) {
+      if (!e.face) continue;
+      let d = Number.POSITIVE_INFINITY;
+      if (e.kind === 'line' && e.a && e.b) {
+        const [ax, ay] = e.a;
+        const [bx, by] = e.b;
+        if (axis === 'h' ? Math.abs(ax - bx) > 0.01 : Math.abs(ay - by) > 0.01) continue;
+        const dx = bx - ax;
+        const dy = by - ay;
+        const t = Math.max(
+          0,
+          Math.min(1, ((p[0] - ax) * dx + (p[1] - ay) * dy) / (dx * dx + dy * dy || 1)),
+        );
+        d = Math.hypot(p[0] - (ax + t * dx), p[1] - (ay + t * dy));
+      } else if (
+        e.kind === 'arc' &&
+        e.radius !== undefined &&
+        e.start !== undefined &&
+        e.end !== undefined
+      ) {
+        const mid = (e.start + e.end) / 2;
+        const c: V2 = [e.at[0] - e.radius * Math.cos(mid), e.at[1] - e.radius * Math.sin(mid)];
+        d = Math.abs(Math.hypot(p[0] - c[0], p[1] - c[1]) - e.radius);
+      }
+      // An outline (face only) before a seam that also has its edge name: picking it picks the face.
+      if (!e.name) d -= TOL;
+      if (d < TOL && (!side || d < side.d)) side = { e, d };
+    }
+    if (side) return side.e;
+  }
   let arc: { e: Edge; d: number } | undefined;
   for (const e of edges) {
     if (e.kind !== 'arc' || e.radius === undefined) continue;
@@ -392,9 +470,12 @@ export async function dimensionTool(
   v: Placed,
   d: DrawingDimSpec,
 ): Promise<{ id: string } | { note: string }> {
+  if (d.kind === 'chamfer') return chamferTool(page, spec, v, d);
   if (d.kind !== 'linear' && d.kind !== 'diameter' && d.kind !== 'radius')
     return { note: `the Dimension tool has no ${d.kind} dimension` };
 
+  /** Where each outline pick was found (sheet mm): it is clicked there, on its own side. */
+  const at = new Map<Edge, V2>();
   /** The edges to pick, or why there are none, from the view's current exact output. */
   const find = async (): Promise<{ picks: Edge[]; state: DrawingState } | { note: string }> => {
     const state = await built(page);
@@ -404,6 +485,7 @@ export async function dimensionTool(
     const sc = state.views.find((x) => x.id === v.id)?.scale ?? 1;
     const picks: Edge[] = [];
     if (d.kind === 'linear') {
+      at.clear();
       // The drawn horizontal may be Wren's vertical (a view turned on the sheet): follow the part axis.
       const measured = (d.axis === 'h' ? v.spec.axes[0] : v.spec.axes[1]).replace('-', '');
       const wren = WREN_AXES[v.spec.kind === 'section' ? 'front' : v.spec.orientation] as [
@@ -413,15 +495,52 @@ export async function dimensionTool(
       // A turned view is drawn as the spec shows it: its h is the sheet's horizontal.
       const axis = v.spec.rotation ? d.axis : wren[0].replace('-', '') === measured ? 'h' : 'v';
       for (const p of [d.from as V2, d.to as V2]) {
-        const e = edgeAt(edges, sheetPoint(spec, v, state, p).at, axis);
+        const q = sheetPoint(spec, v, state, p).at;
+        const e = edgeAt(edges, q, axis);
         if (!e) return { note: `no edge or circle at ${p.join(', ')} in ${v.spec.caption}` };
+        // A circle is dimensioned on its first pick (a sphere's outline through both points).
+        if (picks.includes(e) || picks[0]?.kind === 'arc') continue;
         picks.push(e);
+        at.set(e, q);
       }
     } else {
       const at = d.at as V2;
-      const e = edgeAt(edges, sheetPoint(spec, v, state, at).at, undefined, (d.radius ?? 0) * sc);
-      if (!e) return { note: `no circle at ${at.join(', ')} in ${v.spec.caption}` };
-      picks.push(e);
+      const c = sheetPoint(spec, v, state, at).at;
+      const e = edgeAt(edges, c, undefined, (d.radius ?? 0) * sc);
+      if (e) picks.push(e);
+      else {
+        // A diameter seen side-on (a groove or bore along the view): its two straight sides,
+        // `radius` either side of the centre, dimensioned across.
+        const r = (d.radius ?? 0) * sc;
+        const sides: Edge[] = [];
+        for (const [dx, dy, axis] of [
+          [r, 0, 'h'],
+          [-r, 0, 'h'],
+          [0, r, 'v'],
+          [0, -r, 'v'],
+        ] as const) {
+          const s2 = edgeAt(edges, [c[0] + dx, c[1] + dy], axis);
+          if (s2 && !sides.includes(s2)) sides.push(s2);
+        }
+        const pair =
+          sides.length >= 2 &&
+          sides
+            .flatMap((x, i) => sides.slice(i + 1).map((y) => [x, y] as const))
+            .find(([x, y]) => {
+              const dist = (q: Edge) =>
+                q.a && q.b
+                  ? Math.abs(q.a[0] - q.b[0]) < 0.01
+                    ? q.a[0] - c[0]
+                    : q.a[1] - c[1]
+                  : NaN;
+              return Math.abs(dist(x) + dist(y)) < 0.4 && Math.abs(Math.abs(dist(x)) - r) < 0.4;
+            });
+        if (!pair)
+          return {
+            note: `no circle, nor two sides across, at ${at.join(', ')} in ${v.spec.caption}`,
+          };
+        picks.push(pair[0], pair[1]);
+      }
     }
     return { picks, state };
   };
@@ -433,27 +552,113 @@ export async function dimensionTool(
     found = await find();
   }
   if (!('picks' in found)) return found;
-  const picks = found.picks;
+  let picks = found.picks;
 
   const before = new Set((await annotations(page)).map((a) => a.id));
-  // The click can land on a dimension drawn earlier over the same spot: try other spots on the edges.
+  // A click on a dimension drawn earlier picks that dimension (annotations come first): click
+  // each edge where it is farthest from every drawn annotation, trying the next best spot after.
   const centre = d.kind === 'linear' ? null : sheetPoint(spec, v, found.state, d.at as V2).at;
-  const spot = (e: Edge, attempt: number): V2 => {
+  const drawn = await drawing(page).extents();
+  const clearance = (q: V2): number => {
+    let best = Number.POSITIVE_INFINITY;
+    for (const x of drawn) {
+      for (const [a, b] of x.segments) {
+        const dx = b[0] - a[0];
+        const dy = b[1] - a[1];
+        const t = Math.max(
+          0,
+          Math.min(1, ((q[0] - a[0]) * dx + (q[1] - a[1]) * dy) / (dx * dx + dy * dy || 1)),
+        );
+        best = Math.min(best, Math.hypot(q[0] - (a[0] + t * dx), q[1] - (a[1] + t * dy)));
+      }
+      for (const t of x.texts) {
+        const ox = Math.max(t.min[0] - q[0], 0, q[0] - t.max[0]);
+        const oy = Math.max(t.min[1] - q[1], 0, q[1] - t.max[1]);
+        best = Math.min(best, Math.hypot(ox, oy));
+      }
+    }
+    return best;
+  };
+  const along = (e: Edge): V2[] => {
+    const ts = [0.5, 0.4, 0.6, 0.3, 0.7, 0.2, 0.8, 0.12, 0.88];
     if (e.kind === 'line' && e.a && e.b) {
-      const t = [0.5, 0.25, 0.75][attempt] as number;
-      return [e.a[0] + (e.b[0] - e.a[0]) * t, e.a[1] + (e.b[1] - e.a[1]) * t];
+      const [a, b] = [e.a, e.b];
+      return ts.map((t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]);
+    }
+    if (
+      e.kind === 'arc' &&
+      e.radius !== undefined &&
+      e.start !== undefined &&
+      e.end !== undefined
+    ) {
+      // On the arc's own sweep (a quarter-circle fillet has no points a quarter turn away).
+      const r = e.radius;
+      const [s0, s1] = [e.start, e.end];
+      const mid = (s0 + s1) / 2;
+      const c: V2 = [e.at[0] - r * Math.cos(mid), e.at[1] - r * Math.sin(mid)];
+      const own = !e.name ? at.get(e) : undefined;
+      const pts: V2[] = ts.map((t) => {
+        const th = s0 + (s1 - s0) * t;
+        return [c[0] + r * Math.cos(th), c[1] + r * Math.sin(th)];
+      });
+      return own ? [own, ...pts] : pts;
     }
     if (centre && e.radius !== undefined) {
-      const th = Math.atan2(e.at[1] - centre[1], e.at[0] - centre[0]) + (attempt * Math.PI) / 2;
-      return [centre[0] + e.radius * Math.cos(th), centre[1] + e.radius * Math.sin(th)];
+      const r = e.radius;
+      return [0, 1, 2, 3].map((k) => {
+        const th = Math.atan2(e.at[1] - centre[1], e.at[0] - centre[0]) + (k * Math.PI) / 2;
+        return [centre[0] + r * Math.cos(th), centre[1] + r * Math.sin(th)];
+      });
     }
-    return e.at;
+    return [e.at];
   };
+  // The viewer picks within 6 px (SheetViewer): a spot is good when a click there picks this edge.
+  const tol = await page.evaluate(() => {
+    const g = document.querySelector('[data-testid="drawing-sheet-content"]');
+    const m = /scale\(([-\d.e]+)\)/.exec(g?.getAttribute('transform') ?? '');
+    return 6 / Number(m?.[1] ?? 3);
+  });
+  const picksIt = async (e: Edge, q: V2): Promise<boolean> => {
+    const h = (await drawing(page).hit(q, tol)) as { pick: { name: string; face?: string } | null };
+    return !!h.pick && (e.name ? h.pick.name === e.name : h.pick.face === e.face);
+  };
+  const spots = new Map<Edge, V2[]>();
+  for (const e of picks) {
+    if (spots.has(e)) continue;
+    const ranked = along(e)
+      .map((q, i) => ({ q, c: Math.min(clearance(q), 1.5), i }))
+      // The spec's own point on an outline circle, and the middle, unless something is drawn
+      // there; else the clearest spot.
+      .sort((x, y) => y.c - x.c || x.i - y.i)
+      .map((x) => x.q);
+    const good: V2[] = [];
+    for (const q of ranked) if (await picksIt(e, q)) good.push(q);
+    spots.set(e, good.length ? good : ranked);
+  }
+  const spot = (e: Edge, attempt: number): V2 => {
+    const l = spots.get(e) as V2[];
+    return l[Math.min(attempt, l.length - 1)] as V2;
+  };
+  // The two sides of one face seen side-on are an outline and the seam on the silhouette. When an
+  // annotation is drawn over the whole seam (a click there picks the annotation), the outline is
+  // picked twice: two picks of a face's outline are its two sides too.
+  const [p0, p1] = picks;
+  if (p0 && p1 && p0.face && p0.face === p1.face && (!p0.name || !p1.name)) {
+    const outline = (p0.name ? p1 : p0) as Edge;
+    const seam = (p0.name ? p0 : p1) as Edge;
+    if (!(await picksIt(seam, spot(seam, 0)))) picks = [outline, outline];
+  }
   let created = false;
+  const toasts: string[] = [];
   for (let attempt = 0; attempt < 3 && !created; attempt++) {
     if ((await drawing(page).state()).tool !== 'dimension')
       await page.locator('[data-tool="dimension"]').click();
     for (const e of picks) await click(page, spot(e, attempt));
+    const said = await page
+      .getByTestId('drawing-toast')
+      .innerText({ timeout: 300 })
+      .catch(() => '');
+    if (said) toasts.push(said);
     created = await expect
       .poll(async () => (await annotations(page)).length, { timeout: 2500 })
       .toBe(before.size + 1)
@@ -469,12 +674,65 @@ export async function dimensionTool(
       .innerText({ timeout: 500 })
       .catch(() => '');
     return {
-      note: `the Dimension tool made nothing from ${picks.map((e) => e.name).join(' + ')}${toast ? ` (${toast})` : ''}`,
+      note: `the Dimension tool made nothing from ${picks.map((e) => e.name || `outline of ${e.face}`).join(' + ')}${toast || toasts.length ? ` (${[...new Set([...toasts, toast].filter(Boolean))].join('; ')})` : ''}`,
     };
   }
   const made = (await annotations(page)).find((a) => !before.has(a.id));
   await page.keyboard.press('Escape');
   return { id: (made as Annotation).id };
+}
+
+/**
+ * Makes a chamfer callout with the Chamfer tool: picks an edge of the chamfer feature whose
+ * distance is the spec's dimension, near the spec's anchor on the view.
+ */
+async function chamferTool(
+  page: Page,
+  spec: PartSpec,
+  v: Placed,
+  d: DrawingDimSpec,
+): Promise<{ id: string } | { note: string }> {
+  const p = await part(page);
+  const f = p.features.find(
+    (x) =>
+      x.type === 'chamfer' &&
+      'distance' in x.mode &&
+      typeof x.mode.distance === 'string' &&
+      isName(x.mode.distance, d.name),
+  );
+  if (!f) return { note: `no chamfer feature with distance ${d.name}` };
+  await drawing(page).exact();
+  const state = await built(page);
+  const sc = state.views.find((x) => x.id === v.id)?.scale ?? 1;
+  const at = sheetPoint(spec, v, state, d.at as V2).at;
+  const reach = ((d.radius ?? 0) + 1) * sc;
+  const near = (await drawing(page).edges(v.id))
+    .filter((e) => e.kind === 'line' && e.name.includes(`F${f.id}:chamfer(`))
+    .map((e) => ({ e, d: Math.hypot(e.at[0] - at[0], e.at[1] - at[1]) }))
+    .filter((x) => x.d <= reach)
+    .sort((x, y) => x.d - y.d)[0]?.e;
+  if (!near)
+    return { note: `no edge of the chamfer near ${(d.at as V2).join(', ')} in ${v.spec.caption}` };
+  const before = new Set((await annotations(page)).map((a) => a.id));
+  await page.locator('[data-tool="chamfer"]').click();
+  await click(page, near.at);
+  const created = await expect
+    .poll(async () => (await annotations(page)).length, { timeout: 2500 })
+    .toBe(before.size + 1)
+    .then(
+      () => true,
+      () => false,
+    );
+  const toast = created
+    ? ''
+    : await page
+        .getByTestId('drawing-toast')
+        .innerText({ timeout: 500 })
+        .catch(() => '');
+  await page.keyboard.press('Escape');
+  if (!created)
+    return { note: `the Chamfer tool made nothing from ${near.name}${toast ? ` (${toast})` : ''}` };
+  return { id: ((await annotations(page)).find((a) => !before.has(a.id)) as Annotation).id };
 }
 
 /** Wren's number formatting is checked on the sheet's own text: does `texts` show `value`? */

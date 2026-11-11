@@ -1,137 +1,99 @@
 /**
- * Product gaps the certification-style drawing suite found (M4 gate). Each entry is a spec
- * drawing item that Wren's drawing tools cannot make yet. Nothing here is faked: the spec test
- * (m4-reference-drawings.spec.ts) skips the dimension, requires that it stays unmet, and lists a
- * `test.fixme` with the reason. The lead decides what to build.
+ * Product gaps the certification-style drawing suite still finds (M4 gate, round 3). Each entry is
+ * a spec drawing item that Wren's drawing tools cannot make yet, with a gap id and the reason
+ * found. Nothing here is faked: the spec test (m4-reference-drawings.spec.ts) skips the dimension,
+ * requires that it stays unmet, and lists a `test.fixme` with the reason. The lead decides what to
+ * build. `WREN_CERT_ALL=1` re-checks every entry.
  *
- * "Unconfirmed" means the run only showed that the tool made nothing; the cause was not isolated.
+ * Every annotation Import places now resolves: no part leaves anything needing attention.
  */
 
 export interface Gap {
-  /** Spec dimension names (`DrawingDimSpec.name`) this gap leaves unmet (empty: a view property). */
+  /** Spec dimension names (`DrawingDimSpec.name`) this gap leaves unmet. */
   dims: string[];
   /** The spec item, as a person reads it. */
   what: string;
   reason: string;
 }
 
-/** Imported annotations that resolve to needs attention (Import places what cannot resolve). */
-export interface AttentionBug {
-  count: number;
-  reason: string;
-}
-
-const ORIGIN =
-  'GAP-ORIGIN: Import places it, but it needs attention: the dimension is measured from the sketch origin and its reference (S:p(@origin) or a construction point) never resolves. The Dimension tool cannot pick the origin or a centre line either';
-const EXTRUDE =
-  'GAP-EXTRUDE-DEPTH: Import places the extrude depth between the feature’s F:start and F:end faces, and those do not resolve when the extrude cuts or merges into a body: needs attention';
-const ANGLE =
-  'GAP-PICK-OUTLINE: the Angle tool and the Dimension tool now make angles between two straight named edges, but the 3 deg wall is a silhouette/section-face outline, which the drawing kernel does not name, so there is nothing to pick (the same gap as GAP-PICK; Import does not promote a draft angle)';
-const COUNT =
-  'GAP-COUNT: no instance-count dimension or callout for a pattern (a note is free text, not a resolved value)';
-const NOPICK =
-  'GAP-PICK: the Dimension tool has nothing to pick there: the geometry is a silhouette outline (unnamed in the drawing kernel), a hidden or construction edge, a mid-plane or a centre line';
-const NOTHING =
-  'GAP-PICK-UNCONFIRMED: picking the edge(s) made no dimension and showed no message; the cause was not isolated';
-
-const ATTN = (n: string) => `${n} (the import bugs GAP-ORIGIN and GAP-EXTRUDE-DEPTH)`;
+const CONSTRUCTION =
+  'GAP-PICK-CONSTRUCTION: it is measured from a centre line, a centre plane or a construction circle (the sketch origin, a slot or hole centre, the pitch circle, a level the model had before a later feature). The view draws no edge there, and the Dimension tool picks only drawn edges and outlines; Import cannot promote it either (its value is not a sketch or feature dimension of its own)';
+const SECTION =
+  'GAP-PICK-SECTION: the edges of a section view’s cut face come from the cut, not from the model: the drawing kernel gives them no name and no face (`sectionFaces` ids are synthetic), so the Dimension and Angle tools have nothing to pick on them';
+const TANGENT =
+  'GAP-PICK-TANGENT: the straight leg of the swept rod ends where its bend starts, a tangent (smooth) edge, and the view does not draw tangent edges by default; the leg’s outlines (face-named) run past that point, so there is no edge to measure to';
 
 export const GAPS: Record<string, Gap[]> = {
-  'rp01-base-plate': [
-    { dims: ['hole_x', 'hole_y'], what: 'hole centres from the centre lines', reason: ORIGIN },
-    { dims: ['pocket_d'], what: 'pocket depth', reason: EXTRUDE },
-  ],
   'rp02-stepped-shaft': [
-    { dims: ['l2'], what: 'length of the middle step', reason: NOTHING },
-    { dims: ['l3', 'd1', 'd2', 'd3'], what: 'end length and the three diameters', reason: NOPICK },
-    { dims: ['fillet_r'], what: 'fillet radius', reason: NOPICK },
+    {
+      dims: ['fillet_r'],
+      what: 'step fillet radius R3, on the outline side of the shaft',
+      reason:
+        'GAP-PICK-OUTLINE-SPLINE: on the side the spec dimensions, the fillet is the outline of a torus, which the drawing kernel returns as a B-spline with its face, not as an arc: no radius to pick there (on the seam side it is a named arc of radius 3)',
+    },
   ],
   'rp03-ball-knob': [
     {
-      dims: ['flat_h', 'ball_d', 'stem_d'],
-      what: 'flat height, ball and stem diameters',
-      reason: NOPICK,
+      dims: ['flat_h'],
+      what: 'height of the flat above the ball centre',
+      reason: CONSTRUCTION,
     },
-    { dims: ['stem_l'], what: 'stem length', reason: EXTRUDE },
   ],
   'rp04-clamp-block': [
-    { dims: ['corner_r', 'top_r'], what: 'corner and top-edge fillet radii', reason: NOTHING },
-    { dims: ['boss_h'], what: 'boss height', reason: EXTRUDE },
-    { dims: ['boss_up'], what: 'boss height above the push/pull', reason: NOPICK },
+    {
+      dims: ['boss_up'],
+      what: 'push/pull distance above the boss as first extruded',
+      reason: `${CONSTRUCTION}. The level the push/pull started from is history: no face of the finished part is there`,
+    },
   ],
   'rp05-moulded-housing': [
-    { dims: ['height'], what: 'housing height', reason: EXTRUDE },
-    { dims: ['wall'], what: 'wall thickness in the section', reason: NOPICK },
-    { dims: ['draft_a'], what: 'draft angle 3 deg', reason: ANGLE },
+    { dims: ['wall'], what: 'wall thickness in the section', reason: SECTION },
+    {
+      dims: ['draft_a'],
+      what: 'draft angle 3 deg between the drafted wall and the vertical, in the section',
+      reason: `${SECTION}. The drafted wall is a cut-face edge there, not an outline, so the new outline face names do not reach it`,
+    },
   ],
   'rp06-cable-guide': [
-    { dims: ['blk_t'], what: 'block thickness', reason: EXTRUDE },
-    {
-      dims: ['ch_d', 'rod_h', 'rod_tail'],
-      what: 'channel diameter, rod height and tail',
-      reason: NOPICK,
-    },
+    { dims: ['rod_h', 'rod_tail'], what: 'rod leg and tail lengths', reason: TANGENT },
   ],
   'rp07-duct-adapter': [
-    { dims: ['inset'], what: 'loft base inset (a hidden outline)', reason: NOPICK },
+    {
+      dims: ['inset'],
+      what: 'loft base inset',
+      reason:
+        'GAP-PICK-HIDDEN: the inset is between the loft’s base outline and the plate edge; the base outline is hidden under the loft in the top view, and the Dimension tool picks visible edges only',
+    },
   ],
   'rp08-cover-plate': [
-    { dims: ['cb_d', 'cs_d'], what: 'counterbore and countersink diameters', reason: NOTHING },
-    { dims: ['cs_x', 'cs_y'], what: 'countersink position from the centre lines', reason: NOPICK },
+    {
+      dims: ['cs_x', 'cs_y'],
+      what: 'countersunk hole position (the reference point) from the centre lines',
+      reason: `${CONSTRUCTION}. The point feature’s coordinates are not promotable by Import`,
+    },
     {
       dims: ['tap_dx'],
-      what: 'tapped hole spacing',
-      reason: `${NOTHING}; the spec anchors the dimension 6 mm off the hole centres, which may be the cause`,
-    },
-    {
-      dims: ['cb_y'],
-      what: 'counterbore position (18 mm from the centre line)',
+      what: 'tapped hole spacing, centre to centre',
       reason:
-        'GAP-LAYOUT: Import cannot place it with the stepped cut line in the view: "No room for it on a view, even after moving views apart" (layoutDoesNotFit; the cut line y = 18 mm runs along the dimension). Planner lanes, packages/drawing',
+        'GAP-TOOL-CENTRES: the Dimension tool makes a diameter on the first circle it is given, so two hole centres cannot be picked one after the other (planDimension supports centre to centre; the pick flow never reaches it). The pattern spacing is not promotable by Import',
     },
-    { dims: ['tap_n'], what: 'number of tapped holes (4)', reason: COUNT },
-    {
-      dims: ['cb_h', 'tap_depth'],
-      what: 'counterbore and tap depths in the section',
-      reason: NOPICK,
-    },
+    { dims: ['tap_depth'], what: 'tapped hole depth in the section', reason: SECTION },
   ],
   'rp09-flanged-hub': [
     {
       dims: ['flange_d'],
       what: 'flange diameter as a linear dimension across the circle',
-      reason: NOPICK,
+      reason:
+        'GAP-PICK-EXTREMES: a linear dimension across a circle seen face-on runs between its tangent extremes, which are not edges; the Dimension tool makes a diameter from the circle instead (the spec asks for the linear form)',
     },
-    { dims: ['bolt_d'], what: 'bolt hole diameter', reason: NOTHING },
-    {
-      dims: ['pcd'],
-      what: 'pitch circle diameter (a centre-line circle, not an edge)',
-      reason: NOPICK,
-    },
-    { dims: ['bolt_n'], what: 'number of bolt holes (8)', reason: COUNT },
-    { dims: ['hub_h'], what: 'hub height in the section', reason: NOPICK },
+    { dims: ['pcd'], what: 'pitch circle diameter (a centre-line circle)', reason: CONSTRUCTION },
+    { dims: ['hub_h'], what: 'hub height in the section', reason: SECTION },
   ],
   'rp10-comb-plate': [
-    { dims: ['slot_x0', 'slot_pitch'], what: 'first slot position and slot pitch', reason: NOPICK },
-    { dims: ['slot_n'], what: 'number of slots (6)', reason: COUNT },
+    {
+      dims: ['slot_x0'],
+      what: 'first slot centre from the centre line',
+      reason: CONSTRUCTION,
+    },
   ],
-};
-
-/**
- * The number of annotations left needing attention after Import, per part: what Import places that
- * cannot resolve (GAP-ORIGIN, GAP-EXTRUDE-DEPTH). A part not listed has none.
- */
-export const ATTENTION_BUGS: Record<string, AttentionBug> = {
-  'rp01-base-plate': {
-    count: 11,
-    reason: ATTN('10 origin-anchored hole and rectangle dimensions, 1 cut depth'),
-  },
-  'rp03-ball-knob': { count: 1, reason: ATTN('the stem depth') },
-  'rp04-clamp-block': {
-    count: 3,
-    reason: ATTN('the boss depth and two origin-anchored dimensions'),
-  },
-  'rp05-moulded-housing': { count: 1, reason: ATTN('the housing depth') },
-  'rp06-cable-guide': { count: 1, reason: ATTN('the block depth') },
-  'rp07-duct-adapter': { count: 2, reason: ATTN('two origin-anchored dimensions') },
 };
