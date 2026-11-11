@@ -2684,6 +2684,79 @@ Sync workstream (packages/sync), proposal §5. Code: `merge/tree.ts` (`COLLECTIO
   - **There is no centre-mark subject kind,** so a centre mark is shown as part of its view (`kind: 'view'`, the view's id). Adding a `centerMark` kind is a possible contract change.
 - **The drawing compare** (`drawingChanges`, `annotationChanges`) gives a line for each added, removed or changed sheet, view, placement, centre mark, table, note and markup. Annotation lines show value and tolerance changes ("Dimension Ø6: nominal 6 mm → 8 mm"). Layout changes read "moved", a `sheetId` or `viewId` change reads "moved to Sheet 2", and a refs change reads "reattached". Every subject carries `drawingId` and the item id.
 
+### ADR-090 amendment — kernel-client: exact annotation geometry, hole callout anchors, anchor queries (2026-11-11)
+
+Modeling workstream (packages/kernel-client), on the M4 kernel build with `subShapeGeometry` and the `planeOf` fix. Details are in the package README, "M4 annotations and drawings".
+
+1. **Exact geometry.** Cylinders, cones, spheres, lines and circles are read with `subShapeGeometry`: one memoised call per sub-shape and handle, in place of about 27 probe measurements per round ref. Planes still use the fingerprint (its centroid and normal are exact and now outward), so they cost no call. The probes stay only as the fallback when the entry is missing (older dists, engine fakes); a golden checks that both paths give the same anchors and values. The render-mesh sign workaround for plane normals is removed.
+   - **Canonical form.** Exact data is converted to the probes' form: line ends and arc ends in `compareKey` order, circle normals and axis directions by `canonicalDir`, an axis' origin at the foot of the world origin. So `at: 'start'` / `'end'` mean the same point on either path and do not depend on how OCCT parametrised the curve.
+   - **New with the exact path.** Cone faces are axes (they have no single radius, so never a size). A partial cylinder's rim gets arc ends.
+   - **Cost on the stress part, 50 annotations.** A fresh resolution takes 40 `subShapeGeometry` calls and 16 measurements, against 877 measurements before. Last-feature edit, CPU median, interleaved A/B on a loaded 4-core machine:
+
+     | | with annotations | without | added |
+     |---|---|---|---|
+     | before | 222 to 240 ms | 169 to 200 ms | about +50 ms |
+     | after | 192 to 205 ms | 186 to 191 ms | about +10 ms |
+
+     The budget is 300 ms. The bench has a new opt-in group, `WREN_STRESS_ONLY=annotations`.
+2. **Size refs on round faces are rims.** A radius or diameter whose ref is a cylindrical face (`at: 'self'`) is now anchored by a circle, not an axis, because the drawing lays out radius and diameter dimensions on circle anchors only. Before this, such model annotations were "not measurable" on the sheet. The rim is chosen as follows:
+   - a hole wall's rim is at the hole's entry;
+   - any other face's rim is at the far end of its canonical axis, which is a fixed choice between two equal circles, not a reference guess;
+   - a partial face such as a fillet takes its arc ends from the one exact boundary arc at that end, and stays a full circle when that rim is in several pieces;
+   - `at: 'axis'` and the plain anchor query still give the axis.
+3. **Hole callout anchors (ADR-092 proposal 1).** A callout without refs gets `anchors: [rim]`, the first instance's rim at the entry face, with its normal pointing out of the hole. The rim is the counterbore's for a counterbored hole, the countersink's outer rim for a countersunk one, and otherwise the bore's. `measured` stays the bore diameter.
+   - **Finding the entry.** It is read from the instance's own faces: a blind hole's `:bottom` or `:tip` is at the far end, and `:cbore.floor` or `:csink` is at the entry. Otherwise the hole's placement face decides, because its outward normal points out of the entry.
+   - **Limit.** For a through-hole pattern copy that is mirrored or rotated, when every original is gone, the placement normal may pick the exit rim. That rim is the same circle on the same axis, so a face-on placement is unaffected.
+   - **Threads.** A thread callout has no entry face in the model, so its rim is at the canonical far end.
+   - With the anchor present, the app's `withHoleAnchors` is a no-op, because it only fills empty `anchors`. `apps/web/src/drawing/hole-anchors.ts` can be deleted.
+4. **Anchor queries (ADR-092 proposal 2).** `annotationAnchors(partId, queries, slot = 'main')` is on `ModelingWorkerApi`, which is allowed because the worker API is a subtype of the contract.
+   - **Resolution.** It resolves each `{ ref, at?, annotationKind? }` with the annotation rules against the slot's latest final state. The regen keeps its walk context in `PartCache.latest.context` for this, without attachment bytes. The handles in it are that regen's, and they stay live until the slot's next regen.
+   - **Read-only.** It never writes the slot: the `lastKnown` and `grown` memories are copies. A golden checks that the next regen is all hits with equal resolutions.
+   - **Answers.** An unresolved ref has `anchor: null` and its structural cause (`deleted`, `suppressed`, `failed`); it is never a guess. Merged, grown and rebound refs are reported as in resolutions, with paths `/<i>`.
+   - **Batch call.** The planner's `resolveAnchor` is synchronous, so the app gathers the promotion refs (`F<fillet>:fillet(<edge 0>)`, `F<chamfer>:chamfer(<edge 0>)`, `F<revolve>:start` / `:end`), queries them in one call and hands the planner a map lookup.
+5. **Contract proposal (not applied; contracts are lead-owned).** In `packages/contracts/src/modeling.ts`:
+
+   ```ts
+   /** M4: one anchor request: a ref, its point qualifier and the annotation kind it is for. */
+   export interface AnchorQuery {
+     ref: EntityRef;
+     /** As `Annotation.at[i]`; default `'self'`. */
+     at?: RefPoint;
+     /**
+      * The annotation kind the anchor is for, as in `AnnotationResolution.anchors`: `radius` and
+      * `diameter` anchor a cylindrical face by its rim circle, `holeCallout` a hole wall by the
+      * callout's entry rim. Omitted: the plain anchor (a cylindrical face is its axis).
+      */
+     annotationKind?: Annotation['kind'];
+   }
+
+   /** The answer to one `AnchorQuery`; `path` fields are `/<index in the query list>`. */
+   export interface AnchorAnswer {
+     /** Null when the ref did not resolve (`unresolved` says why): never a guessed entity. */
+     anchor: AnnotationAnchor | null;
+     unresolved?: UnresolvedRef;
+     merged?: MergedRef;
+     grown?: GrownRef;
+     rebound?: { path: string; name: string; fingerprint?: Fingerprint };
+   }
+
+   // In ModelingApi:
+   /**
+    * M4: anchors of arbitrary refs in the latest regen of a part in `slot` (default `'main'`),
+    * resolved with the annotation rules; one answer per query, in order. Reads the slot, never
+    * changes it. `INVALID_INPUT` when the slot has not been regenerated.
+    */
+   annotationAnchors(
+     partId: Id,
+     queries: AnchorQuery[],
+     slot?: RegenSlot,
+   ): Promise<Result<AnchorAnswer[]>>;
+   ```
+
+   It also needs one line on `AnnotationResolution.anchors`: "Parallel to `refs` (null for refs that did not resolve). A hole callout without refs has one entry: the first instance's entry rim."
+6. **For the drawing workstream (packages/drawing, not edited here).** A revolve's start and end faces have outward normals at π − θ from each other. The planner's promoted revolve angle should therefore set `measure: 'supplement'`, or its `measured` (π − θ) disagrees with its value θ. A golden here shows that with `measure: 'supplement'` both are θ.
+7. **Fix found on the way.** Face outlines (`plane` anchors) chained the first edge in its curve's direction, not the wire's. The bracket's chamfer outline came out as six points out of order; it is now the four-corner loop.
+
 ## ADR-091 — M4 drawing package: one display list, in-house PDF and DXF writers, Osifont (2026-11-11)
 
 `packages/drawing` (`@wren-cad/drawing`) is the drawing workstream's row of the M4 proposal (§12).
