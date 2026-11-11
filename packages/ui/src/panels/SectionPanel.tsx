@@ -134,13 +134,13 @@ export function SectionPanel({
               step={step}
               value={Math.min(range.max, Math.max(range.min, offset))}
               onChange={(e) => onOffsetChange(Number(e.target.value))}
-              className="w-range min-w-0 flex-1"
+              className="w-range min-w-16 flex-1"
             />
             <ExpressionInput
               label="Section offset value"
               size="touch"
               align="right"
-              className="w-32 shrink-0"
+              className="w-48 shrink-0"
               value={formatLengthMm(offset, units)}
               evaluate={evaluateLength(units)}
               showValue={false}

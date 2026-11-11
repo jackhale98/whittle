@@ -205,11 +205,11 @@ export class ViewCube {
   }
 
   /** Position the cube in the host (the canvas' offset parent) at the canvas' top-right. */
-  place(canvas: HTMLElement): void {
+  place(canvas: HTMLElement, insets: { top: number; right: number } = { top: 0, right: 0 }): void {
     const size = this.element.clientWidth || 96;
     const margin = 10;
-    this.element.style.left = `${canvas.offsetLeft + canvas.clientWidth - size - margin}px`;
-    this.element.style.top = `${canvas.offsetTop + margin}px`;
+    this.element.style.left = `${canvas.offsetLeft + canvas.clientWidth - size - margin - insets.right}px`;
+    this.element.style.top = `${canvas.offsetTop + margin + insets.top}px`;
   }
 
   update(basis: CubeBasis): void {

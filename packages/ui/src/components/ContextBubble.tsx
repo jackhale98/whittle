@@ -2,7 +2,7 @@ import * as RToolbar from '@radix-ui/react-toolbar';
 import { X } from 'lucide-react';
 import { m } from 'motion/react';
 import { type ReactNode, useRef } from 'react';
-import type { Rect, Side } from '../logic/bubble';
+import { type Rect, rectsIntersect, type Side } from '../logic/bubble';
 import { useSpring } from '../motion';
 import { cn } from './primitives';
 import { useAnchored } from './useAnchored';
@@ -58,7 +58,23 @@ export function ContextBubble({
   const placement = useAnchored(ref, anchor, { preferred, obstacles });
 
   const list = actions.slice(0, MAX_ACTIONS);
-  const hidden = !anchor || !placement;
+  // Lowest priority of the floating chrome: with no clear spot (the pushed-to-fit placement still
+  // overlaps another overlay) it steps aside rather than cover it.
+  const blocked =
+    !!placement?.squeezed &&
+    !!ref.current &&
+    (obstacles ?? []).some((o) =>
+      rectsIntersect(
+        {
+          left: placement.left,
+          top: placement.top,
+          width: ref.current?.offsetWidth ?? 0,
+          height: ref.current?.offsetHeight ?? 0,
+        },
+        o,
+      ),
+    );
+  const hidden = !anchor || !placement || blocked;
   const tip = placement?.tip;
   const side = placement?.side ?? 'above';
 

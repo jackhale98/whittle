@@ -51,6 +51,7 @@ import {
   SweepFields,
   ThreadFields,
 } from './m3Fields';
+import { type RefNote, RefNotes } from './RefNotes';
 
 export interface FeatureInspectorProps {
   feature: Feature;
@@ -68,6 +69,10 @@ export interface FeatureInspectorProps {
   pickingPath?: string | null;
   /** One-click re-pick of the first unresolved reference (needs-attention banner). */
   onRepick?(): void;
+  /** M3.8: keeps a merged or grown reference as it is (clears its note until it changes again). */
+  onAcceptRef?(note: RefNote): void;
+  /** M3.8: re-picks the reference of one field (the existing re-pick flow). */
+  onRepickRef?(path: string): void;
   describeRef?(ref: EntityRef): string;
   /** Display name for a feature id (mirror / pattern sources, and the cause in error messages). */
   describeFeature?(id: string): string;
@@ -653,6 +658,8 @@ export function FeatureInspector({
   onPick,
   pickingPath = null,
   onRepick,
+  onAcceptRef,
+  onRepickRef,
   describeRef,
   describeFeature,
   onSelectFeature,
@@ -783,6 +790,16 @@ export function FeatureInspector({
           {...(onRepick ? { onRepick } : {})}
           {...(onSelectFeature ? { onSelectFeature } : {})}
           {...(onUndo ? { onUndo } : {})}
+        />
+      ) : null}
+      {status && onAcceptRef && onRepickRef ? (
+        <RefNotes
+          feature={feature}
+          status={status}
+          {...(describeRef ? { describeRef } : {})}
+          onAccept={onAcceptRef}
+          onRepick={onRepickRef}
+          touch={density === 'touch'}
         />
       ) : null}
       {body}

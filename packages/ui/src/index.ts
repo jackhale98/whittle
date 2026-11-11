@@ -258,6 +258,7 @@ export {
   type PickFieldProps,
   withArticle,
 } from './inspector/PickField';
+export type { RefNote } from './inspector/RefNotes';
 export {
   type LineageRef,
   type SelectionAction,

@@ -43,7 +43,6 @@ const ProjectPanel = lazy(() => import('../sync/ProjectPanel'));
  */
 const TOP_LEFT = { top: 'var(--chrome-top, 3.5rem)', left: 'var(--chrome-left, 0.75rem)' };
 const ABOVE_BOTTOM = { bottom: 'calc(var(--chrome-bottom, 80px) + 12px)' };
-const TOAST_BOTTOM = { bottom: 'calc(var(--chrome-bottom, 68px) + 12px)' };
 const Welcome = lazy(() => import('./Welcome'));
 // M3.5: the radial menu, the settings panel and the shortcut overlay load on first use.
 const loadRadial = () => import('./RadialLayer');
@@ -346,6 +345,13 @@ export function ViewportOverlays({ wb, touch }: { wb: Workbench; touch: boolean 
       : ui.measure?.active && !ui.measure.picks.length
         ? `${verb} faces, edges or points to measure`
         : (ui.prompt?.text ?? (ui.picking ? wb.pickPrompt() : null));
+  // Phone: while the sheet shows a tool's tab, the tab is that tool's one home (Exit, Flip, the
+  // instruction), so its floating chip stays hidden; with the sheet collapsed the chip shows.
+  const phoneTab = wb.tier === 'phone' && ui.sheetSnap !== 'peek' ? ui.sheetTab : null;
+  const hideSectionChip = phoneTab === 'section';
+  const hideMeasurePrompt =
+    phoneTab === 'measure' && ui.measure?.active === true && !ui.section.picking && !ui.prompt;
+  const shownPrompt = hideMeasurePrompt ? null : promptText;
   const refChoices = ui.picking ? wb.referenceChoices() : [];
   const pickedCount =
     ui.picking && editing
@@ -367,36 +373,6 @@ export function ViewportOverlays({ wb, touch }: { wb: Workbench; touch: boolean 
       className="pointer-events-none absolute inset-0 z-[1] select-none"
       data-testid="viewport-overlays"
     >
-      {sk && session ? (
-        <div className="absolute left-1/2 -translate-x-1/2" style={ABOVE_BOTTOM}>
-          <Suspense fallback={null}>
-            <SketchToolbarPane wb={wb} session={session} sk={sk} touch={touch} />
-          </Suspense>
-        </div>
-      ) : null}
-      {/* Above the command bar, where the tool was chosen: act-first prompt + plane chooser. */}
-      {!sk && promptText ? (
-        <div
-          // w-max: centred with left 50 %, the box would otherwise shrink to half the screen
-          // and wrap the prompt on a phone.
-          className="absolute left-1/2 flex w-max max-w-[calc(100vw-2rem)] -translate-x-1/2 flex-col items-center gap-2"
-          style={ABOVE_BOTTOM}
-          data-testid="prompt"
-        >
-          {ui.prompt?.tool === 'sketch' ? <PlaneChooser wb={wb} doc={doc} /> : null}
-          {refChoices.length ? (
-            <ReferenceChooser choices={refChoices} touch={touch} onPick={(r) => wb.pickRef(r)} />
-          ) : null}
-          <PromptChip
-            {...(pickedCount ? { count: pickedCount } : {})}
-            size={touch ? 'touch' : 'md'}
-            onCancel={() => wb.cancel()}
-          >
-            {promptText}
-          </PromptChip>
-        </div>
-      ) : null}
-
       {sk && session ? (
         <>
           <Suspense fallback={null}>
@@ -469,27 +445,6 @@ export function ViewportOverlays({ wb, touch }: { wb: Workbench; touch: boolean 
             </div>
           ) : null}
         </>
-      ) : null}
-
-      {ui.section.enabled && !ui.section.picking ? (
-        // Above the prompt / toast / sketch toolbar when one is up; clear of the view cube (top
-        // right), the top bar and the Library button (top left) and the sheet or command bar.
-        <div
-          className="absolute left-1/2 -translate-x-1/2"
-          style={{
-            bottom: `calc(var(--chrome-bottom, 80px) + ${sk ? 96 : promptText || ui.toast ? 68 : 12}px)`,
-          }}
-          data-testid="section-chip-slot"
-        >
-          <SectionChip
-            size={touch ? 'touch' : 'md'}
-            editing={ui.section.open}
-            flipped={ui.section.flipped}
-            onExit={() => wb.exitSection()}
-            onFlip={() => wb.flipSection()}
-            onEdit={() => (ui.section.open ? wb.closeSection() : wb.openSection())}
-          />
-        </div>
       ) : null}
 
       {!sk && editing?.type === 'extrude' ? (
@@ -578,8 +533,52 @@ export function ViewportOverlays({ wb, touch }: { wb: Workbench; touch: boolean 
         </Suspense>
       ) : null}
 
-      {ui.toast ? (
-        <div className="absolute left-1/2 -translate-x-1/2" style={TOAST_BOTTOM}>
+      {/*
+        One column for everything that floats at the bottom centre, nearest the sheet first: the
+        sketch toolbar or the prompt, then the section chip, then a toast. They stack, so they can
+        never intersect; `--chrome-bottom` keeps the column above the sheet or the command bar.
+      */}
+      <div
+        data-testid="overlay-stack"
+        className="absolute left-1/2 flex w-max max-w-[calc(100vw-1.5rem)] -translate-x-1/2 flex-col-reverse items-center gap-2"
+        style={ABOVE_BOTTOM}
+      >
+        {sk && session ? (
+          // The toolbar wraps at half the width, as it did when it hung off the centre line.
+          <div className="max-w-[50vw]">
+            <Suspense fallback={null}>
+              <SketchToolbarPane wb={wb} session={session} sk={sk} touch={touch} />
+            </Suspense>
+          </div>
+        ) : null}
+        {!sk && shownPrompt ? (
+          <div className="flex w-max max-w-full flex-col items-center gap-2" data-testid="prompt">
+            {ui.prompt?.tool === 'sketch' ? <PlaneChooser wb={wb} doc={doc} /> : null}
+            {refChoices.length ? (
+              <ReferenceChooser choices={refChoices} touch={touch} onPick={(r) => wb.pickRef(r)} />
+            ) : null}
+            <PromptChip
+              {...(pickedCount ? { count: pickedCount } : {})}
+              size={touch ? 'touch' : 'md'}
+              onCancel={() => wb.cancel()}
+            >
+              {shownPrompt}
+            </PromptChip>
+          </div>
+        ) : null}
+        {ui.section.enabled && !ui.section.picking && !hideSectionChip ? (
+          <div data-testid="section-chip-slot">
+            <SectionChip
+              size={touch ? 'touch' : 'md'}
+              editing={ui.section.open}
+              flipped={ui.section.flipped}
+              onExit={() => wb.exitSection()}
+              onFlip={() => wb.flipSection()}
+              onEdit={() => (ui.section.open ? wb.closeSection() : wb.openSection())}
+            />
+          </div>
+        ) : null}
+        {ui.toast ? (
           <output
             key={ui.toast.id}
             data-testid="toast"
@@ -591,8 +590,8 @@ export function ViewportOverlays({ wb, touch }: { wb: Workbench; touch: boolean 
           >
             {ui.toast.text}
           </output>
-        </div>
-      ) : null}
+        ) : null}
+      </div>
       <span className="sr-only" aria-live="polite">
         {editing ? `Editing ${editing.name}` : ''}
         {sk ? ' Sketch mode' : ''}

@@ -25,6 +25,7 @@ import { getRuntimeState, subscribeRuntimeState } from '../platform/runtime-stat
 import { applySwUpdate, checkForSwUpdateNow, onSwUpdateAvailable } from '../platform/sw-register';
 import { ConfigNotices } from '../ui/ConfigNotices';
 import { Inspector, useDoc } from '../ui/Inspector';
+import { useStatuses } from '../ui/ref-status';
 import {
   useBracketTutorial,
   useContextBubble,
@@ -35,6 +36,7 @@ import {
 } from '../ui/touch-props';
 import { useTreeProps } from '../ui/tree-props';
 import { ViewportOverlays } from '../ui/ViewportOverlays';
+import { onSheetHeight, reframeSoon, syncFrameInsets } from './framing';
 import { installKernelMemoryHook, readKernelMemory } from './kernel-memory';
 import { useObservable } from './observable';
 import type { EngineState } from './state';
@@ -208,7 +210,10 @@ export function App({ wb }: { wb: Workbench }) {
 
   const beforeViewport = useMemo(() => wb.initialDocumentRead(), [wb]);
   const onViewportReady = useCallback(
-    (viewport: TouchViewport, canvas: HTMLCanvasElement) => wb.attachViewport(viewport, canvas),
+    (viewport: TouchViewport, canvas: HTMLCanvasElement) => {
+      wb.attachViewport(viewport, canvas);
+      syncFrameInsets(wb);
+    },
     [wb],
   );
   const [viewportError, setViewportError] = useState<string | null>(null);
@@ -222,7 +227,7 @@ export function App({ wb }: { wb: Workbench }) {
 
   const touch = diagnostics.tier !== 'desktop';
   const density = touch ? 'touch' : 'compact';
-  const statuses = useObservable(wb.treeStatuses);
+  const statuses = useStatuses(wb, doc.meta.id ?? '');
   const tree = useTreeProps(wb, {
     density,
     nestSketches,
@@ -242,6 +247,11 @@ export function App({ wb }: { wb: Workbench }) {
         : ui.section.open
           ? 'section'
           : (ui.prompt?.tool ?? pickingTool(part?.features, ui.picking?.featureId));
+  // A mode starting (section, measure) frames the model in the area the sheet leaves free.
+  const modeOn = ui.section.enabled || ui.measure?.active === true;
+  useEffect(() => {
+    if (modeOn) reframeSoon(wb);
+  }, [modeOn, wb]);
   const contextBubble = useContextBubble(wb);
   const valueChip = useValueChip(wb);
   const measure = useMeasureProps(wb);
@@ -350,6 +360,7 @@ export function App({ wb }: { wb: Workbench }) {
         {...(contextBubble ? { contextBubble } : {})}
         {...(valueChip ? { valueChip } : {})}
         sheetSnap={ui.sheetSnap}
+        onSheetHeight={(px) => onSheetHeight(wb, px)}
         onSheetSnapChange={(snap) => wb.setSheet({ snap })}
         {...(ui.sheetTab ? { sheetTab: ui.sheetTab } : {})}
         onSheetTabChange={(tab) => wb.setSheet({ tab })}

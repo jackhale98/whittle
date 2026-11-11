@@ -15,6 +15,7 @@ import {
   boundsRadius,
   cameraPositionFor,
   fitDistance,
+  fitInsetFrame,
   unionBounds,
   VIEW_DIRECTIONS,
 } from './views';
@@ -102,7 +103,7 @@ export function createViewCube(vp: ViewportImpl): void {
     touch,
     onSelect: (hit: CubeHit) => vp.setViewDirection(hit.dir, true),
   });
-  vp.cube.place(vp.canvas);
+  vp.cube.place(vp.canvas, vp.frameInsets);
 }
 
 export function configureControls(vp: ViewportImpl): void {
@@ -202,12 +203,30 @@ export function fitTo(
   keepRoll = false,
   bounds?: Bounds,
 ): void {
-  const target = boundsCenter(bounds ?? vp.sceneBounds);
-  const distance = fitDistance(
-    bounds ? boundsRadius(bounds) : vp.sceneRadius,
-    vp.camera.fov,
-    vp.camera.aspect || 1,
-  );
+  let target = boundsCenter(bounds ?? vp.sceneBounds);
+  const radius = bounds ? boundsRadius(bounds) : vp.sceneRadius;
+  const ins = vp.frameInsets;
+  const w = vp.canvas.clientWidth;
+  const h = vp.canvas.clientHeight;
+  let distance: number;
+  if (w > 0 && h > 0 && (ins.top || ins.right || ins.bottom || ins.left)) {
+    const f = fitInsetFrame(radius, vp.camera.fov, w, h, ins);
+    distance = f.distance;
+    // Camera axes for this direction (and the current roll): right = f x up, up = right x f.
+    const len = Math.hypot(direction[0], direction[1], direction[2]) || 1;
+    const fwd = new Vector3(-direction[0] / len, -direction[1] / len, -direction[2] / len);
+    const right = new Vector3().crossVectors(fwd, vp.camera.up);
+    if (right.lengthSq() < 1e-12) right.set(1, 0, 0);
+    right.normalize();
+    const up = new Vector3().crossVectors(right, fwd).normalize();
+    target = [
+      target[0] + right.x * f.shiftRight + up.x * f.shiftUp,
+      target[1] + right.y * f.shiftRight + up.y * f.shiftUp,
+      target[2] + right.z * f.shiftRight + up.z * f.shiftUp,
+    ];
+  } else {
+    distance = fitDistance(radius, vp.camera.fov, vp.camera.aspect || 1);
+  }
   const pos = cameraPositionFor(target, direction, distance);
   // Standard views are level: undo any twist-roll (cut, since a tween would swing through it).
   const rolled = !keepRoll && resetRoll(vp);

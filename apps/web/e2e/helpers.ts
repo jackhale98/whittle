@@ -140,6 +140,14 @@ export interface AppHooks {
   holdExport(on: boolean): void;
   slowExport(ms: number): void;
   kernelSlots(): Promise<string[]>;
+  /** M3.8: reports merged / grown refs for a feature as the kernel would; null removes them. */
+  stubRefNotes(
+    featureId: string,
+    notes: {
+      merged?: { path: string; name: string; into: string }[];
+      grown?: { path: string; name: string; was: number; now: number }[];
+    } | null,
+  ): void;
 }
 
 type W = { __wren: WrenTestHooks; __wrenApp: AppHooks };
@@ -191,6 +199,11 @@ export const app = (page: Page) => ({
   slowExport: (ms: number) =>
     page.evaluate((v) => (window as unknown as W).__wrenApp.slowExport(v), ms),
   kernelSlots: () => page.evaluate(() => (window as unknown as W).__wrenApp.kernelSlots()),
+  stubRefNotes: (featureId: string, notes: Parameters<AppHooks['stubRefNotes']>[1]) =>
+    page.evaluate(
+      ([f, n]) => (window as unknown as W).__wrenApp.stubRefNotes(f as string, n as never),
+      [featureId, notes] as const,
+    ),
   holdExport: (on: boolean) =>
     page.evaluate((v) => (window as unknown as W).__wrenApp.holdExport(v), on),
   libraryFiles: (id: string) =>

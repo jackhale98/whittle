@@ -1010,6 +1010,11 @@ export function FeatureTree({
       status?.state === 'error' ? 'error' : '',
       status?.state === 'needsAttention' ? 'needs attention' : '',
       status?.state === 'blocked' ? 'blocked' : '',
+      status?.grown?.length
+        ? 'check a reference'
+        : status?.merged?.length
+          ? 'uses a merged face or edge'
+          : '',
     ]
       .filter(Boolean)
       .join(', ');
