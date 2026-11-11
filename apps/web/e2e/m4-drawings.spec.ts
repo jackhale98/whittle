@@ -252,6 +252,46 @@ test.describe('views', () => {
   });
 });
 
+test('views move: a free view goes where it is dragged, an aligned one slides along its axis only', async ({
+  page,
+}) => {
+  await openDemo(page);
+  await newDrawing(page);
+  await addStandardViews(page);
+  const s0 = await drawing(page).state();
+  const front = viewOf(s0, 'base');
+  const top = viewOf(s0, 'projected', 'top');
+  if (!front || !top) throw new Error('no views');
+  const grab = async (id: string) => {
+    const e = (await drawing(page).edges(id)).find((x) => x.kind === 'line');
+    if (!e) throw new Error('no edge');
+    return sheetToPage(page, e.at);
+  };
+  // The front view is free: it follows the pointer in both directions.
+  const f0 = await grab(front.id);
+  await drag(page, f0, { x: f0.x + 60, y: f0.y + 40 });
+  await expect
+    .poll(async () => viewOf(await drawing(page).state(), 'base')?.position?.[0])
+    .toBeGreaterThan((front.position?.[0] ?? 0) + 5);
+  let s = await built(page);
+  const moved = viewOf(s, 'base');
+  expect((moved?.position?.[1] ?? 0) < (front.position?.[1] ?? 0)).toBe(true);
+  // The top view hangs on its parent: it moved with it, and keeps its alignment.
+  const top1 = viewOf(s, 'projected', 'top');
+  expect(top1?.position?.[0]).toBeCloseTo(moved?.position?.[0] ?? 0, 3);
+  expect((await app(page).history()).past.at(-1)?.label).toBe('Move view');
+
+  // Dragging the aligned top view sideways does nothing; dragging it along the axis changes its distance.
+  const t0 = await grab(top.id);
+  await drag(page, t0, { x: t0.x + 80, y: t0.y + 50 });
+  s = await built(page);
+  const top2 = viewOf(s, 'projected', 'top');
+  expect(top2?.position?.[0]).toBeCloseTo(moved?.position?.[0] ?? 0, 3);
+  expect((top2?.position?.[1] ?? 0) < (top1?.position?.[1] ?? 0)).toBe(true);
+  const d = ((await drawings(page))[0] as Drawing).views.find((v) => v.id === top.id);
+  expect(d?.layout.kind).toBe('aligned');
+});
+
 test('switching the projection mirrors the aligned views with no edits to them', async ({
   page,
 }) => {
