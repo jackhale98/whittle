@@ -288,3 +288,70 @@ test('make a parameter from a sketch dimension: one undo step', async ({ page })
   await expect.poll(async () => (await a.doc()).params.length).toBe(0);
   await expect.poll(async () => dimOf(await sketchOf(page))?.value).toMatch(/mm$/);
 });
+
+test('a configuration-only edit with the sketch open redraws it without writing Default geometry', async ({
+  page,
+}) => {
+  test.slow();
+  await boot(page);
+  await page.getByRole('button', { name: 'Close welcome' }).click();
+  await addParam(page, 'dia', '30 mm');
+  const pill = page.getByTestId('configuration-pill');
+  await pill.click();
+  const list = page.getByTestId('configuration-list');
+  await list.getByRole('button', { name: 'New configuration…' }).click();
+  await list.getByRole('textbox', { name: 'New configuration name' }).fill('Big');
+  await list.getByRole('radio', { name: 'From Default' }).click();
+  await list.getByRole('button', { name: 'Create' }).click();
+  await expect(pill).toContainText('Big');
+  const a = app(page);
+  await a.idle();
+
+  await page.getByRole('tab', { name: 'Features' }).click();
+  await page.keyboard.press('s');
+  await sketchOn(page, 'Top');
+  await page.keyboard.press('Shift+C');
+  await clickAt(page, 10, 10);
+  await clickAt(page, 25, 10);
+  await a.settled();
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('d');
+  await clickAt(page, 25, 10);
+  await clickAt(page, 35, 20);
+  const editor = page.getByTestId('dimension-editor').getByRole('textbox');
+  await editor.fill('dia');
+  await editor.press('Enter');
+  await a.settled();
+  const label = page.locator('button[data-kind="diameter"]');
+  await expect(label).toContainText('Ø30');
+  expect(radiusOf(await sketchOf(page))).toBeCloseTo(15, 6);
+
+  // Params: "This configuration only", dia = 50 mm, with the sketch still open.
+  const before = (await a.history()).past.length;
+  await page.getByRole('tab', { name: 'Params' }).click();
+  const row = page.getByRole('listitem', { name: 'Parameter dia' });
+  await row.getByTestId('scope-chip').click();
+  const expr = page.getByRole('textbox', { name: 'Expression for dia', exact: true });
+  await expr.fill('50 mm');
+  await expr.press('Enter');
+  await a.idle();
+  // Drawn at the new size ...
+  await expect(label).toContainText('Ø50');
+  // ... but Default's stored geometry is untouched, and the edit is its one override step.
+  expect(radiusOf(await sketchOf(page))).toBeCloseTo(15, 6);
+  const hist = await a.history();
+  expect(hist.past.length).toBe(before + 1);
+  expect(hist.past.at(-1)?.label).toBe('Set dia in Big');
+  expect((await a.doc()).params[0]?.expr).toBe('30 mm');
+
+  // Back to Default with the sketch open: drawn at Default's size, under Default's value.
+  await pill.click();
+  await list.getByRole('button', { name: /^Default/ }).click();
+  await expect(label).toContainText('Ø30');
+  expect(radiusOf(await sketchOf(page))).toBeCloseTo(15, 6);
+  // And to Big again: the display follows.
+  await pill.click();
+  await list.getByRole('button', { name: /^Big/ }).click();
+  await expect(label).toContainText('Ø50');
+  expect(radiusOf(await sketchOf(page))).toBeCloseTo(15, 6);
+});

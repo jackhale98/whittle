@@ -399,8 +399,10 @@ export class ConfigController {
       const cmd = this.overrideCommand([
         { target: { kind: 'param', paramId }, ...(same ? {} : { value: patch.expr }) },
       ]);
-      if (cmd) wb.applyRefit(cmd);
-      else wb.commit();
+      // Never refit: an override must not write Default's sketch geometry. An open sketch redraws
+      // from the solve as display state (SketchSession.onDocChange).
+      if (cmd) wb.apply(cmd);
+      wb.commit();
       return;
     }
     wb.applyRefit({ kind: 'updateParam', paramId, ...patch });

@@ -52,12 +52,15 @@ function Popup({
     place();
     window.addEventListener('resize', place);
     window.addEventListener('scroll', place, true);
+    // The host announces camera moves (the anchor can move with no scroll): no per-frame polling.
+    window.addEventListener('wren:reposition', place);
     const ro = new ResizeObserver(place);
     if (popup.current) ro.observe(popup.current);
     ro.observe(anchor);
     return () => {
       window.removeEventListener('resize', place);
       window.removeEventListener('scroll', place, true);
+      window.removeEventListener('wren:reposition', place);
       ro.disconnect();
     };
   }, [anchor, popup, minWidth]);
@@ -233,7 +236,7 @@ export function MakeParamForm({
           }}
           onKeyDown={(e) => {
             if (e.nativeEvent.isComposing) return;
-            if (e.key === 'Tab' && !e.shiftKey) {
+            if (e.key === 'Tab') {
               // Leaving the form by Tab cancels it explicitly: nothing is left half done.
               e.preventDefault();
               e.stopPropagation();

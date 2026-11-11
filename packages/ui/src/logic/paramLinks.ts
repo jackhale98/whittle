@@ -82,6 +82,14 @@ export function paramRefs(expr: string, names: ReadonlySet<string> | readonly st
     if (!known.has(m[0]) || out.includes(m[0])) continue;
     // The engine's rule: a name straight after a number is a unit only if it IS a unit; any
     // other name there is a parameter (`2 width` is 2 * width).
+    // The exponent of a number (`1e3`, `1e-3`) is part of the number, not a name.
+    if (
+      at > 0 &&
+      /[\d.]/.test(expr[at - 1] ?? '') &&
+      /^[eE]\d*$/.test(m[0]) &&
+      (/\d/.test(m[0]) || /^[+-]?\d/.test(expr.slice(at + m[0].length)))
+    )
+      continue;
     let k = at - 1;
     while (k >= 0 && expr[k] === ' ') k--;
     if (k >= 0 && /[\d.]/.test(expr[k] ?? '') && UNIT_WORDS.includes(m[0])) continue;

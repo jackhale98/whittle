@@ -90,6 +90,9 @@ describe('paramRefs / isParamName', () => {
     expect(paramRefs('5 mm', ['mm'])).toEqual([]);
     // Engine rule: after a number a name is a unit only if it IS a unit.
     expect(paramRefs('2 width', ['width'])).toEqual(['width']);
+    // Number lexing: the exponent of `1e3` / `1e-3` is not a name.
+    expect(paramRefs('1e3 + 2.5e-3', ['e3', 'e'])).toEqual([]);
+    expect(paramRefs('2 e3', ['e3'])).toEqual(['e3']);
     expect(paramRefs('5width', ['width'])).toEqual(['width']);
     expect(paramRefs('width(2)', ['width'])).toEqual([]);
     expect(paramRefs('depth', names)).toEqual([]);
