@@ -281,8 +281,9 @@ export function ExpressionInput({
   }
 
   const [pre, mid, post] = splitSpan(text, error);
-  // The error of an emptied field waits while the list is open (`=` clears it on purpose).
-  const invalid = !!error && (draft !== null || !focused) && !(assist?.listOpen && !text.trim());
+  // An error waits while the parameter list is open: the name is still being typed (and `=`
+  // empties the field on purpose).
+  const invalid = !!error && (draft !== null || !focused) && !assist?.listOpen;
   const tall = size === 'touch';
 
   return (

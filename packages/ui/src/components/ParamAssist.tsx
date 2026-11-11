@@ -290,7 +290,7 @@ export default function ParamAssist(p: ParamAssistProps) {
               // Keyboard users have Alt+↓ and `=`; the button keeps the tab order short.
               tabIndex={-1}
               data-testid="param-fx"
-              aria-label={`Parameters for ${p.label}`}
+              aria-label={`fx, parameters for ${p.label}`}
               aria-haspopup="listbox"
               aria-expanded={fxOpen}
               aria-controls={fxOpen ? p.listId : undefined}

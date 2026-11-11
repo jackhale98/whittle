@@ -207,6 +207,19 @@ export function DimensionLabel({
   const known = links.params.length > 0 ? links.params.map((p) => p.name) : ctxNames;
   const refs = driving ? paramRefs(expr, known) : [];
   const exact = refs.length === 1 && isParamName(expr, known) ? expr.trim() : null;
+  // The accessible name starts with the visible text (WCAG 2.5.3): "width = Ø80" when linked.
+  const what =
+    kind === 'offset'
+      ? driving
+        ? 'Offset dimension'
+        : 'Reference offset'
+      : driving
+        ? 'Dimension'
+        : 'Reference dimension';
+  const hint = driving ? 'Press Enter to edit.' : 'Measured, not editable.';
+  const labelName = exact
+    ? `${exact} = ${prefix[kind] ?? ''}${text}, ${what.toLowerCase()}. ${hint}`
+    : `${what}: ${prefix[kind] ?? ''}${text}${refs.length > 0 ? `, set by the parameters ${refs.join(', ')}` : ''}. ${hint}`;
 
   const pos = { left: x, top: y, transform: 'translate(-50%, -50%)' } as const;
 
@@ -272,7 +285,7 @@ export function DimensionLabel({
       style={pos}
       data-kind={kind}
       data-driving={driving}
-      aria-label={`${kind === 'offset' ? (driving ? 'Offset dimension' : 'Reference offset') : driving ? 'Dimension' : 'Reference dimension'}: ${prefix[kind] ?? ''}${text}${refs.length > 0 ? `, set by ${exact ? 'parameter' : 'the parameters'} ${exact ?? refs.join(', ')}` : ''}. ${driving ? 'Press Enter to edit.' : 'Measured, not editable.'}`}
+      aria-label={labelName}
       data-param={refs.length > 0 ? refs.join(',') : undefined}
       aria-pressed={selected}
       data-draggable={onMove ? '' : undefined}
@@ -352,10 +365,10 @@ export function DimensionLabel({
         <span
           data-testid="dimension-param"
           title={`Set by ${refs.join(', ')}`}
-          className="mr-1 rounded-[5px] bg-accent-soft px-1 text-2xs font-semibold text-accent-text italic"
-        >
-          fx
-        </span>
+          // The "fx" is drawn by CSS so it is not text the accessible name has to repeat.
+          aria-hidden
+          className="mr-1 rounded-[5px] bg-accent-soft px-1 text-2xs font-semibold text-accent-text italic before:content-['fx']"
+        />
       ) : null}
       {prefix[kind]}
       {text}

@@ -64,7 +64,8 @@ function Popup({
         left: pos?.left ?? 0,
         top: pos?.top ?? 0,
         width: pos?.width ?? minWidth,
-        visibility: pos ? 'visible' : 'hidden',
+        // Not `visibility: hidden`: the make form focuses its input before the first placement.
+        opacity: pos ? 1 : 0,
         boxShadow: 'var(--shadow-pop)',
       }}
       className="z-[var(--z-popover)] max-h-64 overflow-y-auto rounded-panel bg-surface p-1 text-fg shadow-[inset_0_0_0_1px_var(--color-border)]"

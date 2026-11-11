@@ -191,7 +191,7 @@ describe('parameter autocomplete (ARIA combobox)', () => {
 
   it('the fx button and Alt+Down open the full list; the button toggles', async () => {
     await renderReady(<Harness initial="width" />);
-    const fx = await screen.findByRole('button', { name: 'Parameters for Depth' });
+    const fx = await screen.findByRole('button', { name: /parameters for Depth/i });
     await userEvent.click(fx);
     await screen.findByRole('listbox');
     expect(options()).toHaveLength(4);
@@ -206,14 +206,14 @@ describe('parameter autocomplete (ARIA combobox)', () => {
 
   it('the fx list replaces the selected value, not the caret word', async () => {
     await renderReady(<Harness initial="10mm" />);
-    await userEvent.click(await screen.findByRole('button', { name: 'Parameters for Depth' }));
+    await userEvent.click(await screen.findByRole('button', { name: /parameters for Depth/i }));
     await userEvent.click(await screen.findByRole('option', { name: /^wall/ }));
     expect(field()).toHaveValue('wall');
   });
 
   it('without parameters there is no list, no fx and the arrows still nudge', async () => {
     renderUI(<Harness links={{ params: [] }} />);
-    expect(screen.queryByRole('button', { name: /Parameters for/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /parameters for/i })).toBeNull();
     await userEvent.click(field());
     await userEvent.keyboard('{ArrowUp}');
     expect(field()).toHaveValue('11mm');
@@ -238,7 +238,7 @@ describe('parameter autocomplete (ARIA combobox)', () => {
         />
       </ParamLinksContext.Provider>,
     );
-    expect(screen.queryByRole('button', { name: /Parameters for/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /parameters for/i })).toBeNull();
     await userEvent.click(screen.getByLabelText('Plain'));
     await userEvent.keyboard('w');
     expect(screen.queryByRole('listbox')).toBeNull();
@@ -274,14 +274,14 @@ describe('make parameter from a value', () => {
     return { calls, onCommit, makeDone };
   }
   async function openForm() {
-    await userEvent.click(await screen.findByRole('button', { name: 'Parameters for Depth' }));
+    await userEvent.click(await screen.findByRole('button', { name: /parameters for Depth/i }));
     await userEvent.click(await screen.findByRole('option', { name: /Make parameter from/ }));
     return await screen.findByRole('textbox', { name: 'Name of the new parameter' });
   }
 
   it('offers the action only for a valid value that is not already a parameter', async () => {
     await renderReady(<Harness links={{ params: infos, make: () => undefined }} initial="width" />);
-    await userEvent.click(await screen.findByRole('button', { name: 'Parameters for Depth' }));
+    await userEvent.click(await screen.findByRole('button', { name: /parameters for Depth/i }));
     await screen.findByRole('listbox');
     expect(screen.queryByTestId('param-make-option')).toBeNull();
   });
@@ -403,7 +403,7 @@ describe('DimensionLabel: link and drop', () => {
         <DimensionLabel x={50} y={50} kind="diameter" expr="width" driving evaluate={ev} />
       </ParamLinksContext.Provider>,
     );
-    const btn = screen.getByRole('button', { name: /Dimension: Ø80, set by parameter width/ });
+    const btn = screen.getByRole('button', { name: /width = Ø80, dimension/ });
     expect(btn).toHaveTextContent('width = Ø80');
     expect(btn).toHaveAttribute('data-param', 'width');
   });
@@ -415,7 +415,8 @@ describe('DimensionLabel: link and drop', () => {
       </ParamLinksContext.Provider>,
     );
     const btn = screen.getByRole('button', { name: /set by the parameters width/ });
-    expect(within(btn).getByTestId('dimension-param')).toHaveTextContent('fx');
+    // The fx is drawn by CSS (not text), so the accessible name need not repeat it.
+    expect(within(btn).getByTestId('dimension-param')).toHaveAttribute('title', 'Set by width');
   });
 
   it('a plain value shows no link', () => {

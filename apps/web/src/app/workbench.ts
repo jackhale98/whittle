@@ -500,11 +500,9 @@ export class Workbench {
     );
     this.heals = new Map();
     this.healsFor = null;
-    // A joined edit (Make parameter, ADR-080) merges into the step that opened it: keep its label.
-    const joined = this.joinKey !== null;
-    const lbl = joined && this.joinApplied > 0 ? undefined : (label ?? folded.label);
+    // A joined edit (Make parameter) merges into the step that opened it and keeps its label.
+    const lbl = this.joinKey !== null ? undefined : (label ?? folded.label);
     const key = this.joinKey ?? coalesceKey;
-    if (joined) this.joinApplied++;
     const r = this.store.apply(folded.command, {
       ...(lbl ? { label: lbl } : {}),
       ...(key ? { coalesceKey: key } : {}),
@@ -521,31 +519,22 @@ export class Workbench {
     this.store.commit();
   }
 
-  /** While set, every `apply` joins one undo step (Make parameter: the new parameter and the edit that uses it). */
+  /** Set by `makeParameter`: every `apply` until `endMakeParameter` joins its undo step (ADR-080). */
   private joinKey: string | null = null;
-  private joinApplied = 0;
 
-  /**
-   * "Make parameter" (ADR-080): adds `name = expr` and holds the undo step open, so the field's
-   * next edit (it commits the name) lands in the same step. Returns an error message, or
-   * undefined. Always follow with `endMakeParameter`.
-   */
+  /** Make parameter: adds `name = expr`; the field's next edit (it commits the name) joins the step. */
   makeParameter(name: string, expr: Expr): string | undefined {
     const bad = validateParamName(name);
     if (bad) return bad;
     if (this.doc.params.some((p) => p.name === name)) return `“${name}” is already used`;
-    this.joinKey = `make-param:${ulid()}`;
-    this.joinApplied = 0;
-    if (
-      !this.apply({ kind: 'addParam', param: { id: ulid(), name, expr } }, `Make parameter ${name}`)
-    ) {
-      this.joinKey = null;
-      return 'The parameter could not be created';
-    }
+    const key = `make-param:${ulid()}`;
+    const param = { id: ulid(), name, expr };
+    if (!this.apply({ kind: 'addParam', param }, `Make parameter ${name}`, key)) return 'Failed';
+    this.joinKey = key;
     return undefined;
   }
 
-  /** Closes the step `makeParameter` opened, after a sketch's queued edit (a dimension) has landed. */
+  /** Closes the step, once a sketch's queued dimension edit has landed. */
   endMakeParameter(): void {
     const end = () => {
       this.joinKey = null;

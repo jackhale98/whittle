@@ -278,6 +278,15 @@ Dimension values accept expressions and units, such as `25mm + 1/8in` or a param
 dimension to select it. Click it again, double-click it, or press Enter to edit its value. Press
 **Delete** (or use the bin button under the selected label) to remove it.
 
+**Use a parameter as a dimension.** While you edit a dimension, start typing a parameter name: a list of
+matching parameters appears under the field with their current values. Press ↑ or ↓ to move, then Enter
+or Tab to accept. Or press **fx** in the field to list them all. You can also drag a parameter from the
+**Params** tab and drop it on a dimension label (see
+[Parameters and expressions](#parameters-and-expressions)). A dimension set by a parameter shows its name:
+a circle driven by `width` reads **width = Ø80**, and one driven by a formula such as `width/2` carries a
+small **fx** badge. To turn a dimension you already typed into a parameter, press **fx** while editing it
+and choose **Make parameter**.
+
 A placed label moves with its geometry: drag a dimensioned circle by its centre and the dimension
 comes along.
 
@@ -559,6 +568,39 @@ Parameters are named values you can reuse. They live in the **Params** tab.
   the expression, or add a description.
 - **Rename a parameter** and every reference to it updates in one undo step.
 - **Delete a parameter** that is in use asks you to confirm.
+
+### Using a parameter in a value
+
+Every value field accepts a parameter: a sketch dimension, an inspector field such as an extrude depth,
+the on-canvas value chip. There are four ways to apply one. None of them opens a dialog.
+
+- **Type it, and pick from the list.** Start typing a name. Matching parameters appear in a list under the
+  field with their values, for example `width  80 mm`. Press **↑** or **↓** to move, **Enter** or **Tab**
+  to accept, and **Esc** to close the list without cancelling your edit (a second Esc cancels the edit).
+  It works in the middle of a formula too: put the cursor where the name goes, and only that word is
+  replaced. Plain numbers are never held up. The list appears only when you type a name, not a number or a
+  unit such as the `mm` in `25mm`.
+- **Open the whole list.** Press **fx** at the right of the field, type **=** at the start of the field
+  (the `=` is dropped), or press **Alt+↓**. On a touch device with the numeric keypad, the parameters are
+  keys on the keypad; **fx** opens the same list.
+- **Make a parameter from a value.** Press **fx**, choose **Make parameter from ...**, and type a name. The
+  name is checked as you type: it must be free, not a unit (`mm`, `in`) and not a built-in name (`sin`,
+  `pi`). Press Enter. The field now holds the new name, and the parameter holds the old value. Creating the
+  parameter and linking the field is **one undo step**.
+- **Drag it.** Drag a parameter's link button (the chain icon in the **Params** tab) onto a dimension label
+  or onto a field. Mouse, finger and Pencil all work. Valid targets get a dashed outline while you drag.
+  The value is replaced by the parameter name, in one undo step. A parameter of the wrong kind, such as an
+  angle onto a length, is put in the field with its error instead.
+
+### Seeing where a parameter is used
+
+A field that uses a parameter shows a small **fx** badge, and screen readers announce "Linked to parameter
+width". A dimension label shows **width = 80**.
+
+In the **Params** tab each parameter says **Used by N**. Press it to list the features and sketch
+dimensions that use it (and other parameters that refer to it). Choose an entry to select that feature. For
+a sketch dimension, the sketch opens if needed and the dimension is selected. A parameter nothing uses says
+**Not used yet**.
 
 ### Expressions
 
