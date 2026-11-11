@@ -3,7 +3,16 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main]
+    # `claude/**` is the dev branch family: a push gets the same fast-feedback pipeline as main, but
+    # never deploys (the `pages` and `cloudflare` jobs are main-only). ADR-083.
+    branches: [main, "claude/**"]
+    # Docs-only pushes skip the pipeline. None of these paths is a build or test input (the app's
+    # brand assets live in apps/web/public/brand, not in the top-level brand/). Pull requests are
+    # not filtered, so a required check can never be left pending.
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+      - "brand/**"
   workflow_dispatch:
 
 permissions:
@@ -11,7 +20,9 @@ permissions:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  # A newer push to the same branch or pull request cancels the older run; main is never cancelled
+  # (every main commit must finish, it deploys).
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 # GitHub Pages serves a project site at /<repository name>/: the build and every E2E server use
 # the same base, so renaming the repository (ADR-032) needs no workflow change.
@@ -124,31 +135,16 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  e2e:
-    name: E2E (${{ matrix.browser }}, shard ${{ matrix.shard }}/${{ matrix.shards }})
+  # Smoke tier (ADR-083): ~13 tests tagged @smoke in the e2e specs (boot and box, sketch -> extrude
+  # -> reload -> export, dimension edit, fillet, push/pull, undo/redo, configurations, parameter
+  # autocomplete, radial menu, touch bubble, isolation, installed-PWA chrome). Chromium and
+  # chromium-touch, one worker, about 3 minutes of tests after the build: a broken build or boot
+  # fails here, in minutes, before any of the expensive jobs below start (they all need: smoke).
+  smoke:
+    name: Smoke (chromium, @smoke)
     needs: build
     runs-on: ubuntu-latest
-    # Sharded: the chromium suite outgrew one 30-minute runner with M3.6 (job cancelled at 30:00).
-    # H1 measurement: ~57 min of serial test time for the chromium project (114 tests), so four
-    # chromium shards of ~14 min; the limit below fails a shard that drifts well past 15 minutes.
-    timeout-minutes: 25
-    # Firefox/WebKit are reported but do not gate deploys yet (ADR-005 §7): headless Firefox on
-    # CI has not rendered the box, and Playwright WebKit cannot reload offline with a SW.
-    continue-on-error: ${{ matrix.browser != 'chromium' }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { browser: chromium, shard: 1, shards: 4 }
-          - { browser: chromium, shard: 2, shards: 4 }
-          - { browser: chromium, shard: 3, shards: 4 }
-          - { browser: chromium, shard: 4, shards: 4 }
-          - { browser: firefox, shard: 1, shards: 3 }
-          - { browser: firefox, shard: 2, shards: 3 }
-          - { browser: firefox, shard: 3, shards: 3 }
-          - { browser: webkit, shard: 1, shards: 3 }
-          - { browser: webkit, shard: 2, shards: 3 }
-          - { browser: webkit, shard: 3, shards: 3 }
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
@@ -162,40 +158,73 @@ jobs:
         with:
           name: web-dist
           path: apps/web/dist
-      - name: Install ${{ matrix.browser }}
-        run: pnpm --filter @wren-cad/web exec playwright install --with-deps ${{ matrix.browser }}
-      - name: Run Playwright
-        # Firefox runs headed under Xvfb: headless Firefox on GPU-less runners has no GL context at
-        # all, while Xvfb + Mesa (llvmpipe) gives it a working software WebGL2 (ADR-005 §7).
-        # One worker (playwright.config.ts) and traces kept only for failures: a slow-runner flake
-        # leaves a trace in the playwright-report artefact instead of a bare timeout.
-        # Chromium also runs the installed-PWA chrome checks with touch emulation (chromium-touch,
-        # gating); WebKit runs them on the iPad Pro 11 device (webkit-ipad, non-gating with the job).
-        run: |
-          case "${{ matrix.browser }}" in
-            firefox)
-              WREN_HEADED=1 xvfb-run -a pnpm --filter @wren-cad/web exec playwright test --trace retain-on-failure --project=firefox --shard=${{ matrix.shard }}/${{ matrix.shards }} ;;
-            chromium)
-              pnpm --filter @wren-cad/web exec playwright test --trace retain-on-failure --project=chromium --project=chromium-touch --shard=${{ matrix.shard }}/${{ matrix.shards }} ;;
-            webkit)
-              pnpm --filter @wren-cad/web exec playwright test --trace retain-on-failure --project=webkit --project=webkit-ipad --shard=${{ matrix.shard }}/${{ matrix.shards }} ;;
-          esac
+      - name: Install chromium
+        run: pnpm --filter @wren-cad/web exec playwright install --with-deps chromium
+      - name: Run smoke tests
+        run: pnpm --filter @wren-cad/web exec playwright test --trace retain-on-failure --grep @smoke --project=chromium --project=chromium-touch
       - name: Upload Playwright report
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: playwright-report-${{ matrix.browser }}-${{ matrix.shard }}
+          name: playwright-report-smoke
           path: |
             apps/web/playwright-report
             apps/web/test-results
           if-no-files-found: ignore
           retention-days: 7
 
-  # The M3 reference parts (PLAN §12A) take ~20 min serially: three gating shards of their own,
-  # so neither they nor the main chromium job approach the 30-minute limit.
+  e2e:
+    name: E2E (chromium, shard ${{ matrix.shard }}/8)
+    needs: [build, smoke]
+    runs-on: ubuntu-latest
+    # Sharded: the chromium suite outgrew one 30-minute runner with M3.6 (job cancelled at 30:00).
+    # 155 tests (chromium + chromium-touch), 19-20 per shard. H1 measured ~57 min of serial time for
+    # 114 tests, so about 75-80 min now: eight shards of ~10 min plus ~3 min of setup. The limit
+    # fails a shard that drifts well past that. Firefox and WebKit run in soak.yml (ADR-083).
+    timeout-minutes: 25
+    strategy:
+      # One failing shard cancels the rest: the run is red either way and the runners free up for
+      # the next push. Playwright retries once on CI (playwright.config.ts), which absorbs a flake.
+      fail-fast: true
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Download web build
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: web-dist
+          path: apps/web/dist
+      - name: Install chromium
+        run: pnpm --filter @wren-cad/web exec playwright install --with-deps chromium
+      - name: Run Playwright
+        # One worker (playwright.config.ts) and traces kept only for failures: a slow-runner flake
+        # leaves a trace in the playwright-report artefact instead of a bare timeout. Chromium also
+        # runs the installed-PWA chrome checks with touch emulation (chromium-touch).
+        run: pnpm --filter @wren-cad/web exec playwright test --trace retain-on-failure --project=chromium --project=chromium-touch --shard=${{ matrix.shard }}/8
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: playwright-report-chromium-${{ matrix.shard }}
+          path: |
+            apps/web/playwright-report
+            apps/web/test-results
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # The M3 reference parts (PLAN §12A) take ~20 min serially (10 tests): three gating shards of
+  # 3-4 tests, ~7 min each. Not the long pole (the e2e shards, perf and the viewport suite are), so
+  # no more shards.
   e2e-reference:
     name: E2E reference parts (chromium, shard ${{ matrix.shard }}/3)
-    needs: build
+    needs: [build, smoke]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -233,7 +262,7 @@ jobs:
   package-e2e:
     # Split (viewport | ui): together they reached ~30 min after H1 added wheel and section specs.
     name: E2E (${{ matrix.suite }}, chromium)
-    needs: lint
+    needs: [lint, smoke]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -263,7 +292,7 @@ jobs:
   # apps/web/e2e/perf/budgets.ts (ADR-009). Gates the deploy.
   perf:
     name: Performance budgets
-    needs: build
+    needs: [build, smoke]
     runs-on: ubuntu-latest
     timeout-minutes: 40
     env:
@@ -357,7 +386,7 @@ jobs:
   pages:
     name: Deploy to GitHub Pages
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [lint, test, build, e2e, e2e-reference, package-e2e, perf]
+    needs: [lint, test, build, smoke, e2e, e2e-reference, package-e2e, perf]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     concurrency:
@@ -394,7 +423,7 @@ jobs:
   cloudflare:
     name: Publish to cloudflare-pages branch
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [lint, test, build, e2e, e2e-reference, package-e2e, perf]
+    needs: [lint, test, build, smoke, e2e, e2e-reference, package-e2e, perf]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     concurrency:

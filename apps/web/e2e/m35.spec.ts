@@ -438,7 +438,7 @@ test.describe('presets', () => {
 // ---------------------------------------------------------------------------------------------
 
 test.describe('radial menu', () => {
-  test('it draws at once; a quick flick runs its command; Space repeats; a held key opens it', async ({
+  test('it draws at once; a quick flick runs its command; Space repeats; a held key opens it @smoke', async ({
     page,
   }) => {
     const s = await boxSetup(page);

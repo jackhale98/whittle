@@ -2310,3 +2310,14 @@ Hosting roadmap step 3 (PLAN §13), on the owner's domain wren-cad.app. The owne
 - **Worker.** `ALLOWED_ORIGINS` gains `https://wren-cad.app` (exact; `www` redirects to the apex and is not an origin). Not deployed by this change.
 - **Preview deploys.** Not set up; see docs/DEPLOY.md.
 - **Schema ids** keep `jackhale98.github.io/wren-cad/schema/...`: they identify the format, and changing them would be a format change.
+
+## ADR-083 — CI for fast feedback: dev-branch runs, a smoke tier first, eight shards, Firefox and WebKit nightly (owner, 2026-11-11)
+The owner's complaint: a 30-minute wait to fail, then another 30 after the fix. The repository is public, so runner minutes are free; the cost to optimise is wall time.
+
+- **Triggers.** `ci.yml` runs on pushes to `main` and `claude/**`, on pull requests and on demand. `pages` and `cloudflare` keep their `main`-only `if:` guards, so dev-branch runs never deploy. `paths-ignore` (`docs/**`, `**/*.md`, `brand/**`) skips docs-only pushes; none is a build input (the app's brand assets are `apps/web/public/brand`, and tests that mention `.md` write their own fixtures). Pull requests are not path-filtered, so a required check cannot hang pending.
+- **Concurrency.** A newer push to the same non-main ref cancels the in-progress run; `main` is never cancelled. Known cost: cancelling during a kernel cache miss throws away that build (the cache is saved only on success), so the next push pays the ~20 minutes again.
+- **Smoke tier.** Tests tagged `@smoke` in their titles (`--grep @smoke`, chromium and chromium-touch): boot and box, sketch to extrude to reload to export, dimension edit, fillet and needs-attention, push/pull (mouse and touch), undo/redo, configurations switch/save/reload/STEP export, parameter autocomplete, radial menu, touch bubble, SW isolation, installed-PWA chrome. About 3 minutes of tests. `e2e`, `e2e-reference`, `package-e2e` and `perf` need `smoke`, so a broken build fails in minutes and the expensive jobs never start. The deploy jobs list `smoke` too. Tag, do not list: a new smoke test is one word in its title. Keep the tier under 5 minutes; the 80 s STEP bracket acceptance test stays in the shards.
+- **Shards.** Chromium goes from 4 to 8 shards (155 tests, 19-20 each, ~10 min plus setup, 25 min limit) with `fail-fast: true`: one red shard cancels the others. Playwright's one CI retry absorbs single flakes. Reference parts stay at 3 shards (10 tests, ~7 min each): not the long pole. The long poles are now the viewport/UI package suites, perf (serial by design) and a kernel cache miss.
+- **Firefox and WebKit** move to `soak.yml` (nightly, on demand): same projects, same 3-way sharding, never gating, a per-shard summary and report artefacts. They stay out of the gating runner pool. ADR-005 section 7 still describes why they do not gate.
+- **Unchanged.** Kernel cache, size budget, non-gating Lighthouse, perf gate.
+

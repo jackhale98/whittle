@@ -9,7 +9,7 @@ import { app, boot, clickAt, palette, sketchOn, tool } from './helpers';
 
 test.describe.configure({ mode: 'serial' });
 
-test('sketch a rectangle, dimension it, extrude by width/2, edit history, reload, export', async ({
+test('sketch a rectangle, dimension it, extrude by width/2, edit history, reload, export @smoke', async ({
   page,
 }) => {
   test.setTimeout(120_000);

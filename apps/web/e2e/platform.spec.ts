@@ -33,7 +33,7 @@ async function visitUntilIsolated(page: Page): Promise<void> {
 }
 
 test.describe('cross-origin isolation via the service worker', () => {
-  test('first visit installs the SW, reloads exactly once, and becomes isolated', async ({
+  test('first visit installs the SW, reloads exactly once, and becomes isolated @smoke', async ({
     page,
   }) => {
     const navigations = countNavigations(page);

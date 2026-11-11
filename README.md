@@ -85,8 +85,8 @@ progress, and the rest of the roadmap is listed under [Coming next](#coming-next
 | Browser                  | Status                                                                                                                                                                                                  |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Chrome and Edge          | Primary. Chromium end-to-end tests gate every deploy.                                                                                                                                                   |
-| Safari 26+ and iPadOS    | Targeted. WebKit end-to-end tests run in CI but don't gate yet, and two offline tests are skipped on WebKit. Testing on a physical iPad is part of M2.                                                  |
-| Firefox                  | Runs. Firefox end-to-end tests run in CI under a virtual display but don't gate yet.                                                                                                                    |
+| Safari 26+ and iPadOS    | Targeted. WebKit end-to-end tests run nightly but don't gate, and two offline tests are skipped on WebKit. Testing on a physical iPad is part of M2.                                                  |
+| Firefox                  | Runs. Firefox end-to-end tests run nightly under a virtual display but don't gate.                                                                                                                    |
 
 Wren needs WebAssembly, Web Workers, IndexedDB and either WebGPU or WebGL2. The viewport uses
 WebGPU when available and falls back to WebGL2.
