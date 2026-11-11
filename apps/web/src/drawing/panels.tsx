@@ -367,16 +367,19 @@ export function AttentionPanelBody({
   b,
   size,
   selectedKey,
+  reviewOnly = false,
 }: {
   c: DrawingController;
   b: Built;
   size: Touch;
   selectedKey: string | null;
+  /** Phone: review only, so no "Reattach…". */
+  reviewOnly?: boolean;
 }) {
   const entries = b.build.attention;
   return (
     <AttentionPanel
-      rows={attentionRows(b)}
+      rows={attentionRows(b).map((r) => (reviewOnly ? { ...r, reattachable: false } : r))}
       selectedKey={selectedKey}
       size={size}
       onSelect={(key) => {

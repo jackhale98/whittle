@@ -198,7 +198,7 @@ export function DrawingShell(p: DrawingShellProps) {
         <main className="relative min-h-0 flex-1" data-testid="drawing-canvas">
           {p.canvas}
           {p.tools ? (
-            <div className="absolute top-3 left-3 rounded-panel bg-surface/95 shadow-pop backdrop-blur">
+            <div className="absolute top-3 left-3 max-w-[calc(100%-1.5rem)] overflow-x-auto rounded-panel bg-surface/95 shadow-pop backdrop-blur">
               {p.tools}
             </div>
           ) : null}

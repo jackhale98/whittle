@@ -13,7 +13,7 @@ export function toleranceText(t: Tolerance | undefined): string {
     case 'symmetric':
       return `±${bare(t.value)}`;
     case 'bilateral': {
-      const sign = (e: string) => (/^[+-−–]/.test(e) ? e : `+${e}`);
+      const sign = (e: string) => (/^[+\-−–]/.test(e) ? e : `+${e}`);
       return `${sign(bare(t.upper))}/${sign(bare(t.lower))}`;
     }
     case 'limits':

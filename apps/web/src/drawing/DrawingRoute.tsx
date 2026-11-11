@@ -193,7 +193,7 @@ export default function DrawingRoute({ wb, id, tier, onClose }: DrawingRouteProp
 
   const panels = b
     ? [
-        { id: 'inspector', label: 'Inspector', content: inspector },
+        ...(readOnly ? [] : [{ id: 'inspector', label: 'Inspector', content: inspector }]),
         {
           id: 'views',
           label: 'Views',
@@ -213,7 +213,15 @@ export default function DrawingRoute({ wb, id, tier, onClose }: DrawingRouteProp
           label: 'Attention',
           badge: attentionN,
           tone: 'danger' as const,
-          content: <AttentionPanelBody c={c} b={b} size={size} selectedKey={selectedKey} />,
+          content: (
+            <AttentionPanelBody
+              c={c}
+              b={b}
+              size={size}
+              selectedKey={selectedKey}
+              reviewOnly={readOnly}
+            />
+          ),
         },
         ...(readOnly
           ? []
@@ -238,7 +246,9 @@ export default function DrawingRoute({ wb, id, tier, onClose }: DrawingRouteProp
           content: <p className="px-4 text-xs text-fg-muted">Building the drawing…</p>,
         },
       ];
-  const activePanel = panels.some((p) => p.id === panelId) ? panelId : 'inspector';
+  const activePanel = panels.some((p) => p.id === panelId)
+    ? panelId
+    : (panels[0]?.id ?? 'inspector');
 
   // ---- tools -------------------------------------------------------------------------------
   const activeTool: DrawingToolId | null =
@@ -344,7 +354,7 @@ export default function DrawingRoute({ wb, id, tier, onClose }: DrawingRouteProp
                 active={activeTool}
                 disabled={disabledTools}
                 onTool={onTool}
-                orientation={tier === 'desktop' ? 'vertical' : 'vertical'}
+                orientation={tier === 'desktop' ? 'vertical' : 'horizontal'}
                 size={size}
               />
             ),

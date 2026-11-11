@@ -76,27 +76,45 @@ export function annotationTitle(a: Annotation | undefined): string {
   return a ? host.describeAnnotation(a) : 'annotation';
 }
 
+/** One row per annotation or view: its entries (several can describe one problem) merge. */
 export function attentionRows(b: Built): AttentionRow[] {
   const annotations = new Map((b.part.annotations ?? []).map((a) => [a.id, a]));
   const sheets = new Map(b.drawing.sheets.map((s) => [s.id, s.name]));
-  return b.build.attention.map((e: AttentionEntry) => {
+  const order = { attention: 0, warning: 1, info: 2 } as const;
+  const rows = new Map<string, AttentionRow & { reattach: boolean }>();
+  for (const e of b.build.attention as AttentionEntry[]) {
+    const subject =
+      e.subject.kind === 'annotation'
+        ? `a:${e.subject.annotationId}:${e.subject.placementId ?? ''}`
+        : e.subject.kind === 'view'
+          ? `v:${e.subject.viewId}`
+          : e.key;
+    const have = rows.get(subject);
+    const reattach = e.subject.kind === 'annotation' && (e.unresolved?.length ?? 0) > 0;
+    if (have) {
+      if (!have.message.includes(e.message)) have.message = `${have.message}. ${e.message}`;
+      if (order[e.severity] < order[have.severity]) have.severity = e.severity;
+      have.reattach ||= reattach;
+      continue;
+    }
     const a = e.subject.kind === 'annotation' ? annotations.get(e.subject.annotationId) : undefined;
     const v =
       e.subject.kind === 'view'
         ? b.drawing.views.find((x) => x.id === (e.subject as { viewId: Id }).viewId)
         : undefined;
-    return {
+    rows.set(subject, {
       key: e.key,
       severity: e.severity,
       message: e.message,
       ...(e.zone ? { zone: e.zone } : {}),
       ...(e.sheetId && b.drawing.sheets.length > 1 ? { sheet: sheets.get(e.sheetId) ?? '' } : {}),
       title: a ? host.describeAnnotation(a) : v ? viewName(v) : 'drawing',
-      ...(e.subject.kind === 'annotation' && (e.unresolved?.length ?? 0) > 0
-        ? { reattachable: true }
-        : {}),
-    };
-  });
+      reattach,
+    });
+  }
+  return [...rows.values()].map(({ reattach, ...r }) =>
+    reattach ? { ...r, reattachable: true } : r,
+  );
 }
 
 const REASON: Record<string, string> = {

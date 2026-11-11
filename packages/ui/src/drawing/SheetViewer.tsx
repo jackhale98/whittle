@@ -265,7 +265,11 @@ export function SheetViewer({
     box.current?.focus({ preventScroll: true });
     const p = local(e);
     pointers.current.set(e.pointerId, { ...p, type: e.pointerType });
-    box.current?.setPointerCapture(e.pointerId);
+    try {
+      box.current?.setPointerCapture?.(e.pointerId);
+    } catch {
+      // A synthetic or already-released pointer cannot be captured: the drag still works.
+    }
     const g = gesture.current;
     if (pointers.current.size === 2) {
       // A second finger turns whatever is happening into a pinch.
@@ -450,7 +454,7 @@ export function SheetViewer({
       >
         <g
           transform={`translate(${view.x} ${view.y}) scale(${view.k})`}
-          data-testid="sheet-content"
+          data-testid="drawing-sheet-content"
         >
           <rect
             x={0}

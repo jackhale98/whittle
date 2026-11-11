@@ -65,9 +65,11 @@ export function AttentionPanel({
   const n = rows.filter((r) => r.severity === 'attention').length;
   if (rows.length === 0) {
     return (
-      <EmptyState icon={CheckCircle2} title="Everything resolves">
-        Every dimension and view on this drawing is attached to geometry.
-      </EmptyState>
+      <div data-testid="attention-panel">
+        <EmptyState icon={CheckCircle2} title="Everything resolves">
+          Every dimension and view on this drawing is attached to geometry.
+        </EmptyState>
+      </div>
     );
   }
   return (

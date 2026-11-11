@@ -657,7 +657,7 @@ test('pan and zoom: wheel zoom, drag pan, fit, and keyboard', async ({ page }) =
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await page.mouse.wheel(0, -400);
   await expect.poll(zoom).toBeGreaterThan(z0);
-  const content = page.getByTestId('sheet-content');
+  const content = page.getByTestId('drawing-sheet-content');
   const t0 = await content.getAttribute('transform');
   // The middle button pans anywhere (a drag on a view moves the view); so do the arrow keys.
   await drag(

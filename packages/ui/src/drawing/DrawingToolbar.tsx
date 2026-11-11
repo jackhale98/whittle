@@ -182,7 +182,7 @@ export function DrawingToolbar({
                   key={t.id}
                   content={why ? `${t.label} — ${why}` : t.label}
                   shortcut={t.shortcut}
-                  side={orientation === 'vertical' ? 'right' : 'top'}
+                  side={orientation === 'vertical' ? 'right' : 'bottom'}
                 >
                   <RToolbar.Button
                     aria-label={t.label}

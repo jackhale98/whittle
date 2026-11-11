@@ -118,7 +118,7 @@ export async function sheetToPage(
   p: [number, number],
 ): Promise<{ x: number; y: number }> {
   return page.evaluate(([x, y]) => {
-    const g = document.querySelector('[data-testid="sheet-content"]');
+    const g = document.querySelector('[data-testid="drawing-sheet-content"]');
     const svg = document.querySelector('[data-testid="sheet-svg"]');
     const paper = g?.querySelector('rect');
     if (!g || !svg || !paper) throw new Error('no sheet');
