@@ -98,7 +98,7 @@ export const VIEW_LAYOUTS: Readonly<Record<(typeof VIEW_KINDS)[number], readonly
 // Structural validation
 // ---------------------------------------------------------------------------------------------
 
-function checkTitleFields(c: Checker, v: unknown, at: string): void {
+export function checkTitleFields(c: Checker, v: unknown, at: string): void {
   if (!c.obj(v, at)) return;
   for (const [k, x] of Object.entries(v)) {
     if (!(TITLE_BLOCK_SLOTS as readonly string[]).includes(k))
@@ -107,7 +107,7 @@ function checkTitleFields(c: Checker, v: unknown, at: string): void {
   }
 }
 
-function checkStandard(c: Checker, s: unknown, at: string): void {
+export function checkStandard(c: Checker, s: unknown, at: string): void {
   if (!c.obj(s, at)) return;
   const fam = c.oneOf(s.family, `${at}.family`, ['iso', 'asme'] as const);
   if (c.oneOf(s.gps, `${at}.gps`, GPS_STANDARDS) && fam && gpsFamily(s.gps) !== s.family) {
@@ -142,7 +142,7 @@ function checkDisplay(c: Checker, d: unknown, at: string, partial: boolean): voi
   }
 }
 
-function checkStyle(c: Checker, s: unknown, at: string): void {
+export function checkStyle(c: Checker, s: unknown, at: string): void {
   if (!c.obj(s, at)) return;
   c.oneOf(s.lineGroup, `${at}.lineGroup`, LINE_GROUPS);
   if (s.lineWidths !== undefined && c.obj(s.lineWidths, `${at}.lineWidths`)) {
@@ -187,7 +187,7 @@ function checkStyle(c: Checker, s: unknown, at: string): void {
   checkDisplay(c, s.view, `${at}.view`, false);
 }
 
-function checkAnchored(c: Checker, p: unknown, at: string): void {
+export function checkAnchored(c: Checker, p: unknown, at: string): void {
   if (!c.obj(p, at)) return;
   if (!c.oneOf(p.kind, `${at}.kind`, ['free', 'ref'] as const)) return;
   if (p.kind === 'free') {
@@ -201,7 +201,7 @@ function checkAnchored(c: Checker, p: unknown, at: string): void {
   if (p.offset !== undefined) c.vec2(p.offset, `${at}.offset`);
 }
 
-function checkView(c: Checker, v: unknown, at: string): void {
+export function checkView(c: Checker, v: unknown, at: string): void {
   if (!c.obj(v, at)) return;
   c.id(v.id, `${at}.id`);
   c.nonEmpty(v.sheetId, `${at}.sheetId`);
@@ -268,7 +268,7 @@ function checkView(c: Checker, v: unknown, at: string): void {
   }
 }
 
-function checkPlacement(c: Checker, p: unknown, at: string): void {
+export function checkPlacement(c: Checker, p: unknown, at: string): void {
   if (!c.obj(p, at)) return;
   c.id(p.id, `${at}.id`);
   c.nonEmpty(p.viewId, `${at}.viewId`);
@@ -341,7 +341,7 @@ function checkLeader(c: Checker, l: Obj, at: string): void {
     c.oneOf(l.landing, `${at}.landing`, ['auto', 'left', 'right'] as const);
 }
 
-function checkTable(c: Checker, t: unknown, at: string): void {
+export function checkTable(c: Checker, t: unknown, at: string): void {
   if (!c.obj(t, at)) return;
   c.id(t.id, `${at}.id`);
   c.nonEmpty(t.sheetId, `${at}.sheetId`);
@@ -380,7 +380,7 @@ function checkTable(c: Checker, t: unknown, at: string): void {
   }
 }
 
-function checkMarkup(c: Checker, m: unknown, at: string): void {
+export function checkMarkup(c: Checker, m: unknown, at: string): void {
   if (!c.obj(m, at)) return;
   c.id(m.id, `${at}.id`);
   c.nonEmpty(m.sheetId, `${at}.sheetId`);
@@ -458,7 +458,7 @@ export function checkDrawing(c: Checker, d: unknown, at: string): void {
   each('markup', checkMarkup, true);
 }
 
-function checkSheet(c: Checker, s: unknown, at: string): void {
+export function checkSheet(c: Checker, s: unknown, at: string): void {
   if (!c.obj(s, at)) return;
   c.id(s.id, `${at}.id`);
   c.str(s.name, `${at}.name`);
@@ -474,7 +474,7 @@ function checkSheet(c: Checker, s: unknown, at: string): void {
   if (s.fields !== undefined) checkTitleFields(c, s.fields, `${at}.fields`);
 }
 
-function checkCenterMark(c: Checker, m: unknown, at: string): void {
+export function checkCenterMark(c: Checker, m: unknown, at: string): void {
   if (!c.obj(m, at)) return;
   c.id(m.id, `${at}.id`);
   c.nonEmpty(m.viewId, `${at}.viewId`);
@@ -487,7 +487,7 @@ function checkCenterMark(c: Checker, m: unknown, at: string): void {
   }
 }
 
-function checkNote(c: Checker, n: unknown, at: string): void {
+export function checkNote(c: Checker, n: unknown, at: string): void {
   if (!c.obj(n, at)) return;
   c.id(n.id, `${at}.id`);
   c.nonEmpty(n.sheetId, `${at}.sheetId`);
@@ -782,4 +782,55 @@ export function planDuplicateDrawing(
     ids[old] = fresh;
   }
   return ids;
+}
+
+/** The copy of `src` that `duplicateDrawing` stores: ids mapped, references followed, no markup. */
+export function remapDrawing(
+  src: Drawing,
+  ids: Record<Id, Id>,
+  newId: Id,
+  name: string,
+  configurationId: Id | null,
+): Drawing {
+  const m = (id: Id): Id => ids[id] ?? id;
+  const d = structuredClone(src);
+  d.id = newId;
+  d.name = name;
+  if (configurationId === null) delete d.configurationId;
+  else d.configurationId = configurationId;
+  for (const s of d.sheets) s.id = m(s.id);
+  for (const v of d.views) {
+    v.id = m(v.id);
+    v.sheetId = m(v.sheetId);
+    if (v.kind !== 'base') v.parentId = m(v.parentId);
+  }
+  for (const p of d.placements) {
+    p.id = m(p.id);
+    p.viewId = m(p.viewId);
+    if (p.layout.kind === 'leader' && p.layout.attach.kind !== 'ref') {
+      p.layout.attach.placementId = m(p.layout.attach.placementId);
+    }
+  }
+  for (const k of d.centerMarks) {
+    k.id = m(k.id);
+    k.viewId = m(k.viewId);
+  }
+  for (const t of d.tables) {
+    t.id = m(t.id);
+    t.sheetId = m(t.sheetId);
+    if (t.kind === 'holeTable') t.viewId = m(t.viewId);
+  }
+  for (const n of d.notes) {
+    n.id = m(n.id);
+    n.sheetId = m(n.sheetId);
+  }
+  delete d.markup;
+  const byId = (a: { id: string }, b: { id: string }): number =>
+    a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  d.views.sort(byId);
+  d.placements.sort(byId);
+  d.centerMarks.sort(byId);
+  d.tables.sort(byId);
+  d.notes.sort(byId);
+  return d;
 }

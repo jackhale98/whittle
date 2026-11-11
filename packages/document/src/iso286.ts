@@ -8,7 +8,7 @@
  * from public sources first and re-verify once the standards are bought. The printed tables round
  * some cells by rules that are not published as formulas, so a result can differ from the table by
  * one rounding step (a few micrometres at most). Every result carries `provisional: true`. Letters
- * whose fundamental deviation is tabulated without a closed formula (`j`, `p`, `r`, `s` up to
+ * whose fundamental deviation is tabulated without a closed formula (`c`, `cd`, `j`, `p`, `r`, `s` up to
  * 50 mm) are reported as unsupported; callers then show the symbol without deviations. Nothing is
  * ever guessed.
  *
@@ -143,7 +143,6 @@ const itOf = (g: number, D: number): number => itMicrometres(g, D);
 const SHAFT_FD: Record<string, Formula> = {
   a: (D) => -(D <= 120 ? 265 + 1.3 * D : 3.5 * D),
   b: (D) => -(D <= 160 ? 140 + 0.85 * D : 1.8 * D),
-  c: (D) => -(D <= 40 ? 52 * D ** 0.2 : 95 + 0.8 * D),
   d: (D) => -16 * D ** 0.44,
   e: (D) => -11 * D ** 0.41,
   f: (D) => -5.5 * D ** 0.41,
@@ -208,7 +207,7 @@ export function fitDeviations(fitClass: string, size: number): FitDeviationResul
     };
   }
   const it = itMicrometres(c.grade, D);
-  const mm = (um: number): number => Math.round(um * 1000) / 1e6;
+  const mm = (um: number): number => Math.round(um * 1000) / 1e6 + 0; // `+ 0` turns −0 into 0
   const tabulated = (): FitDeviationResult => ({
     ok: false,
     reason: `ISO 286-1 tabulates the ‘${c.letter}’ deviation without a closed formula`,

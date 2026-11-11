@@ -10,6 +10,8 @@
  */
 
 import type {
+  Annotation,
+  AnnotationOverride,
   ConfigTarget,
   Configuration,
   ConfiguredValue,
@@ -24,6 +26,11 @@ import type {
   PartProperties,
   WrenDoc,
 } from '@wren-cad/contracts';
+import {
+  ANNOTATION_CONFIGURABLE_OPTIONS,
+  annotationExprFields,
+  annotationOptionAt,
+} from './annotations';
 import { exprFields } from './features';
 import { HOLE_TABLES } from './hole-tables';
 import { applyPatch, diff, existsAt, getAt, parsePointer } from './patch';
@@ -130,6 +137,24 @@ export function configurableFields(feature: Feature): ConfigurableField[] {
         label: o.label,
         values: optionValues(o, feature),
       });
+    }
+  }
+  return out;
+}
+
+/**
+ * Every field of an annotation a configuration may override: its `Expr` fields and the option
+ * fields present on it (`ANNOTATION_CONFIGURABLE_OPTIONS`). For the UI.
+ */
+export function configurableAnnotationFields(annotation: Annotation): ConfigurableField[] {
+  const out: ConfigurableField[] = annotationExprFields(annotation).map((f) => ({
+    kind: 'expr' as const,
+    pointer: f.pointer,
+    expected: f.expected,
+  }));
+  for (const o of ANNOTATION_CONFIGURABLE_OPTIONS) {
+    if (existsAt(annotation, o.pointer)) {
+      out.push({ kind: 'option', pointer: o.pointer, label: o.label, values: [] });
     }
   }
   return out;
@@ -270,6 +295,77 @@ function applyFeatureFields(
   return cur;
 }
 
+/** Applies the field overrides of one annotation (options first, then expression fields). */
+function applyAnnotationFields(
+  annotation: Annotation,
+  configurationId: Id,
+  fields: Record<string, unknown>,
+  issues: ConfigurationIssue[],
+): Annotation {
+  const issue = (path: string, reason: string): void => {
+    issues.push({
+      configurationId,
+      target: { kind: 'annotationField', annotationId: annotation.id, path },
+      reason,
+    });
+  };
+  let cur: Annotation = annotation;
+  const set = (path: string, value: ConfiguredValue): boolean => {
+    try {
+      const op: JsonPatchOp = existsAt(cur, path)
+        ? { op: 'replace', path, value }
+        : { op: 'add', path, value };
+      cur = applyPatch(cur, [op]).doc;
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  const deferred: [string, unknown][] = [];
+  for (const [path, value] of Object.entries(fields).sort(byKey)) {
+    try {
+      parsePointer(path);
+      if (!path.startsWith('/')) throw new Error('pointer');
+    } catch {
+      issue(path, `‘${path}’ is not a valid field path`);
+      continue;
+    }
+    const option = annotationOptionAt(path);
+    if (!option) {
+      deferred.push([path, value]);
+    } else if (!existsAt(cur, path)) {
+      issue(path, `‘${path}’ no longer exists on this annotation`);
+    } else if (!isConfiguredValue(value) || !option.accepts(value)) {
+      issue(path, `${JSON.stringify(value)} is not ${option.expects}`);
+    } else {
+      set(path, value);
+    }
+  }
+  const configurable = new Set([
+    ...annotationExprFields(annotation).map((f) => f.pointer),
+    ...annotationExprFields(cur).map((f) => f.pointer),
+  ]);
+  for (const [path, value] of deferred) {
+    if (!configurable.has(path)) {
+      issue(path, `‘${path}’ is not a configurable field of this annotation (any more)`);
+    } else if (typeof value !== 'string') {
+      issue(path, `The value of ‘${path}’ must be an expression`);
+    } else if (!set(path, value)) {
+      issue(path, `‘${path}’ cannot be set on this annotation`);
+    }
+  }
+  for (const f of annotationExprFields(cur)) {
+    let ok = false;
+    try {
+      ok = typeof getAt(cur, f.pointer) === 'string';
+    } catch {
+      ok = false;
+    }
+    if (!ok) issue(f.pointer, `‘${f.pointer}’ needs a value in this configuration`);
+  }
+  return cur;
+}
+
 /**
  * The effective document for regenerating `partId` in a configuration: Default with the
  * configuration's overrides applied (params, feature suppression and fields, material, colour,
@@ -376,12 +472,57 @@ export function resolveConfiguration(
     }
   }
 
+  // Annotations (M4): overrides are keyed by annotation id.
+  let annotations = part.annotations;
+  for (const [annotationId, raw] of entriesOf(config.annotations)) {
+    const k = annotations?.findIndex((a) => a.id === annotationId) ?? -1;
+    const ov = (isRecord(raw) ? raw : {}) as AnnotationOverride;
+    const hasSuppressed = ov.suppressed !== undefined;
+    const fields = isRecord(ov.fields) ? ov.fields : undefined;
+    if (k < 0 || !annotations) {
+      const reason = `Annotation ‘${annotationId}’ no longer exists`;
+      if (hasSuppressed) {
+        issues.push({
+          configurationId: id,
+          target: { kind: 'annotationSuppressed', annotationId },
+          reason,
+        });
+      }
+      for (const [path] of entriesOf(fields)) {
+        issues.push({
+          configurationId: id,
+          target: { kind: 'annotationField', annotationId, path },
+          reason,
+        });
+      }
+      continue;
+    }
+    let a = annotations[k] as Annotation;
+    if (hasSuppressed) {
+      if (typeof ov.suppressed !== 'boolean') {
+        issues.push({
+          configurationId: id,
+          target: { kind: 'annotationSuppressed', annotationId },
+          reason: 'Suppression must be true or false',
+        });
+      } else if (ov.suppressed !== (a.suppressed ?? false)) {
+        a = { ...a, suppressed: ov.suppressed };
+      }
+    }
+    if (fields) a = applyAnnotationFields(a, id, fields, issues);
+    if (a !== annotations[k]) {
+      if (annotations === part.annotations) annotations = annotations.slice();
+      annotations[k] = a;
+    }
+  }
+
   // Material, colour, properties.
   let next: Part = part;
   const patchPart = (changes: Partial<Part>): void => {
     next = { ...next, ...changes };
   };
   if (features !== part.features) patchPart({ features });
+  if (annotations !== part.annotations) patchPart({ annotations });
   if (config.material !== undefined) {
     if (config.material === null) {
       const { material: _m, ...rest } = next;
@@ -464,11 +605,15 @@ export function configurationIssues(doc: WrenDoc, partId: Id): ConfigurationIssu
 // Pruning (deleted features and parameters)
 // ---------------------------------------------------------------------------------------------
 
+/** What deleting something takes out of the configurations. */
+export interface PruneSet {
+  featureIds?: ReadonlySet<Id>;
+  paramIds?: ReadonlySet<Id>;
+  annotationIds?: ReadonlySet<Id>;
+}
+
 /** Removes empty containers so the stored form is canonical. Returns the input when unchanged. */
-export function pruneConfiguration(
-  config: Configuration,
-  gone: { featureIds?: ReadonlySet<Id>; paramIds?: ReadonlySet<Id> } = {},
-): Configuration {
+export function pruneConfiguration(config: Configuration, gone: PruneSet = {}): Configuration {
   const out: Configuration = { ...config };
   if (out.params) {
     const kept = Object.entries(out.params).filter(([k]) => !gone.paramIds?.has(k));
@@ -486,6 +631,17 @@ export function pruneConfiguration(
     if (Object.keys(features).length === 0) delete out.features;
     else out.features = features;
   }
+  if (out.annotations) {
+    const kept: Record<Id, AnnotationOverride> = {};
+    for (const [aid, ov] of Object.entries(out.annotations)) {
+      if (gone.annotationIds?.has(aid)) continue;
+      const o: AnnotationOverride = { ...ov };
+      if (o.fields && Object.keys(o.fields).length === 0) delete o.fields;
+      if (Object.keys(o).length > 0) kept[aid] = o;
+    }
+    if (Object.keys(kept).length === 0) delete out.annotations;
+    else out.annotations = kept;
+  }
   if (out.properties && Object.keys(out.properties).length === 0) delete out.properties;
   return JSON.stringify(out) === JSON.stringify(config) ? config : out;
 }
@@ -497,7 +653,7 @@ export function pruneConfiguration(
 export function configurationPruneOps(
   part: Part,
   partIndex: number,
-  gone: { featureIds?: ReadonlySet<Id>; paramIds?: ReadonlySet<Id> },
+  gone: PruneSet,
 ): JsonPatchOp[] {
   const ops: JsonPatchOp[] = [];
   (part.configurations ?? []).forEach((c, k) => {
