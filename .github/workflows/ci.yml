@@ -521,12 +521,18 @@ jobs:
           VITE_GITHUB_CLIENT_ID: ${{ vars.VITE_GITHUB_CLIENT_ID }}
           VITE_GITLAB_CLIENT_ID: ${{ vars.VITE_GITLAB_CLIENT_ID }}
           VITE_BITBUCKET_CLIENT_ID: ${{ vars.VITE_BITBUCKET_CLIENT_ID }}
-      # Drops 404.html (it would turn Cloudflare's SPA fallback off), checks the root-base manifest
-      # and fails if any file is over Cloudflare Pages' 25 MiB limit; prints the largest files.
-      - name: Prepare and size-guard the Cloudflare dist
-        run: node apps/web/scripts/cloudflare-dist.mjs apps/web/dist --max-mib 25
-      - name: Force-push dist to cloudflare-pages
-        working-directory: apps/web/dist
+      # Drops 404.html, checks the root-base manifest, fails if any file is over Cloudflare's 25 MiB
+      # static-asset limit, then lays the site out for Workers with static assets: public/ plus an
+      # assets-only wrangler.jsonc (ADR-082 amendment). The Worker connected to this branch must
+      # have this name: set the repository variable CLOUDFLARE_WORKER_NAME, else "wren-cad".
+      - name: Prepare, size-guard and bundle the Cloudflare Worker site
+        env:
+          WORKER_NAME: ${{ vars.CLOUDFLARE_WORKER_NAME || 'wren-cad' }}
+        run: >-
+          node apps/web/scripts/cloudflare-dist.mjs apps/web/dist --max-mib 25
+          --worker-out "$RUNNER_TEMP/cloudflare-site" --worker-name "$WORKER_NAME"
+      - name: Force-push the Worker site to cloudflare-pages
+        working-directory: ${{ runner.temp }}/cloudflare-site
         env:
           GH_TOKEN: ${{ github.token }}
           SOURCE_SHA: ${{ github.sha }}

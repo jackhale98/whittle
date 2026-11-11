@@ -17,26 +17,38 @@ largest files) and force-pushes the contents of `dist` as the single commit of t
 `cloudflare-pages` (message `Deploy <source SHA>`). Cloudflare serves that branch as-is. The job
 uses `GITHUB_TOKEN` with `contents: write`; there is no Cloudflare API token in GitHub.
 
-### Dashboard settings (Workers & Pages > Create > Pages > Connect to Git)
+### Dashboard settings: a Worker with static assets (Cloudflare's successor to Pages)
+
+Cloudflare now calls the Pages Git flow legacy, so the site is served by an **assets-only Worker**
+connected to the repository with Workers Builds. The `cloudflare-pages` branch holds the built site in
+`public/` and a generated `wrangler.jsonc` at its root that declares the Worker: name, `assets.directory
+= ./public`, `not_found_handling = single-page-application`. There is no Worker script; `_headers` in
+`public/` is applied by Cloudflare's asset server.
+
+In **Workers & Pages > (the Worker) > Settings > Build**:
 
 | Setting | Value |
 | --- | --- |
-| Repository | `jackhale98/wren-cad` |
+| Git repository | `jackhale98/wren-cad` |
 | Production branch | `cloudflare-pages` |
-| Framework preset | None |
 | Build command | *(empty)* |
-| Build output directory | `/` |
-| Root directory (advanced) | `/` |
-| Environment variables | none |
+| Deploy command | `npx wrangler deploy` |
+| Root directory | `/` |
+| Non-production branch builds | off |
 
-Then **Custom domains > Set up a custom domain**: `wren-cad.app`. If `wren-cad.app` is a zone on
-your Cloudflare account, the DNS record is created for you. For `www`, add `www.wren-cad.app` as a
-second custom domain and a Bulk Redirect (or a Redirect Rule: hostname equals `www.wren-cad.app`
--> dynamic `concat("https://wren-cad.app", http.request.uri.path)`, 301). Do not serve the app on
-`www` itself: the Worker allow-list, OAuth redirect URIs and the PWA scope are for the apex only.
+**The Worker's name must match** the `name` in the generated `wrangler.jsonc`, or Workers Builds refuses
+to deploy. CI uses the repository variable `CLOUDFLARE_WORKER_NAME` (GitHub > Settings > Secrets and
+variables > Actions > Variables), defaulting to `wren-cad`: either name the Worker `wren-cad` or set the
+variable to its name.
 
-The first deploy only exists after the first push to `main` finishes CI and creates the branch
-(Cloudflare may report an empty branch until then).
+Then **Settings > Domains & Routes > Add > Custom domain**: `wren-cad.app`. If `wren-cad.app` is a
+zone on your Cloudflare account, the DNS record and certificate are created for you. For `www`, add a
+Redirect Rule (hostname equals `www.wren-cad.app` -> dynamic `concat("https://wren-cad.app",
+http.request.uri.path)`, 301). Do not serve the app on `www` itself: the Worker allow-list, OAuth
+redirect URIs and the PWA scope are for the apex only.
+
+Each green deploy from `main` force-pushes the branch; Workers Builds then runs `npx wrangler deploy`,
+which uploads only changed assets.
 
 ### Why the headers and routing are what they are
 
@@ -47,8 +59,8 @@ The first deploy only exists after the first push to `main` finishes CI and crea
 - `index.html`, `sw.js`, `manifest.webmanifest` and `/` are `no-cache`; `/assets/*` (hashed chunks and
   the kernel `.js`/`.wasm`, whose names carry content hashes) is `public, max-age=31536000, immutable`.
 - The app has no path router (hash and query only; OAuth returns to `/?code=...&state=...`), so
-  the only fallback needed is "unknown path gives the shell". Cloudflare Pages does that
-  automatically when `404.html` is absent (SPA mode), which is why the job deletes it; no
+  the only fallback needed is "unknown path gives the shell". The Worker's
+  `not_found_handling: single-page-application` does that (the job also deletes `404.html`); no
   `_redirects` file is needed.
 - The service worker still registers (offline, precache, kernel cache). On an already isolated
   page it does not reload, and responses that already carry the headers pass through unchanged.
@@ -85,5 +97,5 @@ separate `pull_request`-triggered job with `contents: write`, and enable branch 
 
 ### Rollback
 
-Redeploy an earlier deployment from the Pages dashboard (Deployments > Rollback). The branch holds
+Roll back from the Worker's dashboard (Deployments > an earlier version > Rollback). The branch holds
 only the latest build, so there is no git history to revert.

@@ -2311,6 +2311,13 @@ Hosting roadmap step 3 (PLAN §13), on the owner's domain wren-cad.app. The owne
 - **Preview deploys.** Not set up; see docs/DEPLOY.md.
 - **Schema ids** keep `jackhale98.github.io/wren-cad/schema/...`: they identify the format, and changing them would be a format change.
 
+- **Amendment (2026-11-11): Workers with static assets, not Pages.** The owner's dashboard labels the Pages Git flow legacy and created a Worker connected with Workers Builds. That Worker served the "Hello world" template, because the branch had no build input and no Wrangler config.
+  - The branch layout is now `public/` plus a generated, assets-only `wrangler.jsonc`: no `main`, `assets.directory ./public`, `not_found_handling: single-page-application`, and a pinned past `compatibility_date`.
+  - The Worker deploys it with `npx wrangler deploy` and no build command, because CI already built the site with the cached kernel.
+  - The Worker name comes from the repository variable `CLOUDFLARE_WORKER_NAME` (default `wren-cad`). It is validated against Cloudflare's name rule, because Workers Builds rejects a config whose name differs from the Worker's.
+  - Verified locally with `wrangler deploy --dry-run` (wrangler 4.160): it read 120 asset files.
+  - `_headers`, the 25 MiB per-file limit and the SPA fallback carry over unchanged.
+
 ## ADR-083 — CI for fast feedback: dev-branch runs, a smoke tier first, eight shards, Firefox and WebKit nightly (owner, 2026-11-11)
 The owner's complaint: a 30-minute wait to fail, then another 30 after the fix. The repository is public, so runner minutes are free; the cost to optimise is wall time.
 
