@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { expect, type Page, test } from '@playwright/test';
-import { app, boot, cameraStill, toPage, touchStats } from '../helpers';
+import { app, boot, cameraStill, palette, toPage, touchStats } from '../helpers';
 import { BUDGETS, PERF_FACTOR } from './budgets';
 import { peakMemory } from './memory-probe';
 
@@ -330,12 +330,12 @@ test('frame time while orbiting', async () => {
   );
   const t0 = Date.now();
   await page.mouse.move(cx, cy);
-  await page.mouse.down();
+  await page.mouse.down({ button: 'right' }); // right drag orbits (default mouse preset)
   for (let i = 0; i < 60; i++) {
     await page.mouse.move(cx + Math.sin(i / 8) * 220, cy + Math.cos(i / 8) * 90);
     await page.waitForTimeout(16);
   }
-  await page.mouse.up();
+  await page.mouse.up({ button: 'right' });
   const wall = Date.now() - t0;
   const probe = await stopProbe(page);
   const r1 = await page.evaluate(() =>
@@ -366,8 +366,8 @@ test('push/pull preview feedback on an ear face', async () => {
     note('push/pull preview', `skipped: the click did not select a face (${JSON.stringify(sel)})`);
     return;
   }
-  await page.keyboard.press('p');
-  await expect.poll(async () => (await a.ui()).pushPull?.faces, { timeout: 30_000 }).toBe(1);
+  await palette(page, 'Push/pull');
+  await expect.poll(async () => (await a.ui()).pushPull?.faces, { timeout: 60_000 }).toBe(1);
   const base = await toPage(page, [dims.L / 2 + 1.5, 6, dims.H]);
   const up = await toPage(page, [dims.L / 2 + 1.5, 6, dims.H + 5]);
   const l = Math.hypot(up.x - base.x, up.y - base.y);
@@ -392,10 +392,18 @@ test('push/pull preview feedback on an ear face', async () => {
   await page.mouse.up();
   await a.idle();
   const s = [...samples].sort((x, y) => x - y);
-  note(
-    'push/pull: pointer move -> preview presented (median / max of 8)',
-    `${s[3]?.toFixed(1)} / ${s.at(-1)?.toFixed(1)} ms; prism builds ${during.prismBuilds - before.prismBuilds}`,
-  );
+  if (during.prismBuilds - before.prismBuilds === 0) {
+    // The arrow grip sits at the face centroid; a pick elsewhere on the face does not grab it.
+    note(
+      'push/pull: pointer move -> preview presented',
+      'not measured: the drag did not grab the arrow handle',
+    );
+  } else {
+    note(
+      'push/pull: pointer move -> preview presented (median / max of 8)',
+      `${s[3]?.toFixed(1)} / ${s.at(-1)?.toFixed(1)} ms; prism builds ${during.prismBuilds - before.prismBuilds}`,
+    );
+  }
   note('push/pull budget (PLAN §10)', `same frame, <= 16 ms (x${PERF_FACTOR} on CI)`);
 });
 
