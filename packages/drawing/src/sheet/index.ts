@@ -7,3 +7,4 @@
 export * from './build';
 export * from './compose';
 export * from './hatch';
+export * from './obstacles';
