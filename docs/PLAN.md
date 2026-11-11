@@ -844,7 +844,7 @@ Owner feedback 2026-11-10. Small; right after M3.7, before M4 (drawings dimensio
 Order decision (owner, 2026-11-10; ADR-081): drawings stay before MBD, but M4 builds the **shared annotation core** that M5 exports. A drawing's dimensions and GD&T are semantic annotations on the 3D model that drawing views display. They are not 2D-only objects, so M5 reuses them instead of rebuilding.
 
 - **Shared annotation core (first, in the M4 contracts step):**
-  - **Where annotations live.** A part-level, id-keyed set (`Part.annotations`) replaces the per-feature `FeatureBase.annotations`, with a migration. A dimension placed on a drawing measures the finished part, so no feature owns it.
+  - **Where annotations live.** A part-level, id-keyed set (`Part.annotations`) replaces the per-feature `FeatureBase.annotations`. No migration: before 1.0, files from an earlier schema are refused with a plain message (owner, 2026-11-11; ADR-090). A dimension placed on a drawing measures the finished part, so no feature owns it.
   - **What an annotation is.** Each one is semantic: its kind (linear, diameter, radius, angle, datum, geometric tolerance, note), its value or measured flag, its tolerance or fit, and its GD&T characteristic, zone, modifiers and datums. It points at model faces, edges and vertices through `EntityRef`s, never at lines in a 2D view.
   - **Driving dimensions.** An annotation can be bound to a driving sketch or feature dimension (`source`) and then shows its live value.
   - **On a drawing.** A view displays an annotation through a per-view placement (text position, leader, witness-line side). That placement, not a copy of the annotation, is what a drawing stores. A dimension drawn on a view creates an annotation, marked as a drawing annotation.
@@ -862,7 +862,7 @@ Order decision (owner, 2026-11-10; ADR-081): drawings stay before MBD, but M4 bu
     - Every dimension and GD&T frame on the bracket drawing is a part-level annotation with resolved `EntityRef`s (unit test).
     - Deleting or reordering annotations never retargets a configuration override (test).
     - A promoted driving dimension updates on the drawing when its value changes.
-    - A document saved before M4 migrates per-feature annotations to the part set without loss.
+    - A document saved before M4 is refused on load with a plain message, never half-read (owner, 2026-11-11: no backward compatibility before 1.0; ADR-090).
 
 ### M4.5 — 3D mice and CAD mice
 
