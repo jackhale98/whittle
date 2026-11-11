@@ -245,8 +245,11 @@ is added, and nothing they show is left out. This holds for every tool and for P
   ellipse's second radius, an elliptic arc's ends) do not snap to curves. A circle's rim, a 3-point
   circle's points, a 3-point arc's middle point and an ellipse's axis end still snap to an existing point,
   and the curve then passes through it (*on curve*).
-- A dashed line from another point is an **alignment guide**: the cursor lines up with that point, but
-  no constraint is added.
+- **Level with another point** (or the origin), the cursor snaps into line with it and the glyph shows
+  *horizontal* or *vertical points*: that alignment is added. If it is already implied, a dashed guide
+  line shows instead and nothing is added.
+- A **centre-point arc** can end on an existing point that lies on its circle: the arc then ends on that
+  point.
 
 ### Finishing a line chain or spline
 

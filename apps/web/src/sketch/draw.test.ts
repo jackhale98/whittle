@@ -53,7 +53,14 @@ describe('sketch drawing', () => {
     }
     const all = withPending(doc, pending);
     expect(all.entities.filter((e) => e.kind === 'point')).toHaveLength(4);
-    expect(kinds(all.constraints)).toEqual(['horizontal', 'horizontal', 'vertical', 'vertical']);
+    // The fourth corner snapped level with the start (a committed vertical alignment), so the
+    // closing edge's vertical would be redundant: it is neither shown nor added (M3.8).
+    expect(kinds(all.constraints)).toEqual([
+      'horizontal',
+      'horizontal',
+      'vertical',
+      'verticalPoints',
+    ]);
     // Without the pending edits the closing click would not have found the start point.
     const stale = move(startDraw('line'), doc, [100.3, 100.2], 1);
     expect(stale.hover?.pointId).toBeUndefined();
@@ -74,11 +81,18 @@ describe('sketch drawing', () => {
       [140, 100.4], // within 3° of horizontal → snapped
       [140.3, 130], // vertical
       [100.2, 130.2], // horizontal
-      [100.3, 100.2], // back onto the start point → closes, vertical
+      [100.3, 100.2], // back onto the start point → closes (already aligned)
     ]);
     expect(lines(data.entities)).toHaveLength(4);
     expect(data.entities.filter((e) => e.kind === 'point')).toHaveLength(4);
-    expect(kinds(data.constraints)).toEqual(['horizontal', 'horizontal', 'vertical', 'vertical']);
+    // The fourth corner's vertical alignment with the start is committed, so closing adds no
+    // redundant vertical (M3.8: shown == committed).
+    expect(kinds(data.constraints)).toEqual([
+      'horizontal',
+      'horizontal',
+      'vertical',
+      'verticalPoints',
+    ]);
     const l = lines(data.entities);
     // Every corner is shared by two lines; the last line ends at the first line's start.
     expect(l[3]?.kind === 'line' && l[0]?.kind === 'line' && l[3].end === l[0].start).toBe(true);

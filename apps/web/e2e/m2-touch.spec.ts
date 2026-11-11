@@ -308,8 +308,17 @@ test('Pencil: strokes are recognised live and committed; fingers never draw whil
   expect((await a.ui()).sketch?.lastStroke?.shape).toBe('line');
   const sk2 = (await a.doc()).parts[0]?.features[0];
   if (sk2?.type !== 'sketch') throw new Error('no sketch');
-  expect(sk2.constraints.some((c) => c.kind === 'coincident')).toBe(true);
   expect(sk2.entities.filter((e) => e.kind === 'line')).toHaveLength(5);
+  // By design (M3.8, ADR-087) the stroke's end *reuses* the rectangle's corner point instead of
+  // adding a second point there plus a coincident: the new line ends on the corner itself.
+  const atCorner = sk2.entities.filter(
+    (e) => e.kind === 'point' && Math.hypot(e.x - 30, e.y - 20) < 1,
+  );
+  expect(atCorner, 'no duplicate point on the corner').toHaveLength(1);
+  const before = new Set(sk.entities.map((e) => e.id));
+  const added = sk2.entities.find((e) => e.kind === 'line' && !before.has(e.id));
+  expect(added?.kind === 'line' && [added.start, added.end]).toContain(atCorner[0]?.id);
+  expect(sk2.constraints.some((c) => c.kind === 'coincident')).toBe(false);
 });
 
 test('Pencil hover preselects; a Pencil tap selects in model mode', async ({ page }) => {
