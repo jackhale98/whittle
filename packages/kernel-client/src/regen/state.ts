@@ -166,8 +166,11 @@ export class ModelState {
    * Names a boolean merged away (ADR-078), `${kind}|${absorbed}` → the name of the sub-shape that
    * absorbed it, gathered from the alias entries of every body naming map seen in this walk (the
    * kernel lists them only on the merging feature's result, so later features need this table).
+   * Each operation derives its pre-merge names from its own inputs, so two features can list the
+   * same absorbed name for different sub-shapes (a vertex name rebuilt from the same three face
+   * names): such a name keeps every survivor it was given and is a conflict, never resolved.
    */
-  merged = new Map<string, string>();
+  merged = new Map<string, string[]>();
   version = 0;
 
   apply(r: Extract<EntryResult, { ok: true }>): void {
@@ -218,29 +221,55 @@ export function primaryNaming(naming: NamingMap): NamingMap {
 
 const primaryCache = new WeakMap<NamingMap, NamingMap>();
 
-/** Adds a body naming map's merge aliases to `merged` (see `ModelState.merged`). */
-export function recordMerges(merged: Map<string, string>, naming: NamingMap): void {
+/**
+ * Adds a body naming map's merge aliases to `merged` (see `ModelState.merged`). A name recorded
+ * again with another survivor keeps both: it is a conflict from then on (`mergeLookup`).
+ */
+export function recordMerges(merged: Map<string, string[]>, naming: NamingMap): void {
   if (primaryNaming(naming) === naming) return;
   const primary = new Map<string, string>();
   for (const n of naming) {
     const k = `${n.kind}|${n.index}`;
     const p = primary.get(k);
-    if (p === undefined) primary.set(k, n.name);
-    else if (p !== n.name) merged.set(`${n.kind}|${n.name}`, p);
+    if (p === undefined) {
+      primary.set(k, n.name);
+      continue;
+    }
+    if (p === n.name) continue;
+    const key = `${n.kind}|${n.name}`;
+    const survivors = merged.get(key);
+    if (!survivors) merged.set(key, [p]);
+    else if (!survivors.includes(p)) survivors.push(p);
   }
 }
 
-/** The names `name` was merged into, nearest first (a survivor may be merged again later). */
-export function mergeChain(state: ModelState, kind: SubKind, name: string): string[] {
-  const out: string[] = [];
+/** Where a merged-away name went: its survivors, nearest first, or the conflicting ones. */
+export interface MergeLookup {
+  /** Survivor names, nearest first (a survivor may be merged again later). */
+  chain: string[];
+  /** Set when the name, or a survivor on its chain, was merged into different sub-shapes. */
+  conflict?: string[];
+}
+
+export function mergeLookup(state: ModelState, kind: SubKind, name: string): MergeLookup {
+  const chain: string[] = [];
   let n = name;
   for (let i = 0; i < 16; i++) {
     const next = state.merged.get(`${kind}|${n}`);
-    if (next === undefined || next === name || out.includes(next)) break;
-    out.push(next);
-    n = next;
+    if (next === undefined) break;
+    if (next.length > 1) return { chain, conflict: [...next] };
+    const s = next[0] as string;
+    if (s === name || chain.includes(s)) break;
+    chain.push(s);
+    n = s;
   }
-  return out;
+  return { chain };
+}
+
+/** The names `name` was merged into, nearest first; empty for a conflicting name. */
+export function mergeChain(state: ModelState, kind: SubKind, name: string): string[] {
+  const m = mergeLookup(state, kind, name);
+  return m.conflict ? [] : m.chain;
 }
 
 export interface WalkContext {

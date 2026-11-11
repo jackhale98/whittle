@@ -37,8 +37,21 @@ import {
 } from './geometry';
 import { kerr, meshOnlyError } from './helpers';
 import { mentionsImport } from './imports';
-import { baseName, type Candidate, type ResolvedTarget, resolveRef, type SubKind } from './resolve';
-import { type BodyState, mergeChain, primaryNaming, type WalkContext } from './state';
+import {
+  baseName,
+  type Candidate,
+  type Resolution,
+  type ResolvedTarget,
+  resolveRef,
+  type SubKind,
+} from './resolve';
+import {
+  type BodyState,
+  type ModelState,
+  mergeLookup,
+  primaryNaming,
+  type WalkContext,
+} from './state';
 import type { ReboundRef, RegenUnresolvedRef } from './types';
 
 export const SKETCH_TAG = /^S([0-9A-Za-z]+):/;
@@ -84,7 +97,7 @@ function candidates(ctx: WalkContext, ref: EntityRef, kind: SubKind): Candidate[
     return p ? fromMap(p.shape, p.naming, `plane:${p.id}`) : [];
   }
   // Bodies: primary names only. A body naming map lists the names a boolean merged away after
-  // them (aliases of the surviving sub-shape); those resolve through `resolveMerged`, reported.
+  // them (aliases of the surviving sub-shape); those resolve through `resolveWithMerges`, reported.
   const out: Candidate[] = [];
   for (const b of ctx.state.bodies.values()) {
     out.push(...fromMap(b.shape, primaryNaming(b.naming), b.id));
@@ -93,28 +106,33 @@ function candidates(ctx: WalkContext, ref: EntityRef, kind: SubKind): Candidate[
 }
 
 /**
- * A ref whose name no body has any more, but which a boolean merged into another sub-shape
- * (ADR-078): resolve the survivor's name instead (nearest in the merge chain first), keeping the
- * ref's fingerprint for split survivors, among the survivor's name family only (exact or `#k`;
- * never a fingerprint-only match). Construction history, not a guess; the caller reports
- * it as `merged`. Null when the name was never merged or no survivor resolves.
+ * Resolution with the walk's merge table (PLAN §7.3, ADR-078), in this order:
+ *  1. a current primary name equal to the ref's wins: an alias never shadows a primary name;
+ *  2. a name that was merged into different sub-shapes (two features listed it for different
+ *     survivors, or a survivor on its chain was) is unresolved: `ambiguous`, with the survivors as
+ *     candidates; neither is picked, and no fingerprint guess replaces it;
+ *  3. a merged name resolves to its survivor (nearest in the chain first), keeping the ref's
+ *     fingerprint for split survivors, among the survivor's name family only (exact or `#k`; never
+ *     a fingerprint-only match); the caller reports it as `merged`;
+ *  4. otherwise resolve.ts (name family, fingerprint, else unresolved).
  */
-async function resolveMerged(
+export async function resolveWithMerges(
   ref: EntityRef,
   kind: SubKind,
   cands: Candidate[],
-  ctx: WalkContext,
+  state: ModelState,
   rc: Parameters<typeof resolveRef>[2],
-): Promise<ResolvedTarget | null> {
-  if (cands.some((c) => c.name === ref.name)) return null;
-  for (const into of mergeChain(ctx.state, kind, ref.name)) {
-    // Only the survivor's own name or its split family: never a fingerprint-only match.
+): Promise<Resolution> {
+  if (cands.some((c) => c.name === ref.name)) return resolveRef(ref, cands, rc);
+  const m = mergeLookup(state, kind, ref.name);
+  if (m.conflict) return { ok: false, reason: 'ambiguous', candidates: m.conflict };
+  for (const into of m.chain) {
     const family = cands.filter((c) => baseName(c.name) === baseName(into));
     if (family.length === 0) continue;
     const r = await resolveRef({ ...ref, name: into }, family, rc);
-    if (r.ok) return { ...r.target, via: 'merged' };
+    if (r.ok) return { ok: true, target: { ...r.target, via: 'merged' } };
   }
-  return null;
+  return resolveRef(ref, cands, rc);
 }
 
 /** Resolves a face/edge/vertex/region ref; records unresolved refs under `path`. */
@@ -138,10 +156,9 @@ export async function resolveSub(
     fingerprints: (s: ShapeHandle) => core.fingerprints(s),
     weak: (name: string) => mentionsImport(name, ctx.importIds),
   };
-  // Order (PLAN §7.3, ADR-078): exact name, then a merge alias (history evidence), then the
-  // name family and fingerprints (resolve.ts).
-  const merged = await resolveMerged(ref, kind, cands, ctx, rc);
-  const r = merged ? ({ ok: true, target: merged } as const) : await resolveRef(ref, cands, rc);
+  // Order (PLAN §7.3, ADR-078): exact name, then a merge alias (history evidence; conflicting
+  // aliases are unresolved), then the name family and fingerprints (resolve.ts).
+  const r = await resolveWithMerges(ref, kind, cands, ctx.state, rc);
   const memo = `${ctx.current.featureId}|${path}`;
   if (r.ok) {
     const t = r.target;
