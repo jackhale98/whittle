@@ -2,6 +2,7 @@ import type { EvalResult, Expr } from '@wren-cad/contracts';
 import { m } from 'motion/react';
 import { useRef, useState } from 'react';
 import type { FormatValue } from '../format';
+import type { Rect } from '../logic/bubble';
 import { useSpring } from '../motion';
 import { ExpressionInput } from './ExpressionInput';
 import { cn } from './primitives';
@@ -26,6 +27,8 @@ export interface ValueChipProps {
   evaluate?(expr: Expr): EvalResult;
   formatValue?: FormatValue;
   unitHint?: string;
+  /** Other floating UI to stay clear of, in the same coordinates as `point`. */
+  obstacles?: readonly Rect[];
   step?: number;
   className?: string;
 }
@@ -48,6 +51,7 @@ export function ValueChip({
   formatValue,
   unitHint,
   step,
+  obstacles,
   className,
 }: ValueChipProps) {
   const ref = useRef<HTMLDivElement>(null);
@@ -61,6 +65,7 @@ export function ValueChip({
     preferred: 'right',
     gap: 6,
     anchorRadius: 22,
+    obstacles,
   });
   const text = display ?? value;
   const show = !!point && !!placement;

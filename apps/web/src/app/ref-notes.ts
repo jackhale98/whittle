@@ -40,10 +40,6 @@ class RefAcks {
   /** Bumps on every change, so React re-renders what is filtered through `apply`. */
   readonly version = observable(0);
 
-  private touch(): void {
-    this.version.set((v) => v + 1);
-  }
-
   accept(docId: string, featureId: string, kind: 'merged' | 'grown', ref: MergedRef | GrownRef) {
     const value = kind === 'merged' ? mergedValue(ref as MergedRef) : grownValue(ref as GrownRef);
     const doc = { ...(this.acks[docId] ?? {}) };
@@ -51,16 +47,14 @@ class RefAcks {
     this.acks = { ...this.acks, [docId]: doc };
     try {
       localStorage.setItem(KEY, JSON.stringify(this.acks));
-    } catch {
-      // storage full or blocked: the acknowledgement lasts for this session
-    }
-    this.touch();
+    } catch {}
+    this.version.set((v) => v + 1);
   }
 
   stub(featureId: string, notes: StubNotes | null): void {
     if (notes) this.stubs.set(featureId, notes);
     else this.stubs.delete(featureId);
-    this.touch();
+    this.version.set((v) => v + 1);
   }
 
   /** The statuses with stubbed notes added and acknowledged notes removed. */

@@ -25,6 +25,7 @@ import { useObservable } from '../app/observable';
 import { stepDone, trackParams } from '../app/tutorial';
 import type { Workbench } from '../app/workbench';
 import { useDoc } from './Inspector';
+import { chromeObstacles } from './obstacles';
 
 const icon = 'size-[22px]';
 
@@ -48,33 +49,6 @@ function actionFor(wb: Workbench, id: BubbleActionId): BubbleAction {
     icon: <meta.Icon className={icon} strokeWidth={1.75} aria-hidden />,
     onSelect: () => wb.bubbleAction(id),
   };
-}
-
-/** Floating chrome the bubble must not cover (top bar, tool rail, sheets), in stage px. */
-function chromeObstacles(wb: Workbench): Rect[] {
-  const stage = wb.canvas?.getBoundingClientRect();
-  if (!stage) return [];
-  const out: Rect[] = [];
-  for (const el of document.querySelectorAll(
-    [
-      '[data-testid="top-bar"]',
-      '[aria-label="Modeling tools"]',
-      '[data-testid$="-sheet"]',
-      '[data-testid="view-cube"]',
-      '[data-testid="library-button"]',
-      '[data-testid="overlay-stack"] > *',
-    ].join(', '),
-  )) {
-    const r = el.getBoundingClientRect();
-    if (r.width > 0 && r.height > 0)
-      out.push({
-        left: r.left - stage.left,
-        top: r.top - stage.top,
-        width: r.width,
-        height: r.height,
-      });
-  }
-  return out;
 }
 
 /**
@@ -104,7 +78,7 @@ export function useContextBubble(wb: Workbench): ContextBubbleProps | undefined 
   const [, relayout] = useState(0);
   useLayoutEffect(() => {
     if (!tracking.current) return;
-    const now = JSON.stringify(chromeObstacles(wb));
+    const now = JSON.stringify(chromeObstacles(wb, true));
     if (now !== seen.current) relayout((n) => n + 1);
   });
   // A selection that is gone releases the dismissal, so selecting the same face again shows it.
@@ -144,7 +118,7 @@ export function useContextBubble(wb: Workbench): ContextBubbleProps | undefined 
   const at = ui.bubble?.at ?? last?.hit.point ?? null;
   const anchor = ui.bubble?.screen ?? (at ? wb.project(at) : null);
   if (!anchor) return undefined;
-  const obstacles = chromeObstacles(wb);
+  const obstacles = chromeObstacles(wb, true);
   seen.current = JSON.stringify(obstacles);
   tracking.current = true;
   return {
@@ -173,6 +147,7 @@ export function useValueChip(wb: Workbench): ValueChipProps | undefined {
     dragging: pp.dragging,
     evaluate: (e) => wb.evaluate(e, 'length'),
     unitHint: 'mm',
+    obstacles: chromeObstacles(wb),
     onPreview: (e) => wb.pushPull.preview(e),
     onCommit: (e) => void wb.pushPull.commit(e),
     onCancel: () => wb.pushPull.revert(),

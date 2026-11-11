@@ -1,5 +1,6 @@
 import { devices, expect, type Locator, type Page, test } from '@playwright/test';
 import { app, boot, cameraStill, touch } from './helpers';
+import { expectNoIntersections, overlayBoxes } from './support/overlays';
 
 /**
  * M3.8 acceptance, phone overlays: after "section by face" or Measure on the demo bracket the
@@ -47,49 +48,6 @@ async function faceAt(page: Page, top: number, bottom: number) {
   );
   if (!p) throw new Error('no face in view');
   return { x: box.x + p.x, y: box.y + p.y };
-}
-
-interface Box {
-  name: string;
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-}
-
-/** Every visible floating overlay's page box. */
-async function overlayBoxes(page: Page): Promise<Box[]> {
-  return page.evaluate(() => {
-    const sels: Record<string, string> = {
-      bubble: '[data-testid="context-bubble"]',
-      'section-chip': '[data-testid="section-chip"]',
-      prompt: '[data-testid="prompt"]',
-      toast: '[data-testid="toast"]',
-      'view-cube': '[data-testid="view-cube"]',
-      'top-bar': '[data-testid="top-bar"]',
-      library: '[data-testid="library-button"]',
-      sheet: '[data-testid="tools-sheet"]',
-    };
-    const out: { name: string; x: number; y: number; w: number; h: number }[] = [];
-    for (const [name, sel] of Object.entries(sels)) {
-      const el = document.querySelector(sel);
-      if (!el || (el as HTMLElement).hidden) continue;
-      const r = el.getBoundingClientRect();
-      if (r.width > 0 && r.height > 0) out.push({ name, x: r.x, y: r.y, w: r.width, h: r.height });
-    }
-    return out;
-  });
-}
-
-function expectNoIntersections(boxes: Box[]) {
-  for (let i = 0; i < boxes.length; i++)
-    for (let j = i + 1; j < boxes.length; j++) {
-      const a = boxes[i];
-      const b = boxes[j];
-      if (!a || !b) continue;
-      const hit = a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
-      expect(hit, `${a.name} and ${b.name} overlap`).toBe(false);
-    }
 }
 
 /**

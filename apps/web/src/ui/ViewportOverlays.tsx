@@ -5,12 +5,11 @@
  * `worldToScreen`). Non-modal throughout (PLAN §1, §9.2).
  */
 
-import type { EntityRef, ExtrudeFeature, PickHit, Vec3, WrenDoc } from '@wren-cad/contracts';
+import type { EntityRef, ExtrudeFeature, PickHit, WrenDoc } from '@wren-cad/contracts';
 import { constraintLabel, Namer } from '@wren-cad/sketch';
 import {
   ConflictPanel,
   cn,
-  ExpressionInput,
   type PickCandidate,
   PromptChip,
   prefetchWhichOneChooser,
@@ -30,6 +29,8 @@ import { measureLabel } from '../model/measure';
 import { describeRef, useDoc } from './Inspector';
 
 const LibraryPanel = lazy(() => import('./LibraryPanel'));
+// The inline extrude depth loads when an extrude is first edited.
+const ExtrudeDepth = lazy(() => import('./ExtrudeDepth'));
 // Sketch Edit-menu panels: only in sketch mode, so not on the initial route.
 const SketchEditPanels = lazy(() =>
   import('./SketchEditPanels').then((m) => ({ default: m.SketchEditPanels })),
@@ -180,45 +181,6 @@ function candidateForName(wb: Workbench, doc: WrenDoc, name: string): PickCandid
     label,
     ...(at ? { detail: `at ${at.map(fmt).join(', ')} mm` } : {}),
   };
-}
-
-/** Inline depth for the extrude being edited, floating next to its profile. */
-function ExtrudeDepth({ wb, f }: { wb: Workbench; f: ExtrudeFeature }) {
-  const regen = useObservable(wb.regen);
-  const v = wb.viewport;
-  if (!v || f.end.kind !== 'blind' || !regen) return null;
-  const end = f.end;
-  const regions = regen.result.sketches.flatMap((s) =>
-    s.regions.filter((r) => f.profile.some((p) => p.name === r.name)).map((r) => ({ r, s })),
-  );
-  const first = regions[0];
-  if (!first) return null;
-  const { min, max } = first.r.mesh.bbox;
-  const c: Vec3 = [(min[0] + max[0]) / 2, (min[1] + max[1]) / 2, (min[2] + max[2]) / 2];
-  const p = v.worldToScreen(c);
-  if (!p.visible) return null;
-  return (
-    <div
-      className="w-panel pointer-events-auto absolute flex items-center gap-2 rounded-[12px] py-1 pr-1 pl-2.5"
-      style={{ left: p.x + 24, top: p.y - 18 }}
-      data-testid="extrude-depth"
-    >
-      <span className="text-2xs font-semibold tracking-wide text-fg-muted uppercase">Depth</span>
-      <div className="w-32">
-        <ExpressionInput
-          label="Extrude depth"
-          value={end.depth}
-          evaluate={(e) => wb.evaluate(e, 'length')}
-          unitHint="mm"
-          onPreview={(depth) =>
-            wb.updateFeature({ ...f, end: { kind: 'blind', depth } }, 'preview')
-          }
-          onCommit={(depth) => wb.updateFeature({ ...f, end: { kind: 'blind', depth } }, 'commit')}
-          testId="extrude-depth-input"
-        />
-      </div>
-    </div>
-  );
 }
 
 /**
@@ -452,10 +414,12 @@ export function ViewportOverlays({ wb, touch }: { wb: Workbench; touch: boolean 
       ) : null}
 
       {!sk && editing?.type === 'extrude' ? (
-        <ExtrudeDepth
-          wb={wb}
-          f={(wb.config.effectiveFeature(editing.id) as ExtrudeFeature | undefined) ?? editing}
-        />
+        <Suspense fallback={null}>
+          <ExtrudeDepth
+            wb={wb}
+            f={(wb.config.effectiveFeature(editing.id) as ExtrudeFeature | undefined) ?? editing}
+          />
+        </Suspense>
       ) : null}
       {!sk && ui.measure ? <MeasureLabel wb={wb} /> : null}
 
