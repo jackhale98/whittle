@@ -40,6 +40,7 @@ import { mentionsImport } from './imports';
 import {
   baseName,
   type Candidate,
+  containsLocation,
   type Resolution,
   type ResolvedTarget,
   resolveRef,
@@ -155,6 +156,13 @@ export async function resolveSub(
     planeLike,
     fingerprints: (s: ShapeHandle) => core.fingerprints(s),
     weak: (name: string) => mentionsImport(name, ctx.importIds),
+    distance: async (c: Candidate, point: Vec3) => {
+      const m = await core.kernel.measureShapes(
+        { shape: c.shape, kind: c.kind, index: c.index },
+        { point },
+      );
+      return m.ok ? (m.value.distance?.value ?? null) : null;
+    },
   };
   // Order (PLAN §7.3, ADR-078): exact name, then a merge alias (history evidence; conflicting
   // aliases are unresolved), then the name family and fingerprints (resolve.ts).
@@ -175,7 +183,20 @@ export async function resolveSub(
     // Rebound: the name changed, or fingerprint evidence picked it and the stored fingerprint
     // is out of date (the app heals both).
     const stale = !ref.fingerprint || !now || !sameFingerprint(ref.fingerprint, now);
-    if (t.name !== ref.name || stale) {
+    // Never heal a stored name onto an entity that doesn't contain where the ref was recorded
+    // (the app writes rebound names into the document). Imported (weak) names are geometric
+    // order and are re-recorded after a file replacement, so they keep healing.
+    const renamedOff =
+      t.name !== ref.name &&
+      ref.fingerprint !== undefined &&
+      now !== undefined &&
+      !rc.weak(ref.name) &&
+      (await containsLocation(
+        ref.fingerprint,
+        { c: t, centroid: now.centroid, ...(now.normal ? { normal: now.normal } : {}) },
+        rc,
+      )) === false;
+    if (!renamedOff && (t.name !== ref.name || stale)) {
       const rebound: ReboundRef = { path, name: t.name };
       if (now) rebound.fingerprint = now;
       ctx.current.rebound.push(rebound);
