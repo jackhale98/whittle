@@ -1,5 +1,5 @@
-import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import wranglerJsonc from '../wrangler.jsonc?raw';
 import worker, { type Env } from './index';
 
 const ORIGIN = 'https://app.example';
@@ -46,7 +46,7 @@ describe('wren worker configuration', () => {
 
   it('ships wrangler.jsonc allowing wren-cad.app, GitHub Pages and localhost, nothing wider', async () => {
     vi.stubGlobal('fetch', ok());
-    const text = readFileSync(new URL('../wrangler.jsonc', import.meta.url), 'utf8');
+    const text = wranglerJsonc;
     const listed = /"ALLOWED_ORIGINS":\s*"([^"]+)"/.exec(text)?.[1] ?? '';
     const cfg = { ...env, ALLOWED_ORIGINS: listed };
     const as = async (origin: string) =>
