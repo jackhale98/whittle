@@ -2727,7 +2727,7 @@ Decisions:
   - It skips `kernel:test`, because that run already tested the same commit.
   - The cache step's post job saves the downloaded dist to main's cache.
   - With no verified run, the old path runs unchanged.
-- (Same day) Browser installs on CI now go through `scripts/ci-install-browsers.sh`. Run #81 lost six browser jobs at once when the runners could not resolve the Ubuntu mirrors. The script retries `--with-deps` twice with a back-off. If the mirrors are still down, it installs the browser alone with a warning; the runner image already has Chromium's libraries.
+- (Same day) Browser installs on CI now go through `scripts/ci-install-browsers.sh`. Run #81 lost six browser jobs at once when the runners could not resolve the Ubuntu mirrors. Retries made it worse: in run #83, apt hung on DNS timeouts until the jobs hit their limits. The script now gives `--with-deps` one attempt of at most 4 minutes, then installs the browser alone with a warning. The runner image already has Chromium's libraries; run #83's perf job passed on that path.
 
 ## ADR-092 — M4 drawing route: a lazy route over the model, a placeholder HLR kernel behind `DrawingKernelApi`, phone is review-only (2026-11-11)
 
