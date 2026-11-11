@@ -399,12 +399,11 @@ export class ConfigController {
       const cmd = this.overrideCommand([
         { target: { kind: 'param', paramId }, ...(same ? {} : { value: patch.expr }) },
       ]);
-      if (cmd) wb.apply(cmd);
-      wb.commit();
+      if (cmd) wb.applyRefit(cmd);
+      else wb.commit();
       return;
     }
-    wb.apply({ kind: 'updateParam', paramId, ...patch });
-    wb.commit();
+    wb.applyRefit({ kind: 'updateParam', paramId, ...patch });
     if (patch.expr !== undefined) this.announce({ kind: 'param', paramId });
   }
 

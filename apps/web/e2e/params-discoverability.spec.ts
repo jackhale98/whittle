@@ -211,3 +211,45 @@ test('make a parameter from a box height; used by selects the feature; drag onto
   const f = (await a.doc()).parts[0]?.features[0];
   expect(f?.type === 'primitive' && f.shape === 'box' && f.dx).toBe('wide');
 });
+
+test('changing a parameter with the sketch open redraws it at once, in the same undo step', async ({
+  page,
+}) => {
+  test.slow();
+  await boot(page);
+  await page.getByRole('button', { name: 'Close welcome' }).click();
+  await addParam(page, 'dia', '30 mm');
+  await page.getByRole('tab', { name: 'Features' }).click();
+  await page.keyboard.press('s');
+  await sketchOn(page, 'Top');
+  const a = app(page);
+  await page.keyboard.press('Shift+C');
+  await clickAt(page, 10, 10);
+  await clickAt(page, 25, 10);
+  await a.settled();
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('d');
+  await clickAt(page, 25, 10);
+  await clickAt(page, 35, 20);
+  const editor = page.getByTestId('dimension-editor').getByRole('textbox');
+  await editor.fill('dia');
+  await editor.press('Enter');
+  await a.settled();
+  expect(radiusOf(await sketchOf(page))).toBeCloseTo(15, 6);
+
+  // Still in the sketch: change the parameter.
+  const before = (await a.history()).past.length;
+  await page.getByRole('tab', { name: 'Params' }).click();
+  const expr = page.getByRole('textbox', { name: 'Expression for dia', exact: true });
+  await expr.fill('50 mm');
+  await expr.press('Enter');
+  await expect.poll(async () => radiusOf(await sketchOf(page))).toBeCloseTo(25, 6);
+  await expect(page.locator('button[data-kind="diameter"]')).toContainText('50');
+  await expect(page.getByRole('toolbar', { name: 'Sketch tools' })).toBeVisible();
+  expect((await a.history()).past.length).toBe(before + 1); // the edit and the redraw: one step
+
+  // Undo restores both.
+  await page.getByRole('button', { name: /^Undo/ }).click();
+  await expect.poll(async () => radiusOf(await sketchOf(page))).toBeCloseTo(15, 6);
+  expect((await a.doc()).params[0]?.expr).toBe('30 mm');
+});
