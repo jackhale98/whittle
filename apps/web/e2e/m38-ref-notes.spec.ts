@@ -19,7 +19,7 @@ test('a grown fillet edge is flagged; Accept clears it until it grows again; Re-
   await a.idle();
   const doc = await a.doc();
   const fillet = doc.parts[0]?.features.find((f) => f.type === 'fillet');
-  if (!fillet || fillet.type !== 'fillet') throw new Error('no fillet in the demo');
+  if (fillet?.type !== 'fillet') throw new Error('no fillet in the demo');
   const edge = fillet.edges[0];
   if (!edge) throw new Error('fillet has no edge');
   const volume0 = (await a.regen())?.bodies[0]?.volume;
@@ -68,7 +68,7 @@ test('a merged reference shows "uses a merged edge"', async ({ page }) => {
   await expect.poll(async () => (await a.doc()).parts[0]?.features.length).toBeGreaterThan(0);
   await a.idle();
   const fillet = (await a.doc()).parts[0]?.features.find((f) => f.type === 'fillet');
-  if (!fillet || fillet.type !== 'fillet' || !fillet.edges[0]) throw new Error('no fillet');
+  if (fillet?.type !== 'fillet' || !fillet.edges[0]) throw new Error('no fillet');
   await a.stubRefNotes(fillet.id, {
     merged: [{ path: '/edges/0', name: fillet.edges[0].name, into: 'edge(merged|other)' }],
   });

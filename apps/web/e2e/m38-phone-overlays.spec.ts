@@ -16,7 +16,7 @@ test.use({
   hasTouch: true,
 });
 
-const tab = (page: Page, name: string) =>
+const _tab = (page: Page, name: string) =>
   page.getByRole('group', { name: 'Viewer tools' }).getByRole('button', { name });
 
 /** A face well inside a flat top, between `top` and `bottom` px of the canvas. */
