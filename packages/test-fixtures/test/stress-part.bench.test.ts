@@ -20,7 +20,7 @@
  */
 
 import { writeFileSync } from 'node:fs';
-import type { Id, WrenDoc } from '@wren-cad/contracts';
+import type { Annotation, EntityRef, Id, Part, WrenDoc } from '@wren-cad/contracts';
 import { scopeOf, tryResolveDensity } from '@wren-cad/document';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { ENCLOSURE_PART_ID, enclosureDoc, enclosureFeatureIds } from '../stress-part';
@@ -37,7 +37,7 @@ import {
   withParam,
 } from './stress-support';
 
-/** `WREN_STRESS_ONLY=cold,last,wall` runs just those groups (cold, cached, last, mid, wall, fillet, length, suppress, undo2, memory, rollback). */
+/** `WREN_STRESS_ONLY=cold,last,wall` runs just those groups (cold, cached, last, mid, wall, fillet, length, suppress, undo2, memory, annotations, rollback). */
 const only = process.env.WREN_STRESS_ONLY?.split(',');
 const want = (tag: string) => only === undefined || only.includes(tag);
 /** Runs of the cheap scenarios (edits of late features). */
@@ -368,6 +368,92 @@ describe.skipIf(!kernelBuilt || !stressEnabled)('stress part benchmark', () => {
       });
     },
     3_600_000,
+  );
+
+  /**
+   * M4 (ADR-090): the last-feature edit with 50 annotations on the final body (20 linear between
+   * parallel planar faces, 15 diameters on cylinders, 10 radii on circular edges, 5 notes on
+   * straight edges, picked by TopExp order through `refFor`). Every edit makes a new final body,
+   * so every annotation is resolved afresh. Compare with `edit last feature` (no annotations).
+   */
+  it.skipIf(!want('annotations'))(
+    'edit the last feature with 50 annotations',
+    async () => {
+      const first = await regen(base);
+      const body = first.bodies[0];
+      if (!body) throw new Error('no body');
+      const fp = await api.fingerprints(body.shape);
+      if (!fp.ok) throw new Error('fingerprints');
+      const ref = (kind: 'face' | 'edge', index: number) =>
+        api.refFor(PART as Id, { bodyId: body.id, kind, index });
+      const annotations: Annotation[] = [];
+      let k = 0;
+      const id = () => `01ANNBENCH${String(k++).padStart(16, '0')}` as Id;
+      const model = { kind: 'model' } as const;
+      const planes = fp.value.faces
+        .map((f, i) => ({ f, i }))
+        .filter((x) => x.f.normal !== undefined);
+      for (let i = 0; i < planes.length && annotations.length < 20; i++) {
+        const a = planes[i] as (typeof planes)[number];
+        const n = a.f.normal as [number, number, number];
+        const b = planes.slice(i + 1).find((y) => {
+          const m = y.f.normal as [number, number, number];
+          return Math.abs(Math.abs(n[0] * m[0] + n[1] * m[1] + n[2] * m[2]) - 1) < 1e-9;
+        });
+        if (!b) continue;
+        const [ra, rb] = [await ref('face', a.i), await ref('face', b.i)];
+        if (!ra || !rb || ra.name.includes('unnamed') || rb.name.includes('unnamed')) continue;
+        annotations.push({ id: id(), kind: 'linear', origin: model, refs: [ra, rb] });
+      }
+      const pick = async (
+        kind: 'face' | 'edge',
+        want: (i: number) => boolean,
+        count: number,
+        make: (r: EntityRef) => Annotation,
+      ) => {
+        const total = kind === 'face' ? fp.value.faces.length : fp.value.edges.length;
+        let got = 0;
+        for (let i = 0; i < total && got < count; i++) {
+          if (!want(i)) continue;
+          const r = await ref(kind, i);
+          if (!r || r.name.includes('unnamed')) continue;
+          annotations.push(make(r));
+          got++;
+        }
+      };
+      await pick(
+        'face',
+        (i) => fp.value.faces[i]?.surface === 'cylinder',
+        15,
+        (r) => ({ id: id(), kind: 'diameter', origin: model, refs: [r] }),
+      );
+      await pick(
+        'edge',
+        (i) => fp.value.edges[i]?.curve === 'circle',
+        10,
+        (r) => ({ id: id(), kind: 'radius', origin: model, refs: [r] }),
+      );
+      await pick(
+        'edge',
+        (i) => fp.value.edges[i]?.curve === 'line',
+        5,
+        (r) => ({ id: id(), kind: 'note', origin: model, refs: [r], text: 'Note' }),
+      );
+      expect(annotations).toHaveLength(50);
+      const annotated = structuredClone(base);
+      (annotated.parts[0] as Part).annotations = annotations.sort((x, y) => (x.id < y.id ? -1 : 1));
+      const r0 = await regen(annotated);
+      expect(r0.annotations?.filter((a) => a.state === 'ok')).toHaveLength(50);
+      // Radii the `last` group did not use, so every run misses the edited feature.
+      await scenario('edit last feature, 50 annotations', 'ear_f', RUNS * 2, (i) =>
+        withFeature(annotated, ids.ear_f as string, (f) => {
+          if (f.type === 'fillet') f.radius = `${2 + 0.03 * (i + 1)} mm`;
+        }),
+      );
+      expect(rows.at(-1)?.misses).toBe(1);
+      await scenario('re-regen, nothing changed, 50 annotations', '-', RUNS * 2, () => annotated);
+    },
+    600_000,
   );
 
   it.skipIf(!want('rollback'))(
