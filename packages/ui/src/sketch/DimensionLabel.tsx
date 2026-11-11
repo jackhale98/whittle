@@ -166,6 +166,7 @@ export function DimensionLabel({
   onMoveEnd,
 }: DimensionLabelProps) {
   const [editing, setEditing] = useState(!!autoEdit && driving);
+  const [seed, setSeed] = useState<string | undefined>(undefined);
   const btn = useRef<HTMLButtonElement>(null);
   const drag = useRef<{
     id: number;
@@ -188,11 +189,21 @@ export function DimensionLabel({
     if (autoEdit && driving) setEditing(true);
   }, [autoEdit, driving]);
 
+  useEffect(() => {
+    if (!editing) setSeed(undefined);
+  }, [editing]);
+
   // A parameter dropped here sets the dimension (a driven one is measured: not a target).
-  const dropRef = useRef<(name: string) => void>(() => {});
+  const dropRef = useRef<(name: string) => boolean>(() => false);
   dropRef.current = (name) => {
-    if (evaluate && !evaluate(name).ok) return; // an angle on a length: the field would refuse it
+    if (evaluate && !evaluate(name).ok) {
+      // An angle on a length: the editor opens with the name and says why it does not fit.
+      setSeed(name);
+      setEditing(true);
+      return false;
+    }
     onDropParam?.(name);
+    return true;
   };
   const droppable = !!onDropParam && driving && !editing;
   useEffect(() => {
@@ -248,6 +259,7 @@ export function DimensionLabel({
           unitHint={kind === 'angle' ? '°' : 'mm'}
           step={kind === 'angle' ? 5 : 1}
           autoFocus
+          {...(seed !== undefined ? { seedDraft: seed } : {})}
           showValue={false}
           onPreview={onPreview}
           onCommit={(e) => {

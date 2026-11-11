@@ -87,6 +87,8 @@ export interface ExpressionInputProps {
    * badge and drop target (default); `complete` = autocomplete, fx list and badge only; `off` = none.
    */
   paramLinks?: 'full' | 'complete' | 'off';
+  /** Start with this text as an uncommitted edit (a refused drop shows its error there). */
+  seedDraft?: string;
 }
 
 type Evaluated = { text: string; result: EvalResult | undefined };
@@ -110,6 +112,7 @@ export function ExpressionInput({
   keypad = 'auto',
   paramNames,
   paramLinks = 'full',
+  seedDraft,
   label,
   placeholder,
   disabled,
@@ -125,7 +128,7 @@ export function ExpressionInput({
   const ctxNames = useContext(ParamNamesContext);
   const links = useContext(ParamLinksContext);
   const names = paramNames ?? ctxNames;
-  const [draft, setDraft] = useState<string | null>(null);
+  const [draft, setDraft] = useState<string | null>(seedDraft ?? null);
   const [focused, setFocused] = useState(false);
   const [keypadOn, setKeypadOn] = useState(false);
   const [osKeyboard, setOsKeyboard] = useState(false);
@@ -213,11 +216,14 @@ export function ExpressionInput({
 
   // A parameter dragged from the Params tab and dropped on the field replaces the value. An unfit
   // one (an angle on a length) is put in the field instead, so the error explains itself.
-  function dropParam(name: string) {
+  function dropParam(name: string): boolean {
     if (evaluate && !evaluate(name).ok) {
       setDraft(name);
       input.current?.focus();
-    } else commit(name);
+      return false;
+    }
+    commit(name);
+    return true;
   }
 
   function leave() {
