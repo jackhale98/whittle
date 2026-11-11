@@ -71,6 +71,7 @@ import {
 } from '../sketch/references';
 import { displayFeature, type ShownSketch } from '../sketch/shown';
 import { MIN_CONFIDENCE, strokeEdit } from '../sketch/stroke';
+import { DragSteps } from './drag-steps';
 import { observable } from './observable';
 import { replayedPointerDowns } from './pointers';
 import { isEditTool, SketchEditTools, startEdit } from './sketch-edit';
@@ -124,10 +125,8 @@ interface DragState {
   session: Promise<number>;
   entity: Id;
   key: string;
-  inFlight: boolean;
-  /** The running drag steps; always settles (a failed step ends the run, never hangs it). */
-  steps: Promise<void> | null;
-  pending: Vec2 | null;
+  /** The solver steps, one at a time, latest position wins (flushed on release). */
+  steps: DragSteps<Vec2>;
   moved: boolean;
   start: { x: number; y: number };
 }
@@ -609,7 +608,7 @@ export class SketchSession {
       pending: this.pending,
       running: r?.label ?? null,
       runningMs: r ? Math.round(performance.now() - r.since) : 0,
-      drag: this.drag ? { inFlight: this.drag.inFlight, moved: this.drag.moved } : null,
+      drag: this.drag ? { inFlight: this.drag.steps.inFlight, moved: this.drag.moved } : null,
     };
   }
 
@@ -626,7 +625,7 @@ export class SketchSession {
    */
   async whenSettled(): Promise<void> {
     while (this.pending > 0) await this.queue;
-    while (this.drag?.inFlight && this.drag.steps) await this.drag.steps;
+    while (this.drag?.steps.inFlight && this.drag.steps.steps) await this.drag.steps.steps;
     if (this.overlayQueued || this.pushedFor !== this.feature()?.entities) this.pushOverlay();
   }
 
@@ -1078,15 +1077,18 @@ export class SketchSession {
       constraints: [...f.constraints],
       values: this.values(f),
     };
+    const session = solver()
+      .api.beginDrag(input, entity, at)
+      .then((r) => r.session);
+    const key = `drag:${newId()}`;
     this.drag = {
-      session: solver()
-        .api.beginDrag(input, entity, at)
-        .then((r) => r.session),
+      session,
       entity,
-      key: `drag:${newId()}`,
-      inFlight: false,
-      steps: null,
-      pending: null,
+      key,
+      steps: new DragSteps(async (to) => {
+        const res = await solver().api.drag(await session, to);
+        this.applyDragResult(res, key);
+      }),
       moved: false,
       start,
     };
@@ -1166,6 +1168,10 @@ export class SketchSession {
    * Ends the drag in progress (if any) through the edit queue, like a release: a drag that moved
    * keeps its result as one undo step, one that didn't move just closes its solver session.
    */
+  /**
+   * Ends the drag. A release (`onStill` given) first applies the last move that was still waiting
+   * for the solver; a cancel or a pinch drops it.
+   */
   private endDrag(onStill?: (entity: Id) => void): void {
     const d = this.drag;
     if (!d) return;
@@ -1175,9 +1181,9 @@ export class SketchSession {
       this.pushHighlights();
     }
     void this.serial('endDrag', async () => {
-      // Let an in-flight drag step land first (it always settles).
-      await d.steps;
       try {
+        // Let the step in flight land, then the release's position if it was still pending.
+        await d.steps.finish(onStill !== undefined);
         const session = await d.session;
         const res = await solver().api.endDrag(session);
         if (d.moved) this.applyDragResult(res, d.key);
@@ -1330,29 +1336,7 @@ export class SketchSession {
     if (!d) return;
     if (!d.moved && Math.hypot(e.clientX - d.start.x, e.clientY - d.start.y) < 3) return;
     d.moved = true;
-    if (d.inFlight) {
-      d.pending = at;
-      return;
-    }
-    d.inFlight = true;
-    d.steps = (async () => {
-      try {
-        let to: Vec2 | null = at;
-        while (to && this.drag === d) {
-          d.pending = null;
-          const session = await d.session;
-          const res = await solver().api.drag(session, to);
-          this.applyDragResult(res, d.key);
-          to = d.pending;
-        }
-      } catch {
-        // A step the solver refused or never answered: the drag keeps what already landed, and
-        // the release still ends it. Before, `inFlight` stayed set and the release's queued task
-        // waited for it forever, jamming every later edit and `whenSettled`.
-      } finally {
-        d.inFlight = false;
-      }
-    })();
+    d.steps.push(at);
   }
 
   private applyDragResult(res: SketchSolveResult, key: string): void {

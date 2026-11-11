@@ -142,6 +142,8 @@ export interface PartCache {
     partName: string;
     /** kg/mm³ of the part material at that regen, if any. */
     density?: number;
+    /** That walk's merge table (`ModelState.merged`), for what `refFor` records in `absorbed`. */
+    merged?: Map<string, string[]>;
   } | null;
   lastGood: { bodies: BodyState[]; keys: Set<string> } | null;
   /** Imported attachments by sha256. */
@@ -152,6 +154,12 @@ export interface PartCache {
    * only when needed.
    */
   lastResolved: Map<string, { shape: ShapeHandle; kind: SubKind; index: number }>;
+  /**
+   * M3.8 `grown` baselines (ADR-084 amendment), session-local: ref identity (`growthKey`) → the
+   * names its face/edge had absorbed (merge table, ADR-078) when `refFor` made the ref, or when it
+   * last resolved without being reported as grown. Only names absorbed since then are evidence.
+   */
+  absorbed: Map<string, Set<string>>;
   /** The previous regen's walk (cause.ts), for `AttentionCause`. */
   walk: Walk | null;
 }

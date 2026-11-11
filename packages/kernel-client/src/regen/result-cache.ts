@@ -55,6 +55,7 @@ export class ResultCache {
         lastGood: null,
         imports: new Map(),
         lastResolved: new Map(),
+        absorbed: new Map(),
         walk: null,
       };
       slots.set(slot, pc);

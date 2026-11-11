@@ -135,3 +135,142 @@ describe('a worker that stops answering (M3.8 settle hang)', () => {
     );
   });
 });
+
+describe('the deadline starts once the worker has loaded planegcs (review N5)', () => {
+  /**
+   * Workers that post the ready message (worker-protocol.ts) when `load` resolves; their solve
+   * waits for it, like the real worker's first call while the Wasm downloads.
+   */
+  function loadingWorkers(solver: ReturnType<typeof createSketchSolver>) {
+    const spawned: { terminated: boolean; ready: (ok?: boolean) => void; hang: boolean }[] = [];
+    const ports: MessagePort[] = [];
+    const createWorker = () => {
+      const c = new MessageChannel();
+      ports.push(c.port1, c.port2);
+      let ready: (ok?: boolean) => void = () => {};
+      const loaded = new Promise<void>((resolve) => {
+        ready = (ok = true) => {
+          c.port1.postMessage(
+            ok ? { wrenSketch: 'ready' } : { wrenSketch: 'failed', message: 'HTTP 503' },
+          );
+          if (ok) resolve();
+        };
+      });
+      const rec = { terminated: false, ready, hang: false };
+      spawned.push(rec);
+      expose(
+        {
+          solve: async (i: Parameters<SketchSolverApi['solve']>[0]) => {
+            await loaded;
+            if (rec.hang) return new Promise(() => {});
+            return solver.solve(i);
+          },
+        } as unknown as SketchSolverApi,
+        c.port1,
+      );
+      return Object.assign(c.port2, {
+        terminate() {
+          rec.terminated = true;
+          c.port2.close();
+        },
+      }) as unknown as Worker;
+    };
+    return { spawned, ports, createWorker };
+  }
+  const input = () => {
+    const b = new SketchBuilder();
+    rectangle(b);
+    return b.input();
+  };
+
+  it('a slow load longer than the deadline answers from the same worker', async () => {
+    const solver = createSketchSolver();
+    const w = loadingWorkers(solver);
+    const client = createSketchSolverClient({
+      createWorker: w.createWorker,
+      signalsReady: true,
+      timeoutMs: 100,
+    });
+    try {
+      const call = client.api.solve(input());
+      // A cold link: the Wasm takes three deadlines to arrive. Before, the worker was killed at
+      // 100 ms and the next one downloaded it again.
+      setTimeout(() => w.spawned[0]?.ready(), 300);
+      expect((await call).status).toBe('solved');
+      expect(w.spawned).toHaveLength(1);
+      expect(w.spawned[0]?.terminated).toBe(false);
+    } finally {
+      client.dispose();
+      for (const p of w.ports) p.close();
+      solver.dispose();
+    }
+  });
+
+  it('a worker still loading is never restarted; calls past the load limit reject', async () => {
+    const solver = createSketchSolver();
+    const w = loadingWorkers(solver);
+    const client = createSketchSolverClient({
+      createWorker: w.createWorker,
+      signalsReady: true,
+      timeoutMs: 50,
+      loadTimeoutMs: 150,
+    });
+    try {
+      await expect(client.api.solve(input())).rejects.toThrow(/still loading/);
+      expect(w.spawned).toHaveLength(1);
+      expect(w.spawned[0]?.terminated).toBe(false);
+      w.spawned[0]?.ready();
+      expect((await client.api.solve(input())).status).toBe('solved');
+      expect(w.spawned).toHaveLength(1);
+    } finally {
+      client.dispose();
+      for (const p of w.ports) p.close();
+      solver.dispose();
+    }
+  });
+
+  it('once loaded, a call that hangs still misses its deadline and the worker is restarted', async () => {
+    const solver = createSketchSolver();
+    const w = loadingWorkers(solver);
+    const client = createSketchSolverClient({
+      createWorker: w.createWorker,
+      signalsReady: true,
+      timeoutMs: 100,
+    });
+    try {
+      w.spawned[0]?.ready();
+      expect((await client.api.solve(input())).status).toBe('solved');
+      const first = w.spawned[0];
+      if (first) first.hang = true;
+      await expect(client.api.solve(input())).rejects.toBeInstanceOf(SketchSolverTimeout);
+      expect(first?.terminated).toBe(true);
+      setTimeout(() => w.spawned[1]?.ready(), 10);
+      expect((await client.api.solve(input())).status).toBe('solved');
+      expect(w.spawned).toHaveLength(2);
+    } finally {
+      client.dispose();
+      for (const p of w.ports) p.close();
+      solver.dispose();
+    }
+  });
+
+  it('a failed load fails the waiting calls at once', async () => {
+    const solver = createSketchSolver();
+    const w = loadingWorkers(solver);
+    const client = createSketchSolverClient({
+      createWorker: w.createWorker,
+      signalsReady: true,
+      loadTimeoutMs: 60_000,
+    });
+    try {
+      const call = client.api.solve(input());
+      w.spawned[0]?.ready(false);
+      await expect(call).rejects.toThrow(/could not load \(HTTP 503\)/);
+      expect(w.spawned[0]?.terminated).toBe(true);
+    } finally {
+      client.dispose();
+      for (const p of w.ports) p.close();
+      solver.dispose();
+    }
+  });
+});

@@ -8,7 +8,7 @@
 import type { TouchViewport } from '@wren-cad/contracts';
 import type { Workbench } from './workbench';
 
-/** The viewport's inset API (packages/viewport `ViewportEngine`; not in the contract yet). */
+/** The viewport's inset API: `TouchViewport.setFrameInsets` (optional in the contract, ADR-086). */
 type InsetViewport = TouchViewport;
 interface Insets {
   top: number;
