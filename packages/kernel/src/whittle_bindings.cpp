@@ -17,6 +17,7 @@
 //   exportShapes(shapesJson: string, format: string, optionsJson: string): string
 //   importFile(path: string, format: string): string
 //   measure(queryJson: string): string
+//   subShapeGeometry(shape: number, kind: string, index: number): string
 //   projectEdges(queryJson: string): string
 //   projectFaceOutline(queryJson: string): string
 //   configureThreads(count: number): string
@@ -87,6 +88,7 @@ EMSCRIPTEN_BINDINGS(whittle_kernel) {
   emscripten::function("exportShapes", &whittle::exportShapes);
   emscripten::function("importFile", &whittle::importFile);
   emscripten::function("measure", &whittle::measure);
+  emscripten::function("subShapeGeometry", &whittle::subShapeGeometry);
   emscripten::function("projectEdges", &whittle::projectEdges);
   emscripten::function("projectFaceOutline", &whittle::projectFaceOutline);
   emscripten::function("configureThreads", &whittle::configureThreads);

@@ -175,3 +175,146 @@ std::string measureQuery(const Json& query) {
   const MeasureSubject sb = parseMeasureTarget(*b, "b");
   return pairJson(sa, sb);
 }
+
+// ---------------------------------------------------------------------------------------------
+// M4: exact geometry of one sub-shape (whittle_kernel.h `subShapeGeometry`). One call replaces the
+// annotation resolver's probe measurements per circle or cylinder ref. Parameters, start and end
+// follow the curve's or surface's own parametrisation (not the edge's orientation in a wire).
+// ---------------------------------------------------------------------------------------------
+
+// Concave = the face's outward normal points towards the axis or centre (a hole, a socket). The
+// geometric normal of a quadric points away from it on a direct placement; an indirect placement
+// and a reversed face each flip that.
+bool concaveQuadric(const gp_Ax3& position, const TopoDS_Face& face) {
+  const bool away = position.Direct() != (face.Orientation() == TopAbs_REVERSED);
+  return !away;
+}
+
+std::string axisJson(const gp_Ax3& position) {
+  return ",\"origin\":" + jsonPoint(position.Location()) +
+         ",\"axis\":" + jsonVec3(position.Direction().XYZ());
+}
+
+std::string faceGeometryJson(const TopoDS_Face& face) {
+  if (!BRep_Tool::IsGeometric(face)) return "{\"kind\":\"face\",\"surface\":\"mesh\"}";
+  const BRepAdaptor_Surface a(face, false);
+  std::string out =
+      std::string("{\"kind\":\"face\",\"surface\":\"") + surfaceTypeName(a.GetType()) + "\"";
+  double u0 = 0, u1 = 0, v0 = 0, v1 = 0;
+  switch (a.GetType()) {
+    case GeomAbs_Plane: {
+      gp_Pln pln;
+      gp_Dir n;
+      planeOf(face, pln, n);
+      out += ",\"origin\":" + jsonPoint(pln.Location()) + ",\"normal\":" + jsonVec3(n.XYZ());
+      break;
+    }
+    case GeomAbs_Cylinder: {
+      const gp_Cylinder c = a.Cylinder();
+      BRepTools::UVBounds(face, u0, u1, v0, v1);
+      // v is the distance along the axis from the placement's origin.
+      out += axisJson(c.Position()) + ",\"radius\":" + jsonNumber(c.Radius()) + ",\"extent\":[" +
+             jsonNumber(v0) + "," + jsonNumber(v1) +
+             "],\"concave\":" + (concaveQuadric(c.Position(), face) ? "true" : "false");
+      break;
+    }
+    case GeomAbs_Cone: {
+      const gp_Cone k = a.Cone();
+      BRepTools::UVBounds(face, u0, u1, v0, v1);
+      // v runs along the generatrix; its axial component is v·cos(semi-angle).
+      const double c = std::cos(k.SemiAngle());
+      out += axisJson(k.Position()) + ",\"radius\":" + jsonNumber(k.RefRadius()) +
+             ",\"semiAngle\":" + jsonNumber(k.SemiAngle()) + ",\"apex\":" + jsonPoint(k.Apex()) +
+             ",\"extent\":[" + jsonNumber(std::min(v0, v1) * c) + "," +
+             jsonNumber(std::max(v0, v1) * c) +
+             "],\"concave\":" + (concaveQuadric(k.Position(), face) ? "true" : "false");
+      break;
+    }
+    case GeomAbs_Sphere: {
+      const gp_Sphere s = a.Sphere();
+      out += ",\"center\":" + jsonPoint(s.Location()) + ",\"radius\":" + jsonNumber(s.Radius()) +
+             ",\"concave\":" + (concaveQuadric(s.Position(), face) ? "true" : "false");
+      break;
+    }
+    case GeomAbs_Torus: {
+      const gp_Torus t = a.Torus();
+      out += axisJson(t.Position()) + ",\"majorRadius\":" + jsonNumber(t.MajorRadius()) +
+             ",\"minorRadius\":" + jsonNumber(t.MinorRadius());
+      break;
+    }
+    default:
+      break;
+  }
+  out.push_back('}');
+  return out;
+}
+
+std::string edgeGeometryJson(const TopoDS_Edge& edge) {
+  if (BRep_Tool::Degenerated(edge)) return "{\"kind\":\"edge\",\"curve\":\"degenerate\"}";
+  if (!BRep_Tool::IsGeometric(edge)) return "{\"kind\":\"edge\",\"curve\":\"mesh\"}";
+  const BRepAdaptor_Curve c(edge);
+  const double f = c.FirstParameter();
+  const double l = c.LastParameter();
+  const gp_Pnt start = c.Value(f);
+  const gp_Pnt end = c.Value(l);
+  const char* full = l - f >= 2 * kPi - 1e-9 ? "true" : "false";
+  std::string out = std::string("{\"kind\":\"edge\",\"curve\":\"") + curveTypeName(c.GetType()) +
+                    "\",\"start\":" + jsonPoint(start) + ",\"end\":" + jsonPoint(end);
+  switch (c.GetType()) {
+    case GeomAbs_Line: {
+      const gp_Lin lin = c.Line();
+      out += ",\"point\":" + jsonPoint(start) +
+             ",\"direction\":" + jsonVec3(lin.Direction().XYZ()) +
+             ",\"length\":" + jsonNumber(l - f);
+      break;
+    }
+    case GeomAbs_Circle: {
+      const gp_Circ circ = c.Circle();
+      // Angles about `normal`, counter-clockwise from `xAxis` (the circle's parametrisation).
+      out += ",\"center\":" + jsonPoint(circ.Location()) +
+             ",\"normal\":" + jsonVec3(circ.Axis().Direction().XYZ()) +
+             ",\"xAxis\":" + jsonVec3(circ.XAxis().Direction().XYZ()) +
+             ",\"radius\":" + jsonNumber(circ.Radius()) + ",\"startAngle\":" + jsonNumber(f) +
+             ",\"endAngle\":" + jsonNumber(l) + ",\"full\":" + full;
+      break;
+    }
+    case GeomAbs_Ellipse: {
+      const gp_Elips el = c.Ellipse();
+      out += ",\"center\":" + jsonPoint(el.Location()) +
+             ",\"normal\":" + jsonVec3(el.Axis().Direction().XYZ()) +
+             ",\"xAxis\":" + jsonVec3(el.XAxis().Direction().XYZ()) +
+             ",\"majorRadius\":" + jsonNumber(el.MajorRadius()) +
+             ",\"minorRadius\":" + jsonNumber(el.MinorRadius()) +
+             ",\"startParameter\":" + jsonNumber(f) + ",\"endParameter\":" + jsonNumber(l) +
+             ",\"full\":" + full;
+      break;
+    }
+    default:
+      break;
+  }
+  out.push_back('}');
+  return out;
+}
+
+std::string subShapeGeometryJson(const ShapeRecord& record, const std::string& kind,
+                                 int32_t index) {
+  const Topo& topo = record.topo();
+  const ShapeMap* map = kind == "face"     ? &topo.faces
+                        : kind == "edge"   ? &topo.edges
+                        : kind == "vertex" ? &topo.vertices
+                                           : nullptr;
+  if (map == nullptr) {
+    raiseError("INVALID_INPUT", "subShapeGeometry: kind must be face, edge or vertex");
+  }
+  if (index < 0 || index >= map->Extent()) {
+    raiseError("INVALID_INPUT", "subShapeGeometry: " + kind + " " + std::to_string(index) +
+                                    " is out of range (the shape has " +
+                                    std::to_string(map->Extent()) + ")");
+  }
+  const TopoDS_Shape& s = (*map)(index + 1);
+  if (kind == "vertex") {
+    return "{\"kind\":\"vertex\",\"point\":" + jsonPoint(BRep_Tool::Pnt(TopoDS::Vertex(s))) + "}";
+  }
+  if (kind == "face") return faceGeometryJson(TopoDS::Face(s));
+  return edgeGeometryJson(TopoDS::Edge(s));
+}

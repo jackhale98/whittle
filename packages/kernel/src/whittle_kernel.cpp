@@ -569,6 +569,13 @@ std::string measure(const std::string& queryJson) {
   });
 }
 
+std::string subShapeGeometry(ShapeHandle shape, const std::string& kind, int32_t index) {
+  return guarded("subShapeGeometry", [&]() {
+    const std::shared_ptr<const ShapeRecord> record = requireShape(shape);
+    return okJson(subShapeGeometryJson(*record, kind, index));
+  });
+}
+
 std::string projectEdges(const std::string& queryJson) {
   return guarded("projectEdges", [&]() {
     const JsonPtr query = JsonParser(queryJson).parseDocument();

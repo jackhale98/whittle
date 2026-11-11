@@ -17,6 +17,7 @@ const facadeSymbols = [
   'exportShapes',
   'importFile',
   'measure',
+  'subShapeGeometry',
   'projectEdges',
   'projectFaceOutline',
   'configureThreads',

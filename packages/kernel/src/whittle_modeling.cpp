@@ -1072,12 +1072,15 @@ struct Profile {
   gp_Pnt origin;
 };
 
-// Outward normal of a planar face (accounts for the face orientation).
+// Outward normal of a planar face. The surface normal of a plane is D1U × D1V = XDir × YDir, which
+// is −Direction() when its placement is left-handed (`!Position().Direct()`: chamfer faces, mirrored
+// copies, some boolean results); the face orientation flips it once more.
 bool planeOf(const TopoDS_Face& face, gp_Pln& plane, gp_Dir& normal) {
   BRepAdaptor_Surface s(face, false);
   if (s.GetType() != GeomAbs_Plane) return false;
   plane = s.Plane();
   normal = plane.Axis().Direction();
+  if (!plane.Position().Direct()) normal.Reverse();
   if (face.Orientation() == TopAbs_REVERSED) normal.Reverse();
   return true;
 }

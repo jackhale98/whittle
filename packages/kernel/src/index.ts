@@ -37,6 +37,7 @@ export type {
   RawExportResult,
   RawImportResult,
   RawKernelInfo,
+  SubShapeGeometry,
   WhittleKernelModule,
 } from './facade';
 

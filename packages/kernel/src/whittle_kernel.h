@@ -119,7 +119,23 @@ std::string projectEdges(const std::string& queryJson);
 // Result<{"outer":[{"edge","curves"}…],"inner":[[{"edge","curves"}…]…]}> (loops in wire order).
 std::string projectFaceOutline(const std::string& queryJson);
 
-// M4: hlrProject; M5: exportStep with PMI — added by contract proposal.
+// M4: exact geometry of one sub-shape (kind "face" | "edge" | "vertex", index in TopExp order), for
+// the annotation resolver. Result<{"kind", …}>:
+//   vertex  {"point"}
+//   face    {"surface":"plane","origin","normal"(outward)} | {"surface":"cylinder","origin","axis",
+//           "radius","extent":[v0,v1] (axial, from origin),"concave"} | {"surface":"cone","origin",
+//           "axis","radius"(at origin),"semiAngle","apex","extent","concave"} | {"surface":"sphere",
+//           "center","radius","concave"} | {"surface":"torus","origin","axis","majorRadius",
+//           "minorRadius"} | other surfaces: {"surface"} only
+//   edge    {"curve","start","end"} plus line {"point","direction","length"} | circle {"center",
+//           "normal","xAxis","radius","startAngle","endAngle","full"} | ellipse {"center","normal",
+//           "xAxis","majorRadius","minorRadius","startParameter","endParameter","full"}
+// "concave": the outward normal points towards the axis or centre (a hole). Start/end and angles
+// follow the curve's parametrisation, not the edge's orientation in a wire.
+std::string subShapeGeometry(ShapeHandle shape, const std::string& kind, int32_t index);
+
+// M4: HLR runs in the separate drawing kernel (drawing/cpp/wren_drawing.h, ADR-090 amendment).
+// M5: exportStep with PMI — added by contract proposal.
 
 // Releases a handle. Unknown handles are ignored.
 void release(ShapeHandle shape);

@@ -8,7 +8,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import type { Frame, Vec2 } from '@wren-cad/contracts';
+import type { Frame, Vec2, Vec3 } from '@wren-cad/contracts';
 
 /** Owned render buffers (C++ `whittle::MeshData`). Must be `delete()`d. */
 export interface MeshDataHandle {
@@ -60,6 +60,11 @@ export interface WhittleKernelModule {
    * (contracts kernel.ts).
    */
   measure(queryJson: string): string;
+  /**
+   * M4: exact geometry of one sub-shape (`kind` face | edge | vertex, `index` in TopExp order).
+   * Returns `Result<SubShapeGeometry>` JSON. Optional: kernel builds before it lack it.
+   */
+  subShapeGeometry?(shape: number, kind: 'face' | 'edge' | 'vertex', index: number): string;
   /**
    * M3 "convert entities": `queryJson` is a `ProjectEdgesQuery`. Returns
    * `Result<ProjectedEdge[]>` JSON (`Result<ExactProjectedEdge[]>` with `exact: true`, M3.5).
@@ -121,6 +126,95 @@ export interface MeasureQuery {
   a: MeasureSubject;
   b?: MeasureSubject;
 }
+
+/**
+ * Value of `subShapeGeometry()` (whittle_kernel.h): exact geometry in part mm and radians.
+ * `concave`: the face's outward normal points towards its axis or centre (a hole, a socket).
+ * Edge `start`/`end` and angles follow the curve's parametrisation, not the edge's orientation in a
+ * wire.
+ */
+export type SubShapeGeometry =
+  | { kind: 'vertex'; point: Vec3 }
+  | { kind: 'face'; surface: 'plane'; origin: Vec3; normal: Vec3 }
+  | {
+      kind: 'face';
+      surface: 'cylinder';
+      origin: Vec3;
+      axis: Vec3;
+      radius: number;
+      /** Axial range of the face from `origin`, along `axis`. */
+      extent: [number, number];
+      concave: boolean;
+    }
+  | {
+      kind: 'face';
+      surface: 'cone';
+      origin: Vec3;
+      axis: Vec3;
+      /** Radius at `origin`. */
+      radius: number;
+      semiAngle: number;
+      apex: Vec3;
+      extent: [number, number];
+      concave: boolean;
+    }
+  | { kind: 'face'; surface: 'sphere'; center: Vec3; radius: number; concave: boolean }
+  | {
+      kind: 'face';
+      surface: 'torus';
+      origin: Vec3;
+      axis: Vec3;
+      majorRadius: number;
+      minorRadius: number;
+    }
+  | {
+      kind: 'face';
+      surface: 'bezier' | 'bspline' | 'revolution' | 'extrusion' | 'offset' | 'other' | 'mesh';
+    }
+  | { kind: 'edge'; curve: 'degenerate' | 'mesh' }
+  | {
+      kind: 'edge';
+      curve: 'line';
+      start: Vec3;
+      end: Vec3;
+      point: Vec3;
+      direction: Vec3;
+      length: number;
+    }
+  | {
+      kind: 'edge';
+      curve: 'circle';
+      start: Vec3;
+      end: Vec3;
+      center: Vec3;
+      normal: Vec3;
+      xAxis: Vec3;
+      radius: number;
+      /** Counter-clockwise about `normal` from `xAxis`. */
+      startAngle: number;
+      endAngle: number;
+      full: boolean;
+    }
+  | {
+      kind: 'edge';
+      curve: 'ellipse';
+      start: Vec3;
+      end: Vec3;
+      center: Vec3;
+      normal: Vec3;
+      xAxis: Vec3;
+      majorRadius: number;
+      minorRadius: number;
+      startParameter: number;
+      endParameter: number;
+      full: boolean;
+    }
+  | {
+      kind: 'edge';
+      curve: 'hyperbola' | 'parabola' | 'bezier' | 'bspline' | 'offset' | 'other';
+      start: Vec3;
+      end: Vec3;
+    };
 
 /** A point in a sketch plane's local x/y, mm (the contracts `Vec2`). */
 export type PlaneXY = Vec2;

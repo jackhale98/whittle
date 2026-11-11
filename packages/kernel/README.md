@@ -112,6 +112,61 @@ For C++ iteration:
 Only the kernel worker ([`@wren-cad/kernel-client`](../kernel-client)) instantiates the kernel.
 With Vite, the threaded glue needs `worker: { format: 'es' }`.
 
+## Drawing kernel (`drawing/`, M4, ADR-090 amendment)
+
+Hidden-line removal runs in its own worker with its own, trimmed Wasm build: never on the main
+thread and never in the modeling worker (trap T12). Same toolchain, images and flags as the main
+kernel; the façade is [`drawing/cpp/wren_drawing.h`](drawing/cpp/wren_drawing.h), and its
+amalgamated TU reuses the main kernel's `whittle_core.cpp` (JSON, errors, `guarded`, handle table)
+unchanged. Only the six drawing entry points are bound, so the linker keeps TKBRep (BREP read),
+TKHLR, TKMesh (PolyAlgo's tessellation), TKBO and TKPrim (section cuts) and the geometry toolkits
+under them, and nothing of STEP/IGES, XCAF/OCAF, fillets or offsets.
+
+```sh
+pnpm --filter @wren-cad/kernel build:drawing   # drawing/dist/wren-drawing{,-st}.{js,wasm}
+pnpm --filter @wren-cad/kernel size:drawing    # sizes, against the main kernel; ≤ 4 MiB brotli
+```
+
+| Subpath | Target |
+| --- | --- |
+| `@wren-cad/kernel/drawing` | `src/drawing/index.ts`: `createDrawingKernelApi`, request mapping, decoding, `connectDrawingWorker`; never loads Wasm |
+| `@wren-cad/kernel/drawing/worker` | `src/drawing/worker.ts`: the worker entry (Comlink, `DrawingWorkerApi`) |
+| `@wren-cad/kernel/drawing/{single,multi}/init` | `drawing/dist/init.{single,multi}.js` |
+| `@wren-cad/kernel/drawing/{single,multi}/wasm` | `drawing/dist/wren-drawing{-st,}.wasm` (import with `?url`) |
+
+Façade calls: `drawingInfo()`, `loadShape(memfsPath)` (`{handle, edges, faces, solids}`),
+`project(handle, requestJson)`, `configureThreads`, `release`, `liveHandleCount`.
+
+`DrawingWorkerApi` (contracts `DrawingKernelApi` plus `init`, `releaseShape`, `stats`):
+
+- **loadShape** writes `ShapeForDrawing.brep` to MEMFS, reads it once per `key`, and keeps an LRU
+  of 8 shapes / 256 MiB of BREP; evicted shapes release their handles. Non-empty `edgeNames` and
+  `faceNames` must match the BREP's TopExp counts, or the load fails (names are never guessed).
+- **project**: `quality: 'draft'` is `HLRBRep_PolyAlgo` on a tessellation at 1/500 of the part
+  (polylines; two-point chains are lines); `'exact'` is `HLRBRep_Algo`. Classes reproduce
+  `HLRBRep_HLRToShape` / `HLRBRep_PolyHLRToShape` (sharp, smooth = G1, sewn = G2+ such as seams,
+  outline = silhouettes of curved faces). `smooth: false` drops smooth and sewn edges.
+  Exact curves are projected from the edges' 3D geometry: lines, circles seen face-on as `arc`
+  (0 → 2π when whole), other conics as `ellipse` (start/end are its parameter, CCW), B-splines and
+  Béziers pole by pole (flat, clamped knots); a conic seen edge-on becomes exact lines split at its
+  turning points; only offset and intersection curves are sampled (`polyline`). Pieces of one
+  edge that HLR split at outline vertices are joined, so a rim seen whole is one curve.
+- **Names**: every curve carries its input edge's index; edges the outliner split map back through
+  `HLRTopoBRep_Data::NewSOldS`, section views through the cut's history. Outlines have no name.
+- **Sections**: each cut-line segment not parallel to the viewing direction is a prism tool (the
+  quad from the segment towards the viewer, swept along `along`), so full, offset and half sections
+  are one boolean cut; `sectionFaces` are the images of the tools' segment faces, named
+  `section:<segment>#<k>` (k left to right, then bottom to top). `slice` returns the cut faces'
+  boundaries only. Section faces are not clipped by a detail circle (renderers clip hatching).
+- **Details**: curves are clipped to the circle exactly (lines and arcs analytically, ellipses and
+  B-splines by root finding, then trimmed).
+- **Bounds**: the 8 corners of `ShapeForDrawing.bounds` projected (detail views: the clip circle).
+  `key` is the shape key plus a 64-bit FNV-1a of the canonical request; `ms` is the call's wall time.
+- A trap inside Wasm drops the instance and its shapes; the next `loadShape` starts a fresh kernel.
+
+Goldens: `test/drawing.golden.test.ts` (both variants; needs both `dist/` and `drawing/dist/`).
+Unit tests without Wasm: `test/drawing/*.test.ts`. Timing: `test-fixtures/test/hlr-timing.bench.test.ts`.
+
 ## JS surface
 
 [`src/facade.ts`](src/facade.ts) types the embind module. Every structured value is a JSON string
@@ -132,6 +187,7 @@ last resort is an empty string (the worker reports it as a malformed result).
 | `exportShapes(shapes, format, options)`    | `{path, files:[{path,name}]}` in MEMFS (`step`, `stl`, `brep`)  |
 | `importFile(path, format)`                 | `{bodies:[{shape,name?}]}` (`step`, `iges`, `brep`, `stl`)      |
 | `measure(query)`                           | `Measurement` (M2; `{a, b?}`, see below)                        |
+| `subShapeGeometry(shape, kind, index)`     | M4: exact plane/cylinder/cone/sphere/torus, line/circle/ellipse or point of one sub-shape (`SubShapeGeometry`, whittle_kernel.h) |
 | `projectEdges(query)`                      | M3: `ProjectedEdge[]` (`{shape, edges, plane, exact?}`, below)  |
 | `projectFaceOutline(query)`                | M3: `{outer, inner}` (`{shape, face, plane, exact?}`)           |
 | `configureThreads(count)`                  | `{threads, max}` (threaded build; no-op single)                 |
