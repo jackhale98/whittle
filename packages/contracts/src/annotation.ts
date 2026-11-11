@@ -113,6 +113,11 @@ export interface DimensionText {
   below?: string;
   /** Decimals; absent = the drawing style's precision. Propagates to every placement. */
   precision?: number;
+  /**
+   * Prefix `N×` with the number of instances (pattern and mirror copies included) of the feature
+   * that made `refs[0]`, from `AnnotationResolution.count`; never typed by hand (M4 gate).
+   */
+  count?: boolean;
 }
 
 /**

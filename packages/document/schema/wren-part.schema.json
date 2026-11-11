@@ -1411,6 +1411,10 @@
           "description": "Lines under the value: `TYP`, `THRU`.",
           "type": "string"
         },
+        "count": {
+          "description": "Prefix `N×` with the number of instances (pattern and mirror copies included) of the feature that made `refs[0]`, from `AnnotationResolution.count`; never typed by hand (M4 gate).",
+          "type": "boolean"
+        },
         "precision": {
           "description": "Decimals; absent = the drawing style's precision. Propagates to every placement.",
           "type": "number"

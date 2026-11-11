@@ -3058,3 +3058,9 @@ The route now runs the drawing worker of `@wren-cad/kernel/drawing` (ADR-090 ame
   - The existing `setSketchVisibility` command now also covers reference geometry, so the tree's eye toggle works the same for both. No new command.
 - **Origin planes and axes** (XY, YZ, ZX and the X, Y, Z axes) are a per-device view toggle, not stored in the document. They are hidden by default and shown while the sketch plane chooser is open.
 - **No backward compatibility** is needed (owner, 2026-11-11).
+
+### ADR-090 amendment: second gate round, contract additions (2026-11-11)
+The certification suite (PLAN §12A) reproduces 51 of 95 specified dimensions. For the gaps:
+- `ProjectedCurve.face`: an outline (silhouette) curve names the face it outlines. A shaft's diameter seen side-on can then be dimensioned by picking its outline.
+- `DimensionText.count` and `AnnotationResolution.count`: an automatic `N×` prefix taken from the instance count of the feature behind `refs[0]`. It is resolved, never typed by hand, for pattern counts such as `4× M6` and `6× Ø9`.
+- Sketch-origin and construction-point refs in annotations resolve against the sketch's final frame. Import must not leave them needing attention. Kernel-client work; no contract change.
