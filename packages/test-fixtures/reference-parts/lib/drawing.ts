@@ -7,7 +7,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import type { Unit } from './types';
+import type { DrawingDimKind, DrawingDimSpec, DrawingViewSpec, Unit } from './types';
 
 type Kind = 'visible' | 'hidden' | 'center';
 
@@ -42,7 +42,20 @@ export class View {
     /** Sheet millimetres per model millimetre. */
     private readonly s: number,
     private readonly dimensions: string[],
+    private readonly specs: DrawingDimSpec[],
+    private readonly viewId: string,
   ) {}
+
+  private record(l: DimLabel, kind: DrawingDimKind, rest: Partial<DrawingDimSpec>): void {
+    this.specs.push({
+      name: l.name,
+      kind,
+      value: l.value,
+      unit: l.unit,
+      view: this.viewId,
+      ...rest,
+    });
+  }
 
   private X(x: number): number {
     return this.ox + x * this.s;
@@ -135,6 +148,7 @@ export class View {
     );
     this.out.push(this.arrow(a, sy, -1, 0), this.arrow(b, sy, 1, 0));
     this.label((a + b) / 2, sy + (offset >= 0 ? -1.2 : 4), l);
+    this.record(l, 'linear', { axis: 'h', from: [x1, y1], to: [x2, y2] });
     return this;
   }
 
@@ -158,11 +172,25 @@ export class View {
       offset >= 0 ? 'start' : 'end',
       false,
     );
+    this.record(l, 'linear', { axis: 'v', from: [x1, y1], to: [x2, y2] });
     return this;
   }
 
-  /** Diameter or radius leader from a point on the circle (angle in degrees) out to text. */
-  leader(cx: number, cy: number, r: number, angle: number, len: number, l: DimLabel): this {
+  /**
+   * Leader from a point on the circle (angle in degrees) out to text. `kind` says what the value
+   * is: the circle's diameter (default), its radius, or a chamfer distance.
+   */
+  leader(
+    cx: number,
+    cy: number,
+    r: number,
+    angle: number,
+    len: number,
+    l: DimLabel,
+    kind: 'diameter' | 'radius' | 'chamfer' = 'diameter',
+    /** The feature's centre when the leader does not start at the circle (an arc seen edge-on). */
+    centre: [number, number] = [cx, cy],
+  ): this {
     const a = (angle * Math.PI) / 180;
     const px = this.X(cx + r * Math.cos(a));
     const py = this.Y(cy + r * Math.sin(a));
@@ -173,12 +201,20 @@ export class View {
     );
     this.out.push(this.arrow(px, py, -Math.cos(a), Math.sin(a)));
     this.label(ex + (Math.cos(a) >= 0 ? 1 : -1), ey, l, Math.cos(a) >= 0 ? 'start' : 'end');
+    this.record(l, kind, { at: centre, radius: r });
     return this;
   }
 
-  /** Free text note tied to a dimension (angle, count): placed at a model point. */
-  note(x: number, y: number, l: DimLabel, anchor: 'start' | 'middle' | 'end' = 'start'): this {
+  /** Free text note for a value with no dimension line: an angle or an instance count. */
+  note(
+    x: number,
+    y: number,
+    l: DimLabel,
+    kind: 'angle' | 'count',
+    anchor: 'start' | 'middle' | 'end' = 'start',
+  ): this {
     this.label(this.X(x), this.Y(y), l, anchor);
+    this.record(l, kind, { at: [x, y] });
     return this;
   }
 
@@ -205,11 +241,15 @@ export interface TitleInfo {
 export class Drawing {
   readonly views: View[] = [];
   readonly dimensions: string[] = [];
+  readonly dimSpecs: DrawingDimSpec[] = [];
+  readonly viewSpecs: DrawingViewSpec[] = [];
   constructor(private readonly info: TitleInfo) {}
 
-  view(name: string, ox: number, oy: number, scale: number): View {
-    const v = new View(name, ox, oy, scale, this.dimensions);
+  /** A view with its model origin at sheet position (ox, oy); `spec` says what the spec means by it. */
+  view(spec: DrawingViewSpec, ox: number, oy: number, scale: number): View {
+    const v = new View(spec.caption, ox, oy, scale, this.dimensions, this.dimSpecs, spec.id);
     this.views.push(v);
+    this.viewSpecs.push(spec);
     return v;
   }
 

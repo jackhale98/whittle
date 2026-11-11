@@ -10,7 +10,15 @@ import { findMaterial } from '@wren-cad/document';
 import { baselineDims, stageDims } from './builder';
 import { Drawing } from './drawing';
 import { r12 } from './geom';
-import { type D, type Dims, dimGetter, type Model, type PartDef, type Step } from './types';
+import {
+  type D,
+  type Dims,
+  type DrawingSpec,
+  dimGetter,
+  type Model,
+  type PartDef,
+  type Step,
+} from './types';
 
 export const SPEC_SCHEMA = 'wren-reference-part/1';
 
@@ -37,7 +45,7 @@ export interface PartSpec {
   features: Step[];
   expected: Expected;
   stages: { name: string; set: Record<string, number>; expected: Expected }[];
-  drawing: string;
+  drawing: DrawingSpec;
   independent: { tool: string; script: string; results: string };
 }
 
@@ -91,7 +99,7 @@ export function specFor(part: PartDef): PartSpec {
       set: s.set,
       expected: expectedFor(part.model(dimGetter(stageDims(part, s.set))), rho),
     })),
-    drawing: `${part.id}.svg`,
+    drawing: drawingSpecFor(part),
     independent: {
       tool: 'FreeCAD',
       script: `freecad/rp${String(part.no).padStart(2, '0')}.py`,
@@ -100,7 +108,7 @@ export function specFor(part: PartDef): PartSpec {
   };
 }
 
-export function drawingFor(part: PartDef): { svg: string; dimensions: string[] } {
+function newDrawing(part: PartDef): Drawing {
   const mat = findMaterial(part.material);
   if (mat === undefined) throw new Error(`${part.id}: unknown material ${part.material}`);
   const dr = new Drawing({
@@ -111,7 +119,23 @@ export function drawingFor(part: PartDef): { svg: string; dimensions: string[] }
     level: part.level,
   });
   part.draw(dimGetter(baselineDims(part)), dr);
+  return dr;
+}
+
+export function drawingFor(part: PartDef): { svg: string; dimensions: string[] } {
+  const dr = newDrawing(part);
   return { svg: dr.render(), dimensions: [...new Set(dr.dimensions)] };
+}
+
+/** The `drawing` section of the spec: the views and dimensions the spec drawing shows. */
+export function drawingSpecFor(part: PartDef): DrawingSpec {
+  const dr = newDrawing(part);
+  return {
+    file: `${part.id}.svg`,
+    projection: 'third',
+    views: dr.viewSpecs,
+    dimensions: dr.dimSpecs,
+  };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -143,7 +167,7 @@ export function markdownFor(part: PartDef, spec: PartSpec, fc?: FreecadResults):
     '',
   );
   L.push(
-    `Drawing: [${spec.drawing}](${spec.drawing}). Machine-readable spec: [${spec.id}.spec.json](${spec.id}.spec.json).`,
+    `Drawing: [${spec.drawing.file}](${spec.drawing.file}). Machine-readable spec: [${spec.id}.spec.json](${spec.id}.spec.json).`,
     '',
   );
   L.push('## Material', '');

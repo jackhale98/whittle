@@ -463,7 +463,176 @@
       }
     }
   ],
-  "drawing": "rp04-clamp-block.svg",
+  "drawing": {
+    "file": "rp04-clamp-block.svg",
+    "projection": "third",
+    "views": [
+      {
+        "id": "top",
+        "caption": "Top",
+        "kind": "projected",
+        "orientation": "top",
+        "parent": "front",
+        "side": "above",
+        "axes": [
+          "X",
+          "Y"
+        ]
+      },
+      {
+        "id": "front",
+        "caption": "Front",
+        "kind": "base",
+        "orientation": "front",
+        "axes": [
+          "X",
+          "Z"
+        ]
+      }
+    ],
+    "dimensions": [
+      {
+        "name": "plate_l",
+        "kind": "linear",
+        "value": 100,
+        "unit": "mm",
+        "view": "top",
+        "axis": "h",
+        "from": [
+          -50,
+          -30
+        ],
+        "to": [
+          50,
+          -30
+        ]
+      },
+      {
+        "name": "plate_w",
+        "kind": "linear",
+        "value": 60,
+        "unit": "mm",
+        "view": "top",
+        "axis": "v",
+        "from": [
+          50,
+          -30
+        ],
+        "to": [
+          50,
+          30
+        ]
+      },
+      {
+        "name": "boss_d",
+        "kind": "diameter",
+        "value": 30,
+        "unit": "mm",
+        "view": "top",
+        "at": [
+          0,
+          0
+        ],
+        "radius": 15
+      },
+      {
+        "name": "corner_r",
+        "kind": "radius",
+        "value": 8,
+        "unit": "mm",
+        "view": "top",
+        "at": [
+          42,
+          22
+        ],
+        "radius": 8
+      },
+      {
+        "name": "plate_t",
+        "kind": "linear",
+        "value": 16,
+        "unit": "mm",
+        "view": "front",
+        "axis": "v",
+        "from": [
+          50,
+          0
+        ],
+        "to": [
+          50,
+          16
+        ]
+      },
+      {
+        "name": "boss_h",
+        "kind": "linear",
+        "value": 20,
+        "unit": "mm",
+        "view": "front",
+        "axis": "v",
+        "from": [
+          15,
+          16
+        ],
+        "to": [
+          15,
+          36
+        ]
+      },
+      {
+        "name": "boss_up",
+        "kind": "linear",
+        "value": 6,
+        "unit": "mm",
+        "view": "front",
+        "axis": "v",
+        "from": [
+          -15,
+          36
+        ],
+        "to": [
+          -15,
+          42
+        ]
+      },
+      {
+        "name": "top_r",
+        "kind": "radius",
+        "value": 3,
+        "unit": "mm",
+        "view": "front",
+        "at": [
+          47,
+          13
+        ],
+        "radius": 3
+      },
+      {
+        "name": "bot_c",
+        "kind": "chamfer",
+        "value": 2,
+        "unit": "mm",
+        "view": "front",
+        "at": [
+          -50,
+          0
+        ],
+        "radius": 2
+      },
+      {
+        "name": "boss_c",
+        "kind": "chamfer",
+        "value": 2,
+        "unit": "mm",
+        "view": "front",
+        "at": [
+          15,
+          42
+        ],
+        "radius": 2
+      }
+    ]
+  },
   "independent": {
     "tool": "FreeCAD",
     "script": "freecad/rp04.py",

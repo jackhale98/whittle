@@ -7,6 +7,7 @@
 
 import { face, origin, region, side, sum, term } from '../lib/geom';
 import type { PartDef } from '../lib/types';
+import { frontSection, TOP } from '../lib/views';
 
 const PI = Math.PI;
 const SKIP = [2, 5];
@@ -171,7 +172,7 @@ export const rp09: PartDef = {
       value: d(name),
       unit: name === 'bolt_n' ? ('' as const) : ('mm' as const),
     });
-    const top = dr.view('Top', 110, 135, 1.4).caption(-R, R + 10, 'Top');
+    const top = dr.view(TOP, 110, 135, 1.4).caption(-R, R + 10, 'Top');
     top.circle(0, 0, R).circle(0, 0, rh).circle(0, 0, rb);
     top.circle(0, 0, d('pcd') / 2, 'center');
     const n = Math.round(d('bolt_n'));
@@ -186,9 +187,21 @@ export const rp09: PartDef = {
     top.leader(0, 0, rb, 200, 26, dim('bore_d'));
     top.leader(d('pcd') / 2, 0, d('bolt_d') / 2, 15, 18, dim('bolt_d'));
     top.leader(0, 0, d('pcd') / 2, 120, 36, dim('pcd'));
-    top.note(R + 5, -R, dim('bolt_n'));
+    top.note(R + 5, -R, dim('bolt_n'), 'count');
     const front = dr
-      .view('Front (section)', 320, 200, 1.5)
+      .view(
+        frontSection(
+          'Front (section)',
+          [
+            [-R - 5, 0],
+            [R + 5, 0],
+          ],
+          'right',
+        ),
+        320,
+        200,
+        1.5,
+      )
       .caption(-R, t + hh + 12, 'Section through the axis');
     front.path(
       [

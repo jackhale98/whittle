@@ -68,13 +68,36 @@ when a committed file is stale; `pnpm --filter @wren-cad/test-fixtures generate`
   "features": [ /* steps, below */ ],
   "expected": { "volume_mm3": 0, "mass_g": 0, "area_mm2": 0 /* where analytic */, "bbox": { "min": [0,0,0], "max": [0,0,0] } },
   "stages": [ { "name": "Stage 2: length -> 140 mm", "set": { "length": 140 }, "expected": { /* as above */ } } ],
-  "drawing": "rp01-base-plate.svg",
+  "drawing": { "file": "rp01-base-plate.svg", "projection": "third", "views": [ /* below */ ], "dimensions": [ /* below */ ] },
   "independent": { "tool": "FreeCAD", "script": "freecad/rp01.py", "results": "freecad-results.json" }
 }
 ```
 
 Mass is `volume x density / 1000` (mm^3, g/cm^3, g). A stage sets named dimensions to new absolute
 values; the baseline document with only those parameters changed is the stage's document.
+
+## The drawing section (M4)
+
+`drawing` says what the spec drawing shows, so the M4 E2E (`apps/web/e2e/m4-reference-drawings.spec.ts`)
+can recreate it with the drawing tools and compare. It is generated from the same `draw` function as the
+SVG (so the two cannot drift), typed in `lib/types.ts` (`DrawingSpec`) and validated by
+`lib/validate.ts` in `test/reference-drawing-spec.test.ts`, which also checks every dimension against
+the SVG's own `data-dim` / `data-value`.
+
+- `views[]`: `id`, `caption`, `kind` (`base`, `projected`, `section`, `detail`), `orientation` (the
+  standard view), `parent`, `side` (third angle: where it sits relative to its parent), `rotation`,
+  `axes` (what the drawn x and y are in the part) and, for sections, `section.cut` (two or more points
+  in the parent view's drawn coordinates; more than two is a stepped section) and `look`.
+- `dimensions[]`: `name` (the driving dimension), `kind` (`linear`, `diameter`, `radius`, `chamfer`,
+  `angle`, `count`), `value` (as printed, so a position left of the origin is negative; Wren's
+  dimensions are unsigned), `unit`, optional `tolerance` (`{ plus, minus }`; none yet), the `view`, and
+  the geometry it measures in the view's drawn coordinates (`axis`, `from`, `to` for a linear one; `at`
+  and `radius` for the others).
+
+The E2E builds each part with `buildDoc` and the `load` hook (a UI build takes minutes: that is
+`m3-reference-parts.spec.ts`), then makes the views, the section cut, runs Import model annotations and
+adds what is missing with the Dimension tool. What it cannot make is listed in
+`apps/web/e2e/support/reference-drawing-gaps.ts` as product gaps.
 
 ## The feature-list (step) format, for UI scripts
 

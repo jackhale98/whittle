@@ -442,7 +442,160 @@
       }
     }
   ],
-  "drawing": "rp07-duct-adapter.svg",
+  "drawing": {
+    "file": "rp07-duct-adapter.svg",
+    "projection": "third",
+    "views": [
+      {
+        "id": "top",
+        "caption": "Top",
+        "kind": "projected",
+        "orientation": "top",
+        "parent": "front",
+        "side": "above",
+        "axes": [
+          "X",
+          "Y"
+        ]
+      },
+      {
+        "id": "front",
+        "caption": "Front",
+        "kind": "base",
+        "orientation": "front",
+        "axes": [
+          "X",
+          "Z"
+        ]
+      }
+    ],
+    "dimensions": [
+      {
+        "name": "base_l",
+        "kind": "linear",
+        "value": 80,
+        "unit": "mm",
+        "view": "top",
+        "axis": "h",
+        "from": [
+          -40,
+          -30
+        ],
+        "to": [
+          40,
+          -30
+        ]
+      },
+      {
+        "name": "base_w",
+        "kind": "linear",
+        "value": 60,
+        "unit": "mm",
+        "view": "top",
+        "axis": "v",
+        "from": [
+          40,
+          -30
+        ],
+        "to": [
+          40,
+          30
+        ]
+      },
+      {
+        "name": "inset",
+        "kind": "linear",
+        "value": 15,
+        "unit": "mm",
+        "view": "top",
+        "axis": "h",
+        "from": [
+          -40,
+          30
+        ],
+        "to": [
+          -25,
+          30
+        ]
+      },
+      {
+        "name": "top_l",
+        "kind": "linear",
+        "value": 30,
+        "unit": "mm",
+        "view": "top",
+        "axis": "h",
+        "from": [
+          -15,
+          7
+        ],
+        "to": [
+          15,
+          7
+        ]
+      },
+      {
+        "name": "top_w",
+        "kind": "linear",
+        "value": 14,
+        "unit": "mm",
+        "view": "top",
+        "axis": "v",
+        "from": [
+          15,
+          -7
+        ],
+        "to": [
+          15,
+          7
+        ]
+      },
+      {
+        "name": "bore_d",
+        "kind": "diameter",
+        "value": 8,
+        "unit": "mm",
+        "view": "top",
+        "at": [
+          0,
+          0
+        ],
+        "radius": 4
+      },
+      {
+        "name": "base_t",
+        "kind": "linear",
+        "value": 10,
+        "unit": "mm",
+        "view": "front",
+        "axis": "v",
+        "from": [
+          40,
+          0
+        ],
+        "to": [
+          40,
+          10
+        ]
+      },
+      {
+        "name": "loft_h",
+        "kind": "linear",
+        "value": 40,
+        "unit": "mm",
+        "view": "front",
+        "axis": "v",
+        "from": [
+          15,
+          10
+        ],
+        "to": [
+          15,
+          50
+        ]
+      }
+    ]
+  },
   "independent": {
     "tool": "FreeCAD",
     "script": "freecad/rp07.py",

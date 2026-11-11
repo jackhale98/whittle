@@ -7,6 +7,7 @@
 
 import { edge, edgeName, face, origin, region, side, sum, term } from '../lib/geom';
 import type { PartDef } from '../lib/types';
+import { FRONT, TOP_OF_FRONT } from '../lib/views';
 
 const PI = Math.PI;
 
@@ -185,7 +186,7 @@ export const rp07: PartDef = {
     const h = d('loft_h');
     const i = d('inset');
     const dim = (name: string) => ({ name, value: d(name), unit: 'mm' as const });
-    const top = dr.view('Top', 110, 90, 1.6).caption(-L / 2, W / 2 + 8, 'Top');
+    const top = dr.view(TOP_OF_FRONT, 110, 90, 1.6).caption(-L / 2, W / 2 + 8, 'Top');
     top.rect(-L / 2, -W / 2, L / 2, W / 2);
     top.rect(-L / 2 + i, -W / 2 + i, L / 2 - i, W / 2 - i, 'hidden');
     top.rect(-d('top_l') / 2, -d('top_w') / 2, d('top_l') / 2, d('top_w') / 2);
@@ -196,7 +197,7 @@ export const rp07: PartDef = {
     top.dimH(-d('top_l') / 2, d('top_w') / 2, d('top_l') / 2, d('top_w') / 2, 6, dim('top_l'));
     top.dimV(d('top_l') / 2, -d('top_w') / 2, d('top_l') / 2, d('top_w') / 2, 8, dim('top_w'));
     top.leader(0, 0, d('bore_d') / 2, -60, 12, dim('bore_d'));
-    const front = dr.view('Front', 110, 250, 1.6).caption(-L / 2, T + h + 8, 'Front');
+    const front = dr.view(FRONT, 110, 250, 1.6).caption(-L / 2, T + h + 8, 'Front');
     front.rect(-L / 2, 0, L / 2, T);
     front.path(
       [

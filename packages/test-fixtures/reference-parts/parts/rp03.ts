@@ -17,6 +17,7 @@ import {
   term,
 } from '../lib/geom';
 import type { PartDef } from '../lib/types';
+import { FRONT } from '../lib/views';
 
 const PI = Math.PI;
 const deg = (r: number): number => (r * 180) / PI;
@@ -187,7 +188,7 @@ export const rp03: PartDef = {
     const z0 = Math.sqrt(R * R - a * a);
     const rho = Math.sqrt(R * R - h * h);
     const dim = (name: string) => ({ name, value: d(name), unit: 'mm' as const });
-    const v = dr.view('Front', 110, 120, 3.2).caption(-R, h + 20, 'Front');
+    const v = dr.view(FRONT, 110, 120, 3.2).caption(-R, h + 20, 'Front');
     const aTop = deg(Math.atan2(h, rho));
     const aStemL = deg(Math.atan2(-z0, -a)) + 360;
     const aStemR = deg(Math.atan2(-z0, a)) + 360;
@@ -207,6 +208,6 @@ export const rp03: PartDef = {
     v.dimH(-R, 0, R, 0, -R - 4, dim('ball_d'));
     v.dimH(-a, -L, a, -L, -8, dim('stem_d'));
     v.dimV(R + 6, -L, R + 6, 0, 12, dim('stem_l'));
-    v.leader(a - c, -L, c, -45, 14, dim('chamfer_c'));
+    v.leader(a - c, -L, c, -45, 14, dim('chamfer_c'), 'chamfer');
   },
 };

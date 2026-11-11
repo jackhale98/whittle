@@ -230,6 +230,8 @@ export interface AnnotationResolution {
   anchors?: (AnnotationAnchor | null)[];
   /** Hole callouts: resolved hole faces of every instance (count and leader targets). */
   instances?: EntityRef[];
+  /** Instances of the feature that made `refs[0]`, pattern and mirror copies included (`DimensionText.count`). */
+  count?: number;
   error?: KernelError;
 }
 

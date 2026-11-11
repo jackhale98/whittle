@@ -7,6 +7,7 @@
 
 import { origin, region, sum, term } from '../lib/geom';
 import type { PartDef } from '../lib/types';
+import { FRONT, TOP_OF_FRONT } from '../lib/views';
 
 const PI = Math.PI;
 const SKIP = [3];
@@ -183,7 +184,7 @@ export const rp10: PartDef = {
       value: d(name),
       unit: name === 'slot_n' ? ('' as const) : ('mm' as const),
     });
-    const top = dr.view('Top', 140, 95, 1.3).caption(-L / 2 - el, W / 2 + 8, 'Top');
+    const top = dr.view(TOP_OF_FRONT, 140, 95, 1.3).caption(-L / 2 - el, W / 2 + 8, 'Top');
     top.path(
       [
         [-L / 2, -W / 2],
@@ -243,8 +244,8 @@ export const rp10: PartDef = {
       6,
       dim('slot_w'),
     );
-    top.note(-L / 2 - el, -W / 2 - 20, dim('slot_n'));
-    const front = dr.view('Front', 140, 220, 1.3).caption(-L / 2 - el, T + 12, 'Front');
+    top.note(-L / 2 - el, -W / 2 - 20, dim('slot_n'), 'count');
+    const front = dr.view(FRONT, 140, 220, 1.3).caption(-L / 2 - el, T + 12, 'Front');
     front.rect(-L / 2 - el, 0, L / 2 + el, T);
     front.dimV(L / 2 + el, 0, L / 2 + el, T, 12, dim('plate_t'));
   },

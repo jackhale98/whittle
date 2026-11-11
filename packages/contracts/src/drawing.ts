@@ -459,6 +459,11 @@ export interface ProjectedCurve {
   edge: EdgeClass;
   /** Persistent name of the model edge, when there is one (outlines have none). Picks map to EntityRefs. */
   name?: string;
+  /**
+   * Outlines (silhouettes of curved faces): persistent name of the face whose outline this is, so
+   * a cylinder seen side-on can be dimensioned by picking its outline (ADR-090 amendment, M4 gate).
+   */
+  face?: string;
   curve: Curve2;
 }
 

@@ -30,9 +30,9 @@
 <line x1="128" y1="69.215" x2="118" y2="51.895" stroke="#111" stroke-width="0.25"/>
 <path d="M128 69.215 L126.107 67.537 L127.493 66.737 Z" fill="#111"/>
 <text data-dim="boss_d" data-value="30" x="117" y="51.895" text-anchor="end" font-size="3.2" font-family="monospace" fill="#111">boss_d = 30 mm</text>
-<line x1="216.262" y1="45.738" x2="226.162" y2="35.838" stroke="#111" stroke-width="0.25"/>
-<path d="M216.262 45.738 L217.394 43.475 L218.525 44.606 Z" fill="#111"/>
-<text data-dim="corner_r" data-value="8" x="227.162" y="35.838" text-anchor="start" font-size="3.2" font-family="monospace" fill="#111">corner_r = 8 mm</text>
+<line x1="216.251" y1="45.749" x2="226.15" y2="35.85" stroke="#111" stroke-width="0.25"/>
+<path d="M216.251 45.749 L217.382 43.486 L218.514 44.618 Z" fill="#111"/>
+<text data-dim="corner_r" data-value="8" x="227.15" y="35.85" text-anchor="start" font-size="3.2" font-family="monospace" fill="#111">corner_r = 8 mm</text>
 </g>
 <g data-view="Front">
 <text x="60" y="135" font-size="3.6" font-family="sans-serif" font-weight="bold" fill="#111">Front</text>
