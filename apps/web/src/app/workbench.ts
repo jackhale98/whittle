@@ -547,12 +547,30 @@ export class Workbench {
       this.commit();
       return;
     }
-    const key = `param-edit:${ulid()}`;
-    if (!this.apply(command, undefined, key)) return;
-    this.joinKey = key;
-    void sketch.refit();
-    this.endMakeParameter();
+    // One edit at a time: a second commit while the first refit is still solving waits for it, so
+    // each parameter edit keeps its own undo step together with its own geometry.
+    const run = async () => {
+      const s = this.sketch;
+      if (!s) {
+        this.apply(command);
+        this.commit();
+        return;
+      }
+      const key = `param-edit:${ulid()}`;
+      s.refitPending = true;
+      if (!this.apply(command, undefined, key)) {
+        s.refitPending = false;
+        return;
+      }
+      this.joinKey = key;
+      await s.refit().catch(() => undefined);
+      this.joinKey = null;
+      this.store.commit();
+    };
+    this.refitChain = this.refitChain.then(run, run);
+    void this.track(this.refitChain);
   }
+  private refitChain: Promise<void> = Promise.resolve();
 
   /** Closes the step, once a sketch's queued dimension edit has landed. */
   endMakeParameter(): void {

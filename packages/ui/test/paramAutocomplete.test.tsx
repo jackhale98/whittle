@@ -607,4 +607,15 @@ describe('Enter never rewrites what was typed (a built-in, unit or complete name
     expect(screen.queryByRole('textbox', { name: 'Name of the new parameter' })).toBeNull();
     expect(field()).toHaveFocus();
   });
+
+  it('Shift+Tab in the make form cancels it too', async () => {
+    const links2: ParamLinks = { ...links, make: () => undefined };
+    await renderReady(<Harness links={links2} initial="12" />);
+    await userEvent.click(await screen.findByRole('button', { name: /parameters for Depth/i }));
+    await userEvent.click(await screen.findByRole('option', { name: /Make parameter from/ }));
+    const name = await screen.findByRole('textbox', { name: 'Name of the new parameter' });
+    await userEvent.type(name, '{Shift>}{Tab}{/Shift}');
+    expect(screen.queryByRole('textbox', { name: 'Name of the new parameter' })).toBeNull();
+    expect(field()).toHaveFocus();
+  });
 });

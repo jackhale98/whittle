@@ -14,7 +14,7 @@ beforeAll(async () => {
   };
   vi.stubGlobal('window', win);
   Workbench = (await import('./workbench')).Workbench;
-});
+}, 60_000); // a cold start imports the whole workbench
 
 const extrude = (depth: string): ExtrudeFeature => ({
   id: 'X1',
@@ -187,5 +187,42 @@ describe('Make parameter on a sketch dimension (the edit lands through the sketc
     expect(wb.makeParameter('mm', '1 mm')).toMatch(/unit/);
     expect(wb.makeParameter('in', '1 mm')).toMatch(/unit/);
     expect(wb.doc.params).toEqual([]);
+  });
+});
+
+describe('two quick parameter edits with a slow solve (ADR-080)', () => {
+  it('each edit keeps its own undo step with its own geometry', async () => {
+    const { wb, partId } = bench();
+    wb.apply({ kind: 'addParam', param: { id: 'P1', name: 'w', expr: '10 mm' } });
+    wb.commit();
+    // The refit writes geometry that records the parameter value it solved for, slowly.
+    wb.sketch = {
+      busy: false,
+      whenSettled: async () => {},
+      refitPending: false,
+      refit: async () => {
+        const seen = wb.doc.params[0]?.expr ?? '';
+        await new Promise((r) => setTimeout(r, 40));
+        wb.apply({
+          kind: 'updateFeature',
+          partId,
+          featureId: 'X1',
+          feature: extrude(`solved ${seen}`),
+        });
+      },
+    } as unknown as WorkbenchClass['sketch'];
+    const before = wb.store.history().past.length;
+    wb.applyRefit({ kind: 'updateParam', paramId: 'P1', expr: '20 mm' });
+    wb.applyRefit({ kind: 'updateParam', paramId: 'P1', expr: '30 mm' }); // while the first solves
+    await new Promise((r) => setTimeout(r, 200));
+    expect(wb.store.history().past.length).toBe(before + 2);
+    expect(depth(wb)).toBe('solved 30 mm');
+    wb.sketch = null;
+    wb.undo();
+    expect(wb.doc.params[0]?.expr).toBe('20 mm');
+    expect(depth(wb)).toBe('solved 20 mm'); // value and geometry go back together
+    wb.undo();
+    expect(wb.doc.params[0]?.expr).toBe('10 mm');
+    expect(depth(wb)).toBe('10 mm');
   });
 });

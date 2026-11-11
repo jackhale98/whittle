@@ -68,6 +68,7 @@ import {
   SKETCH_ORIGIN,
   spanCovers,
 } from '../sketch/references';
+import { displayFeature, type ShownSketch } from '../sketch/shown';
 import { MIN_CONFIDENCE, strokeEdit } from '../sketch/stroke';
 import { observable } from './observable';
 import { replayedPointerDowns } from './pointers';
@@ -291,6 +292,7 @@ export class SketchSession {
       selectedConstraint: null,
       hoverEntity: null,
       solve: null,
+      shown: null,
       editDimension: null,
       highlightConstraints: null,
       highlightEntities: null,
@@ -306,7 +308,9 @@ export class SketchSession {
     if (frame) this.wb.viewport?.lookAtPlane(frame, true);
     this.wb.refreshSketchVisibility();
     this.scheduleOverlay();
-    void this.resolve();
+    // Solve for the values in force; a configuration that moves the geometry is drawn, not stored.
+    this.valuesKey = this.currentValuesKey();
+    void this.redraw();
   }
 
   /** Leaves sketch mode. `finish`: remove a new sketch that stayed empty. */
@@ -432,6 +436,15 @@ export class SketchSession {
     const f = this.feature();
     if (!f) return;
     this.scheduleOverlay();
+    // The values in force changed (a parameter, an override, a configuration switch, undo/redo of
+    // those): redraw from the solve, display only. A refit in flight does it itself.
+    if (!this.drag) {
+      const key = this.currentValuesKey();
+      if (key !== this.valuesKey) {
+        this.valuesKey = key;
+        if (!this.refitPending) void this.redraw();
+      }
+    }
     // Undo/redo (or an edit from the inspector) changed the sketch: re-solve for DOF colours.
     if (
       this.solvedFor &&
@@ -468,10 +481,11 @@ export class SketchSession {
       : { entities: [], constraints: [] };
   }
 
-  private async solveData(next: SketchData): Promise<SketchSolveResult> {
+  private async solveData(next: SketchData, base = false): Promise<SketchSolveResult> {
     const f = this.feature();
-    // Solve with the active configuration's parameter values, as the model regenerates (M3.7).
-    const doc = this.wb.config.resolved().doc;
+    // Solve with the active configuration's parameter values, as the model regenerates (M3.7);
+    // `base`: with Default's own values (what the stored geometry is solved for).
+    const doc = base ? this.wb.doc : this.wb.config.resolved().doc;
     const cand: SketchFeature = {
       ...(f as SketchFeature),
       entities: [...next.entities],
@@ -493,18 +507,23 @@ export class SketchSession {
     });
   }
 
+  /** Set by `Workbench.applyRefit` until `refit` runs, so the doc change it makes does not also redraw. */
+  refitPending = false;
+
   /**
-   * A parameter changed while the sketch is open: re-solve with the new values and write the moved
-   * geometry (and the labels that follow it) into the document, so the sketch redraws at once. It
-   * adds no undo step of its own: the caller joins it to the parameter edit (`Workbench.applyRefit`).
-   * A drag in flight is left alone; its next step solves with the new values anyway.
+   * A Default-scoped parameter changed while the sketch is open: re-solve with Default's values and
+   * write the moved geometry (and the labels that follow it) into the document, so the sketch
+   * redraws at once. It adds no undo step of its own: the caller joins it to the parameter edit
+   * (`Workbench.applyRefit`). A drag in flight is left alone; its next step solves with the new
+   * values anyway. A configuration-scoped edit never comes here (it redraws, display only).
    */
   refit(): Promise<void> {
     return this.serial(async () => {
+      this.refitPending = false;
       const f = this.feature();
       const part = this.wb.part;
       if (!f || !part || this.disposed || this.drag) return;
-      const res = await this.solveData(f);
+      const res = await this.solveData(f, true);
       if (res.status === 'solved' && JSON.stringify(res.entities) !== JSON.stringify(f.entities)) {
         const constraints = carryLabels(f, { entities: res.entities, constraints: f.constraints });
         const feature: SketchFeature = {
@@ -514,10 +533,42 @@ export class SketchSession {
         };
         this.wb.apply({ kind: 'updateFeature', partId: part.id, featureId: f.id, feature });
       }
-      this.solvedFor = this.feature();
-      this.patch({ solve: res, conflictsDismissed: false });
-      this.scheduleOverlay();
+      this.valuesKey = this.currentValuesKey();
+      await this.redrawNow();
     });
+  }
+
+  /** The values the active configuration puts on this sketch's dimensions, as a comparable key. */
+  private valuesKey = '';
+  private currentValuesKey(): string {
+    const f = this.feature();
+    return f ? JSON.stringify(this.values(f)) : '';
+  }
+
+  /**
+   * Solves with the values in force (the active configuration's) and keeps the result as display
+   * state when it differs from the stored geometry: no document write, no undo entry.
+   */
+  private async redrawNow(): Promise<void> {
+    const f = this.feature();
+    if (!f || this.disposed) return;
+    const res = await this.solveData(f);
+    const shown: ShownSketch | null =
+      res.status === 'solved' && JSON.stringify(res.entities) !== JSON.stringify(f.entities)
+        ? {
+            for: f.entities,
+            entities: res.entities,
+            constraints: carryLabels(f, { entities: res.entities, constraints: f.constraints }),
+          }
+        : null;
+    this.solvedFor = this.feature();
+    this.patch({ solve: res, shown, conflictsDismissed: false });
+    this.scheduleOverlay();
+  }
+
+  /** A parameter or configuration change moved the dimension values: redraw (display only). */
+  private redraw(): Promise<void> {
+    return this.serial(() => this.redrawNow());
   }
 
   private serial<T>(fn: () => Promise<T>): Promise<T> {
@@ -1482,8 +1533,10 @@ export class SketchSession {
   private pushOverlay(): void {
     const v = this.wb.viewport;
     const u = this.ui();
-    const f = this.feature();
-    if (!v || !u || !f || !u.frame) return;
+    const stored = this.feature();
+    if (!v || !u || !stored || !u.frame) return;
+    // What is drawn is the solve for the values in force (display only), else the stored sketch.
+    const f = displayFeature(stored, u.shown);
     const prev = u.draw ? preview(u.draw, f) : null;
     const ink = u.stroke ? this.strokePreview(u.stroke) : [];
     const entities = [...f.entities, ...(prev?.entities ?? []), ...ink];
@@ -1500,7 +1553,7 @@ export class SketchSession {
             if (key !== 'id' && typeof val === 'string' && f.entities.some((e) => e.id === val))
               conflicting.add(val);
       }
-    this.pushedFor = f.entities;
+    this.pushedFor = stored.entities;
     // Reference geometry (ADR-017): the axes across the visible view, the origin glyph and dot.
     const own = sketchCurves(entities, u.frame);
     const view = this.viewBox();

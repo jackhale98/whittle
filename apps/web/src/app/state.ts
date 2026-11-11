@@ -42,6 +42,8 @@ export interface SketchUi {
   selectedConstraint: Id | null;
   hoverEntity: Id | null;
   solve: SketchSolveResult | null;
+  /** Solved geometry for the values in force when it differs from the stored sketch (display only). */
+  shown: import('../sketch/shown').ShownSketch | null;
   /** A dimension that was just placed (its label opens in edit mode). */
   editDimension: Id | null;
   /** Conflict cards hovered in the panel. */

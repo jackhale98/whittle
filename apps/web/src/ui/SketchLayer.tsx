@@ -11,6 +11,7 @@ import type { SketchSession } from '../app/sketch-session';
 import type { SketchUi } from '../app/state';
 import type { Workbench } from '../app/workbench';
 import { entityAnchor } from '../sketch/overlay';
+import { displayFeature } from '../sketch/shown';
 
 const SketchDimensions = lazy(() => import('./SketchDimensions'));
 
@@ -67,8 +68,12 @@ export default function SketchLayer({
 }) {
   useCameraTick(session);
   const v = wb.viewport;
-  const f = doc.parts[0]?.features.find((x) => x.id === ui.featureId) as SketchFeature | undefined;
-  if (!v || !f || f.type !== 'sketch' || !ui.frame) return null;
+  const stored = doc.parts[0]?.features.find((x) => x.id === ui.featureId) as
+    | SketchFeature
+    | undefined;
+  if (!v || !stored || stored.type !== 'sketch' || !ui.frame) return null;
+  // Geometry and labels as solved for the values in force (display only; the document is untouched).
+  const f = displayFeature(stored, ui.shown);
   const screen = (p: [number, number]) => {
     const w = session.world(p);
     return w ? v.worldToScreen(w) : null;

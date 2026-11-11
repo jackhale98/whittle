@@ -270,6 +270,11 @@ export function App({ wb }: { wb: Workbench }) {
     };
   }, [doc, part, configs, wb]);
   const activeConfig = wb.config.active;
+  // Popups (the parameter list, the Make parameter form) re-place themselves when the camera moves.
+  useEffect(
+    () => wb.cameraTick.subscribe(() => window.dispatchEvent(new Event('wren:reposition'))),
+    [wb],
+  );
   // A new token whenever an evaluated value can change: the shell re-evaluates parameters on it.
   // biome-ignore lint/correctness/useExhaustiveDependencies: the token is the dependency
   const paramsVersion = useMemo(() => ({}), [doc, configState]);
