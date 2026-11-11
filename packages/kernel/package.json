@@ -25,16 +25,32 @@
       "types": "./dist/variant.d.ts",
       "default": "./dist/whittle-kernel.js"
     },
-    "./size-report.json": "./dist/size-report.json"
+    "./size-report.json": "./dist/size-report.json",
+    "./drawing": "./src/drawing/index.ts",
+    "./drawing/worker": "./src/drawing/worker.ts",
+    "./drawing/single/init": {
+      "types": "./drawing/dist/init.single.d.ts",
+      "default": "./drawing/dist/init.single.js"
+    },
+    "./drawing/multi/init": {
+      "types": "./drawing/dist/init.multi.d.ts",
+      "default": "./drawing/dist/init.multi.js"
+    },
+    "./drawing/single/wasm": "./drawing/dist/wren-drawing-st.wasm",
+    "./drawing/multi/wasm": "./drawing/dist/wren-drawing.wasm",
+    "./drawing/size-report.json": "./drawing/dist/size-report.json"
   },
   "scripts": {
     "build": "node scripts/build.mjs",
+    "build:drawing": "node drawing/scripts/build.mjs",
     "size": "node scripts/size-report.mjs",
+    "size:drawing": "node drawing/scripts/size-report.mjs",
     "test": "vitest run",
     "typecheck": "tsc -p ."
   },
   "dependencies": {
-    "@wren-cad/contracts": "workspace:*"
+    "@wren-cad/contracts": "workspace:*",
+    "comlink": "4.4.2"
   },
   "devDependencies": {
     "@libcascade/toolchain": "3.1.0"

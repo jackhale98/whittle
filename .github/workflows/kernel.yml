@@ -1,22 +1,31 @@
-# Reusable kernel build (PLAN §7.2). Called by ci.yml (which also deploys Pages) so the Wasm kernel is
-# built at most once per distinct input hash and never rebuilt when unchanged.
+# Reusable kernel build (PLAN §7.2). Called by ci.yml (which also deploys Pages) so the Wasm kernels
+# are built at most once per distinct input hash and never rebuilt when unchanged.
 #
-# - `pnpm kernel:build` runs the libcascade toolchain in Docker (digest-pinned images, ~12 GB each
-#   on disk) and writes packages/kernel/dist/ (whittle-kernel{,-st}.{js,wasm}, generated init/type
-#   files, size-report.json).
-# - packages/kernel/dist is cached with actions/cache, keyed by the kernel inputs. Build only on a
-#   cache miss. Wasm is never committed.
-# - `pnpm kernel:test` always runs (cache hit or miss).
-# - The result is uploaded as the `kernel-dist` artifact, consumed by the web build / Pages deploy.
+# Two builds share the job, the toolchain and its digest-pinned images (~12 GB each on disk; on a
+# double miss they are pulled once):
+# - the modeling kernel: `pnpm kernel:build` writes packages/kernel/dist/ (whittle-kernel{,-st}
+#   .{js,wasm}, generated init/type files, size-report.json);
+# - the drawing kernel (ADR-090 amendment): `pnpm --filter @wren-cad/kernel build:drawing` writes
+#   packages/kernel/drawing/dist/ (wren-drawing{,-st}.{js,wasm}, init/type files, size-report.json
+#   with the comparison against the modeling kernel).
+# - Each dist is cached with actions/cache, keyed by its own inputs; each builds only on its own
+#   cache miss. The drawing key includes the modeling façade's whittle_core.cpp and
+#   whittle_kernel.h, which the drawing TU reuses. TypeScript sources are not build inputs and are
+#   not in either key. Wasm is never committed.
+# - A verified main push (ADR-083) reuses both artefacts of the dev run that built and tested the
+#   commit (`from_run`) instead of building on a cache miss.
+# - `pnpm kernel:test` runs unless the kernels were reused; it runs the drawing goldens too.
+# - The results are uploaded as the `kernel-dist` and `drawing-kernel-dist` artifacts, consumed by
+#   the tests, the web build and the Pages deploys.
 name: Kernel
 
 on:
   workflow_call:
     inputs:
       # A verified main push (ADR-083) passes the dev-branch run that already built and tested this
-      # exact commit: its `kernel-dist` artefact is reused instead of rebuilding in Docker. Main
-      # cannot read caches saved on claude/** branches, so without this every kernel change would
-      # rebuild on main (about 45 minutes) before the deploy.
+      # exact commit: its `kernel-dist` and `drawing-kernel-dist` artefacts are reused instead of
+      # rebuilding in Docker. Main cannot read caches saved on claude/** branches, so without this
+      # every kernel change would rebuild on main (about 45 minutes) before the deploy.
       from_run:
         type: string
         required: false
@@ -30,12 +39,13 @@ env:
   # Bump to force a rebuild without touching kernel inputs (e.g. toolchain image digest change
   # that is not reflected in libcascade.config.ts).
   KERNEL_CACHE_VERSION: v1
+  DRAWING_CACHE_VERSION: v1
 
 jobs:
   kernel:
     name: Build and test kernel
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 150
     permissions:
       contents: read
       actions: read
@@ -60,14 +70,21 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: packages/kernel/dist
-          # Only the kernel's own inputs: its sources, build config/scripts and package.json (which
-          # pins @libcascade/toolchain exactly; the toolchain pins the Docker images by digest).
-          # The repo-wide lockfile is deliberately excluded so app/UI dependency changes reuse the
-          # cached kernel instead of rebuilding it in Docker.
-          key: kernel-${{ env.KERNEL_CACHE_VERSION }}-${{ hashFiles('packages/kernel/src/**', 'packages/kernel/scripts/**', 'packages/kernel/libcascade.config.ts', 'packages/kernel/package.json') }}
+          # Only the kernel's own build inputs: its C++ sources, build config/scripts and
+          # package.json (which pins @libcascade/toolchain exactly; the toolchain pins the Docker
+          # images by digest). The repo-wide lockfile is deliberately excluded so app/UI dependency
+          # changes reuse the cached kernel instead of rebuilding it in Docker.
+          key: kernel-${{ env.KERNEL_CACHE_VERSION }}-${{ hashFiles('packages/kernel/src/*.cpp', 'packages/kernel/src/*.h', 'packages/kernel/scripts/**', 'packages/kernel/libcascade.config.ts', 'packages/kernel/package.json') }}
 
-      # On a cache miss the downloaded dist is saved to this branch's cache by the cache step's post
-      # job, so the next main run hits.
+      - name: Restore drawing kernel cache
+        id: drawing-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: packages/kernel/drawing/dist
+          key: drawing-kernel-${{ env.DRAWING_CACHE_VERSION }}-${{ hashFiles('packages/kernel/drawing/cpp/**', 'packages/kernel/drawing/scripts/**', 'packages/kernel/drawing/libcascade.config.ts', 'packages/kernel/src/whittle_core.cpp', 'packages/kernel/src/whittle_kernel.h', 'packages/kernel/package.json') }}
+
+      # On a cache miss the downloaded dists are saved to this branch's cache by the cache steps'
+      # post jobs, so the next main run hits.
       - name: Reuse the verified dev run's kernel
         if: steps.kernel-cache.outputs.cache-hit != 'true' && inputs.from_run != ''
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -77,8 +94,17 @@ jobs:
           run-id: ${{ inputs.from_run }}
           github-token: ${{ github.token }}
 
+      - name: Reuse the verified dev run's drawing kernel
+        if: steps.drawing-cache.outputs.cache-hit != 'true' && inputs.from_run != ''
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: drawing-kernel-dist
+          path: packages/kernel/drawing/dist
+          run-id: ${{ inputs.from_run }}
+          github-token: ${{ github.token }}
+
       - name: Free disk space for the toolchain images
-        if: steps.kernel-cache.outputs.cache-hit != 'true' && inputs.from_run == ''
+        if: inputs.from_run == '' && (steps.kernel-cache.outputs.cache-hit != 'true' || steps.drawing-cache.outputs.cache-hit != 'true')
         run: |
           # The two toolchain images are ~12 GB each on disk; a stock runner has ~14 GB free.
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL \
@@ -90,15 +116,60 @@ jobs:
         if: steps.kernel-cache.outputs.cache-hit != 'true' && inputs.from_run == ''
         run: pnpm kernel:build
 
-      # A reused kernel was already tested by the run that built it.
+      - name: Build drawing kernel (Docker)
+        if: steps.drawing-cache.outputs.cache-hit != 'true' && inputs.from_run == ''
+        run: pnpm --filter @wren-cad/kernel build:drawing
+
+      - name: Kernel sizes
+        run: |
+          # Recomputed from the (possibly cached or reused) artefacts; the drawing report compares
+          # against the modeling kernel and fails above its 4 MiB brotli budget (ADR-090 amendment).
+          pnpm --filter @wren-cad/kernel size
+          pnpm --filter @wren-cad/kernel size:drawing
+          {
+            echo "## Kernel sizes (brotli)"
+            node -e '
+              const r = (p) => JSON.parse(require("fs").readFileSync(p, "utf8"));
+              for (const p of ["packages/kernel/dist/size-report.json", "packages/kernel/drawing/dist/size-report.json"])
+                for (const f of r(p).files) console.log(`- ${f.file}: ${(f.brotli / 1048576).toFixed(2)} MiB (raw ${(f.raw / 1048576).toFixed(2)} MiB)`);
+            '
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Reused kernels were already tested by the run that built them.
       - name: Test kernel
         if: inputs.from_run == ''
         run: pnpm kernel:test
+
+      # Report-only (PLAN §10 has no HLR budget; the log compares drafts with the 300 ms regen
+      # budget). Runs when the drawing kernel was rebuilt, so its numbers come with each change;
+      # nightly in soak.yml.
+      - name: HLR timing (bracket and stress part, report only)
+        if: steps.drawing-cache.outputs.cache-hit != 'true' && inputs.from_run == ''
+        continue-on-error: true
+        env:
+          WREN_STRESS: "1"
+        shell: bash
+        run: |
+          pnpm --filter @wren-cad/test-fixtures exec vitest run hlr-timing --testTimeout=3600000 2>&1 | tee hlr-timing.log
+          {
+            echo "## HLR timing (Node, single-threaded drawing kernel)"
+            echo '```'
+            grep -E '^(HLR timing|  (draft|exact))' hlr-timing.log || echo "(see the job log)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload kernel artefact
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: kernel-dist
           path: packages/kernel/dist
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload drawing kernel artefact
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: drawing-kernel-dist
+          path: packages/kernel/drawing/dist
           if-no-files-found: error
           retention-days: 14

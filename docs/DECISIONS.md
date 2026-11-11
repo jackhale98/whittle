@@ -2501,6 +2501,124 @@ Applied from the drawing-engineer's proposal (`docs/proposals/M4-contracts.md`, 
 - **Q6:** plain arrays for now; packed polylines only if the budget needs them.
 - **Q7:** custom title-block templates are P2.
 
+### Amendment (2026-11-11, kernel workstream): the drawing kernel is a second, trimmed Wasm build
+
+**Decision.** HLR runs in the drawing worker on its own build, `wren-drawing{,-st}.{js,wasm}`
+(`packages/kernel/drawing/`), not on a second instance of the modeling kernel. It uses the same
+toolchain (`@libcascade/toolchain` 3.1.0), the same digest-pinned images and the same flags, and
+has two variants like the main kernel. Its façade (`drawing/cpp/wren_drawing.h`) binds six entry
+points: `drawingInfo`, `loadShape`, `project`, `configureThreads`, `release` and
+`liveHandleCount`. Its amalgamated TU reuses the main kernel's `whittle_core.cpp` (JSON,
+`KernelError`, `guarded`, the handle table) unchanged. No OCCT class is bound, so the linker keeps
+only what the façade reaches: TKBRep (BREP read), TKHLR, TKMesh (PolyAlgo's tessellation), TKBO and
+TKPrim (the section cut) and the geometry toolkits under them. OCCT 8.0.1 has every API PLAN §3
+assumed (HLRBRep_Algo, HLRBRep_PolyAlgo, HLRAlgo_Projector, BRepAlgoAPI); nothing had to change.
+
+**Size estimate** (measured before the first CI build, so a projection, not a Wasm measurement).
+I built OCCT 8.0.1 at the pinned commit natively. Both façades were linked with every bound entry
+point as a root and `--gc-sections`, as embind roots them in the Wasm link. The code kept per
+toolkit (x86-64, `-O2`, MB) was:
+
+| | main façade | drawing façade |
+|---|---|---|
+| TKDESTEP, TKDEIGES, TKXSBase, TKXCAF/TKCAF/TKLCAF/TKCDF, TKDESTL | 9.35 | 0 |
+| TKBool, TKFillet, TKOffset | 4.91 | 0 |
+| TKGeomBase, TKGeomAlgo, TKTopAlgo, TKBO, TKMath, TKG3d, TKG2d | 13.76 | 12.04 |
+| TKShHealing, TKMesh, TKBRep, TKernel, TKPrim, TKService | 3.68 | 2.36 |
+| TKHLR | 0 | 0.80 |
+| façade | 1.05 | 0.24 |
+| **total** | **32.75** | **15.42** (47 %) |
+
+Scaled by the main kernel's Wasm (single-threaded: 21.9 MB raw, 4.56 MiB brotli), the drawing
+kernel comes to **about 10 MB raw and 2.1 MiB brotli** per variant. The likely range is 2.0 to
+2.7 MiB, because the generated STEP code the drawing build drops compresses better than geometry
+code. CI's `size-report.json` replaces this estimate with the measured value.
+
+**Reuse instead (rejected).** A second instance of the main kernel would need no new download: the
+browser and service-worker caches already hold the same URL. But it costs:
+- every modeling user about 0.15 MiB brotli for HLR code (TKHLR plus the façade, about 3 % of the
+  main kernel);
+- a main-kernel rebuild in CI (two variants, about 10 min each) for every HLR change;
+- twice the compiled code in the drawing worker. On the iPad tier, where the 1 GB peak budget is
+  shared with the modeling worker, that matters more than one lazily loaded 2.1 MiB download for
+  users who open a drawing. The trimmed build also compiles and instantiates in about half the time.
+
+**Gate.** `drawing/scripts/size-report.mjs` fails above 4 MiB brotli per drawing `.wasm`. Above
+that, the separate build would no longer clearly pay for itself against reuse, and the decision
+must be revisited.
+
+**Threads.** Both variants are built, and the drawing API picks threaded only under cross-origin
+isolation, like the modeling kernel. Its pool is capped at min(4, cores), since the modeling worker
+has its own. Only BRepMesh and the section boolean run in parallel; HLRBRep_Algo is sequential.
+
+**CI** (`kernel.yml`). Both builds run in one job and share the images, so a double cache miss
+pulls them once. Each has its own `actions/cache` key:
+- **main kernel:** its C++ sources only (`src/*.cpp`, `src/*.h`), its scripts, config and
+  `package.json`. TypeScript changes no longer rebuild it.
+- **drawing kernel:** `drawing/cpp/**`, `drawing/scripts/**`, its config, `src/whittle_core.cpp`,
+  `src/whittle_kernel.h` and `package.json`.
+
+Each builds only on its own miss. The job prints and summarises both size reports, and its timeout
+is 150 min because of the possible double build. `drawing-kernel-dist` is uploaded beside
+`kernel-dist` and downloaded wherever `kernel-dist` is (ci.yml test/build/cloudflare, soak.yml).
+HLR timing (`test-fixtures/test/hlr-timing.bench.test.ts`, bracket and stress part, report only)
+runs in the kernel job whenever the drawing kernel was rebuilt, and nightly in soak.yml.
+
+**How the façade works** (details in `packages/kernel/README.md`):
+- **Classification.** The view's classes reproduce `HLRBRep_HLRToShape` and
+  `HLRBRep_PolyHLRToShape` exactly. Those classes build new 2D edges and drop the link to the input
+  edge, so their loops are re-implemented over `HLRBRep_Data`.
+- **Names.** Every curve carries its input edge's TopExp index. Edges the outliner split map back
+  through `HLRTopoBRep_Data::NewSOldS`, and section views map through the cut's history. Internal
+  outlines stay unnamed. A shape whose `edgeNames`/`faceNames` counts do not match its BREP is
+  refused at `loadShape`, never mapped by guess.
+- **Exact curves.** They are projected from the edges' 3D geometry: lines; circles as `arc` when
+  face-on; other conics as `ellipse` (start/end are its parameter); B-splines and Béziers pole by
+  pole with flat, clamped knots. A conic seen edge-on becomes exact lines split at its turning
+  points. Only offset and intersection curves are sampled (1e-5 of the part). Pieces of one edge
+  that HLR split at outline vertices are joined, so a rim seen whole is one curve.
+- **Draft.** PolyAlgo on a tessellation at 1/500 of the part, chained into polylines (a two-point
+  chain is a line).
+- **Sections.** Each cut-line segment not parallel to the viewing direction gets a prism tool (the
+  quad from the segment towards the viewer, swept along `along`). Full, offset and half sections are
+  then one boolean, with no special cases. `sectionFaces` are the images of the tools' segment
+  faces. They have no model counterpart, so they are named `section:<segment>#<k>` (k from left to
+  right, then bottom to top in the view): a view-local name, not a persistent one (contract note
+  below). `slice` returns only the cut faces' boundaries. Section faces are not clipped by a detail
+  circle; renderers clip the hatching.
+- **Details.** Curves are clipped to the circle exactly (lines and arcs analytically, ellipses and
+  B-splines by root finding and trimming).
+- **Bounds and key.** Bounds are the projected 3D box (detail views: the circle). `key` is the
+  shape key plus a 64-bit FNV-1a of the canonical request.
+
+**Contract notes for the lead** (not applied; drawing.ts is lead-owned):
+1. `ViewProjection.sectionFaces[].face` is documented as a persistent name. Cut faces have none,
+   so the façade's `section:<segment>#<k>` is view-local.
+2. `Curve2` `ellipse.start/end` are the ellipse's parameter (as in DXF), not polar angles. B-spline
+   `knots` are the flat vector (`poles + degree + 1`, clamped). An arc piece may end past 2π
+   (start in [0, 2π)). Worth one line each in drawing.ts.
+3. `ViewProjectionRequest.smooth: false` drops smooth and sewn edges together.
+
+**Same CI build, main kernel** (coordinator request):
+- **(a) Plane normals.** `planeOf` reversed a plane's normal only for reversed faces. A plane with a
+  left-handed `gp_Ax3` has the surface normal XDir × YDir = −Direction(). Chamfer faces and mirrored
+  copies have such planes, so their fingerprint normals pointed inward, the chamfer-to-face angle
+  read 135° instead of 45°, and sketches and holes on those faces took the wrong side. It now
+  reverses for `!Position().Direct()` too. The open "mirrored copies report inward normals" bug had
+  the same cause. Fingerprints of those faces change, deliberately: there is no compatibility shim.
+  Goldens: `test/normals.golden.test.ts` covers all twelve box-edge chamfers (outward, 45° to both
+  neighbours) and a mirrored body. Against the previous kernel build it fails exactly as reported.
+- **(b) `subShapeGeometry(shape, kind, index)`.** Exact geometry of one sub-shape:
+  - plane: origin, outward normal;
+  - cylinder and cone: axis, radius, axial extent, `concave`;
+  - sphere and torus;
+  - line, circle and ellipse: centre, normal, radii and parameter range;
+  - vertex: point.
+
+  It is optional in `src/facade.ts` (like `bounds`), so older dists still load, and it is for the
+  annotation resolver, which today probes each circle or cylinder ref with about 27 measurements.
+  Goldens: `test/subshape-geometry.golden.test.ts`.
+
 ### ADR-090 amendment — kernel-client: annotation resolution and `shapeForDrawing` (2026-11-11)
 
 Modeling workstream (packages/kernel-client). Details and numbers are in that package's README, "M4 annotations and drawings".
@@ -2790,3 +2908,5 @@ UI workstream for M4 (apps/web `src/drawing`, packages/ui `src/drawing`). The dr
 2. contracts or kernel-client: an anchor-by-`EntityRef` query so import can place fillet, chamfer and revolve dimensions.
 3. Drawing worker: when real HLR lands, name the silhouettes of cylinders (faces) so datums and finishes can attach to faces.
 4. packages/drawing: `PlacementIssue` kinds in `AnnotationIssue` (already proposed in ADR-091) would remove the route's merge of two entries per annotation.
+
+  - The drawing kernel (ADR-090 amendment) is reused the same way: on its own cache miss the job downloads that run's `drawing-kernel-dist`. A dev run from before the drawing kernel existed has no such artefact, so the first main push after it lands must come from a dev run that built it.

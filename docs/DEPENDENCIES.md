@@ -13,7 +13,7 @@ bundled package's licence text plus OCCT's LGPL-2.1 + exception (texts in `licen
 | `react`, `react-dom` | 19.3.1 | MIT | ≈ 62 KB | apps/web, ui | UI chrome only |
 | `workbox-window` | 7.4.1 | MIT | ≈ 2.5 KB | apps/web | SW registration/update |
 | `workbox-core`, `-precaching`, `-routing`, `-strategies`, `-expiration`, `-cacheable-response` | 7.4.1 | MIT | ≈ 8 KB (in `sw.js`) | apps/web SW | Declared as devDependencies of apps/web and bundled into `sw.js` at build time, so they are not separate runtime packages |
-| `comlink` | 4.4.2 | Apache-2.0 | ≈ 1.8 KB | kernel-client, sketch (runtime); apps/web (dev) | Worker RPC with transferables |
+| `comlink` | 4.4.2 | Apache-2.0 | ≈ 1.8 KB | kernel-client, sketch, kernel (drawing worker; runtime); apps/web (dev) | Worker RPC with transferables |
 | `three` | 0.187.0 | MIT | ≈ 240 KB with camera-controls (lazy chunk) | viewport | `three/webgpu`, `three/tsl`, line/env addons |
 | `camera-controls` | 3.1.2 | MIT | (in the above) | viewport | |
 | `three-mesh-bvh` | 0.9.18 | MIT | ≈ 15 KB (lazy viewport chunk) | viewport | Edge/vertex occlusion and fallback face picking |
@@ -32,6 +32,7 @@ bundled package's licence text plus OCCT's LGPL-2.1 + exception (texts in `licen
 | `@isomorphic-git/lightning-fs` | 4.10.3 | MIT (dep `@isomorphic-git/idb-keyval` Apache-2.0) | (in the above, ≈ 7.5 KB) | sync (`browserGitFs`) | IndexedDB filesystem for cloned repositories. Pinned to Mycelium's version |
 | `buffer` | 6.0.3 | MIT | (in the above, ≈ 13 KB) | sync (git polyfill) | isomorphic-git needs Node's `Buffer` in browsers and workers |
 | Kernel artefacts `whittle-kernel{,-st}.{js,wasm}` | OCCT 8.0.1 | LGPL-2.1-only WITH Open-CASCADE-Exception-1.0 | ≈ 4.5 MB brotli / 6.5 MB gzip each since M3 (M1/M2 ≈ 3.7 MB brotli with STEP/XCAF; M3 adds offset, draft, sweep, loft, patterns and holes, +525 KB, and the IGES reader TKDEIGES, +265 KB brotli / +394 KB gzip / +1.84 MB raw); lazy, runtime-cached | kernel | Built reproducibly from `packages/kernel` |
+| Drawing kernel artefacts `wren-drawing{,-st}.{js,wasm}` (M4) | OCCT 8.0.1 (same toolchain and images) | LGPL-2.1-only WITH Open-CASCADE-Exception-1.0 | ≈ 2.1 MiB brotli / ≈ 10 MB raw each, estimated (ADR-090 amendment; CI's `drawing/dist/size-report.json` has the measured value); budget 4 MiB brotli; lazy, only when a drawing is opened | kernel (drawing worker) | Built reproducibly from `packages/kernel/drawing`; no new third-party code |
 
 ## Kernel toolchain (build-time, Docker)
 
