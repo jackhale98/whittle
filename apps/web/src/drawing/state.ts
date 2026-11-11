@@ -34,10 +34,17 @@ export type RoutePhase = 'choose' | 'drawing' | 'missing';
 /** A dimension tool pick: an edge on a view, with what the kernel's curve says it is. */
 export interface EdgePick {
   viewId: Id;
+  /** The model edge's name, or the outlined face's when `ref` is `face`. */
   name: string;
+  /** What `name` names: a model edge (default), or the face an outline outlines. */
+  ref?: 'edge' | 'face';
+  /** The face the picked curve outlines (`ProjectedCurve.face`): outlines and silhouette seams. */
+  face?: string;
   shape: 'line' | 'circle' | 'other';
   /** Sheet position of the pick. */
   at: Vec2;
+  /** Arcs: the angle they span (radians). */
+  sweep?: number;
   /** The curve in the view plane (part mm): a line's ends, or a circle's centre and radius. */
   geom?: { a: Vec2; b: Vec2 } | { centre: Vec2; radius: number; full: boolean };
 }

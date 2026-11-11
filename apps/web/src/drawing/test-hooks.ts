@@ -4,8 +4,10 @@
  * extension API.
  */
 
-import { curveToSheet, viewOutline } from '@wren-cad/drawing';
+import { curveToSheet, primitiveBox, textBox, viewOutline } from '@wren-cad/drawing';
 import type { DrawingController } from './controller';
+import { viewHit } from './interact';
+import { pickEdge } from './ops-annot';
 
 export interface DrawingHooks {
   settled(): Promise<void>;
@@ -20,23 +22,34 @@ export interface DrawingHooks {
       role: string;
       edge: string;
       name?: string;
+      /** The outlined face (`ProjectedCurve.face`). */
+      face?: string;
       kind: string;
       radius?: number;
       center?: [number, number];
       sweep?: number;
+      a?: [number, number];
+      b?: [number, number];
     }[];
     sectionFaces: { face: string; loops: number }[];
     /** The kernel's own wall time for this projection. */
     ms: number;
   } | null;
-  /** Named visible edges of a view on the sheet (sheet mm): where a test can click. */
+  /**
+   * Named visible edges of a view on the sheet (sheet mm): where a test can click. Outlines
+   * without an edge name are listed by the face they outline (`name` empty, `face` set).
+   */
   edges(viewId: string): {
     name: string;
+    face?: string;
     kind: string;
     at: [number, number];
     a?: [number, number];
     b?: [number, number];
     radius?: number;
+    /** Arcs: start and end angle on the sheet (radians, counter-clockwise). */
+    start?: number;
+    end?: number;
   }[];
   /** Laid-out placements: where their text sits (sheet mm) and what they say. */
   placements(): {
@@ -48,6 +61,42 @@ export interface DrawingHooks {
     box: { min: [number, number]; max: [number, number] } | null;
     attention: boolean;
   }[];
+  /**
+   * Every laid-out placement's real extent, from the display list items it drew (sheet mm): the
+   * text boxes (as the renderers measure them), every straight segment (dimension, extension and
+   * leader lines) and the bounds of everything. What overlap checks measure, not an estimate.
+   */
+  extents(): {
+    placementId: string;
+    annotationId: string;
+    viewId: string;
+    /** The label as drawn, text items joined by a space. */
+    text: string;
+    texts: { min: [number, number]; max: [number, number] }[];
+    segments: [[number, number], [number, number]][];
+    bounds: { min: [number, number]; max: [number, number] } | null;
+  }[];
+  /**
+   * What a picking tool's click at sheet point `at` (mm) picks with tolerance `tol` (mm): the view
+   * item's source, and the edge pick made of it (null when it makes none).
+   */
+  hit(
+    at: [number, number],
+    tol: number,
+  ): { source: unknown; pick: { name: string; ref: string; shape: string; face?: string } | null };
+  /** The open import plan (Import panel), one row per candidate; null when the panel is closed. */
+  importPlan():
+    | {
+        key: string;
+        kind: string;
+        annotationKind: string;
+        checked: boolean;
+        viewId: string | null;
+        reason: string | null;
+        duplicateOf: string | null;
+        count: boolean;
+      }[]
+    | null;
   state(): {
     phase: string;
     drawingId: string | null;
@@ -77,7 +126,14 @@ export interface DrawingHooks {
     placements: number;
     attention: { key: string; severity: string; message: string }[];
     texts: string[];
-    resolutions: { id: string; state: string; value: number | null }[];
+    resolutions: {
+      id: string;
+      state: string;
+      value: number | null;
+      /** Measured from the geometry (absent when it cannot be). */
+      measured: number | null;
+      count: number | null;
+    }[];
   };
 }
 
@@ -113,7 +169,11 @@ export function installDrawingHooks(c: DrawingController): void {
           role: k.role,
           edge: k.edge,
           ...(k.name ? { name: k.name } : {}),
+          ...(k.face ? { face: k.face } : {}),
           kind: k.curve.kind,
+          ...(k.curve.kind === 'line'
+            ? { a: k.curve.a as [number, number], b: k.curve.b as [number, number] }
+            : {}),
           ...(k.curve.kind === 'arc'
             ? {
                 radius: k.curve.radius,
@@ -152,17 +212,100 @@ export function installDrawingHooks(c: DrawingController): void {
         };
       });
     },
+    extents() {
+      const b = c.ui.get().built;
+      return (b?.build.placed ?? []).map((p) => {
+        const texts: { min: [number, number]; max: [number, number] }[] = [];
+        const segments: [[number, number], [number, number]][] = [];
+        const words: string[] = [];
+        let lo: [number, number] = [Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY];
+        let hi: [number, number] = [Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY];
+        for (const it of p.items) {
+          const box = primitiveBox(it);
+          if (box) {
+            lo = [Math.min(lo[0], box.min[0]), Math.min(lo[1], box.min[1])];
+            hi = [Math.max(hi[0], box.max[0]), Math.max(hi[1], box.max[1])];
+          }
+          if (it.kind === 'text') {
+            const t = textBox(it);
+            texts.push({ min: [t.min[0], t.min[1]], max: [t.max[0], t.max[1]] });
+            words.push(it.text);
+          } else if (it.kind === 'line')
+            segments.push([
+              [it.a[0], it.a[1]],
+              [it.b[0], it.b[1]],
+            ]);
+          else if (it.kind === 'polyline')
+            for (let i = 0; i + 1 < it.points.length; i++) {
+              const a = it.points[i] as [number, number];
+              const q = it.points[i + 1] as [number, number];
+              segments.push([
+                [a[0], a[1]],
+                [q[0], q[1]],
+              ]);
+            }
+        }
+        return {
+          placementId: p.placementId,
+          annotationId: p.annotationId,
+          viewId: p.viewId,
+          text: words.join(' '),
+          texts,
+          segments,
+          bounds: Number.isFinite(lo[0]) ? { min: lo, max: hi } : null,
+        };
+      });
+    },
+    hit(at, tol) {
+      const h = viewHit(c, { at, tol });
+      const s = h?.source;
+      let pick: ReturnType<DrawingHooks['hit']>['pick'] = null;
+      if (s?.kind === 'view' && (s.edge || s.face)) {
+        const e = s.edge
+          ? pickEdge(c, s.viewId, s.edge, at)
+          : pickEdge(c, s.viewId, s.face as string, at, 'face');
+        if (e)
+          pick = {
+            name: e.name,
+            ref: e.ref ?? 'edge',
+            shape: e.shape,
+            ...(e.face ? { face: e.face } : {}),
+          };
+      }
+      return { source: s ?? null, pick };
+    },
+    importPlan() {
+      const plan = c.ui.get().importPlan;
+      if (!plan) return null;
+      return plan.candidates.map((x) => {
+        const text: unknown = 'text' in x.annotation ? x.annotation.text : undefined;
+        return {
+          key: x.key,
+          kind: x.kind,
+          annotationKind: x.annotation.kind,
+          checked: x.checked,
+          viewId: x.viewId ?? null,
+          reason: x.reason ?? null,
+          duplicateOf: x.duplicateOf ?? null,
+          count:
+            typeof text === 'object' &&
+            text !== null &&
+            (text as { count?: boolean }).count === true,
+        };
+      });
+    },
     edges(viewId) {
       const b = c.ui.get().built;
       const sv = b?.build.views.get(viewId);
       if (!b || !sv?.ok) return [];
       const out: ReturnType<DrawingHooks['edges']> = [];
       for (const k of b.projections.get(viewId)?.curves ?? []) {
-        if (k.role !== 'visible' || !k.name) continue;
+        if (k.role !== 'visible' || (!k.name && !k.face)) continue;
         const p = curveToSheet(k.curve, sv);
+        const named = { name: k.name ?? '', ...(k.face ? { face: k.face } : {}) };
         if (p.kind === 'line')
           out.push({
-            name: k.name,
+            ...named,
             kind: 'line',
             at: [(p.a[0] + p.b[0]) / 2, (p.a[1] + p.b[1]) / 2],
             a: p.a,
@@ -171,10 +314,12 @@ export function installDrawingHooks(c: DrawingController): void {
         else if (p.kind === 'arc') {
           const a = (p.start + p.end) / 2;
           out.push({
-            name: k.name,
+            ...named,
             kind: 'arc',
             at: [p.center[0] + p.radius * Math.cos(a), p.center[1] + p.radius * Math.sin(a)],
             radius: p.radius,
+            start: p.start,
+            end: p.end,
           });
         }
       }
@@ -225,6 +370,8 @@ export function installDrawingHooks(c: DrawingController): void {
           id: r.annotationId,
           state: r.state,
           value: r.value ?? null,
+          measured: r.measured ?? null,
+          count: r.count ?? null,
         })),
       };
     },

@@ -13,6 +13,7 @@ import type {
   Id,
   LinearDimension,
   PlacementLayout,
+  ProjectedCurve,
   RefPoint,
   SurfaceFinishAnnotation,
   Vec2,
@@ -24,6 +25,7 @@ import {
   importCommands,
   planImport,
   type SolvedView,
+  sheetToView,
   viewOutline,
   viewToSheet,
 } from '@wren-cad/drawing';
@@ -38,43 +40,84 @@ const TAU = Math.PI * 2;
 // Picks
 // ---------------------------------------------------------------------------------------------
 
-/** What an edge on a view is, from the kernel's projected curves (the first run of that name). */
+/** Distance from `p` to a projected curve (view plane, part mm); lines and arcs, else Infinity. */
+function curveDistance(curve: ProjectedCurve['curve'], p: Vec2): number {
+  if (curve.kind === 'line') {
+    const d = sub(curve.b, curve.a);
+    const l2 = d[0] * d[0] + d[1] * d[1] || 1;
+    const t = Math.max(
+      0,
+      Math.min(1, ((p[0] - curve.a[0]) * d[0] + (p[1] - curve.a[1]) * d[1]) / l2),
+    );
+    return len(sub(p, [curve.a[0] + t * d[0], curve.a[1] + t * d[1]]));
+  }
+  if (curve.kind === 'arc') return Math.abs(len(sub(p, curve.center)) - curve.radius);
+  return Number.POSITIVE_INFINITY;
+}
+
+/**
+ * What an edge on a view is, from the kernel's projected curves (the run of that name nearest the
+ * pointer). With
+ * `by: 'face'`, `name` is a face and the pick is the outline of it nearest the pointer: a cylinder
+ * seen side-on has two (two outlines, or an outline and the seam on its silhouette).
+ */
 export function pickEdge(
   c: DrawingController,
   viewId: Id,
   name: string,
   at: Vec2,
+  by: 'edge' | 'face' = 'edge',
 ): EdgePick | null {
   const proj = c.built()?.projections.get(viewId);
-  const curve = proj?.curves.find((k) => k.name === name && k.role === 'visible')?.curve;
-  if (!curve) return null;
+  // The run under the pointer: an edge can be drawn in several pieces (a curved blend piece and
+  // an arc of one name), and a face has two sides seen side-on.
+  const runs = (proj?.curves ?? []).filter(
+    (x) => (by === 'face' ? x.face : x.name) === name && x.role === 'visible',
+  );
+  const sv = c.built()?.build.views.get(viewId);
+  let k: ProjectedCurve | undefined = runs[0];
+  if (runs.length > 1 && sv?.ok) {
+    const q = sheetToView(sv, at);
+    k = runs.map((x) => ({ x, d: curveDistance(x.curve, q) })).sort((a, b) => a.d - b.d)[0]?.x;
+  }
+  const curve = k?.curve;
+  if (!k || !curve) return null;
+  const base = {
+    viewId,
+    name,
+    at,
+    ...(by === 'face' ? { ref: 'face' as const } : {}),
+    ...(k.face ? { face: k.face } : {}),
+  };
   if (curve.kind === 'arc')
     return {
-      viewId,
-      name,
-      at,
+      ...base,
       shape: 'circle',
+      sweep: curve.end - curve.start,
       geom: {
         centre: curve.center,
         radius: curve.radius,
         full: Math.abs(curve.end - curve.start - TAU) < 1e-6,
       },
     };
-  if (curve.kind === 'line')
-    return { viewId, name, at, shape: 'line', geom: { a: curve.a, b: curve.b } };
-  return { viewId, name, at, shape: 'other' };
+  if (curve.kind === 'line') return { ...base, shape: 'line', geom: { a: curve.a, b: curve.b } };
+  return { ...base, shape: 'other' };
 }
 
-async function refOf(c: DrawingController, name: string): Promise<EntityRef> {
-  const plain: EntityRef = { name, kind: 'edge' };
+async function refOf(
+  c: DrawingController,
+  name: string,
+  kind: 'edge' | 'face' = 'edge',
+): Promise<EntityRef> {
+  const plain: EntityRef = { name, kind };
   const wb = c.wb;
   const r = wb.regen.get()?.result;
   const part = wb.part;
   if (!r || !part || !wb.modeling) return plain;
   for (const b of r.bodies) {
-    const i = b.mesh.edgeNames.indexOf(name);
+    const i = (kind === 'face' ? b.mesh.faceNames : b.mesh.edgeNames).indexOf(name);
     if (i < 0) continue;
-    const ref = await wb.modeling.refFor(part.id, { bodyId: b.id, kind: 'edge', index: i });
+    const ref = await wb.modeling.refFor(part.id, { bodyId: b.id, kind, index: i });
     // Only the fingerprint is taken: the name stays exactly what the view showed.
     return ref && ref.name === name && ref.fingerprint
       ? { ...plain, fingerprint: ref.fingerprint }
@@ -101,7 +144,14 @@ const ends = (p: EdgePick): [Vec2, Vec2] | null =>
   p.geom && 'a' in p.geom ? [p.geom.a, p.geom.b] : null;
 
 export type DimensionPlan =
-  | { ok: true; annotation: Omit<Annotation, 'id'>; layout: PlacementLayout; viewId: Id }
+  | {
+      ok: true;
+      annotation: Omit<Annotation, 'id'>;
+      layout: PlacementLayout;
+      viewId: Id;
+      /** The plan measures this face (two sides of it were picked): its one ref. */
+      faceRef?: string;
+    }
   | { ok: false; message: string };
 
 function laneFor(b: Built, viewId: Id, side: 'top' | 'bottom' | 'left' | 'right'): number {
@@ -160,6 +210,32 @@ export function planAngle(c: DrawingController, picks: EdgePick[]): DimensionPla
 }
 
 /** Which dimension the picks mean, and where it goes. Pure: refs are attached by the caller. */
+/** A lane on the side of the view nearest the picks, for a dimension along a view axis. */
+function laneBeside(
+  b: Built,
+  sv: SolvedView,
+  picks: EdgePick[],
+  measuredAxis: 'x' | 'y' | null,
+): PlacementLayout {
+  const outline = viewOutline(sv);
+  const n = Math.max(1, picks.length);
+  const mid: Vec2 = [
+    picks.reduce((s, p) => s + p.at[0], 0) / n,
+    picks.reduce((s, p) => s + p.at[1], 0) / n,
+  ];
+  const cx = (outline.min[0] + outline.max[0]) / 2;
+  const cy = (outline.min[1] + outline.max[1]) / 2;
+  if (measuredAxis === 'x') {
+    const side = mid[1] < cy ? 'bottom' : 'top';
+    return { kind: 'lane', side, lane: laneFor(b, sv.view.id, side) };
+  }
+  if (measuredAxis === 'y') {
+    const side = mid[0] < cx ? 'left' : 'right';
+    return { kind: 'lane', side, lane: laneFor(b, sv.view.id, side) };
+  }
+  return { kind: 'offset', distance: 10 };
+}
+
 export function planDimension(
   c: DrawingController,
   picks: EdgePick[],
@@ -173,6 +249,36 @@ export function planDimension(
   const frame = sv.frame;
   const origin = { kind: 'drawing' as const, drawingId: b.drawing.id };
 
+  // Two sides of one curved face seen side-on (its outlines, or an outline and the seam on its
+  // silhouette, `ProjectedCurve.face`), or one face-named outline circle (a sphere): the
+  // diameter of that face, measured by the kernel from the face (ADR-090 amendment).
+  const second0 = picks[1];
+  const outlined =
+    first.face &&
+    (picks.length === 1
+      ? first.ref === 'face' && first.shape === 'circle'
+      : picks.length === 2 && second0?.face === first.face && second0.viewId === first.viewId);
+  if (outlined) {
+    // Seen side-on (straight sides): across the silhouettes, in a lane beside the view. Seen as a
+    // circle (a sphere's outline): radial. A diameter unless a radius is asked for.
+    const side = picks.length === 2 ? ends(first) : null;
+    let layout: PlacementLayout = { kind: 'radial', angle: 45, distance: 6 };
+    let kind: 'radius' | 'diameter' = radius ? 'radius' : 'diameter';
+    if (side) {
+      const t = dir(side[0], side[1]);
+      const n: Vec2 = [-t[1], t[0]];
+      const axis = Math.abs(n[0]) > 0.98 ? 'x' : Math.abs(n[1]) > 0.98 ? 'y' : null;
+      layout = laneBeside(b, sv, picks, axis);
+      kind = 'diameter';
+    }
+    return {
+      ok: true,
+      viewId: first.viewId,
+      annotation: { kind, origin, refs: [] } as Omit<Annotation, 'id'>,
+      layout,
+      faceRef: first.face as string,
+    };
+  }
   // One circle: a diameter (a radius for an arc, or on request).
   if (picks.length === 1 && first.shape === 'circle') {
     const full = first.geom && 'full' in first.geom ? first.geom.full : true;
@@ -236,18 +342,7 @@ export function planDimension(
     at.push('self', 'self');
   } else return { ok: false, message: 'Pick two edges.' };
 
-  const outline = viewOutline(sv);
-  const mid: Vec2 = [(first.at[0] + second.at[0]) / 2, (first.at[1] + second.at[1]) / 2];
-  const cx = (outline.min[0] + outline.max[0]) / 2;
-  const cy = (outline.min[1] + outline.max[1]) / 2;
-  let layout: PlacementLayout;
-  if (measuredAxis === 'x') {
-    const side = mid[1] < cy ? 'bottom' : 'top';
-    layout = { kind: 'lane', side, lane: laneFor(b, first.viewId, side) };
-  } else if (measuredAxis === 'y') {
-    const side = mid[0] < cx ? 'left' : 'right';
-    layout = { kind: 'lane', side, lane: laneFor(b, first.viewId, side) };
-  } else layout = { kind: 'offset', distance: 10 };
+  const layout = laneBeside(b, sv, picks, measuredAxis);
 
   return {
     ok: true,
@@ -279,7 +374,9 @@ export async function createDimension(
     picks.length === 1 && picks[0]?.shape === 'line'
       ? [picks[0].name, picks[0].name]
       : picks.map((p) => p.name);
-  const refs = await Promise.all(names.map((n) => refOf(c, n)));
+  const refs = plan.faceRef
+    ? [await refOf(c, plan.faceRef, 'face')]
+    : await Promise.all(names.map((n, i) => refOf(c, n, picks[i]?.ref ?? 'edge')));
   const id = host.ulid();
   const annotation = { ...plan.annotation, id, refs } as Annotation;
   const placement: AnnotationPlacement = {

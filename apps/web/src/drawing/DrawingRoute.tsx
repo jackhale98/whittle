@@ -27,7 +27,7 @@ import { useObservable } from '../app/observable';
 import type { Workbench } from '../app/workbench';
 import { titleRows } from './adapters';
 import { DrawingController } from './controller';
-import { beginInteraction, currentSheet, pickAt } from './interact';
+import { beginInteraction, currentSheet, viewHit } from './interact';
 import { SheetOverlay } from './Overlay';
 import { openImport } from './ops-annot';
 import { addPartPropertiesTable } from './ops-tables';
@@ -406,9 +406,11 @@ export default function DrawingRoute({ wb, id, tier, onClose }: DrawingRouteProp
                 if (ui.hover !== null) c.patch({ hover: null });
                 return;
               }
-              const hit = pickAt(c, p);
+              const hit = viewHit(c, p);
               const key =
-                hit?.source.kind === 'view' && hit.source.edge ? sourceKey(hit.source) : null;
+                hit?.source.kind === 'view' && (hit.source.edge || hit.source.face)
+                  ? sourceKey(hit.source)
+                  : null;
               if (key !== ui.hover) c.patch({ hover: key });
             });
           }}

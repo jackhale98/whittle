@@ -430,10 +430,25 @@ function detailTool(c: DrawingController, p: SheetPointer): SheetDrag | null {
   };
 }
 
+/**
+ * What a picking tool (Dimension, Angle, Chamfer, datums, frames...) picks at `p`: model geometry
+ * only. Those tools pick edges and outlines, never an annotation, so a dimension drawn over an edge
+ * (an extension line along a fillet, say) does not hide that edge from them.
+ */
+export function viewHit(c: DrawingController, p: Pick<SheetPointer, 'at' | 'tol'>) {
+  const composed = currentSheet(c);
+  if (!composed) return null;
+  const items = composed.list.items.filter((i) => i.source?.kind === 'view');
+  return hitTest({ ...composed.list, items }, p.at, p.tol);
+}
+
 function edgeAt(c: DrawingController, p: SheetPointer): EdgePick | null {
-  const hit = pickAt(c, p);
-  if (hit?.source.kind !== 'view' || !hit.source.edge) return null;
-  return pickEdge(c, hit.source.viewId, hit.source.edge, p.at);
+  const hit = viewHit(c, p);
+  if (hit?.source.kind !== 'view') return null;
+  if (hit.source.edge) return pickEdge(c, hit.source.viewId, hit.source.edge, p.at);
+  // An outline has no edge name: with its face (`ProjectedCurve.face`) it picks that face.
+  if (hit.source.face) return pickEdge(c, hit.source.viewId, hit.source.face, p.at, 'face');
+  return null;
 }
 
 function pickTool(c: DrawingController, _p: SheetPointer): SheetDrag {
@@ -486,7 +501,12 @@ async function onPick(
         return;
       }
       const first = prev[0] as EdgePick;
-      const same = first.name === pick.name && first.viewId === pick.viewId;
+      // Two picks of one face's outline are its two sides (a diameter), not one edge's length.
+      const same =
+        first.name === pick.name &&
+        first.viewId === pick.viewId &&
+        first.ref !== 'face' &&
+        pick.ref !== 'face';
       c.patch({ hint: null });
       await createDimension(c, same ? [first] : [first, pick]);
       return;
