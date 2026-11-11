@@ -30,8 +30,56 @@ env:
   WREN_BASE: /${{ github.event.repository.name }}/
 
 jobs:
+  # Main only fast-forwards to commits that already passed this workflow on a claude/** branch
+  # (ADR-083 amendment). On a push to main this asks the API for a successful push run of this same
+  # workflow at the exact github.sha, on a claude/** branch of THIS repository (fork and pull
+  # request runs never count). verified=true skips the gating jobs; deploys still run after
+  # kernel (cache hit) and build. Any API trouble, a direct push, or a failed/cancelled dev run
+  # gives verified=false and the full pipeline runs. Every other event is always false. The job
+  # runs on every event so the jobs that read its output are never skipped by a skipped dependency.
+  verified:
+    name: Verified on dev branch?
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+    outputs:
+      verified: ${{ steps.check.outputs.verified }}
+    steps:
+      - name: Look for a passing dev-branch run of this commit
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          RUN_ID: ${{ github.run_id }}
+          IS_MAIN_PUSH: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        shell: bash
+        run: |
+          verified=false
+          if [ "$IS_MAIN_PUSH" = "true" ]; then
+            workflow_id="$(gh api "repos/${REPO}/actions/runs/${RUN_ID}" --jq .workflow_id || true)"
+            if [ -n "$workflow_id" ]; then
+              url="$(gh api "repos/${REPO}/actions/workflows/${workflow_id}/runs?head_sha=${SHA}&event=push&status=completed&per_page=100" \
+                --jq "[.workflow_runs[] | select(.head_sha == \"${SHA}\" and .event == \"push\" and .conclusion == \"success\" and (.head_branch | startswith(\"claude/\")) and .head_repository.full_name == \"${REPO}\" and .id != ${RUN_ID})] | first | .html_url // empty" || true)"
+              if [ -n "$url" ]; then
+                verified=true
+                echo "Verified by ${url}"
+                echo "### Verified: skipping the gating jobs" >> "$GITHUB_STEP_SUMMARY"
+                echo "Commit \`${SHA}\` already passed this workflow: ${url}" >> "$GITHUB_STEP_SUMMARY"
+              fi
+            fi
+            if [ "$verified" = false ]; then
+              echo "### Not verified: running the full pipeline" >> "$GITHUB_STEP_SUMMARY"
+              echo "No successful dev-branch run of \`${SHA}\` was found." >> "$GITHUB_STEP_SUMMARY"
+            fi
+          fi
+          echo "verified=${verified}" >> "$GITHUB_OUTPUT"
+
   lint:
     name: Lint (Biome)
+    needs: verified
+    if: ${{ needs.verified.outputs.verified != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -60,7 +108,8 @@ jobs:
 
   test:
     name: Typecheck and unit tests
-    needs: kernel
+    needs: [kernel, verified]
+    if: ${{ needs.verified.outputs.verified != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -139,10 +188,11 @@ jobs:
   # -> reload -> export, dimension edit, fillet, push/pull, undo/redo, configurations, parameter
   # autocomplete, radial menu, touch bubble, isolation, installed-PWA chrome). Chromium and
   # chromium-touch, one worker, about 3 minutes of tests after the build: a broken build or boot
-  # fails here, in minutes, before any of the expensive jobs below start (they all need: smoke).
+  # fails here, in minutes, before the expensive chromium and reference shards start (they need: smoke; perf and package-e2e run alongside it).
   smoke:
     name: Smoke (chromium, @smoke)
-    needs: build
+    needs: [build, verified]
+    if: ${{ needs.verified.outputs.verified != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -175,7 +225,8 @@ jobs:
 
   e2e:
     name: E2E (chromium, shard ${{ matrix.shard }}/8)
-    needs: [build, smoke]
+    needs: [build, smoke, verified]
+    if: ${{ needs.verified.outputs.verified != 'true' }}
     runs-on: ubuntu-latest
     # Sharded: the chromium suite outgrew one 30-minute runner with M3.6 (job cancelled at 30:00).
     # 155 tests (chromium + chromium-touch), 19-20 per shard. H1 measured ~57 min of serial time for
@@ -224,7 +275,8 @@ jobs:
   # no more shards.
   e2e-reference:
     name: E2E reference parts (chromium, shard ${{ matrix.shard }}/3)
-    needs: [build, smoke]
+    needs: [build, smoke, verified]
+    if: ${{ needs.verified.outputs.verified != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -262,7 +314,8 @@ jobs:
   package-e2e:
     # Split (viewport | ui): together they reached ~30 min after H1 added wheel and section specs.
     name: E2E (${{ matrix.suite }}, chromium)
-    needs: [lint, smoke]
+    needs: [lint, verified]
+    if: ${{ needs.verified.outputs.verified != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -292,7 +345,8 @@ jobs:
   # apps/web/e2e/perf/budgets.ts (ADR-009). Gates the deploy.
   perf:
     name: Performance budgets
-    needs: [build, smoke]
+    needs: [build, verified]
+    if: ${{ needs.verified.outputs.verified != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
     env:
@@ -345,7 +399,8 @@ jobs:
   # platform E2E specs. Non-gating at first: scores are recorded in the job summary and artefact.
   lighthouse:
     name: Lighthouse (non-gating)
-    needs: build
+    needs: [build, verified]
+    if: ${{ needs.verified.outputs.verified != 'true' }}
     runs-on: ubuntu-latest
     continue-on-error: true
     timeout-minutes: 20
@@ -385,8 +440,8 @@ jobs:
   # Deploys only after every gating check passed on a push to main (reviewer M0 defect 6).
   pages:
     name: Deploy to GitHub Pages
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [lint, test, build, smoke, e2e, e2e-reference, package-e2e, perf]
+    if: ${{ !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.build.result == 'success' && (needs.verified.outputs.verified == 'true' || (needs.lint.result == 'success' && needs.test.result == 'success' && needs.smoke.result == 'success' && needs.e2e.result == 'success' && needs.e2e-reference.result == 'success' && needs.package-e2e.result == 'success' && needs.perf.result == 'success')) }}
+    needs: [verified, lint, test, build, smoke, e2e, e2e-reference, package-e2e, perf]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     concurrency:
@@ -422,8 +477,8 @@ jobs:
   # `pages`. The only job with contents: write. Pushes made with GITHUB_TOKEN start no workflow.
   cloudflare:
     name: Publish to cloudflare-pages branch
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [lint, test, build, smoke, e2e, e2e-reference, package-e2e, perf]
+    if: ${{ !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.build.result == 'success' && (needs.verified.outputs.verified == 'true' || (needs.lint.result == 'success' && needs.test.result == 'success' && needs.smoke.result == 'success' && needs.e2e.result == 'success' && needs.e2e-reference.result == 'success' && needs.package-e2e.result == 'success' && needs.perf.result == 'success')) }}
+    needs: [verified, lint, test, build, smoke, e2e, e2e-reference, package-e2e, perf]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     concurrency:
