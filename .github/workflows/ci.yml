@@ -313,7 +313,9 @@ jobs:
 
   package-e2e:
     # Split (viewport | ui): together they reached ~30 min after H1 added wheel and section specs.
-    name: E2E (${{ matrix.suite }}, chromium)
+    # The viewport suite runs one worker (WebGL timing probes) and became the CI long pole at
+    # ~21 min (run #59), so it is sharded three ways; ui stays one job (~10 min).
+    name: E2E (${{ matrix.suite }}${{ matrix.shard && format(' {0}/3', matrix.shard) || '' }}, chromium)
     needs: [lint, verified]
     if: ${{ needs.verified.outputs.verified != 'true' }}
     runs-on: ubuntu-latest
@@ -321,7 +323,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        suite: [viewport, ui]
+        include:
+          - { suite: viewport, shard: 1 }
+          - { suite: viewport, shard: 2 }
+          - { suite: viewport, shard: 3 }
+          - { suite: ui }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
@@ -334,7 +340,7 @@ jobs:
         run: pnpm --filter @wren-cad/viewport exec playwright install --with-deps chromium
       - name: Viewport E2E
         if: matrix.suite == 'viewport'
-        run: pnpm --filter @wren-cad/viewport e2e
+        run: pnpm --filter @wren-cad/viewport e2e --shard=${{ matrix.shard }}/3
       # Visual baselines were recorded outside CI; until CI-generated baselines are committed,
       # run the UI suite's functional/a11y assertions and skip pixel comparison.
       - name: UI E2E (functional + axe)
