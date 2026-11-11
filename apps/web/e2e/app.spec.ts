@@ -103,7 +103,7 @@ async function firstVisit(page: Page): Promise<Timings> {
 }
 
 test.describe('box on screen (M0)', () => {
-  test('first visit: OCCT box rendered by the threaded kernel with shading and edges', async ({
+  test('first visit: OCCT box rendered by the threaded kernel with shading and edges @smoke', async ({
     page,
   }) => {
     const t = await firstVisit(page);

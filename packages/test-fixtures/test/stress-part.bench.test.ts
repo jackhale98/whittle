@@ -11,7 +11,7 @@
  * `WREN_STRESS_OUT=<file>` also writes the table as JSON; `WREN_KERNEL_DIST=<dir>` benchmarks a
  * different kernel build (the A/B of the face-merge change).
  *
- * `WREN_STRESS_MASS=deferred` (ADR-083) regenerates without mass properties, as the app does for a
+ * `WREN_STRESS_MASS=deferred` (ADR-084) regenerates without mass properties, as the app does for a
  * part without a material: the document's material is dropped and the request does not ask for
  * them. The default (`inline`) asks for them, as a part with a material gets them today. Deferred
  * runs add a row for the separate `massProperties(shape)` fetch of the final body after an edit.

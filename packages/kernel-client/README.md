@@ -118,11 +118,11 @@ under it changes. Entries own the handles they create and hold deltas only; afte
 entries not used by it (or by the last all-ok regen) beyond `maxSpareResults` are evicted LRU and
 their handles released. The default is 128, or three times the latest regen's entries when that is
 more (three earlier full states of a large part, so undoing early edits stays a cache hit), until
-the Wasm heap passes 1.5 GiB; a configured value (tablet 4, phone 2) is a hard bound (ADR-083).
+the Wasm heap passes 1.5 GiB; a configured value (tablet 4, phone 2) is a hard bound (ADR-084).
 Meshes, fingerprints, bounds and mass properties are cached per handle. Results carry fresh copies
 of cached meshes, transferred over Comlink.
 
-**Mass properties** (ADR-083) are a full volume and area integration (seconds for a few hundred
+**Mass properties** (ADR-084) are a full volume and area integration (seconds for a few hundred
 B-spline faces), so a regen only computes them for its final bodies, and only on request or with a
 material (`RegenRequest.massProperties`). Bounding-box prefilters, the through-all depth of copied
 cuts and the "the cut left the body unchanged" check read `bounds` (the façade's same box and
@@ -447,6 +447,14 @@ upright back-corner edge name rounds the merged full-height edge; shells of 1, 2
 analytic void volumes, closed, top open, back open picked as both absorbed faces, the front open
 between tangent corner fillets, and the precise "too thick" error), `merged-unit.test.ts` (alias
 entries, the walk's merge table, chains).
+
+M3.8 `FeatureStatus.grown` (contract): a ref that resolves by its exact name or a merge alias to a
+body face or edge whose area / length is more than 1.5× its stored fingerprint's and more than
+1 mm² / 1 mm larger is reported as `{ path, name, was, now }` (report only; vertices, sketch
+regions and planes never). Only refs with a stored fingerprint are measured, from the per-handle
+fingerprints. `unify.golden.test.ts`: the bracket fillet on `edge(plateBack|plateLeft)` picked
+before the upright (8 mm) reports 8 → 48 mm after the merge; the same edge picked on the merged
+model reports nothing.
 
 M3.5: `cause.test.ts` (real kernel, one test per cause rule: changed via a chain and by the
 producer, carried over and cleared, added, suppressed, deleted, reordered, failed/blocked, an

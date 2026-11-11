@@ -9,6 +9,7 @@ import type {
   FeatureStatus,
   Fingerprint,
   KernelError,
+  MergedRef,
   MeshBuffers,
   MeshQuality,
   RegenResult,
@@ -30,7 +31,7 @@ export interface RegenEngineOptions {
    * Cache entries kept beyond those the latest regen (and the last all-ok regen, for ghosts)
    * uses, per part, least recently used first out. Each holds one or two B-rep shapes plus their
    * meshes. Default: 128, or three earlier full states of the part when that is more (a part of
-   * more than 42 features), until the Wasm heap passes 1.5 GiB (ADR-083). A configured value is
+   * more than 42 features), until the Wasm heap passes 1.5 GiB (ADR-084). A configured value is
    * a hard bound; the tablet and phone tiers use 4 and 2 (PLAN §8.4 memory budget).
    */
   maxSpareResults?: number;
@@ -79,20 +80,8 @@ export interface ReboundRef {
   fingerprint?: Fingerprint;
 }
 
-/**
- * A reference whose stored name a boolean merged into another face, edge or vertex (ADR-078):
- * the kernel listed `name` as an alias of the surviving sub-shape `into`, so the ref resolved to
- * it by construction history, not by a guess. The stored name is kept (it is not healed): if an
- * upstream edit un-merges the faces, the ref goes back to its own face. Proposed contract field
- * `FeatureStatus.merged` (see README).
- */
-export interface MergedRef {
-  path: string;
-  /** The stored (absorbed) name. */
-  name: string;
-  /** The current name of the sub-shape that absorbed it. */
-  into: string;
-}
+/** Now in the contracts (ADR-078); re-exported for existing imports. */
+export type { MergedRef } from '@wren-cad/contracts';
 
 /** `UnresolvedRef` plus the fingerprint seen the last time this ref resolved (proposed). */
 export interface RegenUnresolvedRef extends UnresolvedRef {

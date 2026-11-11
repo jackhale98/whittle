@@ -418,7 +418,7 @@ export class RegenEngine {
   }
 
   /**
-   * `KernelApi.massProperties` through the engine (ADR-083): serialised with regens, and for
+   * `KernelApi.massProperties` through the engine (ADR-084): serialised with regens, and for
    * shapes the regen cache owns, memoised per handle and density with the mass properties regens
    * compute, so the app's deferred fetch after a regen never integrates a body twice.
    */
@@ -503,7 +503,7 @@ export class RegenEngine {
       attachments: request.attachments ?? {},
       importIds: new Set(part.features.filter((f) => f.type === 'import').map((f) => f.id)),
       usedImports: new Set(),
-      current: { featureId: '', rebound: [], merged: [] },
+      current: { featureId: '', rebound: [], merged: [], grown: [] },
       walk: newWalk(),
       rec: null,
       index: new Map(part.features.map((f, i) => [f.id, i])),
@@ -589,7 +589,7 @@ export class RegenEngine {
   // -------------------------------------------------------------------------------------------
 
   private async runFeature(ctx: WalkContext, f: Feature): Promise<RegenFeatureStatus> {
-    ctx.current = { featureId: f.id, rebound: [], merged: [] };
+    ctx.current = { featureId: f.id, rebound: [], merged: [], grown: [] };
     const status = (
       state: RegenFeatureStatus['state'],
       extra: Partial<RegenFeatureStatus> = {},
@@ -597,6 +597,7 @@ export class RegenEngine {
       const s = { featureId: f.id, state, cached: false, ms: 0, ...extra } as RegenFeatureStatus;
       if (ctx.current.rebound.length > 0) s.rebound = ctx.current.rebound;
       if (ctx.current.merged.length > 0) s.merged = ctx.current.merged;
+      if (ctx.current.grown.length > 0) s.grown = ctx.current.grown;
       return s;
     };
     const fail = (taint: string[]) => {

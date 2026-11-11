@@ -41,7 +41,7 @@ async function addParam(page: Page, name: string, expr: string) {
   await expect(page.getByRole('listitem', { name: `Parameter ${name}` })).toBeVisible();
 }
 
-test('dimension a circle by typing a parameter name; changing the parameter resizes it', async ({
+test('dimension a circle by typing a parameter name; changing the parameter resizes it @smoke', async ({
   page,
 }) => {
   test.slow();

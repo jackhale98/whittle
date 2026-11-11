@@ -73,7 +73,7 @@ export interface RegenLoopOptions {
   /** The engine threw (worker crashed, bad input). Regeneration continues on the next edit. */
   onError?(error: KernelError): void;
   /**
-   * Mass properties for the latest delivered result (ADR-083): the same outcome, with
+   * Mass properties for the latest delivered result (ADR-084): the same outcome, with
    * `massProperties` on each body that came without them. Mass properties are a full volume
    * integration of every body (seconds on a large part), so the loop only asks for them in the
    * regen request while they are known to be cheap for this part (the last separate fetch took

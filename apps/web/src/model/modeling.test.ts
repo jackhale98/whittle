@@ -203,7 +203,7 @@ describe('regen loop', () => {
     ]);
   });
 
-  it('ADR-083: mass properties come after the geometry, inline again once they are cheap', async () => {
+  it('ADR-084: mass properties come after the geometry, inline again once they are cheap', async () => {
     let doc: WrenDoc = newDoc({ firstPart: 'P' });
     const calls: { request: RegenRequest; resolve(r: RegenResult): void }[] = [];
     const massCalls: { shape: number; resolve(): void }[] = [];

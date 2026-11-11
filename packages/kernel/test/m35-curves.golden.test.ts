@@ -388,7 +388,7 @@ for (const { variant } of VARIANTS) {
         expect(fp.edges[top]?.curve).toBe('bspline');
       });
 
-      it('bounds of a swept spline: massProperties bbox and counts, far cheaper (ADR-083)', () => {
+      it('bounds of a swept spline: massProperties bbox and counts, far cheaper (ADR-084)', () => {
         const ss = session();
         const { ex } = sketchAndExtrude(ss, archEntities(), ARCH_REGION);
         const bounds = k.bounds as (shape: number) => string;

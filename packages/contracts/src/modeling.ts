@@ -86,7 +86,35 @@ export interface FeatureStatus {
   cause?: AttentionCause;
   /** Refs resolved by fingerprint/disambiguation, with their current name, so the UI can heal stored refs. */
   rebound?: { path: string; name: string; fingerprint?: Fingerprint }[];
+  /** ADR-078. Refs whose stored name a boolean merged into another sub-shape (resolved by alias). */
+  merged?: MergedRef[];
+  /**
+   * M3.8. Refs resolved by exact name whose entity is now much larger than when the ref was made
+   * (area for faces, length for edges, against the stored fingerprint): "check this reference".
+   */
+  grown?: GrownRef[];
   ms: number;
+}
+
+/**
+ * A reference whose stored name a boolean merged into another face, edge or vertex (ADR-078): the
+ * kernel listed `name` as an alias of the surviving sub-shape `into`, so the ref resolved to it by
+ * construction history, not by a guess. The stored name is kept; an upstream un-merge restores it.
+ */
+export interface MergedRef {
+  path: string;
+  /** The stored (absorbed) name. */
+  name: string;
+  /** The current name of the sub-shape that absorbed it. */
+  into: string;
+}
+
+/** M3.8. A ref whose entity grew past the app's threshold; `was`/`now` in mm² (faces) or mm (edges). */
+export interface GrownRef {
+  path: string;
+  name: string;
+  was: number;
+  now: number;
 }
 
 /** A solid (or sheet) body in the part's final state. Its `shape` is owned by the regen engine: never `release()` it. */

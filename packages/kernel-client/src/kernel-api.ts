@@ -114,7 +114,7 @@ export interface KernelLowLevelApi extends Partial<ProjectionApi> {
   /** Geometric fingerprints of every face/edge/vertex (TopExp order). */
   fingerprints(shape: ShapeHandle): Promise<Result<ShapeFingerprints>>;
   /**
-   * `massProperties`' bounding box and topology counts without integrating anything (ADR-083):
+   * `massProperties`' bounding box and topology counts without integrating anything (ADR-084):
    * the regen engine's bounding-box prefilters and "the boolean left the body unchanged" checks.
    * Against a kernel build without the `bounds` entry point it falls back to `massProperties`.
    */
@@ -568,7 +568,7 @@ export function createKernelApi(
       const k = kernel;
       try {
         if (typeof k.bounds !== 'function') {
-          // A kernel build from before ADR-083: the same values, at the price of integrating.
+          // A kernel build from before ADR-084: the same values, at the price of integrating.
           const mp = parseResult<MassProperties>(k.massProperties(shape, 0), 'bounds');
           if (!mp.ok) return mp;
           const { bbox, faceCount, edgeCount, vertexCount } = mp.value;

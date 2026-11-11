@@ -100,9 +100,12 @@ export function beginParamDrag(
     const t = cancelled ? null : targetAt(ev.clientX, ev.clientY);
     const handler = t ? targets.get(t) : undefined;
     // The click that follows a drag must not activate the handle.
+    // The window is captured, not looked up later: the cleanup can outlive the page (or a test's
+    // DOM environment), and must never throw from a stray timer.
+    const win = ev.view ?? (typeof window === 'undefined' ? null : window);
     const swallow = (c: Event) => c.stopPropagation();
-    window.addEventListener('click', swallow, { capture: true, once: true });
-    setTimeout(() => window.removeEventListener('click', swallow, true), 60);
+    win?.addEventListener('click', swallow, { capture: true, once: true });
+    setTimeout(() => win?.removeEventListener('click', swallow, true), 60);
     const accepted = handler ? handler(name) !== false : false;
     onEnd?.(accepted);
   };

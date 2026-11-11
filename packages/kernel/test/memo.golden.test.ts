@@ -1,5 +1,5 @@
 /**
- * Kernel golden (ADR-083): the per-sub-shape memo behind `bounds`, `fingerprints` and the bbox of
+ * Kernel golden (ADR-084): the per-sub-shape memo behind `bounds`, `fingerprints` and the bbox of
  * `massProperties` / `mesh` is invisible. A chain of features (a plate, a through hole, a blind
  * pocket bounded by a B-spline, a fillet) shares most faces from step to step; one kernel instance
  * queries every step in order (warm memo: shared faces come from earlier handles), a second, fresh

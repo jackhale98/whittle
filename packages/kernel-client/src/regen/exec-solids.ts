@@ -194,7 +194,7 @@ async function runSolid(
     const t = await core.exec({ ...f, op: 'new', scope: undefined } as Feature, inputs);
     if (!t.ok) return fail(t.error);
     tool = t.value;
-    // Bounds only (ADR-083): the same boxes massOf gave, without integrating the body.
+    // Bounds only (ADR-084): the same boxes massOf gave, without integrating the body.
     const tb = await core.boundsOf(tool.shape);
     if (tb && candidates.length > 0) {
       const tol = 1e-6 * Math.max(1, boxDiagonal(tb.bbox));
@@ -353,7 +353,7 @@ async function runSolid(
 
 /**
  * Same volume and topology counts: the boolean left the body unchanged. Cheap invariants first
- * (ADR-083): different face or edge counts already answer "changed" (they always did), and so does
+ * (ADR-084): different face or edge counts already answer "changed" (they always did), and so does
  * a bounding box that moved by more than the prefilter tolerance (a cut that removed material at
  * the box's extremes). Only bodies that agree on both are integrated, to compare their volumes.
  */

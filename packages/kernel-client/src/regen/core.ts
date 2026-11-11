@@ -69,7 +69,7 @@ export class EngineCore {
   }
 
   /**
-   * Bounding box and topology counts (ADR-083): the same values as `massOf`'s, without its
+   * Bounding box and topology counts (ADR-084): the same values as `massOf`'s, without its
    * volume / area integration (which dominated large-part regens). Served from `massOf`'s cache
    * when that already has the handle.
    */
@@ -174,7 +174,7 @@ export class EngineCore {
       massProperties: this.mass.size,
       meshes: this.meshes.size,
       meshBytes,
-      // Bounds (ADR-083) are probed geometry too; the contract has no field of their own.
+      // Bounds (ADR-084) are probed geometry too; the contract has no field of their own.
       geometry: this.geoMemo.size + this.bounds.size,
     };
   }

@@ -1,5 +1,5 @@
 /**
- * ADR-083: a regen integrates mass properties only where it must. The bounding-box prefilters and
+ * ADR-084: a regen integrates mass properties only where it must. The bounding-box prefilters and
  * "the cut left the body unchanged" checks read the kernel's cheap `bounds` (the same box and
  * counts), so a regen that does not ask for mass properties integrates nothing, except the two
  * bodies of a cut that agrees with its body on every cheap invariant (then their volumes decide,
@@ -58,7 +58,7 @@ function features(): Feature[] {
 
 const VOLUME = 60 * 40 * 10 - PI * 100 * 10 - PI * 9 * 10 - PI * 9 * 4;
 
-describe.skipIf(!built)(`regen: mass properties on demand (ADR-083)${skipNote}`, () => {
+describe.skipIf(!built)(`regen: mass properties on demand (ADR-084)${skipNote}`, () => {
   let api: Api;
   beforeAll(async () => {
     api = await loadApi();

@@ -24,7 +24,7 @@ export interface KernelClientOptions extends KernelInitOptions {
   createWorker?: () => Worker;
   /**
    * Regen engine budget in the worker. `maxSpareResults`: cache entries kept beyond those the
-   * latest regen uses (default: 128, or three earlier states of a large part, ADR-083; the
+   * latest regen uses (default: 128, or three earlier states of a large part, ADR-084; the
    * tablet and phone tiers configure 4 and 2 — PLAN §8.4 memory tiers).
    */
   regen?: RegenWorkerOptions;

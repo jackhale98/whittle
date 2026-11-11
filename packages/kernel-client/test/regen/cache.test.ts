@@ -216,7 +216,7 @@ describe.skipIf(!built)(`regen golden: cache and handles${skipNote}`, () => {
     expect((await api.memoryStats()).liveHandles).toBe(m0.liveHandles);
   });
 
-  it('the default spare budget keeps three earlier states of a large part (ADR-083)', async () => {
+  it('the default spare budget keeps three earlier states of a large part (ADR-084)', async () => {
     const doc = makeDoc({ t: '10 mm' }, hundredFeatures());
     const undoAfterThreeEdits = async (a: Api) => {
       const r0 = await a.regenerate({ doc, partId: PART, quality: 'coarse' });

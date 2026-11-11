@@ -3,7 +3,16 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main]
+    # `claude/**` is the dev branch family: a push gets the same fast-feedback pipeline as main, but
+    # never deploys (the `pages` and `cloudflare` jobs are main-only). ADR-083.
+    branches: [main, "claude/**"]
+    # Docs-only pushes skip the pipeline. None of these paths is a build or test input (the app's
+    # brand assets live in apps/web/public/brand, not in the top-level brand/). Pull requests are
+    # not filtered, so a required check can never be left pending.
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+      - "brand/**"
   workflow_dispatch:
 
 permissions:
@@ -11,7 +20,9 @@ permissions:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  # A newer push to the same branch or pull request cancels the older run; main is never cancelled
+  # (every main commit must finish, it deploys).
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 # GitHub Pages serves a project site at /<repository name>/: the build and every E2E server use
 # the same base, so renaming the repository (ADR-032) needs no workflow change.
@@ -19,8 +30,56 @@ env:
   WREN_BASE: /${{ github.event.repository.name }}/
 
 jobs:
+  # Main only fast-forwards to commits that already passed this workflow on a claude/** branch
+  # (ADR-083 amendment). On a push to main this asks the API for a successful push run of this same
+  # workflow at the exact github.sha, on a claude/** branch of THIS repository (fork and pull
+  # request runs never count). verified=true skips the gating jobs; deploys still run after
+  # kernel (cache hit) and build. Any API trouble, a direct push, or a failed/cancelled dev run
+  # gives verified=false and the full pipeline runs. Every other event is always false. The job
+  # runs on every event so the jobs that read its output are never skipped by a skipped dependency.
+  verified:
+    name: Verified on dev branch?
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+    outputs:
+      verified: ${{ steps.check.outputs.verified }}
+    steps:
+      - name: Look for a passing dev-branch run of this commit
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          RUN_ID: ${{ github.run_id }}
+          IS_MAIN_PUSH: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        shell: bash
+        run: |
+          verified=false
+          if [ "$IS_MAIN_PUSH" = "true" ]; then
+            workflow_id="$(gh api "repos/${REPO}/actions/runs/${RUN_ID}" --jq .workflow_id || true)"
+            if [ -n "$workflow_id" ]; then
+              url="$(gh api "repos/${REPO}/actions/workflows/${workflow_id}/runs?head_sha=${SHA}&event=push&status=completed&per_page=100" \
+                --jq "[.workflow_runs[] | select(.head_sha == \"${SHA}\" and .event == \"push\" and .conclusion == \"success\" and (.head_branch | startswith(\"claude/\")) and .head_repository.full_name == \"${REPO}\" and .id != ${RUN_ID})] | first | .html_url // empty" || true)"
+              if [ -n "$url" ]; then
+                verified=true
+                echo "Verified by ${url}"
+                echo "### Verified: skipping the gating jobs" >> "$GITHUB_STEP_SUMMARY"
+                echo "Commit \`${SHA}\` already passed this workflow: ${url}" >> "$GITHUB_STEP_SUMMARY"
+              fi
+            fi
+            if [ "$verified" = false ]; then
+              echo "### Not verified: running the full pipeline" >> "$GITHUB_STEP_SUMMARY"
+              echo "No successful dev-branch run of \`${SHA}\` was found." >> "$GITHUB_STEP_SUMMARY"
+            fi
+          fi
+          echo "verified=${verified}" >> "$GITHUB_OUTPUT"
+
   lint:
     name: Lint (Biome)
+    needs: verified
+    if: ${{ needs.verified.outputs.verified != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -49,7 +108,8 @@ jobs:
 
   test:
     name: Typecheck and unit tests
-    needs: kernel
+    needs: [kernel, verified]
+    if: ${{ needs.verified.outputs.verified != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -124,31 +184,17 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  e2e:
-    name: E2E (${{ matrix.browser }}, shard ${{ matrix.shard }}/${{ matrix.shards }})
-    needs: build
+  # Smoke tier (ADR-083): ~13 tests tagged @smoke in the e2e specs (boot and box, sketch -> extrude
+  # -> reload -> export, dimension edit, fillet, push/pull, undo/redo, configurations, parameter
+  # autocomplete, radial menu, touch bubble, isolation, installed-PWA chrome). Chromium and
+  # chromium-touch, one worker, about 3 minutes of tests after the build: a broken build or boot
+  # fails here, in minutes, before the expensive chromium and reference shards start (they need: smoke; perf and package-e2e run alongside it).
+  smoke:
+    name: Smoke (chromium, @smoke)
+    needs: [build, verified]
+    if: ${{ needs.verified.outputs.verified != 'true' }}
     runs-on: ubuntu-latest
-    # Sharded: the chromium suite outgrew one 30-minute runner with M3.6 (job cancelled at 30:00).
-    # H1 measurement: ~57 min of serial test time for the chromium project (114 tests), so four
-    # chromium shards of ~14 min; the limit below fails a shard that drifts well past 15 minutes.
-    timeout-minutes: 25
-    # Firefox/WebKit are reported but do not gate deploys yet (ADR-005 §7): headless Firefox on
-    # CI has not rendered the box, and Playwright WebKit cannot reload offline with a SW.
-    continue-on-error: ${{ matrix.browser != 'chromium' }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { browser: chromium, shard: 1, shards: 4 }
-          - { browser: chromium, shard: 2, shards: 4 }
-          - { browser: chromium, shard: 3, shards: 4 }
-          - { browser: chromium, shard: 4, shards: 4 }
-          - { browser: firefox, shard: 1, shards: 3 }
-          - { browser: firefox, shard: 2, shards: 3 }
-          - { browser: firefox, shard: 3, shards: 3 }
-          - { browser: webkit, shard: 1, shards: 3 }
-          - { browser: webkit, shard: 2, shards: 3 }
-          - { browser: webkit, shard: 3, shards: 3 }
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
@@ -162,40 +208,75 @@ jobs:
         with:
           name: web-dist
           path: apps/web/dist
-      - name: Install ${{ matrix.browser }}
-        run: pnpm --filter @wren-cad/web exec playwright install --with-deps ${{ matrix.browser }}
-      - name: Run Playwright
-        # Firefox runs headed under Xvfb: headless Firefox on GPU-less runners has no GL context at
-        # all, while Xvfb + Mesa (llvmpipe) gives it a working software WebGL2 (ADR-005 §7).
-        # One worker (playwright.config.ts) and traces kept only for failures: a slow-runner flake
-        # leaves a trace in the playwright-report artefact instead of a bare timeout.
-        # Chromium also runs the installed-PWA chrome checks with touch emulation (chromium-touch,
-        # gating); WebKit runs them on the iPad Pro 11 device (webkit-ipad, non-gating with the job).
-        run: |
-          case "${{ matrix.browser }}" in
-            firefox)
-              WREN_HEADED=1 xvfb-run -a pnpm --filter @wren-cad/web exec playwright test --trace retain-on-failure --project=firefox --shard=${{ matrix.shard }}/${{ matrix.shards }} ;;
-            chromium)
-              pnpm --filter @wren-cad/web exec playwright test --trace retain-on-failure --project=chromium --project=chromium-touch --shard=${{ matrix.shard }}/${{ matrix.shards }} ;;
-            webkit)
-              pnpm --filter @wren-cad/web exec playwright test --trace retain-on-failure --project=webkit --project=webkit-ipad --shard=${{ matrix.shard }}/${{ matrix.shards }} ;;
-          esac
+      - name: Install chromium
+        run: pnpm --filter @wren-cad/web exec playwright install --with-deps chromium
+      - name: Run smoke tests
+        run: pnpm --filter @wren-cad/web exec playwright test --trace retain-on-failure --grep @smoke --project=chromium --project=chromium-touch
       - name: Upload Playwright report
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: playwright-report-${{ matrix.browser }}-${{ matrix.shard }}
+          name: playwright-report-smoke
           path: |
             apps/web/playwright-report
             apps/web/test-results
           if-no-files-found: ignore
           retention-days: 7
 
-  # The M3 reference parts (PLAN §12A) take ~20 min serially: three gating shards of their own,
-  # so neither they nor the main chromium job approach the 30-minute limit.
+  e2e:
+    name: E2E (chromium, shard ${{ matrix.shard }}/8)
+    needs: [build, smoke, verified]
+    if: ${{ needs.verified.outputs.verified != 'true' }}
+    runs-on: ubuntu-latest
+    # Sharded: the chromium suite outgrew one 30-minute runner with M3.6 (job cancelled at 30:00).
+    # 155 tests (chromium + chromium-touch), 19-20 per shard. H1 measured ~57 min of serial time for
+    # 114 tests, so about 75-80 min now: eight shards of ~10 min plus ~3 min of setup. The limit
+    # fails a shard that drifts well past that. Firefox and WebKit run in soak.yml (ADR-083).
+    timeout-minutes: 25
+    strategy:
+      # One failing shard cancels the rest: the run is red either way and the runners free up for
+      # the next push. Playwright retries once on CI (playwright.config.ts), which absorbs a flake.
+      fail-fast: true
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Download web build
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: web-dist
+          path: apps/web/dist
+      - name: Install chromium
+        run: pnpm --filter @wren-cad/web exec playwright install --with-deps chromium
+      - name: Run Playwright
+        # One worker (playwright.config.ts) and traces kept only for failures: a slow-runner flake
+        # leaves a trace in the playwright-report artefact instead of a bare timeout. Chromium also
+        # runs the installed-PWA chrome checks with touch emulation (chromium-touch).
+        run: pnpm --filter @wren-cad/web exec playwright test --trace retain-on-failure --project=chromium --project=chromium-touch --shard=${{ matrix.shard }}/8
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: playwright-report-chromium-${{ matrix.shard }}
+          path: |
+            apps/web/playwright-report
+            apps/web/test-results
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # The M3 reference parts (PLAN §12A) take ~20 min serially (10 tests): three gating shards of
+  # 3-4 tests, ~7 min each. Not the long pole (the e2e shards, perf and the viewport suite are), so
+  # no more shards.
   e2e-reference:
     name: E2E reference parts (chromium, shard ${{ matrix.shard }}/3)
-    needs: build
+    needs: [build, smoke, verified]
+    if: ${{ needs.verified.outputs.verified != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -232,14 +313,21 @@ jobs:
 
   package-e2e:
     # Split (viewport | ui): together they reached ~30 min after H1 added wheel and section specs.
-    name: E2E (${{ matrix.suite }}, chromium)
-    needs: lint
+    # The viewport suite runs one worker (WebGL timing probes) and became the CI long pole at
+    # ~21 min (run #59), so it is sharded three ways; ui stays one job (~10 min).
+    name: E2E (${{ matrix.suite }}${{ matrix.shard && format(' {0}/3', matrix.shard) || '' }}, chromium)
+    needs: [lint, verified]
+    if: ${{ needs.verified.outputs.verified != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        suite: [viewport, ui]
+        include:
+          - { suite: viewport, shard: 1 }
+          - { suite: viewport, shard: 2 }
+          - { suite: viewport, shard: 3 }
+          - { suite: ui }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
@@ -252,7 +340,7 @@ jobs:
         run: pnpm --filter @wren-cad/viewport exec playwright install --with-deps chromium
       - name: Viewport E2E
         if: matrix.suite == 'viewport'
-        run: pnpm --filter @wren-cad/viewport e2e
+        run: pnpm --filter @wren-cad/viewport e2e --shard=${{ matrix.shard }}/3
       # Visual baselines were recorded outside CI; until CI-generated baselines are committed,
       # run the UI suite's functional/a11y assertions and skip pixel comparison.
       - name: UI E2E (functional + axe)
@@ -263,7 +351,8 @@ jobs:
   # apps/web/e2e/perf/budgets.ts (ADR-009). Gates the deploy.
   perf:
     name: Performance budgets
-    needs: build
+    needs: [build, verified]
+    if: ${{ needs.verified.outputs.verified != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
     env:
@@ -316,7 +405,8 @@ jobs:
   # platform E2E specs. Non-gating at first: scores are recorded in the job summary and artefact.
   lighthouse:
     name: Lighthouse (non-gating)
-    needs: build
+    needs: [build, verified]
+    if: ${{ needs.verified.outputs.verified != 'true' }}
     runs-on: ubuntu-latest
     continue-on-error: true
     timeout-minutes: 20
@@ -356,8 +446,8 @@ jobs:
   # Deploys only after every gating check passed on a push to main (reviewer M0 defect 6).
   pages:
     name: Deploy to GitHub Pages
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [lint, test, build, e2e, e2e-reference, package-e2e, perf]
+    if: ${{ !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.build.result == 'success' && (needs.verified.outputs.verified == 'true' || (needs.lint.result == 'success' && needs.test.result == 'success' && needs.smoke.result == 'success' && needs.e2e.result == 'success' && needs.e2e-reference.result == 'success' && needs.package-e2e.result == 'success' && needs.perf.result == 'success')) }}
+    needs: [verified, lint, test, build, smoke, e2e, e2e-reference, package-e2e, perf]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     concurrency:
@@ -393,8 +483,8 @@ jobs:
   # `pages`. The only job with contents: write. Pushes made with GITHUB_TOKEN start no workflow.
   cloudflare:
     name: Publish to cloudflare-pages branch
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [lint, test, build, e2e, e2e-reference, package-e2e, perf]
+    if: ${{ !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.build.result == 'success' && (needs.verified.outputs.verified == 'true' || (needs.lint.result == 'success' && needs.test.result == 'success' && needs.smoke.result == 'success' && needs.e2e.result == 'success' && needs.e2e-reference.result == 'success' && needs.package-e2e.result == 'success' && needs.perf.result == 'success')) }}
+    needs: [verified, lint, test, build, smoke, e2e, e2e-reference, package-e2e, perf]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     concurrency:
@@ -431,12 +521,18 @@ jobs:
           VITE_GITHUB_CLIENT_ID: ${{ vars.VITE_GITHUB_CLIENT_ID }}
           VITE_GITLAB_CLIENT_ID: ${{ vars.VITE_GITLAB_CLIENT_ID }}
           VITE_BITBUCKET_CLIENT_ID: ${{ vars.VITE_BITBUCKET_CLIENT_ID }}
-      # Drops 404.html (it would turn Cloudflare's SPA fallback off), checks the root-base manifest
-      # and fails if any file is over Cloudflare Pages' 25 MiB limit; prints the largest files.
-      - name: Prepare and size-guard the Cloudflare dist
-        run: node apps/web/scripts/cloudflare-dist.mjs apps/web/dist --max-mib 25
-      - name: Force-push dist to cloudflare-pages
-        working-directory: apps/web/dist
+      # Drops 404.html, checks the root-base manifest, fails if any file is over Cloudflare's 25 MiB
+      # static-asset limit, then lays the site out for Workers with static assets: public/ plus an
+      # assets-only wrangler.jsonc (ADR-082 amendment). The Worker connected to this branch must
+      # have this name: set the repository variable CLOUDFLARE_WORKER_NAME, else "wren-cad".
+      - name: Prepare, size-guard and bundle the Cloudflare Worker site
+        env:
+          WORKER_NAME: ${{ vars.CLOUDFLARE_WORKER_NAME || 'wren-cad' }}
+        run: >-
+          node apps/web/scripts/cloudflare-dist.mjs apps/web/dist --max-mib 25
+          --worker-out "$RUNNER_TEMP/cloudflare-site" --worker-name "$WORKER_NAME"
+      - name: Force-push the Worker site to cloudflare-pages
+        working-directory: ${{ runner.temp }}/cloudflare-site
         env:
           GH_TOKEN: ${{ github.token }}
           SOURCE_SHA: ${{ github.sha }}

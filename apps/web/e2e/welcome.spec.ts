@@ -8,7 +8,7 @@ import { app, boot, palette } from './helpers';
 
 test.use({ viewport: { width: 1440, height: 900 } });
 
-test('welcome → demo bracket → edit width → mass updates', async ({ page }) => {
+test('welcome → demo bracket → edit width → mass updates @smoke', async ({ page }) => {
   test.setTimeout(120_000);
   await boot(page);
   const a = app(page);

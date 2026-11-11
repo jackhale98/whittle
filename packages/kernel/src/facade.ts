@@ -41,7 +41,7 @@ export interface WhittleKernelModule {
   fingerprints(shape: number): string;
   /**
    * `Result<ShapeBounds>` JSON: massProperties' bbox and topology counts without integrating
-   * anything (ADR-083). Optional: builds before it lack it (callers fall back to massProperties).
+   * anything (ADR-084). Optional: builds before it lack it (callers fall back to massProperties).
    */
   bounds?(shape: number): string;
   /**

@@ -236,6 +236,44 @@ describe.skipIf(!m3)(`regen golden: booleans merge coplanar faces (ADR-078)${not
     relClose(totalVolume(r.bodies), bracketVolume(d) - K * 4 * (d.thickness + d.height), 1e-9);
   }, 120_000);
 
+  it('M3.8 grown: a fillet edge picked at 8 mm that the merge made 48 mm long is reported', async () => {
+    const corner = edgeName(plateBack, plateLeft);
+    // Pick the edge before the upright exists: the plate's back-left vertical edge, 8 mm long.
+    const full = bracketDoc();
+    const at = full.parts[0]?.features.findIndex((f) => f.id === B.E3) ?? -1;
+    const before = structuredClone(full);
+    (before.parts[0] as { rollbackIndex: number }).rollbackIndex = at;
+    const r0 = await regen(before);
+    const body = only(r0);
+    const index = body.mesh.edgeNames.indexOf(corner);
+    expect(index).toBeGreaterThanOrEqual(0);
+    const picked = await api.refFor(PART, { bodyId: body.id, kind: 'edge', index });
+    expect(picked?.name).toBe(corner);
+    relClose(picked?.fingerprint?.length ?? 0, BRACKET_DIMS.thickness, 1e-9);
+
+    const r = await regen(withFeatures(full, fillet(fid('UGF'), [picked as EntityRef], '2 mm')));
+    expect(states(r), describeFailures(r)).toEqual(Array(10).fill('ok'));
+    const st = r.features[9] as RegenFeatureStatus;
+    expect(st.merged).toBeUndefined();
+    expect(st.grown).toHaveLength(1);
+    const g = st.grown?.[0];
+    expect(g?.path).toBe('/edges/0');
+    expect(g?.name).toBe(corner);
+    relClose(g?.was ?? 0, BRACKET_DIMS.thickness, 1e-9);
+    relClose(g?.now ?? 0, BRACKET_DIMS.thickness + BRACKET_DIMS.height, 1e-9);
+
+    // The same edge picked on the merged model: unchanged, nothing reported.
+    const merged = only(await regen(full));
+    const now = await api.refFor(PART, {
+      bodyId: merged.id,
+      kind: 'edge',
+      index: merged.mesh.edgeNames.indexOf(corner),
+    });
+    const r2 = await regen(withFeatures(full, fillet(fid('UGF'), [now as EntityRef], '2 mm')));
+    expect(states(r2), describeFailures(r2)).toEqual(Array(10).fill('ok'));
+    expect((r2.features[9] as RegenFeatureStatus).grown).toBeUndefined();
+  }, 120_000);
+
   it('a ref to a merged #k piece moves the merged face, never the piece that took its index', async () => {
     // T's top at z = 10 is split by two walls into [10,20] (#0), [22,30] (#1), [32,40] (#2); #0
     // is flush with P's top and merges into it. A push/pull stored on "#0" (fingerprint of the old

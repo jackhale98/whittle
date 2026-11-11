@@ -34,7 +34,7 @@ std::string metaJsonFor(const ShapeRecord& record, const Bnd_Box& box, int faceC
 }
 
 // ---------------------------------------------------------------------------------------------
-// Per-sub-shape memo (ADR-083)
+// Per-sub-shape memo (ADR-084)
 // ---------------------------------------------------------------------------------------------
 // A boolean's result shares most of its faces and edges (TShapes) with its input, so of a
 // 400-face body whose last feature touched three faces, 397 faces already had their bounds and
@@ -111,7 +111,7 @@ Bnd_Box exactBounds(const ShapeRecord& record) {
     return box;
   }
   // BRepBndLib::AddOptimal(shape, box, false, false) face by face, with each face's contribution
-  // memoised (ADR-083). AddOptimal on a compound holding only that face runs exactly its face
+  // memoised (ADR-084). AddOptimal on a compound holding only that face runs exactly its face
   // loop for it (the face's edges and vertices are inside it, so the free edge and vertex loops
   // add nothing) and `Update`s an empty box with that face's box; `Update` is a min/max, so the
   // union is the same in any order.
@@ -494,7 +494,7 @@ std::string fingerprints(ShapeHandle shape) {
   return guarded("fingerprints", [&]() {
     const auto record = requireShape(shape);
     const Topo& topo = record->topo();
-    // Per face and edge memoised (ADR-083): the same JSON for the same oriented sub-shape.
+    // Per face and edge memoised (ADR-084): the same JSON for the same oriented sub-shape.
     SubShapeMemo& memo = subShapeMemo();
     memo.maybeSweep();
     auto cached = [](auto& map, const TopoDS_Shape& key, auto&& make) -> const std::string& {
@@ -605,7 +605,7 @@ std::string configureThreads(int32_t count) {
 void release(ShapeHandle shape) {
   try {
     handles().erase(shape);
-    // Sub-shapes only this handle used no longer need their memo entries (ADR-083).
+    // Sub-shapes only this handle used no longer need their memo entries (ADR-084).
     subShapeMemo().released();
   } catch (...) {
     // Never throw across the boundary; releasing an unknown handle is a no-op.

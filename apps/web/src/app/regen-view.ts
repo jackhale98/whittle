@@ -70,7 +70,7 @@ export function onRegen(wb: Workbench, raw: RegenView): void {
 }
 
 /**
- * Mass properties fetched after the geometry (ADR-083, `RegenLoopOptions.onMass`): added to the
+ * Mass properties fetched after the geometry (ADR-084, `RegenLoopOptions.onMass`): added to the
  * displayed live result when it still shows those shapes. Nothing else changes (no viewport sync:
  * the meshes are the same), so only the readouts that use them re-render.
  */

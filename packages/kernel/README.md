@@ -364,7 +364,7 @@ NURBS and integrate adaptively (relative 1e-12, better than 1e-9 achieved; about
 those shapes only). Fingerprint areas and naming centroids keep the default; fingerprint lengths of
 free-form edges use `GCPnts_AbscissaPoint` (1e-10).
 
-**Sub-shape memo (ADR-083).** `bounds`, the bbox of `massProperties` and `mesh`, and `fingerprints`
+**Sub-shape memo (ADR-084).** `bounds`, the bbox of `massProperties` and `mesh`, and `fingerprints`
 are memoised per oriented face and edge (TShape, location, orientation) across handles: a boolean's
 result shares most of its faces with its input, so only the faces a feature touched are measured
 again (the stress part's final body: bounds 440 → 1 ms, fingerprints 250 → 6 ms). The values come

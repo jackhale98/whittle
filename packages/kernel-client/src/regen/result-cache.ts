@@ -16,7 +16,7 @@ export class ResultCache {
   /**
    * Spare entries kept per slot. Configured (device tiers, `configureRegen`): a hard bound.
    * Default (`auto`): at least `DEFAULT_SPARE_RESULTS`, and enough for `AUTO_SPARE_STATES` earlier
-   * full states of the part (ADR-083), while the Wasm heap is under `AUTO_SPARE_HEAP_BYTES`.
+   * full states of the part (ADR-084), while the Wasm heap is under `AUTO_SPARE_HEAP_BYTES`.
    */
   maxSpare: number;
   /** `maxSpare` was not configured: scale it with the part (see `spareFor`). */

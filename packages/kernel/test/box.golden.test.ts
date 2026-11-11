@@ -354,7 +354,7 @@ for (const { variant, init } of VARIANTS) {
       k.release(result.shape);
     });
 
-    it('bounds: the bbox and counts of massProperties, without integrating (ADR-083)', () => {
+    it('bounds: the bbox and counts of massProperties, without integrating (ADR-084)', () => {
       const frame = { origin: [100, -50, 7] as Vec3, z: [0, 0, 1] as Vec3, x: [0, 1, 0] as Vec3 };
       for (const feature of [box(), box({ frame })]) {
         const result = ok<FeatureResult>(

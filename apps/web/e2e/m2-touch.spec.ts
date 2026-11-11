@@ -83,7 +83,7 @@ const boxesOverlap = (r: Box, s: Box): boolean =>
   !s ||
   (r.x < s.x + s.width && s.x < r.x + r.width && r.y < s.y + s.height && s.y < r.y + r.height);
 
-test('touch taps select once; bubble; double-tap zoom; long-press; 2/3-finger undo/redo', async ({
+test('touch taps select once; bubble; double-tap zoom; long-press; 2/3-finger undo/redo @smoke', async ({
   page,
 }) => {
   test.slow();
@@ -149,7 +149,7 @@ test('touch taps select once; bubble; double-tap zoom; long-press; 2/3-finger un
   expect((await a.doc()).parts[0]?.features).toHaveLength(1);
 });
 
-test('push/pull with a finger: bubble → arrow drag → feature; then a keypad value', async ({
+test('push/pull with a finger: bubble → arrow drag → feature; then a keypad value @smoke', async ({
   page,
 }) => {
   test.slow();
