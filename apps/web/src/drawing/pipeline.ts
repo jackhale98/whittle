@@ -7,6 +7,7 @@
 import type {
   Annotation,
   Drawing,
+  DrawingTable,
   EvalResult,
   Expr,
   GpsStandard,
@@ -56,6 +57,10 @@ export interface Built {
   problems: { viewId: Id; message: string }[];
   /** Evaluates an expression as the drawing's configuration sees it. */
   evalLength(expr: Expr): number | undefined;
+  /** Table rows as the sheet shows them (import keeps lanes clear of tables). */
+  tableData(table: DrawingTable): TableData | undefined;
+  /** Annotation expressions: lengths in mm, angles in rad. */
+  evaluateAnnotation(expr: Expr, kind: 'length' | 'angle'): number | undefined;
 }
 
 export type PipelineResult =
@@ -230,6 +235,27 @@ export async function runPipeline(
       sheet: { index, count },
     };
   };
+  const tableData = (t: DrawingTable): TableData | undefined => {
+    if (t.kind !== 'partProperties') return undefined;
+    const tb = titleBlock(drawing.sheets[0] as Sheet, 1, drawing.sheets.length);
+    const kg = t.massUnit === 'kg';
+    const cells: Record<string, string> = {
+      partNumber: tb.partNumber,
+      description: tb.description ?? '',
+      material: tb.material ?? '',
+      mass:
+        typeof tb.mass === 'number'
+          ? kg
+            ? `${Number((tb.mass / 1000).toPrecision(4))} kg`
+            : `${Number(tb.mass.toPrecision(4))} g`
+          : '',
+      configuration: tb.configuration ?? 'Default',
+    };
+    return {
+      header: t.columns.map((c) => COLUMN_TITLES[c] ?? c),
+      rows: [t.columns.map((c) => cells[c] ?? '')],
+    };
+  };
   const build = buildDrawing({
     drawing,
     annotations,
@@ -245,27 +271,7 @@ export async function runPipeline(
     ...(wbDoc.drawingDefaults?.fields ? { projectFields: wbDoc.drawingDefaults.fields } : {}),
     fitDeviations: drawingDocument().fitToleranceDeviations,
     features: { hole: holeFor, chamfer: (a) => chamferCalloutData(main.doc, a) },
-    tables: (t): TableData | undefined => {
-      if (t.kind !== 'partProperties') return undefined;
-      const tb = titleBlock(drawing.sheets[0] as Sheet, 1, drawing.sheets.length);
-      const kg = t.massUnit === 'kg';
-      const cells: Record<string, string> = {
-        partNumber: tb.partNumber,
-        description: tb.description ?? '',
-        material: tb.material ?? '',
-        mass:
-          typeof tb.mass === 'number'
-            ? kg
-              ? `${Number((tb.mass / 1000).toPrecision(4))} kg`
-              : `${Number(tb.mass.toPrecision(4))} g`
-            : '',
-        configuration: tb.configuration ?? 'Default',
-      };
-      return {
-        header: t.columns.map((c) => COLUMN_TITLES[c] ?? c),
-        rows: [t.columns.map((c) => cells[c] ?? '')],
-      };
-    },
+    tables: tableData,
   });
   return {
     kind: 'ok',
@@ -279,6 +285,8 @@ export async function runPipeline(
       quality: degraded ? 'draft' : quality,
       problems,
       evalLength: (e) => ev(e, 'length'),
+      tableData,
+      evaluateAnnotation,
     },
   };
 }

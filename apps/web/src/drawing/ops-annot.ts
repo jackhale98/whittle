@@ -19,7 +19,9 @@ import type {
   Vec3,
 } from '@wren-cad/contracts';
 import {
-  importCommand,
+  anchorLookup,
+  importAnchorQueries,
+  importCommands,
   planImport,
   type SolvedView,
   viewOutline,
@@ -676,19 +678,43 @@ export async function reattachPick(c: DrawingController, pick: EdgePick): Promis
 // Import model annotations
 // ---------------------------------------------------------------------------------------------
 
-/** Plans "Import model annotations" for the drawing and opens the panel. */
-export function openImport(c: DrawingController): void {
+/**
+ * Plans "Import model annotations" for the drawing and opens the panel. Async: the anchors of
+ * the promoted refs (fillets, chamfers, revolves) come from one query to the modelling worker, in
+ * the drawing configuration's slot.
+ */
+export async function openImport(c: DrawingController): Promise<void> {
   const b = c.built();
   if (!b) return;
   const frames = new Map(b.main.result.sketches.map((s) => [s.featureId, s.frame] as const));
   const part = b.main.doc.parts.find((p) => p.id === b.part.id) ?? b.part;
+  const queries = importAnchorQueries(part, frames);
+  const modeling = c.wb.modeling;
+  // The drawing's configuration lives in `main` when it is the active one, else in its own slot.
+  const cfg = b.drawing.configurationId ?? null;
+  const slot = cfg === host.activeIdOf(part) ? 'main' : host.slotOf(cfg);
+  let anchors: ReturnType<typeof anchorLookup> | undefined;
+  if (queries.length > 0 && modeling?.port.annotationAnchors) {
+    try {
+      const r = await modeling.port.annotationAnchors(part.id, queries, slot);
+      if (r.ok) anchors = anchorLookup(queries, r.value);
+    } catch {
+      // Without anchors those promotions are reported as not placeable, never guessed.
+    }
+  }
+  // The model may have changed while the worker answered: plan from what is shown now.
+  const now = c.built() ?? b;
   const plan = planImport({
-    drawing: b.drawing,
+    drawing: now.drawing,
     part,
-    views: b.build.views,
-    resolutions: b.main.resolutions,
-    projections: b.projections,
+    views: now.build.views,
+    resolutions: now.main.resolutions,
+    projections: now.projections,
     sketchFrames: frames,
+    ...(anchors ? { anchors } : {}),
+    moveViews: true,
+    tables: now.tableData,
+    evaluate: now.evaluateAnnotation,
     newId: () => host.ulid(),
   });
   c.ui.set((s) => ({
@@ -701,21 +727,29 @@ export function openImport(c: DrawingController): void {
   }));
 }
 
-/** Places the checked candidates: one `placeAnnotations` step. */
+/** Places the checked candidates (and the view moves they need): one undo step. */
 export function commitImport(c: DrawingController): number {
   const { importPlan, importChecked } = c.ui.get();
   const b = c.built();
   if (!importPlan || !b) return 0;
-  const cmd = importCommand(importPlan, b.drawing.id, importChecked);
-  if (cmd.items.length === 0) return 0;
-  const ok = c.apply(cmd, 'Import model annotations');
-  if (!ok) return 0;
+  const cmds = importCommands(importPlan, b.drawing.id, importChecked);
+  const place = cmds.find((x) => x.kind === 'placeAnnotations');
+  const items = place && place.kind === 'placeAnnotations' ? place.items : [];
+  if (items.length === 0) return 0;
+  const key = `import:${host.ulid()}`;
+  for (const cmd of cmds) {
+    if (!c.apply(cmd, 'Import model annotations', key)) {
+      c.commit();
+      return 0;
+    }
+  }
+  c.commit();
   c.ui.set((s) => ({
     ...s,
     importPlan: null,
     panel: 'inspector',
-    fresh: cmd.items.map((i) => i.placement.id),
+    fresh: items.map((i) => i.placement.id),
   }));
-  c.toast(`Placed ${cmd.items.length} annotation${cmd.items.length === 1 ? '' : 's'}.`);
-  return cmd.items.length;
+  c.toast(`Placed ${items.length} annotation${items.length === 1 ? '' : 's'}.`);
+  return items.length;
 }

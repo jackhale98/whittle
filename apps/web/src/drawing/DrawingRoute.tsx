@@ -284,7 +284,7 @@ export default function DrawingRoute({ wb, id, tier, onClose }: DrawingRouteProp
   }
   const onTool = (t: DrawingToolId) => {
     if (t === 'views') c.patch({ panel: 'views' });
-    else if (t === 'import') openImport(c);
+    else if (t === 'import') void openImport(c);
     else if (t === 'table') addPartPropertiesTable(c);
     else {
       const tool = TOOL_BY_ID[t];

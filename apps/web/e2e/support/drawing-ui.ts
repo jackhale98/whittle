@@ -71,6 +71,8 @@ export interface PlacementInfo {
   viewId: string;
   layout: { kind: string; side?: string; lane?: number; distance?: number };
   text: [number, number] | null;
+  /** The label's bounds on the sheet. */
+  box: { min: [number, number]; max: [number, number] } | null;
   attention: boolean;
 }
 

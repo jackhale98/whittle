@@ -410,6 +410,20 @@ test.describe('annotations', () => {
     expect(s.texts).toContain('80');
     expect(s.texts).toContain('Ø6');
 
+    // No label sits on another view: each is clear of every view but its own.
+    for (const p of await drawing(page).placements()) {
+      if (!p.box) continue;
+      for (const v of s.views) {
+        if (v.id === p.viewId || !v.outline) continue;
+        const apart =
+          p.box.max[0] <= v.outline.min[0] ||
+          p.box.min[0] >= v.outline.max[0] ||
+          p.box.max[1] <= v.outline.min[1] ||
+          p.box.min[1] >= v.outline.max[1];
+        expect(apart, `label of ${p.id} overlaps view ${v.id}`).toBe(true);
+      }
+    }
+
     // Nothing is placed twice: a second import has nothing new to offer.
     await panelTab(page, 'Import').click();
     await page.getByTestId('import-open').click();

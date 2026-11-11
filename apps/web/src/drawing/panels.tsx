@@ -384,7 +384,7 @@ export function ImportPanelBody({
           variant="primary"
           size={size}
           icon={<Ruler className="size-4" />}
-          onClick={() => openImport(c)}
+          onClick={() => void openImport(c)}
           data-testid="import-open"
         >
           Import model annotations
