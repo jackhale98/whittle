@@ -858,11 +858,27 @@ Order decision (owner, 2026-11-10; ADR-081): drawings stay before MBD, but M4 bu
   - The DXF is valid and opens correctly in LibreCAD, checked automatically in CI (golden tests, an ezdxf structure audit, headless LibreCAD conversion). QCAD compatibility is best effort, not an acceptance criterion (owner, 2026-11-10: QCAD's command-line tools are commercial).
   - Editing the model updates the drawing, and dangling dimensions are flagged.
   - Certification-style suite (§12A): for every reference part, the E2E recreates its spec drawing with Wren's drawing tools. The views requested by the spec must be present and every specified dimension must appear with the same value.
+    - **Owner decision 2026-11-11: M4 ships at 78 of 94.** The suite passes on all ten parts, with nothing needing attention. The remaining 16 specified dimensions are named gaps (`apps/web/e2e/support/reference-drawing-gaps.ts`), each a `test.fixme` that fails once it starts working. They move to **M4.1**.
   - **Annotation core:**
     - Every dimension and GD&T frame on the bracket drawing is a part-level annotation with resolved `EntityRef`s (unit test).
     - Deleting or reordering annotations never retargets a configuration override (test).
     - A promoted driving dimension updates on the drawing when its value changes.
     - A document saved before M4 is refused on load with a plain message, never half-read (owner, 2026-11-11: no backward compatibility before 1.0; ADR-090).
+
+### M4.1 — Drawing pick gaps (certification follow-ups)
+
+From the M4 certification suite (owner decision 2026-11-11), in this order:
+
+1. **Construction geometry on views** (GAP-PICK-CONSTRUCTION, 6 dimensions: rp03 flat_h, rp04 boss_up, rp08 cs_x and cs_y, rp09 pcd, rp10 slot_x0). Draw sketch origins, centre lines, centre planes and pitch circles as pickable construction lines, via `annotationAnchors` for `S<id>:p(@origin)`, `S<id>:e(@x)` and `S<id>:e(@y)`.
+2. **Section cut-face edges** (GAP-PICK-SECTION, 3: rp05 wall and draft_a, rp08 tap_depth, rp09 hub_h). The drawing kernel names each cut-face edge by the model face it cuts.
+3. **Centre-to-centre dimensions** (GAP-TOOL-CENTRES, 1: rp08 tap_dx). The Dimension tool waits for a second pick after a circle.
+4. **Niche cases:**
+   - GAP-PICK-OUTLINE-SPLINE (rp02 fillet_r): a torus outline that comes back as a spline gets a radius pick.
+   - GAP-PICK-TANGENT (rp06 rod_h, rod_tail): tangent edges are drawn thin and are pickable.
+   - GAP-PICK-HIDDEN (rp07 inset): hidden lines are pickable.
+   - GAP-PICK-EXTREMES (rp09 flange_d): a linear dimension across a circle's extremes.
+
+- **Accept:** each closed gap's `test.fixme` becomes a passing assertion. The certification suite reaches 94 of 94.
 
 ### M4.5 — 3D mice and CAD mice
 
