@@ -63,10 +63,39 @@ export function writeKeymap(overrides: KeymapOverrides): void {
   }
 }
 
+/** Per-device sketch input options (M3.8), next to the navigation settings. */
+export const SKETCH_INPUT_KEY = 'wren.sketchInput';
+
+/** Settings → Navigation: a right click finishes the sketch tool in progress (default on). */
+export function readRightClickFinishes(): boolean {
+  try {
+    const s = globalThis.localStorage?.getItem(SKETCH_INPUT_KEY);
+    const v = s ? (JSON.parse(s) as { rightClickFinishes?: unknown }).rightClickFinishes : true;
+    return v !== false;
+  } catch {
+    return true;
+  }
+}
+
+export function writeRightClickFinishes(on: boolean): void {
+  try {
+    if (on) globalThis.localStorage?.removeItem(SKETCH_INPUT_KEY);
+    else
+      globalThis.localStorage?.setItem(
+        SKETCH_INPUT_KEY,
+        JSON.stringify({ rightClickFinishes: false }),
+      );
+  } catch {
+    // Storage may be unavailable (private mode): the setting lasts for the session.
+  }
+}
+
 export interface InputSettings {
   navigation: NavigationOptions;
   keymap: KeymapOverrides;
   resolved: ResolvedKeymap;
+  /** A right click finishes the sketch chain or spline in progress (M3.8; absent = true). */
+  rightClickFinishes?: boolean;
 }
 
 export function loadInput(): InputSettings {
@@ -75,7 +104,13 @@ export function loadInput(): InputSettings {
     navigation: readNavigation(),
     keymap,
     resolved: resolveKeymap(APP_COMMANDS, keymap),
+    rightClickFinishes: readRightClickFinishes(),
   };
+}
+
+export function withRightClickFinishes(s: InputSettings, on: boolean): InputSettings {
+  writeRightClickFinishes(on);
+  return { ...s, rightClickFinishes: on };
 }
 
 export function withKeymap(s: InputSettings, keymap: KeymapOverrides): InputSettings {

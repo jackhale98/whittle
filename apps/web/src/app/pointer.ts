@@ -375,6 +375,7 @@ export function onGesture(wb: Workbench, g: ViewportGesture): void {
     drawing: !!draw && (draw.anchors.length > 0 || draw.chainFrom !== null),
     tool: !!draw || u.sketch?.tool === 'dimension',
     onGeometry: best !== null,
+    rightClickFinishes: wb.input.get().rightClickFinishes,
   });
   switch (action) {
     case 'select':
@@ -397,6 +398,9 @@ export function onGesture(wb: Workbench, g: ViewportGesture): void {
       break;
     case 'redo':
       wb.redo();
+      break;
+    case 'finish':
+      wb.sketch?.finishTool();
       break;
     case null:
       break;

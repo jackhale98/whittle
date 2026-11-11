@@ -212,10 +212,13 @@ dimension from. On touch devices every tool has a text label under its icon.
 - **Elliptic arc** (Shift+A): the same three clicks for the ellipse (it is drawn dashed), then click the
   start and the end of the arc. The arc runs counter-clockwise from the start.
 - **Spline, control points** (B) and **through points** (Shift+B): click the points. The curve shows as you
-  go. **Enter**, a **double-click** or a **double-tap** ends the open curve; clicking the **first point
-  again** closes it. A through-point spline passes through every point you clicked, and dragging one of
-  those points reshapes the curve. A control-point spline is pulled by its poles (shown as construction
-  points). Both are cubic.
+  go. A **right click**, **Enter**, a **double-click**, a **double-tap** or **Finish** on a touch screen ends
+  the open curve; clicking the **first point again** closes it. A through-point spline passes through every
+  point you clicked, and dragging one of those points reshapes the curve. A control-point spline is pulled
+  by its poles (shown as construction points). Both are cubic when they have enough points.
+- **Two points are enough.** A through-point spline with two points is a straight cubic whose end tangents
+  are free: drag its two construction handles, or constrain them, to bend it later. A control-point spline
+  with two poles is a straight degree-1 segment.
 - The Pencil turns an oval into an ellipse and a smooth stroke into a spline. Dimension, constrain and
   extrude them like any other geometry. Tangent works between any two curves; a curvature-continuous
   constraint that the solver cannot hold is reported as unsupported rather than dropped.
@@ -224,6 +227,41 @@ dimension from. On touch devices every tool has a text label under its icon.
 Press **X** to toggle construction geometry. Construction lines guide the sketch but do not make
 regions. While you draw, Wren snaps to horizontal, vertical, parallel, perpendicular and tangent
 directions, and to existing points.
+
+### Implied constraints: what you see is what you get
+
+The small glyphs next to the cursor while you draw are the constraints the click will add. Nothing else
+is added, and nothing they show is left out. This holds for every tool and for Pencil shapes.
+
+- **On an existing point** (a corner, an end, a centre, the origin) the new point *is* that point: no
+  second point is made on top of it. The glyph shows coincident. This works for a circle's or polygon's
+  centre, a rectangle's corners or centre, an arc's ends and every spline point. With the Point tool, a
+  click on an existing point adds nothing and selects it.
+- **On a curve or a line's midpoint**, the point gets *on curve* or *midpoint*. On an axis it gets *on
+  the axis*.
+- **Horizontal and vertical** are added to a line exactly when the glyph shows. When the two ends are
+  already level (for example both on the horizontal axis), no glyph shows and nothing redundant is added.
+- **Clicks that only set a size** (a circle's rim, a slot's width, the depth of a 3-point rectangle, an
+  ellipse's second radius, an elliptic arc's ends) do not snap to curves. A circle's rim, a 3-point
+  circle's points, a 3-point arc's middle point and an ellipse's axis end still snap to an existing point,
+  and the curve then passes through it (*on curve*).
+- A dashed line from another point is an **alignment guide**: the cursor lines up with that point, but
+  no constraint is added.
+
+### Finishing a line chain or spline
+
+The line tool keeps chaining segments, and a spline keeps adding points, until you finish:
+
+- **Mouse:** a **right click** (press and release without moving) ends the line chain where it is, or
+  finishes the spline with the points placed so far. The tool stays selected. With nothing in progress, a
+  right click opens the radial menu as before, and dragging with the right button still navigates. Turn
+  this off in **Settings → Navigation → Sketching** ("Right click finishes the current sketch tool").
+- **Keyboard:** **Enter** finishes too; **Esc** drops what is in progress, and a second **Esc** leaves the
+  tool. A **double-click** still works.
+- **Touch and Pencil:** a **Finish** button (✓) appears beside **Done** on the sketch toolbar while a
+  chain or spline is in progress. A double-tap still works.
+- A shape that needs more clicks (a rectangle with one corner placed, say) cannot be finished early: a
+  right click or Finish drops it, as Esc does.
 
 ### Leaving a tool
 
@@ -237,7 +275,7 @@ strokes that Wren recognises.
 With no tool selected, the Pencil does two things, depending on how you press.
 
 - **Move at once** and you draw a freehand stroke that Wren recognises. If the stroke starts on an existing
-  corner or end point, its start joins that point (a coincident constraint) and the point does not move, so
+  corner or end point, its start *is* that point (no duplicate point) and the point does not move, so
   you can chain strokes from a corner quickly.
 - **Press and hold still** for about 0.3 s on sketch geometry and it is grabbed: the target lights up and
   then follows the Pencil as a normal solver drag (one undo step; constraints and dimensions are kept). You

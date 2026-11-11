@@ -103,7 +103,19 @@ export interface ShortcutOverlayProps {
   held?: HeldModifier | null;
   platform?: Platform;
   layout?: LayoutMap | null;
+  /**
+   * Fixed rows that are not keymap commands (mouse gestures such as "Right click"), appended to
+   * their group in the order given. `keys` are shown as written.
+   */
+  extras?: readonly ShortcutExtra[];
   className?: string;
+}
+
+export interface ShortcutExtra {
+  id: string;
+  label: string;
+  group: string;
+  keys: readonly string[];
 }
 
 /**
@@ -118,6 +130,7 @@ export function ShortcutOverlay({
   held,
   platform,
   layout,
+  extras,
   className,
 }: ShortcutOverlayProps) {
   const groups = useMemo(() => {
@@ -139,6 +152,10 @@ export function ShortcutOverlay({
     for (const list of out.values()) list.sort((a, b) => Number(b.match) - Number(a.match));
     return [...out.entries()];
   }, [commands, resolved, contexts, held]);
+  const extraRows = (group: string) => (extras ?? []).filter((x) => x.group === group);
+  const extraGroups = [
+    ...new Set((extras ?? []).map((x) => x.group).filter((g) => !groups.some(([k]) => k === g))),
+  ];
 
   if (!visible) return null;
   return (
@@ -152,42 +169,58 @@ export function ShortcutOverlay({
       )}
     >
       <div className="columns-1 gap-6 sm:columns-2 lg:columns-3">
-        {groups.map(([group, rows]) => (
-          <div key={group} className="mb-3 break-inside-avoid">
-            <h2 className="mb-1 text-2xs font-semibold tracking-wider text-fg-muted uppercase">
-              {group}
-            </h2>
-            <ul className="m-0 list-none p-0">
-              {rows.map(({ cmd, bindings, match }) => (
-                <li
-                  key={cmd.id}
-                  data-match={match ? '' : undefined}
-                  className={cn(
-                    'flex items-center justify-between gap-3 py-0.5 text-ui',
-                    match ? 'font-medium text-fg' : 'text-fg-muted',
-                  )}
-                >
-                  <span className="min-w-0 truncate">{cmd.label}</span>
-                  <span className="flex shrink-0 gap-1">
-                    {bindings.slice(0, 2).map((b) => {
-                      const p = parseBinding(b);
-                      return (
-                        <span key={b} className="flex gap-0.5">
-                          {p
-                            ? bindingParts(p, {
-                                ...(platform ? { platform } : {}),
-                                layout: layout ?? null,
-                              }).map((part) => <Kbd key={part}>{part}</Kbd>)
-                            : b}
-                        </span>
-                      );
-                    })}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))}
+        {[...groups, ...extraGroups.map((g) => [g, []] as (typeof groups)[number])].map(
+          ([group, rows]) => (
+            <div key={group} className="mb-3 break-inside-avoid">
+              <h2 className="mb-1 text-2xs font-semibold tracking-wider text-fg-muted uppercase">
+                {group}
+              </h2>
+              <ul className="m-0 list-none p-0">
+                {rows.map(({ cmd, bindings, match }) => (
+                  <li
+                    key={cmd.id}
+                    data-match={match ? '' : undefined}
+                    className={cn(
+                      'flex items-center justify-between gap-3 py-0.5 text-ui',
+                      match ? 'font-medium text-fg' : 'text-fg-muted',
+                    )}
+                  >
+                    <span className="min-w-0 truncate">{cmd.label}</span>
+                    <span className="flex shrink-0 gap-1">
+                      {bindings.slice(0, 2).map((b) => {
+                        const p = parseBinding(b);
+                        return (
+                          <span key={b} className="flex gap-0.5">
+                            {p
+                              ? bindingParts(p, {
+                                  ...(platform ? { platform } : {}),
+                                  layout: layout ?? null,
+                                }).map((part) => <Kbd key={part}>{part}</Kbd>)
+                              : b}
+                          </span>
+                        );
+                      })}
+                    </span>
+                  </li>
+                ))}
+                {extraRows(group).map((x) => (
+                  <li
+                    key={x.id}
+                    data-extra={x.id}
+                    className="flex items-center justify-between gap-3 py-0.5 text-ui text-fg-muted"
+                  >
+                    <span className="min-w-0 truncate">{x.label}</span>
+                    <span className="flex shrink-0 gap-1">
+                      {x.keys.map((k) => (
+                        <Kbd key={k}>{k}</Kbd>
+                      ))}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ),
+        )}
       </div>
     </section>
   );

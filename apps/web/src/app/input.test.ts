@@ -6,8 +6,11 @@ import {
   commandFor,
   type InputSettings,
   RADIAL_COMMAND,
+  readRightClickFinishes,
+  SKETCH_INPUT_KEY,
   sanitizeOverrides,
   withKeymap,
+  withRightClickFinishes,
 } from './input';
 
 const navigation: NavigationOptions = {
@@ -67,5 +70,29 @@ describe('app keymap', () => {
     expect(({} as Record<string, unknown>).polluted).toBeUndefined();
     const next = withKeymap(settings(), { 'tool:extrude': ['KeyJ'] });
     expect(commandFor(next, 'KeyJ', false)?.id).toBe('tool:extrude');
+  });
+  it('M3.8: "Right click finishes the current sketch tool" is on by default and persists', () => {
+    const store = new Map<string, string>();
+    const prev = globalThis.localStorage;
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      value: {
+        getItem: (k: string) => store.get(k) ?? null,
+        setItem: (k: string, v: string) => store.set(k, v),
+        removeItem: (k: string) => store.delete(k),
+      },
+    });
+    try {
+      expect(readRightClickFinishes()).toBe(true);
+      const off = withRightClickFinishes(settings(), false);
+      expect(off.rightClickFinishes).toBe(false);
+      expect(readRightClickFinishes()).toBe(false);
+      withRightClickFinishes(off, true);
+      expect(store.has(SKETCH_INPUT_KEY)).toBe(false);
+      store.set(SKETCH_INPUT_KEY, '{not json');
+      expect(readRightClickFinishes()).toBe(true);
+    } finally {
+      Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: prev });
+    }
   });
 });

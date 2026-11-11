@@ -5,23 +5,18 @@
  * - confidence < 0.5: keep the stroke as a polyline (the recognised polyline, or the simplified
  *   samples when the guess was another shape);
  * - otherwise `strokeFragment`, merged as is, plus end-point inference against the existing sketch
- *   (`pointAnchor` + `anchorConstraints`, exactly as click drawing does);
+ *   (`pointAnchor` + `bindAnchors`, exactly as click drawing does: an end on an existing point
+ *   reuses it);
  * - a scribble deletes what it crosses.
  *
  * Pure functions over plain data (unit-tested); the sketch session commits the result through its
  * edit queue so pending clicks and solves still order correctly.
  */
 
-import type { Id, SketchEntity, StrokeRecognition, Vec2 } from '@wren-cad/contracts';
+import type { Id, StrokeRecognition, Vec2 } from '@wren-cad/contracts';
 import { indexEntities, polylineTool, type SketchFragment, sampleEntity } from '@wren-cad/sketch';
 import { strokeFragment } from '@wren-cad/sketch/recognize';
-import {
-  type Anchor,
-  anchorConstraints,
-  pointAnchor,
-  type SketchData,
-  type SketchEdit,
-} from './draw';
+import { type Anchor, bindAnchors, pointAnchor, type SketchData, type SketchEdit } from './draw';
 
 /** Below this the app keeps the stroke as drawn (contract `StrokeRecognition.confidence`). */
 export const MIN_CONFIDENCE = 0.5;
@@ -164,7 +159,7 @@ export function strokeEdit(
   const made = fragmentFor(rec, samples, tolerance, construction);
   if (!made) return null;
   const { frag, shape } = made;
-  // End-point inference: an open stroke's ends that land on an existing point merge with it (one
+  // End-point inference: an open stroke's ends that land on an existing point reuse it (one
   // existing point at most once), or snap onto a curve / midpoint. Closed shapes (rectangles,
   // circles, loops) keep their clean-up: a hole's centre must not jump onto a nearby edge.
   const ends = openEnds(frag);
@@ -179,14 +174,14 @@ export function strokeEdit(
     }
     if (a.pointId || a.snap) anchors.push(a);
   }
-  const extra = anchorConstraints(frag, anchors);
+  const bound = bindAnchors(frag, anchors);
   return {
     kind: 'add',
     shape,
     edit: {
-      entities: frag.entities as SketchEntity[],
-      constraints: [...frag.constraints, ...extra],
-      created: frag.entities.filter((e) => e.kind !== 'point').map((e) => e.id),
+      entities: bound.entities,
+      constraints: bound.constraints,
+      created: bound.entities.filter((e) => e.kind !== 'point').map((e) => e.id),
     },
   };
 }

@@ -17,6 +17,7 @@ import type {
 } from '@wren-cad/contracts';
 import { INFERENCE_CURSOR, INFERENCE_DRAWING } from '@wren-cad/contracts';
 import {
+  AlignmentClasses,
   arc3PointTool,
   arcCenterTool,
   arcTangentTool,
@@ -32,9 +33,8 @@ import {
   rectangle3PointTool,
   rectangleCenterTool,
   rectangleCornerTool,
+  reusePoints,
   SKETCH_ORIGIN,
-  SKETCH_X_AXIS,
-  SKETCH_Y_AXIS,
   type SketchFragment,
   slotTool,
   splineControlTool,
@@ -75,6 +75,27 @@ export interface Anchor {
   snap?: GeometricConstraintDraft;
   /** Directional inference for the segment ending here (horizontal, parallel, …). */
   dir?: GeometricConstraintDraft;
+  /** What the click becomes (see {@link ClickRole}); absent = `point`. */
+  role?: ClickRole;
+}
+
+/**
+ * What a click becomes in the shape (PLAN M3.8, "what is shown is what is committed"):
+ * - `point`: a point of the shape (a corner, a centre, an end, a pole). Every point snap is kept:
+ *   onto an existing point it *is* that point (reused, no duplicate), onto a curve or a midpoint
+ *   it gets `pointOn` / `midpoint`, onto an axis `pointOn` the axis.
+ * - `curve`: a position the new curve passes through without a point of its own (a circle's rim,
+ *   a 3-point circle's points, a 3-point arc's middle, an ellipse's axis end). Only a snap onto an
+ *   existing point is kept, as `pointOn` (the curve passes through it).
+ * - `free`: a size or direction only (a slot's width, a 3-point rectangle's depth, the ellipse's
+ *   minor radius, an elliptic arc's projected ends). No snap, so no glyph and no constraint.
+ */
+export type ClickRole = 'point' | 'curve' | 'free';
+
+/** A dashed alignment guide (display only: guides snap, they are never committed). */
+export interface Guide {
+  from: Vec2;
+  to: Vec2;
 }
 
 export interface DrawState {
@@ -92,6 +113,8 @@ export interface DrawState {
   glyphs: InferenceCandidate['constraint']['kind'][];
   /** Snap tolerance (mm) at the last cursor move: how near the first point closes a spline. */
   tolerance?: number;
+  /** Alignment guides behind the snapped cursor (drawn dashed; they add no constraint). */
+  guides?: Guide[];
 }
 
 /** Clicks each tool variant needs (the line tool chains instead). */
@@ -135,6 +158,44 @@ export const defaultVariant: Record<DrawToolId, string> = {
   splineThrough: 'splineThrough',
 };
 
+/** The role of the next click of the shape in progress. */
+export function nextRole(state: DrawState): ClickRole {
+  const i = state.anchors.length;
+  const v = state.variant;
+  switch (state.tool) {
+    case 'line':
+    case 'point':
+    case 'polygon':
+    case 'splineControl':
+    case 'splineThrough':
+      return 'point';
+    case 'rectangle':
+      return v === 'threePoint' && i >= 2 ? 'free' : 'point';
+    case 'circle':
+      return v === 'threePoint' || i >= 1 ? 'curve' : 'point';
+    case 'arc':
+      if (v === 'tangent') return 'point';
+      if (v === 'center') return i >= 2 ? 'free' : 'point';
+      return i >= 2 ? 'curve' : 'point';
+    case 'slot':
+      return i >= 2 ? 'free' : 'point';
+    case 'ellipse':
+      return i === 0 ? 'point' : i === 1 ? 'curve' : 'free';
+    case 'ellipticArc':
+      return i === 0 ? 'point' : 'free';
+  }
+}
+
+/** A shape (or line chain) is in progress: a right click or Finish ends it instead of the menu. */
+export function inProgress(state: DrawState | null | undefined): boolean {
+  return !!state && (state.anchors.length > 0 || state.chainFrom !== null);
+}
+
+/** A chain or spline is in progress: the touch toolbar shows Finish. */
+export function finishable(state: DrawState | null | undefined): boolean {
+  return !!state && inProgress(state) && (state.tool === 'line' || isSplineTool(state.tool));
+}
+
 export function startDraw(tool: DrawToolId, variant?: string, construction = false): DrawState {
   return {
     tool,
@@ -172,7 +233,10 @@ function solveInput(sketch: SketchData): SketchSolveInput {
 /**
  * Cursor moved to `raw` (sketch mm). Infers constraints within `tolerance` (mm) and snaps: a
  * point snap (coincident/midpoint/on-curve) wins outright; otherwise the best directional snap
- * (horizontal, vertical, parallel, …) and then an alignment guide on the free axis.
+ * (horizontal, vertical, parallel, …) and then an alignment guide on the free axis. What a snap
+ * may become depends on the click's {@link ClickRole}; `glyphs` lists exactly the constraints the
+ * click will commit (a reused point shows `coincident`). Alignment guides only snap: they are
+ * drawn as dashed lines (`guides`), never as glyphs.
  */
 export function move(
   state: DrawState,
@@ -180,22 +244,41 @@ export function move(
   raw: Vec2,
   tolerance: number,
 ): DrawState {
+  const role = nextRole(state);
   const d = drawing(state);
   const candidates = infer(solveInput(sketch), raw, d, tolerance);
+  const done = (hover: Anchor, glyphs: DrawState['glyphs'], guides: Guide[] = []): DrawState => ({
+    ...state,
+    cursor: hover.at,
+    hover: role === 'point' ? hover : { ...hover, role },
+    candidates,
+    glyphs,
+    guides,
+    tolerance,
+  });
+  if (role === 'free') return done({ at: raw }, []);
+  if (role === 'curve') {
+    // Only an existing point (or the origin) can be passed through without a point of our own.
+    const p = candidates.find((c) => c.constraint.kind === 'coincident');
+    if (!p) return done({ at: raw }, []);
+    return done(anchorFor(p.snapped, p.constraint), ['pointOn']);
+  }
   let at: Vec2 = raw;
   let hover: Anchor = { at: raw };
   const glyphs: DrawState['glyphs'] = [];
+  const guides: Guide[] = [];
   const point = candidates.find((c) => POINT_KINDS.has(c.constraint.kind));
   if (point) {
     at = point.snapped;
     const c = point.constraint;
     hover = anchorFor(at, c);
     glyphs.push(c.kind);
-    // A line ending on a point/curve can still be horizontal/vertical (closing a rectangle).
+    // A line ending on a point/curve can still be horizontal/vertical (closing a rectangle),
+    // unless its ends are already aligned that way (it would be redundant).
     const dir = candidates.find(
       (k) => DIRECTION_KINDS.has(k.constraint.kind) && dist(k.snapped, point.snapped) < tolerance,
     );
-    if (dir) {
+    if (dir && dirKept(state, sketch, hover, dir.constraint)) {
       glyphs.push(dir.constraint.kind);
       hover.dir = dir.constraint;
     }
@@ -206,6 +289,7 @@ export function move(
       glyphs.push(dir.constraint.kind);
     }
     // Guides snap only the coordinate the direction left free.
+    const from: Vec2[] = [];
     for (const g of candidates) {
       if (!GUIDE_KINDS.has(g.constraint.kind)) continue;
       const horizontalGuide = g.constraint.kind === 'horizontalPoints';
@@ -213,18 +297,56 @@ export function move(
       if (dir?.constraint.kind === 'vertical' && !horizontalGuide) continue;
       if (dir && dir.constraint.kind !== 'horizontal' && dir.constraint.kind !== 'vertical') break;
       at = horizontalGuide ? [at[0], g.snapped[1]] : [g.snapped[0], at[1]];
-      glyphs.push(g.constraint.kind);
-      if (glyphs.length >= 3) break;
+      const other = 'b' in g.constraint ? pointAt(sketch, g.constraint.b) : null;
+      if (other) from.push(other);
+      if (from.length >= 2) break;
     }
+    // Every guide ends at the final (fully snapped) cursor.
+    for (const f of from) guides.push({ from: f, to: at });
     hover = dir ? { at, dir: dir.constraint } : { at };
   }
-  return { ...state, cursor: at, hover, candidates, glyphs: glyphs.slice(0, 2), tolerance };
+  return done(hover, glyphs.slice(0, 2), guides);
+}
+
+/** Position of a sketch point (or the origin) by id. */
+function pointAt(sketch: SketchData, id: Id): Vec2 | null {
+  if (id === SKETCH_ORIGIN) return [0, 0];
+  const e = sketch.entities.find((x) => x.id === id);
+  return e?.kind === 'point' ? [e.x, e.y] : null;
+}
+
+/** Placeholder for a chain start whose point is not in the sketch yet. */
+const FROM_POINT = '@from';
+
+/**
+ * Whether a line's directional snap is committed: not when its two ends are already aligned
+ * that way (both on one axis, an existing horizontal pair, …): the solver would call it
+ * redundant. Judged on the sketch plus the start point's own snap when that point is new in this
+ * segment.
+ */
+function dirKept(
+  state: DrawState,
+  sketch: SketchData,
+  to: Anchor,
+  dir: GeometricConstraintDraft,
+): boolean {
+  if (dir.kind !== 'horizontal' && dir.kind !== 'vertical') return true;
+  const from = state.chainFrom ?? state.anchors[0];
+  if (state.tool !== 'line' || !from) return true;
+  const classes = new AlignmentClasses(sketch.entities, sketch.constraints);
+  const fromId = from.pointId ?? FROM_POINT;
+  if (!state.chainFrom && !from.pointId && from.snap)
+    classes.add(bindCandidate(from.snap, { cursorPoint: FROM_POINT }));
+  const toId = to.pointId ?? INFERENCE_CURSOR;
+  if (!to.pointId && to.snap) classes.add(to.snap);
+  classes.line(INFERENCE_DRAWING, fromId, toId);
+  return !classes.redundant(dir);
 }
 
 /**
  * End-point inference for a point placed at `at` without a cursor (Pencil strokes): an existing
- * point within `tolerance` merges (coincident), else a curve or midpoint it lies on (pointOn /
- * midpoint). `at` stays where it is, so `anchorConstraints` finds the fragment point there.
+ * point within `tolerance` is reused, else a curve or midpoint it lies on (pointOn / midpoint).
+ * `at` stays where it is, so `bindAnchors` finds the fragment point there.
  */
 export function pointAnchor(sketch: SketchData, at: Vec2, tolerance: number): Anchor {
   const point = infer(solveInput(sketch), at, null, tolerance).find((c) =>
@@ -234,28 +356,10 @@ export function pointAnchor(sketch: SketchData, at: Vec2, tolerance: number): An
   return anchorFor(at, point.constraint);
 }
 
-/** A coincident snap merges into the existing point; the origin gets a new point + constraint. */
+/** A coincident snap reuses the existing point; the origin gets a new point + constraint. */
 function anchorFor(at: Vec2, c: GeometricConstraintDraft): Anchor {
   if (c.kind === 'coincident' && !isSketchReference(c.b)) return { at, pointId: c.b };
   return { at, snap: c };
-}
-
-/** The axes an anchor lies on by construction (the origin is on both). */
-function anchorAxes(a: Anchor, sketch: SketchData | null): Set<Id> {
-  const out = new Set<Id>();
-  const add = (c: GeometricConstraintDraft | SketchConstraint, point: Id | undefined) => {
-    if (c.kind === 'coincident' && (c.a === SKETCH_ORIGIN || c.b === SKETCH_ORIGIN)) {
-      if (point === undefined || c.a === point || c.b === point) {
-        out.add(SKETCH_X_AXIS);
-        out.add(SKETCH_Y_AXIS);
-      }
-    } else if (c.kind === 'pointOn' && (c.on === SKETCH_X_AXIS || c.on === SKETCH_Y_AXIS)) {
-      if (point === undefined || c.point === point) out.add(c.on);
-    }
-  };
-  if (a.snap) add(a.snap, undefined);
-  if (a.pointId && sketch) for (const c of sketch.constraints) add(c, a.pointId);
-  return out;
 }
 
 export interface SketchEdit {
@@ -263,27 +367,104 @@ export interface SketchEdit {
   constraints: SketchConstraint[];
   /** Entity ids created (for selection / dimensioning). */
   created: Id[];
+  /** Existing points the clicks landed on and the new geometry now uses (no duplicates made). */
+  reused?: Id[];
 }
 
 function bind(c: GeometricConstraintDraft, ids: { cursorPoint?: Id; drawingEntity?: Id }) {
   return { ...bindCandidate(c, ids), id: newId() } as SketchConstraint;
 }
 
-/** Point constraints for the fragment points that were placed at snapped anchors. */
-export function anchorConstraints(
+/** True when `e` is built on point `id` (an end, a centre or a pole). */
+function usesPoint(e: SketchEntity, id: Id): boolean {
+  switch (e.kind) {
+    case 'point':
+      return false;
+    case 'line':
+      return e.start === id || e.end === id;
+    case 'circle':
+    case 'ellipse':
+      return e.center === id;
+    case 'arc':
+    case 'ellipticArc':
+      return e.center === id || e.start === id || e.end === id;
+    case 'bspline':
+      return e.poles.includes(id);
+  }
+}
+
+/** The curve a `curve`-role click passes through: the fragment's one circle, arc or ellipse. */
+function fragmentCurve(frag: SketchFragment): Id | null {
+  const c = frag.entities.find(
+    (e) => !e.construction && e.kind !== 'point' && e.kind !== 'line' && e.kind !== 'bspline',
+  );
+  return c?.id ?? null;
+}
+
+/**
+ * The fragment with its snapped anchors applied (PLAN M3.8): a `point` anchor on an existing
+ * point reuses it (the fragment's own point at that spot is dropped, so there is no duplicate and
+ * no `coincident`), other point snaps are bound to the fragment point at the anchor; a `curve`
+ * anchor on an existing point adds `pointOn` (the curve passes through it); `free` anchors add
+ * nothing. Fragment points are matched by position (visible points first, then construction
+ * ones such as a polygon's centre or a spline's inner poles), each at most once.
+ */
+export function bindAnchors(
   frag: SketchFragment,
   anchors: readonly Anchor[],
-): SketchConstraint[] {
-  const out: SketchConstraint[] = [];
+): { entities: SketchEntity[]; constraints: SketchConstraint[]; reused: Id[] } {
+  const reuse = new Map<Id, Id>();
+  const reused = new Set<Id>();
+  const taken = new Set<Id>();
+  const extra: SketchConstraint[] = [];
+  const curve = fragmentCurve(frag);
+  const throughs = new Set<Id>();
+  const pointsAt = (at: Vec2) =>
+    frag.entities
+      .filter((e) => e.kind === 'point' && !taken.has(e.id) && dist([e.x, e.y], at) < 1e-6)
+      .sort((a, b) => Number(a.construction) - Number(b.construction));
   for (const a of anchors) {
-    const p = frag.entities.find(
-      (e) => e.kind === 'point' && dist([e.x, e.y], a.at) < 1e-6 && !e.construction,
-    );
-    if (!p) continue;
-    if (a.pointId) out.push({ id: newId(), kind: 'coincident', a: p.id, b: a.pointId });
-    else if (a.snap) out.push(bind(a.snap, { cursorPoint: p.id }));
+    const role = a.role ?? 'point';
+    if (role === 'free') continue;
+    if (role === 'curve') {
+      const through =
+        a.pointId ??
+        (a.snap?.kind === 'coincident' && isSketchReference(a.snap.b) ? a.snap.b : null);
+      if (!through || !curve || throughs.has(through)) continue;
+      throughs.add(through);
+      extra.push({ id: newId(), kind: 'pointOn', point: through, on: curve });
+      continue;
+    }
+    const p = pointsAt(a.at)[0];
+    if (!p) {
+      // The tool already built on the existing point (a tangent arc's start).
+      if (a.pointId && frag.entities.some((e) => usesPoint(e, a.pointId as Id)))
+        reused.add(a.pointId);
+      continue;
+    }
+    taken.add(p.id);
+    if (a.pointId && !reused.has(a.pointId)) {
+      reuse.set(p.id, a.pointId);
+      reused.add(a.pointId);
+    } else if (a.pointId) extra.push({ id: newId(), kind: 'coincident', a: p.id, b: a.pointId });
+    else if (a.snap) extra.push(bind(a.snap, { cursorPoint: p.id }));
   }
-  return out;
+  const out = reusePoints(frag, reuse);
+  return {
+    entities: out.entities,
+    constraints: [...out.constraints, ...extra],
+    reused: [...reused],
+  };
+}
+
+/** The sketch edit for a finished tool fragment and the clicks that placed it. */
+function fragmentEdit(frag: SketchFragment, anchors: readonly Anchor[]): SketchEdit {
+  const bound = bindAnchors(frag, anchors);
+  return {
+    ...bound,
+    reused: bound.reused,
+    created: bound.entities.filter((e) => e.kind !== 'point').map((e) => e.id),
+  };
 }
 
 function shapeFragment(
@@ -360,13 +541,11 @@ function splineFragment(
   return state.tool === 'splineControl' ? splineControlTool(pts, o) : splineThroughTool(pts, o);
 }
 
-/** A line segment from `from` to `to`, sharing/merging points; with inferred constraints. */
-function lineSegment(
-  state: DrawState,
-  from: Anchor,
-  to: Anchor,
-  sketch: SketchData | null = null,
-): SketchEdit {
+/**
+ * A line segment from `from` to `to`, reusing existing points; with the inferred constraints
+ * the glyphs showed (the directional one was already dropped by `move` when redundant).
+ */
+function lineSegment(state: DrawState, from: Anchor, to: Anchor): SketchEdit {
   const entities: SketchEntity[] = [];
   const constraints: SketchConstraint[] = [];
   const o = state.construction;
@@ -382,19 +561,20 @@ function lineSegment(
   }
   const lineId = newId();
   entities.push({ id: lineId, kind: 'line', construction: o, start: startId, end: endId });
-  // The strongest directional inference at the end (horizontal, vertical, parallel, …), unless
-  // both ends are on the same axis: the line's direction is then already set (it would be
-  // redundant, or contradict).
-  const fromAxes = anchorAxes(from, sketch);
-  const onSameAxis = [...anchorAxes(to, sketch)].some((x) => fromAxes.has(x));
-  if (to.dir && !onSameAxis)
-    constraints.push(bind(to.dir, { drawingEntity: lineId, cursorPoint: endId }));
-  return { entities, constraints, created: [lineId] };
+  // The strongest directional inference at the end (horizontal, vertical, parallel, …).
+  if (to.dir) constraints.push(bind(to.dir, { drawingEntity: lineId, cursorPoint: endId }));
+  // The chain's own previous end is shared, not reused; the first click's and this one's are.
+  const reused = [state.chainFrom ? undefined : from.pointId, to.pointId].filter(
+    (id): id is Id => id !== undefined,
+  );
+  return { entities, constraints, created: [lineId], reused };
 }
 
 export interface ClickResult {
   state: DrawState;
   edit: SketchEdit | null;
+  /** An existing point the click landed on without creating anything (the Point tool): select it. */
+  select?: Id;
 }
 
 /** A tap for a spline tool: another point, or (on the first point) the end of a closed curve. */
@@ -413,14 +593,7 @@ function finishSpline(state: DrawState, closed: boolean): ClickResult {
     closed,
   );
   if (!frag) return { state: reset, edit: null }; // too few points: nothing to make
-  return {
-    state: reset,
-    edit: {
-      entities: frag.entities,
-      constraints: [...frag.constraints, ...anchorConstraints(frag, state.anchors)],
-      created: frag.entities.filter((e) => e.kind !== 'point').map((e) => e.id),
-    },
-  };
+  return { state: reset, edit: fragmentEdit(frag, state.anchors) };
 }
 
 /**
@@ -432,6 +605,21 @@ export function finishShape(state: DrawState): ClickResult | null {
   return finishSpline(state, false);
 }
 
+/**
+ * A right click, the touch Finish button or Enter (PLAN M3.8): ends what is in progress without
+ * leaving the tool. A spline is committed open with the points placed so far (two are enough); a
+ * line chain ends where it is (its segments are already committed). Any other shape that is only
+ * partly placed cannot be finished, so it is dropped, as Esc does. Null when nothing is in
+ * progress (a right click then opens the radial menu).
+ */
+export function finishTool(state: DrawState): ClickResult | null {
+  if (!inProgress(state)) return null;
+  const spline = finishShape(state);
+  if (spline) return spline;
+  const next = cancel(state);
+  return next ? { state: next, edit: null } : null;
+}
+
 /** A click at the current (snapped) cursor. */
 export function click(state: DrawState, sketch: SketchData): ClickResult {
   const hover = state.hover ?? (state.cursor ? { at: state.cursor } : null);
@@ -441,7 +629,7 @@ export function click(state: DrawState, sketch: SketchData): ClickResult {
     const from = state.chainFrom ?? state.anchors[0];
     if (!from) return { state: { ...state, anchors: [hover] }, edit: null };
     if (dist(from.at, hover.at) < 1e-9) return { state, edit: null };
-    const edit = lineSegment(state, from, hover, sketch);
+    const edit = lineSegment(state, from, hover);
     const line = edit.entities.find((e) => e.kind === 'line');
     const endId = line && line.kind === 'line' ? line.end : undefined;
     // Closing onto an existing point ends the chain (e.g. back at the start of a rectangle).
@@ -463,8 +651,9 @@ export function click(state: DrawState, sketch: SketchData): ClickResult {
   }
 
   if (state.tool === 'point') {
-    // A point (hole centres, references): snaps like any click; onto an existing point is a no-op.
-    if (hover.pointId) return { state, edit: null };
+    // A point (hole centres, references): snaps like any click. Onto an existing point it *is*
+    // that point: nothing new (no duplicate), the point is selected instead.
+    if (hover.pointId) return { state, edit: null, select: hover.pointId };
     const id = newId();
     const constraints = hover.snap ? [bind(hover.snap, { cursorPoint: id })] : [];
     return {
@@ -493,19 +682,33 @@ export function click(state: DrawState, sketch: SketchData): ClickResult {
     anchors,
   );
   if (!frag) return { state: { ...state, anchors: anchors.slice(0, -1) }, edit: null };
-  const extra = anchorConstraints(frag, anchors);
   return {
     state: { ...state, anchors: [], candidates: [], glyphs: [] },
-    edit: {
-      entities: frag.entities,
-      constraints: [...frag.constraints, ...extra],
-      created: frag.entities.filter((e) => e.kind !== 'point').map((e) => e.id),
-    },
+    edit: fragmentEdit(frag, anchors),
   };
 }
 
-/** Rubber-band geometry for the shape in progress (display only). */
+/**
+ * Rubber-band geometry for the shape in progress plus the dashed alignment guides behind the
+ * cursor (display only; preview ids).
+ */
 export function preview(state: DrawState, sketch: SketchData): SketchFragment | null {
+  const shape = shapePreview(state, sketch);
+  const guides = state.cursor ? (state.guides ?? []) : [];
+  if (guides.length === 0) return shape;
+  const entities = [...(shape?.entities ?? [])];
+  guides.forEach((g, i) => {
+    const [a, b, l] = ['a', 'b', 'l'].map((k) => newPreviewId(`guide:${i}:${k}`)) as [Id, Id, Id];
+    entities.push(
+      { id: a, kind: 'point', construction: true, x: g.from[0], y: g.from[1] },
+      { id: b, kind: 'point', construction: true, x: g.to[0], y: g.to[1] },
+      { id: l, kind: 'line', construction: true, start: a, end: b },
+    );
+  });
+  return { entities, constraints: shape?.constraints ?? [] };
+}
+
+function shapePreview(state: DrawState, sketch: SketchData): SketchFragment | null {
   const cursor = state.cursor;
   if (!cursor) return null;
   if (state.tool === 'line') {
@@ -596,7 +799,7 @@ const newPreviewId = (seed: string): Id => `${PREVIEW_PREFIX}${seed}`;
 /** Esc: drop the shape in progress; returns null when there was nothing to drop (leave tool). */
 export function cancel(state: DrawState): DrawState | null {
   if (state.anchors.length === 0 && !state.chainFrom) return null;
-  return { ...state, anchors: [], chainFrom: null, candidates: [], glyphs: [] };
+  return { ...state, anchors: [], chainFrom: null, candidates: [], glyphs: [], guides: [] };
 }
 
 /** The cursor placeholder ids, re-exported for hosts that render candidate glyphs. */

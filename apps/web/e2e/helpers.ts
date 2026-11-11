@@ -44,6 +44,13 @@ export interface AppHooks {
     conflicts?: unknown[];
   } | null;
   sketchSettled(): Promise<void>;
+  /** What a sketch settle waits on (queued tasks, the running one and for how long, a drag). */
+  sketchSettleState(): {
+    pending: number;
+    running: string | null;
+    runningMs: number;
+    drag: { inFlight: boolean; moved: boolean } | null;
+  } | null;
   marks(): Record<string, number>;
   ui(): {
     featureId: string | null;
@@ -175,7 +182,23 @@ export const app = (page: Page) => ({
     page.evaluate((x) => (window as unknown as W).__wrenApp.editFeature(x), id),
   flushSave: () => page.evaluate(() => (window as unknown as W).__wrenApp.flushSave()),
   sketch: () => page.evaluate(() => (window as unknown as W).__wrenApp.sketch()),
-  settled: () => page.evaluate(() => (window as unknown as W).__wrenApp.sketchSettled()),
+  /**
+   * Waits for the sketch's edit queue. A settle stalled for 45 s fails with what it waits on (the
+   * solver answers within its 20 s deadline, so a stall this long is a bug, not a slow runner).
+   */
+  settled: async () => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const stalled = new Promise<'stalled'>((r) => {
+      timer = setTimeout(() => r('stalled'), 45_000);
+    });
+    const done = page.evaluate(() => (window as unknown as W).__wrenApp.sketchSettled());
+    const r = await Promise.race([done.then(() => 'done' as const), stalled]);
+    clearTimeout(timer);
+    if (r === 'stalled') {
+      const st = await page.evaluate(() => (window as unknown as W).__wrenApp.sketchSettleState());
+      throw new Error(`sketch settle stalled: ${JSON.stringify(st)}`);
+    }
+  },
   ui: () => page.evaluate(() => (window as unknown as W).__wrenApp.ui()),
   marks: () => page.evaluate(() => (window as unknown as W).__wrenApp.marks()),
   history: () => page.evaluate(() => (window as unknown as W).__wrenApp.history()),

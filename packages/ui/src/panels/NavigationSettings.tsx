@@ -6,6 +6,12 @@ import { cn } from '../components/primitives';
 export interface NavigationSettingsProps {
   value: NavigationOptions;
   onChange(next: NavigationOptions): void;
+  /**
+   * M3.8: "Right click finishes the current sketch tool" (ends a line chain or spline instead of
+   * opening the radial menu). The section shows when `onRightClickFinishesChange` is given.
+   */
+  rightClickFinishes?: boolean;
+  onRightClickFinishesChange?(on: boolean): void;
   size?: 'md' | 'touch';
   className?: string;
 }
@@ -62,6 +68,8 @@ const fromSlider = (v: number) => Math.round(2 ** v * 20) / 20;
 export function NavigationSettings({
   value,
   onChange,
+  rightClickFinishes = true,
+  onRightClickFinishesChange,
   size = 'md',
   className,
 }: NavigationSettingsProps) {
@@ -184,6 +192,21 @@ export function NavigationSettings({
           className={touch ? 'min-h-11' : ''}
         />
       </Section>
+
+      {onRightClickFinishesChange ? (
+        <Section title="Sketching">
+          <Switch
+            label="Right click finishes the current sketch tool"
+            checked={rightClickFinishes}
+            onChange={onRightClickFinishesChange}
+            className={touch ? 'min-h-11' : ''}
+          />
+          <p className="text-2xs text-fg-subtle">
+            A right click ends a line chain where it is and finishes a spline with the points placed
+            so far. With nothing in progress it opens the radial menu; right-drag still navigates.
+          </p>
+        </Section>
+      ) : null}
     </div>
   );
 }

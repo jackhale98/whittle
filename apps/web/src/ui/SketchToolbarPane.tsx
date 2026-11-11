@@ -4,6 +4,7 @@ import { SketchToolbar } from '@wren-cad/ui';
 import type { SketchSession } from '../app/sketch-session';
 import type { SketchUi } from '../app/state';
 import type { Workbench } from '../app/workbench';
+import { finishable } from '../sketch/draw';
 
 export default function SketchToolbarPane({
   wb,
@@ -30,6 +31,8 @@ export default function SketchToolbarPane({
       onConstraint={(k) => session.constrain(k)}
       enabledConstraints={session.enabledConstraints()}
       onFinish={() => session.finish()}
+      shapeInProgress={finishable(sk.draw)}
+      onFinishShape={() => session.finishTool()}
       onEscape={() => session.finish()}
       matchShortcut={wb.sketchShortcut}
       density={touch ? 'touch' : 'compact'}

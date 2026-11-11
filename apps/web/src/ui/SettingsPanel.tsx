@@ -14,7 +14,7 @@ import {
 } from '@wren-cad/ui';
 import { X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { APP_COMMANDS } from '../app/input';
+import { APP_COMMANDS, withRightClickFinishes } from '../app/input';
 import { useObservable } from '../app/observable';
 import type { Workbench } from '../app/workbench';
 import { RadialSettings } from './RadialSettings';
@@ -89,6 +89,8 @@ export default function SettingsPanel({ wb, touch }: { wb: Workbench; touch: boo
           <NavigationSettings
             value={input.navigation}
             onChange={(n) => wb.setNavigationSettings(n)}
+            rightClickFinishes={input.rightClickFinishes !== false}
+            onRightClickFinishesChange={(on) => wb.input.set((s) => withRightClickFinishes(s, on))}
             size={touch ? 'touch' : 'md'}
           />
         ) : tab === 'radial' ? (

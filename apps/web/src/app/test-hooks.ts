@@ -104,6 +104,7 @@ export function testHooks(wb: Workbench) {
       return solve ? { ...solve, busy: wb.sketch?.busy ?? false } : null;
     },
     sketchSettled: () => wb.sketch?.whenSettled() ?? Promise.resolve(),
+    sketchSettleState: () => wb.sketch?.settleState() ?? null,
     marks: () => marks(),
     ui: () => {
       const u = wb.ui.get();
