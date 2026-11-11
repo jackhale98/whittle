@@ -113,6 +113,7 @@ export async function planSketch(
           entities: solved.entities,
           key: `${key}/S`,
         };
+        if (Object.keys(solved.driven ?? {}).length > 0) sketch.driven = { ...solved.driven };
         return {
           result: {
             ok: true,

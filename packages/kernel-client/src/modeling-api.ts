@@ -156,12 +156,11 @@ export function createModelingApi(deps: ModelingApiDeps): ModelingApiImpl {
       const r = await engine.compare(partId, a, b, quality);
       return r.ok ? transfer(r, meshListTransferables([...r.value.added, ...r.value.removed])) : r;
     },
-    // M4 (ADR-090): implemented by the kernel workstream (BREP plus persistent edge/face names).
-    async shapeForDrawing() {
-      return {
-        ok: false,
-        error: { code: 'UNSUPPORTED_FEATURE', message: 'Drawings are not available yet' },
-      };
+    // M4 (ADR-090): BREP bytes of the final shape plus persistent edge/face names. The bytes are
+    // a fresh buffer read out of the kernel's file system: transferred, never copied.
+    async shapeForDrawing(partId, slot) {
+      const r = await engine.shapeForDrawing(partId, slot);
+      return r.ok ? transfer(r, [r.value.brep.buffer as ArrayBuffer]) : r;
     },
   };
 }

@@ -57,6 +57,7 @@ export class ResultCache {
         lastResolved: new Map(),
         absorbed: new Map(),
         walk: null,
+        annotations: new Map(),
       };
       slots.set(slot, pc);
     }

@@ -58,9 +58,9 @@ export interface WalkContainer {
 export interface WalkEntry {
   id: Id;
   state: FeatureStatus['state'];
-  /** Canonical JSON of the definition (name, suppressed, annotations dropped). */
+  /** Canonical JSON of the definition (name and suppressed dropped). */
   def?: string;
-  /** Evaluated values (mm, rad, counts), annotations excluded. */
+  /** Evaluated values (mm, rad, counts). */
   values?: Record<string, number>;
   /** Pointers of values that did not evaluate. */
   valueErrors?: string[];
