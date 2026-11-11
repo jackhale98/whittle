@@ -1,8 +1,9 @@
 /**
  * Phone framing (PLAN M3.8, "the camera frames the model in the unobstructed area"): the bottom
  * sheet, the top bar and the floating tool stack cover part of the canvas, so the viewport is told
- * which strip each covers (`setFrameInsets`) and re-fits when a mode starts or the sheet changes
- * height. The model then sits centred in what is left, not behind the sheet.
+ * which strip each covers (`setFrameInsets`). A mode start (section, measure) re-fits; a sheet
+ * change only shifts the camera (the viewport trucks inside `setFrameInsets`, keeping zoom and
+ * orientation, ADR-086 amendment), so the user's zoom and pan survive the sheet moving.
  */
 
 import type { TouchViewport } from '@wren-cad/contracts';
@@ -69,14 +70,12 @@ export function syncFrameInsets(wb: Workbench): void {
   apply(wb);
 }
 
-/** The sheet's visible height changed (reported by the shell): re-frame once it has. */
+/** The sheet's visible height changed (reported by the shell): shift the view, never re-fit. */
 export function onSheetHeight(wb: Workbench, px: number): void {
   const s = stateOf(wb);
-  const first = s.sheetPx === 0;
   if (s.sheetPx === px) return;
   s.sheetPx = px;
-  if (first) apply(wb);
-  else reframeSoon(wb);
+  apply(wb);
 }
 
 /** Re-frames the model in the free area on the next microtask (calls in one tick coalesce). */

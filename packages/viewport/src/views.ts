@@ -127,3 +127,22 @@ export function fitInsetFrame(
   const dy = (insets.top - insets.bottom) / 2;
   return { distance, shiftRight: -dx * perPx, shiftUp: dy * perPx };
 }
+
+/**
+ * The camera truck (world units along the camera's right and up axes) that keeps what was in the
+ * middle of the free area visible when the insets change: the content moves on screen by the shift
+ * of the free area's centre, so the camera moves the opposite way (right) / the same way (up).
+ * Distance and orientation are untouched. `distance` is the camera-to-target distance.
+ */
+export function insetPan(
+  prev: FrameInsets,
+  next: FrameInsets,
+  vfovDeg: number,
+  h: number,
+  distance: number,
+): { right: number; up: number } {
+  const perPx = (2 * distance * Math.tan((vfovDeg * Math.PI) / 360)) / Math.max(h, 1);
+  const dx = (next.left - next.right - (prev.left - prev.right)) / 2;
+  const dy = (next.top - next.bottom - (prev.top - prev.bottom)) / 2;
+  return { right: -dx * perPx || 0, up: dy * perPx || 0 };
+}
