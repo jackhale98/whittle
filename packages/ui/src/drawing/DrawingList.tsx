@@ -86,7 +86,6 @@ export function DrawingList({
                     'flex min-w-0 flex-1 items-center gap-2.5 rounded-control px-2.5 text-left',
                     touch ? 'min-h-14' : 'min-h-11',
                   )}
-                  aria-label={`Open ${d.name}`}
                   data-testid="drawing-open"
                 >
                   <FileText className="size-4 shrink-0 text-fg-muted" aria-hidden />

@@ -1,6 +1,6 @@
 import { fireEvent, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { Annotation, AnnotationPlacement, ViewDisplay } from '@wren-cad/contracts';
+import type { Annotation, AnnotationPlacement, EvalResult, ViewDisplay } from '@wren-cad/contracts';
 import type { SvgNode } from '@wren-cad/drawing/svg';
 import { describe, expect, it, vi } from 'vitest';
 import {
@@ -24,11 +24,11 @@ import {
 } from '../src/drawing';
 import { renderUI } from './helpers';
 
-const evalOk = (e: string) => {
+const evalOk = (e: string): EvalResult => {
   const n = Number.parseFloat(e);
   return Number.isNaN(n)
-    ? ({ ok: false, error: { message: 'not a number' } } as const)
-    : ({ ok: true, value: n, dimension: [0, 0, 0, 0], dependsOn: [] } as const);
+    ? { ok: false, error: { message: 'Not a number' } }
+    : { ok: true, value: n, dimension: [0, 0, 0, 0], dependsOn: [] };
 };
 
 describe('StandardChoice (D10)', () => {
@@ -845,7 +845,7 @@ describe('DrawingList', () => {
         onNew={() => {}}
       />,
     );
-    await userEvent.click(screen.getByRole('button', { name: 'Open Plate A' }));
+    await userEvent.click(screen.getByRole('button', { name: /^Plate A/ }));
     expect(onOpen).toHaveBeenCalledWith('d1');
     await userEvent.click(screen.getByRole('button', { name: 'Rename Plate A' }));
     const input = screen.getByRole('textbox', { name: 'New drawing name' });
@@ -870,7 +870,7 @@ describe('DrawingList', () => {
         reviewOnly
       />,
     );
-    expect(screen.getByRole('button', { name: 'Open Plate A' })).toBeVisible();
+    expect(screen.getByRole('button', { name: /^Plate A/ })).toBeVisible();
     expect(screen.queryByTestId('drawing-new')).toBeNull();
     expect(screen.queryByTestId('drawing-delete')).toBeNull();
     expect(screen.queryByRole('button', { name: /^Rename/ })).toBeNull();

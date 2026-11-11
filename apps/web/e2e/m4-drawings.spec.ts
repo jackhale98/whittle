@@ -2,7 +2,8 @@ import { readFileSync } from 'node:fs';
 import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page, test } from '@playwright/test';
 import type { Annotation, Drawing, WrenDoc } from '@wren-cad/contracts';
-import { app, palette } from './helpers';
+import { app, boot, palette } from './helpers';
+import { CFG_LONG, configPartDoc } from './support/config-part';
 import {
   built,
   drag,
@@ -748,4 +749,74 @@ test('Escape leaves a tool; deleting a view takes what derives from it, and undo
   await expect.poll(async () => (await drawing(page).state()).views.length).toBe(0);
   await page.getByTestId('drawing-undo').click();
   await expect.poll(async () => (await drawing(page).state()).views.length).toBe(3);
+});
+
+test('configurations: per drawing and per view, badged; a missing one is never a quiet fallback', async ({
+  page,
+}) => {
+  await boot(page);
+  await app(page).load(configPartDoc());
+  await app(page).idle();
+  const s0 = await newDrawing(page);
+  const front = viewOf(s0, 'base');
+  if (!front) throw new Error('no front view');
+
+  // A width dimension picked on two vertical edges of the front view: 40 in Default.
+  const edges = (await drawing(page).edges(front.id)).filter(
+    (e) =>
+      e.kind === 'line' &&
+      e.a &&
+      e.b &&
+      Math.abs((e.a[0] ?? 0) - (e.b[0] ?? 0)) < 0.01 &&
+      Math.abs((e.a[1] ?? 0) - (e.b[1] ?? 0)) > 5,
+  );
+  const sorted = [...edges].sort((p, q) => p.at[0] - q.at[0]);
+  const [left, right] = [sorted[0], sorted.at(-1)];
+  if (!left || !right) throw new Error('no vertical edges');
+  await page.locator('[data-tool="dimension"]').click();
+  await click(page, left.at);
+  await click(page, right.at);
+  await expect.poll(async () => (await annotations(page)).length).toBe(1);
+  await expect.poll(async () => (await drawing(page).state()).texts).toContain('40');
+
+  // The drawing's configuration: Long is 60 wide. Title block and header say which one it is.
+  await panelTab(page, 'Sheet').click();
+  await page.getByLabel('Configuration of this drawing').selectOption({ label: 'Long' });
+  await expect.poll(async () => (await drawing(page).state()).texts).toContain('60');
+  await expect(page.getByTestId('config-badge').first()).toHaveText('Long');
+  expect((await drawing(page).state()).texts).toContain('Long');
+  expect((await drawing(page).state()).texts).not.toContain('40');
+  expect(((await drawings(page))[0] as Drawing).configurationId).toBe(CFG_LONG);
+  // The model itself is untouched: the active configuration is still Default.
+  expect((await part(page)).activeConfigurationId ?? null).toBeNull();
+
+  // Back to Default for the drawing, Long for the view alone: a badge on the view, 60 on the sheet.
+  await page.getByLabel('Configuration of this drawing').selectOption({ label: 'Default' });
+  await expect.poll(async () => (await drawing(page).state()).texts).toContain('40');
+  await panelTab(page, 'Views').click();
+  await page.locator(`[data-view-row="${front.id}"]`).click();
+  await page.getByLabel('Configuration of this view').selectOption({ label: 'Long' });
+  await expect.poll(async () => (await drawing(page).state()).texts).toContain('60');
+  await panelTab(page, 'Views').click();
+  await expect(
+    page.locator(`[data-view-row="${front.id}"]`).getByTestId('config-badge'),
+  ).toHaveText('Long');
+  await a11y(page);
+
+  // The configuration is deleted: the view needs attention. It does not fall back to Default.
+  const p = await part(page);
+  expect(
+    await app(page).apply({ kind: 'removeConfiguration', partId: p.id, configurationId: CFG_LONG }),
+  ).toBe(true);
+  await expect
+    .poll(async () =>
+      (await drawing(page).state()).attention.some((e) => /configuration/i.test(e.message)),
+    )
+    .toBe(true);
+  const after = await built(page);
+  expect(after.texts).not.toContain('60');
+  expect(after.texts).not.toContain('40');
+  await expect(
+    page.locator(`[data-view-row="${front.id}"]`).getByTestId('config-badge'),
+  ).toHaveAttribute('data-missing', 'true');
 });

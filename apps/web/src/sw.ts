@@ -29,7 +29,7 @@ import {
 import { NavigationRoute, registerRoute } from 'workbox-routing';
 import { CacheFirst, NetworkOnly } from 'workbox-strategies';
 import { withIsolationHeaders } from './platform/isolation-headers';
-import { isKernelAsset, mayHandle } from './platform/sw-rules';
+import { isDrawingFont, isKernelAsset, mayHandle } from './platform/sw-rules';
 
 declare const self: ServiceWorkerGlobalScope & {
   __WB_MANIFEST: Array<string | { url: string; revision: string | null }>;
@@ -47,6 +47,7 @@ setCacheNameDetails({
 });
 
 const KERNEL_CACHE = `whittle-kernel-${CACHE_VERSION}`;
+const FONT_CACHE = `whittle-font-${CACHE_VERSION}`;
 
 /** Adds COOP/COEP/CORP to whatever response a strategy is about to return. */
 const isolationPlugin: WorkboxPlugin = {
@@ -69,6 +70,19 @@ registerRoute(
     plugins: [
       new CacheableResponsePlugin({ statuses: [200] }),
       new ExpirationPlugin({ maxEntries: 8, purgeOnQuotaError: true }),
+      isolationPlugin,
+    ],
+  }),
+);
+
+// The drawing font: cache on first use so a drawing exports to PDF offline.
+registerRoute(
+  ({ sameOrigin, url, request }) => mayHandle({ sameOrigin, request }) && isDrawingFont(url),
+  new CacheFirst({
+    cacheName: FONT_CACHE,
+    plugins: [
+      new CacheableResponsePlugin({ statuses: [200] }),
+      new ExpirationPlugin({ maxEntries: 4, purgeOnQuotaError: true }),
       isolationPlugin,
     ],
   }),
