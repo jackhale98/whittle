@@ -75,8 +75,19 @@ export interface Anchor {
   snap?: GeometricConstraintDraft;
   /** Directional inference for the segment ending here (horizontal, parallel, …). */
   dir?: GeometricConstraintDraft;
+  /**
+   * Alignment with another point or the origin (`horizontalPoints` / `verticalPoints`, the cursor
+   * as `@cursor`) that the click commits: a guide the cursor snapped to, unless redundant.
+   */
+  align?: GeometricConstraintDraft[];
   /** What the click becomes (see {@link ClickRole}); absent = `point`. */
   role?: ClickRole;
+  /**
+   * How far (mm) the tool's own point may sit from `at` and still be this click's point: a centre
+   * arc's end is projected onto its circle, so an end snapped onto a point near the circle lands
+   * within the snap tolerance of it, not exactly on it. Default 1e-6.
+   */
+  near?: number;
 }
 
 /**
@@ -92,7 +103,10 @@ export interface Anchor {
  */
 export type ClickRole = 'point' | 'curve' | 'free';
 
-/** A dashed alignment guide (display only: guides snap, they are never committed). */
+/**
+ * A dashed alignment guide: the cursor snapped level with another point, but the alignment is
+ * already implied (it would be redundant), so it is not committed and shows no glyph.
+ */
 export interface Guide {
   from: Vec2;
   to: Vec2;
@@ -113,7 +127,7 @@ export interface DrawState {
   glyphs: InferenceCandidate['constraint']['kind'][];
   /** Snap tolerance (mm) at the last cursor move: how near the first point closes a spline. */
   tolerance?: number;
-  /** Alignment guides behind the snapped cursor (drawn dashed; they add no constraint). */
+  /** Alignment guides behind the snapped cursor that add no constraint (drawn dashed). */
   guides?: Guide[];
 }
 
@@ -235,8 +249,9 @@ function solveInput(sketch: SketchData): SketchSolveInput {
  * point snap (coincident/midpoint/on-curve) wins outright; otherwise the best directional snap
  * (horizontal, vertical, parallel, …) and then an alignment guide on the free axis. What a snap
  * may become depends on the click's {@link ClickRole}; `glyphs` lists exactly the constraints the
- * click will commit (a reused point shows `coincident`). Alignment guides only snap: they are
- * drawn as dashed lines (`guides`), never as glyphs.
+ * click will commit (a reused point shows `coincident`). An alignment guide (level with another
+ * point or the origin) is committed as `horizontalPoints` / `verticalPoints` with its glyph,
+ * unless it would be redundant: then it only snaps and is drawn dashed (`guides`).
  */
 export function move(
   state: DrawState,
@@ -256,6 +271,19 @@ export function move(
     guides,
     tolerance,
   });
+  // A centre arc's end: projected onto the circle, so it can end on an existing point (or the
+  // origin) that lies on that circle within the tolerance. Nothing else is committable there.
+  const circle = arcEndCircle(state);
+  if (circle) {
+    const p = candidates.find(
+      (c) =>
+        c.constraint.kind === 'coincident' &&
+        Math.abs(dist(c.snapped, circle.c) - circle.r) <= tolerance,
+    );
+    if (!p) return done({ at: raw }, []);
+    const h: Anchor = { ...anchorFor(p.snapped, p.constraint), near: 1.5 * tolerance + 1e-6 };
+    return { ...done(h, ['coincident']), hover: { ...h, role: 'point' } };
+  }
   if (role === 'free') return done({ at: raw }, []);
   if (role === 'curve') {
     // Only an existing point (or the origin) can be passed through without a point of our own.
@@ -288,8 +316,12 @@ export function move(
       at = dir.snapped;
       glyphs.push(dir.constraint.kind);
     }
-    // Guides snap only the coordinate the direction left free.
-    const from: Vec2[] = [];
+    hover = dir ? { at, dir: dir.constraint } : { at };
+    // Guides snap only the coordinate the direction left free. Each one is committed (glyph)
+    // unless it is redundant with what is already there (dashed guide only).
+    const dashed: Vec2[] = [];
+    const align: GeometricConstraintDraft[] = [];
+    let n = 0;
     for (const g of candidates) {
       if (!GUIDE_KINDS.has(g.constraint.kind)) continue;
       const horizontalGuide = g.constraint.kind === 'horizontalPoints';
@@ -297,15 +329,28 @@ export function move(
       if (dir?.constraint.kind === 'vertical' && !horizontalGuide) continue;
       if (dir && dir.constraint.kind !== 'horizontal' && dir.constraint.kind !== 'vertical') break;
       at = horizontalGuide ? [at[0], g.snapped[1]] : [g.snapped[0], at[1]];
-      const other = 'b' in g.constraint ? pointAt(sketch, g.constraint.b) : null;
-      if (other) from.push(other);
-      if (from.length >= 2) break;
+      if (alignKept(state, sketch, { ...hover, align }, g.constraint)) {
+        align.push(g.constraint);
+        glyphs.push(g.constraint.kind);
+      } else {
+        const other = 'b' in g.constraint ? pointAt(sketch, g.constraint.b) : null;
+        if (other) dashed.push(other);
+      }
+      if (++n >= 2) break;
     }
+    hover = { ...hover, at, ...(align.length ? { align } : {}) };
     // Every guide ends at the final (fully snapped) cursor.
-    for (const f of from) guides.push({ from: f, to: at });
-    hover = dir ? { at, dir: dir.constraint } : { at };
+    for (const f of dashed) guides.push({ from: f, to: at });
   }
-  return done(hover, glyphs.slice(0, 2), guides);
+  return done(hover, glyphs, guides);
+}
+
+/** The circle a centre arc's end click lands on (centre and radius), else null. */
+function arcEndCircle(state: DrawState): { c: Vec2; r: number } | null {
+  if (state.tool !== 'arc' || state.variant !== 'center' || state.anchors.length !== 2) return null;
+  const [c, s] = state.anchors as [Anchor, Anchor];
+  const r = dist(c.at, s.at);
+  return r > 1e-9 ? { c: c.at, r } : null;
 }
 
 /** Position of a sketch point (or the origin) by id. */
@@ -331,16 +376,37 @@ function dirKept(
   dir: GeometricConstraintDraft,
 ): boolean {
   if (dir.kind !== 'horizontal' && dir.kind !== 'vertical') return true;
-  const from = state.chainFrom ?? state.anchors[0];
-  if (state.tool !== 'line' || !from) return true;
+  if (state.tool !== 'line' || !(state.chainFrom ?? state.anchors[0])) return true;
+  return !plannedClasses(state, sketch, to).redundant(dir);
+}
+
+/**
+ * Alignment classes of the sketch plus what this click (and, for a line, its still uncommitted
+ * start point) is about to commit; placeholders `@from`, `@cursor` and `@drawing`.
+ */
+function plannedClasses(state: DrawState, sketch: SketchData, to: Anchor): AlignmentClasses {
   const classes = new AlignmentClasses(sketch.entities, sketch.constraints);
-  const fromId = from.pointId ?? FROM_POINT;
-  if (!state.chainFrom && !from.pointId && from.snap)
-    classes.add(bindCandidate(from.snap, { cursorPoint: FROM_POINT }));
   const toId = to.pointId ?? INFERENCE_CURSOR;
-  if (!to.pointId && to.snap) classes.add(to.snap);
-  classes.line(INFERENCE_DRAWING, fromId, toId);
-  return !classes.redundant(dir);
+  const from = state.tool === 'line' ? (state.chainFrom ?? state.anchors[0]) : undefined;
+  if (from && !state.chainFrom && !from.pointId)
+    for (const c of [from.snap, ...(from.align ?? [])])
+      if (c) classes.add(bindCandidate(c, { cursorPoint: FROM_POINT }));
+  if (!to.pointId) for (const c of [to.snap, ...(to.align ?? [])]) if (c) classes.add(c);
+  if (from) {
+    classes.line(INFERENCE_DRAWING, from.pointId ?? FROM_POINT, toId);
+    if (to.dir) classes.add(to.dir);
+  }
+  return classes;
+}
+
+/** Whether an alignment guide at this click is committed: not when it would be redundant. */
+function alignKept(
+  state: DrawState,
+  sketch: SketchData,
+  to: Anchor,
+  guide: GeometricConstraintDraft,
+): boolean {
+  return !plannedClasses(state, sketch, to).redundant(guide);
 }
 
 /**
@@ -419,9 +485,9 @@ export function bindAnchors(
   const extra: SketchConstraint[] = [];
   const curve = fragmentCurve(frag);
   const throughs = new Set<Id>();
-  const pointsAt = (at: Vec2) =>
+  const pointsAt = (at: Vec2, near = 1e-6) =>
     frag.entities
-      .filter((e) => e.kind === 'point' && !taken.has(e.id) && dist([e.x, e.y], at) < 1e-6)
+      .filter((e) => e.kind === 'point' && !taken.has(e.id) && dist([e.x, e.y], at) < near)
       .sort((a, b) => Number(a.construction) - Number(b.construction));
   for (const a of anchors) {
     const role = a.role ?? 'point';
@@ -435,7 +501,7 @@ export function bindAnchors(
       extra.push({ id: newId(), kind: 'pointOn', point: through, on: curve });
       continue;
     }
-    const p = pointsAt(a.at)[0];
+    const p = pointsAt(a.at, a.near)[0];
     if (!p) {
       // The tool already built on the existing point (a tangent arc's start).
       if (a.pointId && frag.entities.some((e) => usesPoint(e, a.pointId as Id)))
@@ -447,7 +513,9 @@ export function bindAnchors(
       reuse.set(p.id, a.pointId);
       reused.add(a.pointId);
     } else if (a.pointId) extra.push({ id: newId(), kind: 'coincident', a: p.id, b: a.pointId });
-    else if (a.snap) extra.push(bind(a.snap, { cursorPoint: p.id }));
+    else
+      for (const c of [a.snap, ...(a.align ?? [])])
+        if (c) extra.push(bind(c, { cursorPoint: p.id }));
   }
   const out = reusePoints(frag, reuse);
   return {
@@ -552,12 +620,14 @@ function lineSegment(state: DrawState, from: Anchor, to: Anchor): SketchEdit {
   const startId = from.pointId ?? newId();
   if (!from.pointId) {
     entities.push({ id: startId, kind: 'point', construction: o, x: from.at[0], y: from.at[1] });
-    if (from.snap) constraints.push(bind(from.snap, { cursorPoint: startId }));
+    for (const c of [from.snap, ...(from.align ?? [])])
+      if (c) constraints.push(bind(c, { cursorPoint: startId }));
   }
   const endId = to.pointId ?? newId();
   if (!to.pointId) {
     entities.push({ id: endId, kind: 'point', construction: o, x: to.at[0], y: to.at[1] });
-    if (to.snap) constraints.push(bind(to.snap, { cursorPoint: endId }));
+    for (const c of [to.snap, ...(to.align ?? [])])
+      if (c) constraints.push(bind(c, { cursorPoint: endId }));
   }
   const lineId = newId();
   entities.push({ id: lineId, kind: 'line', construction: o, start: startId, end: endId });
@@ -655,7 +725,9 @@ export function click(state: DrawState, sketch: SketchData): ClickResult {
     // that point: nothing new (no duplicate), the point is selected instead.
     if (hover.pointId) return { state, edit: null, select: hover.pointId };
     const id = newId();
-    const constraints = hover.snap ? [bind(hover.snap, { cursorPoint: id })] : [];
+    const constraints = [hover.snap, ...(hover.align ?? [])]
+      .filter((c): c is GeometricConstraintDraft => !!c)
+      .map((c) => bind(c, { cursorPoint: id }));
     return {
       state: { ...state, anchors: [], candidates: [], glyphs: [] },
       edit: {

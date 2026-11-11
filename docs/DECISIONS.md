@@ -2393,11 +2393,12 @@ Owner feedback: "putting a point over an existing visible point [should add] the
 - **What is shown is what is committed.** `move()` (apps/web `sketch/draw.ts`) gives each click a role from the tool and how many clicks are placed (`nextRole`):
   - `point`: a corner, centre, end or pole. Every point snap is kept.
   - `curve`: the new curve passes through it without a point of its own (a circle's rim, the three points of a 3-point circle, a 3-point arc's middle, an ellipse's axis end). Only a snap onto an existing point is kept, as `pointOn(existing, curve)`.
-  - `free`: a size or direction (a slot's width, a 3-point rectangle's depth, an ellipse's second radius, a centre arc's end, an elliptic arc's axis and ends). No snap at all.
+  - `free`: a size or direction (a slot's width, a 3-point rectangle's depth, an ellipse's second radius, an elliptic arc's axis and ends). No snap at all.
+  - A centre arc's end is projected onto its circle. It takes only a snap onto an existing point, or the origin, that lies on that circle within the snap tolerance. That point is reused (the match tolerance is `Anchor.near`). Reference parts rp03 and rp06 draw their arcs this way and need the binding to be fully defined (dev CI run 42976110170).
   
   `glyphs` lists exactly what the click commits. `bindAnchors` applies it to any tool fragment, and a per-tool test checks shown == committed (`sketch/implied.test.ts`).
 - **Reuse, not coincident.** A `point` click on an existing point makes the fragment use that point (`reusePoints` in packages/sketch): no duplicate point, no `coincident`. Fragment points are matched by position, visible ones first, so construction points (a polygon's or centre rectangle's centre, a control spline's inner poles) bind too. They did not before. Pencil open ends reuse the same way. The Point tool on an existing point adds nothing and selects it.
-- **Alignment guides are display only.** A horizontal/vertical guide to another point still snaps, but it is drawn as a dashed preview line, not as a glyph, and adds nothing. Committing guides to arbitrary points would over-constrain (closing a line rectangle made `verticalPoints` + `vertical` redundant). Mainstream sketchers treat these inference lines the same way. The axes are covered by the `pointOn` axis snap and by the H/V line direction.
+- **Alignment guides commit unless redundant** (lead review). A guide level with another point, or the origin, snaps the cursor. It is committed as `horizontalPoints` / `verticalPoints`, with a solid glyph, unless `AlignmentClasses` says it is already implied. Only then is it drawn as a dashed preview line with no glyph. The same check drops a line's redundant H/V: a line rectangle whose fourth corner snapped level with the start closes with no extra `vertical` (H, V, H, `verticalPoints`).
 - **No redundant H/V.** `AlignmentClasses` (packages/sketch `implied.ts`) is a union-find of points that share an x or a y through coincident, horizontal/vertical lines and pairs, axis `pointOn` and `fix`. A line's H/V snap whose two ends are already aligned shows no glyph and is not committed. This replaces the narrower "both ends on one axis" rule.
 - **Finish without Esc.** `finishTool`: a spline is committed open with the points so far, a line chain ends where it is, and any other partly placed shape is dropped (it cannot be finished early). `gestureAction` maps a mouse `contextMenu` click to `finish` in sketch mode while a shape is in progress, under every preset and for a quick `rightOrbitRepeat` click too. Otherwise the radial menu opens as before. Right-drag is untouched, because the viewport only reports a click inside its drag threshold.
   - The toggle "Right click finishes the current sketch tool" (Settings → Navigation → Sketching, default on) is stored per device under `wren.sketchInput`. It is not in `NavigationOptions`, which is a contract. The shortcut overlay lists it as a fixed row (`ShortcutOverlay.extras`).
@@ -2405,7 +2406,7 @@ Owner feedback: "putting a point over an existing visible point [should add] the
   - Enter now also ends a line chain.
 - **Two-point splines** were already valid in the tools and the solver (through: a clamped Bézier cubic with chord-direction end tangents and two free handles, 8 DOF; control: degree 1). Both now finish by Enter, a right click and Finish, and they regenerate (E2E).
 
-**Not done.** An elliptic arc's start and end, and a centre arc's end, are projected onto the curve, so they never bind to a point. Binding them would need the solver to move the curve to the point, which the preview cannot show.
+**Not done.** An elliptic arc's start and end are projected onto the ellipse, so they never bind to a point.
 
 **Contracts.** No change.
 

@@ -25,7 +25,9 @@ import {
 const base = (() => {
   const l = lineTool([100, 100], [140, 100]);
   const q: SketchEntity = { id: 'Q', kind: 'point', construction: false, x: 60, y: 40 };
-  return { entities: [...l.entities, q], constraints: [] as SketchConstraint[] };
+  // E is as far from the origin as A: a centre arc about the origin from A can end on it.
+  const e: SketchEntity = { id: 'E', kind: 'point', construction: false, x: 100, y: -100 };
+  return { entities: [...l.entities, q, e], constraints: [] as SketchConstraint[] };
 })();
 const pointId = (x: number, y: number) =>
   (base.entities.find((e) => e.kind === 'point' && e.x === x && e.y === y) as SketchEntity).id;
@@ -107,7 +109,7 @@ function noDuplicates(data: SketchData) {
   const pts = data.entities.filter(
     (e): e is Extract<SketchEntity, { kind: 'point' }> => e.kind === 'point',
   );
-  for (const p of [A, B, 'Q']) {
+  for (const p of [A, B, 'Q', 'E']) {
     const at = pts.find((e) => e.id === p) as { x: number; y: number };
     const twins = pts.filter((e) => Math.hypot(e.x - at.x, e.y - at.y) < 1e-6);
     expect(twins, `a duplicate of ${p}`).toHaveLength(1);
@@ -190,6 +192,13 @@ const cases: Array<{
     variant: 'center',
     clicks: [nearQ, nearA, nearB],
     expect: ['coincident', 'coincident'],
+  },
+  {
+    name: 'centre arc ending on a point on its circle (reused)',
+    tool: 'arc',
+    variant: 'center',
+    clicks: [nearO, nearA, [100.4, -99.7]],
+    expect: ['coincident', 'coincident', 'coincident'],
   },
   {
     name: 'tangent arc',
@@ -293,14 +302,45 @@ describe('implied constraints: glyphs shown equal constraints committed (M3.8)',
     expect(s.cursor).toEqual(nearQ);
   });
 
-  it('an alignment guide snaps but adds no glyph and no constraint: it is drawn dashed', () => {
-    // Level with A (y = 100) but far from it: the cursor snaps to y = 100 with a guide from A.
+  it('an alignment guide snaps and commits its alignment, with its glyph', () => {
+    // Level with A (y = 100) but far from it: the cursor snaps to y = 100 and shows the glyph.
     const s = move(startDraw('point'), base, [20, 100.4], 1);
     expect(s.cursor).toEqual([20, 100]);
-    expect(s.glyphs).toEqual([]);
-    expect(s.guides).toEqual([{ from: [100, 100], to: [20, 100] }]);
+    expect(s.glyphs).toEqual(['horizontalPoints']);
+    expect(s.guides).toEqual([]); // committed: a solid glyph, not a dashed guide
     const r = click(s, base);
-    expect(r.edit?.constraints).toEqual([]);
+    const id = r.edit?.entities[0]?.id;
+    expect(r.edit?.constraints).toEqual([
+      expect.objectContaining({ kind: 'horizontalPoints', a: id, b: A }),
+    ]);
+  });
+
+  it('a line rectangle closes without a redundant vertical (the corner alignment holds it)', () => {
+    // Closing on the chain's own start (not a base point): driven by hand, glyphs per click.
+    let s = startDraw('line');
+    const data: SketchData = { entities: [], constraints: [] };
+    const shown: string[] = [];
+    const made: string[] = [];
+    for (const p of [
+      [10, 10],
+      [50, 10.3],
+      [50.2, 30],
+      [10.3, 30.2],
+      [10.2, 10.1],
+    ] as Vec2[]) {
+      s = move(s, data, p, 1);
+      shown.push(...s.glyphs.filter((g) => g !== 'coincident'));
+      const r = click(s, data);
+      s = r.state;
+      if (r.edit) {
+        (data.entities as SketchEntity[]).push(...r.edit.entities);
+        (data.constraints as SketchConstraint[]).push(...r.edit.constraints);
+        made.push(...r.edit.constraints.map((c) => c.kind as string));
+      }
+    }
+    expect(made.sort()).toEqual(shown.sort());
+    const all = made;
+    expect(all).toEqual(['horizontal', 'horizontal', 'vertical', 'verticalPoints']);
   });
 
   it('a line closing onto an already aligned point shows and commits no redundant vertical', () => {
