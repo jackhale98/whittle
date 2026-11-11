@@ -311,8 +311,13 @@ test('M1 acceptance: bracket from scratch, three upstream edits, STEP round trip
   expect(holes.constraints.filter((c) => c.kind === 'hDistance')).toHaveLength(4);
   expect(holes.constraints.filter((c) => c.kind === 'vDistance')).toHaveLength(3);
   expect(holes.constraints.some((c) => c.kind === 'fix')).toBe(false);
-  // As before (when the left column was fixed), the right column keeps one DOF: its height.
-  expect((await a.sketch())?.dof).toBe(1);
+  // M3.8 (ADR-087): placing the hole centres level with / above one another commits the snapped
+  // alignments (horizontalPoints / verticalPoints, only when not redundant), which also pins the
+  // right column's height that used to stay free: the hole pattern is now fully defined.
+  expect(holes.constraints.filter((c) => c.kind === 'horizontalPoints')).toHaveLength(2);
+  expect(holes.constraints.filter((c) => c.kind === 'verticalPoints')).toHaveLength(2);
+  expect((await a.sketch())?.conflicts ?? []).toEqual([]);
+  expect((await a.sketch())?.dof).toBe(0);
   expect(holes.constraints.filter((c) => c.kind === 'diameter')).toHaveLength(4);
   await page.getByTestId('finish-sketch').click();
 
