@@ -7,6 +7,7 @@
 
 import { edge, origin, region, sum, term } from '../lib/geom';
 import type { PartDef } from '../lib/types';
+import { TOP } from '../lib/views';
 
 const PI = Math.PI;
 
@@ -212,7 +213,7 @@ export const rp06: PartDef = {
     const cin = d('ch_in');
     const tx = d('ch_turn_x');
     const dim = (name: string) => ({ name, value: d(name), unit: 'mm' as const });
-    const top = dr.view('Top', 150, 90, 1.5).caption(-L / 2, W / 2 + 8, 'Top');
+    const top = dr.view(TOP, 150, 90, 1.5).caption(-L / 2, W / 2 + 8, 'Top');
     top.rect(-L / 2, -W / 2, L / 2, W / 2);
     top.path(
       [
@@ -236,13 +237,27 @@ export const rp06: PartDef = {
     top.dimV(L / 2, -W / 2, L / 2, W / 2, 12, dim('blk_w'));
     top.dimV(-L / 2, 0, -L / 2, -cin, -12, dim('ch_in'));
     top.dimH(-L / 2, W / 2, tx, W / 2, 6, dim('ch_turn_x'));
-    top.leader(tx, -cin + bt, bt, 225, 14, dim('ch_bend'));
+    top.leader(tx, -cin + bt, bt, 225, 14, dim('ch_bend'), 'radius');
     top.dimH(-d('rod_x'), -W / 2 + 4, 0, -W / 2 + 4, 0, dim('rod_x'));
     top.dimV(-d('rod_x'), 0, -d('rod_x'), d('rod_y'), -14, dim('rod_y'));
     top.leader(-d('rod_x'), d('rod_y'), d('rod_d') / 2, 90, 10, dim('rod_d'));
     top.leader(tx + bt, 0, d('ch_d') / 2, 0, 14, dim('ch_d'));
     // Side view along X: horizontal axis = Y, vertical = Z. The rod path is in this plane.
-    const side = dr.view('Right', 320, 160, 1.4).caption(-W / 2, 80, 'Right');
+    const side = dr
+      .view(
+        {
+          id: 'right',
+          caption: 'Right',
+          kind: 'base',
+          orientation: 'right',
+          side: 'right',
+          axes: ['Y', 'Z'],
+        },
+        320,
+        160,
+        1.4,
+      )
+      .caption(-W / 2, 80, 'Right');
     side.rect(-W / 2, 0, W / 2, T);
     const ry = d('rod_y');
     const rh = d('rod_h');
@@ -252,7 +267,7 @@ export const rp06: PartDef = {
     side.line(ry - rb, T + rh + rb, ry - rb - d('rod_tail'), T + rh + rb);
     side.dimV(-W / 2, 0, -W / 2, T, -12, dim('blk_t'));
     side.dimV(ry, T, ry, T + rh, 10, dim('rod_h'));
-    side.leader(ry - rb, T + rh, rb, 45, 12, dim('rod_bend'));
+    side.leader(ry - rb, T + rh, rb, 45, 12, dim('rod_bend'), 'radius');
     side.dimH(ry - rb - d('rod_tail'), T + rh + rb, ry - rb, T + rh + rb, 8, dim('rod_tail'));
   },
 };

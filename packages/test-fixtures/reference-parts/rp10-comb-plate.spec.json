@@ -393,7 +393,203 @@
       }
     }
   ],
-  "drawing": "rp10-comb-plate.svg",
+  "drawing": {
+    "file": "rp10-comb-plate.svg",
+    "projection": "third",
+    "views": [
+      {
+        "id": "top",
+        "caption": "Top",
+        "kind": "projected",
+        "orientation": "top",
+        "parent": "front",
+        "side": "above",
+        "axes": [
+          "X",
+          "Y"
+        ]
+      },
+      {
+        "id": "front",
+        "caption": "Front",
+        "kind": "base",
+        "orientation": "front",
+        "axes": [
+          "X",
+          "Z"
+        ]
+      }
+    ],
+    "dimensions": [
+      {
+        "name": "plate_l",
+        "kind": "linear",
+        "value": 120,
+        "unit": "mm",
+        "view": "top",
+        "axis": "h",
+        "from": [
+          -60,
+          -20
+        ],
+        "to": [
+          60,
+          -20
+        ]
+      },
+      {
+        "name": "plate_w",
+        "kind": "linear",
+        "value": 40,
+        "unit": "mm",
+        "view": "top",
+        "axis": "v",
+        "from": [
+          -60,
+          -20
+        ],
+        "to": [
+          -60,
+          20
+        ]
+      },
+      {
+        "name": "ear_l",
+        "kind": "linear",
+        "value": 20,
+        "unit": "mm",
+        "view": "top",
+        "axis": "h",
+        "from": [
+          60,
+          12
+        ],
+        "to": [
+          80,
+          12
+        ]
+      },
+      {
+        "name": "ear_w",
+        "kind": "linear",
+        "value": 24,
+        "unit": "mm",
+        "view": "top",
+        "axis": "v",
+        "from": [
+          80,
+          -12
+        ],
+        "to": [
+          80,
+          12
+        ]
+      },
+      {
+        "name": "ear_hole_d",
+        "kind": "diameter",
+        "value": 8,
+        "unit": "mm",
+        "view": "top",
+        "at": [
+          70,
+          0
+        ],
+        "radius": 4
+      },
+      {
+        "name": "slot_x0",
+        "kind": "linear",
+        "value": -45,
+        "unit": "mm",
+        "view": "top",
+        "axis": "h",
+        "from": [
+          -60,
+          20
+        ],
+        "to": [
+          -45,
+          20
+        ]
+      },
+      {
+        "name": "slot_pitch",
+        "kind": "linear",
+        "value": 18,
+        "unit": "mm",
+        "view": "top",
+        "axis": "h",
+        "from": [
+          -45,
+          -16
+        ],
+        "to": [
+          -27,
+          -16
+        ]
+      },
+      {
+        "name": "slot_l",
+        "kind": "linear",
+        "value": 6,
+        "unit": "mm",
+        "view": "top",
+        "axis": "h",
+        "from": [
+          -48,
+          12
+        ],
+        "to": [
+          -42,
+          12
+        ]
+      },
+      {
+        "name": "slot_w",
+        "kind": "linear",
+        "value": 24,
+        "unit": "mm",
+        "view": "top",
+        "axis": "v",
+        "from": [
+          -42,
+          -12
+        ],
+        "to": [
+          -42,
+          12
+        ]
+      },
+      {
+        "name": "slot_n",
+        "kind": "count",
+        "value": 6,
+        "unit": "",
+        "view": "top",
+        "at": [
+          -80,
+          -40
+        ]
+      },
+      {
+        "name": "plate_t",
+        "kind": "linear",
+        "value": 8,
+        "unit": "mm",
+        "view": "front",
+        "axis": "v",
+        "from": [
+          80,
+          0
+        ],
+        "to": [
+          80,
+          8
+        ]
+      }
+    ]
+  },
   "independent": {
     "tool": "FreeCAD",
     "script": "freecad/rp10.py",

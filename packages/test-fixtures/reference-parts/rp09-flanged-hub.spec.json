@@ -326,7 +326,157 @@
       }
     }
   ],
-  "drawing": "rp09-flanged-hub.svg",
+  "drawing": {
+    "file": "rp09-flanged-hub.svg",
+    "projection": "third",
+    "views": [
+      {
+        "id": "top",
+        "caption": "Top",
+        "kind": "base",
+        "orientation": "top",
+        "axes": [
+          "X",
+          "Y"
+        ]
+      },
+      {
+        "id": "front-section",
+        "caption": "Front (section)",
+        "kind": "section",
+        "orientation": "front",
+        "parent": "top",
+        "side": "right",
+        "axes": [
+          "X",
+          "Z"
+        ],
+        "section": {
+          "letter": "A",
+          "cut": [
+            [
+              -65,
+              0
+            ],
+            [
+              65,
+              0
+            ]
+          ],
+          "look": "left"
+        }
+      }
+    ],
+    "dimensions": [
+      {
+        "name": "flange_d",
+        "kind": "linear",
+        "value": 120,
+        "unit": "mm",
+        "view": "top",
+        "axis": "h",
+        "from": [
+          -60,
+          -60
+        ],
+        "to": [
+          60,
+          -60
+        ]
+      },
+      {
+        "name": "hub_d",
+        "kind": "diameter",
+        "value": 56,
+        "unit": "mm",
+        "view": "top",
+        "at": [
+          0,
+          0
+        ],
+        "radius": 28
+      },
+      {
+        "name": "bore_d",
+        "kind": "diameter",
+        "value": 32,
+        "unit": "mm",
+        "view": "top",
+        "at": [
+          0,
+          0
+        ],
+        "radius": 16
+      },
+      {
+        "name": "bolt_d",
+        "kind": "diameter",
+        "value": 9,
+        "unit": "mm",
+        "view": "top",
+        "at": [
+          45,
+          0
+        ],
+        "radius": 4.5
+      },
+      {
+        "name": "pcd",
+        "kind": "diameter",
+        "value": 90,
+        "unit": "mm",
+        "view": "top",
+        "at": [
+          0,
+          0
+        ],
+        "radius": 45
+      },
+      {
+        "name": "bolt_n",
+        "kind": "count",
+        "value": 8,
+        "unit": "",
+        "view": "top",
+        "at": [
+          65,
+          -60
+        ]
+      },
+      {
+        "name": "flange_t",
+        "kind": "linear",
+        "value": 12,
+        "unit": "mm",
+        "view": "front-section",
+        "axis": "v",
+        "from": [
+          -60,
+          0
+        ],
+        "to": [
+          -60,
+          12
+        ]
+      },
+      {
+        "name": "hub_h",
+        "kind": "linear",
+        "value": 30,
+        "unit": "mm",
+        "view": "front-section",
+        "axis": "v",
+        "from": [
+          28,
+          12
+        ],
+        "to": [
+          28,
+          42
+        ]
+      }
+    ]
+  },
   "independent": {
     "tool": "FreeCAD",
     "script": "freecad/rp09.py",

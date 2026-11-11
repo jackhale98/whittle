@@ -175,3 +175,77 @@ export interface PartDef {
   /** Orthographic views with the driving dimensions. */
   draw: (d: D, dr: Drawing) => void;
 }
+
+// ---------------------------------------------------------------------------------------------
+// The drawing section of the spec (PLAN section 12 M4 and 12A)
+// ---------------------------------------------------------------------------------------------
+
+/** Part axis, signed. */
+export type WorldAxis = 'X' | 'Y' | 'Z' | '-X' | '-Y' | '-Z';
+
+export type StandardViewName = 'front' | 'back' | 'top' | 'bottom' | 'left' | 'right';
+
+/**
+ * One view of the spec drawing. The drawing is third-angle projection (the sheet's note says so),
+ * so `side` is where the view sits relative to its parent in that method.
+ *
+ * - `base`: a view in its own right; `orientation` is the direction it is seen from.
+ * - `projected`: the parent seen from one of its sides (`orientation` is the standard view it is).
+ * - `section`: a cut through `parent` along `section.cut` (two points, or more for a stepped section, in the parent view's own
+ *   drawn coordinates, part mm); the viewer looks to the `look` side of the line's direction.
+ * - `detail`: an enlarged circle on the parent. No current spec drawing has one.
+ */
+export interface DrawingViewSpec {
+  id: string;
+  /** Label as captioned on the drawing. */
+  caption: string;
+  kind: 'base' | 'projected' | 'section' | 'detail';
+  orientation: StandardViewName;
+  parent?: string;
+  side?: 'above' | 'below' | 'left' | 'right';
+  /** In-plane rotation of the view in degrees, counter-clockwise; absent = none. */
+  rotation?: number;
+  /** What the view's drawn x and y coordinates are in the part (dimension geometry uses them). */
+  axes: [WorldAxis, WorldAxis];
+  section?: { letter: string; cut: [number, number][]; look: 'left' | 'right' };
+  detail?: { letter: string; centre: [number, number]; radius: number; scale: string };
+}
+
+export type DrawingDimKind = 'linear' | 'diameter' | 'radius' | 'chamfer' | 'angle' | 'count';
+
+/** A tolerance as printed: `+plus / -minus` in the dimension's unit. None of the drawings has one yet. */
+export interface DimTolerance {
+  plus: number;
+  minus: number;
+}
+
+/**
+ * One dimension on the spec drawing. `name` is the driving dimension's name (the document
+ * parameter). `value` is the number printed on the drawing (so a position left of the origin is
+ * negative); Wren's dimensions are unsigned distances, so compare `Math.abs(value)`.
+ */
+export interface DrawingDimSpec {
+  name: string;
+  kind: DrawingDimKind;
+  value: number;
+  unit: Unit;
+  tolerance?: DimTolerance;
+  /** The view it appears in (`DrawingViewSpec.id`). */
+  view: string;
+  /** Linear: measured along the view's horizontal or vertical, between two points (view coordinates). */
+  axis?: 'h' | 'v';
+  from?: [number, number];
+  to?: [number, number];
+  /** Diameter, radius, chamfer, angle and count: the feature's centre or anchor point (view coordinates). */
+  at?: [number, number];
+  /** Diameter, radius and chamfer: the circle's radius, to tell concentric circles apart. */
+  radius?: number;
+}
+
+export interface DrawingSpec {
+  /** The committed SVG next to the spec. */
+  file: string;
+  projection: 'third' | 'first';
+  views: DrawingViewSpec[];
+  dimensions: DrawingDimSpec[];
+}

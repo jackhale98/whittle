@@ -15,5 +15,15 @@ export {
   stepTypes,
 } from './lib/builder';
 export { type PartSpec, specFor } from './lib/spec';
-export type { PartDef, Pick, SketchOp, Step } from './lib/types';
+export type {
+  DrawingDimKind,
+  DrawingDimSpec,
+  DrawingSpec,
+  DrawingViewSpec,
+  PartDef,
+  Pick,
+  SketchOp,
+  Step,
+  WorldAxis,
+} from './lib/types';
 export { PARTS } from './parts';

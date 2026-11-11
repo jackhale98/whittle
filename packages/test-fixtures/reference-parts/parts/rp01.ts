@@ -6,6 +6,7 @@
 
 import { face, origin, region, sum, term } from '../lib/geom';
 import type { PartDef } from '../lib/types';
+import { FRONT, TOP_OF_FRONT } from '../lib/views';
 
 const PI = Math.PI;
 
@@ -153,7 +154,7 @@ export const rp01: PartDef = {
     const py = d('pocket_y');
     const ph = d('pocket_h');
     const dim = (name: string) => ({ name, value: d(name), unit: 'mm' as const });
-    const top = dr.view('Top', 150, 95, 1.55).caption(-L / 2, W / 2 + 8, 'Top');
+    const top = dr.view(TOP_OF_FRONT, 150, 95, 1.55).caption(-L / 2, W / 2 + 8, 'Top');
     top.rect(-L / 2, -W / 2, L / 2, W / 2);
     for (const sx of [-1, 1])
       for (const sy of [-1, 1]) {
@@ -170,7 +171,7 @@ export const rp01: PartDef = {
     top.dimH(-pw / 2, py + ph, pw / 2, py + ph, 3, dim('pocket_w'));
     top.dimV(pw / 2, py, pw / 2, py + ph, 16, dim('pocket_h'));
     top.dimV(-pw / 2, 0, -pw / 2, py, -14, dim('pocket_y'));
-    const front = dr.view('Front', 150, 225, 1.55).caption(-L / 2, T + 14, 'Front');
+    const front = dr.view(FRONT, 150, 225, 1.55).caption(-L / 2, T + 14, 'Front');
     front.rect(-L / 2, 0, L / 2, T);
     front.rect(-pw / 2, T - d('pocket_d'), pw / 2, T, 'hidden');
     front.dimV(L / 2, 0, L / 2, T, 12, dim('thickness'));

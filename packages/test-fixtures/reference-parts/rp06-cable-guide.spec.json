@@ -544,7 +544,227 @@
       }
     }
   ],
-  "drawing": "rp06-cable-guide.svg",
+  "drawing": {
+    "file": "rp06-cable-guide.svg",
+    "projection": "third",
+    "views": [
+      {
+        "id": "top",
+        "caption": "Top",
+        "kind": "base",
+        "orientation": "top",
+        "axes": [
+          "X",
+          "Y"
+        ]
+      },
+      {
+        "id": "right",
+        "caption": "Right",
+        "kind": "base",
+        "orientation": "right",
+        "side": "right",
+        "axes": [
+          "Y",
+          "Z"
+        ]
+      }
+    ],
+    "dimensions": [
+      {
+        "name": "blk_l",
+        "kind": "linear",
+        "value": 100,
+        "unit": "mm",
+        "view": "top",
+        "axis": "h",
+        "from": [
+          -50,
+          -25
+        ],
+        "to": [
+          50,
+          -25
+        ]
+      },
+      {
+        "name": "blk_w",
+        "kind": "linear",
+        "value": 50,
+        "unit": "mm",
+        "view": "top",
+        "axis": "v",
+        "from": [
+          50,
+          -25
+        ],
+        "to": [
+          50,
+          25
+        ]
+      },
+      {
+        "name": "ch_in",
+        "kind": "linear",
+        "value": 10,
+        "unit": "mm",
+        "view": "top",
+        "axis": "v",
+        "from": [
+          -50,
+          0
+        ],
+        "to": [
+          -50,
+          -10
+        ]
+      },
+      {
+        "name": "ch_turn_x",
+        "kind": "linear",
+        "value": 20,
+        "unit": "mm",
+        "view": "top",
+        "axis": "h",
+        "from": [
+          -50,
+          25
+        ],
+        "to": [
+          20,
+          25
+        ]
+      },
+      {
+        "name": "ch_bend",
+        "kind": "radius",
+        "value": 10,
+        "unit": "mm",
+        "view": "top",
+        "at": [
+          20,
+          0
+        ],
+        "radius": 10
+      },
+      {
+        "name": "rod_x",
+        "kind": "linear",
+        "value": 30,
+        "unit": "mm",
+        "view": "top",
+        "axis": "h",
+        "from": [
+          -30,
+          -21
+        ],
+        "to": [
+          0,
+          -21
+        ]
+      },
+      {
+        "name": "rod_y",
+        "kind": "linear",
+        "value": 15,
+        "unit": "mm",
+        "view": "top",
+        "axis": "v",
+        "from": [
+          -30,
+          0
+        ],
+        "to": [
+          -30,
+          15
+        ]
+      },
+      {
+        "name": "rod_d",
+        "kind": "diameter",
+        "value": 8,
+        "unit": "mm",
+        "view": "top",
+        "at": [
+          -30,
+          15
+        ],
+        "radius": 4
+      },
+      {
+        "name": "ch_d",
+        "kind": "diameter",
+        "value": 10,
+        "unit": "mm",
+        "view": "top",
+        "at": [
+          30,
+          0
+        ],
+        "radius": 5
+      },
+      {
+        "name": "blk_t",
+        "kind": "linear",
+        "value": 20,
+        "unit": "mm",
+        "view": "right",
+        "axis": "v",
+        "from": [
+          -25,
+          0
+        ],
+        "to": [
+          -25,
+          20
+        ]
+      },
+      {
+        "name": "rod_h",
+        "kind": "linear",
+        "value": 20,
+        "unit": "mm",
+        "view": "right",
+        "axis": "v",
+        "from": [
+          15,
+          20
+        ],
+        "to": [
+          15,
+          40
+        ]
+      },
+      {
+        "name": "rod_bend",
+        "kind": "radius",
+        "value": 10,
+        "unit": "mm",
+        "view": "right",
+        "at": [
+          5,
+          40
+        ],
+        "radius": 10
+      },
+      {
+        "name": "rod_tail",
+        "kind": "linear",
+        "value": 15,
+        "unit": "mm",
+        "view": "right",
+        "axis": "h",
+        "from": [
+          -10,
+          50
+        ],
+        "to": [
+          5,
+          50
+        ]
+      }
+    ]
+  },
   "independent": {
     "tool": "FreeCAD",
     "script": "freecad/rp06.py",

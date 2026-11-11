@@ -255,7 +255,125 @@
       }
     }
   ],
-  "drawing": "rp05-moulded-housing.svg",
+  "drawing": {
+    "file": "rp05-moulded-housing.svg",
+    "projection": "third",
+    "views": [
+      {
+        "id": "top",
+        "caption": "Top",
+        "kind": "base",
+        "orientation": "top",
+        "axes": [
+          "X",
+          "Y"
+        ]
+      },
+      {
+        "id": "front-section",
+        "caption": "Front (section)",
+        "kind": "section",
+        "orientation": "front",
+        "parent": "top",
+        "side": "below",
+        "axes": [
+          "X",
+          "Z"
+        ],
+        "section": {
+          "letter": "A",
+          "cut": [
+            [
+              -50,
+              0
+            ],
+            [
+              50,
+              0
+            ]
+          ],
+          "look": "left"
+        }
+      }
+    ],
+    "dimensions": [
+      {
+        "name": "base_l",
+        "kind": "linear",
+        "value": 90,
+        "unit": "mm",
+        "view": "top",
+        "axis": "h",
+        "from": [
+          -45,
+          -30
+        ],
+        "to": [
+          45,
+          -30
+        ]
+      },
+      {
+        "name": "base_w",
+        "kind": "linear",
+        "value": 60,
+        "unit": "mm",
+        "view": "top",
+        "axis": "v",
+        "from": [
+          45,
+          -30
+        ],
+        "to": [
+          45,
+          30
+        ]
+      },
+      {
+        "name": "height",
+        "kind": "linear",
+        "value": 40,
+        "unit": "mm",
+        "view": "front-section",
+        "axis": "v",
+        "from": [
+          45,
+          0
+        ],
+        "to": [
+          45,
+          40
+        ]
+      },
+      {
+        "name": "wall",
+        "kind": "linear",
+        "value": 3,
+        "unit": "mm",
+        "view": "front-section",
+        "axis": "h",
+        "from": [
+          -45,
+          0
+        ],
+        "to": [
+          -42,
+          0
+        ]
+      },
+      {
+        "name": "draft_a",
+        "kind": "angle",
+        "value": 3,
+        "unit": "deg",
+        "view": "front-section",
+        "at": [
+          44.903688828678355,
+          34
+        ]
+      }
+    ]
+  },
   "independent": {
     "tool": "FreeCAD",
     "script": "freecad/rp05.py",
