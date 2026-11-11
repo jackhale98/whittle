@@ -2240,6 +2240,8 @@ Owner: "Faces don't seem to merge properly. On the demo bracket the back face is
 
 **Dependencies.** None new: `ShapeUpgrade_UnifySameDomain`, `BRepLib::ContinuityOfFaces` and the offset algorithms were already linked.
 
+**Owner decision (2026-11-11): no backwards compatibility.** "We don't need backwards compatibility between old parts and the new kernel change — no one has used this app yet." Documents saved before ADR-078 are not supported and get no migration. Their stored names may resolve, need attention, or (in the cases the sweep doesn't cover) behave in other ways. The containment rule for name-family picks stays, because it is safer for any family pick, including within the new kernel. The pre-ADR sweep (`merge-sweep.test.ts`) stays as a naming regression test. No further work goes into upgrade-path cases.
+
 ## ADR-079 — M3.7 in the app: pill placement, background builds, export and ExpressionInput commits (2026-11-10)
 
 - **Pill.** Desktop and tablet always show it (so a part with no configuration can make its first from the pill); the phone shows the chip only when the part has a configuration or the active id is missing, and only switches. The pill, the table panel and its table are separate lazy chunks.
