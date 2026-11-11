@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import 'fake-indexeddb/auto';
 import type { ProjectFiles, WrenDoc } from '@wren-cad/contracts';
+import { SCHEMA_VERSION } from '@wren-cad/contracts';
 import { describe, expect, it } from 'vitest';
 import {
   type BlobStore,
@@ -22,7 +23,7 @@ const codec: LibraryCodec = {
 
 function doc(name: string, extra: Record<string, unknown> = {}): WrenDoc {
   return {
-    schemaVersion: 1,
+    schemaVersion: SCHEMA_VERSION,
     units: { length: 'mm', angle: 'deg' },
     params: [],
     parts: [],
