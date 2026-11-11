@@ -2,7 +2,7 @@
 
 # Wren project file format
 
-Version: **schema 1** · Status: M1 · Licence of this specification: **CC-BY-4.0** (the reference
+Version: **schema 4** · Status: M1 · Licence of this specification: **CC-BY-4.0** (the reference
 implementation, `packages/document`, is GPL-3.0-or-later).
 
 A Wren project is a **folder of deterministic text files**. A `.wrencad` file is that folder
@@ -397,27 +397,25 @@ returns `{ values, errors }` keyed by JSON pointer, in millimetres / radians.
 
 ## 7. Versioning and migrations
 
-`schemaVersion` (manifest and in-memory document) is an integer, currently **3**.
+`schemaVersion` (manifest and in-memory document) is an integer, currently **4**.
 
 - Readers **must** reject a `schemaVersion` greater than they understand, with a message telling
   the user to update ("This file uses document version N, but this copy of Wren understands up
   to version M").
-- Readers **must** migrate older versions forward in memory, one step at a time
-  (`n → n+1`), then validate. A missing `schemaVersion` is treated as 0 (pre-release); the 0→1
-  migration only fills missing collections (`params`, `parts`, `assemblies`, `drawings`) with `[]`.
+- **Before 1.0, schema bumps do not migrate.** Nobody has files to carry over, so a file whose
+  `schemaVersion` is below the current one (or missing) is refused with "This file was made by an
+  earlier preview of Wren and can't be opened". Nothing is converted. The migration registry in
+  `packages/document/src/migrations.ts` exists but has no steps.
+- From 1.0 on, readers **must** migrate older versions forward in memory, one step at a time
+  (`n → n+1`), then validate. Every such bump ships with a migration function and a test with a
+  fixture of the old shape.
 - Writers always write the current version. Files are not downgraded.
 - **Version history.**
-  - **v1:** the baseline.
-  - **v2 (M3.6):** additive. Adds `Part.folders` and `SketchFeature.visibility` (above). The same bump
-    covers the M3.5 sketch entity kinds `ellipticArc` and `bspline`, which were added under v1
-    without a bump, so a v1 file may contain them. The 1→2 migration changes no data; its purpose
-    is that an older Wren answers "update Wren" instead of a validation error. A file that uses
-    none of these is still valid v1 content, and is rewritten as v2 on the next save.
-  - **v3 (M3.7):** additive. Adds `Part.configurations`, `Part.activeConfigurationId` and
-    `Part.properties` (§4.3). The 2→3 migration changes no data; its purpose is that an older Wren
-    answers "update Wren" instead of dropping configurations on save.
-- Every bump ships with a migration function in `packages/document/src/migrations.ts` and a test
-  with a fixture of the old shape.
+  - **v1 to v3 (pre-release):** baseline, folders and sketch visibility (M3.6), configurations
+    (M3.7). Not readable any more (see above).
+  - **v4 (M4):** annotations move from features to the part (`Part.annotations`, §4.3), drawings
+    become real (§4.4), `Configuration.annotations` overrides are keyed by annotation id, and the
+    manifest gains `drawingDefaults` (§4.1). `Feature.annotations` and `PmiAnnotation` are gone.
 - Within a version, readers ignore unknown *files* but treat unknown *properties* in the files
   above as invalid (the schemas set `additionalProperties: false`); additive changes therefore
   bump the version.

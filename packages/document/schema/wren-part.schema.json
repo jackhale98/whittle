@@ -3,16 +3,322 @@
   "$ref": "#/definitions/Part",
   "$schema": "http://json-schema.org/draft-07/schema#",
   "definitions": {
+    "AlignedDimension": {
+      "additionalProperties": false,
+      "description": "True (minimum) distance between two points, drawn parallel to the line joining them. refs: [a, b].",
+      "properties": {
+        "at": {
+          "description": "Point qualifiers parallel to `refs`; absent or shorter = `'self'` for the rest.",
+          "items": {
+            "$ref": "#/definitions/RefPoint"
+          },
+          "type": "array"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "kind": {
+          "const": "aligned",
+          "type": "string"
+        },
+        "modelPlacement": {
+          "additionalProperties": false,
+          "description": "M5 reserve: the v3 `PmiAnnotation.placement` (3D annotation plane and text position), carried over verbatim by the migration so nothing is lost. M5 replaces it with annotation planes.",
+          "properties": {
+            "plane": {
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 6,
+              "minItems": 6,
+              "type": "array"
+            },
+            "textPos": {
+              "$ref": "#/definitions/Vec3"
+            }
+          },
+          "required": [
+            "plane",
+            "textPos"
+          ],
+          "type": "object"
+        },
+        "nominal": {
+          "$ref": "#/definitions/Expr"
+        },
+        "origin": {
+          "$ref": "#/definitions/AnnotationOrigin"
+        },
+        "refs": {
+          "description": "Model geometry the annotation is attached to, by persistent name (PLAN §7.3). Arity and role per kind are in the .md table (\"refs per kind\"). Resolved against the part's final state in the view's configuration. Unresolved = needs attention: never re-attached to a guessed entity, and the old value is never displayed (trap T1). Reattach replaces the list (every kind, trap T2). May be empty only where the kind says so (a hole callout bound by `source`, a frame bound by `appliesTo`).",
+          "items": {
+            "$ref": "#/definitions/EntityRef"
+          },
+          "type": "array"
+        },
+        "source": {
+          "$ref": "#/definitions/AnnotationSource"
+        },
+        "suppressed": {
+          "description": "Suppressed annotations are not shown or exported. Per configuration via `AnnotationOverride`.",
+          "type": "boolean"
+        },
+        "text": {
+          "$ref": "#/definitions/DimensionText"
+        },
+        "tolerance": {
+          "$ref": "#/definitions/Tolerance"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "origin",
+        "refs"
+      ],
+      "type": "object"
+    },
+    "AngleDimension": {
+      "additionalProperties": false,
+      "description": "Angle between two straight edges, planar faces or axes. refs: [a, b]. `measure`: the angle between them as oriented (≤ 180°, default) or its supplement.",
+      "properties": {
+        "at": {
+          "description": "Point qualifiers parallel to `refs`; absent or shorter = `'self'` for the rest.",
+          "items": {
+            "$ref": "#/definitions/RefPoint"
+          },
+          "type": "array"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "kind": {
+          "const": "angle",
+          "type": "string"
+        },
+        "measure": {
+          "enum": [
+            "between",
+            "supplement"
+          ],
+          "type": "string"
+        },
+        "modelPlacement": {
+          "additionalProperties": false,
+          "description": "M5 reserve: the v3 `PmiAnnotation.placement` (3D annotation plane and text position), carried over verbatim by the migration so nothing is lost. M5 replaces it with annotation planes.",
+          "properties": {
+            "plane": {
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 6,
+              "minItems": 6,
+              "type": "array"
+            },
+            "textPos": {
+              "$ref": "#/definitions/Vec3"
+            }
+          },
+          "required": [
+            "plane",
+            "textPos"
+          ],
+          "type": "object"
+        },
+        "nominal": {
+          "$ref": "#/definitions/Expr"
+        },
+        "origin": {
+          "$ref": "#/definitions/AnnotationOrigin"
+        },
+        "refs": {
+          "description": "Model geometry the annotation is attached to, by persistent name (PLAN §7.3). Arity and role per kind are in the .md table (\"refs per kind\"). Resolved against the part's final state in the view's configuration. Unresolved = needs attention: never re-attached to a guessed entity, and the old value is never displayed (trap T1). Reattach replaces the list (every kind, trap T2). May be empty only where the kind says so (a hole callout bound by `source`, a frame bound by `appliesTo`).",
+          "items": {
+            "$ref": "#/definitions/EntityRef"
+          },
+          "type": "array"
+        },
+        "source": {
+          "$ref": "#/definitions/AnnotationSource"
+        },
+        "suppressed": {
+          "description": "Suppressed annotations are not shown or exported. Per configuration via `AnnotationOverride`.",
+          "type": "boolean"
+        },
+        "text": {
+          "$ref": "#/definitions/DimensionText"
+        },
+        "tolerance": {
+          "$ref": "#/definitions/Tolerance"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "origin",
+        "refs"
+      ],
+      "type": "object"
+    },
+    "Annotation": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/DimensionAnnotation"
+        },
+        {
+          "$ref": "#/definitions/DatumFeatureAnnotation"
+        },
+        {
+          "$ref": "#/definitions/GeometricToleranceAnnotation"
+        },
+        {
+          "$ref": "#/definitions/NoteAnnotation"
+        },
+        {
+          "$ref": "#/definitions/SurfaceFinishAnnotation"
+        },
+        {
+          "$ref": "#/definitions/HoleCalloutAnnotation"
+        }
+      ],
+      "description": "A part-level semantic annotation (replaces v3 `PmiAnnotation`)."
+    },
+    "AnnotationOrigin": {
+      "anyOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "model",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "drawingId": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "const": "drawing",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "drawingId"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "file": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "import",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "file"
+          ],
+          "type": "object"
+        }
+      ],
+      "description": "Where an annotation was authored. Every kind is a full part annotation; this is provenance."
+    },
+    "AnnotationOverride": {
+      "additionalProperties": false,
+      "description": "Configuration overrides of one annotation (keyed by annotation id in `Configuration.annotations`, never by list position: closes the M3.7 gate finding). `fields`: JSON pointer **inside the annotation** → value; allowed are its `Expr` fields (`/nominal`, `/tolerance/value`, `/tolerance/upper`, `/tolerance/lower`, `/zone/value` …) and the option fields the document package lists in `ANNOTATION_CONFIGURABLE_OPTIONS` (`/tolerance/hole`, `/tolerance/shaft`).",
+      "properties": {
+        "fields": {
+          "additionalProperties": {
+            "$ref": "#/definitions/ConfiguredValue"
+          },
+          "type": "object"
+        },
+        "suppressed": {
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "AnnotationSource": {
+      "anyOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "constraintId": {
+              "$ref": "#/definitions/Id"
+            },
+            "featureId": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "const": "sketchDimension",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "featureId",
+            "constraintId"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "featureId": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "const": "featureField",
+              "type": "string"
+            },
+            "path": {
+              "$ref": "#/definitions/JsonPointer"
+            }
+          },
+          "required": [
+            "kind",
+            "featureId",
+            "path"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "featureId": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "const": "feature",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "featureId"
+          ],
+          "type": "object"
+        }
+      ],
+      "description": "Binding to the model data that drives the value (owner D6, recommended: read-only in drawings). The value shown is the source's evaluated value in the view's configuration. A source that no longer exists (feature, constraint or field gone) makes the annotation needs attention; the old value is never shown."
+    },
     "AxisFeature": {
       "additionalProperties": false,
       "description": "A construction axis, usable wherever an axis or direction is picked (revolve, patterns…).",
       "properties": {
-        "annotations": {
-          "items": {
-            "$ref": "#/definitions/PmiAnnotation"
-          },
-          "type": "array"
-        },
         "definition": {
           "anyOf": [
             {
@@ -188,12 +494,6 @@
     "BooleanFeature": {
       "additionalProperties": false,
       "properties": {
-        "annotations": {
-          "items": {
-            "$ref": "#/definitions/PmiAnnotation"
-          },
-          "type": "array"
-        },
         "id": {
           "$ref": "#/definitions/Id"
         },
@@ -240,15 +540,92 @@
       ],
       "type": "object"
     },
-    "ChamferFeature": {
+    "ChamferDimension": {
       "additionalProperties": false,
+      "description": "Chamfer callout. refs: [the chamfer face] (or [edge] on a chamfer the model doesn't own). Usually `source: { kind: 'feature' }` of a `ChamferFeature`. `form`: `2 × 45°` or `2 × 2`.",
       "properties": {
-        "annotations": {
+        "at": {
+          "description": "Point qualifiers parallel to `refs`; absent or shorter = `'self'` for the rest.",
           "items": {
-            "$ref": "#/definitions/PmiAnnotation"
+            "$ref": "#/definitions/RefPoint"
           },
           "type": "array"
         },
+        "form": {
+          "enum": [
+            "distanceAngle",
+            "twoDistances"
+          ],
+          "type": "string"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "kind": {
+          "const": "chamfer",
+          "type": "string"
+        },
+        "modelPlacement": {
+          "additionalProperties": false,
+          "description": "M5 reserve: the v3 `PmiAnnotation.placement` (3D annotation plane and text position), carried over verbatim by the migration so nothing is lost. M5 replaces it with annotation planes.",
+          "properties": {
+            "plane": {
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 6,
+              "minItems": 6,
+              "type": "array"
+            },
+            "textPos": {
+              "$ref": "#/definitions/Vec3"
+            }
+          },
+          "required": [
+            "plane",
+            "textPos"
+          ],
+          "type": "object"
+        },
+        "nominal": {
+          "$ref": "#/definitions/Expr"
+        },
+        "origin": {
+          "$ref": "#/definitions/AnnotationOrigin"
+        },
+        "refs": {
+          "description": "Model geometry the annotation is attached to, by persistent name (PLAN §7.3). Arity and role per kind are in the .md table (\"refs per kind\"). Resolved against the part's final state in the view's configuration. Unresolved = needs attention: never re-attached to a guessed entity, and the old value is never displayed (trap T1). Reattach replaces the list (every kind, trap T2). May be empty only where the kind says so (a hole callout bound by `source`, a frame bound by `appliesTo`).",
+          "items": {
+            "$ref": "#/definitions/EntityRef"
+          },
+          "type": "array"
+        },
+        "source": {
+          "$ref": "#/definitions/AnnotationSource"
+        },
+        "suppressed": {
+          "description": "Suppressed annotations are not shown or exported. Per configuration via `AnnotationOverride`.",
+          "type": "boolean"
+        },
+        "text": {
+          "$ref": "#/definitions/DimensionText"
+        },
+        "tolerance": {
+          "$ref": "#/definitions/Tolerance"
+        }
+      },
+      "required": [
+        "form",
+        "id",
+        "kind",
+        "origin",
+        "refs"
+      ],
+      "type": "object"
+    },
+    "ChamferFeature": {
+      "additionalProperties": false,
+      "properties": {
         "edges": {
           "items": {
             "$ref": "#/definitions/EntityRef"
@@ -335,12 +712,6 @@
           "$ref": "#/definitions/Expr",
           "description": "Total angle spanned. With `equalSpacing` the instances fill it (360° = a full ring)."
         },
-        "annotations": {
-          "items": {
-            "$ref": "#/definitions/PmiAnnotation"
-          },
-          "type": "array"
-        },
         "axis": {
           "$ref": "#/definitions/EntityRef"
         },
@@ -390,6 +761,16 @@
       "additionalProperties": false,
       "description": "One configuration of a part: only what differs from Default is stored. Resolution (document package `resolveConfiguration`) applies the overrides to a copy of the document before regen.",
       "properties": {
+        "annotations": {
+          "additionalProperties": {
+            "$ref": "#/definitions/AnnotationOverride"
+          },
+          "description": "M4: per-annotation overrides keyed by annotation id (never by list position, ADR-090).",
+          "propertyNames": {
+            "description": "ULID (26-char Crockford base32)."
+          },
+          "type": "object"
+        },
         "color": {
           "description": "Replaces the part's colour; absent = inherited.",
           "type": "string"
@@ -498,6 +879,224 @@
         }
       ],
       "description": "What a mirror or pattern copies. `features`: the listed features' **tool shapes** are copied and applied with each feature's own op (a pattern of holes cuts every copy); `bodies`: whole bodies are copied (and merged when `merge`)."
+    },
+    "DatumCompartment": {
+      "additionalProperties": false,
+      "description": "One compartment of the datum section; several refs = a common datum (`A–B`).",
+      "properties": {
+        "datums": {
+          "items": {
+            "$ref": "#/definitions/DatumRef"
+          },
+          "type": "array"
+        },
+        "material": {
+          "$ref": "#/definitions/MaterialCondition"
+        }
+      },
+      "required": [
+        "datums"
+      ],
+      "type": "object"
+    },
+    "DatumFeatureAnnotation": {
+      "additionalProperties": false,
+      "description": "Datum feature symbol. refs: [face | edge | axis via `at: ['axis']`]. Letters unique per part (checked).",
+      "properties": {
+        "at": {
+          "description": "Point qualifiers parallel to `refs`; absent or shorter = `'self'` for the rest.",
+          "items": {
+            "$ref": "#/definitions/RefPoint"
+          },
+          "type": "array"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "kind": {
+          "const": "datumFeature",
+          "type": "string"
+        },
+        "label": {
+          "description": "`A`, `B`… (ISO and ASME exclude I, O, Q; checked against the standard).",
+          "type": "string"
+        },
+        "modelPlacement": {
+          "additionalProperties": false,
+          "description": "M5 reserve: the v3 `PmiAnnotation.placement` (3D annotation plane and text position), carried over verbatim by the migration so nothing is lost. M5 replaces it with annotation planes.",
+          "properties": {
+            "plane": {
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 6,
+              "minItems": 6,
+              "type": "array"
+            },
+            "textPos": {
+              "$ref": "#/definitions/Vec3"
+            }
+          },
+          "required": [
+            "plane",
+            "textPos"
+          ],
+          "type": "object"
+        },
+        "origin": {
+          "$ref": "#/definitions/AnnotationOrigin"
+        },
+        "refs": {
+          "description": "Model geometry the annotation is attached to, by persistent name (PLAN §7.3). Arity and role per kind are in the .md table (\"refs per kind\"). Resolved against the part's final state in the view's configuration. Unresolved = needs attention: never re-attached to a guessed entity, and the old value is never displayed (trap T1). Reattach replaces the list (every kind, trap T2). May be empty only where the kind says so (a hole callout bound by `source`, a frame bound by `appliesTo`).",
+          "items": {
+            "$ref": "#/definitions/EntityRef"
+          },
+          "type": "array"
+        },
+        "standard": {
+          "$ref": "#/definitions/GpsStandard"
+        },
+        "suppressed": {
+          "description": "Suppressed annotations are not shown or exported. Per configuration via `AnnotationOverride`.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "label",
+        "origin",
+        "refs"
+      ],
+      "type": "object"
+    },
+    "DatumRef": {
+      "anyOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "datum": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "required": [
+            "datum"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "label": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "label"
+          ],
+          "type": "object"
+        }
+      ],
+      "description": "A datum in a frame: bound to a datum feature annotation by id (renaming the letter updates every frame), or an unbound letter (M5 import, or a migrated v3 frame whose letter no datum defines), which is needs attention until bound."
+    },
+    "DiameterDimension": {
+      "additionalProperties": false,
+      "properties": {
+        "at": {
+          "description": "Point qualifiers parallel to `refs`; absent or shorter = `'self'` for the rest.",
+          "items": {
+            "$ref": "#/definitions/RefPoint"
+          },
+          "type": "array"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "kind": {
+          "const": "diameter",
+          "type": "string"
+        },
+        "modelPlacement": {
+          "additionalProperties": false,
+          "description": "M5 reserve: the v3 `PmiAnnotation.placement` (3D annotation plane and text position), carried over verbatim by the migration so nothing is lost. M5 replaces it with annotation planes.",
+          "properties": {
+            "plane": {
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 6,
+              "minItems": 6,
+              "type": "array"
+            },
+            "textPos": {
+              "$ref": "#/definitions/Vec3"
+            }
+          },
+          "required": [
+            "plane",
+            "textPos"
+          ],
+          "type": "object"
+        },
+        "nominal": {
+          "$ref": "#/definitions/Expr"
+        },
+        "origin": {
+          "$ref": "#/definitions/AnnotationOrigin"
+        },
+        "refs": {
+          "description": "Model geometry the annotation is attached to, by persistent name (PLAN §7.3). Arity and role per kind are in the .md table (\"refs per kind\"). Resolved against the part's final state in the view's configuration. Unresolved = needs attention: never re-attached to a guessed entity, and the old value is never displayed (trap T1). Reattach replaces the list (every kind, trap T2). May be empty only where the kind says so (a hole callout bound by `source`, a frame bound by `appliesTo`).",
+          "items": {
+            "$ref": "#/definitions/EntityRef"
+          },
+          "type": "array"
+        },
+        "source": {
+          "$ref": "#/definitions/AnnotationSource"
+        },
+        "suppressed": {
+          "description": "Suppressed annotations are not shown or exported. Per configuration via `AnnotationOverride`.",
+          "type": "boolean"
+        },
+        "text": {
+          "$ref": "#/definitions/DimensionText"
+        },
+        "tolerance": {
+          "$ref": "#/definitions/Tolerance"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "origin",
+        "refs"
+      ],
+      "type": "object"
+    },
+    "DimensionAnnotation": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/LinearDimension"
+        },
+        {
+          "$ref": "#/definitions/AlignedDimension"
+        },
+        {
+          "$ref": "#/definitions/OrdinateDimension"
+        },
+        {
+          "$ref": "#/definitions/RadiusDimension"
+        },
+        {
+          "$ref": "#/definitions/DiameterDimension"
+        },
+        {
+          "$ref": "#/definitions/AngleDimension"
+        },
+        {
+          "$ref": "#/definitions/ChamferDimension"
+        }
+      ]
     },
     "DimensionConstraint": {
       "anyOf": [
@@ -800,18 +1399,34 @@
       ],
       "description": "Conventions (normative): angles are CCW from `a` to `b`, reference values reported in [0, 2π); `hDistance`/`vDistance` are signed b − a (with `a === b` = a line: end − start); distances to circles/arcs measure to the curve; `diameter` solves as radius = value / 2.\n\nDimensions. `driving: true` constrains the solver with `value`; `driving: false` is a reference (driven) dimension whose value is **measured** after solving (planegcs non-driving constraints are unreliable — PLAN §3). `label` positions the text in sketch space for display."
     },
+    "DimensionText": {
+      "additionalProperties": false,
+      "description": "Text around a dimension's value. The value itself is never replaceable by text (T1).",
+      "properties": {
+        "below": {
+          "description": "Lines under the value: `TYP`, `THRU`.",
+          "type": "string"
+        },
+        "precision": {
+          "description": "Decimals; absent = the drawing style's precision. Propagates to every placement.",
+          "type": "number"
+        },
+        "prefix": {
+          "description": "E.g. `4×`. A hole callout's count is automatic (`HoleCalloutAnnotation.show.count`).",
+          "type": "string"
+        },
+        "suffix": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
     "DraftFeature": {
       "additionalProperties": false,
       "description": "Taper `faces` by `angle` about the `neutral` plane. Each face keeps its line on the neutral plane and turns about it. The pull direction is the neutral plane's normal on the side the drafted faces are; a positive angle makes the body narrower along it (faces lean inward moving away from the neutral plane, as a moulded part needs). Faces centred on the plane use the plane's own normal (a face's outward normal, a plane's +z). `reverse` flips the pull direction.",
       "properties": {
         "angle": {
           "$ref": "#/definitions/Expr"
-        },
-        "annotations": {
-          "items": {
-            "$ref": "#/definitions/PmiAnnotation"
-          },
-          "type": "array"
         },
         "faces": {
           "items": {
@@ -889,12 +1504,6 @@
     "ExtrudeFeature": {
       "additionalProperties": false,
       "properties": {
-        "annotations": {
-          "items": {
-            "$ref": "#/definitions/PmiAnnotation"
-          },
-          "type": "array"
-        },
         "direction": {
           "enum": [
             "normal",
@@ -1108,12 +1717,6 @@
     "FilletFeature": {
       "additionalProperties": false,
       "properties": {
-        "annotations": {
-          "items": {
-            "$ref": "#/definitions/PmiAnnotation"
-          },
-          "type": "array"
-        },
         "edges": {
           "items": {
             "$ref": "#/definitions/EntityRef"
@@ -1192,6 +1795,26 @@
         "x"
       ],
       "type": "object"
+    },
+    "GeometricCharacteristic": {
+      "enum": [
+        "straightness",
+        "flatness",
+        "circularity",
+        "cylindricity",
+        "lineProfile",
+        "surfaceProfile",
+        "parallelism",
+        "perpendicularity",
+        "angularity",
+        "position",
+        "concentricity",
+        "coaxiality",
+        "symmetry",
+        "circularRunout",
+        "totalRunout"
+      ],
+      "type": "string"
     },
     "GeometricConstraint": {
       "anyOf": [
@@ -1565,16 +2188,231 @@
       ],
       "description": "Geometric constraints (no value). Ids refer to entities; points are entities too."
     },
+    "GeometricToleranceAnnotation": {
+      "additionalProperties": false,
+      "description": "Feature control frame (one row; composite and stacked frames: see the .md open questions).",
+      "properties": {
+        "allAround": {
+          "description": "All-around / all-over (profile).",
+          "type": "boolean"
+        },
+        "appliesTo": {
+          "$ref": "#/definitions/Id",
+          "description": "The size dimension whose feature of size this frame controls (a position frame under `Ø6`): its refs are used and `refs` may be empty. A missing dimension id is needs attention."
+        },
+        "at": {
+          "description": "Point qualifiers parallel to `refs`; absent or shorter = `'self'` for the rest.",
+          "items": {
+            "$ref": "#/definitions/RefPoint"
+          },
+          "type": "array"
+        },
+        "characteristic": {
+          "$ref": "#/definitions/GeometricCharacteristic"
+        },
+        "datums": {
+          "description": "Primary, secondary, tertiary. At most three.",
+          "items": {
+            "$ref": "#/definitions/DatumCompartment"
+          },
+          "type": "array"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "kind": {
+          "const": "geometricTolerance",
+          "type": "string"
+        },
+        "modelPlacement": {
+          "additionalProperties": false,
+          "description": "M5 reserve: the v3 `PmiAnnotation.placement` (3D annotation plane and text position), carried over verbatim by the migration so nothing is lost. M5 replaces it with annotation planes.",
+          "properties": {
+            "plane": {
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 6,
+              "minItems": 6,
+              "type": "array"
+            },
+            "textPos": {
+              "$ref": "#/definitions/Vec3"
+            }
+          },
+          "required": [
+            "plane",
+            "textPos"
+          ],
+          "type": "object"
+        },
+        "origin": {
+          "$ref": "#/definitions/AnnotationOrigin"
+        },
+        "refs": {
+          "description": "Model geometry the annotation is attached to, by persistent name (PLAN §7.3). Arity and role per kind are in the .md table (\"refs per kind\"). Resolved against the part's final state in the view's configuration. Unresolved = needs attention: never re-attached to a guessed entity, and the old value is never displayed (trap T1). Reattach replaces the list (every kind, trap T2). May be empty only where the kind says so (a hole callout bound by `source`, a frame bound by `appliesTo`).",
+          "items": {
+            "$ref": "#/definitions/EntityRef"
+          },
+          "type": "array"
+        },
+        "standard": {
+          "$ref": "#/definitions/GpsStandard"
+        },
+        "suppressed": {
+          "description": "Suppressed annotations are not shown or exported. Per configuration via `AnnotationOverride`.",
+          "type": "boolean"
+        },
+        "text": {
+          "additionalProperties": false,
+          "description": "Text above and below the frame (`2×`, `UNITS`).",
+          "properties": {
+            "above": {
+              "type": "string"
+            },
+            "below": {
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "zone": {
+          "$ref": "#/definitions/ToleranceZone"
+        }
+      },
+      "required": [
+        "characteristic",
+        "id",
+        "kind",
+        "origin",
+        "refs",
+        "zone"
+      ],
+      "type": "object"
+    },
+    "GpsStandard": {
+      "description": "Standard an annotation's GD&T semantics are validated against. Stamped by the authoring tool from the drawing (or, in M5, the project default); absent on an annotation = \"not stated\", and it is then checked against each displaying drawing's standard. Never converted silently: a symbol that is illegal under the standard is refused or flagged with an explanation (ASME Y14.5-2018 has no concentricity or symmetry).",
+      "enum": [
+        "ISO 1101:2017",
+        "ASME Y14.5-2018",
+        "ASME Y14.5-2009"
+      ],
+      "type": "string"
+    },
+    "HoleCalloutAnnotation": {
+      "additionalProperties": false,
+      "description": "Hole (or cosmetic thread) callout generated from `HoleFeature` / `ThreadFeature` data: size, fit, counterbore, countersink, depth, thread, and the instance count (pattern copies included, from the regen). One callout per feature and part (checked), placed in any number of views, so a format edit (precision, tolerance) propagates to every placement and to the hole table. refs: the hole faces the leaders may attach to (one per instance the user picked; may be empty, then a placement attaches to the first instance the regen reports).",
+      "properties": {
+        "at": {
+          "description": "Point qualifiers parallel to `refs`; absent or shorter = `'self'` for the rest.",
+          "items": {
+            "$ref": "#/definitions/RefPoint"
+          },
+          "type": "array"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "kind": {
+          "const": "holeCallout",
+          "type": "string"
+        },
+        "modelPlacement": {
+          "additionalProperties": false,
+          "description": "M5 reserve: the v3 `PmiAnnotation.placement` (3D annotation plane and text position), carried over verbatim by the migration so nothing is lost. M5 replaces it with annotation planes.",
+          "properties": {
+            "plane": {
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 6,
+              "minItems": 6,
+              "type": "array"
+            },
+            "textPos": {
+              "$ref": "#/definitions/Vec3"
+            }
+          },
+          "required": [
+            "plane",
+            "textPos"
+          ],
+          "type": "object"
+        },
+        "origin": {
+          "$ref": "#/definitions/AnnotationOrigin"
+        },
+        "refs": {
+          "description": "Model geometry the annotation is attached to, by persistent name (PLAN §7.3). Arity and role per kind are in the .md table (\"refs per kind\"). Resolved against the part's final state in the view's configuration. Unresolved = needs attention: never re-attached to a guessed entity, and the old value is never displayed (trap T1). Reattach replaces the list (every kind, trap T2). May be empty only where the kind says so (a hole callout bound by `source`, a frame bound by `appliesTo`).",
+          "items": {
+            "$ref": "#/definitions/EntityRef"
+          },
+          "type": "array"
+        },
+        "show": {
+          "additionalProperties": false,
+          "description": "Which lines to show; absent = all that apply.",
+          "properties": {
+            "count": {
+              "type": "boolean"
+            },
+            "counterbore": {
+              "type": "boolean"
+            },
+            "countersink": {
+              "type": "boolean"
+            },
+            "depth": {
+              "type": "boolean"
+            },
+            "thread": {
+              "type": "boolean"
+            }
+          },
+          "type": "object"
+        },
+        "source": {
+          "additionalProperties": false,
+          "properties": {
+            "featureId": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "const": "feature",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "featureId"
+          ],
+          "type": "object"
+        },
+        "suppressed": {
+          "description": "Suppressed annotations are not shown or exported. Per configuration via `AnnotationOverride`.",
+          "type": "boolean"
+        },
+        "text": {
+          "$ref": "#/definitions/DimensionText"
+        },
+        "tolerance": {
+          "$ref": "#/definitions/Tolerance",
+          "description": "Tolerance on the hole diameter (a fit here overrides the hole's own `fit` class display)."
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "origin",
+        "refs",
+        "source"
+      ],
+      "type": "object"
+    },
     "HoleFeature": {
       "additionalProperties": false,
       "description": "Hole wizard. Holes are placed at sketch points on a planar face (one hole per point), drilled along the face's inward normal. Sizes come from the standards tables (contracts/standards.ts); explicit diameters override them.",
       "properties": {
-        "annotations": {
-          "items": {
-            "$ref": "#/definitions/PmiAnnotation"
-          },
-          "type": "array"
-        },
         "counterbore": {
           "additionalProperties": false,
           "properties": {
@@ -1743,12 +2581,6 @@
       "additionalProperties": false,
       "description": "A body imported from a file (STEP/IGES/BREP solids, or STL/OBJ/3MF/GLB meshes as reference bodies). The file's bytes live in the project folder at `source.path` (an attachment, e.g. `imports/<featureId>.step`), never inline in the JSON, so documents stay diffable. `sha256` (hex) identifies the bytes for caching and integrity.\n\nImported faces have no construction history; the regen engine names them `F<id>:face#k` ordered by the deterministic geometric key in naming.ts, and downstream references to them rely on fingerprints when the file is replaced.",
       "properties": {
-        "annotations": {
-          "items": {
-            "$ref": "#/definitions/PmiAnnotation"
-          },
-          "type": "array"
-        },
         "frame": {
           "$ref": "#/definitions/Frame",
           "description": "Placement of the imported geometry (mm); default identity."
@@ -1817,15 +2649,90 @@
       ],
       "type": "object"
     },
-    "LinearPatternFeature": {
+    "JsonPointer": {
+      "type": "string"
+    },
+    "LinearDimension": {
       "additionalProperties": false,
+      "description": "Distance between two entities projected on `direction` (unit vector, part coordinates; set by the drawing tool from the view's horizontal or vertical, by promotion from a sketch's u/v). Absent: the natural separation of parallel planes or lines (or a plane and a point); two points without a direction are an `aligned` dimension, and a linear one is flagged \"choose a direction\". refs: [a, b].",
       "properties": {
-        "annotations": {
+        "at": {
+          "description": "Point qualifiers parallel to `refs`; absent or shorter = `'self'` for the rest.",
           "items": {
-            "$ref": "#/definitions/PmiAnnotation"
+            "$ref": "#/definitions/RefPoint"
           },
           "type": "array"
         },
+        "direction": {
+          "$ref": "#/definitions/Vec3"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "kind": {
+          "const": "linear",
+          "type": "string"
+        },
+        "modelPlacement": {
+          "additionalProperties": false,
+          "description": "M5 reserve: the v3 `PmiAnnotation.placement` (3D annotation plane and text position), carried over verbatim by the migration so nothing is lost. M5 replaces it with annotation planes.",
+          "properties": {
+            "plane": {
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 6,
+              "minItems": 6,
+              "type": "array"
+            },
+            "textPos": {
+              "$ref": "#/definitions/Vec3"
+            }
+          },
+          "required": [
+            "plane",
+            "textPos"
+          ],
+          "type": "object"
+        },
+        "nominal": {
+          "$ref": "#/definitions/Expr"
+        },
+        "origin": {
+          "$ref": "#/definitions/AnnotationOrigin"
+        },
+        "refs": {
+          "description": "Model geometry the annotation is attached to, by persistent name (PLAN §7.3). Arity and role per kind are in the .md table (\"refs per kind\"). Resolved against the part's final state in the view's configuration. Unresolved = needs attention: never re-attached to a guessed entity, and the old value is never displayed (trap T1). Reattach replaces the list (every kind, trap T2). May be empty only where the kind says so (a hole callout bound by `source`, a frame bound by `appliesTo`).",
+          "items": {
+            "$ref": "#/definitions/EntityRef"
+          },
+          "type": "array"
+        },
+        "source": {
+          "$ref": "#/definitions/AnnotationSource"
+        },
+        "suppressed": {
+          "description": "Suppressed annotations are not shown or exported. Per configuration via `AnnotationOverride`.",
+          "type": "boolean"
+        },
+        "text": {
+          "$ref": "#/definitions/DimensionText"
+        },
+        "tolerance": {
+          "$ref": "#/definitions/Tolerance"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "origin",
+        "refs"
+      ],
+      "type": "object"
+    },
+    "LinearPatternFeature": {
+      "additionalProperties": false,
+      "properties": {
         "count": {
           "$ref": "#/definitions/Expr"
         },
@@ -1904,12 +2811,6 @@
       "additionalProperties": false,
       "description": "Loft through ordered sections (each a closed region, or a point for the first/last).",
       "properties": {
-        "annotations": {
-          "items": {
-            "$ref": "#/definitions/PmiAnnotation"
-          },
-          "type": "array"
-        },
         "closed": {
           "description": "Join the last section back to the first.",
           "type": "boolean"
@@ -2006,15 +2907,16 @@
       ],
       "type": "object"
     },
+    "MaterialCondition": {
+      "enum": [
+        "mmc",
+        "lmc"
+      ],
+      "type": "string"
+    },
     "MirrorFeature": {
       "additionalProperties": false,
       "properties": {
-        "annotations": {
-          "items": {
-            "$ref": "#/definitions/PmiAnnotation"
-          },
-          "type": "array"
-        },
         "id": {
           "$ref": "#/definitions/Id"
         },
@@ -2046,12 +2948,166 @@
       ],
       "type": "object"
     },
+    "NoteAnnotation": {
+      "additionalProperties": false,
+      "description": "A note attached to model geometry by a leader. Free sheet text is a `SheetNote` (§C). refs: ≥ 1.",
+      "properties": {
+        "at": {
+          "description": "Point qualifiers parallel to `refs`; absent or shorter = `'self'` for the rest.",
+          "items": {
+            "$ref": "#/definitions/RefPoint"
+          },
+          "type": "array"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "kind": {
+          "const": "note",
+          "type": "string"
+        },
+        "modelPlacement": {
+          "additionalProperties": false,
+          "description": "M5 reserve: the v3 `PmiAnnotation.placement` (3D annotation plane and text position), carried over verbatim by the migration so nothing is lost. M5 replaces it with annotation planes.",
+          "properties": {
+            "plane": {
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 6,
+              "minItems": 6,
+              "type": "array"
+            },
+            "textPos": {
+              "$ref": "#/definitions/Vec3"
+            }
+          },
+          "required": [
+            "plane",
+            "textPos"
+          ],
+          "type": "object"
+        },
+        "origin": {
+          "$ref": "#/definitions/AnnotationOrigin"
+        },
+        "refs": {
+          "description": "Model geometry the annotation is attached to, by persistent name (PLAN §7.3). Arity and role per kind are in the .md table (\"refs per kind\"). Resolved against the part's final state in the view's configuration. Unresolved = needs attention: never re-attached to a guessed entity, and the old value is never displayed (trap T1). Reattach replaces the list (every kind, trap T2). May be empty only where the kind says so (a hole callout bound by `source`, a frame bound by `appliesTo`).",
+          "items": {
+            "$ref": "#/definitions/EntityRef"
+          },
+          "type": "array"
+        },
+        "suppressed": {
+          "description": "Suppressed annotations are not shown or exported. Per configuration via `AnnotationOverride`.",
+          "type": "boolean"
+        },
+        "text": {
+          "description": "Plain text; `{slot}` tokens resolve like title-block slots (`{material}`).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "origin",
+        "refs",
+        "text"
+      ],
+      "type": "object"
+    },
+    "OrdinateDimension": {
+      "additionalProperties": false,
+      "description": "Ordinate: coordinate of `refs[1]` measured from the origin `refs[0]` along `direction`. Ordinates with the same origin name and direction form one group in a view (one `0` label, shared lane).",
+      "properties": {
+        "at": {
+          "description": "Point qualifiers parallel to `refs`; absent or shorter = `'self'` for the rest.",
+          "items": {
+            "$ref": "#/definitions/RefPoint"
+          },
+          "type": "array"
+        },
+        "direction": {
+          "$ref": "#/definitions/Vec3"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "kind": {
+          "const": "ordinate",
+          "type": "string"
+        },
+        "modelPlacement": {
+          "additionalProperties": false,
+          "description": "M5 reserve: the v3 `PmiAnnotation.placement` (3D annotation plane and text position), carried over verbatim by the migration so nothing is lost. M5 replaces it with annotation planes.",
+          "properties": {
+            "plane": {
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 6,
+              "minItems": 6,
+              "type": "array"
+            },
+            "textPos": {
+              "$ref": "#/definitions/Vec3"
+            }
+          },
+          "required": [
+            "plane",
+            "textPos"
+          ],
+          "type": "object"
+        },
+        "nominal": {
+          "$ref": "#/definitions/Expr"
+        },
+        "origin": {
+          "$ref": "#/definitions/AnnotationOrigin"
+        },
+        "refs": {
+          "description": "Model geometry the annotation is attached to, by persistent name (PLAN §7.3). Arity and role per kind are in the .md table (\"refs per kind\"). Resolved against the part's final state in the view's configuration. Unresolved = needs attention: never re-attached to a guessed entity, and the old value is never displayed (trap T1). Reattach replaces the list (every kind, trap T2). May be empty only where the kind says so (a hole callout bound by `source`, a frame bound by `appliesTo`).",
+          "items": {
+            "$ref": "#/definitions/EntityRef"
+          },
+          "type": "array"
+        },
+        "source": {
+          "$ref": "#/definitions/AnnotationSource"
+        },
+        "suppressed": {
+          "description": "Suppressed annotations are not shown or exported. Per configuration via `AnnotationOverride`.",
+          "type": "boolean"
+        },
+        "text": {
+          "$ref": "#/definitions/DimensionText"
+        },
+        "tolerance": {
+          "$ref": "#/definitions/Tolerance"
+        }
+      },
+      "required": [
+        "direction",
+        "id",
+        "kind",
+        "origin",
+        "refs"
+      ],
+      "type": "object"
+    },
     "Part": {
       "additionalProperties": false,
       "properties": {
         "activeConfigurationId": {
           "$ref": "#/definitions/Id",
           "description": "The active configuration: every regen of the live model is of this one. Absent = Default."
+        },
+        "annotations": {
+          "description": "M4 (ADR-081, ADR-090): the part's annotations (annotation.ts): dimensions, GD&T, datums, notes, surface finish, hole callouts. They measure the finished part, so no feature owns them. Absent = none. The array's order carries no meaning: kept sorted by id (store, merge and loader), so concurrent adds never conflict on order.",
+          "items": {
+            "$ref": "#/definitions/Annotation"
+          },
+          "type": "array"
         },
         "color": {
           "description": "CSS hex colour, e.g. `\"#9aa4b2\"`. Overrides the material's appearance colour.",
@@ -2120,12 +3176,6 @@
     "PlaneFeature": {
       "additionalProperties": false,
       "properties": {
-        "annotations": {
-          "items": {
-            "$ref": "#/definitions/PmiAnnotation"
-          },
-          "type": "array"
-        },
         "definition": {
           "anyOf": [
             {
@@ -2321,128 +3371,10 @@
       ],
       "type": "object"
     },
-    "PmiAnnotation": {
-      "additionalProperties": false,
-      "description": "Model-based definition: becomes STEP AP242 semantic PMI and can be imported into drawings.",
-      "properties": {
-        "gdt": {
-          "additionalProperties": false,
-          "properties": {
-            "characteristic": {
-              "type": "string"
-            },
-            "datums": {
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            },
-            "modifiers": {
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            },
-            "zone": {
-              "$ref": "#/definitions/Expr"
-            }
-          },
-          "required": [
-            "characteristic",
-            "zone"
-          ],
-          "type": "object"
-        },
-        "id": {
-          "$ref": "#/definitions/Id"
-        },
-        "kind": {
-          "enum": [
-            "linear",
-            "diameter",
-            "radius",
-            "angle",
-            "datum",
-            "geomTolerance"
-          ],
-          "type": "string"
-        },
-        "placement": {
-          "additionalProperties": false,
-          "properties": {
-            "plane": {
-              "items": {
-                "type": "number"
-              },
-              "maxItems": 6,
-              "minItems": 6,
-              "type": "array"
-            },
-            "textPos": {
-              "$ref": "#/definitions/Vec3"
-            }
-          },
-          "required": [
-            "plane",
-            "textPos"
-          ],
-          "type": "object"
-        },
-        "refs": {
-          "items": {
-            "$ref": "#/definitions/EntityRef"
-          },
-          "type": "array"
-        },
-        "tolerance": {
-          "additionalProperties": false,
-          "properties": {
-            "fit": {
-              "type": "string"
-            },
-            "kind": {
-              "enum": [
-                "symmetric",
-                "bilateral",
-                "limits",
-                "fit"
-              ],
-              "type": "string"
-            },
-            "lower": {
-              "$ref": "#/definitions/Expr"
-            },
-            "upper": {
-              "$ref": "#/definitions/Expr"
-            }
-          },
-          "required": [
-            "kind"
-          ],
-          "type": "object"
-        },
-        "value": {
-          "$ref": "#/definitions/Expr",
-          "description": "Usually bound to a feature/sketch dimension."
-        }
-      },
-      "required": [
-        "id",
-        "kind",
-        "refs"
-      ],
-      "type": "object"
-    },
     "PointFeature": {
       "additionalProperties": false,
       "description": "A construction point (sketch references, measure, axes and planes).",
       "properties": {
-        "annotations": {
-          "items": {
-            "$ref": "#/definitions/PmiAnnotation"
-          },
-          "type": "array"
-        },
         "definition": {
           "anyOf": [
             {
@@ -2576,12 +3508,6 @@
         {
           "additionalProperties": false,
           "properties": {
-            "annotations": {
-              "items": {
-                "$ref": "#/definitions/PmiAnnotation"
-              },
-              "type": "array"
-            },
             "dx": {
               "$ref": "#/definitions/Expr"
             },
@@ -2634,12 +3560,6 @@
         {
           "additionalProperties": false,
           "properties": {
-            "annotations": {
-              "items": {
-                "$ref": "#/definitions/PmiAnnotation"
-              },
-              "type": "array"
-            },
             "frame": {
               "$ref": "#/definitions/Frame"
             },
@@ -2688,12 +3608,6 @@
         {
           "additionalProperties": false,
           "properties": {
-            "annotations": {
-              "items": {
-                "$ref": "#/definitions/PmiAnnotation"
-              },
-              "type": "array"
-            },
             "frame": {
               "$ref": "#/definitions/Frame"
             },
@@ -2742,12 +3656,6 @@
       "additionalProperties": false,
       "description": "Direct editing (PLAN §9.2, M2): moves faces of one body along their normal. Positive `distance` moves outward (adds material), negative inward (removes). M2 supports planar faces; others fail with an `UNSUPPORTED_FEATURE` error naming the face. Recorded as a feature, so it is parametric.",
       "properties": {
-        "annotations": {
-          "items": {
-            "$ref": "#/definitions/PmiAnnotation"
-          },
-          "type": "array"
-        },
         "distance": {
           "$ref": "#/definitions/Expr"
         },
@@ -2781,17 +3689,98 @@
       ],
       "type": "object"
     },
+    "RadiusDimension": {
+      "additionalProperties": false,
+      "description": "refs: [circular edge | cylindrical, conical or spherical face]. A sphere shows SR / SØ.",
+      "properties": {
+        "at": {
+          "description": "Point qualifiers parallel to `refs`; absent or shorter = `'self'` for the rest.",
+          "items": {
+            "$ref": "#/definitions/RefPoint"
+          },
+          "type": "array"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "kind": {
+          "const": "radius",
+          "type": "string"
+        },
+        "modelPlacement": {
+          "additionalProperties": false,
+          "description": "M5 reserve: the v3 `PmiAnnotation.placement` (3D annotation plane and text position), carried over verbatim by the migration so nothing is lost. M5 replaces it with annotation planes.",
+          "properties": {
+            "plane": {
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 6,
+              "minItems": 6,
+              "type": "array"
+            },
+            "textPos": {
+              "$ref": "#/definitions/Vec3"
+            }
+          },
+          "required": [
+            "plane",
+            "textPos"
+          ],
+          "type": "object"
+        },
+        "nominal": {
+          "$ref": "#/definitions/Expr"
+        },
+        "origin": {
+          "$ref": "#/definitions/AnnotationOrigin"
+        },
+        "refs": {
+          "description": "Model geometry the annotation is attached to, by persistent name (PLAN §7.3). Arity and role per kind are in the .md table (\"refs per kind\"). Resolved against the part's final state in the view's configuration. Unresolved = needs attention: never re-attached to a guessed entity, and the old value is never displayed (trap T1). Reattach replaces the list (every kind, trap T2). May be empty only where the kind says so (a hole callout bound by `source`, a frame bound by `appliesTo`).",
+          "items": {
+            "$ref": "#/definitions/EntityRef"
+          },
+          "type": "array"
+        },
+        "source": {
+          "$ref": "#/definitions/AnnotationSource"
+        },
+        "suppressed": {
+          "description": "Suppressed annotations are not shown or exported. Per configuration via `AnnotationOverride`.",
+          "type": "boolean"
+        },
+        "text": {
+          "$ref": "#/definitions/DimensionText"
+        },
+        "tolerance": {
+          "$ref": "#/definitions/Tolerance"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "origin",
+        "refs"
+      ],
+      "type": "object"
+    },
+    "RefPoint": {
+      "description": "Which point of a referenced entity an annotation measures from (parallel to `refs`). `self`: the entity itself (a face, an edge's line). `center`: circle, arc or sphere centre. `axis`: a cylindrical or conical face's axis. `start` / `end` / `mid`: of an edge.",
+      "enum": [
+        "self",
+        "center",
+        "axis",
+        "start",
+        "end",
+        "mid"
+      ],
+      "type": "string"
+    },
     "RevolveFeature": {
       "additionalProperties": false,
       "properties": {
         "angle": {
           "$ref": "#/definitions/Expr"
-        },
-        "annotations": {
-          "items": {
-            "$ref": "#/definitions/PmiAnnotation"
-          },
-          "type": "array"
         },
         "axis": {
           "$ref": "#/definitions/EntityRef"
@@ -2847,12 +3836,6 @@
       "additionalProperties": false,
       "description": "Hollow a body: remove `openFaces`, offset the rest by `thickness` (inward by default).",
       "properties": {
-        "annotations": {
-          "items": {
-            "$ref": "#/definitions/PmiAnnotation"
-          },
-          "type": "array"
-        },
         "body": {
           "$ref": "#/definitions/EntityRef",
           "description": "The body, when `openFaces` is empty."
@@ -3232,12 +4215,6 @@
       "additionalProperties": false,
       "description": "A 2D sketch on a plane or planar face. Geometry and constraints are defined in `sketch.ts`. The kernel turns the solved sketch into wires and regions (names: see `naming.ts`).",
       "properties": {
-        "annotations": {
-          "items": {
-            "$ref": "#/definitions/PmiAnnotation"
-          },
-          "type": "array"
-        },
         "constraints": {
           "items": {
             "$ref": "#/definitions/SketchConstraint"
@@ -3384,16 +4361,167 @@
       ],
       "type": "string"
     },
+    "SurfaceFinishAnnotation": {
+      "additionalProperties": false,
+      "description": "Surface texture symbol (ISO 21920-1 by default). refs: [face].",
+      "properties": {
+        "allAround": {
+          "type": "boolean"
+        },
+        "allowance": {
+          "$ref": "#/definitions/Expr",
+          "description": "Machining allowance (length)."
+        },
+        "at": {
+          "description": "Point qualifiers parallel to `refs`; absent or shorter = `'self'` for the rest.",
+          "items": {
+            "$ref": "#/definitions/RefPoint"
+          },
+          "type": "array"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "kind": {
+          "const": "surfaceFinish",
+          "type": "string"
+        },
+        "lay": {
+          "$ref": "#/definitions/SurfaceLay"
+        },
+        "method": {
+          "description": "Manufacturing method text (`ground`).",
+          "type": "string"
+        },
+        "modelPlacement": {
+          "additionalProperties": false,
+          "description": "M5 reserve: the v3 `PmiAnnotation.placement` (3D annotation plane and text position), carried over verbatim by the migration so nothing is lost. M5 replaces it with annotation planes.",
+          "properties": {
+            "plane": {
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 6,
+              "minItems": 6,
+              "type": "array"
+            },
+            "textPos": {
+              "$ref": "#/definitions/Vec3"
+            }
+          },
+          "required": [
+            "plane",
+            "textPos"
+          ],
+          "type": "object"
+        },
+        "origin": {
+          "$ref": "#/definitions/AnnotationOrigin"
+        },
+        "process": {
+          "enum": [
+            "any",
+            "removalRequired",
+            "removalProhibited"
+          ],
+          "type": "string"
+        },
+        "refs": {
+          "description": "Model geometry the annotation is attached to, by persistent name (PLAN §7.3). Arity and role per kind are in the .md table (\"refs per kind\"). Resolved against the part's final state in the view's configuration. Unresolved = needs attention: never re-attached to a guessed entity, and the old value is never displayed (trap T1). Reattach replaces the list (every kind, trap T2). May be empty only where the kind says so (a hole callout bound by `source`, a frame bound by `appliesTo`).",
+          "items": {
+            "$ref": "#/definitions/EntityRef"
+          },
+          "type": "array"
+        },
+        "requirements": {
+          "description": "Empty = the bare symbol.",
+          "items": {
+            "$ref": "#/definitions/SurfaceRequirement"
+          },
+          "type": "array"
+        },
+        "standard": {
+          "$ref": "#/definitions/SurfaceFinishStandard"
+        },
+        "suppressed": {
+          "description": "Suppressed annotations are not shown or exported. Per configuration via `AnnotationOverride`.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "origin",
+        "process",
+        "refs",
+        "requirements"
+      ],
+      "type": "object"
+    },
+    "SurfaceFinishStandard": {
+      "description": "Surface texture standard (default ISO 21920-1; ISO 1302 is legacy, kept for old drawings).",
+      "enum": [
+        "ISO 21920-1:2021",
+        "ISO 1302:2002",
+        "ASME Y14.36-2018"
+      ],
+      "type": "string"
+    },
+    "SurfaceLay": {
+      "enum": [
+        "parallel",
+        "perpendicular",
+        "crossed",
+        "multiDirectional",
+        "circular",
+        "radial",
+        "particulate"
+      ],
+      "type": "string"
+    },
+    "SurfaceRequirement": {
+      "additionalProperties": false,
+      "description": "One surface texture requirement, e.g. `Ra 1.6 µm` (upper limit, `max` rule under ISO 21920).",
+      "properties": {
+        "acceptance": {
+          "description": "Acceptance rule; absent = the standard's default (ISO 21920-1: max; ISO 1302: 16 %).",
+          "enum": [
+            "max",
+            "16%"
+          ],
+          "type": "string"
+        },
+        "filter": {
+          "description": "Filter / evaluation length text as written (`0.8`, `λs 2.5 µm`).",
+          "type": "string"
+        },
+        "limit": {
+          "description": "Limit type; absent = upper.",
+          "enum": [
+            "upper",
+            "lower"
+          ],
+          "type": "string"
+        },
+        "parameter": {
+          "description": "Parameter symbol as written by the standard: `Ra`, `Rz`, `Rmr(c)`, `Wt` …",
+          "type": "string"
+        },
+        "value": {
+          "$ref": "#/definitions/Expr",
+          "description": "Length expression; the inline field writes µm (`1.6 µm`)."
+        }
+      },
+      "required": [
+        "parameter",
+        "value"
+      ],
+      "type": "object"
+    },
     "SweepFeature": {
       "additionalProperties": false,
       "description": "Sweep closed profile regions along a path (a chain of sketch curves or model edges).",
       "properties": {
-        "annotations": {
-          "items": {
-            "$ref": "#/definitions/PmiAnnotation"
-          },
-          "type": "array"
-        },
         "id": {
           "$ref": "#/definitions/Id"
         },
@@ -3450,12 +4578,6 @@
       "additionalProperties": false,
       "description": "A cosmetic thread on a cylindrical face: an annotation (drawings, PMI), no geometry change.",
       "properties": {
-        "annotations": {
-          "items": {
-            "$ref": "#/definitions/PmiAnnotation"
-          },
-          "type": "array"
-        },
         "face": {
           "$ref": "#/definitions/EntityRef"
         },
@@ -3497,6 +4619,182 @@
       ],
       "type": "object"
     },
+    "Tolerance": {
+      "anyOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "symmetric",
+              "type": "string"
+            },
+            "value": {
+              "$ref": "#/definitions/Expr"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "bilateral",
+              "type": "string"
+            },
+            "lower": {
+              "$ref": "#/definitions/Expr"
+            },
+            "upper": {
+              "$ref": "#/definitions/Expr"
+            }
+          },
+          "required": [
+            "kind",
+            "upper",
+            "lower"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "limits",
+              "type": "string"
+            },
+            "lower": {
+              "$ref": "#/definitions/Expr"
+            },
+            "upper": {
+              "$ref": "#/definitions/Expr"
+            }
+          },
+          "required": [
+            "kind",
+            "upper",
+            "lower"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "basic",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "reference",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "hole": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "fit",
+              "type": "string"
+            },
+            "shaft": {
+              "type": "string"
+            },
+            "show": {
+              "enum": [
+                "symbol",
+                "symbolAndDeviations",
+                "limitsAndSymbol"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "show"
+          ],
+          "type": "object"
+        }
+      ],
+      "description": "Tolerance on a dimension's value. Deviations are signed `Expr`s relative to the nominal (so they follow a configuration's nominal). `limits` stores deviations too and is displayed as the two limits. `basic` and `reference` are display forms without a tolerance."
+    },
+    "ToleranceZone": {
+      "additionalProperties": false,
+      "properties": {
+        "material": {
+          "$ref": "#/definitions/MaterialCondition"
+        },
+        "modifiers": {
+          "items": {
+            "$ref": "#/definitions/ZoneModifier"
+          },
+          "type": "array"
+        },
+        "perUnit": {
+          "additionalProperties": false,
+          "description": "Refinement per unit: `0.05 / 100` (length) or `/ 100 × 100` (area: `width` set).",
+          "properties": {
+            "length": {
+              "$ref": "#/definitions/Expr"
+            },
+            "value": {
+              "$ref": "#/definitions/Expr"
+            },
+            "width": {
+              "$ref": "#/definitions/Expr"
+            }
+          },
+          "required": [
+            "value",
+            "length"
+          ],
+          "type": "object"
+        },
+        "projected": {
+          "$ref": "#/definitions/Expr",
+          "description": "Projected tolerance zone Ⓟ with its height."
+        },
+        "shape": {
+          "description": "`diameter` = Ø zone, `sphericalDiameter` = SØ; absent = width between two planes/lines.",
+          "enum": [
+            "diameter",
+            "sphericalDiameter"
+          ],
+          "type": "string"
+        },
+        "unequal": {
+          "$ref": "#/definitions/Expr",
+          "description": "Unequally disposed (ASME Ⓤ / ISO UZ) offset."
+        },
+        "value": {
+          "$ref": "#/definitions/Expr",
+          "description": "Zone size (length)."
+        }
+      },
+      "required": [
+        "value"
+      ],
+      "type": "object"
+    },
     "Vec2": {
       "items": {
         "type": "number"
@@ -3512,6 +4810,17 @@
       "maxItems": 3,
       "minItems": 3,
       "type": "array"
+    },
+    "ZoneModifier": {
+      "description": "Zone modifiers that take no value. Legality per standard is a validation rule, not a type.",
+      "enum": [
+        "freeState",
+        "tangentPlane",
+        "statistical",
+        "combinedZone",
+        "separateZones"
+      ],
+      "type": "string"
     }
   },
   "description": "`parts/<slug>.part.json`",

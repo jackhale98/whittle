@@ -145,6 +145,7 @@ export function toFiles(doc: WrenDoc): ProjectFiles {
     parts,
     drawings,
     assemblies,
+    ...(doc.drawingDefaults ? { drawingDefaults: doc.drawingDefaults } : {}),
   };
   files.set(MANIFEST_FILE, canonicalBytes(manifest));
   const params: ParamsFile = { params: doc.params };

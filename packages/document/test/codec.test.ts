@@ -155,7 +155,7 @@ describe('project folder', () => {
       PARAMS_FILE,
       'parts/bracket.part.json',
       'parts/bracket-2.part.json',
-      'drawings/sheet-1.drawing.json',
+      'drawings/bracket-drawing.drawing.json',
       'assemblies/asm.assembly.json',
     ]);
     const manifest = JSON.parse(text(files, MANIFEST_FILE));
@@ -302,20 +302,16 @@ describe('project folder', () => {
     expect(() => fromFiles(evil)).toThrow(/Invalid file path/);
   });
 
-  it('migrates old and rejects newer documents', () => {
+  it('refuses earlier previews and newer documents', () => {
     const old = new Map(files);
     const m = JSON.parse(text(files, MANIFEST_FILE));
-    m.schemaVersion = 0;
-    m.assemblies = undefined;
-    m.drawings = undefined;
+    m.schemaVersion = 3;
     old.set(MANIFEST_FILE, strToU8(JSON.stringify(m)));
-    const d = fromFiles(old);
-    expect(d.schemaVersion).toBe(SCHEMA_VERSION);
-    expect(d.drawings).toEqual([]);
+    expect(() => fromFiles(old)).toThrow(/earlier preview of Wren and can't be opened/);
     const future = new Map(files);
     m.schemaVersion = 99;
     future.set(MANIFEST_FILE, strToU8(JSON.stringify(m)));
-    expect(() => fromFiles(future)).toThrow(/understands up to version 3/);
+    expect(() => fromFiles(future)).toThrow(/understands up to version 4/);
   });
 });
 

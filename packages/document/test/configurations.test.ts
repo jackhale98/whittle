@@ -16,7 +16,6 @@ import {
   createDocumentStore,
   exportFileNames,
   fromFiles,
-  migrateDoc,
   newDoc,
   partNumberFor,
   projectCodec,
@@ -1134,30 +1133,6 @@ describe('validateDoc, load and codec', () => {
     const store = createDocumentStore();
     expect(store.load(JSON.parse(JSON.stringify(d))).ok).toBe(true);
     expect(store.getDoc()).toEqual(d);
-  });
-
-  it('migrates a v2 fixture to v3 unchanged and then accepts configuration edits', () => {
-    const v2 = { ...sampleDoc(), schemaVersion: 2 } as unknown as Record<string, unknown>;
-    const r = migrateDoc(v2);
-    expect(r.ok).toBe(true);
-    if (!r.ok) return;
-    expect(r.applied).toEqual([3]);
-    expect(r.doc).toEqual({ ...sampleDoc(), schemaVersion: 3 });
-    const store = createDocumentStore();
-    store.load(v2);
-    expect(store.getDoc().schemaVersion).toBe(3);
-    const a = store.apply({
-      kind: 'addConfiguration',
-      partId: PART,
-      configuration: { id: LONG, name: 'Long' },
-    });
-    expect(a.ok).toBe(true);
-    expect(validateDoc(store.getDoc())).toEqual([]);
-  });
-
-  it('migrating a document that already has configurations keeps them', () => {
-    const r = migrateDoc({ ...full(), schemaVersion: 2 });
-    expect(r.ok && r.doc).toEqual({ ...full(), schemaVersion: 3 });
   });
 
   it('unused extrude helper stays referenced (fixture sanity)', () => {

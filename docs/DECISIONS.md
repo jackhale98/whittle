@@ -2498,3 +2498,7 @@ Applied from the drawing-engineer's proposal (`docs/proposals/M4-contracts.md`, 
 - **Q5:** `direction` stays a `Vec3` for now; an additive change later if needed.
 - **Q6:** plain arrays for now; packed polylines only if the budget needs them.
 - **Q7:** custom title-block templates are P2.
+
+### ADR-090 amendment: no migrations before 1.0 (2026-11-11)
+
+Owner decision: nobody uses the app yet, so there is no backwards compatibility. There is no v3 to v4 migration, and the old steps (unversioned, v1, v2, v3) are deleted with their fixtures and tests. `MIGRATIONS` is an empty registry; the framework and the "newer version" refusal stay because they cost nothing. A file whose `schemaVersion` is below `SCHEMA_VERSION` is refused on load with "This file was made by an earlier preview of Wren and can't be opened" and is never converted. Feature-level `PmiAnnotation` handling is gone entirely. The proposal's migration rules (§7) and its fixtures are void. Schema bumps before 1.0 do not migrate; the first bump after 1.0 adds the first step.

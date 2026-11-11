@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import type {
+  Annotation,
   BooleanFeature,
   ChamferFeature,
+  Drawing,
+  DrawingStyle,
   EntityRef,
   ExtrudeFeature,
   Feature,
@@ -156,10 +159,283 @@ export const sphere = (n: number): PrimitiveFeature => ({
   radius: 'depth / 4',
 });
 
-/** A document exercising every feature type, a material and params. */
+/** A complete ISO-ish drawing style (sheet mm). */
+export const style = (): DrawingStyle => ({
+  lineGroup: 'iso-0.35',
+  text: { dimension: 3.5, note: 3.5, viewLabel: 5, title: 7 },
+  font: 'osifont',
+  dimension: {
+    extensionGap: 1,
+    extensionOvershoot: 1.5,
+    arrow: { kind: 'filledClosed', length: 3, angle: 15 },
+    firstLane: 10,
+    laneSpacing: 7,
+    textOrientation: 'aligned',
+    textPosition: 'above',
+  },
+  numbers: {
+    decimal: '.',
+    lengthPrecision: 2,
+    anglePrecision: 1,
+    trailingZeros: 'strip',
+    angleFormat: 'decimal',
+  },
+  hatch: { pattern: 'iso-general', angle: 45, spacing: 3 },
+  view: {
+    lines: 'visible',
+    tangentEdges: 'thin',
+    centerMarks: true,
+    centerLines: true,
+    threads: true,
+  },
+});
+
+/** A v4 annotation set exercising every kind but the hole callout (ids 900+, sorted). */
+export function sampleAnnotations(): Annotation[] {
+  const model = { kind: 'model' } as const;
+  return [
+    {
+      id: id(900),
+      kind: 'linear',
+      origin: model,
+      refs: [ref(`F${id(12)}:start`), ref(`F${id(12)}:end`)],
+      direction: [1, 0, 0],
+      source: { kind: 'featureField', featureId: id(12), path: '/end/depth' },
+      tolerance: { kind: 'bilateral', upper: '0.1mm', lower: '-0.1mm' },
+    },
+    {
+      id: id(901),
+      kind: 'angle',
+      origin: model,
+      refs: [ref('S11:e(a)', 'edge'), ref('S11:e(b)', 'edge')],
+      nominal: '30deg',
+      tolerance: { kind: 'symmetric', value: '1deg' },
+    },
+    {
+      id: id(902),
+      kind: 'diameter',
+      origin: { kind: 'drawing', drawingId: id(5) },
+      refs: [ref('S23:e(c)', 'edge')],
+      at: ['self'],
+      nominal: '10mm',
+      tolerance: { kind: 'fit', hole: 'H7', show: 'symbolAndDeviations' },
+      text: { prefix: '4×', precision: 2 },
+    },
+    {
+      id: id(903),
+      kind: 'datumFeature',
+      origin: model,
+      refs: [ref(`F${id(12)}:start`)],
+      label: 'A',
+    },
+    { id: id(904), kind: 'datumFeature', origin: model, refs: [ref(`F${id(12)}:end`)], label: 'B' },
+    {
+      id: id(905),
+      kind: 'geometricTolerance',
+      origin: model,
+      refs: [],
+      standard: 'ISO 1101:2017',
+      characteristic: 'position',
+      zone: { value: '0.1mm', shape: 'diameter', material: 'mmc' },
+      datums: [{ datums: [{ datum: id(903) }] }, { datums: [{ datum: id(904) }] }],
+      appliesTo: id(902),
+    },
+    {
+      id: id(906),
+      kind: 'note',
+      origin: model,
+      refs: [ref(`F${id(12)}:start`)],
+      text: 'BREAK SHARP EDGES',
+    },
+    {
+      id: id(907),
+      kind: 'surfaceFinish',
+      origin: model,
+      refs: [ref(`F${id(12)}:start`)],
+      process: 'removalRequired',
+      requirements: [{ parameter: 'Ra', value: '1.6um' }],
+      allowance: '0.2mm',
+    },
+    {
+      id: id(908),
+      kind: 'chamfer',
+      origin: model,
+      refs: [ref(`F${id(15)}:chamfer(e1)`)],
+      form: 'distanceAngle',
+      source: { kind: 'feature', featureId: id(15) },
+    },
+  ];
+}
+
+/** A full v4 drawing of the Bracket part: every view kind, placement layout and table kind. */
+export function sampleDrawing(): Drawing {
+  const sheet = (n: number) => ({
+    id: id(n),
+    name: `Sheet ${n - 5049}`,
+    format: { size: 'A3' as const, orientation: 'landscape' as const },
+    scale: '1/2',
+  });
+  return {
+    id: id(5),
+    name: 'Bracket drawing',
+    subject: { kind: 'part', partId: id(3) },
+    standard: { family: 'iso', gps: 'ISO 1101:2017', surfaceFinish: 'ISO 21920-1:2021' },
+    projection: 'third',
+    units: 'mm',
+    style: style(),
+    template: { id: 'iso-5457', version: 1, fields: { owner: 'Wren' } },
+    sheets: [sheet(5050), sheet(5051)],
+    views: [
+      {
+        id: id(5060),
+        sheetId: id(5050),
+        kind: 'base',
+        orientation: { kind: 'named', name: 'front' },
+        layout: { kind: 'free', position: [120, 150] },
+      },
+      {
+        id: id(5061),
+        sheetId: id(5050),
+        kind: 'projected',
+        parentId: id(5060),
+        from: 'top',
+        layout: { kind: 'aligned', distance: 70 },
+      },
+      {
+        id: id(5062),
+        sheetId: id(5050),
+        kind: 'section',
+        parentId: id(5060),
+        letter: 'A',
+        cut: [
+          { kind: 'free', at: [-30, 0] },
+          { kind: 'ref', ref: ref('S23:e(c)', 'edge'), point: 'center', offset: [-40, 0] },
+        ],
+        look: 'left',
+        depth: 'full',
+        layout: { kind: 'free', position: [260, 150] },
+      },
+      {
+        id: id(5063),
+        sheetId: id(5051),
+        kind: 'detail',
+        parentId: id(5060),
+        letter: 'B',
+        center: { kind: 'free', at: [10, 5] },
+        radius: 12,
+        scale: '2',
+        layout: { kind: 'free', position: [100, 100] },
+      },
+      {
+        id: id(5064),
+        sheetId: id(5051),
+        kind: 'iso',
+        parentId: id(5060),
+        corner: 'topRight',
+        layout: { kind: 'free', position: [250, 100] },
+      },
+    ],
+    placements: [
+      {
+        id: id(5070),
+        viewId: id(5060),
+        annotationId: id(900),
+        layout: { kind: 'lane', side: 'bottom', lane: 0 },
+      },
+      {
+        id: id(5071),
+        viewId: id(5060),
+        annotationId: id(902),
+        layout: { kind: 'radial', angle: 45, distance: 6 },
+        text: { shift: 1.5 },
+      },
+      {
+        id: id(5072),
+        viewId: id(5060),
+        annotationId: id(905),
+        layout: {
+          kind: 'leader',
+          attach: { kind: 'placement', placementId: id(5071) },
+          text: [0, -8],
+        },
+      },
+      {
+        id: id(5073),
+        viewId: id(5061),
+        annotationId: id(901),
+        layout: { kind: 'arc', radius: 12 },
+      },
+      {
+        id: id(5074),
+        viewId: id(5061),
+        annotationId: id(903),
+        layout: {
+          kind: 'leader',
+          attach: { kind: 'ref', index: 0, t: 0.5 },
+          bends: [[4, 4]],
+          text: [8, 8],
+          landing: 'auto',
+        },
+        witness: { flip: true, hide: [false, true] },
+        arrows: 'auto',
+      },
+      {
+        id: id(5075),
+        viewId: id(5061),
+        annotationId: id(908),
+        layout: { kind: 'offset', distance: 9 },
+      },
+    ],
+    centerMarks: [
+      { id: id(5080), viewId: id(5060), kind: 'centerMark', refs: [ref('S23:e(c)', 'edge')] },
+    ],
+    tables: [
+      {
+        id: id(5081),
+        sheetId: id(5050),
+        kind: 'partProperties',
+        position: [410, 10],
+        anchor: 'bottomRight',
+        columns: ['partNumber', 'material', 'mass'],
+        rows: { kind: 'drawing' },
+      },
+      {
+        id: id(5082),
+        sheetId: id(5050),
+        kind: 'holeTable',
+        position: [10, 280],
+        anchor: 'topLeft',
+        viewId: id(5061),
+        origin: { kind: 'free', at: [0, 0] },
+        holes: 'all',
+      },
+    ],
+    notes: [{ id: id(5083), sheetId: id(5050), position: [15, 40], text: 'ALL DIMENSIONS IN MM' }],
+    markup: [
+      {
+        id: id(5084),
+        sheetId: id(5050),
+        versionId: 'v1',
+        author: 'reviewer',
+        at: '2026-01-02T03:04:05.000Z',
+        strokes: [
+          {
+            points: [
+              [1, 1],
+              [5, 5],
+            ],
+            width: 0.5,
+          },
+        ],
+        anchor: { placementId: id(5070) },
+      },
+    ],
+  };
+}
+
+/** A document exercising every feature type, a material, params, annotations and a drawing. */
 export function sampleDoc(): WrenDoc {
   const doc = newDoc({ name: 'Bracket', now: '2026-01-02T03:04:05.000Z', app: 'wren/test' });
-  // v4: annotations are part-level (ADR-090); the M4 document workstream adds them here.
   const filletF: Feature = fillet(14, 12);
   const features: Feature[] = [
     sketch(11),
@@ -200,11 +476,16 @@ export function sampleDoc(): WrenDoc {
       rollbackIndex: features.length,
       material: structuredClone(MATERIALS[2] as NonNullable<WrenDoc['parts'][0]['material']>),
       color: '#9aa4b2',
+      annotations: sampleAnnotations(),
     },
     { id: id(4), name: 'Bracket', features: [box(40)], rollbackIndex: 1 },
   ];
-  // v4: a full drawing fixture comes with the M4 document workstream.
-  doc.drawings = [];
+  doc.drawings = [sampleDrawing()];
+  doc.drawingDefaults = {
+    standard: { family: 'iso', gps: 'ISO 1101:2017', surfaceFinish: 'ISO 21920-1:2021' },
+    projection: 'third',
+    fields: { owner: 'Wren' },
+  };
   doc.assemblies = [{ id: id(6), name: 'Asm' }];
   return doc;
 }
