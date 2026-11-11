@@ -1,0 +1,30 @@
+{
+  "name": "@wren-cad/drawing",
+  "version": "0.0.0",
+  "private": true,
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "sideEffects": false,
+  "description": "M4 drawings: the shared annotation core (worker-safe, shared with M5), templates and styles, view frames, placement layout, import planner, needs-attention aggregation, and the SVG, PDF and DXF renderers. DOM-free.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./annotation": "./src/annotation/index.ts",
+    "./svg": "./src/svg/index.ts",
+    "./pdf": "./src/pdf/index.ts",
+    "./dxf": "./src/dxf/index.ts",
+    "./font": "./src/font/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p .",
+    "test": "vitest run",
+    "metrics": "node scripts/gen-font-metrics.mjs",
+    "size": "node scripts/bundle-size.mjs"
+  },
+  "dependencies": {
+    "@wren-cad/contracts": "workspace:*",
+    "fflate": "0.8.3"
+  },
+  "devDependencies": {
+    "vite": "8.3.6"
+  }
+}

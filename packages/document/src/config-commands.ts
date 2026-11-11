@@ -7,6 +7,7 @@
  */
 
 import type {
+  Annotation,
   Command,
   ConfigTarget,
   Configuration,
@@ -18,6 +19,7 @@ import type {
   PartProperties,
   WrenDoc,
 } from '@wren-cad/contracts';
+import { annotationExprFields, annotationOptionAt, describeAnnotation } from './annotation-fields';
 import type { Compiled } from './commands';
 import {
   CONFIGURABLE_OPTIONS,
@@ -69,7 +71,16 @@ export function compileConfigCommand(
       if (idInUse(c.id)) return err(`The id ‘${c.id}’ is already in use`);
       const name = typeof c.name === 'string' ? c.name.trim() : '';
       if (name === '') return err('A configuration needs a name');
-      const known = ['id', 'name', 'params', 'features', 'material', 'color', 'properties'];
+      const known = [
+        'id',
+        'name',
+        'params',
+        'features',
+        'annotations',
+        'material',
+        'color',
+        'properties',
+      ];
       for (const k of Object.keys(c)) {
         if (!known.includes(k)) return err(`‘${k}’ is not a configuration property`);
       }
@@ -253,6 +264,29 @@ function configurationEdits(c: Configuration): Edit[] | string {
       }
     }
   }
+  if (c.annotations !== undefined) {
+    if (!isPlain(c.annotations)) return 'The annotation overrides must be an object';
+    for (const [annotationId, ov] of Object.entries(c.annotations)) {
+      if (!isPlain(ov)) return 'An annotation override must be an object';
+      if (ov.suppressed !== undefined) {
+        out.push({
+          configurationId: id,
+          target: { kind: 'annotationSuppressed', annotationId },
+          value: ov.suppressed as boolean,
+        });
+      }
+      if (ov.fields !== undefined) {
+        if (!isPlain(ov.fields)) return 'The field overrides must be an object';
+        for (const [path, value] of Object.entries(ov.fields)) {
+          out.push({
+            configurationId: id,
+            target: { kind: 'annotationField', annotationId, path },
+            value: value as ConfiguredValue,
+          });
+        }
+      }
+    }
+  }
   if (c.material !== undefined) {
     out.push({ configurationId: id, target: { kind: 'material' }, value: c.material });
   }
@@ -308,6 +342,10 @@ function applyEdits(
   return { changed };
 }
 
+function annotationOf(part: Part, annotationId: string): Annotation | undefined {
+  return part.annotations?.find((a) => a.id === annotationId);
+}
+
 function featureOf(part: Part, featureId: string): Feature | undefined {
   return part.features.find((f) => f.id === featureId);
 }
@@ -357,6 +395,42 @@ function applyEdit(
         const ov = features[target.featureId] ?? {};
         features[target.featureId] = { ...ov, fields: { ...ov.fields, [target.path]: value } };
         config.features = features;
+      } else return 'A field value must be text, a number or true/false';
+      return;
+    }
+    case 'annotationSuppressed': {
+      if (!annotationOf(part, target.annotationId)) {
+        return `Annotation ‘${target.annotationId}’ was not found`;
+      }
+      if (remove) {
+        const ov = config.annotations?.[target.annotationId];
+        if (ov) delete ov.suppressed;
+      } else if (typeof value === 'boolean') {
+        const annotations = { ...config.annotations };
+        annotations[target.annotationId] = {
+          ...annotations[target.annotationId],
+          suppressed: value,
+        };
+        config.annotations = annotations;
+      } else return 'Suppression must be true or false';
+      return;
+    }
+    case 'annotationField': {
+      if (!annotationOf(part, target.annotationId)) {
+        return `Annotation ‘${target.annotationId}’ was not found`;
+      }
+      if (typeof target.path !== 'string') return 'A field needs a path';
+      if (remove) {
+        const fields = config.annotations?.[target.annotationId]?.fields;
+        if (fields) delete fields[target.path];
+      } else if (isConfiguredValue(value)) {
+        const annotations = { ...config.annotations };
+        const ov = annotations[target.annotationId] ?? {};
+        annotations[target.annotationId] = {
+          ...ov,
+          fields: { ...ov.fields, [target.path]: value },
+        };
+        config.annotations = annotations;
       } else return 'A field value must be text, a number or true/false';
       return;
     }
@@ -429,6 +503,21 @@ function validateValue(
       const r = expressionEngine.evaluate(value, field.expected, scope);
       return r.ok ? undefined : `${base.name} ${target.path}: ${r.error.message}`;
     }
+    case 'annotationField': {
+      const a = annotationOf(part, target.annotationId) as Annotation;
+      const option = annotationOptionAt(target.path);
+      if (option) {
+        if (!existsAt(a, target.path)) return `‘${target.path}’ is not a field of this annotation`;
+        return option.accepts(value as ConfiguredValue)
+          ? undefined
+          : `${JSON.stringify(value)} is not ${option.expects}`;
+      }
+      const field = annotationExprFields(a).find((f) => f.pointer === target.path);
+      if (!field) return `‘${target.path}’ is not a configurable field of this annotation`;
+      if (typeof value !== 'string') return `‘${target.path}’ needs an expression`;
+      const r = expressionEngine.evaluate(value, field.expected, scope);
+      return r.ok ? undefined : `${describeAnnotation(a)} ${target.path}: ${r.error.message}`;
+    }
     case 'material': {
       if (value === null) return undefined;
       const r = tryResolveDensity(value as Material, expressionEngine, scope);
@@ -496,6 +585,18 @@ function labelFor(doc: WrenDoc, part: Part, changed: Edit[]): string {
           : undefined;
         const what = (label ?? t.path.slice(1).replace(/\//g, ' ')).toLowerCase();
         return `${reset ? 'Reset' : 'Set'} ${fname(t.featureId)} ${what}${where}`;
+      }
+      case 'annotationSuppressed': {
+        const a = annotationOf(part, t.annotationId);
+        const what = a ? describeAnnotation(a) : 'annotation';
+        return reset
+          ? `Reset suppression of ${what}${where}`
+          : `${one.value === true ? 'Suppress' : 'Unsuppress'} ${what}${where}`;
+      }
+      case 'annotationField': {
+        const a = annotationOf(part, t.annotationId);
+        const what = (t.path.slice(1).replace(/\//g, ' ') || 'value').toLowerCase();
+        return `${reset ? 'Reset' : 'Set'} ${a ? describeAnnotation(a) : 'annotation'} ${what}${where}`;
       }
       case 'material':
         if (reset) return `Reset material${where}`;

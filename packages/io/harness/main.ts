@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+
 import type { WrenDoc } from '@wren-cad/contracts';
+import { SCHEMA_VERSION } from '@wren-cad/contracts';
 import { canvasToThumbnail, type LibraryCodec, openLibrary } from '../src/browser';
 
 /** Stand-in for the document package's ProjectCodec: JSON bytes. */
@@ -13,7 +15,7 @@ const codec: LibraryCodec = {
 
 function makeDoc(name: string): WrenDoc {
   return {
-    schemaVersion: 1,
+    schemaVersion: SCHEMA_VERSION,
     units: { length: 'mm', angle: 'deg' },
     params: [],
     parts: [],

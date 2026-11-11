@@ -11,10 +11,12 @@
  *  - Hole tables (M3):     `ISO_HOLES`, `ANSI_HOLES`, `holeRow`, `resolveHoleSize`
  */
 
+export * from './annotation-fields';
 export * from './archive';
 export * from './codec';
 export * from './commands';
 export * from './configurations';
+export * from './drawing-hooks';
 export * from './evaluate';
 export * from './expressions';
 export * from './factory';

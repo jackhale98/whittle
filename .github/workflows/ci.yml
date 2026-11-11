@@ -45,6 +45,8 @@ jobs:
       actions: read
     outputs:
       verified: ${{ steps.check.outputs.verified }}
+      # The dev-branch run that verified this commit; the kernel job reuses its artefact.
+      run_id: ${{ steps.check.outputs.run_id }}
     steps:
       - name: Look for a passing dev-branch run of this commit
         id: check
@@ -57,13 +59,16 @@ jobs:
         shell: bash
         run: |
           verified=false
+          run_id=""
           if [ "$IS_MAIN_PUSH" = "true" ]; then
             workflow_id="$(gh api "repos/${REPO}/actions/runs/${RUN_ID}" --jq .workflow_id || true)"
             if [ -n "$workflow_id" ]; then
               url="$(gh api "repos/${REPO}/actions/workflows/${workflow_id}/runs?head_sha=${SHA}&event=push&status=completed&per_page=100" \
-                --jq "[.workflow_runs[] | select(.head_sha == \"${SHA}\" and .event == \"push\" and .conclusion == \"success\" and (.head_branch | startswith(\"claude/\")) and .head_repository.full_name == \"${REPO}\" and .id != ${RUN_ID})] | first | .html_url // empty" || true)"
+                --jq "[.workflow_runs[] | select(.head_sha == \"${SHA}\" and .event == \"push\" and .conclusion == \"success\" and (.head_branch | startswith(\"claude/\")) and .head_repository.full_name == \"${REPO}\" and .id != ${RUN_ID})] | first | select(. != null) | \"\\(.id) \\(.html_url)\"" || true)"
               if [ -n "$url" ]; then
                 verified=true
+                run_id="${url%% *}"
+                url="${url#* }"
                 echo "Verified by ${url}"
                 echo "### Verified: skipping the gating jobs" >> "$GITHUB_STEP_SUMMARY"
                 echo "Commit \`${SHA}\` already passed this workflow: ${url}" >> "$GITHUB_STEP_SUMMARY"
@@ -75,6 +80,7 @@ jobs:
             fi
           fi
           echo "verified=${verified}" >> "$GITHUB_OUTPUT"
+          echo "run_id=${run_id}" >> "$GITHUB_OUTPUT"
 
   lint:
     name: Lint (Biome)
@@ -104,7 +110,13 @@ jobs:
 
   kernel:
     name: Kernel
+    needs: verified
     uses: ./.github/workflows/kernel.yml
+    permissions:
+      contents: read
+      actions: read
+    with:
+      from_run: ${{ needs.verified.outputs.run_id }}
 
   test:
     name: Typecheck and unit tests

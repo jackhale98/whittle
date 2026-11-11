@@ -56,6 +56,16 @@ ${readFileSync(join(root, 'licenses/OCCT_LGPL_EXCEPTION.txt'), 'utf8').trim()}
 
 ${readFileSync(join(root, 'licenses/LGPL-2.1.txt'), 'utf8').trim()}
 `,
+  `${rule}
+Osifont (osifont-lgpl3fe.ttf) — LGPL-3.0 with the GPL font exception
+${rule}
+The drawing font (packages/drawing/assets/fonts), self-hosted and subset-embedded in exported PDFs.
+Source: https://github.com/hikikomori82/osifont (pin and checksum: packages/drawing/assets/fonts/osifont-NOTICE.txt)
+
+${readFileSync(join(root, 'packages/drawing/assets/fonts/osifont-NOTICE.txt'), 'utf8').trim()}
+
+${readFileSync(join(root, 'licenses/LGPL-3.0.txt'), 'utf8').trim()}
+`,
 ];
 
 const sorted = [...pkgs.values()]

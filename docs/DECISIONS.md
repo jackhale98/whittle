@@ -2388,6 +2388,8 @@ Owner screenshot: after "section by face" on a phone, the selection bubble, a fl
   - **Accepted:** `TouchViewport.setFrameInsets?(insets: Partial<FrameInsets>)` and `FrameInsets` are in the contracts. The app no longer uses a local widening type.
   - **Declined for now:** a synced `Feature.acknowledged` field. Accepting a reference note stays per device (`localStorage`, per document and reference). A note that comes back on another device is harmless, and it is not worth a schema bump yet. Revisit if notes become common, for example once imported parts merge faces.
 
+- **Amendment (owner, 2026-11-11): the sheet moves the view, it does not re-frame it.** The cost noted above (collapsing or opening the sheet reset zoom and pan) is gone. `setFrameInsets` now trucks the camera when the insets change after bodies exist: the camera and target move along the camera's right/up axes (`insetPan`, packages/viewport `views.ts`) by the shift of the free area's centre, so what the user was looking at stays at the centre of the uncovered area. Distance (zoom) and orientation are untouched; it is idempotent for equal insets and snaps (no tween, because the sheet is animating itself and repeated height reports must not lose partial moves; this also makes it reduced-motion safe). `framing.ts` `onSheetHeight` only calls `setFrameInsets`; no `fitAll`. A full re-frame happens only when a mode (section, measure) starts (`reframeSoon`). Contract unchanged (`setFrameInsets` keeps its signature; the behaviour is internal to the viewport). The phone visual-baseline E2E now waits for the sheet to settle itself, since the camera re-fit no longer gives it time.
+
 ## ADR-087 — Sketch input: implied constraints by click role, a right click finishes, two-point splines (M3.8, 2026-11-11)
 
 Owner feedback: "putting a point over an existing visible point [should add] the coincident constraint", "no way to finish … one spline line with two points", "maybe a right click should finish the current tool".
@@ -2616,3 +2618,205 @@ runs in the kernel job whenever the drawing kernel was rebuilt, and nightly in s
   It is optional in `src/facade.ts` (like `bounds`), so older dists still load, and it is for the
   annotation resolver, which today probes each circle or cylinder ref with about 27 measurements.
   Goldens: `test/subshape-geometry.golden.test.ts`.
+
+### ADR-090 amendment — kernel-client: annotation resolution and `shapeForDrawing` (2026-11-11)
+
+Modeling workstream (packages/kernel-client). Details and numbers are in that package's README, "M4 annotations and drawings".
+
+1. **When resolution runs.** After the walk, against the final state of the regenerated slot, only when `request.annotations ?? part.annotations.length > 0`. The engine reads annotations as the configuration-resolved document carries them, as it does for features. It does not apply `Configuration.annotations` a second time, because a background build's document is already that configuration's. Annotations never reach a feature's definition, values, cache key or walk entry. The old `/annotations/` filters (engine, attribution, `definition`) are gone.
+2. **Suppressed, exactly.** The state is `suppressed` when the annotation is suppressed, when its source feature is, or when **every** unresolved ref has the structural cause `suppressed`. This also covers a suppressed datum or applied-to dimension. A dimension between a suppressed boss and the base plate is therefore "not in this configuration", not "needs attention". If any ref is missing for another reason, the state is `needsAttention`. Suppressed resolutions carry only `cause` (no anchors, value or unresolved list).
+3. **Causes.** The annotation is a consumer after the last feature (cause.ts rules 1-3). Rule 2 applies only when the same stored ref resolved in the regen right before. A needs-attention resolution is therefore reused from that regen only. Datum letters and annotation ids are not persistent names and get no cause, so a label such as `BB` is never read as a body tag.
+4. **Values.** `value` = source ?? nominal ?? measured, and is absent whenever the state is not ok (T1). A valued kind with no value at all (two points with no direction and no source or nominal, non-parallel faces) is `needsAttention` with an `error` that says why. `featureField` paths must be among the feature's `exprFields`. A missing constraint or field is `/source` missing with cause `changed`. A source feature that failed gives `cause: failed`. Radius and diameter sources are converted to the annotation's kind. A hole's value is its diameter; for a tapped hole it is the thread nominal. Ordinates are reported as absolute values.
+5. **Hole instances** are the hole's `…:wall` faces in the final bodies, with pattern and mirror copies unwrapped. Split pieces count once, and the originals come first.
+6. **Reuse and cost.** Resolutions are memoised per slot and annotation id. The key is the final state's content keys, the merge table, the feature states and keys, the parameters, and the annotation with its datums and applied-to dimension. Geometry probes are memoised per handle. On the stress part, 50 annotations add nothing to an unchanged regen and about 50 ms to the first regen after an edit. Last-feature edit: 191 ms CPU against 145 ms (budget 300 ms). Without annotations the stress benchmark is unchanged.
+7. **`shapeForDrawing`.** It writes one BREP of the non-mesh bodies (a compound when there are several) through the existing `exportShapes(…, 'brep')`. No new façade entry is needed. The names are each body's primary names by TopExp index, concatenated, which is the BREP's `MapShapes` order. The round-trip test checks counts and per-index fingerprints. **Change from the proposal wording: `key` is not the app's `valueKey`** (that lives in apps/web and hashes the resolved document, annotations included). It is the hash of the final bodies' (id, content key). Equal `valueKey`s give equal keys; the key also stays equal across annotation-only edits and configurations that build the same geometry. So the drawing worker reloads only when the shape or its names may have changed.
+8. **Kernel gap found (not edited here; for the kernel engineer).** `planeOf` ignores left-handed plane frames, so chamfer faces get an inward fingerprint normal and kernel face–face angles are reported as their supplement. Annotations take the sign from the render mesh meanwhile. The fix is one line, but it changes those faces' fingerprints. Also proposed: a minimal `subShapeGeometry(shape, kind, index)` that returns exact line, circle, cylinder, sphere and plane data, to replace about 27 probe measurements per round ref.
+
+### ADR-090 amendment: no migrations before 1.0 (2026-11-11)
+
+Owner decision: nobody uses the app yet, so there is no backwards compatibility. There is no v3 to v4 migration, and the old steps (unversioned, v1, v2, v3) are deleted with their fixtures and tests. `MIGRATIONS` is an empty registry; the framework and the "newer version" refusal stay because they cost nothing. A file whose `schemaVersion` is below `SCHEMA_VERSION` is refused on load with "This file was made by an earlier preview of Wren and can't be opened" and is never converted. Feature-level `PmiAnnotation` handling is gone entirely. The proposal's migration rules (§7) and its fixtures are void. Schema bumps before 1.0 do not migrate; the first bump after 1.0 adds the first step.
+
+### ADR-090 amendment: document workstream choices (2026-11-11)
+
+- **ISO 286 from the ISO 286-1 formulas, provisional (secondary sources).** `iso286.ts` computes IT grades (`i = 0.45 cbrt(D) + 0.001 D`, grade multipliers) and fundamental deviations from their closed formulas; no table is copied. Results carry `provisional: true`. The printed tables round some cells by rules that are not published as formulas, so a few cells differ by one step (Ø20 d9 is -64/-116 here against -65/-117 printed; Ø10 H7 is +14 against +15). The goldens say so, and the owner re-verifies when the standards are bought. Letters without a closed formula (`c`, `cd`, `j`, `p`, `r`, and `s` up to 50 mm) are reported as unsupported and the formatter shows the symbol without deviations; nothing is guessed. Sizes above 500 mm are unsupported.
+- **GD&T and datum rules are data** in `annotation-rules.ts`: characteristic and modifier refusals per standard, no MMC/LMC on surface controls, form frames take no datum, orientation and runout frames need one, datum letters never use I, O or Q (one to three capitals), unique per part. All marked provisional. The datum-count and MMC rules use the contract's `refsDoNotFit` kind because `AnnotationIssue` has no better one; a dedicated kind is a contract proposal.
+- **`DocumentStore.load` returns `notes`** (what loading repaired, from `normalizeDrawings`) as an extra field next to `ApplyResult`, and `MigrateResult` carries `notes`. `ApplyResult` itself is lead-owned and unchanged.
+- **Validation: `style` numbers are positive except `hatch.angle`**, which is any finite number (0 and -45 are normal angles). Precisions are integers 0 to 6.
+- **`normalizeDrawings` repairs a little more than the proposal lists.** Tables, notes and markup whose sheet is missing move to the first sheet, like views. A markup anchor to a missing placement or view is cleared and the markup stays. Sheet numbers are rounded to 0.001 mm there too, so a text-merged drawing normalises to the same bytes. Notes are structured (`kind`, `drawingId`, `message`).
+- **Command rules.** `addAnnotation` refuses an origin drawing that does not exist. `updateDrawing` refuses to change the subject part while the drawing has placements (the placements would be dropped on the next load). `addDrawing` refuses a drawing that `normalizeDrawings` would repair, instead of repairing it silently. `duplicateDrawing` inserts the copy right after its source. `setTitleBlockFields` stores `''` as a deliberate blank and `null` clears the slot; an empty `fields` object is removed. `applyTemplate` checks the version against `LATEST_TEMPLATE_VERSION` in `drawings.ts`, which the drawing package raises when it ships a new layout. `removeSheet` removes the sheet's own views, tables, notes and markup, and the placements, marks and hole tables hanging on those views; a view on another sheet that was derived from a removed view stays and needs attention (missing parent). `removeAnnotation` with a drawing-origin annotation does not touch other annotations. `removeViews` clears markup anchors that pointed at removed placements or views.
+- **`removeViews { dependents: 'detach' }` only detaches projected and iso children.** A section or detail view cannot be a base view (it would show the whole part, not the cut or the clip), so the command refuses and names it; the user removes it too. A detached child gets its resolved orientation (a standard view name when it is exactly one, else a matrix), its resolved sheet position, and any inherited scale and display baked in. The frame maths (`view-frames.ts`: Z-up, front = n -Y, projected views, iso from a corner of the parent, rotation CCW) is pure and exported; the drawing package should reuse it or replace it by one shared implementation. Section frames are not resolved (they follow the cut line), so a projected view of a section cannot be detached either.
+- **Param usage** lists annotation expressions in the Params tab as `kind: 'feature'` entries without a `featureId` (labelled "Part: diameter dimension"), so the UI type did not change.
+- **Sheet quantities are rounded to 0.001 mm by the commands** (`roundSheet`): positions, offsets, distances, strokes and style numbers. Part-mm fields (cut points, detail centre and radius, anchored offsets) and unit vectors are left alone.
+
+### ADR-090 amendment: drawing support is a lazily loaded chunk (2026-11-11)
+
+The M4 document work added about 16 kB gzip to the initial route (231.9 to 248.27 kB, budget 250), because the store statically reached the annotation and drawing validators, command compilers, `annotation-rules`, `iso286` and `view-frames`. They now load on demand and the initial route is 235.4 kB.
+
+- **Registry.** `@wren-cad/document` (the core entry) keeps the core command switch, `validateDoc`, the configuration code and `annotation-fields.ts` (kinds, `annotationExprFields`, `ANNOTATION_CONFIGURABLE_OPTIONS`, `describeAnnotation`, which the Params tab and configurations need). Everything else is in `@wren-cad/document/drawing` (`src/drawing.ts`): annotation and drawing validation, both command compilers, `normalizeDrawings`, `annotationIssues` and the rule tables, ISO 286, `view-frames`, `planDuplicateDrawing`. `registerDrawingSupport()` installs the validators and compilers into `drawing-hooks.ts`.
+- **Until registered, nothing misapplies.** Annotation and drawing commands fail with "Drawing support has not loaded yet", and `load`, `migrateDoc` and `validateDoc` refuse a document that has annotations, drawings, drawing defaults or annotation overrides, with the same message. A document without them loads as before.
+- **App.** `apps/web/src/doc/drawing-support.ts` `ensureDrawingSupport()` is awaited by `createDocLibrary` (so stored documents), by opening a `.wrencad`, and by the sync controller's `openNew`. The workbench also starts it once the screen is ready. The M4 drawing UI must `await ensureDrawingSupport()` before its first annotation or drawing command. `__wrenApp.drawingSupport()` exposes it to E2E.
+- **Tests.** The document suite registers the support in `test/setup.ts`; `drawing-support.test.ts` checks the unregistered behaviour on a fresh module copy. `e2e/drawing-support.spec.ts` adds an annotation, saves, reloads and reads it back. Other packages' tests are unchanged; they do not use annotated documents.
+- **API change.** The core entry no longer exports the drawing modules; import them from `@wren-cad/document/drawing`.
+
+## ADR-091 — M4 drawing package: one display list, in-house PDF and DXF writers, Osifont (2026-11-11)
+
+`packages/drawing` (`@wren-cad/drawing`) is the drawing workstream's row of the M4 proposal (§12).
+
+**Shape of the package.**
+- It is DOM-free and Wasm-free. Kernel results (`ViewProjection`, `AnnotationResolution`) arrive as data. Model data arrives as data or injected functions: expression values, ISO 286 deviations, `annotationIssues` and title block data. The package is therefore built and tested against mocks and runs in any worker.
+- Entries:
+  - `.`: templates, styles, views, placement, import, needs attention, sheets;
+  - `/annotation`: the worker-safe core shared with M5;
+  - `/svg`, `/pdf`, `/dxf`, `/font`.
+- `sideEffects: false`. The app does not import the package yet; the drawing route will load it lazily, so nothing lands on the initial route.
+- Sizes (`pnpm --filter @wren-cad/drawing size`, minified / gzip):
+  - annotation: 51.5 / 16.1 KB;
+  - root: 122.2 / 35.6 KB;
+  - svg: 18.2 / 5.8 KB;
+  - pdf: 35.9 / 12.7 KB, with fflate;
+  - dxf: 30.7 / 9.0 KB;
+  - font file: 76.6 KB gzip, fetched only by the drawing route and the PDF export.
+
+**One display list.**
+- Every sheet is composed once into a list of primitives (line, polyline, arc, ellipse, spline, fill, text) in sheet mm, origin bottom-left, y up.
+- Each primitive carries:
+  - a line role (`visible`, `hidden`, `tangent`, `center`, `dimension`, `hatch`, `cuttingPlane`, `cuttingPlaneEnd`, `frame`, `thin`, `text`);
+  - its source (view edge, placement, title block slot …);
+  - the attention flag.
+- SVG, PDF and DXF only translate the list; none of them lays anything out.
+- One mapping, `roleStroke`, gives all three their widths and dash patterns:
+  - widths from the ISO 128 line groups, ASME 0.6/0.3, and the ISO 5457 frame at 0.7 mm;
+  - ISO 128-2 dash patterns in multiples of the line width d: dashed 12d/3d, long-dash dot 24d/3d/0.5d/3d.
+- Symbols are never font glyphs. The symbol library draws them as paths in units of h: every GD&T characteristic and modifier, ⌴ ⌵ ↧, datum triangles, surface texture and projection symbols.
+
+**Font (owner D5): Osifont, licence verified upstream.**
+- The upstream README (github.com/hikikomori82/osifont) ships `osifont-lgpl3fe.ttf` under "GNU LGPL version 3 with GPL font exception". The font's own name table (ID 0) carries the same statement and the exception text.
+- LGPL-3.0 is compatible with Wren's GPL-3.0-or-later. The exception covers documents that embed the font or unaltered portions of it, which is what the PDF writer does.
+- A pinned copy (SHA-256 `81880ba0…320b6`, version 0.1.20221020) is self-hosted in `packages/drawing/assets/fonts` with its notice. The licence is in `licenses/LGPL-3.0.txt` and in the third-party notices script. The Noto Sans fallback was not needed.
+- Text height is the ISO 3098 nominal height h, the cap height: font size = h · unitsPerEm / capHeight.
+- Layout never reads the font file. It uses generated advance widths in `src/font/osifont-metrics.ts`, regenerated by `pnpm metrics` and checked against the TTF in a test.
+- Kerning is off in every renderer, so text sits identically everywhere: SVG sets `font-kerning:none`, the PDF places glyphs by advance, and DXF has no kerning.
+- Characters the font lacks are replaced before layout: − → -, ′ ″ → ' ".
+
+**PDF 1.7 is written in-house, not with pdf-lib or jsPDF.**
+
+Why:
+- The requirements are a glyph-id-preserving subset of a TrueType font, `/ViewerPreferences << /PrintScaling /None /Enforce [/PrintScaling] >>`, exact point coordinates and byte-for-byte reproducible output.
+- pdf-lib needs `@pdf-lib/fontkit`, which is large, to embed and subset TrueType, and it writes its own producer metadata. jsPDF embeds whole fonts.
+- The writer is about 600 lines with no new dependency. fflate, already in the workspace, compresses the streams.
+
+Decisions:
+- **Coordinates.** The MediaBox is the sheet in points. mm → pt happens once, when numbers are written (× 72/25.4, three decimals), with no `cm` matrix. Content-stream coordinates are therefore directly measurable:
+  - the 100 mm reference graduation is exactly 283.465 pt;
+  - a 100 mm part edge is 283.465 pt at 1:1 and 141.732 pt at 1:2;
+  - a 0.35 mm line is `0.992 w`.
+- **Fonts.**
+  - Type0 / CIDFontType2, Identity-H, `/CIDToGIDMap /Identity`, `/W` from the font's advances, and ToUnicode for copy and search.
+  - The subset keeps every glyph id and empties unused glyphs; composites keep their components. GSUB/GPOS/GDEF are dropped, and `name` is kept because it carries the licence.
+  - The subset tag and the file `/ID` are hashes of the content. There is no date unless the caller passes one.
+- **Curves.** Arcs and ellipses are cubic Béziers of at most 90° each. Splines are flattened to 2 µm; an exact B-spline → Bézier conversion can come later if a reviewer wants it.
+- **Scale bar.** It is the ISO 5457 metric reference graduation, 100 mm in 10 mm steps. The template draws it in the left filing margin, centred on the left centring mark and clear of the zone letters, with the sheet scale beside it. ASME sheets get the same graduation (it is not a Y14.1 item), so every export can be checked with a ruler.
+- **Deferred.** PDF/A and layers stay deferred (D7).
+- **Extra check.** When poppler (`pdfinfo`, `pdftotext`) is installed, a test reads the page size, version and text from the file.
+
+**DXF is written in-house (owner D4).**
+- **R12 (AC1009), "CNC-safe".**
+  - Sections: HEADER, TABLES (LTYPE, LAYER, STYLE) and ENTITIES only; no handles.
+  - Entities: LINE, ARC, CIRCLE, POLYLINE and TEXT.
+  - Ellipses and splines are flattened (0.01 mm by default). Fills (arrowheads, datum triangles) become closed polylines. `geometryOnly` drops text.
+- **R2000 (AC1015).**
+  - Handles, owners and `$HANDSEED`.
+  - Tables: VPORT, LTYPE, LAYER, STYLE, VIEW, UCS, APPID, DIMSTYLE and BLOCK_RECORD.
+  - Model and paper space blocks; OBJECTS with the root dictionary, ACAD_GROUP and the Model/Layout1 layouts.
+  - Header: `$INSUNITS = 4`, `$MEASUREMENT = 1`, `$LTSCALE = 1`, `$LWDISPLAY = 1`.
+  - One layer per role with its lineweight. The ISO line types are in absolute mm at the thin width. The text style points at `osifont.ttf`; CAD substitutes its own font when that is absent.
+  - Entities: LINE, ARC, CIRCLE, LWPOLYLINE, ELLIPSE, SPLINE (exact, rational when weighted), TEXT, and SOLID for fills.
+  - Dimensions are exploded.
+  - Hatching is exported as LINEs on the HATCH layer, not as HATCH entities: simpler, CAM-safe and identical in every reader. Revisit if users want editable hatches.
+- **Both profiles.**
+  - Doubles always carry a decimal point, at most 6 decimals and never an exponent.
+  - Ø ° ± are written as `%%c %%d %%p`; other non-ASCII as `\U+XXXX`.
+  - Attention items are colour 1.
+- **Tests.** Goldens (`test/golden/*.dxf`) plus an audit written in the test. The audit checks:
+  - section order and group code pairs;
+  - unique hex handles;
+  - that every 330/340/350 pointer resolves;
+  - that `$HANDSEED` is above every handle;
+  - that every referenced layer, line type and text style exists.
+- **CI to do.** Python ezdxf and LibreCAD are not available offline here.
+  - The ezdxf audit test is in place and skips without `ezdxf`. CI should `pip install ezdxf`.
+  - CI should add a headless LibreCAD `dxf2pdf` conversion of both goldens (PLAN M4 accept).
+  - QCAD stays best effort.
+
+**Templates (provisional, secondary sources, owner D9).**
+- **ISO 5457 v1.**
+  - Margins 20/10 mm and a 0.7 mm frame.
+  - Grid fields of 50 mm measured from the centring marks, with the end fields taking the rest. This rule reproduces the A0–A4 field counts, 24×16 … 6×4.
+  - Numbers run left to right, letters top to bottom, without I and O.
+  - Centring marks, and thin corner trim marks.
+  - ISO 7200 title block, 180 × 56 mm, with all 21 slots.
+- **ASME Y14.1 v1.**
+  - Margins of 0.38/0.25 in on A and B, 0.5 in on C–E.
+  - Equal zones, numbered right to left from the lower right and lettered bottom to top: A 2×2, B 4×2, C 6×4, D 8×4, E 10×6.
+  - Title block 170 × 60 mm. It has no `language` cell; text for that slot is kept and listed as unused.
+- **Versions.** The generator registry keeps every version. A version newer than the app is refused with "update Wren"; the sheet then falls back to v1 for display, and the problem is listed.
+
+**Layout conventions.**
+- **Linear dimensions.**
+  - The measuring direction is made readable first: +x, else +y.
+  - The offset is measured along that direction's left normal, from the outermost measured point on that side. A positive offset is therefore above a horizontal dimension and left of a vertical one.
+  - A lane's side must match the measuring axis: top/bottom for horizontal, left/right for vertical. A mismatch is flagged.
+- **Diameters and radii.** A diameter seen side-on (a cylinder) takes a lane or offset across its silhouettes. Radius and diameter radial layouts need the circle face-on.
+- **Sizes.** Stacked deviations and limits are 0.7 h. A frame is 2 h high with a square symbol cell. Per-unit refinements are written on one line; stacking them, as ISO does, comes later.
+- **Ordinates** are drawn one by one; the shared `0` label per group is a follow-up.
+- **Presets.**
+  - The ISO preset uses `.` as the decimal mark. ISO 80000-1 allows both, and the style can change it.
+  - DMS angles: `anglePrecision` 0 shows degrees, 1–2 minutes, 3–4 seconds, and above 4 adds decimals of seconds.
+
+**Import planner.**
+- Existing annotations are checked by default. Promoted driving dimensions are unchecked, because they carry no tolerance.
+- **Sketch dimensions:**
+  - h/v distances become `linear` along the sketch's u/v;
+  - point–point distances and lengths become `aligned` between the sketch points;
+  - radius, diameter and angle keep their kind;
+  - offsets are not promotable.
+- **Extrude depth:** `linear` between `F:start` and `F:end`, along the profile sketch's normal.
+- **Fillet, chamfer, hole and revolve** follow the ADR-090 table.
+- **View choice.** For a promotion, the sketch frame decides. Where that is not enough (fillet, chamfer, revolve), the injected anchor resolver decides. Without a resolver the candidate is listed as "no geometry" and never placed on a guess.
+- **Lanes** are packed per side, shortest first. Neighbours share a lane when their spans plus 4 h do not overlap. Existing lane placements reserve their whole lane.
+
+**Needs attention.**
+- **Severities.**
+  - Attention:
+    - unresolved refs;
+    - value mismatch;
+    - illegal for the standard;
+    - unbound or duplicate datums;
+    - missing configuration or part;
+    - end-on geometry;
+    - a layout that doesn't fit;
+    - missing anchors or attach target.
+  - Warning:
+    - standard mismatch;
+    - duplicate callout;
+    - placed twice;
+    - a view in another configuration.
+  - Info: "not in this configuration".
+- Each entry carries the sheet, the grid zone and the upstream `cause`.
+- Placement-level kinds the contract does not have (`layoutDoesNotFit`, `anchorsMissing`, `attachTargetMissing`) are package types (`PlacementIssue`).
+- **Proposal for the lead:** add them to `AnnotationIssue` if the UI wants one typed list.
+
+**Not done in this step.**
+- Automatic centre lines on cylinders seen side-on: `ViewProjection` has no axes. Centre marks on face-on circles are done.
+- Ordinate groups.
+- Exact B-spline → Bézier conversion in the PDF.
+- The ezdxf and LibreCAD CI jobs.
+- Re-verifying every provisional golden against the standards (D9).
+
+### ADR-083 amendment: a verified main push reuses the dev run's kernel (2026-11-11)
+- **Problem:** GitHub's cache is scoped by branch, so main cannot restore a kernel cached on a `claude/**` branch. The first main push after any kernel change therefore rebuilt OCCT in Docker, about 45 minutes, before the deploy.
+- **Change:** the `verified` job now also outputs the id of the dev run that passed the commit. `kernel.yml` takes it as `from_run`. On a cache miss it downloads that run's `kernel-dist` artefact instead of building.
+  - It skips `kernel:test`, because that run already tested the same commit.
+  - The cache step's post job saves the downloaded dist to main's cache.
+  - With no verified run, the old path runs unchanged.
+  - The drawing kernel (ADR-090 amendment) is reused the same way: on its own cache miss the job downloads that run's `drawing-kernel-dist`. A dev run from before the drawing kernel existed has no such artefact, so the first main push after it lands must come from a dev run that built it.

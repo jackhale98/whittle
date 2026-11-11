@@ -8,7 +8,7 @@
  */
 
 import type { Id, SketchFeature, WrenDoc } from '@wren-cad/contracts';
-import { exprFields, getAt } from '@wren-cad/document';
+import { annotationExprFields, describeAnnotation, exprFields, getAt } from '@wren-cad/document';
 import { type ParamUse, paramRefs } from '@wren-cad/ui';
 
 /** Pointer segments that only wrap the interesting one (`/end/depth` reads as "depth"). */
@@ -70,6 +70,22 @@ export function paramUsage(doc: Pick<WrenDoc, 'params' | 'parts'>): Record<Id, P
         }
       }
     }
+    // M4: annotations are part data, so their expressions are listed under the part (the entry
+    // names the annotation, and has no feature to jump to).
+    for (const a of part.annotations ?? []) {
+      for (const field of annotationExprFields(a)) {
+        const raw = getAt(a as never, field.pointer);
+        if (typeof raw !== 'string') continue;
+        for (const name of paramRefs(raw, names)) {
+          add(name, {
+            key: `${a.id}:${field.pointer}`,
+            kind: 'feature',
+            label: `${part.name}: ${describeAnnotation(a)}`,
+            detail: fieldLabel(field.pointer),
+          });
+        }
+      }
+    }
     // M3.7: a configuration's overrides use parameters too (a parameter override's expression, a
     // feature field override), and the entry says which configuration.
     const featureName = new Map(part.features.map((f) => [f.id, f.name]));
@@ -86,6 +102,21 @@ export function paramUsage(doc: Pick<WrenDoc, 'params' | 'parts'>): Record<Id, P
             paramId,
             ...where,
           });
+        }
+      }
+      for (const [annotationId, over] of Object.entries(c.annotations ?? {})) {
+        const annotation = part.annotations?.find((x) => x.id === annotationId);
+        for (const [pointer, value] of Object.entries(over.fields ?? {})) {
+          if (typeof value !== 'string') continue;
+          for (const name of paramRefs(value, names)) {
+            add(name, {
+              key: `cfg:${c.id}:${annotationId}:${pointer}`,
+              kind: 'feature',
+              label: `${part.name}: ${annotation ? describeAnnotation(annotation) : 'annotation'}`,
+              detail: `${fieldLabel(pointer)} in ${c.name}`,
+              ...where,
+            });
+          }
         }
       }
       for (const [featureId, over] of Object.entries(c.features ?? {})) {

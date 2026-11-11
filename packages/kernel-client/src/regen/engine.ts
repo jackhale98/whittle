@@ -9,10 +9,11 @@
  * created; deltas never reference handles owned by other entries, so evicting an entry that the
  * latest regen did not use can never invalidate a live state.
  *
- * Cache key of a feature = hash(feature definition without name/suppressed/annotations, evaluated
- * values, resolved references as (input content key, kind, index), frames, and the content keys of
- * the bodies it may act on). Content keys chain, so editing feature k changes the keys of k and of
- * every feature that consumes its output, and nothing upstream.
+ * Cache key of a feature = hash(feature definition without name/suppressed, evaluated values,
+ * resolved references as (input content key, kind, index), frames, and the content keys of the
+ * bodies it may act on). Content keys chain, so editing feature k changes the keys of k and of
+ * every feature that consumes its output, and nothing upstream. Annotations (M4) are part-level
+ * and resolved after the walk (annotations.ts): they never enter a feature's key.
  *
  * Failure semantics: a failing (`error` / `needsAttention`) feature is skipped — the state keeps
  * its pre-feature geometry, which therefore stays visible. Its id joins the failed set and the
@@ -49,12 +50,15 @@ import type {
   RegenRequest,
   RegenSlot,
   Result,
+  ShapeForDrawing,
   ShapeHandle,
   SketchResult,
+  Vec3,
 } from '@wren-cad/contracts';
 import { evaluateFeatureValues, featureReferences } from '@wren-cad/document';
 import { zipSync } from 'fflate';
 import type { MeasureSubject } from '../kernel-api';
+import { resolveAnnotations } from './annotations';
 import { attachCauses, fieldLabel, walkDelta, walkEntry } from './attribution';
 import { newWalk, pushWalk, type WalkEntry } from './cause';
 import { type CompareOutput, type DiffSide, geometricDiff } from './compare';
@@ -66,6 +70,7 @@ import { planImport } from './exec-import';
 import { planBoolean, planDraft, planEdgeOp, planPushPull, planShell } from './exec-modify';
 import { planSketch } from './exec-sketch';
 import { planSolid, planSweepLoft } from './exec-solids';
+import { hashKey } from './hash';
 import { allBodiesFor, copiedFeatures, kerr, meshOnlyError } from './helpers';
 import { bodyResult, densityOf, sketchResult } from './outputs';
 import { absorbedInto, fingerprintOf, rememberAbsorbed } from './refs';
@@ -84,6 +89,7 @@ import {
   ModelState,
   type PartCache,
   type Planned,
+  primaryNaming,
   type WalkContext,
 } from './state';
 import type {
@@ -298,6 +304,94 @@ export class RegenEngine {
         entries[name] = f.bytes;
       });
       return { ok: true, bytes: zipSync(entries, { level: 6 }) };
+    });
+  }
+
+  /**
+   * M4 (ADR-090 decision 14): the final shape of the latest regen of a part in `slot`, for the
+   * drawing worker's HLR. One BREP of the solid and sheet bodies (a compound when there are
+   * several, in body order; mesh-only reference bodies have no B-rep and are left out), and the
+   * persistent name of every face and edge in `TopExp::MapShapes` order of that BREP: the bodies'
+   * own maps concatenated (bodies share no sub-shapes, and the BREP format keeps sub-shape order).
+   * Alias entries (ADR-078) are not names here: each sub-shape gets its primary name.
+   *
+   * `key` hashes the bodies' content keys (equal keys = equal shapes and names; it moves only
+   * when the geometry or naming may have, not for annotation or configuration-only edits).
+   * `bounds` is the union of the bodies' cheap boxes (ADR-084). The bytes are a fresh buffer the
+   * caller transfers.
+   */
+  shapeForDrawing(partId: Id, slot: RegenSlot = 'main'): Promise<Result<ShapeForDrawing>> {
+    return this.serial(async (): Promise<Result<ShapeForDrawing>> => {
+      if (!isSlot(slot)) {
+        return {
+          ok: false,
+          error: kerr('INVALID_INPUT', `${JSON.stringify(slot)} is not a regen slot`, {
+            hint: "Use 'main', 'version:<id>' or 'config:<id>'.",
+          }),
+        };
+      }
+      const latest = this.cache.slotCache(partId, slot)?.latest;
+      if (!latest) {
+        return {
+          ok: false,
+          error: kerr('INVALID_INPUT', `${capitalise(slotLabel(slot))} has not been regenerated`, {
+            hint: 'Regenerate the part before drawing it.',
+          }),
+        };
+      }
+      const bodies = latest.bodies.filter((b) => !b.meshOnly);
+      if (bodies.length === 0) {
+        return {
+          ok: false,
+          error: kerr('INVALID_INPUT', 'The part has no solid bodies to draw', {
+            hint: 'Mesh reference bodies (STL, OBJ, 3MF, GLB) cannot be drawn.',
+          }),
+        };
+      }
+      const faceNames: string[] = [];
+      const edgeNames: string[] = [];
+      const min: Vec3 = [Infinity, Infinity, Infinity];
+      const max: Vec3 = [-Infinity, -Infinity, -Infinity];
+      for (const b of bodies) {
+        const bb = await this.core.boundsOf(b.shape);
+        if (!bb) {
+          return {
+            ok: false,
+            error: kerr('OPERATION_FAILED', 'The part could not be prepared for the drawing', {
+              entityRefs: [b.id],
+            }),
+          };
+        }
+        const faces: string[] = Array(bb.faceCount).fill('');
+        const edges: string[] = Array(bb.edgeCount).fill('');
+        for (const n of primaryNaming(b.naming)) {
+          if (n.kind === 'face' && n.index < faces.length) faces[n.index] = n.name;
+          else if (n.kind === 'edge' && n.index < edges.length) edges[n.index] = n.name;
+        }
+        faceNames.push(...faces);
+        edgeNames.push(...edges);
+        for (let k = 0; k < 3; k++) {
+          min[k] = Math.min(min[k] as number, bb.bbox.min[k] as number);
+          max[k] = Math.max(max[k] as number, bb.bbox.max[k] as number);
+        }
+      }
+      const r = await this.core.kernel.exportShapes(
+        bodies.map((b) => ({ shape: b.shape, name: b.id })),
+        'brep',
+      );
+      if (!r.ok) return r;
+      const file = r.value[0];
+      if (!file) return { ok: false, error: kerr('OPERATION_FAILED', 'Writing the BREP failed') };
+      return {
+        ok: true,
+        value: {
+          key: hashKey({ t: 'shapeForDrawing', bodies: bodies.map((b) => [b.id, b.key]) }),
+          brep: file.bytes,
+          edgeNames,
+          faceNames,
+          bounds: { min, max },
+        },
+      };
     });
   }
 
@@ -543,6 +637,7 @@ export class RegenEngine {
         features.push(status);
       }
     }
+    const prevWalk = pc.walk;
     pc.walk = ctx.walk;
 
     // Outputs.
@@ -559,6 +654,13 @@ export class RegenEngine {
     for (const s of ctx.state.sketches.values()) {
       sketches.push(await sketchResult(this.core, s, request.quality));
     }
+    // M4 (ADR-090): annotations after the last feature, against the final state, only when asked
+    // (the contract's default: the part has annotations). Before eviction, so the previous
+    // regen's shapes are still live for `lastKnown`.
+    const wantAnnotations = request.annotations ?? (part.annotations?.length ?? 0) > 0;
+    const annotations = wantAnnotations
+      ? await resolveAnnotations(this.core, ctx, prevWalk)
+      : undefined;
 
     const allOk = features.every(
       (s) => s.state === 'ok' || s.state === 'suppressed' || s.state === 'rolledBack',
@@ -595,6 +697,7 @@ export class RegenEngine {
       cache: { hits: ctx.hits, misses: ctx.misses },
     };
     if (ghosts && ghosts.length > 0) result.ghosts = ghosts;
+    if (annotations) result.annotations = annotations;
     return result;
   }
 
@@ -620,9 +723,7 @@ export class RegenEngine {
     };
     const allBodies = () => [...ctx.state.bodies.keys()];
     const evaluated = evaluateFeatureValues(f, ctx.doc);
-    const exprErrors = Object.entries(evaluated.errors).filter(
-      ([p]) => !p.startsWith('/annotations/'),
-    );
+    const exprErrors = Object.entries(evaluated.errors);
     const copied = copiedFeatures(f);
     const rec = walkEntry(ctx, f, evaluated.values, exprErrors, copied);
     ctx.rec = rec;

@@ -12,6 +12,7 @@ import type {
   SketchFeature,
   WrenDoc,
 } from '@wren-cad/contracts';
+import { SCHEMA_VERSION } from '@wren-cad/contracts';
 
 export const fid = (tag: string): string => `01J${tag.toUpperCase()}`.padEnd(26, '0');
 
@@ -117,7 +118,7 @@ export function docWith(
 ): WrenDoc {
   const now = '2026-11-08T00:00:00.000Z';
   return {
-    schemaVersion: 1,
+    schemaVersion: SCHEMA_VERSION,
     units: { length: 'mm', angle: 'deg' },
     params: Object.entries(params).map(([n, expr], i) => ({ id: fid(`PRM${i}`), name: n, expr })),
     parts: [{ id: fid('PART'), name: 'Part', features, rollbackIndex: features.length }],

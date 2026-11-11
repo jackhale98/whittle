@@ -580,7 +580,7 @@ describe('load', () => {
   it('rejects invalid documents without touching the current one', () => {
     const { store } = setup();
     const before = store.getDoc();
-    const r = store.load({ schemaVersion: 1, units: { length: 'parsec', angle: 'deg' } });
+    const r = store.load({ schemaVersion: 4, units: { length: 'parsec', angle: 'deg' } });
     expect(r.ok).toBe(false);
     expect((r as { error: string }).error).toMatch(/Invalid document/);
     expect(store.load('nope').ok).toBe(false);

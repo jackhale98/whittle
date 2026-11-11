@@ -77,8 +77,7 @@ export function walkEntry(
   exprErrors: [string, unknown][],
   copied: Id[],
 ): WalkEntry {
-  const own: Record<string, number> = {};
-  for (const [k, v] of Object.entries(values)) if (!k.startsWith('/annotations/')) own[k] = v;
+  const own: Record<string, number> = { ...values };
   const deps: Id[] = [];
   const dep = (id: Id) => {
     if (id !== f.id && ctx.walk.byId.has(id) && !deps.includes(id)) deps.push(id);
@@ -183,7 +182,7 @@ export function fieldLabel(f: Feature, pointer: string): string {
 }
 
 /** `AttentionCause.detail` labels: sketch dimensions by kind, never by constraint id. */
-function causeLabel(f: Feature, pointer: string): string {
+export function causeLabel(f: Feature, pointer: string): string {
   const m = /^\/constraints\/(\d+)\/value$/.exec(pointer);
   if (m && f.type === 'sketch') {
     const c = f.constraints[Number(m[1])];

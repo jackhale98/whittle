@@ -7,6 +7,8 @@
  */
 
 import type {
+  AnnotationResolution,
+  AttentionCause,
   FeatureResult,
   Frame,
   GrownRef,
@@ -58,6 +60,8 @@ export interface SketchState {
   frame: Frame;
   regions: string[];
   entities: SketchEntity[];
+  /** Values of the sketch's reference (driven) dimensions after solving, by constraint id (M4 sources). */
+  driven?: Record<Id, number>;
   key: string;
 }
 
@@ -162,6 +166,22 @@ export interface PartCache {
   absorbed: Map<string, Set<string>>;
   /** The previous regen's walk (cause.ts), for `AttentionCause`. */
   walk: Walk | null;
+  /**
+   * M4 annotation resolutions of this slot (annotations.ts), by annotation id: reused while the
+   * final state and the annotation are unchanged, and the stored refs' last outcome for causes.
+   */
+  annotations: Map<Id, AnnotationMemo>;
+}
+
+/** One annotation's last resolution in a slot (annotations.ts). */
+export interface AnnotationMemo {
+  /** Hash of the final state, the annotation and what it depends on. */
+  key: string;
+  /** The regen revision it was last resolved (or reused) in. */
+  revision: number;
+  resolution: AnnotationResolution;
+  /** Per stored ref path: its identity and whether it resolved (for `AttentionCause` rules 2-3). */
+  refs: Map<string, { identity: string; resolved: boolean; cause?: AttentionCause }>;
 }
 
 export class ModelState {

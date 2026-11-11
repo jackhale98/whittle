@@ -5,7 +5,6 @@ import {
   compileCommand,
   createDocumentStore,
   fromFiles,
-  migrateDoc,
   newDoc,
   normalizeFolders,
   toFiles,
@@ -666,33 +665,3 @@ describe('persistence', () => {
     expect(() => fromFiles(toFiles(worse))).toThrow(/name must be a string/);
   });
 });
-
-describe('v1 → v2 migration', () => {
-  it('loads a v1 fixture (curves, no folders) unchanged apart from the version', () => {
-    const d = docWith1();
-    const v1 = { ...structuredClone(d), schemaVersion: 1 };
-    const r = migrateDoc(v1);
-    expect(r.ok).toBe(true);
-    if (!r.ok) return;
-    expect(r.applied).toEqual([2, 3]);
-    expect(r.doc).toEqual({ ...d, schemaVersion: 3 });
-    expect((r.doc.parts[0] as Part).folders).toBeUndefined();
-    // and the result can use the new fields straight away
-    const store = createDocumentStore(r.doc);
-    ok(
-      store.apply({
-        kind: 'addFolder',
-        partId: pid,
-        folder: F(1, 'New', 1, 2),
-      }),
-    );
-  });
-});
-
-function docWith1(): WrenDoc {
-  const d = newDoc({ name: 'v1', now: '2026-01-01T00:00:00.000Z' });
-  d.parts = [partOf(0)];
-  (d.parts[0] as Part).features = [sketch(1), box(2), box(3)];
-  (d.parts[0] as Part).rollbackIndex = 3;
-  return d;
-}

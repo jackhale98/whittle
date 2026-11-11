@@ -13,7 +13,9 @@
  */
 
 import type {
+  AnnotationCommand,
   Command,
+  DrawingCommand,
   Feature,
   FeatureFolder,
   Id,
@@ -23,36 +25,21 @@ import type {
   SketchFeature,
   WrenDoc,
 } from '@wren-cad/contracts';
+import { annotationExprFields } from './annotation-fields';
+import { type Compiled, err, usedIds } from './command-support';
 import { compileConfigCommand } from './config-commands';
 import { configurationPruneOps } from './configurations';
+import { DRAWING_SUPPORT_MISSING, drawingSupport } from './drawing-hooks';
 import { validateParamName } from './expressions';
 import { exprFields, featureReferences } from './features';
 import { folderOps, foldersAfterPlace, foldersAfterRemove, normalizeFolders } from './folders';
 import { identifierSpans } from './parser';
 import { applyPatch, diff, escapePointerSegment, getAt } from './patch';
 
-export type Compiled =
-  | { ok: true; ops: JsonPatchOp[]; label: string }
-  | { ok: false; error: string };
-
-const err = (error: string): Compiled => ({ ok: false, error });
+export type { Compiled };
 
 function partIndex(doc: WrenDoc, partId: string): number {
   return doc.parts.findIndex((p) => p.id === partId);
-}
-
-function usedIds(doc: WrenDoc): Set<string> {
-  const ids = new Set<string>();
-  for (const p of doc.params) ids.add(p.id);
-  for (const p of doc.parts) {
-    ids.add(p.id);
-    for (const f of p.features) ids.add(f.id);
-    for (const f of p.folders ?? []) ids.add(f.id);
-    for (const c of p.configurations ?? []) ids.add(c.id);
-  }
-  for (const a of doc.assemblies) ids.add(a.id);
-  for (const d of doc.drawings) ids.add(d.id);
-  return ids;
 }
 
 function findFeature(part: Part, featureId: string): number {
@@ -71,6 +58,22 @@ export function renameInExpr(expr: string, from: string, to: string): string {
     // Unparseable expressions are left alone.
   }
   return out;
+}
+
+type M4Command = Extract<Command, { kind: AnnotationCommand['kind'] | DrawingCommand['kind'] }>;
+
+function compileM4Command(doc: WrenDoc, cmd: M4Command): Compiled {
+  const support = drawingSupport();
+  if (!support) return err(DRAWING_SUPPORT_MISSING);
+  switch (cmd.kind) {
+    case 'addAnnotation':
+    case 'updateAnnotation':
+    case 'removeAnnotation':
+    case 'reattachAnnotation':
+      return support.compileAnnotationCommand(doc, cmd, usedIds(doc));
+    default:
+      return support.compileDrawingCommand(doc, cmd, usedIds(doc));
+  }
 }
 
 export function compileCommand(doc: WrenDoc, cmd: Command): Compiled {
@@ -98,6 +101,18 @@ export function compileCommand(doc: WrenDoc, cmd: Command): Compiled {
       if (part.activeConfigurationId !== undefined && !configIds.has(part.activeConfigurationId)) {
         return err('The part’s active configuration does not exist');
       }
+      const seenAnnotations = new Set<string>();
+      if (part.annotations?.length && !drawingSupport()) return err(DRAWING_SUPPORT_MISSING);
+      for (const a of part.annotations ?? []) {
+        const bad = drawingSupport()?.annotationProblems(a) ?? [];
+        if (bad.length > 0) return err(`Invalid annotation: ${bad[0]}`);
+        if (seenAnnotations.has(a.id) || usedIds(doc).has(a.id)) {
+          return err(`The id ‘${a.id}’ is already in use`);
+        }
+        seenAnnotations.add(a.id);
+      }
+      if (part.annotations)
+        part.annotations.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
       if (part.folders) {
         const fixed = normalizeFolders(part).part;
         if (fixed.folders) part.folders = fixed.folders;
@@ -329,8 +344,7 @@ export function compileCommand(doc: WrenDoc, cmd: Command): Compiled {
     case 'moveFolder':
       return compileMoveFolder(doc, cmd);
   }
-  // M4 annotation and drawing commands (ADR-090): implemented by the document workstream.
-  return err(`The ‘${cmd.kind}’ command is not available yet`);
+  return compileM4Command(doc, cmd);
 }
 
 /**
@@ -354,8 +368,10 @@ function compilePatch(doc: WrenDoc, patchOps: JsonPatchOp[]): Compiled {
       const before = doc.parts.find((x) => x.id === part.id);
       const featureIds = new Set((before?.features ?? []).map((f) => f.id));
       for (const f of part.features) featureIds.delete(f.id);
-      if (featureIds.size > 0 || paramIds.size > 0) {
-        ops.push(...configurationPruneOps(part, i, { featureIds, paramIds }));
+      const annotationIds = new Set((before?.annotations ?? []).map((a) => a.id));
+      for (const a of part.annotations ?? []) annotationIds.delete(a.id);
+      if (featureIds.size > 0 || paramIds.size > 0 || annotationIds.size > 0) {
+        ops.push(...configurationPruneOps(part, i, { featureIds, paramIds, annotationIds }));
       }
     });
   } catch {
@@ -617,6 +633,39 @@ function compileUpdateParam(
                 value: r,
               });
             }
+          }
+        }
+      });
+      // M4: annotation expression fields and their configuration overrides follow the rename.
+      (part.configurations ?? []).forEach((c, ci) => {
+        for (const [aid, ov] of Object.entries(c.annotations ?? {})) {
+          const annotation = part.annotations?.find((a) => a.id === aid);
+          if (!annotation) continue;
+          const exprPointers = new Set(annotationExprFields(annotation).map((x) => x.pointer));
+          for (const [path, v] of Object.entries(ov.fields ?? {})) {
+            if (typeof v !== 'string' || !exprPointers.has(path)) continue;
+            const r = renameInExpr(v, old.name, cmd.name as string);
+            if (r !== v) {
+              ops.push({
+                op: 'replace',
+                path: `/parts/${pi}/configurations/${ci}/annotations/${escapePointerSegment(aid)}/fields/${escapePointerSegment(path)}`,
+                value: r,
+              });
+            }
+          }
+        }
+      });
+      (part.annotations ?? []).forEach((a, ai) => {
+        for (const field of annotationExprFields(a)) {
+          const cur = getAt(a, field.pointer);
+          if (typeof cur !== 'string') continue;
+          const e = renameInExpr(cur, old.name, cmd.name as string);
+          if (e !== cur) {
+            ops.push({
+              op: 'replace',
+              path: `/parts/${pi}/annotations/${ai}${field.pointer}`,
+              value: e,
+            });
           }
         }
       });

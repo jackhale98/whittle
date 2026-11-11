@@ -13,8 +13,12 @@ export const kerr = (
   extra: Partial<Omit<KernelError, 'code' | 'message'>> = {},
 ): KernelError => ({ code, message, ...extra });
 
+/**
+ * A feature's definition for cache keys: without its name and suppression. Annotations are
+ * part-level (ADR-090), so nothing about them can reach a feature's key.
+ */
 export function definition(f: Feature): unknown {
-  return { ...f, name: undefined, suppressed: undefined, annotations: undefined };
+  return { ...f, name: undefined, suppressed: undefined };
 }
 
 /** Ids of the features a mirror / pattern copies (they are not EntityRefs). */

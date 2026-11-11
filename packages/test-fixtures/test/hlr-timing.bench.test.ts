@@ -62,30 +62,15 @@ const VIEWS: Record<string, { x: Vec3; y: Vec3 }> = {
   iso: { x: [1 / s2, 1 / s2, 0], y: [-1 / s6, 1 / s6, 2 / s6] },
 };
 
+/** The modeling worker's hand-off (`ModelingApi.shapeForDrawing`), as the app passes it on. */
 async function shapeFor(api: Api, doc: WrenDoc, key: string): Promise<ShapeForDrawing> {
   const partId = doc.parts[0]?.id ?? '';
   const r = await api.regenerate({ doc, partId, quality: 'coarse', massProperties: false });
   const failed = r.features.filter((f) => f.state !== 'ok' && f.state !== 'suppressed');
   expect(failed, JSON.stringify(failed).slice(0, 400)).toEqual([]);
-  const exported = await api.exportPart(partId, 'brep');
-  if (!exported.ok) throw new Error(JSON.stringify(exported.error));
-  // Names in TopExp order of the BREP: one body's mesh names (its BREP is the body itself).
-  const body = r.bodies.length === 1 ? r.bodies[0] : undefined;
-  const min: Vec3 = [Infinity, Infinity, Infinity];
-  const max: Vec3 = [-Infinity, -Infinity, -Infinity];
-  for (const b of r.bodies) {
-    for (let i = 0; i < 3; i++) {
-      min[i] = Math.min(min[i] as number, b.mesh.bbox.min[i] as number);
-      max[i] = Math.max(max[i] as number, b.mesh.bbox.max[i] as number);
-    }
-  }
-  return {
-    key,
-    brep: exported.bytes,
-    edgeNames: body?.mesh.edgeNames ?? [],
-    faceNames: body?.mesh.faceNames ?? [],
-    bounds: { min, max },
-  };
+  const shape = await api.shapeForDrawing(partId);
+  if (!shape.ok) throw new Error(JSON.stringify(shape.error));
+  return { ...shape.value, key: `${key}:${shape.value.key}` };
 }
 
 function drawingApi(): DrawingWorkerApi {

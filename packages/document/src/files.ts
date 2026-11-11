@@ -4,7 +4,16 @@
  * generated JSON Schemas in `schema/` — keep them plain JSON, documented, and exported.
  */
 
-import type { Assembly, DocMeta, Drawing, Id, Param, Part, WrenDoc } from '@wren-cad/contracts';
+import type {
+  Assembly,
+  DocMeta,
+  Drawing,
+  DrawingDefaults,
+  Id,
+  Param,
+  Part,
+  WrenDoc,
+} from '@wren-cad/contracts';
 
 /** Index entry in the manifest: the file is keyed by the object's stable `id`, not its name. */
 export interface ManifestEntry {
@@ -25,6 +34,8 @@ export interface ProjectManifest {
   parts: ManifestEntry[];
   drawings: ManifestEntry[];
   assemblies: ManifestEntry[];
+  /** M4: the explicit standard and projection choice made at the first drawing. */
+  drawingDefaults?: DrawingDefaults;
 }
 
 /** `params.json` */

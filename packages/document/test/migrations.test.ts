@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-import { SCHEMA_VERSION, type WrenDoc } from '@wren-cad/contracts';
+import type { WrenDoc } from '@wren-cad/contracts';
 import { describe, expect, it } from 'vitest';
 import {
   createDocumentStore,
@@ -13,14 +13,8 @@ import { KNOWN_FEATURE_TYPES } from '../src/features';
 import { id, req, sampleDoc } from './fixtures';
 
 describe('migration framework', () => {
-  it('the registry covers every version up to SCHEMA_VERSION with no gaps', () => {
-    let v = 0;
-    for (const m of MIGRATIONS) {
-      expect(m.from).toBe(v);
-      expect(m.to).toBe(v + 1);
-      v = m.to;
-    }
-    expect(v).toBe(SCHEMA_VERSION);
+  it('has no steps before 1.0 (ADR-090 amendment)', () => {
+    expect(MIGRATIONS).toEqual([]);
   });
 
   it('a current document passes through unchanged (no-op) and is copied', () => {
@@ -31,36 +25,22 @@ describe('migration framework', () => {
     expect(r.ok && r.doc).not.toBe(doc);
   });
 
-  it('migrates an unversioned pre-release document to the current version', () => {
-    const raw = {
-      units: { length: 'mm', angle: 'deg' },
-      parts: [],
-      meta: { name: 'Old', created: 'x', modified: 'y', app: 'wren/0.0.1' },
-    };
-    const r = migrateDoc(raw);
-    expect(r.ok).toBe(true);
-    if (r.ok) {
-      expect(r.applied).toEqual([1, 2, 3]);
-      expect(r.doc).toMatchObject({ schemaVersion: 3, params: [], assemblies: [], drawings: [] });
-    }
-    expect((raw as Record<string, unknown>).schemaVersion).toBeUndefined(); // input untouched
-  });
-
-  it('migrates a v1 document (M3.5 shape) to v2 unchanged apart from the version', () => {
-    const v1 = { ...newDoc({ name: 'v1' }), schemaVersion: 1 };
-    const r = migrateDoc(v1);
-    expect(r.ok).toBe(true);
-    if (r.ok) {
-      expect(r.applied).toEqual([2, 3]);
-      expect(r.doc).toEqual({ ...v1, schemaVersion: 3 });
+  it('refuses every earlier version with a plain message and converts nothing', () => {
+    for (const v of [undefined, 0, 1, 2, 3]) {
+      const raw: Record<string, unknown> = { ...newDoc({ name: 'Old' }) };
+      if (v === undefined) delete raw.schemaVersion;
+      else raw.schemaVersion = v;
+      const r = migrateDoc(raw);
+      expect(r.ok).toBe(false);
+      expect(!r.ok && r.error).toMatch(/earlier preview of Wren and can't be opened/);
     }
   });
 
-  it('chains synthetic migrations in order (what a future v2/v3 bump looks like)', () => {
-    const v3to4: Migration = {
-      from: 3,
-      to: 4,
-      description: 'rename meta.name → meta.title',
+  it('chains steps from a registry (what the first post-1.0 bump looks like)', () => {
+    const v4to5: Migration = {
+      from: 4,
+      to: 5,
+      description: 'rename meta.name to meta.title',
       migrate(d) {
         const meta = d.meta as Record<string, unknown>;
         meta.title = meta.name;
@@ -68,9 +48,9 @@ describe('migration framework', () => {
         return d;
       },
     };
-    const v4to5: Migration = {
-      from: 4,
-      to: 5,
+    const v5to6: Migration = {
+      from: 5,
+      to: 6,
       description: 'upper-case the title',
       migrate(d) {
         const meta = d.meta as Record<string, unknown>;
@@ -78,47 +58,45 @@ describe('migration framework', () => {
         return d;
       },
     };
-    const migrations = [...MIGRATIONS, v3to4, v4to5];
-    const r = migrateDoc(newDoc({ name: 'hello' }), { migrations, target: 5, validate: false });
+    const r = migrateDoc(newDoc({ name: 'hello' }), {
+      migrations: [v4to5, v5to6],
+      target: 6,
+      validate: false,
+    });
     expect(r.ok).toBe(true);
     if (r.ok) {
-      expect(r.applied).toEqual([4, 5]);
-      expect(r.doc.schemaVersion).toBe(5);
+      expect(r.applied).toEqual([5, 6]);
+      expect(r.doc.schemaVersion).toBe(6);
       expect((r.doc.meta as unknown as Record<string, unknown>).title).toBe('HELLO');
     }
   });
 
-  it('reports missing steps, failing steps and newer versions', () => {
-    const noStep = migrateDoc(newDoc(), { migrations: MIGRATIONS, target: 4, validate: false });
-    expect(noStep).toEqual({ ok: false, error: 'No migration from document version 3' });
+  it('reports failing steps and newer versions', () => {
     const boom: Migration = {
-      from: 3,
-      to: 4,
+      from: 4,
+      to: 5,
       description: 'fails',
       migrate() {
         throw new Error('kaboom');
       },
     };
-    const failing = migrateDoc(newDoc(), { migrations: [...MIGRATIONS, boom], target: 4 });
-    expect(failing).toEqual({ ok: false, error: 'Migration 3→4 failed: kaboom' });
+    const failing = migrateDoc(newDoc(), { migrations: [boom], target: 5 });
+    expect(failing).toEqual({ ok: false, error: 'Migration 4→5 failed: kaboom' });
     const newer = migrateDoc({ ...newDoc(), schemaVersion: 7 });
     expect(newer.ok).toBe(false);
-    expect(!newer.ok && newer.error).toMatch(/version 7.*up to version 3/);
+    expect(!newer.ok && newer.error).toMatch(/version 7.*up to version 4/);
     expect(migrateDoc({ schemaVersion: -1 }).ok).toBe(false);
     expect(migrateDoc({ schemaVersion: 1.5 }).ok).toBe(false);
     expect(migrateDoc([]).ok).toBe(false);
     expect(migrateDoc(null).ok).toBe(false);
   });
 
-  it('the store runs custom migrations on load', () => {
-    const bump: Migration = {
-      from: 1,
-      to: 2,
-      description: 'noop',
-      migrate: (d) => d,
-    };
-    const store = createDocumentStore(newDoc(), { migrations: [...MIGRATIONS, bump] });
-    // Target stays SCHEMA_VERSION (1) so a v1 doc loads without applying `bump`.
+  it('the store refuses an earlier file and keeps the current document', () => {
+    const store = createDocumentStore(newDoc());
+    const before = store.getDoc();
+    const r = store.load({ ...sampleDoc(), schemaVersion: 3 });
+    expect(r.ok).toBe(false);
+    expect(store.getDoc()).toBe(before);
     expect(store.load(sampleDoc()).ok).toBe(true);
   });
 });

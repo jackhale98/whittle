@@ -8,6 +8,8 @@
  */
 
 import { type Part, SCHEMA_VERSION, type WrenDoc } from '@wren-cad/contracts';
+import { Checker, sortedById } from './check';
+import { DRAWING_SUPPORT_MISSING, drawingSupport, usesDrawingFeatures } from './drawing-hooks';
 import { exprFields, KNOWN_FEATURE_TYPES } from './features';
 import { folderProblems, normalizeFolders } from './folders';
 import { getAt, parsePointer } from './patch';
@@ -22,37 +24,12 @@ export interface Migration {
   migrate(doc: Obj): Obj;
 }
 
-export const MIGRATIONS: readonly Migration[] = [
-  {
-    from: 0,
-    to: 1,
-    description: 'Baseline: documents without a version (pre-release) gain empty collections.',
-    migrate(doc) {
-      for (const k of ['params', 'parts', 'assemblies', 'drawings']) {
-        if (doc[k] === undefined) doc[k] = [];
-      }
-      return doc;
-    },
-  },
-  {
-    from: 1,
-    to: 2,
-    description:
-      'Additive (M3.6): optional Part.folders and SketchFeature.visibility. Also marks files that may hold the M3.5 sketch curves (ellipticArc, bspline) written under v1. No data changes.',
-    migrate(doc) {
-      return doc;
-    },
-  },
-  {
-    from: 2,
-    to: 3,
-    description:
-      'Additive (M3.7): optional Part.configurations, Part.activeConfigurationId and Part.properties. No data changes.',
-    migrate(doc) {
-      return doc;
-    },
-  },
-];
+/**
+ * Pre-1.0 schema bumps do not migrate (ADR-090 amendment): nobody has files to carry over, so a
+ * file below `SCHEMA_VERSION` is refused. The registry stays so the first post-1.0 bump has a
+ * place to add a step (`from: n, to: n+1` plus a test with a fixture of the old shape).
+ */
+export const MIGRATIONS: readonly Migration[] = [];
 
 export interface MigrateOptions {
   migrations?: readonly Migration[];
@@ -62,7 +39,7 @@ export interface MigrateOptions {
 }
 
 export type MigrateResult =
-  | { ok: true; doc: WrenDoc; applied: number[] }
+  | { ok: true; doc: WrenDoc; applied: number[]; notes?: string[] }
   | { ok: false; error: string };
 
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -76,6 +53,13 @@ export function migrateDoc(raw: unknown, options: MigrateOptions = {}): MigrateR
     return { ok: false, error: `Invalid schemaVersion ‘${String(declared)}’` };
   }
   let version: number = declared;
+  if (version < target && !migrations.some((m) => m.from === version)) {
+    return {
+      ok: false,
+      error:
+        "This file was made by an earlier preview of Wren and can't be opened. Pre-1.0 file versions are not converted.",
+    };
+  }
   if (version > target) {
     return {
       ok: false,
@@ -98,6 +82,10 @@ export function migrateDoc(raw: unknown, options: MigrateOptions = {}): MigrateR
   }
   doc.schemaVersion = version;
   repairFolders(doc);
+  sortAnnotations(doc);
+  if (!drawingSupport() && usesDrawingFeatures(doc)) {
+    return { ok: false, error: DRAWING_SUPPORT_MISSING };
+  }
   if (options.validate !== false) {
     const errors = validateDoc(doc);
     if (errors.length > 0) {
@@ -105,7 +93,24 @@ export function migrateDoc(raw: unknown, options: MigrateOptions = {}): MigrateR
       return { ok: false, error: `Invalid document: ${errors.slice(0, 3).join('; ')}${more}` };
     }
   }
-  return { ok: true, doc: doc as unknown as WrenDoc, applied };
+  const normalized = drawingSupport()?.normalizeDrawings(doc as unknown as WrenDoc);
+  const notes = (normalized?.notes ?? []).map((n) => n.message);
+  return {
+    ok: true,
+    doc: normalized?.doc ?? (doc as unknown as WrenDoc),
+    applied,
+    ...(notes.length > 0 ? { notes } : {}),
+  };
+}
+
+/** Annotations are a set kept sorted by id (ADR-090); loading restores that order. */
+function sortAnnotations(doc: Obj): void {
+  if (!Array.isArray(doc.parts)) return;
+  for (const p of doc.parts) {
+    if (!isObj(p) || !Array.isArray(p.annotations)) continue;
+    if (!p.annotations.every((a: unknown) => isObj(a) && typeof a.id === 'string')) continue;
+    p.annotations = sortedById(p.annotations as { id: string }[]);
+  }
 }
 
 const wellFormedFolders = (p: Obj): boolean =>
@@ -204,18 +209,32 @@ export function validateDoc(doc: unknown): string[] {
       validatePart(part, `parts[${i}]`, errs, str, arr, id);
     });
   }
-  for (const key of ['assemblies', 'drawings'] as const) {
-    if (arr(doc[key], key)) {
-      doc[key].forEach((x, i) => {
-        if (!isObj(x)) {
-          errs.push(`${key}[${i}] must be an object`);
-          return;
-        }
-        id(x.id, `${key}[${i}].id`);
-        str(x.name, `${key}[${i}].name`);
+  if (arr(doc.assemblies, 'assemblies')) {
+    doc.assemblies.forEach((x, i) => {
+      if (!isObj(x)) {
+        errs.push(`assemblies[${i}] must be an object`);
+        return;
+      }
+      id(x.id, `assemblies[${i}].id`);
+      str(x.name, `assemblies[${i}].name`);
+    });
+  }
+  // M4: drawings (structure only; dangling references are repaired by `normalizeDrawings`).
+  const checker = new Checker(id);
+  const support = drawingSupport();
+  if (arr(doc.drawings, 'drawings') && doc.drawings.length > 0) {
+    if (!support) errs.push(DRAWING_SUPPORT_MISSING);
+    else {
+      doc.drawings.forEach((d, i) => {
+        support.checkDrawing(checker, d, `drawings[${i}]`);
       });
     }
   }
+  if (doc.drawingDefaults !== undefined) {
+    if (!support) errs.push(DRAWING_SUPPORT_MISSING);
+    else support.checkDrawingDefaults(checker, doc.drawingDefaults, 'drawingDefaults');
+  }
+  errs.push(...checker.errs);
   return errs;
 }
 
@@ -242,6 +261,19 @@ function validatePart(
     }
   }
   validateConfigurations(part, at, errs, str, arr, id);
+  if (part.annotations !== undefined) {
+    const c = new Checker(id);
+    const support = drawingSupport();
+    if (c.arr(part.annotations, `${at}.annotations`) && part.annotations.length > 0) {
+      if (!support) c.err(DRAWING_SUPPORT_MISSING);
+      else {
+        part.annotations.forEach((a, k) => {
+          support.checkAnnotation(c, a, `${at}.annotations[${k}]`);
+        });
+      }
+    }
+    errs.push(...c.errs);
+  }
   if (!arr(part.features, `${at}.features`)) return;
   const n = part.features.length;
   if (
@@ -359,6 +391,41 @@ function validateConfigurations(
           for (const [fid, ov] of Object.entries(c.features)) {
             const oa = `${ca}.features.${fid}`;
             if (fid === '') errs.push(`${ca}.features has an empty feature id`);
+            if (!isPlainObj(ov)) {
+              errs.push(`${oa} must be an object`);
+              continue;
+            }
+            for (const k2 of Object.keys(ov)) {
+              if (k2 !== 'suppressed' && k2 !== 'fields')
+                errs.push(`${oa}.${k2} is not an override`);
+            }
+            if (ov.suppressed !== undefined && typeof ov.suppressed !== 'boolean') {
+              errs.push(`${oa}.suppressed must be a boolean`);
+            }
+            if (ov.fields !== undefined) {
+              if (!isPlainObj(ov.fields)) errs.push(`${oa}.fields must be an object`);
+              else {
+                for (const [path, v] of Object.entries(ov.fields)) {
+                  const bad = pointerProblem(path);
+                  if (bad) errs.push(`${oa}.fields key ‘${path}’ ${bad}`);
+                  const okType =
+                    typeof v === 'string' ||
+                    typeof v === 'boolean' ||
+                    (typeof v === 'number' && Number.isFinite(v));
+                  if (!okType)
+                    errs.push(`${oa}.fields[‘${path}’] must be a string, number or boolean`);
+                }
+              }
+            }
+          }
+        }
+      }
+      if (c.annotations !== undefined) {
+        if (!isPlainObj(c.annotations)) errs.push(`${ca}.annotations must be an object`);
+        else {
+          for (const [aid, ov] of Object.entries(c.annotations)) {
+            const oa = `${ca}.annotations.${aid}`;
+            if (aid === '') errs.push(`${ca}.annotations has an empty annotation id`);
             if (!isPlainObj(ov)) {
               errs.push(`${oa} must be an object`);
               continue;
