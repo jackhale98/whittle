@@ -8,9 +8,8 @@
  */
 
 import { type Part, SCHEMA_VERSION, type WrenDoc } from '@wren-cad/contracts';
-import { checkAnnotation } from './annotations';
 import { Checker, sortedById } from './check';
-import { checkDrawing, checkDrawingDefaults, normalizeDrawings } from './drawings';
+import { DRAWING_SUPPORT_MISSING, drawingSupport, usesDrawingFeatures } from './drawing-hooks';
 import { exprFields, KNOWN_FEATURE_TYPES } from './features';
 import { folderProblems, normalizeFolders } from './folders';
 import { getAt, parsePointer } from './patch';
@@ -84,6 +83,9 @@ export function migrateDoc(raw: unknown, options: MigrateOptions = {}): MigrateR
   doc.schemaVersion = version;
   repairFolders(doc);
   sortAnnotations(doc);
+  if (!drawingSupport() && usesDrawingFeatures(doc)) {
+    return { ok: false, error: DRAWING_SUPPORT_MISSING };
+  }
   if (options.validate !== false) {
     const errors = validateDoc(doc);
     if (errors.length > 0) {
@@ -91,11 +93,11 @@ export function migrateDoc(raw: unknown, options: MigrateOptions = {}): MigrateR
       return { ok: false, error: `Invalid document: ${errors.slice(0, 3).join('; ')}${more}` };
     }
   }
-  const normalized = normalizeDrawings(doc as unknown as WrenDoc);
-  const notes = normalized.notes.map((n) => n.message);
+  const normalized = drawingSupport()?.normalizeDrawings(doc as unknown as WrenDoc);
+  const notes = (normalized?.notes ?? []).map((n) => n.message);
   return {
     ok: true,
-    doc: normalized.doc,
+    doc: normalized?.doc ?? (doc as unknown as WrenDoc),
     applied,
     ...(notes.length > 0 ? { notes } : {}),
   };
@@ -219,13 +221,18 @@ export function validateDoc(doc: unknown): string[] {
   }
   // M4: drawings (structure only; dangling references are repaired by `normalizeDrawings`).
   const checker = new Checker(id);
-  if (arr(doc.drawings, 'drawings')) {
-    doc.drawings.forEach((d, i) => {
-      checkDrawing(checker, d, `drawings[${i}]`);
-    });
+  const support = drawingSupport();
+  if (arr(doc.drawings, 'drawings') && doc.drawings.length > 0) {
+    if (!support) errs.push(DRAWING_SUPPORT_MISSING);
+    else {
+      doc.drawings.forEach((d, i) => {
+        support.checkDrawing(checker, d, `drawings[${i}]`);
+      });
+    }
   }
   if (doc.drawingDefaults !== undefined) {
-    checkDrawingDefaults(checker, doc.drawingDefaults, 'drawingDefaults');
+    if (!support) errs.push(DRAWING_SUPPORT_MISSING);
+    else support.checkDrawingDefaults(checker, doc.drawingDefaults, 'drawingDefaults');
   }
   errs.push(...checker.errs);
   return errs;
@@ -256,10 +263,14 @@ function validatePart(
   validateConfigurations(part, at, errs, str, arr, id);
   if (part.annotations !== undefined) {
     const c = new Checker(id);
-    if (c.arr(part.annotations, `${at}.annotations`)) {
-      part.annotations.forEach((a, k) => {
-        checkAnnotation(c, a, `${at}.annotations[${k}]`);
-      });
+    const support = drawingSupport();
+    if (c.arr(part.annotations, `${at}.annotations`) && part.annotations.length > 0) {
+      if (!support) c.err(DRAWING_SUPPORT_MISSING);
+      else {
+        part.annotations.forEach((a, k) => {
+          support.checkAnnotation(c, a, `${at}.annotations[${k}]`);
+        });
+      }
     }
     errs.push(...c.errs);
   }

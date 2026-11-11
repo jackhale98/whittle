@@ -11,13 +11,12 @@
  *  - Hole tables (M3):     `ISO_HOLES`, `ANSI_HOLES`, `holeRow`, `resolveHoleSize`
  */
 
-export * from './annotation-rules';
-export * from './annotations';
+export * from './annotation-fields';
 export * from './archive';
 export * from './codec';
 export * from './commands';
 export * from './configurations';
-export * from './drawings';
+export * from './drawing-hooks';
 export * from './evaluate';
 export * from './expressions';
 export * from './factory';
@@ -25,7 +24,6 @@ export * from './features';
 export * from './files';
 export * from './folders';
 export * from './hole-tables';
-export * from './iso286';
 export * from './materials';
 export * from './migrations';
 export * from './parser';
@@ -33,4 +31,3 @@ export * from './patch';
 export * from './store';
 export * from './suggest';
 export * from './units';
-export * from './view-frames';

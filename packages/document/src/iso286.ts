@@ -15,15 +15,9 @@
  * Units: input diameter in mm; deviations are returned in mm (signed, relative to the nominal).
  */
 
-/** Hole class: one or two capital letters then the IT grade (`01` or 1–18). */
-export const HOLE_FIT_RE = /^([A-Z]{1,2})(01|[1-9]|1[0-8])$/;
-/** Shaft class: the lower-case form. */
-export const SHAFT_FIT_RE = /^([a-z]{1,2})(01|[1-9]|1[0-8])$/;
+export { HOLE_FIT_RE, isHoleFitClass, isShaftFitClass, SHAFT_FIT_RE } from './annotation-fields';
 
-export const isHoleFitClass = (s: unknown): s is string =>
-  typeof s === 'string' && HOLE_FIT_RE.test(s);
-export const isShaftFitClass = (s: unknown): s is string =>
-  typeof s === 'string' && SHAFT_FIT_RE.test(s);
+import { HOLE_FIT_RE, SHAFT_FIT_RE } from './annotation-fields';
 
 export interface FitClass {
   /** `hole` for capitals, `shaft` for lower case. */

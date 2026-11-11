@@ -10,6 +10,9 @@ import {
   ANNOTATION_CONFIGURABLE_OPTIONS,
   ANNOTATION_KINDS,
   annotationExprFields,
+  validateDoc,
+} from '../src';
+import {
   annotationIssues,
   annotationProblems,
   annotationRefsProblem,
@@ -20,8 +23,7 @@ import {
   itMicrometres,
   parseFitClass,
   rangeMean,
-  validateDoc,
-} from '../src';
+} from '../src/drawing';
 import { id, ref, sampleAnnotations, sampleDoc } from './fixtures';
 
 const at = (n: number): Annotation => sampleAnnotations().find((a) => a.id === id(n)) as Annotation;

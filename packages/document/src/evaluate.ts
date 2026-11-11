@@ -16,7 +16,7 @@ import type {
   SketchFeature,
   WrenDoc,
 } from '@wren-cad/contracts';
-import { annotationExprFields } from './annotations';
+import { annotationExprFields } from './annotation-fields';
 import { type AnyResult, ExpressionEngineImpl, expressionEngine } from './expressions';
 import { type ExprField, exprFields } from './features';
 import { getAt } from './patch';

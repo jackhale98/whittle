@@ -3,6 +3,7 @@
  */
 
 import type { Command, Id, WrenDoc } from '@wren-cad/contracts';
+import { ensureDrawingSupport } from '../doc/drawing-support';
 import { hitKey, resolvePick } from '../selection/pick';
 import { configStatusOf, isMissingActive, keyOf } from './config-model';
 import { refAcks, type StubNotes } from './ref-notes';
@@ -12,6 +13,8 @@ import type { Workbench } from './workbench';
 export function testHooks(wb: Workbench) {
   return {
     doc: () => wb.doc,
+    /** Settles once the lazily loaded annotation and drawing support has registered. */
+    drawingSupport: () => ensureDrawingSupport(),
     /** The section manipulator's grips (offset arrow, two arcs) in canvas CSS px. */
     sectionGrips: () => wb.sectionTool.grips(),
     regen: () => {

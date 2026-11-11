@@ -86,6 +86,7 @@ import type {
   WebDavForm,
 } from '@wren-cad/ui';
 import { type Observable, observable } from '../app/observable';
+import { ensureDrawingSupport } from '../doc/drawing-support';
 import type { DocLibrary } from '../doc/library';
 import type { Modeling } from '../model/modeling';
 import {
@@ -821,6 +822,7 @@ export class SyncController {
   }
 
   private async openNew(files: ProjectFiles, id: string): Promise<boolean> {
+    await ensureDrawingSupport();
     if (!files.has('wren.project.json')) {
       this.patchProject({ notice: 'That folder has no Wren project (wren.project.json).' });
       return false;
