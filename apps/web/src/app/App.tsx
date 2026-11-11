@@ -23,7 +23,6 @@ import { isFeatureTool } from '../features/factories';
 import { getDiagnostics } from '../platform/diagnostics';
 import { getRuntimeState, subscribeRuntimeState } from '../platform/runtime-state';
 import { applySwUpdate, checkForSwUpdateNow, onSwUpdateAvailable } from '../platform/sw-register';
-import { ConfigNotices } from '../ui/ConfigNotices';
 import { Inspector, useDoc } from '../ui/Inspector';
 import { useStatuses } from '../ui/ref-status';
 import {
@@ -46,6 +45,10 @@ import type { Workbench } from './workbench';
 // Version menu and sync chip: a small chunk fetched right after first paint (PLAN §10 budget).
 const ProjectBar = lazy(() => import('../ui/ProjectBar').then((m) => ({ default: m.ProjectBar })));
 // M3.7: the configuration pill is its own chunk, the table panel another (opened on demand).
+// Configuration notices (export busy, missing configuration, inherited-edit) are rarely on screen.
+const ConfigNotices = lazy(() =>
+  import('../ui/ConfigNotices').then((m) => ({ default: m.ConfigNotices })),
+);
 const ConfigurationBar = lazy(() => import('../ui/ConfigurationBar'));
 const ConfigurationPanel = lazy(() => import('../ui/ConfigurationPanel'));
 
@@ -402,7 +405,9 @@ export function App({ wb }: { wb: Workbench }) {
               onError={onViewportError}
             />
             <ViewportOverlays wb={wb} touch={touch} />
-            <ConfigNotices wb={wb} touch={touch} />
+            <Suspense fallback={null}>
+              <ConfigNotices wb={wb} touch={touch} />
+            </Suspense>
             {viewportError && (
               <div
                 role="alert"

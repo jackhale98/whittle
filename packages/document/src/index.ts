@@ -11,6 +11,7 @@
  *  - Hole tables (M3):     `ISO_HOLES`, `ANSI_HOLES`, `holeRow`, `resolveHoleSize`
  */
 
+export * from './archive';
 export * from './codec';
 export * from './commands';
 export * from './configurations';

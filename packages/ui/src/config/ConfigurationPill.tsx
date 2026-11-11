@@ -3,8 +3,6 @@ import {
   Check,
   ChevronDown,
   CircleAlert,
-  CircleCheck,
-  CircleDashed,
   Layers,
   Plus,
   TableProperties,
@@ -14,12 +12,15 @@ import { type KeyboardEvent, useId, useRef, useState } from 'react';
 import { Segmented } from '../components/controls';
 import { FloatingLayer } from '../components/floating';
 import { Button, cn } from '../components/primitives';
+import { ConfigStatusLabel } from './ConfigStatusLabel';
 import {
   CONFIG_STATUS_LABEL,
   type ConfigStatus,
   type ConfigurationSummary,
   DEFAULT_CONFIGURATION_NAME,
 } from './model';
+
+export { ConfigStatusLabel };
 
 export interface NewConfigurationInput {
   name: string;
@@ -49,42 +50,6 @@ export interface ConfigurationPillProps {
   /** `touch`: 44 px targets. */
   size?: 'md' | 'touch';
   className?: string;
-}
-
-const STATUS_ICON = {
-  ok: CircleCheck,
-  failed: CircleAlert,
-  attention: TriangleAlert,
-  unbuilt: CircleDashed,
-} as const;
-
-const STATUS_TONE: Record<ConfigStatus, string> = {
-  ok: 'text-success-text',
-  failed: 'text-danger-text',
-  attention: 'text-warning-text',
-  unbuilt: 'text-fg-muted',
-};
-
-/** Status glyph plus its words (never colour alone). */
-export function ConfigStatusLabel({
-  status,
-  message,
-  className,
-}: {
-  status: ConfigStatus;
-  message?: string | undefined;
-  className?: string;
-}) {
-  const Icon = STATUS_ICON[status];
-  return (
-    <span
-      title={message}
-      className={cn('inline-flex items-center gap-1 text-2xs', STATUS_TONE[status], className)}
-    >
-      <Icon className="size-3.5 shrink-0" aria-hidden />
-      <span className="whitespace-nowrap">{CONFIG_STATUS_LABEL[status]}</span>
-    </span>
-  );
 }
 
 /**

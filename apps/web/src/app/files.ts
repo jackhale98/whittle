@@ -9,7 +9,6 @@ import type { OpenedFile, ProjectBundle } from '../doc/library';
 import { pruneAttachments as pruneAttachmentFiles, savedExtra } from '../model/attachments';
 import { IMPORT_EXTENSIONS, importFeature, importFormat } from '../model/import';
 import type { Attachment } from '../model/modeling';
-import { exportAll, exportBase, refuseIssues, refuseMissing } from './config-export';
 import { initialSection } from './state';
 import type { Workbench } from './workbench';
 import { fileBase, freshDocument, THUMB_EVERY_MS, writeLastDoc } from './workbench-util';
@@ -353,6 +352,7 @@ export async function exportDoc(wb: Workbench, request: ExportRequest): Promise<
   try {
     const lib = await import('../doc/library');
     if (request.target === 'wren') return await wb.exportWren();
+    const { exportAll, exportBase, refuseIssues, refuseMissing } = await import('./config-export');
     // M3.7: files are named by part number; a missing configuration is never exported as Default.
     if (refuseMissing(wb) || (request.configurations !== 'all' && refuseIssues(wb))) return;
     if (request.configurations === 'all') return await exportAll(wb, request);

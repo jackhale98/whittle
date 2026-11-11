@@ -21,7 +21,7 @@ import {
 import { cn, IconButton } from '../components/primitives';
 import type { FormatValue } from '../format';
 import type { MaterialLibraryItem } from '../inspector/materials';
-import { ConfigStatusLabel } from './ConfigurationPill';
+import { ConfigStatusLabel } from './ConfigStatusLabel';
 import {
   type CellValue,
   CONFIG_GROUPS,

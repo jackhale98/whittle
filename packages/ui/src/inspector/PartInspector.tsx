@@ -3,7 +3,7 @@ import { ChevronDown, Scale } from 'lucide-react';
 import { lazy, type ReactNode, Suspense, useState } from 'react';
 import { Field, Section } from '../components/controls';
 import { Button, cn } from '../components/primitives';
-import { ConfigStatusLabel } from '../config/ConfigurationPill';
+import { ConfigStatusLabel } from '../config/ConfigStatusLabel';
 import { OverrideMarker, ScopeChip, useOneShotScope } from '../config/markers';
 import type { ConfigStatus, EditScope } from '../config/model';
 import { type FormatValue, fmtNumber, prettyUnits } from '../format';
