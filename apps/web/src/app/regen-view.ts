@@ -77,6 +77,8 @@ export function onRegen(wb: Workbench, raw: RegenView): void {
 export function onMass(wb: Workbench, result: RegenResult): void {
   const view = wb.regen.get();
   if (view?.source !== 'live' || view.result.partId !== result.partId) return;
+  // Settled even if some fetch failed: those bodies show no mass rather than "Calculating…".
+  wb.massSettledRevision = result.revision;
   const byShape = new Map(result.bodies.map((b) => [b.shape, b.massProperties] as const));
   let changed = false;
   const bodies = view.result.bodies.map((b) => {
@@ -85,7 +87,7 @@ export function onMass(wb: Workbench, result: RegenResult): void {
     changed = true;
     return { ...b, massProperties: mp };
   });
-  if (changed) wb.regen.set({ ...view, result: { ...view.result, bodies } });
+  wb.regen.set({ ...view, result: { ...view.result, ...(changed ? { bodies } : {}) } });
 }
 
 export function keepInView(wb: Workbench, view: RegenView): void {

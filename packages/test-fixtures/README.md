@@ -60,8 +60,8 @@ rewrites it).
 A cold regen takes 10-20 s (it took minutes before ADR-084). `WREN_KERNEL_DIST=<dir>` benchmarks
 another kernel build (A/B), `WREN_STRESS_RUNS=<n>` sets the runs per scenario, `WREN_STRESS_OUT=<file>`
 writes JSON, `WREN_STRESS_ONLY=<groups>` picks scenarios and `WREN_STRESS_MASS=deferred` regenerates
-without mass properties (no material) and times the separate fetch, as the app does when they are
-expensive (ADR-084). Compare CPU time, not wall time, when the machine is shared.
+with `massProperties: false` (ABS kept) and times the separate fetch at the material's density, as
+the app's live loop does when they are expensive (ADR-084). Compare CPU time, not wall time, when the machine is shared.
 
 ## Who uses them
 

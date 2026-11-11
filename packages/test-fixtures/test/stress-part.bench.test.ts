@@ -11,16 +11,17 @@
  * `WREN_STRESS_OUT=<file>` also writes the table as JSON; `WREN_KERNEL_DIST=<dir>` benchmarks a
  * different kernel build (the A/B of the face-merge change).
  *
- * `WREN_STRESS_MASS=deferred` (ADR-084) regenerates without mass properties, as the app does for a
- * part without a material: the document's material is dropped and the request does not ask for
- * them. The default (`inline`) asks for them, as a part with a material gets them today. Deferred
- * runs add a row for the separate `massProperties(shape)` fetch of the final body after an edit.
+ * `WREN_STRESS_MASS=deferred` (ADR-084) regenerates with `massProperties: false`, as the app's live
+ * loop does (the ABS material stays), and adds a row for the separate `massProperties(shape,
+ * density)` fetch of the final body after an edit. The default (`inline`) asks for them in the
+ * regen, as background configuration builds do.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
 import { writeFileSync } from 'node:fs';
 import type { Id, WrenDoc } from '@wren-cad/contracts';
+import { scopeOf, tryResolveDensity } from '@wren-cad/document';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { ENCLOSURE_PART_ID, enclosureDoc, enclosureFeatureIds } from '../stress-part';
 import { type Api, kernelBuilt, kernelDist, loadApi } from './kernel-harness';
@@ -62,6 +63,13 @@ interface Row {
 }
 const rows: Row[] = [];
 
+/** The material density (kg/mm³) as the engine resolves it, for the deferred fetch. */
+function densityOf(doc: WrenDoc): number | undefined {
+  const m = doc.parts[0]?.material;
+  const d = m ? tryResolveDensity(m, undefined, scopeOf(doc)) : undefined;
+  return d?.ok ? d.value : undefined;
+}
+
 describe.skipIf(!kernelBuilt || !stressEnabled)('stress part benchmark', () => {
   let api: Api;
   let base: WrenDoc;
@@ -70,14 +78,13 @@ describe.skipIf(!kernelBuilt || !stressEnabled)('stress part benchmark', () => {
   beforeAll(async () => {
     api = await loadApi();
     base = enclosureDoc();
-    if (DEFERRED) delete (base.parts[0] as { material?: unknown }).material;
   }, 120_000);
   afterAll(async () => {
     await api?.closePart(PART);
     const bold = (s: string) => s;
     log(bold(`\n[stress] kernel ${kernelDist}`));
     log(
-      `[stress] ${loadNote()}; ${RUNS} runs (cheap) or ${FULL} (full regen) per scenario; features=${n()}; mass properties ${DEFERRED ? 'deferred (no material, fetched separately)' : 'inline (requested)'}`,
+      `[stress] ${loadNote()}; ${RUNS} runs (cheap) or ${FULL} (full regen) per scenario; features=${n()}; mass properties ${DEFERRED ? 'deferred (massProperties: false, ABS, fetched separately)' : 'inline (requested)'}`,
     );
     const head = `${'scenario'.padEnd(46)} ${'first changed'.padEnd(12)} ${'hit/miss'.padEnd(9)} ${'wall med'.padStart(9)} ${'wall p90'.padStart(9)} ${'cpu med'.padStart(9)} ${'cpu p90'.padStart(9)}`;
     log(head);
@@ -99,7 +106,7 @@ describe.skipIf(!kernelBuilt || !stressEnabled)('stress part benchmark', () => {
       doc,
       partId: PART as Id,
       quality,
-      ...(DEFERRED ? {} : { massProperties: true }),
+      massProperties: !DEFERRED,
     });
 
   async function scenario(
@@ -186,8 +193,8 @@ describe.skipIf(!kernelBuilt || !stressEnabled)('stress part benchmark', () => {
               if (f.type === 'fillet') f.radius = `${3.5 + 0.1 * (i + 1)} mm`;
             }),
           );
-          const t = await timed(() => api.massProperties(r.bodies[0]?.shape ?? 0));
-          expect(t.value.ok).toBe(true);
+          const t = await timed(() => api.massProperties(r.bodies[0]?.shape ?? 0, densityOf(base)));
+          expect(t.value.ok && t.value.value.mass).toBeGreaterThan(0);
           wall.push(t.wallMs);
           cpu.push(t.cpuMs);
         }

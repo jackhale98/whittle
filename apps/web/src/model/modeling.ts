@@ -78,11 +78,17 @@ export interface RegenLoopOptions {
    * integration of every body (seconds on a large part), so the loop only asks for them in the
    * regen request while they are known to be cheap for this part (the last separate fetch took
    * at most `INLINE_MASS_MS` and the last inline regen stayed within the edit budget). Otherwise
-   * it regenerates without them and fetches them with `massProperties(shape)` once nothing else
-   * is queued, so they never delay the geometry. Parts with a material always get them in the
-   * regen result (contract `RegenRequest.massProperties`).
+   * it regenerates with `massProperties: false` (contract: none, even with a material) and
+   * fetches them with `massProperties(shape, density)` once nothing else is queued, so they never
+   * delay the geometry.
    */
   onMass?(outcome: RegenOutcome): void;
+  /**
+   * The density (kg/mm³) of the part's material in `doc`, as the engine would resolve it, for the
+   * deferred fetch; `undefined` without a material (or an unresolvable one). Without this option a
+   * part with a material always gets its mass properties inline.
+   */
+  density?(doc: WrenDoc, partId: Id): number | undefined;
   idle?: IdleScheduler;
   /** Skip the fine pass (tests, low-power). */
   fine?: boolean;
@@ -126,13 +132,20 @@ export interface RegenLoop {
 
 const firstPart = (doc: WrenDoc): Id | null => doc.parts[0]?.id ?? null;
 
+/** Mass memo key: a shape at a density (a material or parameter edit keeps the shapes). */
+const massKey = (shape: ShapeHandle, density: number | undefined) => `${shape}|${density ?? ''}`;
+
 /** `result` with the mass properties already fetched for its (unchanged) shapes filled in. */
-function withKnownMass(result: RegenResult, memo: ReadonlyMap<ShapeHandle, MassProperties>) {
-  if (memo.size === 0 || !result.bodies.some((b) => lacksMass(b) && memo.has(b.shape))) {
-    return result;
-  }
+function withKnownMass(
+  result: RegenResult,
+  memo: ReadonlyMap<string, MassProperties>,
+  density: number | undefined,
+) {
+  const known = (b: RegenResult['bodies'][number]) =>
+    lacksMass(b) ? memo.get(massKey(b.shape, density)) : undefined;
+  if (memo.size === 0 || !result.bodies.some(known)) return result;
   const bodies = result.bodies.map((b) => {
-    const mp = lacksMass(b) ? memo.get(b.shape) : undefined;
+    const mp = known(b);
     return mp ? { ...b, massProperties: mp } : b;
   });
   return { ...result, bodies };
@@ -179,8 +192,8 @@ export function createRegenLoop(options: RegenLoopOptions): RegenLoop {
   let waiters: Array<() => void> = [];
   /** The latest delivered outcome while its bodies still lack mass properties. */
   let massFor: RegenOutcome | null = null;
-  /** Mass properties by shape handle (handles are never reused), pruned to the latest bodies. */
-  let massMemo = new Map<ShapeHandle, MassProperties>();
+  /** Mass properties by shape handle (never reused) and density, pruned to the latest bodies. */
+  let massMemo = new Map<string, MassProperties>();
   const wantMass = options.onMass !== undefined && port.massProperties !== undefined;
   /** Ask for mass properties in the regen request (cheap for this part, see `onMass`). */
   let inlineMass = !wantMass;
@@ -204,12 +217,14 @@ export function createRegenLoop(options: RegenLoopOptions): RegenLoop {
       );
       const attachments: Record<string, Uint8Array> = {};
       for (const a of fresh) attachments[a.path] = a.bytes;
-      const inline = inlineMass;
+      const material = doc.parts.find((p) => p.id === partId)?.material !== undefined;
+      // Deferred needs the density for the separate fetch; without it, with a material, inline.
+      const inline = inlineMass || (material && !options.density);
       const result = await port.regenerate({
         doc,
         partId,
         quality,
-        ...(inline ? { massProperties: true } : {}),
+        massProperties: inline,
         ...(fresh.length ? { attachments } : {}),
       });
       if (inline && wantMass && result.totalMs > INLINE_MASS_REGEN_MS) inlineMass = false;
@@ -222,20 +237,16 @@ export function createRegenLoop(options: RegenLoopOptions): RegenLoop {
       if (!stale) {
         lastDelivered = mySeq;
         lastRevision.set(result.partId, result.revision);
-        // The loop's own fetches carry no density, so they only stand in for a part without a
-        // material (with one, the engine always computes them, with its density).
-        const plain = !doc.parts.find((p) => p.id === result.partId)?.material;
-        const outcome = { result: plain ? withKnownMass(result, massMemo) : result, quality, doc };
+        const density = options.density?.(doc, result.partId);
+        const outcome = { result: withKnownMass(result, massMemo, density), quality, doc };
         // The memo follows the latest bodies (inline mass properties included).
-        const memo = new Map<ShapeHandle, MassProperties>();
-        if (plain) {
-          for (const b of outcome.result.bodies) {
-            if (b.massProperties) memo.set(b.shape, b.massProperties);
-          }
+        const memo = new Map<string, MassProperties>();
+        for (const b of outcome.result.bodies) {
+          if (b.massProperties) memo.set(massKey(b.shape, density), b.massProperties);
         }
         massMemo = memo;
         onResult(outcome);
-        massFor = wantMass && plain && outcome.result.bodies.some(lacksMass) ? outcome : null;
+        massFor = wantMass && outcome.result.bodies.some(lacksMass) ? outcome : null;
       }
     } catch (err) {
       if (!disposed) onError?.(asKernelError(err));
@@ -249,30 +260,32 @@ export function createRegenLoop(options: RegenLoopOptions): RegenLoop {
     if (!port.massProperties) return;
     busy = true;
     try {
-      const memo = new Map<ShapeHandle, MassProperties>();
+      const density = options.density?.(o.doc, o.result.partId);
+      const memo = new Map<string, MassProperties>();
       let spent = 0;
       let fetched = 0;
       for (const b of o.result.bodies) {
-        if (b.massProperties) memo.set(b.shape, b.massProperties);
+        const key = massKey(b.shape, density);
+        if (b.massProperties) memo.set(key, b.massProperties);
         if (!lacksMass(b)) continue;
-        const known = massMemo.get(b.shape);
+        const known = massMemo.get(key);
         if (known) {
-          memo.set(b.shape, known);
+          memo.set(key, known);
           continue;
         }
         // A new edit goes first; the rest waits for the next idle moment.
         if (dirty || disposed) break;
         const t0 = performance.now();
-        const r = await port.massProperties?.(b.shape);
+        const r = await port.massProperties?.(b.shape, density);
         spent += performance.now() - t0;
         fetched++;
-        if (r?.ok) memo.set(b.shape, r.value);
+        if (r?.ok) memo.set(key, r.value);
       }
       massMemo = memo;
       if (fetched > 0) inlineMass = spent <= INLINE_MASS_MS;
       if (disposed || dirty || fetched === 0) return;
       const bodies = o.result.bodies.map((b) => {
-        const mp = lacksMass(b) ? memo.get(b.shape) : undefined;
+        const mp = lacksMass(b) ? memo.get(massKey(b.shape, density)) : undefined;
         return mp ? { ...b, massProperties: mp } : b;
       });
       options.onMass?.({ ...o, result: { ...o.result, bodies } });

@@ -155,6 +155,19 @@ export function renameDocument(wb: Workbench, name: string): void {
   wb.commit();
 }
 
+/**
+ * Mass properties of the displayed result, only when every live body has them: while some are
+ * still being computed (ADR-084) this is undefined and `massPending` is true, so no readout ever
+ * shows a partial sum or the previous geometry's values.
+ */
 export function massSummary(wb: Workbench): MassSummaryView | undefined {
+  if (massPending(wb)) return undefined;
   return summarizeMass(wb.regen.get()?.result.bodies ?? []);
+}
+
+/** The live result has a body whose mass properties have not arrived yet. */
+export function massPending(wb: Workbench): boolean {
+  const view = wb.regen.get();
+  if (view?.source !== 'live' || view.result.revision === wb.massSettledRevision) return false;
+  return view.result.bodies.some((b) => !b.massProperties && b.shape !== 0);
 }

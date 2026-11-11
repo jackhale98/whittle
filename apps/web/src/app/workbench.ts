@@ -38,6 +38,7 @@ import {
   type DocumentStoreImpl,
   expressionEngine,
   scopeOf,
+  tryResolveDensity,
   UNITS,
   ulid,
   validateParamName,
@@ -157,6 +158,8 @@ export class Workbench {
   private initialBundle: Promise<ProjectBundle | null> | null = null;
   lastGood = new Map<string, MeshBuffers>();
   firstRendered = false;
+  /** Revision of the last live result whose deferred mass fetch finished (ADR-084). */
+  massSettledRevision = -1;
   lastThumbAt = 0;
   private toastSeq = 0;
   private toastTimer: ReturnType<typeof setTimeout> | undefined;
@@ -407,6 +410,12 @@ export class Workbench {
       getDoc: () => this.viewDoc(),
       onResult: (o) => this.onRegen({ ...o, source: 'live' }),
       onMass: (o) => regenView.onMass(this, o.result),
+      // As the engine resolves it (outputs.ts `densityOf`), for the deferred mass fetch (ADR-084).
+      density: (doc, partId) => {
+        const m = doc.parts.find((p) => p.id === partId)?.material;
+        const d = m ? tryResolveDensity(m, undefined, scopeOf(doc)) : undefined;
+        return d?.ok ? d.value : undefined;
+      },
       onError: (e) => this.toast(e.message, 'error'),
       attachments: (doc) => this.attachmentsFor(doc),
     });
@@ -1119,6 +1128,10 @@ export class Workbench {
 
   renameDocument(name: string): void {
     tree.renameDocument(this, name);
+  }
+
+  massPending(): boolean {
+    return tree.massPending(this);
   }
 
   massSummary(): MassSummaryView | undefined {

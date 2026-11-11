@@ -124,7 +124,7 @@ of cached meshes, transferred over Comlink.
 
 **Mass properties** (ADR-084) are a full volume and area integration (seconds for a few hundred
 B-spline faces), so a regen only computes them for its final bodies, and only on request or with a
-material (`RegenRequest.massProperties`). Bounding-box prefilters, the through-all depth of copied
+material (`RegenRequest.massProperties`: omitted = the part has a material, `false` = never). Bounding-box prefilters, the through-all depth of copied
 cuts and the "the cut left the body unchanged" check read `bounds` (the façade's same box and
 topology counts, nothing integrated); that check integrates only when face and edge counts and the
 box all agree. `massProperties(shape)` on a regen-owned handle is served from the same per-handle

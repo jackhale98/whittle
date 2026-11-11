@@ -539,7 +539,8 @@ export class RegenEngine {
 
     // Outputs.
     const density = densityOf(part, doc);
-    const wantMass = request.massProperties === true || part.material !== undefined;
+    // Contract (ADR-084): omitted = the part has a material; `false` skips them even then.
+    const wantMass = request.massProperties ?? part.material !== undefined;
     const finalBodies = [...ctx.state.bodies.values()];
     const bodies: BodyResult[] = [];
     for (const b of finalBodies) {

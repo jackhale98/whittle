@@ -123,6 +123,28 @@ describe.skipIf(!built)(`regen: mass properties on demand (ADR-084)${skipNote}`,
     await api.release(own.value.shape);
   }, 60_000);
 
+  it('massProperties: false skips them even with a material; omitted follows the material', async () => {
+    const doc = makeDoc({}, features(), PART);
+    (doc.parts[0] as { material?: unknown }).material = { name: 'Steel', density: '7.85 g/cm^3' };
+    await api.closePart(PART);
+    const off = await api.regenerate({
+      doc,
+      partId: PART,
+      quality: 'coarse',
+      massProperties: false,
+    });
+    expect(off.bodies[0]?.massProperties).toBeUndefined();
+    expect(await massEntries()).toBe(1); // only the unchanged cut's check, as above
+    const density = 7.85e-6; // kg/mm³
+    const fetched = await api.massProperties(off.bodies[0]?.shape ?? 0, density);
+    if (!fetched.ok) throw new Error(JSON.stringify(fetched.error));
+    relClose(fetched.value.mass ?? 0, VOLUME * density, 1e-9);
+    // Omitted: the material decides (on), served from the cache the fetch filled.
+    const on = await api.regenerate({ doc, partId: PART, quality: 'coarse' });
+    expect(on.cache.misses).toBe(0);
+    expect(on.bodies[0]?.massProperties).toEqual(fetched.value);
+  }, 60_000);
+
   it('bounds equal the massProperties box and counts', async () => {
     const doc = makeDoc({}, features(), PART);
     const r = await api.regenerate({ doc, partId: PART, quality: 'coarse', massProperties: true });
