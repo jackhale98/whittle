@@ -16,3 +16,4 @@ test-results/
 .lighthouseci/
 __pycache__/
 apps/web/bundle-report.*
+.venv-dxf

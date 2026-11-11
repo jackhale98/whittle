@@ -2909,7 +2909,7 @@ Decisions:
 - Automatic centre lines on cylinders seen side-on: `ViewProjection` has no axes. Centre marks on face-on circles are done.
 - Ordinate groups.
 - Exact B-spline → Bézier conversion in the PDF.
-- The ezdxf and LibreCAD CI jobs.
+- The ezdxf and LibreCAD CI jobs (done later the same day, see the amendment below).
 - Re-verifying every provisional golden against the standards (D9).
 
 ### ADR-083 amendment: a verified main push reuses the dev run's kernel (2026-11-11)
@@ -2919,6 +2919,15 @@ Decisions:
   - The cache step's post job saves the downloaded dist to main's cache.
   - With no verified run, the old path runs unchanged.
 - (Same day) Browser installs on CI now go through `scripts/ci-install-browsers.sh`. Run #81 lost six browser jobs at once when the runners could not resolve the Ubuntu mirrors. Retries made it worse: in run #83, apt hung on DNS timeouts until the jobs hit their limits. The script now gives `--with-deps` one attempt of at most 4 minutes, then installs the browser alone with a warning. The runner image already has Chromium's libraries; run #83's perf job passed on that path.
+
+### ADR-091 amendment: the DXF interop checks run in CI (2026-11-11, M4 gate blocker)
+PLAN §12 M4 Accept wants the DXF checked automatically for validity and for opening in LibreCAD. The goldens were in CI; the other two checks were not (the ezdxf audit skipped itself whenever ezdxf was missing, which on CI was always).
+- **Job.** `dxf-interop`, "DXF interop (ezdxf, LibreCAD)", needs `build` and `verified`, runs only when `verified != 'true'` like the other gating jobs, and is in the `pages` and `cloudflare` `needs` and `if` lists. It needs no kernel or build output.
+- **ezdxf.** Pinned `ezdxf==1.4.5`, installed into a venv with an `actions/cache` of `~/.cache/pip`. A venv, not `pip --user`, because the test runs `python3 -I`, which ignores the user site. The audit test is still `skipIf` locally, but `WREN_REQUIRE_EZDXF=1` (set in the job) turns a missing ezdxf into a failing test.
+- **LibreCAD.** Ubuntu 24.04's apt package (2.2.0.2) has the headless mode, so no AppImage is needed. The working invocation is `xvfb-run -a librecad dxf2pdf -a <file.dxf>`, which needs a display and writes `<file>.pdf` beside the input. `-o` is **not** used: on a single file it printed "DONE" but wrote no file at the path given. The script treats a non-zero exit, a missing or empty PDF and `pdfinfo` reporting fewer than one page as failures. Inputs: both goldens, plus the bracket sheet exported as R12 and R2000 by `test/dxf-export.test.ts` (a no-op without `WREN_DXF_EXPORT_DIR`). Locally: one page each, 11 to 32 KB.
+- **Install resilience.** `scripts/ci-install-dxf-tools.sh` installs `librecad xvfb poppler-utils` with two time-boxed (4 minutes) attempts, a 10 s pause between them and a message that names the mirrors, as `ci-install-browsers.sh` does (ADR-083 amendment). A mirror outage fails this one job with a clear infrastructure error. Unlike the browser script there is no fallback, because nothing works without LibreCAD.
+- **Local.** `pnpm --filter @wren-cad/drawing dxf:interop` (`packages/drawing/scripts/dxf-interop.sh`) runs the same checks. A missing tool is named with its install hint and its check is skipped; `WREN_REQUIRE_INTEROP=1` (set in CI) makes that a failure.
+- **Cost.** About 30 packages from apt (Qt5 and LibreCAD, roughly 100 MB), a minute or two per run. The job is not on the critical path of the other gates.
 
 ## ADR-092 — M4 drawing route: a lazy route over the model, a placeholder HLR kernel behind `DrawingKernelApi`, phone is review-only (2026-11-11)
 

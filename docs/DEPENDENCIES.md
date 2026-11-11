@@ -67,6 +67,14 @@ bundled package's licence text plus OCCT's LGPL-2.1 + exception (texts in `licen
 | `@lhci/cli` (CI only; `npx`, not installed in the workspace) | 0.16.0 | Apache-2.0 |
 | `lighthouse` (via `@lhci/cli`) | 13.6.0 | Apache-2.0 |
 
+## CI-only tools (not shipped, not installed by `pnpm i`)
+
+| Tool | Version | License | Used by |
+|---|---|---|---|
+| LibreCAD (apt `librecad`, headless `dxf2pdf`) | Ubuntu's package (2.2.0.2 on 24.04) | GPL-2.0 | `dxf-interop` job: converts DXF to PDF to prove the files open (ADR-091 amendment). Run as a separate process; nothing is linked or bundled. An AppImage pinned by version and checksum is the fallback if a future Ubuntu drops the headless mode |
+| `ezdxf` (PyPI, in a CI venv) | 1.4.5 (pinned) | MIT | `dxf-interop` job and `packages/drawing/test/dxf.test.ts`: structure audit |
+| `xvfb`, `poppler-utils` (`pdfinfo`) | Ubuntu's packages | MIT/X11, GPL-2.0-or-later | virtual display for LibreCAD; page count of the PDF |
+
 ## Sync worker (`worker/`, Cloudflare Workers)
 
 No runtime dependencies: the worker uses only Workers' built-in `fetch`, `Request`, `Response` and `ReadableStream`, and ships no bundled third-party code. Ported from Mycelium's sync worker (Apache-2.0, same author; licence text kept in `worker/LICENSE-APACHE-2.0`), reminders and push removed; the modified, combined worker is GPL-3.0-or-later. It is tested and typechecked with the root `typescript` and `vitest` above.
