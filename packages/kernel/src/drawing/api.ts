@@ -351,6 +351,7 @@ export function createDrawingKernelApi(deps: DrawingKernelDeps): DrawingWorkerAp
       const decoded = decodeProjection(
         raw.value,
         entry.edgeNames,
+        entry.faceNames,
         facade.value.section !== undefined,
       );
       if (!decoded.ok) return decoded;

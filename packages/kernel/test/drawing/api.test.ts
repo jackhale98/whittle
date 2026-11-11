@@ -42,6 +42,7 @@ class FakeDrawingKernel implements DrawingKernelModule {
         role: 'visible',
         edge: 'outline',
         index: -1,
+        face: 0,
         curve: { kind: 'line', a: [0, 0], b: [0, 1] },
       },
     ],
@@ -254,10 +255,10 @@ describe('createDrawingKernelApi', () => {
       smooth: true,
       ...tolerancesFor({ min: [0, 0, 0], max: [40, 30, 10] }),
     });
-    expect(r.value.curves.map((c) => [c.role, c.edge, c.name])).toEqual([
-      ['visible', 'sharp', 'F1:edge(a|b)'],
-      ['hidden', 'sharp', 'F1:edge(b|c)'],
-      ['visible', 'outline', undefined],
+    expect(r.value.curves.map((c) => [c.role, c.edge, c.name, c.face])).toEqual([
+      ['visible', 'sharp', 'F1:edge(a|b)', undefined],
+      ['hidden', 'sharp', 'F1:edge(b|c)', undefined],
+      ['visible', 'outline', undefined, 'F1:face.top'],
     ]);
     expect(r.value.bounds).toEqual({ min: [0, 0], max: [40, 10] });
     expect(r.value.key).toMatch(/^p1:[0-9a-f]{16}$/);

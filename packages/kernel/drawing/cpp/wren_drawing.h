@@ -68,7 +68,9 @@ std::string loadShape(const std::string& path);
 //    "section"?:{"cut":[[3]…],"along":[3],"look":[3],"depth":"full"|"slice"}
 //    "clip"?:{"center":[2],"radius":mm}}
 // Result<{"curves":[{"role":"visible"|"hidden","edge":"sharp"|"smooth"|"outline"|"sewn",
-//                    "index":int (input edge, TopExp order; −1 = none),"curve":Curve2}],
+//                    "index":int (input edge, TopExp order; −1 = none),
+//                    "face":int (outlines: the input face outlined, TopExp order; −1 = none),
+//                    "curve":Curve2}],
 //         "sectionFaces":[{"segment":int,"loops":[[Curve2…]…]}],
 //         "stats":{"hlrMs":number,"cutMs":number,"edges":int,"faces":int}}>
 // Curve2 is contracts drawing.ts `Curve2`, in view-plane part mm (origin = projected part origin).

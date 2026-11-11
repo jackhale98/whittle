@@ -3064,3 +3064,11 @@ The certification suite (PLAN §12A) reproduces 51 of 95 specified dimensions. F
 - `ProjectedCurve.face`: an outline (silhouette) curve names the face it outlines. A shaft's diameter seen side-on can then be dimensioned by picking its outline.
 - `DimensionText.count` and `AnnotationResolution.count`: an automatic `N×` prefix taken from the instance count of the feature behind `refs[0]`. It is resolved, never typed by hand, for pattern counts such as `4× M6` and `6× Ø9`.
 - Sketch-origin and construction-point refs in annotations resolve against the sketch's final frame. Import must not leave them needing attention. Kernel-client work; no contract change.
+
+### ADR-090 amendment: the drawing kernel names outlines by face (2026-11-11)
+`ProjectedCurve.face` comes from the façade as a face index (TopExp order of the loaded BREP), which the worker maps through `faceNames`. A face past the names fails the call, like an edge.
+- **Exact** (`HLRBRep_Algo`): an outline is an internal edge of one `HLRBRep_FaceData`, the outliner's copy of an input face. `HLRTopoBRep_OutLiner::ProcessFace` records both that copy and the outline edge against the input face (`HLRTopoBRep_Data::AddOldS`). The façade reads both; they must agree, or the outline stays unnamed.
+- **Draft** (`HLRBRep_PolyAlgo`): `Hide` returns the input face of each outline segment.
+- **Sections**: result faces map back through the cut's history (`Modified`), as edges already did, so an outline seen past the cut keeps its face.
+- **Seams on a silhouette stay edges.** The outliner drops an outline that coincides with an existing edge and flags that edge instead. A revolved part's seams lie in its profile plane, so in the view that looks through that plane (the front view of a profile sketched on XZ) each cylinder has one outline (`face`) and, on the other side, its seam (`sharp`, edge name, no `face`). Turned 90°, the seams face the viewer and each cylinder has two outlines. The contract keeps `face` for outlines only; giving such a seam `face` too would be a contract question for the lead.
+- Section views through revolved parts already produce their cut faces (golden: a stepped shaft cut through its axis, 660 mm²). No fix was needed.
