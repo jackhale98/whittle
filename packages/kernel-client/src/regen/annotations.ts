@@ -7,6 +7,10 @@
  * (`merged`, never healed), then the name family with containment, then fingerprints for weak
  * (imported) names; otherwise unresolved. Never re-attached to a guessed entity. `source`,
  * `appliesTo` and datum ids are resolved too (`/source`, `/appliesTo`, `/datums/i/datums/j`).
+ * M4 gate (ADR-090 amendment "second gate round, kernel-client resolution"): sketch points and
+ * the sketch origin and axes come from the sketch's final state (`sketchRef`); faces measured as
+ * planes resolve plane-like; a face name that no longer exists may resolve to its recorded
+ * successor (`resolveSuccessor`, reported as `merged`); `count` for `text.count`.
  *
  * States:
  *  - `suppressed` (ADR-090 decision 7, "not in this configuration"): the annotation is suppressed,
@@ -37,6 +41,7 @@ import type {
   AnnotationResolution,
   AnnotationSource,
   AttentionCause,
+  DimensionText,
   EntityRef,
   Feature,
   Fingerprint,
@@ -50,6 +55,7 @@ import type {
   UnresolvedRef,
   Vec3,
 } from '@wren-cad/contracts';
+import { SKETCH_ORIGIN, SKETCH_X_AXIS, SKETCH_Y_AXIS } from '@wren-cad/contracts';
 import {
   evaluateFeatureValues,
   expressionEngine,
@@ -76,10 +82,27 @@ import {
   type Walk,
 } from './cause';
 import type { EngineCore } from './core';
-import { dot, normalize, ORIGIN_AXES, ORIGIN_PLANES, sub } from './geometry';
+import {
+  add,
+  dot,
+  frameY,
+  normalize,
+  ORIGIN_AXES,
+  ORIGIN_PLANES,
+  scale,
+  sub,
+  toWorld,
+} from './geometry';
 import { hashKey } from './hash';
 import { kerr } from './helpers';
-import { AXIS_NAME, fingerprintOf, PLANE_NAME, POINT_NAME, resolveSub } from './refs';
+import {
+  AXIS_NAME,
+  fingerprintOf,
+  PLANE_NAME,
+  POINT_NAME,
+  resolveSub,
+  resolveSuccessor,
+} from './refs';
 import { baseName } from './resolve';
 import { type AnnotationMemo, primaryNaming, type WalkContext } from './state';
 import type { RegenUnresolvedRef } from './types';
@@ -233,9 +256,13 @@ async function resolveOne(
   // Refs.
   const at = (i: number): RefPoint => a.at?.[i] ?? 'self';
   const geos: (RefGeo | null)[] = [];
+  const targets: RefTarget[] = [];
   for (let i = 0; i < a.refs.length; i++) {
     const ref = a.refs[i] as EntityRef;
-    geos.push(await refGeometry(core, ctx, ref, `/refs/${i}`, unresolved));
+    const target: RefTarget = {};
+    const use = { kind: a.kind, at: at(i) };
+    geos.push(await refGeometry(core, ctx, ref, `/refs/${i}`, unresolved, use, target));
+    targets.push(target);
   }
 
   // GD&T bindings: datums by id, and the dimension a frame applies to.
@@ -417,6 +444,11 @@ async function resolveOne(
     return { resolution: res, refs: refsMemo };
   }
   if (value !== undefined && VALUED_KINDS.has(a.kind)) res.value = value;
+  // `DimensionText.count`: only when asked, and like the value only when ok.
+  if (wantsCount(a)) {
+    const n = a.refs.length > 0 ? instanceCount(ctx, targets[0]) : instances?.length;
+    if (n !== undefined && n > 0) res.count = n;
+  }
   return { resolution: res, refs: refsMemo };
 }
 
@@ -534,6 +566,11 @@ function sourceOf(ctx: WalkContext, a: Annotation, s: AnnotationSource): SourceO
             : { feature: f, value: v };
       }
       if (out.value !== undefined) out.value = asKind(a, out.value, c.kind);
+      // `hDistance` / `vDistance` are signed (b − a, contracts sketch.ts); a dimension shows the
+      // distance (`-length/2` from the origin to a corner is 60 mm on the drawing).
+      if (out.value !== undefined && (c.kind === 'hDistance' || c.kind === 'vDistance')) {
+        out.value = Math.abs(out.value);
+      }
       return out;
     }
     case 'featureField': {
@@ -624,10 +661,32 @@ function asKind(a: Annotation, v: number, of: string): number {
 // Refs
 // ---------------------------------------------------------------------------------------------
 
+/** Annotation kinds that measure a face ref (`at: 'self'`) as its plane. */
+const PLANE_KINDS = new Set<Annotation['kind']>(['linear', 'ordinate', 'angle']);
+
+/** How a ref is used, for plane-like resolution: the annotation kind and the point qualifier. */
+interface RefUse {
+  kind?: Annotation['kind'] | undefined;
+  at: RefPoint;
+}
+
+/** What `refGeometry` resolved a ref to, besides its geometry (for `count`). */
+interface RefTarget {
+  /** Current persistent name of the body sub-shape (absent for sketch, plane and datum refs). */
+  name?: string;
+  kind?: 'face' | 'edge' | 'vertex';
+}
+
 /**
  * Resolves one annotation ref to its geometry: origin planes, axes and point by name, construction
- * planes, axes and points (`F…:plane` / `:axis` / `:point`) from the walk's state, bodies by id, and
- * every face, edge, vertex and sketch entity through `resolveSub` (the feature rules).
+ * planes, axes and points (`F…:plane` / `:axis` / `:point`) from the walk's state, bodies by id,
+ * sketch points and the sketch origin and axes from the sketch's final state (`sketchRef`), and
+ * every other face, edge, vertex and sketch entity through `resolveSub` (the feature rules).
+ *
+ * A face measured as its plane (`PLANE_KINDS`, `at: 'self'`) resolves plane-like: pieces of a
+ * split face that are all coplanar are one plane (resolve.ts), reported as `rebound`. A face name
+ * that no longer exists may resolve to its recorded successor (`resolveSuccessor`: a Boolean's
+ * `face(N)`, a Shell's `rim(N)`), reported as `merged`.
  */
 async function refGeometry(
   core: EngineCore,
@@ -635,6 +694,8 @@ async function refGeometry(
   ref: EntityRef,
   path: string,
   unresolved: RegenUnresolvedRef[],
+  use: RefUse = { at: 'self' },
+  target: RefTarget = {},
 ): Promise<RefGeo | null> {
   const op = ORIGIN_PLANES[ref.name];
   if (op) return { t: 'plane', origin: op.origin, normal: normalize(op.z) };
@@ -674,11 +735,87 @@ async function refGeometry(
       : [0, 0, 0];
     return { t: 'point', at: c };
   }
-  const t = await resolveSub(core, ctx, ref, path, unresolved);
-  if (!t) return null;
+  const sketch = await sketchRef(core, ctx, ref);
+  if (sketch) return sketch;
+  const planeLike =
+    ref.kind === 'face' && use.at === 'self' && use.kind !== undefined && PLANE_KINDS.has(use.kind);
+  const missed: RegenUnresolvedRef[] = [];
+  let t = await resolveSub(core, ctx, ref, path, missed, planeLike);
+  if (!t && missed.length === 1 && missed[0]?.reason === 'missing') {
+    t = await resolveSuccessor(core, ctx, ref, path, planeLike);
+  }
+  if (!t) {
+    unresolved.push(...missed);
+    return null;
+  }
+  if (ctx.state.bodies.has(t.owner)) {
+    target.name = t.name;
+    target.kind = t.kind;
+  }
   const g = await subGeometry(core, { shape: t.shape, kind: t.kind, index: t.index });
   if (g?.t === 'axis') g.name = t.name;
   return g;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Sketch references: points, the origin and the axes, from the sketch's final state
+// ---------------------------------------------------------------------------------------------
+
+/** `S<sketch>:p(<id>)` / `S<sketch>:e(<id>)`. */
+const SKETCH_ENTITY = /^S([0-9A-Za-z]+):([pe])\((.+)\)$/;
+
+/**
+ * Sketch geometry that is the sketch's own and needs no kernel topology, from the sketch's final
+ * (solved) state in this walk: the origin `S…:p(@origin)` (the frame's origin), the axes
+ * `S…:e(@x)` / `S…:e(@y)` (lines through it along the frame's x and y) and points `S…:p(<id>)`
+ * (stored and construction points: the solved entity on the frame). These are exact names, not
+ * guesses; a sketch point is not read from the kernel's vertices, where coincident points (a
+ * construction origin and a circle centre on it) share one location and so one name family.
+ *
+ * Null when the sketch is not in the final state (deleted, suppressed, failed or after the
+ * rollback bar: `resolveSub` then reports it missing and cause.ts says why), or for any other
+ * entity (curves resolve through the kernel's names).
+ *
+ * An axis line spans the part along it: the projections onto the axis of the bodies' bounding
+ * boxes, the sketch's points and the origin (at least ±1 mm), so a view can draw it as a centre
+ * line and pick it; only its direction and position measure.
+ */
+async function sketchRef(
+  core: EngineCore,
+  ctx: WalkContext,
+  ref: EntityRef,
+): Promise<RefGeo | null> {
+  const m = SKETCH_ENTITY.exec(ref.name);
+  if (!m) return null;
+  const s = ctx.state.sketches.get(m[1] as string);
+  if (!s) return null;
+  const id = m[3] as string;
+  const frame = s.frame;
+  if (m[2] === 'p') {
+    if (id === SKETCH_ORIGIN) return { t: 'point', at: toWorld(frame, 0, 0) };
+    const e = s.entities.find((x) => x.id === id);
+    return e?.kind === 'point' ? { t: 'point', at: toWorld(frame, e.x, e.y) } : null;
+  }
+  if (id !== SKETCH_X_AXIS && id !== SKETCH_Y_AXIS) return null;
+  const o = toWorld(frame, 0, 0);
+  const dir = normalize(id === SKETCH_X_AXIS ? frame.x : frameY(frame));
+  let lo = -1;
+  let hi = 1;
+  const reach = (p: Vec3) => {
+    const t = dot(sub(p, o), dir);
+    lo = Math.min(lo, t);
+    hi = Math.max(hi, t);
+  };
+  for (const e of s.entities) if (e.kind === 'point') reach(toWorld(frame, e.x, e.y));
+  for (const b of ctx.state.bodies.values()) {
+    if (b.meshOnly) continue;
+    const bb = await core.boundsOf(b.shape);
+    if (!bb) continue;
+    const { min, max } = bb.bbox;
+    for (const x of [min[0], max[0]])
+      for (const y of [min[1], max[1]]) for (const z of [min[2], max[2]]) reach([x, y, z]);
+  }
+  return { t: 'line', a: add(o, scale(dir, lo)), b: add(o, scale(dir, hi)) };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -865,7 +1002,8 @@ export async function queryAnchors(
     const q = queries[i] as AnchorQuery;
     ctx.current = { featureId: QUERY, rebound: [], merged: [], grown: [] };
     const unresolved: RegenUnresolvedRef[] = [];
-    const g = await refGeometry(core, ctx, q.ref, `/${i}`, unresolved);
+    const use = { kind: q.annotationKind, at: q.at ?? 'self' };
+    const g = await refGeometry(core, ctx, q.ref, `/${i}`, unresolved, use);
     const answer: AnchorAnswer = {
       anchor: g ? await anchorFor(core, ctx, g, q.at ?? 'self', q.annotationKind) : null,
     };
@@ -883,6 +1021,94 @@ export async function queryAnchors(
     out.push(answer);
   }
   return out;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Instance counts (`AnnotationResolution.count`)
+// ---------------------------------------------------------------------------------------------
+
+/** Does the annotation show an automatic `N×` (`DimensionText.count`)? */
+function wantsCount(a: Annotation): boolean {
+  const text: unknown = 'text' in a ? a.text : undefined;
+  return typeof text === 'object' && text !== null && (text as DimensionText).count === true;
+}
+
+/**
+ * The number of instances of the feature that made a resolved ref, pattern and mirror copies
+ * included: the distinct sub-shapes of the same kind in the final bodies that are the same
+ * sub-shape of an instance (`instanceKey`). Split pieces count once. A hole's instances are its
+ * points (every `F<hole>:hole(<point>)` is one), times its copies. What is counted is what exists:
+ * a skipped pattern instance, or a copy that a later feature removed, is not an instance. A ref to
+ * a sketch, plane or datum is one instance.
+ */
+function instanceCount(ctx: WalkContext, target: RefTarget | undefined): number | undefined {
+  if (!target) return undefined;
+  const { name, kind } = target;
+  if (name === undefined || kind === undefined) return 1;
+  const key = instanceKey(name);
+  const seen = new Set<string>();
+  for (const b of ctx.state.bodies.values()) {
+    if (b.meshOnly) continue;
+    for (const n of primaryNaming(b.naming)) {
+      if (n.kind !== kind) continue;
+      const own = n.name.replace(SPLIT_SUFFIX, '');
+      if (!seen.has(own) && instanceKey(n.name) === key) seen.add(own);
+    }
+  }
+  return Math.max(1, seen.size);
+}
+
+const SPLIT_SUFFIX = /#\d+/g;
+/** A copy wrapper's opening: `F<copy>:inst<k>(` or `F<copy>:mirror(`. */
+const COPY_OPEN = /(?<![0-9A-Za-z])F[0-9A-Za-z]+:(?:inst\d+|mirror)\(/;
+/** A hole instance's opening: `F<hole>:hole(` (its argument is the point's name). */
+const HOLE_OPEN = /(?<![0-9A-Za-z])F[0-9A-Za-z]+:hole\((?!\*\))/;
+
+/** Index of the parenthesis closing the one at `open`, or -1. */
+function closing(s: string, open: number): number {
+  let depth = 0;
+  for (let i = open; i < s.length; i++) {
+    if (s[i] === '(') depth++;
+    else if (s[i] === ')' && --depth === 0) return i;
+  }
+  return -1;
+}
+
+/**
+ * What every instance of one sub-shape has in common: its name without split suffixes, with every
+ * copy wrapper (`F<c>:inst<k>(N)`, `F<c>:mirror(N)`, at any depth) replaced by `N`, every hole
+ * point replaced by `*`, and the components of an `edge(…)` / `vertex(…)` name sorted.
+ */
+export function instanceKey(name: string): string {
+  let s = name.replace(SPLIT_SUFFIX, '');
+  for (let m = COPY_OPEN.exec(s); m; m = COPY_OPEN.exec(s)) {
+    const open = m.index + m[0].length - 1;
+    const close = closing(s, open);
+    if (close < 0) break;
+    s = s.slice(0, m.index) + s.slice(open + 1, close) + s.slice(close + 1);
+  }
+  for (let m = HOLE_OPEN.exec(s); m; m = HOLE_OPEN.exec(s)) {
+    const open = m.index + m[0].length - 1;
+    const close = closing(s, open);
+    if (close < 0) break;
+    s = `${s.slice(0, open + 1)}*${s.slice(close)}`;
+  }
+  const top = /^(edge|vertex)\((.*)\)$/.exec(s);
+  if (!top) return s;
+  const inner = top[2] as string;
+  const parts: string[] = [];
+  let depth = 0;
+  let from = 0;
+  for (let i = 0; i < inner.length; i++) {
+    if (inner[i] === '(') depth++;
+    else if (inner[i] === ')') depth--;
+    else if (inner[i] === '|' && depth === 0) {
+      parts.push(inner.slice(from, i));
+      from = i + 1;
+    }
+  }
+  parts.push(inner.slice(from));
+  return `${top[1]}(${parts.sort().join('|')})`;
 }
 
 // ---------------------------------------------------------------------------------------------

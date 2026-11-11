@@ -3064,3 +3064,33 @@ The certification suite (PLAN §12A) reproduces 51 of 95 specified dimensions. F
 - `ProjectedCurve.face`: an outline (silhouette) curve names the face it outlines. A shaft's diameter seen side-on can then be dimensioned by picking its outline.
 - `DimensionText.count` and `AnnotationResolution.count`: an automatic `N×` prefix taken from the instance count of the feature behind `refs[0]`. It is resolved, never typed by hand, for pattern counts such as `4× M6` and `6× Ø9`.
 - Sketch-origin and construction-point refs in annotations resolve against the sketch's final frame. Import must not leave them needing attention. Kernel-client work; no contract change.
+
+### ADR-090 amendment: second gate round, kernel-client resolution (2026-11-11)
+Kernel-client fixes for GAP-ORIGIN, GAP-EXTRUDE-DEPTH and counts. No contract change. Goldens: `packages/kernel-client/test/regen/reference-annotations.golden.test.ts` (reference parts from `buildDoc`, each re-run at a CSWP stage).
+
+**Sketch refs (GAP-ORIGIN)**
+- `S<id>:p(@origin)`, `S<id>:e(@x)`, `S<id>:e(@y)` and sketch points `S<id>:p(<point>)` (stored and construction points) in annotations and anchor queries resolve from the sketch's final solved entities and frame. They are exact names, not guesses.
+- Cause found: sketch points used to resolve through the kernel's sketch vertices. Coincident points (the builder's construction origin `o` and a circle centre on it) share one location there, so each name had two candidates and was `ambiguous`. Sketch curves still resolve through the kernel's names.
+- The origin and points are `point` anchors. An axis is a `line` through the origin along the frame's x or y. It spans the part (the bodies' bounding boxes and the sketch's points projected on it, at least ±1 mm), so a view can draw and pick it as a centre line. Only its position and direction measure.
+- A sketch that is not in the final state (deleted, suppressed, failed, after the rollback bar) leaves the ref unresolved. Deleted, suppressed and failed come with that structural cause. Suppressed gives "not in this configuration"; the others need attention.
+- `hDistance` / `vDistance` sources are signed (b − a, contracts sketch.ts). A dimension now shows `|value|`: `-length/2` from the origin to a corner is 60 mm, not −60.
+- **API for the Dimension tool**: `ModelingApi.annotationAnchors(partId, queries, slot)` with, for each sketch to show, `{ ref: { name: 'S<id>:p(@origin)', kind: 'vertex' } }`, `{ ref: { name: 'S<id>:e(@x)', kind: 'edge' } }` and `{ ref: { name: 'S<id>:e(@y)', kind: 'edge' } }`. The answers are a `point` and two `line` anchors. A pick then stores the same names as annotation refs.
+
+**Extrude depths (GAP-EXTRUDE-DEPTH)**
+- After the planner's change (placement face to end face), rp01's pocket and rp03's stem already resolved. The cut's floor is `F<id>:end`; a cut has no `F<id>:start` (that is the opening it made), and that stays unresolved.
+- A face ref of a `linear`, `ordinate` or `angle` annotation (`at: 'self'`) is measured as its plane, so it resolves **plane-like**, as sketch planes do. A face split into coplanar pieces is one plane, reported as `rebound` to a piece. This fixes rp06, where the groove splits the block top. An `aligned` dimension on the same face stays ambiguous.
+- **Successor faces** (`refs.ts` `resolveSuccessor`, annotation refs only; feature refs keep the plain rules). A face name that no longer exists resolves to the face the kernel's names record as taking it over. It is reported as `merged`: the stored name is kept, and removing the successor restores it.
+  - `F<b>:face(N)` of a Boolean: the same face, carried on from a consumed tool body. Any annotation kind.
+  - `F<s>:rim(N)` of a Shell: the rim lies in the plane of the opened face N. Plane-like only, because the rim is not N's area. This fixes rp05.
+  - Exactly one successor feature and role must name N; otherwise nothing resolves.
+- **rp04 `boss_h` is not fixed, by design.** The Boolean successor resolves `F<boss>:end`, but the push/pull then moved that face. The dimension is `ok` with `value` 20 (`boss_h` as first extruded) and `measured` 26, so the drawing shows "differs from the model". No face in the model is 20 mm from the plate. The kernel never moves an anchor to make the two agree.
+
+**Counts**
+- `count` is set only when `text.count` is true (dimensions and hole callouts), and only when `ok`, like `value`.
+- It counts the instances of what `refs[0]` resolved to that exist in the final bodies. Two sub-shapes are the same instance when their names are equal after these steps: split suffixes dropped, copy wrappers (`inst<k>(…)`, `mirror(…)`, at any depth) unwrapped, hole points made generic (a hole with N points is N instances), and edge components sorted. Split pieces count once.
+- Sketch, plane and datum refs count 1. A hole callout without refs counts its `instances`.
+- **A skipped pattern instance is not an instance.** rp08 gives 3 (a pattern of 4 with one skipped), rp09 gives 6 (8 with two skipped), rp10 gives 5 slots (6 with one skipped) and 2 ear holes (the mirror).
+- **For the lead:** the spec drawings' `tap_n`, `bolt_n` and `slot_n` (4, 8, 6) are the pattern parameters, skipped positions included. A `4×` on three holes would be a false drawing, so the E2E should expect the instance count, or the spec should note the parameter as text.
+
+**Not changed**
+- A full 360° revolve has no `F<id>:start` / `F<id>:end`. The promoted revolve angle on rp02, rp03 and rp09 stays unresolved. The planner should not promote it, which is drawing work.

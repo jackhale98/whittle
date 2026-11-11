@@ -137,6 +137,76 @@ export async function resolveWithMerges(
   return resolveRef(ref, cands, rc);
 }
 
+/** The resolve.ts context of the walk in `ctx` (tolerances, fingerprints, weak names, distances). */
+async function resolveContext(
+  core: EngineCore,
+  ctx: WalkContext,
+  planeLike: boolean,
+): Promise<Parameters<typeof resolveRef>[2] & { weak: (name: string) => boolean }> {
+  return {
+    diag: await partDiag(core, ctx),
+    planeLike,
+    fingerprints: (s: ShapeHandle) => core.fingerprints(s),
+    weak: (name: string) => mentionsImport(name, ctx.importIds),
+    distance: async (c: Candidate, point: Vec3) => {
+      const m = await core.kernel.measureShapes(
+        { shape: c.shape, kind: c.kind, index: c.index },
+        { point },
+      );
+      return m.ok ? (m.value.distance?.value ?? null) : null;
+    },
+  };
+}
+
+/** `F<feature>:<role>(<face name>)` (optionally split): a face a later feature made from another. */
+const SUCCESSOR = /^F([0-9A-Za-z]+):(rim|face)\((.*)\)(?:#\d+)?$/;
+
+/**
+ * The face that took over a face name that no longer exists, by construction history (M4 gate,
+ * ADR-090 amendment "second gate round, kernel-client resolution"). Annotation refs only
+ * (annotations.ts); feature refs keep the plain rules. Two successors are recorded in the
+ * kernel's names:
+ *  - `F<b>:face(N)`: a Boolean feature consumed the tool body that had face N and carries it on
+ *    under this name (the same face);
+ *  - `F<s>:rim(N)`: a Shell opened face N; the rim it left lies in N's plane. Only for `planeLike`
+ *    refs (a dimension that measures N as its plane), because the rim is not N's area.
+ * Exactly one successor feature and role must name N (else nothing: never a pick between two);
+ * its pieces are resolved by resolve.ts as the stored ref would be (exact name, family with
+ * fingerprint, coplanar pieces for plane-like refs). Reported as `merged` (`into`: the successor's
+ * current name): the stored name is kept, so suppressing or deleting the successor feature
+ * restores it.
+ * Null when there is no successor or it does not resolve.
+ */
+export async function resolveSuccessor(
+  core: EngineCore,
+  ctx: WalkContext,
+  ref: EntityRef,
+  path: string,
+  planeLike: boolean,
+): Promise<ResolvedTarget | null> {
+  if (ref.kind !== 'face' || SKETCH_TAG.test(ref.name) || PLANE_NAME.test(ref.name)) return null;
+  const want = baseName(ref.name);
+  const cands = candidates(ctx, ref, 'face');
+  const roles = new Map<string, Candidate[]>();
+  for (const c of cands) {
+    const m = SUCCESSOR.exec(c.name);
+    if (!m || baseName(m[3] as string) !== want) continue;
+    const i = ctx.index.get(m[1] as string);
+    const f = i === undefined ? undefined : ctx.part.features[i];
+    const ok = m[2] === 'face' ? f?.type === 'boolean' : planeLike && f?.type === 'shell';
+    if (!ok) continue;
+    const prefix = `F${m[1]}:${m[2]}`;
+    roles.set(prefix, [...(roles.get(prefix) ?? []), c]);
+  }
+  if (roles.size !== 1) return null;
+  const [prefix, family] = [...roles][0] as [string, Candidate[]];
+  const rc = await resolveContext(core, ctx, planeLike);
+  const r = await resolveRef({ ...ref, name: `${prefix}(${ref.name})` }, family, rc);
+  if (!r.ok) return null;
+  ctx.current.merged.push({ path, name: ref.name, into: r.target.name });
+  return { ...r.target, via: 'merged' };
+}
+
 /** Resolves a face/edge/vertex/region ref; records unresolved refs under `path`. */
 export async function resolveSub(
   core: EngineCore,
@@ -152,19 +222,7 @@ export async function resolveSub(
     return null;
   }
   const cands = candidates(ctx, ref, kind);
-  const rc = {
-    diag: await partDiag(core, ctx),
-    planeLike,
-    fingerprints: (s: ShapeHandle) => core.fingerprints(s),
-    weak: (name: string) => mentionsImport(name, ctx.importIds),
-    distance: async (c: Candidate, point: Vec3) => {
-      const m = await core.kernel.measureShapes(
-        { shape: c.shape, kind: c.kind, index: c.index },
-        { point },
-      );
-      return m.ok ? (m.value.distance?.value ?? null) : null;
-    },
-  };
+  const rc = await resolveContext(core, ctx, planeLike);
   // Order (PLAN §7.3, ADR-078): exact name, then a merge alias (history evidence; conflicting
   // aliases are unresolved), then the name family and fingerprints (resolve.ts).
   const r = await resolveWithMerges(ref, kind, cands, ctx.state, rc);
