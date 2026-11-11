@@ -5,6 +5,7 @@
 import type { Command, Id, WrenDoc } from '@wren-cad/contracts';
 import { hitKey, resolvePick } from '../selection/pick';
 import { configStatusOf, isMissingActive, keyOf } from './config-model';
+import { refAcks, type StubNotes } from './ref-notes';
 import { marks } from './timing';
 import type { Workbench } from './workbench';
 
@@ -307,6 +308,11 @@ export function testHooks(wb: Workbench) {
       const m = await wb.modeling?.port.memoryStats?.();
       return (m?.regen.slots ?? []).map((s) => s.slot);
     },
+    /**
+     * Reports merged / grown references for a feature as the kernel would (the real `grown` is not
+     * produced yet); `null` removes the stub. The UI treats them like reported ones.
+     */
+    stubRefNotes: (featureId: Id, notes: StubNotes | null) => refAcks.stub(featureId, notes),
     /** Simulates "Export all" holding the live slot (picks and measurements are refused). */
     holdExport: (on: boolean) => wb.config.setExportingAll(on),
     /** Number of `regenerate` calls the loop made (the background builds are not counted). */

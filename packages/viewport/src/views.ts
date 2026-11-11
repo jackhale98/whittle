@@ -92,3 +92,38 @@ export function gridCellSize(sceneRadius: number): number {
   const r = Math.max(sceneRadius, 1e-3);
   return 10 ** Math.floor(Math.log10(r / 2));
 }
+
+/** Pixels of the canvas covered by floating chrome (sheet, top bar): the model is framed in the rest. */
+export interface FrameInsets {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+}
+
+export const NO_FRAME_INSETS: FrameInsets = { top: 0, right: 0, bottom: 0, left: 0 };
+
+/**
+ * Camera distance and the target shift that centre a sphere of `radius` in the part of a
+ * `w` x `h` px canvas the insets leave free. `shiftRight` / `shiftUp` are in world units along the
+ * camera's right and up axes, to add to the sphere's centre to get the look-at target.
+ */
+export function fitInsetFrame(
+  radius: number,
+  vfovDeg: number,
+  w: number,
+  h: number,
+  insets: FrameInsets,
+  padding = 1.2,
+): { distance: number; shiftRight: number; shiftUp: number } {
+  const fw = Math.max(w - insets.left - insets.right, 1);
+  const fh = Math.max(h - insets.top - insets.bottom, 1);
+  const tanHalf = Math.tan((vfovDeg * Math.PI) / 360);
+  // The free area is the fraction fh/h of the full vertical field at any distance.
+  const effV = (2 * Math.atan(tanHalf * (fh / h)) * 180) / Math.PI;
+  const distance = fitDistance(radius, effV, fw / fh, padding);
+  const perPx = (2 * distance * tanHalf) / h;
+  const dx = (insets.left - insets.right) / 2;
+  const dy = (insets.top - insets.bottom) / 2;
+  return { distance, shiftRight: -dx * perPx, shiftUp: dy * perPx };
+}

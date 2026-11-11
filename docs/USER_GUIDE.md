@@ -587,6 +587,11 @@ phone, then pick X, Y, Z or **Face** (a flat face of the model) as the plane.
   angles with units, for example `15deg`, `-30` (degrees by default) or `0.2rad`. The offset takes
   lengths with units (`12mm`, `0.5in`). A face plane measures its offset from the face's centre; an
   axis plane tilts about the middle of the part.
+- **On a phone,** the bubble that offers **Section** closes when you choose it, and it does not
+  come back until you select something else. While the sheet shows the **Section** tab, the tab
+  holds the switch, **Flip** and the offset, so the floating chip hides. Collapse the sheet and the
+  chip returns above it. The view re-frames so the model sits in the space the sheet leaves free.
+  **Measure** works the same way: its tab holds the instruction and the results.
 - The section is a view setting. It is not saved in the document and it does not change the model.
 
 ## Parameters and expressions
@@ -694,6 +699,21 @@ What to do:
 
 If Wren can match the reference again by its name and location, it updates the reference quietly
 with your next edit, in the same undo step. You do not need to do anything.
+
+### References that changed meaning
+
+Some references still work but now mean something different. The feature rebuilds as usual and the
+history row shows a quiet note, not a warning:
+
+- **Uses a merged face or edge.** A boolean merged a face or edge you picked into a neighbour. Wren
+  follows the merge, and keeps the name you picked.
+- **Check this reference.** A reference now covers much more than when you picked it, for example a
+  fillet edge that grew from 8 mm to 48 mm.
+
+Select the feature to see the detail (for a grown reference, the old and the new size) with two
+buttons. **Accept** keeps the reference as it is and hides the note until it changes again (a
+different size, or a different merged face). It is remembered on this device, not in the document.
+**Re-pick** starts the re-pick flow for that field. Wren never changes the reference on its own.
 
 ## Where geometry came from
 

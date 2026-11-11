@@ -1,6 +1,6 @@
 import type { CompareViewport, Vec3, ViewportOptions } from '@wren-cad/contracts';
 import type { PivotSource } from './navigation';
-import type { Bounds } from './views';
+import type { Bounds, FrameInsets } from './views';
 
 export interface CameraState {
   position: [number, number, number];
@@ -53,6 +53,8 @@ export interface BodyMaterialState {
 export interface ViewportEngine extends CompareViewport {
   /** `fitAll` with an option to frame the compare overlay as well. */
   fitAll(animate?: boolean, options?: FitOptions): void;
+  /** Canvas px covered by floating chrome; fits frame the model in the rest. */
+  setFrameInsets(insets: Partial<FrameInsets>): void;
   getCompareStats(): CompareStats;
   /** Live material state of a body (tests: ghosting is restored exactly on `setCompare(null)`). */
   getBodyMaterialState(id: string): BodyMaterialState | null;

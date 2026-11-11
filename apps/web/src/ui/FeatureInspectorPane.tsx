@@ -18,6 +18,7 @@ import {
 } from '@wren-cad/ui';
 import { useEffect, useRef } from 'react';
 import { useObservable } from '../app/observable';
+import { refAcks } from '../app/ref-notes';
 import type { Workbench } from '../app/workbench';
 import { featureLineage } from '../model/lineage';
 import { describeRef } from './Inspector';
@@ -102,6 +103,12 @@ export default function FeatureInspectorPane({
         {...(status?.state === 'needsAttention' && status.unresolved?.length
           ? { onRepick: () => wb.repick(f.id) }
           : {})}
+        onAcceptRef={(note) => {
+          const stored = note.kind === 'merged' ? status?.merged : status?.grown;
+          const ref = stored?.find((r) => r.path === note.path && r.name === note.name);
+          if (ref) refAcks.accept(doc.meta.id ?? '', f.id, note.kind, ref);
+        }}
+        onRepickRef={(path) => wb.repick(f.id, path)}
         pickingPath={pickingPath}
         describeRef={(r) => describeRef(doc, r)}
         describeFeature={(id) =>

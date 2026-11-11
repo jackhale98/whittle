@@ -19,7 +19,7 @@ import {
   type ValueChipProps,
 } from '@wren-cad/ui';
 import { CircleMinus, Maximize, Redo2, Scissors, Undo2 } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { type BubbleActionId, bubbleActions, VIEW_ACTIONS } from '../app/gestures';
 import { useObservable } from '../app/observable';
 import { stepDone, trackParams } from '../app/tutorial';
@@ -56,7 +56,14 @@ function chromeObstacles(wb: Workbench): Rect[] {
   if (!stage) return [];
   const out: Rect[] = [];
   for (const el of document.querySelectorAll(
-    '[data-testid="top-bar"], [aria-label="Modeling tools"], [data-testid$="-sheet"]',
+    [
+      '[data-testid="top-bar"]',
+      '[aria-label="Modeling tools"]',
+      '[data-testid$="-sheet"]',
+      '[data-testid="view-cube"]',
+      '[data-testid="library-button"]',
+      '[data-testid="overlay-stack"] > *',
+    ].join(', '),
   )) {
     const r = el.getBoundingClientRect();
     if (r.width > 0 && r.height > 0)
@@ -89,6 +96,22 @@ export function useContextBubble(wb: Workbench): ContextBubbleProps | undefined 
     const t = setTimeout(() => setSettled(key), BUBBLE_DELAY_MS);
     return () => clearTimeout(t);
   }, [key]);
+  // Floating chrome appears after this render commits (the tool stack, the view cube): measure
+  // again then, and render once more only if an obstacle moved.
+  const seen = useRef('');
+  const tracking = useRef(false);
+  tracking.current = false;
+  const [, relayout] = useState(0);
+  useLayoutEffect(() => {
+    if (!tracking.current) return;
+    const now = JSON.stringify(chromeObstacles(wb));
+    if (now !== seen.current) relayout((n) => n + 1);
+  });
+  // A selection that is gone releases the dismissal, so selecting the same face again shows it.
+  const dismissed = ui.bubbleDismissed;
+  useEffect(() => {
+    if (dismissed !== null && dismissed !== key) wb.patchUi({ bubbleDismissed: null });
+  }, [dismissed, key, wb]);
   if (wb.tier === 'desktop') return undefined;
   const busy =
     ui.sketch !== null ||
@@ -101,6 +124,7 @@ export function useContextBubble(wb: Workbench): ContextBubbleProps | undefined 
     ui.candidates !== null ||
     ui.library;
   const view = ui.bubble?.view === true;
+  if (!view && dismissed !== null && dismissed === key) return undefined;
   if (busy || camera.moving || regen === null || (!view && ui.selection.length === 0))
     return undefined;
   if (!view && !ui.bubble && settled !== key) return undefined;
@@ -120,11 +144,14 @@ export function useContextBubble(wb: Workbench): ContextBubbleProps | undefined 
   const at = ui.bubble?.at ?? last?.hit.point ?? null;
   const anchor = ui.bubble?.screen ?? (at ? wb.project(at) : null);
   if (!anchor) return undefined;
+  const obstacles = chromeObstacles(wb);
+  seen.current = JSON.stringify(obstacles);
+  tracking.current = true;
   return {
     anchor,
     actions: ids.map((id) => actionFor(wb, id)),
     label: view ? 'View actions' : 'Selection actions',
-    obstacles: chromeObstacles(wb),
+    obstacles,
     onDismiss: () => wb.cancel(),
     ...(view ? {} : { onClear: () => wb.clearSelection() }),
   };

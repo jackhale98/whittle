@@ -97,6 +97,8 @@ export interface ShellProps {
    */
   sheetTab?: SheetTabId;
   onSheetTabChange?(tab: SheetTabId): void;
+  /** Phone and tablet: the sheet's visible height (px) whenever its snap changes, for framing the model above it. */
+  onSheetHeight?(px: number): void;
   /** Phone Parts tab. */
   parts?: PartsPanelProps;
   /** Phone Measure tab. */

@@ -157,7 +157,10 @@ export function PhoneShell(props: ShellProps) {
                 topGap={64}
                 handleLabel="Tools"
                 testId="tools-sheet"
-                onVisibleHeight={setSheetPx}
+                onVisibleHeight={(px) => {
+                  setSheetPx(px);
+                  props.onSheetHeight?.(px);
+                }}
                 header={
                   <fieldset className="m-0 grid min-w-0 shrink-0 grid-cols-6 gap-1 border-0 px-2 pt-0 pb-1">
                     <legend className="sr-only">Viewer tools</legend>

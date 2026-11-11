@@ -141,7 +141,13 @@ import type {
   ViewportEventMap,
 } from './types';
 import type { ViewCube } from './viewcube';
-import { type Bounds, boundsRadius, EMPTY_BOUNDS } from './views';
+import {
+  type Bounds,
+  boundsRadius,
+  EMPTY_BOUNDS,
+  type FrameInsets,
+  NO_FRAME_INSETS,
+} from './views';
 
 CameraControls.install({
   THREE: { Vector2, Vector3, Vector4, Quaternion, Matrix4, Spherical, Box3, Sphere, Raycaster },
@@ -199,6 +205,8 @@ export class ViewportImpl implements ViewportEngine {
   maxPixelRatio: number;
   sceneBounds: Bounds = EMPTY_BOUNDS;
   sceneRadius = boundsRadius(EMPTY_BOUNDS);
+  /** Canvas px covered by floating chrome: fits frame the model in the rest (`setFrameInsets`). */
+  frameInsets: FrameInsets = NO_FRAME_INSETS;
 
   raf = 0;
   dirty = true;
@@ -423,6 +431,16 @@ export class ViewportImpl implements ViewportEngine {
 
   fitAll(animate = true, options: FitOptions = {}): void {
     fitAll(this, animate, options);
+  }
+
+  /**
+   * The canvas area covered by floating chrome (bottom sheet, top bar). Later fits centre and
+   * size the model in the rest; the view cube moves clear of the top inset. Does not move the
+   * camera: call `fitAll` to re-frame.
+   */
+  setFrameInsets(insets: Partial<FrameInsets>): void {
+    this.frameInsets = { ...NO_FRAME_INSETS, ...insets };
+    this.cube?.place(this.canvas, this.frameInsets);
   }
 
   setView(view: StandardView, animate = true): void {

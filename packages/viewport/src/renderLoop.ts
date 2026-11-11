@@ -30,7 +30,7 @@ export function resize(vp: ViewportImpl): void {
   vp.renderer.setSize(w, h, false);
   vp.camera.aspect = w / h;
   vp.camera.updateProjectionMatrix();
-  vp.cube?.place(vp.canvas);
+  vp.cube?.place(vp.canvas, vp.frameInsets);
   vp.viewVersion++;
   requestRender(vp);
 }

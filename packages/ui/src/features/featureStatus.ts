@@ -56,5 +56,20 @@ export function describeStatus(
       sentence,
     };
   }
+  // M3.8: a quiet note, never a warning: the feature rebuilt, but a reference now means more.
+  if (s.state === 'ok' && s.grown?.length) {
+    return {
+      tone: 'muted',
+      message: 'Check this reference',
+      hint: 'A reference now covers much more than when you picked it. Select the feature to accept or re-pick it.',
+    };
+  }
+  if (s.state === 'ok' && s.merged?.length) {
+    return {
+      tone: 'muted',
+      message: 'Uses a merged face or edge',
+      hint: 'A boolean merged a face or edge you picked into a neighbour. Select the feature to accept or re-pick it.',
+    };
+  }
   return null;
 }

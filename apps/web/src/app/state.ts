@@ -234,6 +234,8 @@ export interface UiState {
   sheetSnap: SheetSnap;
   sheetTab: SheetTabId | null;
   bubble: BubbleRequest | null;
+  /** Selection key whose context bubble was closed by choosing an action: it stays closed until the selection changes. */
+  bubbleDismissed: string | null;
   /** M3.5: the radial menu, the box-select rubber band, the settings panel. */
   radial: RadialRequest | null;
   box: BoxSelect | null;
@@ -274,6 +276,7 @@ export const initialUi: UiState = {
   sheetSnap: 'peek',
   sheetTab: null,
   bubble: null,
+  bubbleDismissed: null,
   radial: null,
   box: null,
   settings: null,

@@ -172,7 +172,14 @@ export function cutSelection(wb: Workbench): Promise<void> {
 
 export function bubbleAction(wb: Workbench, id: BubbleActionId): void {
   const hits = wb.ui.get().selection.map((s) => s.hit);
-  wb.patchUi({ bubble: null });
+  // The bubble closes once an action is chosen; it may return on the next selection, not on its own.
+  wb.patchUi({
+    bubble: null,
+    bubbleDismissed: wb.ui
+      .get()
+      .selection.map((s) => s.key)
+      .join(','),
+  });
   switch (id) {
     case 'sketch':
       wb.sketchTool();

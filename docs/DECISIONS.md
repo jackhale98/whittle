@@ -2362,3 +2362,21 @@ Owner: "it would be good to allow users to customize" the quick access wheel (PL
 - **Flicks.** `flickWindow` 0 to 400 ms (default 250; 0 = off) and "Draw after a delay" (default off) map to `RadialMenu`'s `flickWindow` and `drawDelay` (= the window).
 - **Editor.** A settings section (lazy chunk, no dialog): HTML drag and drop for pointers, "choose a slot, then a command" for keyboard and touch, a live region for the status. The ring is drawn as an ellipse so seven 44 px pills fit a 390 px panel.
 - **Cost.** Everything new lives in lazy chunks (the layer, the settings panel); the initial route gains only a palette entry and a type widening.
+
+## ADR-086 — Phone overlays get one home and a framed view; references that changed meaning get a quiet note (2026-11-11)
+
+Owner screenshot: after "section by face" on a phone, the selection bubble, a floating section chip and the sheet's Section tab all stayed up, the view cube sat on the kernel pill and the model was mostly hidden. PLAN M3.8 items "Phone overlays stay out of the way" and "Show references that changed meaning".
+
+**Overlays**
+- **Bubble.** `ui.bubbleDismissed` holds the selection key whose bubble an action closed. The bubble shows again only for a different selection (the key is released when the selection changes, so reselecting the same face works). Its obstacle list now includes the view cube, the Library button and the bottom stack; it re-measures after commit, and a squeezed placement that still overlaps something hides it (it is the lowest priority).
+- **One bottom stack.** Sketch toolbar or prompt, section chip and toast share one `overlay-stack` column above the sheet (`flex-col-reverse`), replacing three hand-tuned bottom offsets. They cannot intersect by construction.
+- **One home.** Phone, sheet open on Section: the section chip hides; on Measure: the prompt chip hides. The tab already has the switch, Flip, the offset and the instruction. Collapsed, the chip shows.
+- **Framing.** `ViewportEngine.setFrameInsets({top,right,bottom,left})` (packages/viewport) sizes and centres fits in the free canvas area (`fitInsetFrame`: the sphere fits the free width and height, the target shifts along the camera's right/up axes) and moves the view cube below the top inset. It does not move the camera. `apps/web/src/app/framing.ts` measures the insets from the top bar, the sheet height (`ShellProps.onSheetHeight`) and the bottom stack, then re-fits when a section or measure starts and when the sheet height changes. Phone only; tablet and desktop keep their fits. Because the contract `Viewport` does not declare it yet, the app reaches it through a local type; **proposed contract change:** add `setFrameInsets(insets: {top:number;right:number;bottom:number;left:number}): void` to `TouchViewport`.
+- **Unit never truncated.** The section offset field is 12 rem wide (`w-48`); the slider gives way.
+- Cost: collapsing or opening the sheet now re-fits the camera on a phone (keeps the view direction, resets zoom and pan).
+
+**Reference notes**
+- The UI reads `FeatureStatus.merged` and `.grown` (contract 2919e00). Tree row: a muted line "Uses a merged face or edge" / "Check this reference" (state `ok` only; an attention state wins). Inspector: a `RefNotes` list with the old and new size for grown refs, **Accept** and **Re-pick**.
+- **Where Accept lives.** `localStorage` on this device, per document id, keyed by feature, kind, path and name, bound to the value it acknowledged (the surviving name, or the size rounded to 0.1). It clears again when that value changes. It is not in the document, so it does not sync and is not undoable. **Proposed contract change** for a synced version: `Feature.acknowledged?: { path: string; name: string; value: string }[]`, written by an undoable command; the app's `refAcks.apply` would read it instead of storage. Not done here because contracts are lead-owned.
+- Re-pick reuses `wb.repick(featureId, path)`; nothing is re-picked silently and the regen is never blocked.
+- `grown` is not produced yet (kernel-client owns it). E2E stubs the status through the `stubRefNotes` test hook, an overlay applied wherever statuses are read.

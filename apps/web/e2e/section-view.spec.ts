@@ -356,14 +356,19 @@ test.describe('phone', () => {
       .tap();
     await panel(page).getByRole('switch', { name: 'Section view' }).tap();
     await expect.poll(async () => (await probe(page)).sectionActive).toBe(true);
-    await chipIsClear(page);
-    for (const name of ['Flip', 'Edit', 'Exit section'])
-      await expectTouchTarget(chip(page).getByRole('button', { name }), name);
+    // M3.8: while the sheet shows the Section tab, the tab is the one home of the controls.
+    await expect(chip(page)).toHaveCount(0);
 
     await typeTilt(page, 'v', '15deg');
     await expect.poll(async () => (await a.ui()).section.tiltV).toBeCloseTo(15 * D, 9);
     await expectPlane(page, 0, 15 * D);
+    // Collapsed, the chip is back above the sheet.
+    await page.getByTestId('tools-sheet-grip').getByRole('button').first().tap();
+    await expect(page.getByTestId('tools-sheet')).toHaveAttribute('data-snap', 'peek');
     await chipIsClear(page);
+    for (const name of ['Flip', 'Edit', 'Exit section'])
+      await expectTouchTarget(chip(page).getByRole('button', { name }), name);
+    await cameraStill(page);
     // The cut face is filled with the cap colour over a real area (not just "a cap is drawn").
     // CI (software GL, phone emulation) renders ~1,990 cap pixels where local runs render more; an
     // unfilled cut gives ~0, so 1,000 still proves a filled face without depending on the renderer.
@@ -373,17 +378,7 @@ test.describe('phone', () => {
     // plane, the offset arrow slides it.
     await a.idle();
     const t = await touch(page);
-    // The part sits behind the chip: a two-finger pan lifts it into the clear part of the view.
-    await t.down([
-      { x: 40, y: 330 },
-      { x: 90, y: 330 },
-    ]);
-    for (let i = 1; i <= 10; i++)
-      await t.move([
-        { x: 40, y: 330 - i * 18 },
-        { x: 90, y: 330 - i * 18 },
-      ]);
-    await t.up();
+    // M3.8: the model is framed above the chip, so no pan is needed to reach the manipulator.
     await cameraStill(page);
     await a.idle();
     const n0 = (await probe(page)).sectionNormal;

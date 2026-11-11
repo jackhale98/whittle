@@ -21,6 +21,7 @@ import { FolderOpen, Library, Plus, Save } from 'lucide-react';
 import { lazy, Suspense, useEffect, useState, useSyncExternalStore } from 'react';
 import { overrideIn } from '../app/config-model';
 import { useObservable } from '../app/observable';
+import { refAcks } from '../app/ref-notes';
 import type { Workbench } from '../app/workbench';
 import type { FeatureTool, ModelTool } from '../features/factories';
 import { selectionLineage } from '../model/lineage';
@@ -180,6 +181,7 @@ export function Inspector({
   const ui = useObservable(wb.ui);
   const doc = useDoc(wb);
   const regen = useObservable(wb.regen);
+  useObservable(refAcks.version); // accepted reference notes drop out of the status
   const part = doc.parts[0];
   const view = useConfigurationView(wb);
   const editingType = part?.features.find((x) => x.id === ui.featureId)?.type;
@@ -258,7 +260,9 @@ export function Inspector({
     const f =
       wb.config.effectiveFeature(ui.featureId) ?? part.features.find((x) => x.id === ui.featureId);
     if (f) {
-      const status = regen?.result.features.find((s) => s.featureId === f.id);
+      const status = refAcks
+        .apply(doc.meta.id ?? '', regen?.result.features)
+        ?.find((s) => s.featureId === f.id);
       return (
         <Suspense fallback={null}>
           <FeatureInspectorPane

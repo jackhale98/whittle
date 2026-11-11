@@ -94,6 +94,8 @@ test('phone: a cached document is a viewer until the first measurement boots the
   // A tapped face offers the viewer actions.
   await page.getByTestId('tools-sheet-grip').getByRole('button').first().tap();
   await expect(page.getByTestId('tools-sheet')).toHaveAttribute('data-snap', 'peek');
+  // Collapsing the sheet re-frames the model in the freed area (M3.8): wait for it to settle.
+  await cameraStill(page);
   const face = await faceAt(page, 120, 600);
   const t = await touch(page);
   await t.tap([face]);
@@ -152,6 +154,8 @@ test('phone touch targets: welcome, Library, prompt Esc, Add description are 44 
     'Add description',
   );
   await tab(page, 'Measure').tap();
+  // M3.8: the Measure tab is open, so it holds the instruction; the chip returns when collapsed.
+  await page.getByTestId('tools-sheet-grip').getByRole('button').first().tap();
   const chip = page.getByTestId('prompt-chip');
   await expectTouchTarget(chip.getByRole('button', { name: /cancel selection/i }), 'Esc');
 });
