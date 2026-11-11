@@ -38,6 +38,13 @@ const SUBJECT_ICONS: Record<Exclude<DiffSubject['kind'], 'feature'>, Icon> = {
   sketchConstraint: Ruler,
   drawing: FileText,
   assembly: Boxes,
+  annotation: Ruler,
+  sheet: FileText,
+  view: FileText,
+  placement: Ruler,
+  drawingTable: FileText,
+  sheetNote: FileText,
+  markup: PenLine,
 };
 
 const featureTypeByLabel = new Map(

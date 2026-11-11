@@ -329,6 +329,8 @@ export function compileCommand(doc: WrenDoc, cmd: Command): Compiled {
     case 'moveFolder':
       return compileMoveFolder(doc, cmd);
   }
+  // M4 annotation and drawing commands (ADR-090): implemented by the document workstream.
+  return err(`The ‘${cmd.kind}’ command is not available yet`);
 }
 
 /**

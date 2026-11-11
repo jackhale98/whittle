@@ -9,6 +9,8 @@
  *  - No derived geometry lives here; meshes/BREPs are caches (PLAN §8A.1).
  */
 
+import type { Annotation, AnnotationOverride } from './annotation';
+import type { Drawing, DrawingDefaults } from './drawing';
 import type { SketchConstraint, SketchEntity } from './sketch';
 
 /** ULID (26-char Crockford base32). */
@@ -23,7 +25,7 @@ export type Vec2 = [number, number];
 export type LengthUnit = 'mm' | 'cm' | 'm' | 'in' | 'ft';
 export type AngleUnit = 'deg' | 'rad';
 
-export const SCHEMA_VERSION = 3 as const;
+export const SCHEMA_VERSION = 4 as const;
 
 export interface WrenDoc {
   schemaVersion: number;
@@ -33,8 +35,10 @@ export interface WrenDoc {
   parts: Part[];
   /** M6. */
   assemblies: Assembly[];
-  /** M4. */
+  /** M4 (drawing.ts). */
   drawings: Drawing[];
+  /** M4: project drawing defaults; absent until the first drawing's choice (`wren.project.json`). */
+  drawingDefaults?: DrawingDefaults;
   meta: DocMeta;
 }
 
@@ -86,6 +90,13 @@ export interface Part {
   configurations?: Configuration[];
   /** The active configuration: every regen of the live model is of this one. Absent = Default. */
   activeConfigurationId?: Id;
+  /**
+   * M4 (ADR-081, ADR-090): the part's annotations (annotation.ts): dimensions, GD&T, datums,
+   * notes, surface finish, hole callouts. They measure the finished part, so no feature owns them.
+   * Absent = none. The array's order carries no meaning: kept sorted by id (store, merge and
+   * loader), so concurrent adds never conflict on order.
+   */
+  annotations?: Annotation[];
 }
 
 /** Part properties that drive exports, title blocks (M4) and the BOM (M6). */
@@ -117,6 +128,8 @@ export interface Configuration {
    * name>" (owner D4); collisions are reported, never silently overwritten.
    */
   properties?: PartProperties;
+  /** M4: per-annotation overrides keyed by annotation id (never by list position, ADR-090). */
+  annotations?: Record<Id, AnnotationOverride>;
 }
 
 export interface FeatureOverride {
@@ -171,12 +184,6 @@ export interface Assembly {
   name: string;
 }
 
-/** Placeholder until M4; kept so documents are forward compatible. */
-export interface Drawing {
-  id: Id;
-  name: string;
-}
-
 // ---------------------------------------------------------------------------------------------
 // Features
 // ---------------------------------------------------------------------------------------------
@@ -212,7 +219,6 @@ export interface FeatureBase {
   type: string;
   name: string;
   suppressed: boolean;
-  annotations?: PmiAnnotation[];
 }
 
 /** Body operation shared by solid-producing features. */
@@ -557,28 +563,4 @@ export interface EntityRef {
   name: string;
   kind: EntityKind;
   fingerprint?: Fingerprint;
-}
-
-// ---------------------------------------------------------------------------------------------
-// PMI (PLAN §12 M5)
-// ---------------------------------------------------------------------------------------------
-
-/** Model-based definition: becomes STEP AP242 semantic PMI and can be imported into drawings. */
-export interface PmiAnnotation {
-  id: Id;
-  kind: 'linear' | 'diameter' | 'radius' | 'angle' | 'datum' | 'geomTolerance';
-  refs: EntityRef[];
-  /** Usually bound to a feature/sketch dimension. */
-  value?: Expr;
-  tolerance?: {
-    kind: 'symmetric' | 'bilateral' | 'limits' | 'fit';
-    upper?: Expr;
-    lower?: Expr;
-    fit?: string;
-  };
-  gdt?: { characteristic: string; zone: Expr; modifiers?: string[]; datums?: string[] };
-  placement?: {
-    plane: [number, number, number, number, number, number];
-    textPos: Vec3;
-  };
 }

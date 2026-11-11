@@ -60,17 +60,12 @@ const importer = (id: string): Feature => ({
 const ids = (fs: readonly Feature[]) => fs.map((f) => f.id);
 
 describe('referencedNames', () => {
-  it('finds profile, axis, up-to target, scopes and annotations', () => {
+  it('finds profile, axis, up-to target and scopes', () => {
     const f = extrude('E', ['A'], {
       end: { kind: 'upTo', target: { name: 'SB:region(e1)', kind: 'region' } },
       scope: { kind: 'bodies', bodies: [{ name: 'BX', kind: 'body' }] },
-      annotations: [
-        { id: 'P', kind: 'linear', refs: [{ name: 'SC:e(e2)', kind: 'edge' }] },
-      ] as never,
     });
-    expect(referencedNames(f).sort()).toEqual(
-      ['BX', 'SA:region(e1)', 'SB:region(e1)', 'SC:e(e2)'].sort(),
-    );
+    expect(referencedNames(f).sort()).toEqual(['BX', 'SA:region(e1)', 'SB:region(e1)'].sort());
   });
   it('ignores display names and kinds that are not entity references', () => {
     expect(referencedNames({ name: 'Sketch 1', type: 'sketch' })).toEqual([]);

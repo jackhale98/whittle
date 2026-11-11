@@ -148,7 +148,7 @@ export function baseDoc(): WrenDoc {
       },
     ],
     assemblies: [],
-    drawings: [{ id: id(40), name: 'Sheet 1' }],
+    drawings: [],
     meta: {
       id: id(50),
       name: 'Bracket',

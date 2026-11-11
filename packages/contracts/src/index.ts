@@ -1,4 +1,6 @@
+export * from './annotation';
 export * from './document';
+export * from './drawing';
 export * from './expressions';
 export * from './io';
 export * from './kernel';

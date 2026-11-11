@@ -205,6 +205,14 @@ export function overrideIn(
       const v = config.properties?.[target.key];
       return v === undefined ? { has: false } : { has: true, value: v };
     }
+    case 'annotationField': {
+      const v = config.annotations?.[target.annotationId]?.fields?.[target.path];
+      return v === undefined ? { has: false } : { has: true, value: v };
+    }
+    case 'annotationSuppressed': {
+      const v = config.annotations?.[target.annotationId]?.suppressed;
+      return v === undefined ? { has: false } : { has: true, value: v };
+    }
   }
 }
 

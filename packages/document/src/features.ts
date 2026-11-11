@@ -23,14 +23,7 @@
  *                          /annotations/N/gdt/zone             length
  */
 
-import type {
-  EntityRef,
-  Feature,
-  Id,
-  NamedDimension,
-  PmiAnnotation,
-  SketchConstraint,
-} from '@wren-cad/contracts';
+import type { EntityRef, Feature, Id, NamedDimension, SketchConstraint } from '@wren-cad/contracts';
 
 export const FEATURE_TYPES = [
   'primitive',
@@ -78,31 +71,14 @@ export interface ExprField {
   driven?: boolean;
 }
 
-function annotationFields(annotations: PmiAnnotation[] | undefined): ExprField[] {
-  const out: ExprField[] = [];
-  (annotations ?? []).forEach((a, i) => {
-    const dim: NamedDimension = a.kind === 'angle' ? 'angle' : 'length';
-    const base = `/annotations/${i}`;
-    if (a.value !== undefined) out.push({ pointer: `${base}/value`, expected: dim });
-    if (a.tolerance?.upper !== undefined) {
-      out.push({ pointer: `${base}/tolerance/upper`, expected: dim });
-    }
-    if (a.tolerance?.lower !== undefined) {
-      out.push({ pointer: `${base}/tolerance/lower`, expected: dim });
-    }
-    if (a.gdt) out.push({ pointer: `${base}/gdt/zone`, expected: 'length' });
-  });
-  return out;
-}
-
 function constraintExpected(c: SketchConstraint): NamedDimension {
   return c.kind === 'angle' ? 'angle' : 'length';
 }
 
 /** Every `Expr` field of a feature with the dimension it must have. */
 export function exprFields(feature: Feature): ExprField[] {
-  const own = ownExprFields(feature);
-  return [...own, ...annotationFields(feature.annotations)];
+  // Annotations are part-level from v4 (ADR-090); their fields are `annotationExprFields`.
+  return ownExprFields(feature);
 }
 
 function ownExprFields(f: Feature): ExprField[] {
@@ -335,7 +311,6 @@ export function entityRefs(f: Feature): EntityRef[] {
       return _never;
     }
   }
-  for (const a of f.annotations ?? []) refs.push(...a.refs);
   return refs;
 }
 

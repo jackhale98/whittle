@@ -528,6 +528,10 @@ export class ConfigController {
         if (merged[t.key] === '') delete merged[t.key];
         return [{ kind: 'setPartProperties', partId: part.id, properties: merged }];
       }
+      case 'annotationField':
+      case 'annotationSuppressed':
+        // M4: annotation rows join the table with the drawing workstream (`updateAnnotation`).
+        return [];
     }
   }
 
