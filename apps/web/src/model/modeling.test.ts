@@ -402,4 +402,59 @@ describe('regen loop', () => {
     expect(inlineCalls[0]?.massProperties).toBe(true);
     l2.dispose();
   });
+
+  it('ADR-084: a mass fetch that throws still settles the result (pending must end)', async () => {
+    const doc = newDoc({ firstPart: 'P' });
+    const calls: { request: RegenRequest; resolve(r: RegenResult): void }[] = [];
+    let densityThrows = false;
+    const port: ModelingPort = {
+      regenerate: (request) => new Promise((resolve) => calls.push({ request, resolve })),
+      refFor: async () => null,
+      exportPart: async () => ({ ok: true, bytes: new Uint8Array() }),
+      importFile: async () => ({ ok: true, bodies: [] }),
+      closePart: async () => {},
+      massProperties: () => Promise.reject(new Error('worker gone')),
+    };
+    const massed: RegenOutcome[] = [];
+    const loop = createRegenLoop({
+      port,
+      getDoc: () => doc,
+      onResult: () => {},
+      onMass: (o) => massed.push(o),
+      density: () => {
+        if (densityThrows) throw new Error('bad density');
+        return undefined;
+      },
+      fine: false,
+    });
+    const answer = (i: number, shape: number) =>
+      calls[i]?.resolve({
+        partId: calls[i]?.request.partId ?? '',
+        revision: i + 1,
+        features: [],
+        bodies: [
+          {
+            id: 'B',
+            shape,
+            mesh: { faceNames: [] } as unknown as RegenResult['bodies'][number]['mesh'],
+          },
+        ],
+        sketches: [],
+        totalMs: 1,
+        cache: { hits: 0, misses: 0 },
+      });
+    loop.request();
+    answer(0, 7);
+    await loop.whenIdle();
+    expect(massed).toHaveLength(1);
+    expect(massed[0]?.result.revision).toBe(1);
+    expect(massed[0]?.result.bodies[0]?.massProperties).toBeUndefined();
+
+    densityThrows = true;
+    loop.request();
+    answer(1, 8);
+    await loop.whenIdle();
+    expect(massed).toHaveLength(2);
+    expect(massed[1]?.result.revision).toBe(2);
+  });
 });

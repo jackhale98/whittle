@@ -77,6 +77,46 @@ describe('demo bracket', () => {
   );
 
   it.skipIf(!built)(
+    'M3.8 grown: widening or deepening the bracket is a parameter edit, never "grown"',
+    async () => {
+      const api = createModelingApi({
+        variants: {
+          single: {
+            load: () =>
+              import(pathToFileURL(`${dist}init.single.js`).href) as Promise<KernelInitModule>,
+          },
+          threaded: {
+            load: () =>
+              import(pathToFileURL(`${dist}init.multi.js`).href) as Promise<KernelInitModule>,
+          },
+        },
+      });
+      expect((await api.init({ variant: 'single' })).ok).toBe(true);
+      const doc = demoBracket();
+      const partId = doc.parts[0]?.id ?? '';
+      const edited = (name: string, expr: string) => {
+        const next = structuredClone(doc);
+        const p = next.params.find((x) => x.name === name);
+        if (!p) throw new Error(`no param ${name}`);
+        p.expr = expr;
+        return next;
+      };
+      for (const d of [doc, edited('width', '130 mm'), edited('depth', '90 mm')]) {
+        const r = await api.regenerate({
+          doc: d,
+          partId,
+          quality: 'coarse',
+          massProperties: false,
+        });
+        expect(r.features.map((f) => f.state)).toEqual(Array(9).fill('ok'));
+        expect(r.features.filter((f) => f.grown)).toEqual([]);
+      }
+      await api.closePart(partId);
+    },
+    60_000,
+  );
+
+  it.skipIf(!built)(
     'has one back face (the upright merges into the plate) and shells 1 and 2 mm (ADR-078)',
     async () => {
       const api = createModelingApi({

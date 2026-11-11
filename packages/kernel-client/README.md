@@ -449,12 +449,13 @@ between tangent corner fillets, and the precise "too thick" error), `merged-unit
 entries, the walk's merge table, chains).
 
 M3.8 `FeatureStatus.grown` (contract): a ref that resolves by its exact name or a merge alias to a
-body face or edge whose area / length is more than 1.5× its stored fingerprint's and more than
-1 mm² / 1 mm larger is reported as `{ path, name, was, now }` (report only; vertices, sketch
+body face or edge that is a merge survivor in this walk (it absorbed other names) and whose area /
+length is more than 1.5× its stored fingerprint's and more than 1 mm² / 1 mm larger is reported as `{ path, name, was, now }` (report only; vertices, sketch
 regions and planes never). Only refs with a stored fingerprint are measured, from the per-handle
 fingerprints. `unify.golden.test.ts`: the bracket fillet on `edge(plateBack|plateLeft)` picked
 before the upright (8 mm) reports 8 → 48 mm after the merge; the same edge picked on the merged
-model reports nothing.
+model reports nothing; widening (80 → 130 mm) or deepening (50 → 90 mm) the demo bracket reports
+nothing (`apps/web/src/samples/bracket.test.ts`).
 
 M3.5: `cause.test.ts` (real kernel, one test per cause rule: changed via a chain and by the
 producer, carried over and cleared, added, suppressed, deleted, reordered, failed/blocked, an

@@ -142,6 +142,8 @@ export async function exportAll(wb: Workbench, request: ExportRequest): Promise<
               doc: resolved.doc,
               partId: part.id,
               quality: 'fine',
+              // Exports carry no mass properties: never integrate a body for them (ADR-084).
+              massProperties: false,
               ...(Object.keys(attachments).length ? { attachments } : {}),
             }),
           );
