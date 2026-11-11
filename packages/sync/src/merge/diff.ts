@@ -9,13 +9,16 @@
  * folder Mounting → Mounts", "Folder Mounting: added Chamfer 4", "Moved folder Mounting after
  * Plane 5"; a sketch's visibility reads "Sketch 1: visibility automatic → shown". Part
  * configurations (M3.7) read "Added configuration Long", "Long: width 40 mm → 45 mm", "Active
- * configuration: Default → Long" (`configuration-diff.ts`).
+ * configuration: Default → Long" (`configuration-diff.ts`). Part annotations and drawings (M4)
+ * read "Added Dimension Ø6", "Placed Dimension Ø6 in View Front", "View Front: moved to Sheet 2"
+ * (`drawing-diff.ts`).
  */
 
 import type {
   DiffChange,
   DiffSubject,
   DocDiffer,
+  Drawing,
   Feature,
   FeatureFolder,
   FieldChange,
@@ -30,6 +33,7 @@ import type {
 import { isDimension } from '@wren-cad/contracts';
 import { Namer } from '@wren-cad/sketch';
 import { configurationChanges } from './configuration-diff';
+import { annotationChanges, drawingChanges } from './drawing-diff';
 import { visibilityOf } from './folders';
 import { featureDims, formatValue, listText, plural, type Units } from './format';
 import { constraintText, fieldLabel, subjectAt, visibilityText } from './labels';
@@ -63,6 +67,27 @@ export function movedIds(before: readonly string[], after: readonly string[]): S
     keep.add(seq[i] as string);
   }
   return new Set(seq.filter((id) => !keep.has(id)));
+}
+
+/** The leaf changes between two versions of a subject (`rel` paths inside it). */
+export function collectFields(
+  abs: Segs,
+  rel: Segs,
+  before: unknown,
+  after: unknown,
+  skip: ReadonlySet<string>,
+  out: FieldChange[],
+): void {
+  fields(abs, rel, before, after, skip, out);
+}
+
+/** "radius 2 mm → 3 mm", "depth set to 5 mm", "nominal removed". */
+export function fieldChangeText(
+  fc: FieldChange,
+  units: Units,
+  dims?: Map<string, NamedDimension>,
+): string {
+  return fieldText(fc, units, dims);
 }
 
 function fields(
@@ -120,7 +145,7 @@ class DiffRun {
     this.doc();
     this.params();
     this.parts();
-    this.simple('drawings', 'drawing');
+    this.drawings();
     this.simple('assemblies', 'assembly');
     return this.out;
   }
@@ -308,6 +333,7 @@ class DiffRun {
       });
     }
     this.folders(old, part, folderMoves);
+    for (const c of annotationChanges(this.before, this.after, old, part)) this.push(c);
     const [bb, ab] = [barIdOf(old), barIdOf(part)];
     if (bb !== ab) {
       const to = ab === null ? undefined : (am.get(ab) as Feature | undefined);
@@ -615,6 +641,21 @@ class DiffRun {
       subject: this.subject(segs),
       summary: `${f.name}: ${parts.join('; ')}`,
     });
+  }
+
+  /** Drawings: added, removed, renamed, moved, and what changed inside each (`drawing-diff.ts`). */
+  private drawings(): void {
+    const { before, after } = this;
+    const bm = byId(before.drawings);
+    const moved = this.moves(['drawings'], before.drawings, after.drawings, (x) => x.name);
+    this.simple('drawings', 'drawing');
+    for (const d of after.drawings) {
+      const old = bm.get(d.id) as Drawing | undefined;
+      if (!old) continue;
+      for (const c of drawingChanges(before, after, old, d)) this.push(c);
+      const m = moved.get(d.id);
+      if (m) this.push(m);
+    }
   }
 
   private simple(key: 'drawings' | 'assemblies', noun: string): void {

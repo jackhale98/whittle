@@ -7,13 +7,16 @@
  *  - `(configuration, param paramId)`: `configurations/<cid>/params/<paramId>`;
  *  - `(configuration, feature featureId, suppressed)`: `.../features/<fid>/suppressed`;
  *  - `(configuration, feature featureId, field pointer)`: `.../features/<fid>/fields/<pointer>`;
+ *  - M4: `(configuration, annotation annotationId, suppressed | field pointer)`:
+ *    `.../annotations/<aid>/suppressed`, `.../annotations/<aid>/fields/<pointer>`;
  *  - `(configuration, material | color | property key)`: `.../material`, `.../color`,
  *    `.../properties/<key>`.
  *
  * The merge (`merge.ts`) walks configurations like any other id-keyed collection, with three
  * configuration rules from here:
  *  - **Records where absent = empty** (`isConfigRecordPath`): a configuration's `params`,
- *    `features`, one feature's override, its `fields` and `properties`, and `Part.properties`.
+ *    `features`, `annotations`, one feature's or annotation's override, its `fields` and
+ *    `properties`, and `Part.properties`.
  *    Two sides adding different cells to a record nobody had merge cell by cell, and a record
  *    left empty by the merge is dropped (sparse, as the commands keep it).
  *  - **Cells are leaves** (`isConfigCellPath`): a material override is one value. Both sides
@@ -23,20 +26,32 @@
  *    choices are `bothModified`, never `modifiedDeleted`.
  *
  * After the walk, `reconcileConfigurations` makes the merged document coherent and says what it
- * did in the merge report: overrides of a feature or parameter the merge deleted are dropped
- * (mirroring the document commands), an active configuration that no longer exists falls back to
- * Default, and configurations that ended up sharing a name are flagged (both ids are kept).
+ * did in the merge report: overrides of a feature, parameter or annotation the merge deleted are
+ * dropped (mirroring the document commands), an active configuration that no longer exists falls
+ * back to Default, and configurations that ended up sharing a name are flagged (both ids are
+ * kept).
  */
 
-import type { Configuration, DiffSubject, Id, Material, Part, WrenDoc } from '@wren-cad/contracts';
-import { featureDims, formatValue, type Units } from './format';
-import { equal, fromPointer, isObj, type Obj, type Segs } from './tree';
+import type {
+  AnnotationOverride,
+  Configuration,
+  DiffSubject,
+  Id,
+  Material,
+  Part,
+  WrenDoc,
+} from '@wren-cad/contracts';
+import { annotationLabel } from './drawing-labels';
+import { annotationDims, featureDims, formatValue, type Units } from './format';
+import { atPointer, equal, isObj, type Obj, type Segs } from './tree';
 
 // ---------------------------------------------------------------------------------------------
 // Paths
 // ---------------------------------------------------------------------------------------------
 
-const RECORD_KEYS = new Set(['params', 'features', 'properties']);
+const RECORD_KEYS = new Set(['params', 'features', 'annotations', 'properties']);
+/** Override groups whose items have `suppressed` and `fields` cells. */
+const ITEM_KEYS = new Set(['features', 'annotations']);
 
 /** Whether `segs` is inside a configuration: `['parts', pid, 'configurations', cid, ...]`. */
 export function isConfigurationPath(segs: Segs): boolean {
@@ -68,7 +83,7 @@ export function isConfigRecordPath(segs: Segs): boolean {
   if (!isConfigurationPath(segs)) return false;
   const key = segs[4];
   if (segs.length === 5) return RECORD_KEYS.has(key as string);
-  if (key !== 'features') return false;
+  if (!ITEM_KEYS.has(key as string)) return false;
   return segs.length === 6 || (segs.length === 7 && segs[6] === 'fields');
 }
 
@@ -83,9 +98,9 @@ export function isConfigCellPath(segs: Segs): boolean {
     case 6:
       return key === 'params' || key === 'properties';
     case 7:
-      return key === 'features' && segs[6] === 'suppressed';
+      return ITEM_KEYS.has(key as string) && segs[6] === 'suppressed';
     case 8:
-      return key === 'features' && segs[6] === 'fields';
+      return ITEM_KEYS.has(key as string) && segs[6] === 'fields';
     default:
       return false;
   }
@@ -106,13 +121,15 @@ export function cellsOf(config: Configuration | undefined): Cell[] {
   const out: Cell[] = [];
   if (config === undefined) return out;
   for (const [pid, v] of sorted(config.params)) out.push({ rel: ['params', pid], value: v });
-  for (const [fid, o] of sorted(config.features)) {
-    if (!isObj(o)) continue;
-    if (o.suppressed !== undefined) {
-      out.push({ rel: ['features', fid, 'suppressed'], value: o.suppressed });
-    }
-    for (const [ptr, v] of sorted(o.fields as Obj | undefined)) {
-      out.push({ rel: ['features', fid, 'fields', ptr], value: v });
+  for (const g of ['features', 'annotations'] as const) {
+    for (const [xid, o] of sorted(config[g])) {
+      if (!isObj(o)) continue;
+      if (o.suppressed !== undefined) {
+        out.push({ rel: [g, xid, 'suppressed'], value: o.suppressed });
+      }
+      for (const [ptr, v] of sorted(o.fields as Obj | undefined)) {
+        out.push({ rel: [g, xid, 'fields', ptr], value: v });
+      }
     }
   }
   if (config.material !== undefined) out.push({ rel: ['material'], value: config.material });
@@ -130,22 +147,7 @@ function sorted(record: object | undefined): [string, unknown][] {
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
 }
 
-/** The value at a JSON pointer inside a feature, or `undefined`. */
-export function atPointer(root: unknown, pointer: string): unknown {
-  let segs: string[];
-  try {
-    segs = fromPointer(pointer);
-  } catch {
-    return undefined;
-  }
-  let node = root;
-  for (const s of segs) {
-    if (isObj(node)) node = node[s];
-    else if (Array.isArray(node) && /^\d+$/.test(s)) node = node[Number(s)];
-    else return undefined;
-  }
-  return node;
-}
+export { atPointer };
 
 /**
  * The Default's value of the cell at `rel` (inside a configuration of `part`), i.e. what the
@@ -169,6 +171,13 @@ export function cellDefault(
       if (!f) return none;
       if (b === 'suppressed') return { known: true, value: f.suppressed === true };
       const v = c === undefined ? undefined : atPointer(f, c);
+      return v === undefined ? none : { known: true, value: v };
+    }
+    case 'annotations': {
+      const x = part.annotations?.find((y) => y.id === a);
+      if (!x) return none;
+      if (b === 'suppressed') return { known: true, value: x.suppressed === true };
+      const v = c === undefined ? undefined : atPointer(x, c);
       return v === undefined ? none : { known: true, value: v };
     }
     case 'material':
@@ -200,6 +209,11 @@ export function cellText(
   if (key === 'features' && c !== undefined) {
     const f = part?.features.find((x) => x.id === a);
     const dim = f ? featureDims(f).get(c) : undefined;
+    return formatValue(value, units ?? doc?.units, dim) ?? 'changed';
+  }
+  if (key === 'annotations' && c !== undefined) {
+    const x = part?.annotations?.find((y) => y.id === a);
+    const dim = x ? annotationDims(x).get(c) : undefined;
     return formatValue(value, units ?? doc?.units, dim) ?? 'changed';
   }
   return formatValue(value, units ?? doc?.units) ?? 'changed';
@@ -283,14 +297,19 @@ export type ConfigurationNoteKind =
   /** Two or more configurations of a part share a name after the merge (both ids are kept). */
   | 'configurationDuplicateName'
   /** The merged active configuration no longer exists: the part is on Default again. */
-  | 'activeConfigurationFallback';
+  | 'activeConfigurationFallback'
+  /**
+   * M4: overrides of an annotation the merge removed went with it (`DrawingMergeNoteKind`). Also
+   * reported when a side removed them with the annotation and the other side still had them.
+   */
+  | 'overrideRemovedWithAnnotation';
 
 export interface ConfigurationNote {
   kind: ConfigurationNoteKind;
   partId: Id;
   /** The configuration(s) it is about. */
   configurationIds: Id[];
-  /** For `configurationOverridesRemoved`: the deleted feature or parameter. */
+  /** For `configurationOverridesRemoved`: the deleted feature or parameter (or annotation). */
   targetId?: Id;
   /** The overrides that were dropped (cells relative to the configuration). */
   removed?: Cell[];
@@ -305,7 +324,7 @@ export interface ReconcileSides {
   theirs: WrenDoc;
 }
 
-type Group = 'features' | 'params';
+type Group = 'features' | 'params' | 'annotations';
 
 function groupOf(doc: WrenDoc | undefined, pid: string, cid: string, g: Group, target: string) {
   const c = configIn(doc, pid, cid);
@@ -337,10 +356,17 @@ export function reconcileConfigurations(doc: WrenDoc, sides: ReconcileSides): Co
   const has = (d: WrenDoc, pid: string, g: Group, target: string): boolean =>
     g === 'params'
       ? d.params.some((p) => p.id === target)
-      : (partIn(d, pid)?.features.some((f) => f.id === target) ?? false);
+      : g === 'annotations'
+        ? (partIn(d, pid)?.annotations?.some((a) => a.id === target) ?? false)
+        : (partIn(d, pid)?.features.some((f) => f.id === target) ?? false);
   const known = (pid: string, g: Group, target: string) => all.some((d) => has(d, pid, g, target));
   const targetName = (pid: string, g: Group, target: string): string => {
     for (const d of [doc, ...all]) {
+      if (g === 'annotations') {
+        const a = partIn(d, pid)?.annotations?.find((x) => x.id === target);
+        if (a) return annotationLabel(a, partIn(d, pid), d);
+        continue;
+      }
       const x =
         g === 'params'
           ? d.params.find((p) => p.id === target)
@@ -353,12 +379,19 @@ export function reconcileConfigurations(doc: WrenDoc, sides: ReconcileSides): Co
   for (const part of doc.parts) {
     const pid = part.id;
     const live = new Set(part.features.map((f) => f.id));
+    const liveAnnotations = new Set((part.annotations ?? []).map((a) => a.id));
+    const isLive = (g: Group, target: string): boolean =>
+      g === 'params'
+        ? liveParams.has(target)
+        : g === 'annotations'
+          ? liveAnnotations.has(target)
+          : live.has(target);
     for (const config of part.configurations ?? []) {
-      for (const g of ['features', 'params'] as const) {
+      for (const g of ['features', 'params', 'annotations'] as const) {
         const record = config[g] as Obj | undefined;
         if (!isObj(record)) continue;
         for (const target of Object.keys(record).sort()) {
-          const alive = g === 'params' ? liveParams.has(target) : live.has(target);
+          const alive = isLive(g, target);
           if (alive || !known(pid, g, target)) continue;
           const merged = record[target];
           const own = [ours, theirs].some(
@@ -368,10 +401,14 @@ export function reconcileConfigurations(doc: WrenDoc, sides: ReconcileSides): Co
           delete record[target];
           const n = countCells(g, merged);
           const name = targetName(pid, g, target);
-          const what = g === 'params' ? 'parameter' : 'feature';
+          const what =
+            g === 'params' ? 'parameter' : g === 'annotations' ? 'annotation' : 'feature';
           const removed = cellsOf({ id: config.id, name: config.name, [g]: { [target]: merged } });
           notes.push({
-            kind: 'configurationOverridesRemoved',
+            kind:
+              g === 'annotations'
+                ? 'overrideRemovedWithAnnotation'
+                : 'configurationOverridesRemoved',
             partId: pid,
             configurationIds: [config.id],
             targetId: target,
@@ -384,6 +421,47 @@ export function reconcileConfigurations(doc: WrenDoc, sides: ReconcileSides): Co
           });
         }
         if (Object.keys(record).length === 0) delete config[g];
+      }
+      // M4: annotation overrides a side removed with the annotation while the other side still
+      // had them go quietly in the walk; the report still says so (proposal §5).
+      const noted = new Set(
+        notes
+          .filter((n) => n.kind === 'overrideRemovedWithAnnotation' && n.partId === pid)
+          .filter((n) => n.configurationIds.includes(config.id))
+          .map((n) => n.targetId),
+      );
+      const kept = (config.annotations ?? {}) as Obj;
+      const gone = new Set<string>();
+      for (const s of [ours, theirs]) {
+        const g = configIn(s, pid, config.id)?.annotations as Obj | undefined;
+        for (const target of Object.keys(g ?? {})) {
+          if (liveAnnotations.has(target) || kept[target] !== undefined) continue;
+          if (has(s, pid, 'annotations', target)) gone.add(target);
+        }
+      }
+      for (const target of [...gone].sort()) {
+        if (noted.has(target)) continue;
+        const group =
+          groupOf(ours, pid, config.id, 'annotations', target) ??
+          groupOf(theirs, pid, config.id, 'annotations', target);
+        const n = countCells('annotations', group);
+        const name = targetName(pid, 'annotations', target);
+        notes.push({
+          kind: 'overrideRemovedWithAnnotation',
+          partId: pid,
+          configurationIds: [config.id],
+          targetId: target,
+          removed: cellsOf({
+            id: config.id,
+            name: config.name,
+            annotations: { [target]: group as AnnotationOverride },
+          }),
+          subject: { kind: 'part', id: pid, label: `Configuration ${config.name}` },
+          summary:
+            n === 1
+              ? `The override of ${name} in ${config.name} was removed with the annotation`
+              : `Overrides of ${name} in ${config.name} were removed with the annotation`,
+        });
       }
     }
 
@@ -446,16 +524,23 @@ export function reconcileResolved(doc: WrenDoc, before: WrenDoc): void {
     const prev = partIn(before, part.id);
     const live = new Set(part.features.map((f) => f.id));
     const had = new Set(prev?.features.map((f) => f.id) ?? []);
+    const liveA = new Set((part.annotations ?? []).map((a) => a.id));
+    const hadA = new Set((prev?.annotations ?? []).map((a) => a.id));
     for (const config of part.configurations ?? []) {
       const old = prev?.configurations?.find((c) => c.id === config.id);
       if (equal(old, config)) continue;
-      for (const g of ['features', 'params'] as const) {
+      for (const g of ['features', 'params', 'annotations'] as const) {
         const record = config[g] as Obj | undefined;
         if (!isObj(record)) continue;
         for (const target of Object.keys(record)) {
-          const alive = g === 'params' ? liveParams.has(target) : live.has(target);
-          if (alive) continue;
-          const removed = g === 'params' ? hadParams.has(target) : had.has(target);
+          const [liveSet, hadSet] =
+            g === 'params'
+              ? [liveParams, hadParams]
+              : g === 'annotations'
+                ? [liveA, hadA]
+                : [live, had];
+          if (liveSet.has(target)) continue;
+          const removed = hadSet.has(target);
           const wrote = !equal((old?.[g] as Obj | undefined)?.[target], record[target]);
           if (removed || wrote) delete record[target];
         }
@@ -476,15 +561,16 @@ export function reconcileResolved(doc: WrenDoc, before: WrenDoc): void {
 /** Removes empty override records (`params: {}`, a feature override with nothing in it). */
 export function tidyConfiguration(config: Configuration): void {
   const c = config as unknown as Obj;
-  const features = c.features;
-  if (isObj(features)) {
-    for (const [fid, o] of Object.entries(features)) {
+  for (const g of ['features', 'annotations']) {
+    const items = c[g];
+    if (!isObj(items)) continue;
+    for (const [xid, o] of Object.entries(items)) {
       if (!isObj(o)) continue;
       if (isObj(o.fields) && Object.keys(o.fields).length === 0) delete o.fields;
-      if (Object.keys(o).every((k) => o[k] === undefined)) delete features[fid];
+      if (Object.keys(o).every((k) => o[k] === undefined)) delete items[xid];
     }
   }
-  for (const k of ['params', 'features', 'properties']) {
+  for (const k of ['params', 'features', 'annotations', 'properties']) {
     const r = c[k];
     if (isObj(r) && Object.keys(r).every((x) => r[x] === undefined)) delete c[k];
   }

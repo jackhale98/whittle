@@ -7,14 +7,21 @@
  * return `null` and the caller says "changed".
  */
 
-import type { Feature, NamedDimension, WrenDoc } from '@wren-cad/contracts';
-import { exprFields } from '@wren-cad/document';
+import type { Annotation, Feature, NamedDimension, WrenDoc } from '@wren-cad/contracts';
+import { annotationExprFields, exprFields } from '@wren-cad/document';
 import { isEntityRef, isObj } from './tree';
 
 export type Units = WrenDoc['units'];
 
 const SIMPLE =
   /^\s*([-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?)\s*(um|mm|cm|m|in|ft|deg|rad|°|")?\s*$/i;
+
+/** A plain number with an optional unit (`6mm`, `30 deg`), or `null` for anything else. */
+export function simpleNumber(expr: string): { n: string; unit?: string } | null {
+  const m = SIMPLE.exec(expr);
+  if (!m) return null;
+  return m[2] === undefined ? { n: m[1] as string } : { n: m[1] as string, unit: m[2] };
+}
 
 export function prettyExpr(expr: string, units?: Units, dim?: NamedDimension): string {
   const m = SIMPLE.exec(expr);
@@ -52,6 +59,17 @@ export function featureDims(feature: Feature): Map<string, NamedDimension> {
     for (const f of exprFields(feature)) m.set(f.pointer, f.expected);
   } catch {
     // A malformed feature: values are shown without units.
+  }
+  return m;
+}
+
+/** Expected dimension of each `Expr` pointer of an annotation (`/tolerance/upper` → length). */
+export function annotationDims(annotation: Annotation): Map<string, NamedDimension> {
+  const m = new Map<string, NamedDimension>();
+  try {
+    for (const f of annotationExprFields(annotation)) m.set(f.pointer, f.expected);
+  } catch {
+    // Malformed: values are shown without units.
   }
   return m;
 }

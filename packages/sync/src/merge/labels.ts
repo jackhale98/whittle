@@ -19,9 +19,10 @@ import type {
 } from '@wren-cad/contracts';
 import { constraintLabel, Namer } from '@wren-cad/sketch';
 import { isConfigurationValuePath } from './configurations';
+import { annotationLabelIn, annotationSubject, drawingItemSubject } from './drawing-labels';
 import type { FolderChange } from './folders';
 import { formatValue, listText, plural } from './format';
-import { equal, fromPointer, getAtSegs, isObj, type Segs } from './tree';
+import { equal, fromPointer, getAtSegs, isCollectionPath, isObj, type Segs } from './tree';
 
 const META_LABEL: Record<string, string> = {
   name: 'Document name',
@@ -68,6 +69,10 @@ export function subjectAt(segs: Segs, docs: readonly (WrenDoc | undefined)[]): D
     const kind = top === 'drawings' ? 'drawing' : 'assembly';
     if (id === undefined)
       return { kind: 'doc', label: top === 'drawings' ? 'Drawing order' : 'Assembly order' };
+    if (top === 'drawings' && sub !== undefined) {
+      const item = drawingItemSubject(docs, id, sub, fid);
+      if (item) return item;
+    }
     const x = find<{ name: string }>(docs, [top, id]);
     return { kind, id, label: x?.name ?? id };
   }
@@ -88,6 +93,7 @@ export function subjectAt(segs: Segs, docs: readonly (WrenDoc | undefined)[]): D
         label: key === undefined ? `Properties of ${partName}` : `${partName} ${fieldLabel([key])}`,
       };
     }
+    if (sub === 'annotations') return annotationSubject(docs, id, fid);
     if (sub === 'folders') {
       // Contracts have no folder subject yet: a folder is shown as part of its part.
       if (fid === undefined) return { kind: 'part', id, label: `Folders in ${partName}` };
@@ -139,9 +145,6 @@ export function subjectAt(segs: Segs, docs: readonly (WrenDoc | undefined)[]): D
         label: `${itemId} in ${name}`,
       };
     }
-    if (coll === 'annotations') {
-      return { kind: 'feature', id: fid, partId: id, label: `Annotation on ${name}` };
-    }
     return { kind: 'feature', id: fid, partId: id, label: name };
   }
   return { kind: 'doc', label: top === 'schemaVersion' ? 'Document version' : 'Document' };
@@ -176,6 +179,9 @@ function configurationSubject(
     if (f) subject.featureType = f.type;
     return subject;
   }
+  if (key === 'annotations' && a !== undefined) {
+    return { kind: 'annotation', id: a, partId: pid, label };
+  }
   if (key === 'material') return { kind: 'material', partId: pid, label };
   return part(label);
 }
@@ -202,6 +208,13 @@ export function configurationCellTarget(
       if (b === 'fields' && c !== undefined) return `${fname} ${pointerLabel(c)}`;
       return fname;
     }
+    case 'annotations': {
+      if (a === undefined) return 'annotation overrides';
+      const aname = annotationLabelIn(docs, pid, a, a);
+      if (b === 'suppressed') return `${aname} suppression`;
+      if (b === 'fields' && c !== undefined) return `${aname} ${annotationFieldLabel(c)}`;
+      return aname;
+    }
     case 'material':
       return 'material';
     case 'color':
@@ -221,6 +234,43 @@ export function pointerLabel(pointer: string): string {
     return pointer;
   }
 }
+
+/**
+ * A field inside an annotation, view or placement, in words: `/tolerance/upper` → "tolerance
+ * upper", `/zone/value` → "zone value", `/layout/position` → "position". Indexes are dropped.
+ */
+export function annotationFieldLabel(pointer: string | Segs): string {
+  let segs: readonly string[];
+  try {
+    segs = typeof pointer === 'string' ? fromPointer(pointer) : pointer;
+  } catch {
+    return String(pointer);
+  }
+  const named = segs.filter((x) => !/^\d+$/.test(x));
+  if (named.length === 0) return 'value';
+  const last = named[named.length - 1] as string;
+  if (DRAWING_FIELD[last] !== undefined && named.length === 1) return DRAWING_FIELD[last];
+  if (named[0] === 'layout' && named.length > 1) return fieldLabel([last]);
+  return named.map((x) => DRAWING_FIELD[x] ?? fieldLabel([x])).join(' ');
+}
+
+const DRAWING_FIELD: Record<string, string> = {
+  refs: 'references',
+  at: 'reference points',
+  sheetId: 'sheet',
+  viewId: 'view',
+  annotationId: 'annotation',
+  parentId: 'parent view',
+  configurationId: 'configuration',
+  showLabel: 'label shown',
+  centerMarks: 'centre marks',
+  centerLines: 'centre lines',
+  tangentEdges: 'tangent edges',
+  lineGroup: 'line group',
+  appliesTo: 'applies to',
+  allAround: 'all around',
+  modelPlacement: '3D placement',
+};
 
 /** "radius", "depth", "distance": the last meaningful segment of a field path inside a subject. */
 export function fieldLabel(rel: Segs): string {
@@ -289,13 +339,14 @@ function subjectDepth(segs: Segs): number {
   const [top, , sub, , coll] = segs;
   if (top === 'parts') {
     if (sub === 'features') return coll === 'entities' || coll === 'constraints' ? 6 : 4;
-    if (sub === 'folders') return 4;
+    if (sub === 'folders' || sub === 'annotations') return 4;
     if (sub === 'material') return 3;
     // Configurations: the label names the cell; only a configuration's own name is a field.
     if (sub === 'configurations') return segs[4] === 'name' ? 4 : segs.length;
     if (sub === 'activeConfigurationId' || sub === 'properties') return segs.length;
     return 2;
   }
+  if (top === 'drawings' && segs.length >= 4 && isCollectionPath(segs.slice(0, 3))) return 4;
   if (top === 'params' || top === 'drawings' || top === 'assemblies') return 2;
   return segs.length; // document fields: the subject's label already names the field
 }
@@ -305,7 +356,11 @@ export function conflictField(c: Pick<MergeConflict, 'path' | 'file'>): string {
   if (c.file !== undefined) return '';
   const segs = fromPointer(c.path);
   const rel = segs.slice(subjectDepth(segs));
-  return rel.length === 0 ? '' : fieldLabel(rel);
+  if (rel.length === 0) return '';
+  const inItem =
+    (segs[0] === 'parts' && segs[2] === 'annotations') ||
+    (segs[0] === 'drawings' && isCollectionPath(segs.slice(0, 3)));
+  return inItem ? annotationFieldLabel(rel) : fieldLabel(rel);
 }
 
 /** One side's value of a conflict as short text: "shown", "2 mm", "Mounting (3 features)". */

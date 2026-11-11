@@ -126,6 +126,23 @@ export {
   configurationValueText,
 } from './merge/configurations';
 export { docDiffer, FeatureDiffer, movedIds } from './merge/diff';
+export { annotationChanges, drawingChanges } from './merge/drawing-diff';
+export {
+  annotationLabel,
+  centerMarkLabel,
+  markupLabel,
+  noteLabel,
+  placementLabel,
+  sheetLabel,
+  tableLabel,
+  viewLabel,
+} from './merge/drawing-labels';
+export {
+  type ConflictDependent,
+  type DrawingMergeNote,
+  type DrawingNoteKind,
+  dependentConflicts,
+} from './merge/drawing-merge';
 export {
   FILES_POINTER,
   fileConflictId,
@@ -139,6 +156,7 @@ export {
 export type { NormalizeFolders } from './merge/folders';
 export { formatValue, prettyExpr } from './merge/format';
 export {
+  annotationFieldLabel,
   conflictField,
   conflictSummary,
   conflictValueText,
@@ -153,13 +171,23 @@ export {
   type MergeNote,
   MergeResolutionError,
   mergeNotes,
+  type NormalizeDrawings,
   type StructuralMergeConflict,
   type StructuralMergeResult,
   StructuralMerger,
   type StructuralMergerOptions,
   weave,
 } from './merge/merge';
-export { COLLECTIONS, fromPointer, getAtSegs, isCollectionPath, toPointer } from './merge/tree';
+export {
+  COLLECTIONS,
+  DRAWING_SETS,
+  fromPointer,
+  getAtSegs,
+  isCollectionPath,
+  isUnorderedCollectionPath,
+  toPointer,
+  UNORDERED_COLLECTIONS,
+} from './merge/tree';
 // Project file rules
 export { documentPaths, HISTORY_DIR, syncable, toAbsolute, toRelative } from './paths';
 // Providers

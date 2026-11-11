@@ -10,7 +10,16 @@ Connections, background sync and version control (PLAN §8A, M2.5). Contracts li
   (`configurations.ts`): one cell per (configuration, parameter / feature suppression / feature
   field / material / colour / property); the merge report notes pruned overrides, an active
   configuration that fell back to Default and duplicate names. Compare lines are in
-  `configuration-diff.ts`.
+  `configuration-diff.ts`. Part annotations and drawings (M4, ADR-090 sync amendment):
+  annotations and every drawing collection but `sheets` are id-sorted sets (no `order`
+  conflicts). `drawing-merge.ts` holds the dependent-edit rule: deleting an annotation, view or
+  sheet against new or changed dependents is one `modifiedDeleted` conflict on the owner,
+  listing `dependents`, which follow its resolution. It also writes the merge-report notes
+  (`placementRemovedWithAnnotation`, `placementRemovedWithView`, `duplicatePlacementDropped`,
+  `duplicateDatumLabel`, `duplicatePromotion`, `lastSheetKept`; `overrideRemovedWithAnnotation`
+  comes from `configurations.ts`). Markup is an append-mostly set. `normalizeDrawings` runs
+  after every merge. Labels ("Dimension Ø6", "View Front", "Sheet 2") are in
+  `drawing-labels.ts`, and the drawing compare lines are in `drawing-diff.ts`.
 - `history/`: `SnapshotHistory` (`.wren-history/`) and `GitHistory` (isomorphic-git).
   Local git repo mode (ADR-029): `fsaGitFs(handle)` is isomorphic-git's `fs` over a picked
   folder, and `openLocalGitRepo(handle, { projectPath })` returns the repo's `GitHistory` scoped
