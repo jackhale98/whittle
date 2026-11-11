@@ -372,7 +372,7 @@ This must be solved deliberately from M1, or downstream features will break when
 - Use hash-based routing, or the `404.html` SPA fallback, because Pages has no rewrites.
 - The service worker caches the kernel `.wasm` after the first visit. Show the kernel download progress in a subtle status chip.
 
-### 8.2 Cloudflare Pages (later; see §13)
+### 8.2 Cloudflare Pages (in progress; see §13)
 
 - Set real `COOP`/`COEP` headers through a `_headers` file. The service worker's header shim becomes a no-op when `crossOriginIsolated` is already true.
 - This unlocks share links, a read-only viewer, comments, and later collaboration, using Workers + R2 + Durable Objects.
@@ -990,7 +990,7 @@ Owner direction 2026-11-10 (ADR-058). Wren is the pre- and post-processor; the u
    - the git CORS proxy for isomorphic-git (§8A.2).
 
    This can ship while the app itself is still on GitHub Pages.
-3. **Next:** Cloudflare Pages, with real COOP/COEP headers through `_headers`, preview deployments per PR, and a custom domain.
+3. **In progress:** Cloudflare Pages on wren-cad.app, with real COOP/COEP headers through `_headers`. CI builds the site and publishes it to a `cloudflare-pages` branch that Cloudflare serves without a build step (it cannot build the kernel); see ADR-082 and docs/DEPLOY.md. Still to do: preview deployments per PR (design in docs/DEPLOY.md).
 4. **Later (optional and opt-in, keeping the app local-first):**
    - Share links (snapshots in R2) and a read-only viewer route.
    - Comments (Durable Objects).

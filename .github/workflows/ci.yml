@@ -385,3 +385,69 @@ jobs:
       - name: Deploy
         id: deployment
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
+
+  # Publishes the site for Cloudflare Pages (ADR-082). Cloudflare cannot build the OCCT kernel, so
+  # it serves the `cloudflare-pages` branch as-is (no build command): this job builds the same
+  # commit for the root of wren-cad.app (WREN_BASE=/), reusing the kernel-dist artefact, guards the
+  # 25 MiB per-file limit, and force-pushes dist as the branch's single commit. Same gates as
+  # `pages`. The only job with contents: write. Pushes made with GITHUB_TOKEN start no workflow.
+  cloudflare:
+    name: Publish to cloudflare-pages branch
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [lint, test, build, e2e, e2e-reference, package-e2e, perf]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: cloudflare-pages-deploy
+      cancel-in-progress: false
+    permissions:
+      contents: write
+    env:
+      # Overrides the workflow-level /<repository name>/ for this job only.
+      WREN_BASE: /
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Download kernel artefact
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: kernel-dist
+          path: packages/kernel/dist
+      - name: Build (base /)
+        run: pnpm build
+        env:
+          VITE_SYNC_WORKER_URL: ${{ vars.VITE_SYNC_WORKER_URL }}
+          VITE_GIT_CORS_PROXY: ${{ vars.VITE_GIT_CORS_PROXY }}
+          VITE_DROPBOX_APP_KEY: ${{ vars.VITE_DROPBOX_APP_KEY }}
+          VITE_ONEDRIVE_CLIENT_ID: ${{ vars.VITE_ONEDRIVE_CLIENT_ID }}
+          VITE_GDRIVE_CLIENT_ID: ${{ vars.VITE_GDRIVE_CLIENT_ID }}
+          VITE_GITHUB_CLIENT_ID: ${{ vars.VITE_GITHUB_CLIENT_ID }}
+          VITE_GITLAB_CLIENT_ID: ${{ vars.VITE_GITLAB_CLIENT_ID }}
+          VITE_BITBUCKET_CLIENT_ID: ${{ vars.VITE_BITBUCKET_CLIENT_ID }}
+      # Drops 404.html (it would turn Cloudflare's SPA fallback off), checks the root-base manifest
+      # and fails if any file is over Cloudflare Pages' 25 MiB limit; prints the largest files.
+      - name: Prepare and size-guard the Cloudflare dist
+        run: node apps/web/scripts/cloudflare-dist.mjs apps/web/dist --max-mib 25
+      - name: Force-push dist to cloudflare-pages
+        working-directory: apps/web/dist
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ github.sha }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}.git
+        run: |
+          git init --quiet --initial-branch=cloudflare-pages
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add --all
+          git commit --quiet -m "Deploy ${SOURCE_SHA}" -m "Built from ${REPO_URL%.git}/commit/${SOURCE_SHA}"
+          auth="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          echo "::add-mask::${auth}"
+          git -c "http.extraheader=Authorization: Basic ${auth}" \
+            push --force "$REPO_URL" cloudflare-pages

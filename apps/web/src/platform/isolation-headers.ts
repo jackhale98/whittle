@@ -34,6 +34,13 @@ export function isUnrewritable(response: Response): boolean {
   return false;
 }
 
+/** True if `response` already carries exactly the isolation policies. */
+export function hasIsolationHeaders(response: Response): boolean {
+  return Object.entries(ISOLATION_HEADERS).every(
+    ([name, value]) => response.headers.get(name) === value,
+  );
+}
+
 /**
  * Returns a copy of `response` carrying COOP/COEP/CORP. The body stream is passed through (not
  * buffered). Rebuilding also clears `response.redirected`, which the browser would otherwise
@@ -41,6 +48,10 @@ export function isUnrewritable(response: Response): boolean {
  */
 export function withIsolationHeaders(response: Response): Response {
   if (isUnrewritable(response)) return response;
+  // Served with the headers already (Cloudflare Pages `_headers`, PLAN §8.2; or a response this
+  // worker stamped before and cached): nothing to add, so the shim is a no-op. A redirected
+  // response is still rebuilt, because the browser rejects one for a worker-answered navigation.
+  if (!response.redirected && hasIsolationHeaders(response)) return response;
   const headers = new Headers(response.headers);
   for (const [name, value] of Object.entries(ISOLATION_HEADERS)) headers.set(name, value);
   // The fetched body is already decoded and a synthetic response is never decoded again, so a

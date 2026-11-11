@@ -8,9 +8,10 @@
   // No logs and no storage of any kind: no KV, D1, R2 or Durable Objects.
   "observability": { "enabled": false },
   "vars": {
-    // Origins that may use this worker: the GitHub Pages site and localhost for development
+    // Origins that may use this worker: the production site (wren-cad.app, Cloudflare Pages), the
+    // GitHub Pages site and localhost for development
     // (vite dev 5173, vite preview and the E2E server 4173). Comma-separated, exact origins.
-    "ALLOWED_ORIGINS": "https://jackhale98.github.io,http://localhost:5173,http://localhost:4173"
+    "ALLOWED_ORIGINS": "https://wren-cad.app,https://jackhale98.github.io,http://localhost:5173,http://localhost:4173"
     // "EXTRA_GIT_HOSTS": "forgejo.example.com",
     // "DAV_HOSTS": "cloud.example.com"
   }

@@ -92,7 +92,8 @@ Wren needs WebAssembly, Web Workers, IndexedDB and either WebGPU or WebGL2. The 
 WebGPU when available and falls back to WebGL2.
 
 The kernel's threaded build needs cross-origin isolation. GitHub Pages can't send the required
-headers, so Wren's service worker adds them. On the first visit the page reloads once. Where
+headers, so Wren's service worker adds them (on wren-cad.app, served by Cloudflare Pages, the
+headers come from the server and there is no reload). On the first visit the page reloads once. Where
 isolation isn't available (some private windows and in-app browsers), Wren uses the
 single-threaded kernel. The results are the same, but it is slower.
 

@@ -2158,3 +2158,15 @@ Owner bug report: after dimensioning a circle, its centre could not be grabbed, 
   - A click on the selected label, a double-click or Enter edits it.
   - Delete or Backspace (on the label or with it selected) removes it, and so does the Delete chip, shown with the radius/diameter and reference chips when the label is selected or being edited.
   - A label with no selection model (`onSelect` absent, e.g. the UI harness) still edits on a click.
+
+## ADR-082 — Cloudflare Pages serves a CI-built `cloudflare-pages` branch, with no build step (2026-11-11)
+Hosting roadmap step 3 (PLAN §13), on the owner's domain wren-cad.app. The owner connects Cloudflare Pages through Cloudflare's own Git integration, so GitHub holds no Cloudflare token.
+
+- **Why a deploy branch.** Cloudflare's build servers cannot build the OCCT kernel (Docker/Emscripten, cached as an artefact by `kernel.yml`). The `cloudflare` job in `ci.yml` rebuilds only the web app (`WREN_BASE=/`, reusing the `kernel-dist` artefact) and force-pushes `dist` as one orphan commit to `cloudflare-pages`; Cloudflare serves it with an empty build command. It runs after the same gates as `pages`, on pushes to `main` only, and is the only job with `contents: write`. The GitHub Pages build (`/wren-cad/`) is unchanged.
+- **Headers.** `public/_headers` sends the same COOP/COEP/CORP as the service worker: `require-corp`, because Safari has no `credentialless` (ADR-005, sw.ts). Hashed `/assets/*` (kernel included) are immutable; the shell, `sw.js` and the manifest are `no-cache`. Cloudflare joins a header set by several matching rules, so the Cache-Control rules are on disjoint paths. A unit test compares `_headers` to the service worker's values.
+- **Routing.** There is no path router. Cloudflare's SPA mode (unknown path gives `index.html`, 200) applies only when `404.html` is absent, so `scripts/cloudflare-dist.mjs` removes it from this build; no `_redirects`.
+- **No-op shim.** On an isolated first load the page does not reload (`shouldReloadForIsolation`), and `withIsolationHeaders` returns a response that already has the three policies unchanged (redirected responses are still rebuilt). The service worker stays: offline, precache and the kernel cache are still wanted.
+- **Size guard.** The same script fails the job if any file is over 25 MiB, Cloudflare Pages' per-file limit. The threaded kernel is 20.8 MiB today, so there is about 4 MiB of headroom; a kernel that grows past it needs the Wasm split or served from R2.
+- **Worker.** `ALLOWED_ORIGINS` gains `https://wren-cad.app` (exact; `www` redirects to the apex and is not an origin). Not deployed by this change.
+- **Preview deploys.** Not set up; see docs/DEPLOY.md.
+- **Schema ids** keep `jackhale98.github.io/wren-cad/schema/...`: they identify the format, and changing them would be a format change.

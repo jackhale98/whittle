@@ -5,11 +5,16 @@
 // unknown paths. Optionally mounts a fixtures directory at `<base>__e2e__/`.
 //
 // Usage: node scripts/static-serve.mjs [--dir dist] [--base /wren-cad/] [--port 4173]
-//                                      [--fixtures e2e/fixtures]
-import { createReadStream, existsSync, statSync } from 'node:fs';
+//                                      [--fixtures e2e/fixtures] [--cloudflare]
+//
+// --cloudflare behaves like Cloudflare Pages instead (ADR-082): serves at `/`, applies the
+// build's `_headers` file, and answers unknown paths with index.html and status 200 (SPA mode,
+// which needs 404.html to be absent: run scripts/cloudflare-dist.mjs on the dist first).
+import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { extname, join, normalize, resolve, sep } from 'node:path';
 import { parseArgs } from 'node:util';
+import { headersFor, parseHeadersFile } from './headers-file.mjs';
 
 const { values } = parseArgs({
   options: {
@@ -18,10 +23,16 @@ const { values } = parseArgs({
     port: { type: 'string', default: '4173' },
     fixtures: { type: 'string' },
     host: { type: 'string', default: '127.0.0.1' },
+    cloudflare: { type: 'boolean', default: false },
   },
 });
 
 const root = resolve(values.dir);
+const cloudflare = values.cloudflare;
+const headerRules =
+  cloudflare && existsSync(join(root, '_headers'))
+    ? parseHeadersFile(readFileSync(join(root, '_headers'), 'utf8'))
+    : [];
 const base = values.base.endsWith('/') ? values.base : `${values.base}/`;
 const fixturesRoot = values.fixtures ? resolve(values.fixtures) : undefined;
 const fixturesPrefix = `${base}__e2e__/`;
@@ -53,12 +64,14 @@ function resolveFile(dir, relative) {
   return target;
 }
 
-function send(res, status, file) {
+function send(res, status, file, pathname = '/') {
   res.writeHead(status, {
     'content-type': MIME[extname(file)] ?? 'application/octet-stream',
     'content-length': statSync(file).size,
-    'cache-control': 'max-age=600',
-    // Deliberately no cross-origin-* headers: this is what GitHub Pages does.
+    // GitHub Pages mode: no cross-origin-* headers, which is what GitHub Pages does.
+    ...(cloudflare ? {} : { 'cache-control': 'max-age=600' }),
+    // Cloudflare mode: exactly what the build's `_headers` file says (overrides the type above).
+    ...headersFor(headerRules, pathname),
   });
   createReadStream(file).pipe(res);
 }
@@ -67,6 +80,11 @@ const server = createServer((req, res) => {
   const url = new URL(req.url ?? '/', 'http://localhost');
   const pathname = decodeURIComponent(url.pathname);
 
+  if (cloudflare) {
+    const file = resolveFile(root, pathname.slice(1));
+    if (file) return send(res, 200, file, pathname);
+    return send(res, 200, join(root, 'index.html'), pathname);
+  }
   if (pathname === '/') {
     res.writeHead(302, { location: base });
     res.end();

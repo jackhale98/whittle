@@ -61,8 +61,8 @@ npx wrangler@4.151.3 deploy
 
 ### Configure it
 
-`worker/wrangler.jsonc` ships with `ALLOWED_ORIGINS` set to the Pages origin plus localhost
-(`https://jackhale98.github.io,http://localhost:5173,http://localhost:4173`). Origins are exact
+`worker/wrangler.jsonc` ships with `ALLOWED_ORIGINS` set to the production origin, the GitHub Pages origin and localhost
+(`https://wren-cad.app,https://jackhale98.github.io,http://localhost:5173,http://localhost:4173`). Origins are exact
 matches, scheme and port included. To change them, edit the file or set the variable in
 **Worker -> Settings -> Variables** (`keep_vars` keeps dashboard values across deploys).
 

@@ -6,7 +6,7 @@ export default defineConfig({
     __GIT_SHA__: JSON.stringify('testsha'),
   },
   test: {
-    include: ['src/**/*.test.ts'],
+    include: ['src/**/*.test.ts', 'scripts/**/*.test.mjs'],
     environment: 'node',
   },
 });
