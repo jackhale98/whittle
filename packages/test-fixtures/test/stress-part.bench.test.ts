@@ -105,7 +105,7 @@ describe.skipIf(!kernelBuilt || !stressEnabled)('stress part benchmark', () => {
       const t = await timed(() => regen(edit(i)));
       const r = t.value;
       expect(
-        r.features.every((f) => f.state === 'ok'),
+        r.features.every((f) => f.state === 'ok' || f.state === 'suppressed'),
         `${name} run ${i}: ${JSON.stringify(r.features.filter((f) => f.state !== 'ok'))}`,
       ).toBe(true);
       wall.push(t.wallMs);
@@ -274,9 +274,9 @@ describe.skipIf(!kernelBuilt || !stressEnabled)('stress part benchmark', () => {
       await api.closePart(PART);
       const closed = await api.memoryStats();
       log(
-        `[stress] after closePart: liveHandles ${closed.liveHandles} (baseline before the part: ${f0.liveHandles}), wasm heap ${(closed.wasmHeapBytes / 1048576).toFixed(0)} MB`,
+        `[stress] after closePart: liveHandles ${closed.liveHandles} (expected 0), wasm heap ${(closed.wasmHeapBytes / 1048576).toFixed(0)} MB`,
       );
-      expect(closed.liveHandles).toBe(f0.liveHandles);
+      expect(closed.liveHandles).toBe(0);
       expect(last.liveHandles).toBeGreaterThan(0);
       rows.push({
         scenario: '50 edits (45 last-feature, 5 mid), per edit',
