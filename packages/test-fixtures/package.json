@@ -7,12 +7,14 @@
   "description": "Synthetic MeshBuffers fixtures for viewport and UI tests, and the reference-part suite (specs, drawings, builder, kernel goldens; PLAN section 12A).",
   "exports": {
     ".": "./src/index.ts",
-    "./reference-parts": "./reference-parts/index.ts"
+    "./reference-parts": "./reference-parts/index.ts",
+    "./stress-part": "./stress-part/index.ts"
   },
   "scripts": {
     "typecheck": "tsc -p .",
     "test": "vitest run",
-    "generate": "UPDATE_REFERENCE_PARTS=1 vitest run test/reference-parts.test.ts"
+    "generate": "UPDATE_REFERENCE_PARTS=1 vitest run test/reference-parts.test.ts",
+    "stress": "WREN_STRESS=1 vitest run stress-part --testTimeout=3600000"
   },
   "dependencies": {
     "@wren-cad/contracts": "workspace:*",

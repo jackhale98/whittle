@@ -39,6 +39,28 @@ The entry is `src/index.ts`, which re-exports `src/meshes.ts` and `src/sketch.ts
 | `pnpm --filter @wren-cad/test-fixtures generate` | Rewrites the committed reference-part specs, Markdown and drawings from their TypeScript definitions |
 | `pnpm --filter @wren-cad/test-fixtures typecheck` | `tsc -p .` |
 
+## Stress part (performance)
+
+[`stress-part/`](stress-part/enclosure.ts) is an injection-moulded-style enclosure with 100 features
+(drafted shell, screw bosses, ribs, posts, vents, connector cut-outs, mounting ears, counterbored and
+tapped holes, patterns and mirrors, dozens of fillet and chamfer edges) driven by 16 named
+parameters. It is written in the reference-part step DSL, so every reference is a real persistent
+name; the tests assert that every feature ends `ok`. `enclosureDoc()` builds the document;
+`apps/web/e2e/fixtures/stress-enclosure.wrencad` is the same document for the browser benchmark
+(`UPDATE_STRESS_FIXTURE=1 pnpm --filter @wren-cad/test-fixtures test -- stress-part.fixture`
+rewrites it).
+
+| What | How | Gates? |
+| --- | --- | --- |
+| Fixture is well formed, deterministic, matches the committed `.wrencad` | `pnpm test` (`stress-part.fixture.test.ts`) | yes |
+| Goldens on the real kernel: all features ok, analytic volume deltas, regression volume/area/faces | `WREN_STRESS=1` (`stress-part.golden.test.ts`) | nightly |
+| Node regen benchmark (cold, edit last / mid / early, suppress, undo, 50-edit memory) | `WREN_STRESS=1` (`stress-part.bench.test.ts`), `pnpm stress` | report-only |
+| Browser benchmark (open, regen, edit, orbit, push/pull, memory) | `pnpm --filter @wren-cad/web stress` | report-only |
+
+A cold regen takes minutes on a loaded machine. `WREN_KERNEL_DIST=<dir>` benchmarks another kernel
+build (A/B), `WREN_STRESS_RUNS=<n>` sets the runs per scenario, `WREN_STRESS_OUT=<file>` writes JSON.
+Compare CPU time, not wall time, when the machine is shared.
+
 ## Who uses them
 
 - `packages/viewport`: the unit tests in `test/` (`boxMesh`) and the Vite harness in `harness/`

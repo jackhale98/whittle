@@ -17,7 +17,9 @@
     "e2e:all": "vite build && playwright test",
     "perf": "vite build && playwright test --project=perf",
     "perf:run": "playwright test --project=perf",
-    "e2e:cloudflare": "playwright test -c playwright.cloudflare.config.ts"
+    "e2e:cloudflare": "playwright test -c playwright.cloudflare.config.ts",
+    "stress": "vite build && playwright test --project=stress",
+    "stress:run": "playwright test --project=stress"
   },
   "dependencies": {
     "@wren-cad/contracts": "workspace:*",
