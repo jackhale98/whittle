@@ -9,6 +9,7 @@ import type {
   FeatureStatus,
   Fingerprint,
   KernelError,
+  MergedRef,
   MeshBuffers,
   MeshQuality,
   RegenResult,
@@ -73,20 +74,8 @@ export interface ReboundRef {
   fingerprint?: Fingerprint;
 }
 
-/**
- * A reference whose stored name a boolean merged into another face, edge or vertex (ADR-078):
- * the kernel listed `name` as an alias of the surviving sub-shape `into`, so the ref resolved to
- * it by construction history, not by a guess. The stored name is kept (it is not healed): if an
- * upstream edit un-merges the faces, the ref goes back to its own face. Proposed contract field
- * `FeatureStatus.merged` (see README).
- */
-export interface MergedRef {
-  path: string;
-  /** The stored (absorbed) name. */
-  name: string;
-  /** The current name of the sub-shape that absorbed it. */
-  into: string;
-}
+/** Now in the contracts (ADR-078); re-exported for existing imports. */
+export type { MergedRef } from '@wren-cad/contracts';
 
 /** `UnresolvedRef` plus the fingerprint seen the last time this ref resolved (proposed). */
 export interface RegenUnresolvedRef extends UnresolvedRef {
