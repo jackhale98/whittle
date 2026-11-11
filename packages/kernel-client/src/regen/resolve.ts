@@ -13,7 +13,11 @@
  *     face its edge/vertex name is built from — was split, or split pieces merged back), or several
  *     exact matches → disambiguate by fingerprint: nearest centroid
  *     among candidates whose normal agrees, accepted only within the loose tolerance and with a
- *     clear margin over every other member (normal-rejected ones included).
+ *     clear margin over every other member (normal-rejected ones included). With a distance query
+ *     (the regen engine; not for weak, imported names) the pick must also contain the ref's
+ *     recorded location (`containsLocation`): the nearest winner if it does, else the one member
+ *     that does, else ambiguous. A piece across a notch is never picked for the edge that now
+ *     covers the old one.
  *  3. No name match → fingerprint-only: candidates of the same kind within the strict tolerance
  *     (centroid, normal, area/length all agree); exactly one → resolved.
  *  4. Otherwise unresolved.
@@ -78,6 +82,11 @@ export interface ResolveContext {
    * (imported topology): the index alone is no evidence once the geometry may have changed.
    */
   weak?: (name: string) => boolean;
+  /**
+   * Distance (mm) from a point to a candidate sub-shape, or null when unknown. With it, name-family
+   * disambiguation requires the pick to contain the ref's recorded location (`containsLocation`).
+   */
+  distance?: (c: Candidate, point: Vec3) => Promise<number | null>;
 }
 
 export const TOLERANCE = {
@@ -206,15 +215,61 @@ async function disambiguate(
         relDiff(want, m.measure) <= TOLERANCE.weakMeasureRel),
   );
   const best = accepted[0];
-  if (!best || best.d > radius) return { ok: false, reason: 'ambiguous', candidates: names };
   const next = all.find((x) => x !== best);
-  if (
-    next &&
-    !(best.d <= TOLERANCE.marginRatio * next.d && next.d - best.d >= TOLERANCE.marginRel * ctx.diag)
-  ) {
-    return { ok: false, reason: 'ambiguous', candidates: names };
+  const clear =
+    best !== undefined &&
+    best.d <= radius &&
+    !(
+      next &&
+      !(
+        best.d <= TOLERANCE.marginRatio * next.d &&
+        next.d - best.d >= TOLERANCE.marginRel * ctx.diag
+      )
+    );
+  // Names with history: the pick must contain the ref's recorded location (a piece across a notch
+  // is nearer than the edge that now covers the old one). The nearest clear winner stands if it
+  // contains it; else the one member that does; else ambiguous (needs attention). Weak (imported)
+  // names keep the fingerprint rules: their geometry may have moved with the file.
+  if (!weak && ctx.distance) {
+    const holds = await Promise.all(ms.map((m) => containsLocation(fp, m, ctx)));
+    if (!holds.includes(null)) {
+      if (clear && holds[ms.indexOf((best as { m: Measured }).m)] === true) {
+        return { ok: true, target: { ...(best as { m: Measured }).m.c, via: 'name+fingerprint' } };
+      }
+      const containing = ms.filter((_, i) => holds[i] === true);
+      if (containing.length === 1) {
+        return { ok: true, target: { ...(containing[0] as Measured).c, via: 'name+fingerprint' } };
+      }
+      return { ok: false, reason: 'ambiguous', candidates: names };
+    }
   }
-  return { ok: true, target: { ...best.m.c, via: 'name+fingerprint' } };
+  if (!clear) return { ok: false, reason: 'ambiguous', candidates: names };
+  return { ok: true, target: { ...(best as { m: Measured }).m.c, via: 'name+fingerprint' } };
+}
+
+/**
+ * Does candidate `m` contain the location `fp` was recorded at? A vertex: the same point. An edge
+ * or face: the recorded centroid lies on it — as close to it as its own centroid is (curved edges
+ * and non-convex faces have centroids off themselves), within 1e-6 × diag (≥ 1e-6 mm) — and a face
+ * faces the same way. Null when distances are unavailable.
+ */
+export async function containsLocation(
+  fp: Fingerprint,
+  m: { c: Candidate; centroid: Vec3; normal?: Vec3 },
+  ctx: ResolveContext,
+): Promise<boolean | null> {
+  const tol = Math.max(1e-6 * ctx.diag, TOLERANCE.strictAbs);
+  if (m.c.kind === 'vertex') return dist(m.centroid, fp.centroid) <= tol;
+  if (!ctx.distance) return null;
+  if (m.c.kind === 'face' && fp.normal !== undefined && m.normal !== undefined) {
+    if (dot(normalize(fp.normal), normalize(m.normal)) < TOLERANCE.strictNormalDot) return false;
+  }
+  const d = await ctx.distance(m.c, fp.centroid);
+  if (d === null) return null;
+  if (d <= tol) return true;
+  const own = await ctx.distance(m.c, m.centroid);
+  if (own === null) return null;
+  return d <= own + tol;
 }
 
 /**

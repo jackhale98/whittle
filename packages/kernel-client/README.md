@@ -374,6 +374,14 @@ geometry when there are no bodies). The **family** of a name is the name with ev
    whose normal agrees (dot ≥ 0.95), within 0.25 × diag, and at most half the distance of **every**
    other member (≥ 1e-3 × diag closer) — members rejected for a flipped normal count as runners-up,
    so a nearer opposite-facing member makes it ambiguous instead of picking the other one.
+   **Containment** (ADR-078 review): for names with history, the pick must also contain the ref's
+   recorded location. A vertex must be at the same point. For an edge or face, the recorded
+   centroid must lie on it, as close as the member's own centroid is (kernel point distance,
+   1e-6 × diag), and a face must face the same way. So the nearest winner stands if it contains
+   the location, else the one member that does is picked, else the ref is ambiguous. A stored ref
+   to an old bottom edge piece is not moved across a notch to the nearer piece. Weak (imported)
+   names keep the fingerprint rule. A rebound whose new name fails containment is not reported,
+   so `heal.ts` never writes it.
    A lone surviving `X#j` for a ref `X#k` needs strict evidence (3); a lone unsuffixed `X` (pieces
    merged) is accepted.
 3. **Fingerprint only**: centroid within 1e-3 × diag (≥ 1e-6 mm), normal dot ≥ 0.9999, area/length

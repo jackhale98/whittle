@@ -9,6 +9,7 @@
  * old one (same vertex; an edge or face covering it), or stay unresolved: never on another one.
  *
  * Re-record (only from a pre-ADR-078 kernel build, e.g. commit e1b1b6d):
+ * Per step: the names after every feature, checked against the new result after that feature.
  * `WREN_UPDATE_MERGE_SWEEP=1 WREN_SWEEP_KERNEL_DIST=<that dist>/ pnpm vitest run test/regen/merge-sweep.test.ts`.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
@@ -30,7 +31,7 @@ import {
 } from '@wren-cad/kernel';
 import { describe, expect, it } from 'vitest';
 import { resolveWithMerges } from '../../src/regen/refs';
-import type { SubKind } from '../../src/regen/resolve';
+import type { Candidate, ResolveContext, SubKind } from '../../src/regen/resolve';
 import { ModelState, primaryNaming, recordMerges } from '../../src/regen/state';
 import { built, fid, skipNote } from './helpers';
 
@@ -42,7 +43,8 @@ const DIST =
 
 type Geo = { centroid?: Vec3; normal?: Vec3; area?: number; length?: number; point?: Vec3 };
 type Entity = { name: string; kind: SubKind; g: Geo };
-type Fixture = Record<string, Entity[]>;
+/** Per scenario, per step: every name of that step's result with its geometry. */
+type Fixture = Record<string, Entity[][]>;
 
 interface Step {
   feature: Feature;
@@ -73,14 +75,23 @@ const box = (tag: string, o: Vec3, d: Vec3, op: 'new' | 'add' | 'cut'): Step => 
   }),
 });
 
+/** A box at the origin, a slab, two walls and a top T whose piece #0 merges into the box's top. */
+const MERGE0: Step[] = [
+  box('SWP', [0, 0, 0], [10, 10, 10], 'new'),
+  box('SWS', [0, 0, 0], [40, 10, 2], 'add'),
+  box('SWWA', [20, 0, 0], [2, 10, 20], 'add'),
+  box('SWWB', [30, 0, 0], [2, 10, 20], 'add'),
+  box('SWT', [0, 0, 5], [40, 10, 5], 'add'),
+];
+
 const SCENARIOS: Record<string, Step[]> = {
-  merge0: [
-    box('SWP', [0, 0, 0], [10, 10, 10], 'new'),
-    box('SWS', [0, 0, 0], [40, 10, 2], 'add'),
-    box('SWWA', [20, 0, 0], [2, 10, 20], 'add'),
-    box('SWWB', [30, 0, 0], [2, 10, 20], 'add'),
-    box('SWT', [0, 0, 5], [40, 10, 5], 'add'),
-  ],
+  merge0: MERGE0,
+  // Later features on the merged body (review): a notch that splits the bottom front edge (an old
+  // `#3` piece is then nearer to `#0` across the notch than to the edge now covering it), a slot,
+  // a boss.
+  merge0ThenSplit: [...MERGE0, box('SWCUT', [4, -1, -1], [2, 3, 8], 'cut')],
+  merge0ThenSlot: [...MERGE0, box('SWSLOT', [5, -1, 3], [1, 12, 1], 'cut')],
+  merge0ThenBoss: [...MERGE0, box('SWADD', [10, -3, 0], [10, 3, 5], 'add')],
   merge1: [
     box('SWS', [0, 0, 0], [40, 10, 2], 'new'),
     box('SWWA', [10, 0, 0], [2, 10, 20], 'add'),
@@ -262,13 +273,15 @@ describe.skipIf(!built)(
         const k = await loadKernel();
         const out: Fixture = {};
         for (const [name, steps] of Object.entries(SCENARIOS)) {
-          const { body, handles } = build(k, steps);
-          const fp = JSON.parse(k.fingerprints(body.shape)).value as ShapeFingerprints;
-          out[name] = body.naming.map((n) => ({
-            name: n.name,
-            kind: n.kind,
-            g: geometry(fp, n.kind, n.index),
-          }));
+          const { results, handles } = build(k, steps);
+          out[name] = results.map((r) => {
+            const fp = JSON.parse(k.fingerprints(r.shape)).value as ShapeFingerprints;
+            return r.naming.map((n) => ({
+              name: n.name,
+              kind: n.kind,
+              g: geometry(fp, n.kind, n.index),
+            }));
+          });
           for (const h of handles) k.release(h);
         }
         writeFileSync(FIXTURE, `${JSON.stringify(out, null, 1)}\n`);
@@ -280,57 +293,76 @@ describe.skipIf(!built)(
       '%s',
       async (name) => {
         const k = await loadKernel();
-        const { results, handles, body } = build(k, SCENARIOS[name] as Step[]);
-        const fp = JSON.parse(k.fingerprints(body.shape)).value as ShapeFingerprints;
+        const { results, handles } = build(k, SCENARIOS[name] as Step[]);
+        const steps = fixture[name] ?? [];
+        expect(steps.length).toBe(results.length);
         const state = new ModelState();
-        for (const r of results) recordMerges(state.merged, r.naming);
-        const cands = primaryNaming(body.naming).map((n) => ({
-          shape: body.shape,
-          kind: n.kind,
-          index: n.index,
-          name: n.name,
-          owner: 'B',
-        }));
-        const pts = fp.vertices.map((v) => v.point);
-        const lo = [0, 1, 2].map((i) => Math.min(...pts.map((p) => p[i] as number))) as Vec3;
-        const hi = [0, 1, 2].map((i) => Math.max(...pts.map((p) => p[i] as number))) as Vec3;
-        const rc = { diag: len(sub(hi, lo)), fingerprints: async () => fp };
-        const old = fixture[name] ?? [];
-        expect(old.length).toBeGreaterThan(0);
         const wrong: string[] = [];
-        const tally = { ok: 0, merged: 0, unresolved: 0 };
-        for (const o of old) {
-          const fingerprint =
-            o.kind === 'face'
-              ? {
-                  centroid: o.g.centroid as Vec3,
-                  ...(o.g.normal ? { normal: o.g.normal } : {}),
-                  area: o.g.area as number,
-                }
-              : o.kind === 'edge'
-                ? { centroid: o.g.centroid as Vec3, length: o.g.length as number }
-                : { centroid: o.g.point as Vec3 };
-          const r = await resolveWithMerges(
-            { name: o.name, kind: o.kind, fingerprint },
-            o.kind,
-            cands.filter((c) => c.kind === o.kind),
-            state,
-            rc,
-          );
-          if (!r.ok) {
-            tally.unresolved++;
-            continue;
-          }
-          if (r.target.via === 'merged') tally.merged++;
-          const now = geometry(fp, o.kind, r.target.index);
-          if (containsOn(k, body.shape, o.kind, r.target.index, o.g, now)) tally.ok++;
-          else
-            wrong.push(
-              `${o.kind} ${o.name} → ${r.target.name} (${r.target.via}): ${JSON.stringify(o.g)} vs ${JSON.stringify(now)}`,
+        const tally = { names: 0, ok: 0, merged: 0, unresolved: 0 };
+        let last: { cands: Candidate[]; rc: ResolveContext } | undefined;
+        // After every step: the old names of that step against the new result of that step, with
+        // the merge table of the steps so far (as the regen engine walks the features).
+        for (const [si, body] of results.entries()) {
+          recordMerges(state.merged, body.naming);
+          const fp = JSON.parse(k.fingerprints(body.shape)).value as ShapeFingerprints;
+          const cands: Candidate[] = primaryNaming(body.naming).map((n) => ({
+            shape: body.shape,
+            kind: n.kind,
+            index: n.index,
+            name: n.name,
+            owner: 'B',
+          }));
+          const pts = fp.vertices.map((v) => v.point);
+          const lo = [0, 1, 2].map((i) => Math.min(...pts.map((p) => p[i] as number))) as Vec3;
+          const hi = [0, 1, 2].map((i) => Math.max(...pts.map((p) => p[i] as number))) as Vec3;
+          // As the regen engine's context (refs.ts): fingerprints and kernel point distances.
+          const rc: ResolveContext = {
+            diag: len(sub(hi, lo)),
+            fingerprints: async () => fp,
+            distance: async (c, point) => {
+              const q = { a: { shape: c.shape, kind: c.kind, index: c.index }, b: { point } };
+              const m = JSON.parse(k.measure(JSON.stringify(q)));
+              return m.ok ? (m.value.distance?.value ?? null) : null;
+            },
+          };
+          last = { cands, rc };
+          const old = steps[si] ?? [];
+          expect(old.length).toBeGreaterThan(0);
+          tally.names += old.length;
+          for (const o of old) {
+            const fingerprint =
+              o.kind === 'face'
+                ? {
+                    centroid: o.g.centroid as Vec3,
+                    ...(o.g.normal ? { normal: o.g.normal } : {}),
+                    area: o.g.area as number,
+                  }
+                : o.kind === 'edge'
+                  ? { centroid: o.g.centroid as Vec3, length: o.g.length as number }
+                  : { centroid: o.g.point as Vec3 };
+            const r = await resolveWithMerges(
+              { name: o.name, kind: o.kind, fingerprint },
+              o.kind,
+              cands.filter((c) => c.kind === o.kind),
+              state,
+              rc,
             );
+            if (!r.ok) {
+              tally.unresolved++;
+              continue;
+            }
+            if (r.target.via === 'merged') tally.merged++;
+            const now = geometry(fp, o.kind, r.target.index);
+            if (containsOn(k, body.shape, o.kind, r.target.index, o.g, now)) tally.ok++;
+            else
+              wrong.push(
+                `step ${si} ${o.kind} ${o.name} → ${r.target.name} (${r.target.via}): ${JSON.stringify(o.g)} vs ${JSON.stringify(now)}`,
+              );
+          }
         }
+        const { cands, rc } = last as { cands: Candidate[]; rc: ResolveContext };
         console.log(
-          `[merge sweep] ${name}: ${old.length} names, ok ${tally.ok} (merged ${tally.merged}), unresolved ${tally.unresolved}, wrong ${wrong.length}`,
+          `[merge sweep] ${name}: ${results.length} steps, ${tally.names} names, ok ${tally.ok} (merged ${tally.merged}), unresolved ${tally.unresolved}, wrong ${wrong.length}`,
         );
         expect(wrong).toEqual([]);
         const conflicts = [...state.merged.entries()]
