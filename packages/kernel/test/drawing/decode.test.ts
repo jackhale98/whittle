@@ -110,6 +110,7 @@ describe('decodeCurve', () => {
 
 describe('decodeProjection', () => {
   const names = ['F1:edge(a|b)', '', 'F1:edge(c|d)'];
+  const faces = ['F1:face.side', '', 'F1:face.top'];
   const raw = (curves: unknown[], sectionFaces: unknown[] = []) => ({
     curves,
     sectionFaces,
@@ -126,6 +127,7 @@ describe('decodeProjection', () => {
         { role: 'visible', edge: 'outline', index: 0, curve: line },
       ]),
       names,
+      faces,
       false,
     );
     expect(r.ok).toBe(true);
@@ -145,6 +147,7 @@ describe('decodeProjection', () => {
     const r = decodeProjection(
       raw([{ role: 'visible', edge: 'sharp', index: 7, curve: line }]),
       [],
+      [],
       false,
     );
     expect(r.ok && r.value.curves[0]?.name).toBeUndefined();
@@ -154,10 +157,79 @@ describe('decodeProjection', () => {
     const r = decodeProjection(
       raw([{ role: 'visible', edge: 'sharp', index: 3, curve: line }]),
       names,
+      faces,
       false,
     );
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error.code).toBe('INTERNAL');
+  });
+
+  it('names outlines by the face they outline; −1, absent and empty names stay unnamed', () => {
+    const r = decodeProjection(
+      raw([
+        { role: 'visible', edge: 'outline', index: -1, face: 0, curve: line },
+        { role: 'hidden', edge: 'outline', index: -1, face: 2, curve: line },
+        { role: 'visible', edge: 'outline', index: -1, face: 1, curve: line },
+        { role: 'visible', edge: 'outline', index: -1, face: -1, curve: line },
+        { role: 'visible', edge: 'outline', index: -1, curve: line },
+      ]),
+      names,
+      faces,
+      false,
+    );
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.value.curves.map((c) => c.face)).toEqual([
+      'F1:face.side',
+      'F1:face.top',
+      undefined,
+      undefined,
+      undefined,
+    ]);
+    for (const c of r.value.curves) expect(c.name).toBeUndefined();
+    expect(r.value.curves[1]).toMatchObject({ role: 'hidden', edge: 'outline' });
+  });
+
+  it('a seam on a silhouette keeps its edge name and names its face', () => {
+    const r = decodeProjection(
+      raw([
+        { role: 'visible', edge: 'sharp', index: 0, face: 0, curve: line },
+        { role: 'hidden', edge: 'sewn', index: 2, face: -1, curve: line },
+      ]),
+      names,
+      faces,
+      false,
+    );
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.value.curves).toEqual([
+      { role: 'visible', edge: 'sharp', name: 'F1:edge(a|b)', face: 'F1:face.side', curve: line },
+      { role: 'hidden', edge: 'sewn', name: 'F1:edge(c|d)', curve: line },
+    ]);
+  });
+
+  it('an unnamed shape gives unnamed outlines', () => {
+    const r = decodeProjection(
+      raw([{ role: 'visible', edge: 'outline', index: -1, face: 4, curve: line }]),
+      [],
+      [],
+      false,
+    );
+    expect(r.ok && r.value.curves[0]?.face).toBeUndefined();
+  });
+
+  it('never guesses: a face past the names is an INTERNAL error', () => {
+    const r = decodeProjection(
+      raw([{ role: 'visible', edge: 'outline', index: -1, face: 3, curve: line }]),
+      names,
+      faces,
+      false,
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.error.code).toBe('INTERNAL');
+      expect(r.error.message).toMatch(/face names/);
+    }
   });
 
   it('rejects malformed curves and roles', () => {
@@ -165,12 +237,14 @@ describe('decodeProjection', () => {
       { role: 'ghost', edge: 'sharp', index: 0, curve: line },
       { role: 'visible', edge: 'iso', index: 0, curve: line },
       { role: 'visible', edge: 'sharp', index: 0.5, curve: line },
+      { role: 'visible', edge: 'outline', index: -1, face: '0', curve: line },
+      { role: 'visible', edge: 'outline', index: -1, face: 1.5, curve: line },
       { role: 'visible', edge: 'sharp', index: 0, curve: { kind: 'line', a: [0, 0] } },
     ]) {
-      const r = decodeProjection(raw([bad]), names, false);
+      const r = decodeProjection(raw([bad]), names, faces, false);
       expect(r.ok).toBe(false);
     }
-    expect(decodeProjection({ nope: true }, names, false).ok).toBe(false);
+    expect(decodeProjection({ nope: true }, names, faces, false).ok).toBe(false);
   });
 
   it('names section faces section:<segment>#<k> in the kernel order', () => {
@@ -185,6 +259,7 @@ describe('decodeProjection', () => {
         ],
       ),
       names,
+      faces,
       true,
     );
     expect(r.ok).toBe(true);
@@ -198,7 +273,12 @@ describe('decodeProjection', () => {
   });
 
   it('a malformed section loop fails', () => {
-    const r = decodeProjection(raw([], [{ segment: 0, loops: [[{ kind: 'x' }]] }]), names, true);
+    const r = decodeProjection(
+      raw([], [{ segment: 0, loops: [[{ kind: 'x' }]] }]),
+      names,
+      faces,
+      true,
+    );
     expect(r.ok).toBe(false);
   });
 });

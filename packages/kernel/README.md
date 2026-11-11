@@ -152,7 +152,16 @@ Façade calls: `drawingInfo()`, `loadShape(memfsPath)` (`{handle, edges, faces, 
   turning points; only offset and intersection curves are sampled (`polyline`). Pieces of one
   edge that HLR split at outline vertices are joined, so a rim seen whole is one curve.
 - **Names**: every curve carries its input edge's index; edges the outliner split map back through
-  `HLRTopoBRep_Data::NewSOldS`, section views through the cut's history. Outlines have no name.
+  `HLRTopoBRep_Data::NewSOldS`, section views through the cut's history. Outlines have no edge
+  name; they carry `face`, the name of the face they outline (`faceNames[i]`). Exact: the face the
+  outline is internal to and the outline edge are both recorded against the input face by the
+  outliner, and must agree. Draft: `HLRBRep_PolyAlgo::Hide` returns the face. Section views map
+  faces through the cut's history too. A face that cannot be determined is left out, never
+  guessed. A seam that lies on a silhouette (a revolved part's seam in the view through its
+  profile plane) is drawn as that edge, because the outliner drops an outline that coincides with
+  an edge: it is `sharp`, keeps its edge `name` and also carries `face` (exact: the face iterator's
+  OutLine and Double flags; draft: an `outl` segment of an edge closed on its only face). So a
+  cylinder seen side-on always has two face-named sides: two outlines, or an outline and its seam.
 - **Sections**: each cut-line segment not parallel to the viewing direction is a prism tool (the
   quad from the segment towards the viewer, swept along `along`), so full, offset and half sections
   are one boolean cut; `sectionFaces` are the images of the tools' segment faces, named

@@ -4,8 +4,11 @@
  * section faces. Pure (no Wasm).
  *
  * Names: `index` is the input edge in TopExp::MapShapes order of the loaded BREP, so it names
- * `ShapeForDrawing.edgeNames[index]`. An empty name, or an unnamed shape, leaves the curve without
- * a name. An index past the names is a mismatch between shape and names and fails the call: a
+ * `ShapeForDrawing.edgeNames[index]`. Outlines have no edge; their `face` is the input face they
+ * outline, in the same order, so it names `ShapeForDrawing.faceNames[face]` (ADR-090 amendment,
+ * second gate round). A seam that lies on a silhouette carries both: its edge and the face it
+ * outlines. An empty name, an index of −1 or an unnamed shape leaves the curve without
+ * that name. An index past the names is a mismatch between shape and names and fails the call: a
  * curve is never given a guessed name (CLAUDE.md, never silently guess a topological reference).
  *
  * Section faces have no model counterpart (they lie on the cutting surface): they are named
@@ -99,13 +102,14 @@ export function decodeCurve(v: unknown): Curve2 | null {
 export type DecodedProjection = Pick<ViewProjection, 'curves' | 'sectionFaces'>;
 
 /**
- * Decodes a façade `RawProjection` (as parsed JSON). `edgeNames` are the loaded shape's
- * (`ShapeForDrawing.edgeNames`; empty for an unnamed shape). `section`: whether the request had
- * one (only then is `sectionFaces` present).
+ * Decodes a façade `RawProjection` (as parsed JSON). `edgeNames` and `faceNames` are the loaded
+ * shape's (`ShapeForDrawing.edgeNames` / `faceNames`; empty for an unnamed shape). `section`:
+ * whether the request had one (only then is `sectionFaces` present).
  */
 export function decodeProjection(
   raw: unknown,
   edgeNames: readonly string[],
+  faceNames: readonly string[],
   section: boolean,
 ): Result<DecodedProjection> {
   if (!isObj(raw) || !Array.isArray(raw.curves)) {
@@ -117,7 +121,12 @@ export function decodeProjection(
     if (!isObj(c)) return internal('The drawing kernel returned a malformed curve', `curve ${i}`);
     const role = c.role as LineRole;
     const edge = c.edge as EdgeClass;
-    if (!ROLES.includes(role) || !CLASSES.includes(edge) || !Number.isInteger(c.index)) {
+    if (
+      !ROLES.includes(role) ||
+      !CLASSES.includes(edge) ||
+      !Number.isInteger(c.index) ||
+      (c.face !== undefined && !Number.isInteger(c.face))
+    ) {
       return internal('The drawing kernel returned a malformed curve', `curve ${i}`);
     }
     const curve = decodeCurve(c.curve);
@@ -138,6 +147,18 @@ export function decodeProjection(
       }
       const name = edgeNames[index];
       if (name !== undefined && name !== '' && edge !== 'outline') out.name = name;
+    }
+    // The façade sets `face` on outlines and on seams that lie on a silhouette.
+    const face = c.face === undefined ? -1 : (c.face as number);
+    if (face >= 0 && faceNames.length > 0) {
+      if (face >= faceNames.length) {
+        return internal(
+          "The part's face names do not match its shape",
+          `face ${face} of a shape with ${faceNames.length} named faces`,
+        );
+      }
+      const name = faceNames[face];
+      if (name !== undefined && name !== '') out.face = name;
     }
     curves.push(out);
   }

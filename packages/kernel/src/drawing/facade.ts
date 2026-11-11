@@ -61,6 +61,12 @@ export interface RawProjectedCurve {
   role: LineRole;
   edge: EdgeClass;
   index: number;
+  /**
+   * Outlines and seams on a silhouette: the input face (TopExp) whose silhouette this is;
+   * −1 = none.
+   * Absent from façades built before the ADR-090 second gate round (read as −1).
+   */
+  face?: number;
   curve: Curve2;
 }
 
