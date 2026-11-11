@@ -268,7 +268,6 @@ export function App({ wb }: { wb: Workbench }) {
           `${joinNames(c.configurationIds.map(nameOf))} would both be written to ${c.fileName}. Give them different part numbers.`,
       ),
     };
-    // biome-ignore lint/correctness/useExhaustiveDependencies: `doc` carries the configurations
   }, [doc, part, configs, wb]);
   const activeConfig = wb.config.active;
   // A new token whenever an evaluated value can change: the shell re-evaluates parameters on it.

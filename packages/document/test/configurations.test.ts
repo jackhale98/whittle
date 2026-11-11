@@ -1062,7 +1062,7 @@ describe('validateDoc, load and codec', () => {
     ).toEqual([expect.stringMatching(/suppressed must be a boolean/)]);
     expect(
       problems((c) => {
-        req(req(req(c[0]).features)[BOX]?.fields)['dx'] = '1';
+        req(req(req(c[0]).features)[BOX]?.fields).dx = '1';
       }),
     ).toEqual([expect.stringMatching(/JSON pointer/)]);
     expect(
