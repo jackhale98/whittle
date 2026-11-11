@@ -356,6 +356,13 @@ geometry when there are no bodies). The **family** of a name is the name with ev
    survivor), `via: 'merged'`. It is reported in `FeatureStatus.merged` (`{path, name, into}`) and
    **not healed**: the stored name stays, so if an edit un-merges the faces the ref is back on its
    own face by exact name. Construction history, not a guess: an unrelated face is never picked.
+   The survivor is looked up in its own name family only (never fingerprint-only), and a current
+   primary name equal to the ref's always wins over an alias. A name the walk recorded with two
+   different survivors (two features derived the same old name for different sub-shapes, e.g. a
+   vertex name rebuilt from the same three face names), itself or along its chain, is
+   **unresolved** (`ambiguous`, the survivors as candidates). `resolveWithMerges` (refs.ts) is
+   this whole order; `merge-sweep.test.ts` checks it against every pre-ADR-078 name of six
+   scenarios.
 1. **Exact name**, exactly one match → resolved, except for a `#k` (or imported) name whose family
    has several members when the ref has a fingerprint: then disambiguation (2) runs first and a
    clear winner overrides the index. Without a clear winner the exact name stands only if it is

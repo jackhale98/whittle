@@ -298,6 +298,39 @@ describe.skipIf(!m3)(`regen golden: booleans merge coplanar faces (ADR-078)${not
     expect(st.rebound).toBeUndefined();
     // Slab 800 + P above it 800 + walls 2 × 360 + T outside P and the walls 1300, then +200.
     relClose(totalVolume(r.bodies), 3620 + 200, 1e-9);
+
+    // An old vertex name two features list for different vertices: the slab step for the vertex
+    // at (10, 0, 2), the T step (from its own pre-merge names) for the one at (10, 0, 5). A point
+    // on it needs attention, with both survivors offered; neither is picked.
+    const v = `vertex(F${P}:face.xmax|F${P}:face.ymin#0|F${P}:face.ymin#1)`;
+    const pt = await regen({
+      ...doc,
+      parts: [
+        {
+          ...(doc.parts[0] as WrenDoc['parts'][number]),
+          features: [
+            ...(doc.parts[0]?.features.slice(0, 5) ?? []),
+            {
+              id: fid('UPT'),
+              type: 'point',
+              name: 'Point',
+              suppressed: false,
+              definition: {
+                kind: 'vertex',
+                vertex: { name: v, kind: 'vertex', fingerprint: { centroid: [10, 0, 2] } },
+              },
+            } as Feature,
+          ],
+          rollbackIndex: 6,
+        },
+      ],
+    });
+    const ps = pt.features[5] as RegenFeatureStatus;
+    expect(ps.state, describeFailures(pt)).toBe('needsAttention');
+    expect(ps.merged).toBeUndefined();
+    expect(ps.unresolved).toHaveLength(1);
+    expect(ps.unresolved?.[0]?.reason).toBe('ambiguous');
+    expect(ps.unresolved?.[0]?.candidates).toHaveLength(2);
   }, 120_000);
 
   it('shell 1 mm and 2 mm with the upright top open: analytic volume', async () => {
