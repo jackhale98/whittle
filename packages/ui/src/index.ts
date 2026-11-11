@@ -31,7 +31,11 @@ export {
 } from './components/floating';
 export { ChamferIcon } from './components/icons';
 export { PromptChip, type PromptChipProps } from './components/PromptChip';
-export { ParamNamesContext } from './components/paramNames';
+export {
+  type ParamLinks,
+  ParamLinksContext,
+  ParamNamesContext,
+} from './components/paramNames';
 export {
   Button,
   type ButtonProps,
@@ -81,6 +85,58 @@ export {
   type WhichOneChooserProps,
 } from './components/WhichOneChooser';
 export {
+  ConfigStatusLabel,
+  ConfigurationPill,
+  type ConfigurationPillProps,
+  type NewConfigurationInput,
+} from './config/ConfigurationPill';
+export type {
+  ConfigTableDefault,
+  ConfigTableEdit,
+  ConfigTableRow,
+  ConfigurationTableProps,
+} from './config/ConfigurationTable';
+export {
+  ChangedInAllNotice,
+  type ChangedInAllNoticeProps,
+  type OneShotScope,
+  OverrideMarker,
+  type OverrideMarkerProps,
+  ScopeChip,
+  type ScopeChipProps,
+  useOneShotScope,
+} from './config/markers';
+export {
+  type CellValue,
+  CONFIG_GROUPS,
+  CONFIG_STATUS_LABEL,
+  type ConfigColumn,
+  type ConfigColumnKind,
+  type ConfigGroupId,
+  type ConfigOption,
+  type ConfigStatus,
+  type ConfigurationSummary,
+  cellText,
+  configTargetKey,
+  DEFAULT_CONFIGURATION_NAME,
+  type EditScope,
+  groupOf as configGroupOf,
+  resolveEditScope,
+  sameCellValue,
+} from './config/model';
+export {
+  coerceCell,
+  type PasteEdit,
+  type PasteIgnored,
+  type PasteInput,
+  type PastePlan,
+  type PasteRow,
+  type PasteRowInfo,
+  parseTsv,
+  planPaste,
+  transposeGrid,
+} from './config/tsv';
+export {
   type ExportFormProps,
   ExportMenu,
   type ExportMenuProps,
@@ -90,6 +146,7 @@ export {
   buildExportRequest,
   EXPORT_TARGETS,
   type ExportBody,
+  type ExportConfigurations,
   type ExportRequest,
   type ExportTarget,
   QUALITY_PRESETS,
@@ -104,6 +161,11 @@ export {
 export { FolderRow, type FolderRowProps } from './features/FolderRow';
 export { featureMeta } from './features/featureMeta';
 export { SketchEye, type SketchEyeProps } from './features/SketchEye';
+export {
+  type FeatureTreeConfiguration,
+  type SuppressScope,
+  suppressMenuItems,
+} from './features/suppressMenu';
 export {
   folderCommands,
   sketchVisibilityCommands,
@@ -171,6 +233,7 @@ export {
   HoleWizard,
 } from './inspector/FeatureInspector';
 export { FeatureLineage, type FeatureLineageProps } from './inspector/FeatureLineage';
+export type { FieldConfigCtx } from './inspector/fieldKit';
 export {
   type ResolvedDim,
   resolveHole,
@@ -179,12 +242,15 @@ export {
 } from './inspector/holeResolve';
 export { type MaterialLibraryItem, SWATCHES, toMaterial } from './inspector/materials';
 export {
+  type ConfigMassRow,
   defaultMassFormat,
   type MassFormat,
   MassReadout,
   type MassSummary,
+  type PartConfigurationProps,
   PartInspector,
   type PartInspectorProps,
+  type PartPropertiesProps,
 } from './inspector/PartInspector';
 export {
   defaultDescribeRef,
@@ -225,6 +291,9 @@ export {
   writeNavigation,
 } from './logic/navigationStorage';
 export { NEST_SKETCHES_KEY, readNestSketches, writeNestSketches } from './logic/nestPref';
+export { beginParamDrag, registerParamDrop } from './logic/paramDrag';
+export { type ParamInfo, paramRefs } from './logic/paramLinks';
+export { RESERVED_WORDS, UNIT_WORDS, validateNewParamName } from './logic/paramName';
 export {
   clampCenter,
   layoutSlots,
@@ -310,7 +379,12 @@ export {
 } from './panels/NavigationSettings';
 export { type PartListItem, PartsPanel, type PartsPanelProps } from './panels/PartsPanel';
 export { type SectionAxis, SectionPanel, type SectionPanelProps } from './panels/SectionPanel';
-export { ParamsTable, type ParamsTableProps } from './params/ParamsTable';
+export {
+  type ParamsConfiguration,
+  ParamsTable,
+  type ParamsTableProps,
+  type ParamUse,
+} from './params/ParamsTable';
 export { AppShell, type AppShellProps } from './shells/AppShell';
 export { BottomSheet, type BottomSheetProps } from './shells/BottomSheet';
 export { DesktopShell } from './shells/DesktopShell';

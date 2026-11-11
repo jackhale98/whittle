@@ -19,11 +19,13 @@ import {
 } from '@wren-cad/ui';
 import { FolderOpen, Library, Plus, Save } from 'lucide-react';
 import { lazy, Suspense, useEffect, useState, useSyncExternalStore } from 'react';
+import { overrideIn } from '../app/config-model';
 import { useObservable } from '../app/observable';
 import type { Workbench } from '../app/workbench';
 import type { FeatureTool, ModelTool } from '../features/factories';
 import { selectionLineage } from '../model/lineage';
 import { selectionKind } from '../selection/pick';
+import { useConfigurationView } from './config-view';
 
 // The feature inspector (and the hole and thread fields behind it) is fetched when a feature is
 // first selected: it is a sizeable part of the app and not on the first screen.
@@ -179,6 +181,7 @@ export function Inspector({
   const doc = useDoc(wb);
   const regen = useObservable(wb.regen);
   const part = doc.parts[0];
+  const view = useConfigurationView(wb);
   const editingType = part?.features.find((x) => x.id === ui.featureId)?.type;
   const tables = useHoleTables(editingType === 'hole' || editingType === 'thread');
   if (!part) return null;
@@ -227,6 +230,16 @@ export function Inspector({
             {f?.type === 'sketch' ? f.constraints.length : 0}
           </dd>
         </dl>
+        {wb.config.active ? (
+          <p
+            data-testid="sketch-config-hint"
+            className="rounded-control bg-warning-soft px-2 py-1.5 text-2xs leading-4 text-warning-text"
+          >
+            Sketch dimensions are not configurable: editing one changes Default, so every
+            configuration sees it. The sketch is solved with {wb.config.active.name}’s parameter
+            values.
+          </p>
+        ) : null}
         <p className="text-2xs leading-4 text-fg-muted">
           Click to place points; the line tool chains until you close a loop or press Esc. Press{' '}
           <Kbd>D</Kbd>, click geometry, then click where the label goes: above or below measures
@@ -241,7 +254,9 @@ export function Inspector({
   }
 
   if (ui.featureId) {
-    const f = part.features.find((x) => x.id === ui.featureId);
+    // The feature as the active configuration shows it (M3.7); Default's is the stored one.
+    const f =
+      wb.config.effectiveFeature(ui.featureId) ?? part.features.find((x) => x.id === ui.featureId);
     if (f) {
       const status = regen?.result.features.find((s) => s.featureId === f.id);
       return (
@@ -284,13 +299,33 @@ export function Inspector({
     );
   }
 
+  const shown = wb.config.resolved().doc.parts[0] ?? part;
+  const active = wb.config.active;
+  const activeName = active?.name ?? null;
   return (
     <>
       <PartInspector
         part={{
           name: part.name,
-          ...(part.material ? { material: part.material } : {}),
-          ...(part.color ? { color: part.color } : {}),
+          ...(shown.material ? { material: shown.material } : {}),
+          ...(shown.color ? { color: shown.color } : {}),
+        }}
+        configuration={{
+          activeName,
+          materialOverridden: overrideIn(active, { kind: 'material' }).has,
+          onResetMaterial: () => wb.config.resetOverride({ kind: 'material' }),
+          masses: view.masses,
+          properties: {
+            partNumber: shown.properties?.partNumber ?? '',
+            description: shown.properties?.description ?? '',
+            generatedPartNumber: active ? `${doc.meta.name}-${active.name}` : doc.meta.name,
+            overridden: {
+              partNumber: overrideIn(active, { kind: 'property', key: 'partNumber' }).has,
+              description: overrideIn(active, { kind: 'property', key: 'description' }).has,
+            },
+            onChange: (patch, scope) => wb.config.setProperties(patch, scope),
+            onReset: (key) => wb.config.resetOverride({ kind: 'property', key }),
+          },
         }}
         library={LIBRARY}
         {...(() => {
@@ -298,7 +333,7 @@ export function Inspector({
           return m ? { mass: m } : {};
         })()}
         evaluate={(e) => wb.evaluate(e, 'density')}
-        onSetMaterial={(m) => wb.setMaterial(m)}
+        onSetMaterial={(m, scope) => wb.config.setMaterial(m, scope)}
         density={density}
       />
       <DocumentSection wb={wb} />

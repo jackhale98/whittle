@@ -7,7 +7,8 @@ import type { WrenDoc } from '@wren-cad/contracts';
 import type { Workbench } from './workbench';
 
 export function viewDoc(wb: Workbench): WrenDoc {
-  const doc = wb.store.getDoc();
+  // The active configuration's effective document (M3.7); Default is the stored one itself.
+  const doc = wb.config.resolved().doc;
   const p = wb.ui.get().picking;
   const part = doc.parts[0];
   if (!p || !part) return doc;

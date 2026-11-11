@@ -2,7 +2,9 @@
  * Reference resolution against the walk state (PLAN §7.3): the candidates of a stored
  * `EntityRef` among the bodies, sketches and planes built so far, resolved by resolve.ts
  * (exact name, then name + fingerprint, then fingerprint, else unresolved: never guessed),
- * with rebound refs and `lastKnown` fingerprints recorded for the app. Also the plane-, axis-
+ * with rebound refs and `lastKnown` fingerprints recorded for the app. Names a boolean merged into
+ * another face resolve to it through the kernel's merge aliases, reported as `merged` (ADR-078).
+ * Also the plane-, axis-
  * and point-like references of the M3 reference geometry, and body scopes.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
@@ -35,8 +37,21 @@ import {
 } from './geometry';
 import { kerr, meshOnlyError } from './helpers';
 import { mentionsImport } from './imports';
-import { type Candidate, type ResolvedTarget, resolveRef, type SubKind } from './resolve';
-import type { BodyState, WalkContext } from './state';
+import {
+  baseName,
+  type Candidate,
+  type Resolution,
+  type ResolvedTarget,
+  resolveRef,
+  type SubKind,
+} from './resolve';
+import {
+  type BodyState,
+  type ModelState,
+  mergeLookup,
+  primaryNaming,
+  type WalkContext,
+} from './state';
 import type { ReboundRef, RegenUnresolvedRef } from './types';
 
 export const SKETCH_TAG = /^S([0-9A-Za-z]+):/;
@@ -81,9 +96,43 @@ function candidates(ctx: WalkContext, ref: EntityRef, kind: SubKind): Candidate[
     const p = ctx.state.planes.get(pl[1] as string);
     return p ? fromMap(p.shape, p.naming, `plane:${p.id}`) : [];
   }
+  // Bodies: primary names only. A body naming map lists the names a boolean merged away after
+  // them (aliases of the surviving sub-shape); those resolve through `resolveWithMerges`, reported.
   const out: Candidate[] = [];
-  for (const b of ctx.state.bodies.values()) out.push(...fromMap(b.shape, b.naming, b.id));
+  for (const b of ctx.state.bodies.values()) {
+    out.push(...fromMap(b.shape, primaryNaming(b.naming), b.id));
+  }
   return out;
+}
+
+/**
+ * Resolution with the walk's merge table (PLAN §7.3, ADR-078), in this order:
+ *  1. a current primary name equal to the ref's wins: an alias never shadows a primary name;
+ *  2. a name that was merged into different sub-shapes (two features listed it for different
+ *     survivors, or a survivor on its chain was) is unresolved: `ambiguous`, with the survivors as
+ *     candidates; neither is picked, and no fingerprint guess replaces it;
+ *  3. a merged name resolves to its survivor (nearest in the chain first), keeping the ref's
+ *     fingerprint for split survivors, among the survivor's name family only (exact or `#k`; never
+ *     a fingerprint-only match); the caller reports it as `merged`;
+ *  4. otherwise resolve.ts (name family, fingerprint, else unresolved).
+ */
+export async function resolveWithMerges(
+  ref: EntityRef,
+  kind: SubKind,
+  cands: Candidate[],
+  state: ModelState,
+  rc: Parameters<typeof resolveRef>[2],
+): Promise<Resolution> {
+  if (cands.some((c) => c.name === ref.name)) return resolveRef(ref, cands, rc);
+  const m = mergeLookup(state, kind, ref.name);
+  if (m.conflict) return { ok: false, reason: 'ambiguous', candidates: m.conflict };
+  for (const into of m.chain) {
+    const family = cands.filter((c) => baseName(c.name) === baseName(into));
+    if (family.length === 0) continue;
+    const r = await resolveRef({ ...ref, name: into }, family, rc);
+    if (r.ok) return { ok: true, target: { ...r.target, via: 'merged' } };
+  }
+  return resolveRef(ref, cands, rc);
 }
 
 /** Resolves a face/edge/vertex/region ref; records unresolved refs under `path`. */
@@ -101,17 +150,26 @@ export async function resolveSub(
     return null;
   }
   const cands = candidates(ctx, ref, kind);
-  const r = await resolveRef(ref, cands, {
+  const rc = {
     diag: await partDiag(core, ctx),
     planeLike,
-    fingerprints: (s) => core.fingerprints(s),
-    weak: (name) => mentionsImport(name, ctx.importIds),
-  });
+    fingerprints: (s: ShapeHandle) => core.fingerprints(s),
+    weak: (name: string) => mentionsImport(name, ctx.importIds),
+  };
+  // Order (PLAN §7.3, ADR-078): exact name, then a merge alias (history evidence; conflicting
+  // aliases are unresolved), then the name family and fingerprints (resolve.ts).
+  const r = await resolveWithMerges(ref, kind, cands, ctx.state, rc);
   const memo = `${ctx.current.featureId}|${path}`;
   if (r.ok) {
     const t = r.target;
     ctx.pc.lastResolved.set(memo, { shape: t.shape, kind: t.kind, index: t.index });
     if (t.name === ref.name && t.via === 'name') return t;
+    if (t.via === 'merged') {
+      // Reported, not healed: the stored name stays valid (and returns to its own face if an
+      // upstream edit un-merges it).
+      ctx.current.merged.push({ path, name: ref.name, into: t.name });
+      return t;
+    }
     const fp = await core.fingerprints(t.shape);
     const now = fp ? fingerprintOf(fp, t.kind, t.index) : undefined;
     // Rebound: the name changed, or fingerprint evidence picked it and the stored fingerprint

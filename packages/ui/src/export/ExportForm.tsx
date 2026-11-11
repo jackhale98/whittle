@@ -6,6 +6,7 @@ import {
   buildExportRequest,
   EXPORT_TARGETS,
   type ExportBody,
+  type ExportConfigurations,
   type ExportRequest,
   type ExportTarget,
   QUALITY_PRESETS,
@@ -16,6 +17,8 @@ export interface ExportFormProps {
   onExport(request: ExportRequest): void;
   /** Bodies of the active part; with more than one, a body picker appears. */
   bodies?: readonly ExportBody[];
+  /** M3.7: the part has configurations: choose the active one or all, one file each. */
+  configurations?: ExportConfigurations;
   defaultTarget?: ExportTarget;
   /** Targets the host cannot produce yet; shown disabled with a reason. */
   unavailable?: Partial<Record<ExportTarget, string>>;
@@ -35,6 +38,7 @@ export interface ExportFormProps {
 export default function ExportForm({
   onExport,
   bodies = [],
+  configurations,
   defaultTarget = 'step',
   unavailable = {},
   notes = {},
@@ -58,6 +62,7 @@ export default function ExportForm({
   const [perBody, setPerBody] = useState(false);
   const [quality, setQuality] = useState<TessellationQuality>('standard');
   const [off, setOff] = useState<ReadonlySet<string>>(new Set());
+  const [which, setWhich] = useState<'active' | 'all'>('active');
   const gid = useId();
   const meta = EXPORT_TARGETS.find((t) => t.id === target);
   const selected = bodies.filter((b) => !off.has(b.id)).map((b) => b.id);
@@ -157,6 +162,39 @@ export default function ExportForm({
         </Field>
       ) : null}
 
+      {configurations && bodyScoped ? (
+        <Field
+          label="Configurations"
+          hint={
+            which === 'all'
+              ? `${configurations.count} files, one per configuration, named by part number.`
+              : undefined
+          }
+        >
+          <Segmented
+            label="Configurations to export"
+            size={size}
+            value={which}
+            onChange={setWhich}
+            options={[
+              { value: 'active', label: `Active (${configurations.activeName})` },
+              { value: 'all', label: `All (${configurations.count})` },
+            ]}
+          />
+          {which === 'all' && configurations.warnings?.length ? (
+            <ul
+              role="alert"
+              data-testid="export-collisions"
+              className="m-0 mt-1 flex list-none flex-col gap-0.5 rounded-control bg-warning-soft p-2 text-2xs text-warning-text"
+            >
+              {configurations.warnings.map((w) => (
+                <li key={w}>{w}</li>
+              ))}
+            </ul>
+          ) : null}
+        </Field>
+      ) : null}
+
       {bodyScoped && bodies.length > 1 ? (
         <fieldset className="m-0 flex min-w-0 flex-col gap-0.5 border-0 p-0">
           <legend className="mb-1 text-xs font-medium text-fg-muted">Bodies to export</legend>
@@ -208,6 +246,7 @@ export default function ExportForm({
               quality,
               bodies: bodies.length ? selected : undefined,
               allBodies: bodies.length,
+              ...(configurations ? { configurations: which } : {}),
             }),
           )
         }

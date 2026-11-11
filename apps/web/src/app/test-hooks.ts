@@ -4,6 +4,7 @@
 
 import type { Command, Id, WrenDoc } from '@wren-cad/contracts';
 import { hitKey, resolvePick } from '../selection/pick';
+import { configStatusOf, isMissingActive, keyOf } from './config-model';
 import { marks } from './timing';
 import type { Workbench } from './workbench';
 
@@ -235,6 +236,77 @@ export function testHooks(wb: Workbench) {
       const b = await lib?.open(id);
       return [...(b?.extra?.keys() ?? [])].sort();
     },
+    /**
+     * M3.7: the active configuration, the status and mass of each configuration (from the
+     * background builds; the active one from the live regen) and the last switch's timing.
+     */
+    configurations: () => {
+      const doc = wb.doc;
+      const part = doc.parts[0];
+      const active = part?.activeConfigurationId ?? null;
+      const live = wb.regen.get();
+      const out: Record<
+        string,
+        { status: string; mass: number | null; ms: number | null; message?: string }
+      > = {};
+      const statuses = wb.treeStatuses.get();
+      for (const id of [null, ...(part?.configurations ?? []).map((c) => c.id)] as (Id | null)[]) {
+        const key = keyOf(id);
+        if (id === active) {
+          const s = configStatusOf(
+            live?.source === 'live' ? statuses : undefined,
+            wb.config.resolved().issues,
+            (f) => f,
+          );
+          out[key] = {
+            status: isMissingActive(part) ? 'attention' : s.status,
+            mass: wb.massSummary()?.mass ?? null,
+            ms: null,
+          };
+          continue;
+        }
+        const e = wb.config.builds.entry(doc, id);
+        out[key] = {
+          status: e?.status ?? 'unbuilt',
+          mass: e?.mass?.mass ?? null,
+          ms: e?.ms ?? null,
+          ...(e?.message ? { message: e.message } : {}),
+        };
+      }
+      return {
+        active,
+        missing: isMissingActive(part),
+        builds: out,
+        building: wb.config.builds.view.get().building,
+        lastSwitch: wb.config.lastSwitch.get(),
+      };
+    },
+    /** Waits for the settled live regen and the background builds of the other configurations. */
+    configurationsBuilt: async () => {
+      for (let i = 0; i < 400; i++) {
+        await wb.loop?.whenIdle();
+        const part = wb.part;
+        const ids = [null, ...(part?.configurations ?? []).map((c) => c.id)] as (Id | null)[];
+        const active = part?.activeConfigurationId ?? null;
+        const done = ids.every((id) => id === active || wb.config.builds.entry(wb.doc, id));
+        if (done && !wb.config.builds.pending) return true;
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      return false;
+    },
+    /** Slows each configuration of "Export all" (ms), so a test can act while it runs. */
+    slowExport: (ms: number) => {
+      wb.config.exportDelayMs = ms;
+    },
+    /** Regen slots the kernel holds for the part (memory guard: config slots are released). */
+    kernelSlots: async () => {
+      const m = await wb.modeling?.port.memoryStats?.();
+      return (m?.regen.slots ?? []).map((s) => s.slot);
+    },
+    /** Simulates "Export all" holding the live slot (picks and measurements are refused). */
+    holdExport: (on: boolean) => wb.config.setExportingAll(on),
+    /** Number of `regenerate` calls the loop made (the background builds are not counted). */
+    regenCalls: () => wb.loop?.calls ?? 0,
     /** Waits until the mesh cache of the current document has reached the library. */
     cacheSaved: async () => {
       for (let i = 0; i < 200; i++) {

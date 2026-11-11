@@ -7,7 +7,7 @@
 
 import type { Feature, FeatureInputs, Frame } from '@wren-cad/contracts';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import type { WhittleKernelModule } from '../src/index';
+import type { RawImportResult, WhittleKernelModule } from '../src/index';
 import {
   boxFeature,
   boxValues,
@@ -18,6 +18,7 @@ import {
   loadVariant,
   meshShape,
   names,
+  ok,
   profileRefs,
   type RawFeatureResult,
   rect,
@@ -30,6 +31,7 @@ import {
   variantBuilt,
   vecClose,
 } from './helpers';
+import { igesBox } from './iges';
 
 const BOX = '01JBOX00000000000000000001';
 const B2 = '01JBOX00000000000000000002';
@@ -41,6 +43,7 @@ const S = `S${SK}`;
 const EX = '01JEXTRUDE0000000000000001';
 const E = `F${EX}`;
 const CYL = '01JCYLINDER000000000000001';
+const IM = '01JIMPORT00000000000000001';
 const PI = Math.PI;
 
 const BOX_FACES = ['xmin', 'xmax', 'ymin', 'ymax', 'zmin', 'zmax'].map((r) => `F${BOX}:face.${r}`);
@@ -218,29 +221,68 @@ for (const { variant } of VARIANTS) {
 
       it('one of two coplanar adjacent top faces pulled: a new wall named after the edge', () => {
         const ss = session();
-        const a = ss.exec(boxAt(BOX, undefined), boxValues(10, 10, 10));
-        const body = ss.exec(boxAt(B2, frameAt([10, 0, 0]), 'add'), {
+        // Booleans merge coplanar faces (ADR-078): fusing two boxes side by side gives one top
+        // face now, so the split body comes from a file: a 20 × 10 × 10 box whose top is two
+        // faces split at x = 10.
+        const fused = ss.exec(boxAt(B2, frameAt([10, 0, 0]), 'add'), {
           ...boxValues(10, 10, 10),
-          target: a.shape,
+          target: ss.exec(boxAt(BOX, undefined), boxValues(10, 10, 10)).shape,
         });
-        expect(ss.mass(body.shape).faceCount).toBe(10);
-        const r = push(ss, body, [`F${BOX}:face.zmax`], 5);
+        expect(ss.mass(fused.shape).faceCount).toBe(6);
+        const path = '/tmp/wren-test-split-top.igs';
+        k.FS.writeFile(path, new TextEncoder().encode(igesBox(20, 10, 10, 6, 10)));
+        let raw = 0;
+        try {
+          raw = ok<RawImportResult>(k.importFile(path, 'iges')).bodies[0]?.shape ?? 0;
+          ss.handles.push(raw);
+        } finally {
+          k.FS.unlink(path);
+        }
+        const body = ss.exec(
+          {
+            id: IM,
+            type: 'import',
+            name: 'Import',
+            suppressed: false,
+            source: {
+              path: `imports/${IM}.igs`,
+              format: 'iges',
+              sha256: '0',
+              fileName: 'split.igs',
+            },
+            op: 'new',
+          } as Feature,
+          { values: {}, shapes: { source: raw } },
+        );
+        expect(ss.mass(body.shape).faceCount).toBe(7);
+        const fp0 = ss.fingerprints(body.shape);
+        const at = (c: number[]) =>
+          names(body, 'face').find((n) => {
+            const f = fp0.faces[indexOf(body, n, 'face')];
+            return f?.centroid.every((v, i) => Math.abs(v - (c[i] ?? 0)) < 1e-6) === true;
+          }) ?? '';
+        const leftTop = at([5, 5, 10]);
+        const rightTop = at([15, 5, 10]);
+        const left = at([0, 5, 5]);
+        expect(leftTop).not.toBe('');
+        expect(rightTop).not.toBe('');
+        const r = push(ss, body, [leftTop], 5);
         const mp = ss.mass(r.shape);
         relClose(mp.volume, 2000 + 500, 1e-9);
-        expect(mp.faceCount).toBe(11);
-        const wall = `${P}:side(edge(F${BOX}:face.zmax|F${B2}:face.zmax))`;
+        expect(mp.faceCount).toBe(8);
+        const wall = `${P}:side(edge(${[leftTop, rightTop].sort().join('|')}))`;
         expect(names(r, 'face').filter((n) => n.startsWith(`${P}:`))).toEqual([wall]);
         const fp = faceFp(ss, r, wall);
         vecClose(fp.centroid, [10, 5, 12.5]);
         vecClose(fp.normal ?? [], [1, 0, 0], 1e-12);
         relClose(fp.area, 50, 1e-9);
         // The moved face keeps its name; its old neighbours grew (walls merged into them).
-        vecClose(faceFp(ss, r, `F${BOX}:face.zmax`).centroid, [5, 5, 15]);
-        relClose(faceFp(ss, r, `F${BOX}:face.xmin`).area, 150, 1e-9);
-        vecClose(faceFp(ss, r, `F${B2}:face.zmax`).centroid, [15, 5, 10]);
-        // Adjacent face names sort lexicographically ("F01JBOX…" < "F01JPUSHPULL…").
-        expect(names(r, 'edge')).toContain(`edge(F${BOX}:face.zmax|${wall})`);
-        expect(names(r, 'edge')).toContain(`edge(F${B2}:face.zmax|${wall})`);
+        vecClose(faceFp(ss, r, leftTop).centroid, [5, 5, 15]);
+        relClose(faceFp(ss, r, left).area, 150, 1e-9);
+        vecClose(faceFp(ss, r, rightTop).centroid, [15, 5, 10]);
+        // Adjacent face names sort lexicographically ("F01JIMPORT…" < "F01JPUSHPULL…").
+        expect(names(r, 'edge')).toContain(`edge(${leftTop}|${wall})`);
+        expect(names(r, 'edge')).toContain(`edge(${rightTop}|${wall})`);
         checkNaming(r);
       });
     });

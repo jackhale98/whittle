@@ -143,6 +143,7 @@ function Dimension({
         onCommit={(e) => session.updateDimension(c.id, e, 'commit')}
         onCancel={() => session.doneEditingDimension()}
         onSelect={() => session.selectConstraint(c.id)}
+        onDropParam={(name) => session.updateDimension(c.id, name, 'commit')}
         onDelete={() => session.deleteConstraint(c.id)}
         onToggleDriving={() => session.toggleDriving(c.id)}
         {...(c.kind === 'radius' || c.kind === 'diameter'

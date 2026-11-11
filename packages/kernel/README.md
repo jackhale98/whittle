@@ -20,7 +20,7 @@ pnpm --filter @wren-cad/kernel test    # golden tests in Node, both variants
 
 `pnpm build` runs [`scripts/build.mjs`](scripts/build.mjs):
 
-1. `scripts/amalgamate.mjs` inlines `whittle_kernel.h`, `whittle_core.cpp`, `whittle_modeling.cpp`,
+1. `scripts/amalgamate.mjs` inlines `whittle_kernel.h`, `whittle_core.cpp`, `whittle_unify.cpp`, `whittle_modeling.cpp`,
    `whittle_pushpull.cpp`, `whittle_shape_ops.cpp`, `whittle_copies.cpp`, `whittle_reference.cpp`,
    `whittle_measure.cpp`, `whittle_io.cpp`, `whittle_kernel.cpp` and `whittle_bindings.cpp` (in that
    order) into `.libcascade/whittle_facade.cpp`, and stamps
@@ -160,6 +160,17 @@ Body ops `add | cut | intersect` act on `inputs.target` plus `inputs.shapes["sco
 order). `add` fuses all of them into one result; `cut`/`intersect` return the target's result as
 `shape` and the others in `bodies: [{key, shape, naming}]`.
 
+**Coplanar faces merge after every boolean** (ADR-078, `src/whittle_unify.cpp`): extrude,
+revolve, primitive, sweep and loft body ops, the `boolean` feature, multi-region tools, pattern
+and mirror fuses and cuts, holes and imports with an op all go through `booleanNamed`, which runs
+`ShapeUpgrade_UnifySameDomain` (faces and edges, safe input mode) restricted to the seams the
+operation created: a tool face next to any face on the same surface, or pieces of one body face.
+Two faces that were already on the body never merge, faces of different solids never merge, and
+vertices away from the merged faces are kept. A cheap same-surface check (same `Geom_Surface`, or
+equal plane / cylinder / cone / sphere within 1e-6 mm) skips the unify call when nothing can merge.
+A merge that changes the solid count, the validity or the volume (1e-9 relative) is dropped.
+Push/pull keeps its own rules (ADR-013).
+
 **Sketch regions** are the bounded faces of the planar arrangement of all non-construction
 curves (minimal regions, as in Onshape/Fusion): the curves are split at their intersections with
 the General Fuse algorithm (`BRepAlgoAPI_BuilderAlgo`, fuzzy 1e-6 mm, which also merges coincident
@@ -264,8 +275,10 @@ plane, a positive angle leans a side face out at the top.
 **Shell.** `BRepOffset_MakeOffset` (thick solid with the open faces as closing faces; with none,
 an offset solid that becomes the void of a hollow solid), sharp intersection joins; if OCCT cannot
 build those (some curved bodies) it retries with rounded arc joins and warns. A result that is
-invalid, self-intersecting or not smaller than the body (inward) is `OPERATION_FAILED`
-"The shell is too thick for this body" with the open faces as `entityRefs`.
+invalid, self-intersecting or not smaller than the body (inward) is `OPERATION_FAILED` with the
+open faces as `entityRefs`: "The shell is too thick for this body" when a much thinner wall
+(min(t/4, 0.25 mm)) works, else "The shell could not be built for this body" (the body's faces
+are the problem, not the thickness); `detail` has OCCT's reasons for both joins and the probe.
 
 **Sweep** uses `BRepOffsetAPI_MakePipeShell` per profile wire (outer minus holes):
 `followPath` = corrected Frenet, `fixed` = constant trihedron (the profile translates). The profile
@@ -371,6 +384,13 @@ free-form edges use `GCPnts_AbscissaPoint` (1e-10).
 - Push/pull: moved faces keep their names; walls are `F<id>:side(<boundary edge name>)`; when
   faces merge, old > moved > wall (a wall merged into a side face takes its name; a moved face
   flush with an old face disappears).
+- Merged faces after a boolean (ADR-078): the merged face keeps the name of the earliest-created
+  face among the merged ones: a face that was on the body beats one the operation created, and
+  among equals the smaller name wins (feature tags are ULIDs). Every absorbed face name, and every
+  edge and vertex name the merge changed, stays in the naming map as an **alias**: an extra entry
+  with the same `kind` and `index`, after all primary entries (the first entry per index is the
+  sub-shape's name). Names that only lose or change a `#k` suffix get no alias (the resolver's
+  name-family rule covers them).
 - Faces no rule names (not expected) get `F<id>:unnamed#k`.
 - M3: shell offset faces `F<id>:shell(<face>)`, rims `F<id>:rim(<open face>)` (OCCT builds one
   annular rim face per open face, the closing face's `Modified` image); drafted faces keep their

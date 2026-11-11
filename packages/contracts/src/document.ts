@@ -23,7 +23,7 @@ export type Vec2 = [number, number];
 export type LengthUnit = 'mm' | 'cm' | 'm' | 'in' | 'ft';
 export type AngleUnit = 'deg' | 'rad';
 
-export const SCHEMA_VERSION = 2 as const;
+export const SCHEMA_VERSION = 3 as const;
 
 export interface WrenDoc {
   schemaVersion: number;
@@ -76,7 +76,64 @@ export interface Part {
    * refused by the command layer (the UI asks first).
    */
   folders?: FeatureFolder[];
+  /** M3.7: the Default configuration's part number and description (and the part's when it has none). */
+  properties?: PartProperties;
+  /**
+   * M3.7 named configurations (ADR-074): sparse overrides over an implicit **Default**, which is the
+   * part as stored. Absent = only Default. Keyed by id everywhere, so renames never break merges
+   * or consumers. No derived (nested) configurations.
+   */
+  configurations?: Configuration[];
+  /** The active configuration: every regen of the live model is of this one. Absent = Default. */
+  activeConfigurationId?: Id;
 }
+
+/** Part properties that drive exports, title blocks (M4) and the BOM (M6). */
+export interface PartProperties {
+  partNumber?: string;
+  description?: string;
+}
+
+/**
+ * One configuration of a part: only what differs from Default is stored. Resolution (document
+ * package `resolveConfiguration`) applies the overrides to a copy of the document before regen.
+ */
+export interface Configuration {
+  id: Id;
+  name: string;
+  /**
+   * Overrides of document parameters (paramId → Expr) while **this part** regenerates (owner D1:
+   * other parts keep the parameter's own value).
+   */
+  params?: Record<Id, Expr>;
+  /** Per-feature overrides keyed by feature id. */
+  features?: Record<Id, FeatureOverride>;
+  /** Replaces the part's material in this configuration; `null` = no material; absent = inherited. */
+  material?: Material | null;
+  /** Replaces the part's colour; absent = inherited. */
+  color?: string;
+  /**
+   * Overrides of the part properties. A missing part number resolves to "<document name>-<configuration
+   * name>" (owner D4); collisions are reported, never silently overwritten.
+   */
+  properties?: PartProperties;
+}
+
+export interface FeatureOverride {
+  /** Suppression in this configuration; absent = inherited from `Feature.suppressed`. */
+  suppressed?: boolean;
+  /**
+   * Field overrides: JSON pointer inside the feature (e.g. `/end/depth`, `/radius`, `/size`) →
+   * value. Only configurable fields are allowed (owner D2: every `Expr` field plus the option fields
+   * the document package lists in `CONFIGURABLE_OPTIONS`, e.g. hole size/kind/fit, extrude end kind).
+   * An override whose path no longer applies makes that configuration's feature "needs attention",
+   * never a silent drop.
+   */
+  fields?: Record<string, ConfiguredValue>;
+}
+
+/** An `Expr` (string) or an option value. */
+export type ConfiguredValue = string | number | boolean;
 
 /** A named group of consecutive features in a part's tree (M3.6). UI state such as collapsed is not stored. */
 export interface FeatureFolder {

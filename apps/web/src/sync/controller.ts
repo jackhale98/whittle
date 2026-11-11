@@ -40,7 +40,7 @@ import type {
   Version,
   WrenDoc,
 } from '@wren-cad/contracts';
-import { slugify, ulid } from '@wren-cad/document';
+import { resolveConfiguration, slugify, ulid } from '@wren-cad/document';
 import {
   beginSignIn,
   browserGitFs,
@@ -1414,8 +1414,15 @@ export class SyncController {
     const port = modeling?.port;
     if (!port?.compare || !part || !doc.parts.some((p) => p.id === part.id)) return null;
     const quality: MeshQuality = 'fine';
+    // Compare what is on screen: the version in the same configuration as the live model (M3.7).
+    const active = part.activeConfigurationId;
+    const other = doc.parts.find((p) => p.id === part.id);
+    const shown =
+      active && other?.configurations?.some((c) => c.id === active)
+        ? resolveConfiguration(doc, part.id, active).doc
+        : doc;
     await port.regenerate({
-      doc,
+      doc: shown,
       partId: part.id,
       quality,
       slot,

@@ -49,6 +49,8 @@ import {
 import { M3Gallery } from './m3Gallery';
 import { M35Gallery } from './m35Gallery';
 import { M36Gallery } from './m36Gallery';
+import { M37Gallery } from './m37Gallery';
+import { ParamsGallery } from './paramsGallery';
 import { SectionGallery } from './sectionGallery';
 import { SyncGallery } from './syncGallery';
 
@@ -586,6 +588,8 @@ export function Gallery({
       case 'm3-tree':
       case 'm3-bar':
         return <M3Gallery section={section} tier={tier} />;
+      case 'params-link':
+        return <ParamsGallery tier={tier} />;
       case 'section-chip':
       case 'section-panel':
         return <SectionGallery section={section} tier={tier} />;
@@ -594,6 +598,15 @@ export function Gallery({
       case 'm36-phone':
       case 'm36-live':
         return <M36Gallery section={section} tier={tier} />;
+      case 'm37-pill':
+      case 'm37-markers':
+      case 'm37-table':
+      case 'm37-table-transposed':
+      case 'm37-table-collapsed':
+      case 'm37-review':
+      case 'm37-live':
+      case 'm37-wiring':
+        return <M37Gallery section={section} tier={tier} />;
       case 'm35-radial':
       case 'm35-radial-live':
       case 'm35-chooser':

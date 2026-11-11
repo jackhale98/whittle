@@ -10,7 +10,7 @@ import { req, sampleDoc } from './fixtures';
 const schemaDir = join(import.meta.dirname, '..', 'schema');
 const load = (name: string): object => JSON.parse(readFileSync(join(schemaDir, name), 'utf8'));
 
-const ajv = new Ajv({ allErrors: true, strict: true });
+const ajv = new Ajv({ allErrors: true, strict: true, allowUnionTypes: true });
 const validators = {
   project: ajv.compile(load('wren-project.schema.json')),
   params: ajv.compile(load('wren-params.schema.json')),

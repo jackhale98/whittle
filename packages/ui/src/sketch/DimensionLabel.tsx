@@ -1,9 +1,12 @@
 import type { EvalResult, Expr, SketchConstraintKind } from '@wren-cad/contracts';
 import { Trash2 } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useContext, useEffect, useRef, useState } from 'react';
 import { ExpressionInput } from '../components/ExpressionInput';
+import { ParamLinksContext, ParamNamesContext } from '../components/paramNames';
 import { cn } from '../components/primitives';
 import { defaultFormatValue, type FormatValue } from '../format';
+import { registerParamDrop } from '../logic/paramDrag';
+import { isParamName, paramRefs } from '../logic/paramLinks';
 import { ConstraintGlyph } from './ConstraintGlyph';
 
 type DimKind = Extract<
@@ -37,6 +40,11 @@ export interface DimensionLabelProps {
    * double-click, or Enter) edits, as in other CAD sketchers; without it a click edits at once.
    */
   onSelect?(): void;
+  /**
+   * A parameter was dropped on the label (dragged from the Params tab): set the dimension to that
+   * parameter. The host makes it one undo step. Without it the label is not a drop target.
+   */
+  onDropParam?(name: string): void;
   /** Delete the dimension: Delete / Backspace on the label, or the Delete chip when selected. */
   onDelete?(): void;
   /** Driving ↔ reference (shown while editing, or when the label is selected). */
@@ -150,6 +158,7 @@ export function DimensionLabel({
   onPreview,
   onCancel,
   onSelect,
+  onDropParam,
   onDelete,
   onToggleDriving,
   onToggleKind,
@@ -157,6 +166,7 @@ export function DimensionLabel({
   onMoveEnd,
 }: DimensionLabelProps) {
   const [editing, setEditing] = useState(!!autoEdit && driving);
+  const [seed, setSeed] = useState<string | undefined>(undefined);
   const btn = useRef<HTMLButtonElement>(null);
   const drag = useRef<{
     id: number;
@@ -178,6 +188,49 @@ export function DimensionLabel({
   useEffect(() => {
     if (autoEdit && driving) setEditing(true);
   }, [autoEdit, driving]);
+
+  useEffect(() => {
+    if (!editing) setSeed(undefined);
+  }, [editing]);
+
+  // A parameter dropped here sets the dimension (a driven one is measured: not a target).
+  const dropRef = useRef<(name: string) => boolean>(() => false);
+  dropRef.current = (name) => {
+    if (evaluate && !evaluate(name).ok) {
+      // An angle on a length: the editor opens with the name and says why it does not fit.
+      setSeed(name);
+      setEditing(true);
+      return false;
+    }
+    onDropParam?.(name);
+    return true;
+  };
+  const droppable = !!onDropParam && driving && !editing;
+  useEffect(() => {
+    const el = btn.current;
+    if (!droppable || !el) return;
+    return registerParamDrop(el, (n) => dropRef.current(n));
+  }, [droppable]);
+
+  // The link: a dimension set by a parameter shows its name ("width = 80") or an fx badge.
+  const links = useContext(ParamLinksContext);
+  const ctxNames = useContext(ParamNamesContext);
+  const known = links.params.length > 0 ? links.params.map((p) => p.name) : ctxNames;
+  const refs = driving ? paramRefs(expr, known) : [];
+  const exact = refs.length === 1 && isParamName(expr, known) ? expr.trim() : null;
+  // The accessible name starts with the visible text (WCAG 2.5.3): "width = Ø80" when linked.
+  const what =
+    kind === 'offset'
+      ? driving
+        ? 'Offset dimension'
+        : 'Reference offset'
+      : driving
+        ? 'Dimension'
+        : 'Reference dimension';
+  const hint = driving ? 'Press Enter to edit.' : 'Measured, not editable.';
+  const labelName = exact
+    ? `${exact} = ${prefix[kind] ?? ''}${text}, ${what.toLowerCase()}. ${hint}`
+    : `${what}: ${prefix[kind] ?? ''}${text}${refs.length > 0 ? `, set by the parameters ${refs.join(', ')}` : ''}. ${hint}`;
 
   const pos = { left: x, top: y, transform: 'translate(-50%, -50%)' } as const;
 
@@ -206,6 +259,7 @@ export function DimensionLabel({
           unitHint={kind === 'angle' ? '°' : 'mm'}
           step={kind === 'angle' ? 5 : 1}
           autoFocus
+          {...(seed !== undefined ? { seedDraft: seed } : {})}
           showValue={false}
           onPreview={onPreview}
           onCommit={(e) => {
@@ -243,7 +297,8 @@ export function DimensionLabel({
       style={pos}
       data-kind={kind}
       data-driving={driving}
-      aria-label={`${kind === 'offset' ? (driving ? 'Offset dimension' : 'Reference offset') : driving ? 'Dimension' : 'Reference dimension'}: ${prefix[kind] ?? ''}${text}. ${driving ? 'Press Enter to edit.' : 'Measured, not editable.'}`}
+      aria-label={labelName}
+      data-param={refs.length > 0 ? refs.join(',') : undefined}
       aria-pressed={selected}
       data-draggable={onMove ? '' : undefined}
       onPointerDown={(e) => {
@@ -312,6 +367,19 @@ export function DimensionLabel({
           size={14}
           tone="plain"
           className="mr-1 inline-block align-[-3px]"
+        />
+      ) : null}
+      {exact ? (
+        <span data-testid="dimension-param" className="font-medium text-accent-text">
+          {`${exact} = `}
+        </span>
+      ) : refs.length > 0 ? (
+        <span
+          data-testid="dimension-param"
+          title={`Set by ${refs.join(', ')}`}
+          // The "fx" is drawn by CSS so it is not text the accessible name has to repeat.
+          aria-hidden
+          className="mr-1 rounded-[5px] bg-accent-soft px-1 text-2xs font-semibold text-accent-text italic before:content-['fx']"
         />
       ) : null}
       {prefix[kind]}

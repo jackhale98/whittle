@@ -241,6 +241,50 @@ for (const { variant } of VARIANTS) {
         expect(names(a).sort()).toEqual(names(b).sort());
       });
 
+      it('an open face tangent to kept fillets: hollowed by booleans, walls end flush (analytic)', () => {
+        const ss = session();
+        const box = ss.exec(boxFeature(BOX), boxValues(40, 30, 20));
+        const FI = '01JM3FILLET000000000000001';
+        const corners = [`${B}:edge(face.xmin|face.ymin)`, `${B}:edge(face.xmax|face.ymin)`];
+        const filleted = ss.exec(
+          {
+            id: FI,
+            type: 'fillet',
+            name: 'Fillet',
+            suppressed: false,
+            edges: corners.map((name) => ({ name, kind: 'edge' as const })),
+            radius: '5',
+          } as Feature,
+          {
+            values: { '/radius': 5 },
+            target: box.shape,
+            refs: Object.fromEntries(
+              corners.map((n, i) => [`/edges/${i}`, edge(box.shape, indexOf(box, n, 'edge'))]),
+            ),
+          },
+        );
+        // The front face runs tangentially into both fillets; OCCT's thick solid cannot open it.
+        const r = ss.exec(shellFeature(), {
+          values: { '/thickness': 2 },
+          target: filleted.shape,
+          refs: {
+            '/openFaces/0': face(filleted.shape, indexOf(filleted, `${B}:face.ymin`, 'face')),
+          },
+        });
+        const k = 1 - PI / 4;
+        const body = 40 * 30 * 20 - 2 * k * 25 * 20;
+        // Void: the body offset 2 mm inward (fillets r 3), plus the 30 × 2 × 16 slab through the
+        // front between the fillets' tangent lines.
+        const voidVolume = 36 * 26 * 16 - 2 * k * 9 * 16 + 30 * 2 * 16;
+        relClose(ss.mass(r.shape).volume, body - voidVolume, REL);
+        expect(names(r, 'face')).toContain(`F${SH}:shell(${B}:face.ymax)`);
+        expect(names(r, 'face')).toContain(`F${SH}:shell(F${FI}:fillet(${corners[0]}))`);
+        expect(
+          names(r, 'face').filter((n) => n.startsWith(`F${SH}:rim(${B}:face.ymin)`)).length,
+        ).toBeGreaterThan(0);
+        expect(names(r, 'face')).not.toContain(`${B}:face.ymin`);
+      }, 60_000); // two failed thick-solid attempts, an offset and two booleans: seconds under load
+
       it('an over-thick shell is a structured error and the kernel keeps working', () => {
         const ss = session();
         const box = ss.exec(boxFeature(BOX), boxValues(40, 30, 20));

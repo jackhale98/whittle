@@ -17,7 +17,7 @@ let validators: Record<string, ReturnType<Ajv['compile']>> | null = null;
 
 function compiled() {
   if (validators) return validators;
-  const ajv = new Ajv({ allErrors: true, strict: true });
+  const ajv = new Ajv({ allErrors: true, strict: true, allowUnionTypes: true });
   validators = {
     project: ajv.compile(load('wren-project.schema.json')),
     params: ajv.compile(load('wren-params.schema.json')),

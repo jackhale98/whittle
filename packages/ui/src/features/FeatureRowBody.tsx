@@ -46,6 +46,7 @@ export function FeatureRowBody({
   st,
   rolled,
   suppressed,
+  suppressOverridden,
   renaming,
   rowKey,
   onRename,
@@ -84,6 +85,8 @@ export function FeatureRowBody({
   st: StatusLine | null;
   rolled: boolean;
   suppressed: boolean;
+  /** M3.7: the active configuration overrides this feature's suppression. */
+  suppressOverridden?: boolean;
   renaming: boolean;
   rowKey: string;
   onRename: FeatureTreeProps['onRename'];
@@ -263,6 +266,19 @@ export function FeatureRowBody({
           )}
         >
           used by {shared}
+        </span>
+      ) : null}
+      {suppressOverridden ? (
+        <span
+          aria-hidden
+          data-testid="suppress-override-marker"
+          title="Suppression overridden in this configuration"
+          className={cn(
+            'shrink-0 rounded-full bg-warning-soft px-1.5 text-2xs leading-4 font-medium whitespace-nowrap text-warning-text',
+            touch ? 'mt-[14px]' : 'mt-[8px]',
+          )}
+        >
+          Override
         </span>
       ) : null}
       {suppressed ? (

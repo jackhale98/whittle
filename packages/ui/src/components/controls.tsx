@@ -133,16 +133,29 @@ export function Field({
   label,
   children,
   hint,
+  adornment,
+  pointer,
   className,
 }: {
   label: string;
   children: ReactNode;
   hint?: ReactNode;
+  /** Right of the label: a marker such as the configuration override badge. */
+  adornment?: ReactNode;
+  /** The JSON pointer of the feature field this edits (`data-pointer`, for "jump to field"). */
+  pointer?: string;
   className?: string;
 }) {
   return (
-    <div className={cn('flex flex-col gap-1', className)}>
-      <span className="text-xs font-medium text-fg-muted">{label}</span>
+    <div className={cn('flex flex-col gap-1', className)} data-pointer={pointer}>
+      {adornment ? (
+        <span className="flex items-center justify-between gap-2">
+          <span className="text-xs font-medium text-fg-muted">{label}</span>
+          {adornment}
+        </span>
+      ) : (
+        <span className="text-xs font-medium text-fg-muted">{label}</span>
+      )}
       {children}
       {hint ? <p className="text-2xs text-fg-subtle">{hint}</p> : null}
     </div>

@@ -10,15 +10,18 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import { BirdMark } from '../brand/Bird';
 import type { PaletteCommand } from '../components/CommandPalette';
-import { ParamNamesContext } from '../components/paramNames';
+import { type ParamLinks, ParamLinksContext, ParamNamesContext } from '../components/paramNames';
 import { Button, cn, IconButton, TooltipProvider } from '../components/primitives';
 import { toolHint, tools } from '../components/tools';
 import { ExportMenu } from '../export/ExportMenu';
 import type { FeatureTreeProps } from '../features/FeatureTree';
+import { defaultFormatValue } from '../format';
+import type { ParamInfo } from '../logic/paramLinks';
 import type { SheetSnap } from '../logic/sheet';
 import type { ParamsTableProps } from '../params/ParamsTable';
 import { type ThemeControl, useTheme } from '../theme';
@@ -135,6 +138,39 @@ export function ShellRoot({
     [props.paramsTable?.params],
   );
 
+  // What every value field below knows about the parameters (ADR-080). The values come from the
+  // host's `evaluate`; the memo key is their text so fields re-render only when one changes.
+  const pt = props.paramsTable;
+  const ptRef = useRef(pt);
+  ptRef.current = pt;
+  const hasMake = !!pt?.onMake;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `params` and `version` are the triggers; the body reads the latest props through the ref
+  const links = useMemo<ParamLinks>(
+    () => ({
+      params: (ptRef.current?.params ?? []).map((p): ParamInfo => {
+        const t = ptRef.current;
+        const r = p.expr.trim() ? t?.evaluate(p.expr) : undefined;
+        const value = r?.ok
+          ? (t?.formatValue ?? defaultFormatValue)(r.value, r.dimension)
+          : undefined;
+        return {
+          name: p.name,
+          ...(value !== undefined ? { value } : {}),
+          ...(p.description ? { description: p.description } : {}),
+        };
+      }),
+      // Stable callbacks: the host's closures change every render.
+      ...(hasMake
+        ? {
+            make: (name: string, expr: string) => ptRef.current?.onMake?.(name, expr),
+            makeDone: () => ptRef.current?.onMakeDone?.(),
+          }
+        : {}),
+    }),
+    // Re-evaluated only when the parameters or the host's `version` change, not on every render.
+    [pt?.params, pt?.version, hasMake],
+  );
+
   const openPalette = useCallback(() => {
     setPaletteWanted(true);
     setPaletteOpen(true);
@@ -144,26 +180,28 @@ export function ShellRoot({
     <LazyMotion features={loadMotionFeatures} strict>
       <TooltipProvider>
         <ParamNamesContext.Provider value={paramNames}>
-          <div
-            data-testid="app-shell"
-            data-tier={tier}
-            className={cn(
-              'relative h-dvh w-full overflow-clip bg-bg text-fg select-none',
-              className,
-            )}
-          >
-            {children({ theme, openPalette })}
-          </div>
-          {props.tutorial ? <TutorialCoach {...props.tutorial} /> : null}
-          {paletteWanted ? (
-            <Suspense fallback={null}>
-              <CommandPalette
-                open={paletteOpen}
-                onOpenChange={setPaletteOpen}
-                commands={commands}
-              />
-            </Suspense>
-          ) : null}
+          <ParamLinksContext.Provider value={links}>
+            <div
+              data-testid="app-shell"
+              data-tier={tier}
+              className={cn(
+                'relative h-dvh w-full overflow-clip bg-bg text-fg select-none',
+                className,
+              )}
+            >
+              {children({ theme, openPalette })}
+            </div>
+            {props.tutorial ? <TutorialCoach {...props.tutorial} /> : null}
+            {paletteWanted ? (
+              <Suspense fallback={null}>
+                <CommandPalette
+                  open={paletteOpen}
+                  onOpenChange={setPaletteOpen}
+                  commands={commands}
+                />
+              </Suspense>
+            ) : null}
+          </ParamLinksContext.Provider>
         </ParamNamesContext.Provider>
       </TooltipProvider>
     </LazyMotion>
@@ -219,6 +257,18 @@ export function ViewportOverlays({ props }: { props: ShellProps }) {
     <Suspense fallback={null}>
       {props.contextBubble ? <ContextBubbleLazy {...props.contextBubble} /> : null}
       {props.valueChip ? <ValueChipLazy {...props.valueChip} /> : null}
+      {props.configurationPanel ? (
+        <div
+          data-testid="configuration-panel-slot"
+          style={{
+            top: 'calc(var(--safe-top, 0px) + var(--chrome-top, 3.5rem))',
+            bottom: 'calc(var(--chrome-bottom, 5.75rem) + 12px)',
+          }}
+          className="pointer-events-none absolute right-3 left-[max(var(--safe-left,0px),var(--chrome-left,0.75rem))] flex items-start"
+        >
+          {props.configurationPanel}
+        </div>
+      ) : null}
     </Suspense>
   );
 }
@@ -480,6 +530,7 @@ export function ExportControl({
         className={className}
         onExport={props.onExportRequest}
         bodies={props.exportBodies}
+        configurations={props.exportConfigurations}
         unavailable={props.exportUnavailable}
         notes={props.exportNotes}
         onTargetChange={props.onExportTargetChange}

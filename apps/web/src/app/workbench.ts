@@ -38,6 +38,9 @@ import {
   type DocumentStoreImpl,
   expressionEngine,
   scopeOf,
+  UNITS,
+  ulid,
+  validateParamName,
 } from '@wren-cad/document';
 import {
   type ExportRequest,
@@ -66,6 +69,8 @@ import { policyFor, type TierPolicy } from '../platform/tier-policy';
 import type { Accepts } from '../selection/pick';
 import type { SyncController, SyncHost } from '../sync/controller';
 import * as attention from './attention-actions';
+import { ConfigController } from './config-controller';
+import { activeIdOf, type MassSummaryView } from './config-model';
 import * as fileOps from './files';
 import type { BubbleActionId } from './gestures';
 import { commandFor, type InputSettings, loadInput } from './input';
@@ -89,14 +94,8 @@ import * as view from './view-actions';
 import * as docView from './view-doc';
 import { freshDocument, readLastDoc, writeLastDoc } from './workbench-util';
 
+export type { MassSummaryView };
 export { freshDocument };
-
-export interface MassSummaryView {
-  volume: number;
-  area: number;
-  mass?: number;
-  centroid: [number, number, number];
-}
 
 export class Workbench {
   readonly store: DocumentStoreImpl;
@@ -125,6 +124,8 @@ export class Workbench {
   /** "Take the tour" requests (welcome card, ⌘K); the app runs the tutorial on a new part. */
   readonly tourRequests = observable(0);
   readonly pushPull: PushPullTool;
+  /** Part configurations (M3.7): what is regenerated, edit scope, the table, background builds. */
+  readonly config: ConfigController = new ConfigController(this);
   readonly sectionTool: SectionTool;
   readonly measure: MeasureTool;
   loop: RegenLoop | null = null;
@@ -473,6 +474,8 @@ export class Workbench {
   /** `loaded`: the document was replaced (open/new), not edited: nothing to autosave yet. */
   private onDocChange(doc: WrenDoc, loaded: boolean): void {
     this.syncCollapsed();
+    if (loaded) this.config.reset();
+    else this.config.builds.cancel();
     if (!this.ui.get().ready) return;
     this.loop?.request();
     if (!loaded && !this.applyingRemote) this.autosaver.schedule(doc);
@@ -492,16 +495,18 @@ export class Workbench {
     // Stale reference names the engine rebound ride along with this edit (ADR-008).
     // Heals from a regen of another version (before an undo/redo/load) would rename references
     // that version had: drop them; the next regen of this version computes its own.
-    const heals = this.healsFor === this.store.getDoc() ? this.heals : new Map<Id, Heal[]>();
+    const heals = this.healsFor === this.config.resolved().doc ? this.heals : new Map<Id, Heal[]>();
     const folded = foldHeals(command, this.part ?? undefined, heals, (c) =>
       compileCommand(this.store.getDoc(), c),
     );
     this.heals = new Map();
     this.healsFor = null;
-    const lbl = label ?? folded.label;
+    // A joined edit (Make parameter) merges into the step that opened it and keeps its label.
+    const lbl = this.joinKey !== null ? undefined : (label ?? folded.label);
+    const key = this.joinKey ?? coalesceKey;
     const r = this.store.apply(folded.command, {
       ...(lbl ? { label: lbl } : {}),
-      ...(coalesceKey ? { coalesceKey } : {}),
+      ...(key ? { coalesceKey: key } : {}),
     });
     if (!r.ok) {
       this.toast(r.error, 'error');
@@ -511,7 +516,52 @@ export class Workbench {
   }
 
   commit(): void {
+    if (this.joinKey !== null) return; // closed by `endMakeParameter`
     this.store.commit();
+  }
+
+  /** Set by `makeParameter`: every `apply` until `endMakeParameter` joins its undo step (ADR-080). */
+  private joinKey: string | null = null;
+
+  /** Make parameter: adds `name = expr`; the field's next edit (it commits the name) joins the step. */
+  makeParameter(name: string, expr: Expr): string | undefined {
+    const bad = validateParamName(name);
+    if (bad) return bad;
+    if (UNITS.has(name)) return `‘${name}’ is a unit; pick another name`;
+    if (this.doc.params.some((p) => p.name === name)) return `“${name}” is already used`;
+    const key = `make-param:${ulid()}`;
+    const param = { id: ulid(), name, expr };
+    if (!this.apply({ kind: 'addParam', param }, `Make parameter ${name}`, key)) return 'Failed';
+    this.joinKey = key;
+    return undefined;
+  }
+
+  /**
+   * A parameter edit (Default or a configuration override). With a sketch open, the sketch
+   * re-solves and redraws at once, and its new geometry joins this edit's undo step (ADR-080).
+   */
+  applyRefit(command: Command): void {
+    const sketch = this.sketch;
+    if (!sketch) {
+      this.apply(command);
+      this.commit();
+      return;
+    }
+    const key = `param-edit:${ulid()}`;
+    if (!this.apply(command, undefined, key)) return;
+    this.joinKey = key;
+    void sketch.refit();
+    this.endMakeParameter();
+  }
+
+  /** Closes the step, once a sketch's queued dimension edit has landed. */
+  endMakeParameter(): void {
+    const end = () => {
+      this.joinKey = null;
+      this.store.commit();
+    };
+    if (this.sketch?.busy) void this.track(this.sketch.whenSettled().then(end));
+    else end();
   }
 
   /** Undo/redo wait for sketch edits still being solved (they land first, then are undone). */
@@ -1021,7 +1071,14 @@ export class Workbench {
     tree.editFeature(this, id);
   }
 
-  updateFeature(feature: Feature, mode: 'commit' | 'preview'): void {
+  /** `chip`: the one-shot "This configuration only" choice for this edit (M3.7). */
+  updateFeature(feature: Feature, mode: 'commit' | 'preview', chip = false): void {
+    if (activeIdOf(this.part) !== null) this.config.updateFeature(feature, mode, chip);
+    else tree.updateFeature(this, feature, mode);
+  }
+
+  /** The feature edit that always writes the stored (Default) feature. */
+  updateFeatureRaw(feature: Feature, mode: 'commit' | 'preview'): void {
     tree.updateFeature(this, feature, mode);
   }
 
@@ -1030,7 +1087,8 @@ export class Workbench {
   }
 
   evaluate = (expr: Expr, expected?: NamedDimension): EvalResult => {
-    const scope = scopeOf(this.doc);
+    // Values as the active configuration sees them: previews match the model (M3.7).
+    const scope = scopeOf(this.config.resolved().doc);
     if (expected) return expressionEngine.evaluate(expr, expected, scope);
     const r = expressionEngine.evaluateAny(expr, scope);
     return r.ok ? { ok: true, value: r.value, dimension: r.dimension, dependsOn: r.dependsOn } : r;
