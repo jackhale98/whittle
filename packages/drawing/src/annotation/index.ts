@@ -10,6 +10,7 @@
 export * from './callouts';
 export * from './dimension-layout';
 export * from './display';
+export * from './flatten';
 export * from './gdt';
 export * from './geom';
 export * from './label-layout';

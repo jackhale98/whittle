@@ -14,9 +14,10 @@ import type {
   Vec3,
   ViewProjection,
 } from '@wren-cad/contracts';
+import { buildDrawing } from '../src/sheet';
 import { standardPreset, stylePreset } from '../src/style';
 import type { ExprEvaluator, SolvedView } from '../src/view';
-import { projectToView } from '../src/view';
+import { projectToView, solveViews } from '../src/view';
 
 export const PART_BOUNDS: { min: Vec3; max: Vec3 } = { min: [0, 0, 0], max: [100, 60, 40] };
 
@@ -302,4 +303,103 @@ export function resolutions(k = 1): AnnotationResolution[] {
       anchors: [{ kind: 'circle', center: s([50, 30, 40]), normal: [0, 0, 1], radius: 10 * k }],
     },
   ];
+}
+
+/** The bracket drawing built end to end against the mocks (three views, a section, dimensions). */
+export function bracketBuild(over: Partial<Drawing> = {}) {
+  const d = drawing({
+    placements: [
+      {
+        id: 'p1',
+        viewId: 'V1',
+        annotationId: 'A1',
+        layout: { kind: 'lane', side: 'bottom', lane: 0 },
+      },
+      {
+        id: 'p2',
+        viewId: 'V1',
+        annotationId: 'A2',
+        layout: { kind: 'lane', side: 'left', lane: 0 },
+      },
+      {
+        id: 'p3',
+        viewId: 'V2',
+        annotationId: 'A3',
+        layout: { kind: 'radial', angle: 45, distance: 7 },
+      },
+      {
+        id: 'p4',
+        viewId: 'V1',
+        annotationId: 'A4',
+        layout: { kind: 'leader', attach: { kind: 'ref', index: 0, t: 0.8 }, text: [0, -12] },
+      },
+      {
+        id: 'p5',
+        viewId: 'V2',
+        annotationId: 'A5',
+        layout: { kind: 'leader', attach: { kind: 'placement', placementId: 'p3' }, text: [0, 0] },
+      },
+    ],
+    notes: [
+      {
+        id: 'n1',
+        sheetId: 'S1',
+        position: [30, 60],
+        text: 'MATERIAL {material}\nBREAK ALL SHARP EDGES',
+      },
+    ],
+    ...over,
+  });
+  const views = solveViews({ drawing: d, bounds: PART_BOUNDS, evaluate });
+  const projections = new Map<string, ViewProjection>();
+  for (const [id, v] of views) {
+    if (!v.ok) continue;
+    const p = boxProjection(v);
+    if (id === 'V4') {
+      const [x0, y0] = p.bounds.min;
+      const [x1, y1] = p.bounds.max;
+      p.sectionFaces = [
+        {
+          face: 'F1:cut',
+          loops: [
+            [
+              { kind: 'line', a: [x0, y0], b: [x1, y0] },
+              { kind: 'line', a: [x1, y0], b: [x1, y1] },
+              { kind: 'line', a: [x1, y1], b: [x0, y1] },
+              { kind: 'line', a: [x0, y1], b: [x0, y0] },
+            ],
+          ],
+        },
+      ];
+    }
+    projections.set(id, p);
+  }
+  const res = new Map(resolutions().map((r) => [r.annotationId, r]));
+  return buildDrawing({
+    drawing: d,
+    annotations: ANNOTATIONS,
+    configurationIds: new Set(),
+    bounds: PART_BOUNDS,
+    evaluate,
+    evaluateAnnotation: (e) => evalLength(e),
+    projections,
+    resolutions: () => res,
+    annotationIssues: () => [],
+    titleBlock: (s, index, count) => {
+      const scale = evaluate(s.scale, 'ratio');
+      return {
+        title: 'Bracket',
+        partNumber: 'BRK-001',
+        material: 'AlMg3',
+        mass: 152.4,
+        ...(scale !== undefined ? { scale } : {}),
+        projection: d.projection,
+        units: 'mm',
+        standard: d.standard,
+        sheet: { index, count },
+        date: '2026-11-11',
+      };
+    },
+    fitDeviations: (c) => (c === 'H7' ? { upper: 0.021, lower: 0 } : undefined),
+  });
 }

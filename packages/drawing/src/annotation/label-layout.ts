@@ -31,7 +31,8 @@ function text(at: Vec2, s: string, h: number): Primitive {
 }
 
 /** Width of a run line at height h. */
-export function runsWidth(runs: readonly TextRun[], h: number): number {
+export function runsWidth(input: readonly TextRun[], h: number): number {
+  const runs = mergeRuns(input);
   let w = 0;
   runs.forEach((r, i) => {
     if (r.kind === 'text') w += textWidth(normalizeText(r.text), h);
@@ -45,9 +46,22 @@ export function runsWidth(runs: readonly TextRun[], h: number): number {
 }
 
 /** One line of runs starting at `at` (left baseline). */
-export function layoutRuns(runs: readonly TextRun[], at: Vec2, h: number): TextBlock {
+/** Joins adjacent text runs, so one line of text is one text item (DXF, PDF, search). */
+export function mergeRuns(runs: readonly TextRun[]): TextRun[] {
+  const out: TextRun[] = [];
+  for (const r of runs) {
+    const prev = out[out.length - 1];
+    if (r.kind === 'text' && prev?.kind === 'text')
+      out[out.length - 1] = { kind: 'text', text: prev.text + r.text };
+    else out.push(r);
+  }
+  return out;
+}
+
+export function layoutRuns(input: readonly TextRun[], at: Vec2, h: number): TextBlock {
   const prims: Primitive[] = [];
   let x = at[0];
+  const runs = mergeRuns(input);
   runs.forEach((r, i) => {
     if (r.kind === 'text') {
       const s = normalizeText(r.text);
