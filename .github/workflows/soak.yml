@@ -2,6 +2,8 @@
 # close/reopen cycles; asserts kernel shape handles return to baseline, JS/Wasm/process memory stay
 # bounded and regen time does not drift. Nightly and on demand; never on push or pull request.
 # A separate workflow (not a job in ci.yml) so the nightly run does not repeat the whole CI suite.
+# The `stress` job runs the 100+ feature enclosure (packages/test-fixtures/stress-part): kernel
+# goldens and the Node regen benchmark, then the report-only browser benchmark. It never gates.
 name: Soak
 
 on:
@@ -66,5 +68,60 @@ jobs:
           path: |
             apps/web/playwright-report
             apps/web/test-results
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # Stress part: report-only numbers for a realistic 100+ feature part (how long does an edit to an
+  # early feature take, does the UI stay responsive). Never gates a build (continue-on-error); the
+  # tables go to the job summary. Local equivalent: `pnpm stress` (see packages/test-fixtures/README.md).
+  stress:
+    name: Stress part (chromium)
+    needs: kernel
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Download kernel artefact
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: kernel-dist
+          path: packages/kernel/dist
+      - name: Kernel goldens and regen benchmark (Node, single-threaded kernel)
+        env:
+          WREN_STRESS: "1"
+        shell: bash
+        run: pnpm --filter @wren-cad/test-fixtures exec vitest run stress-part --testTimeout=3600000 2>&1 | tee stress-node.log
+      - name: Build
+        run: pnpm build
+      - name: Install chromium
+        run: pnpm --filter @wren-cad/web exec playwright install --with-deps chromium
+      - name: Browser benchmark (WebGL software fallback on the runner)
+        shell: bash
+        run: pnpm --filter @wren-cad/web exec playwright test --trace off --project=stress 2>&1 | tee apps/web/stress-browser.log
+      - name: Record stress numbers
+        if: always()
+        run: |
+          {
+            echo "## Stress part"
+            echo '```'
+            grep -h '\[stress\]' stress-node.log apps/web/stress-browser.log 2>/dev/null || echo "(see the job log)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: stress-report
+          path: |
+            apps/web/playwright-report
+            apps/web/test-results
+            stress-node.log
           if-no-files-found: ignore
           retention-days: 14

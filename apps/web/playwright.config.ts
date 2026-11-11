@@ -86,6 +86,14 @@ export default defineConfig({
       fullyParallel: false,
       use: { ...devices['Desktop Chrome'] },
     },
+    // Report-only stress part (100+ feature enclosure): non-gating, nightly in soak.yml. Its files
+    // are `*.stress.ts`, so neither `perf` (gating) nor `chromium` picks them up.
+    {
+      name: 'stress',
+      testMatch: /.*\.stress\.ts/,
+      fullyParallel: false,
+      use: { ...devices['Desktop Chrome'] },
+    },
     {
       name: 'perf',
       testMatch: /.*\.perf\.ts/,

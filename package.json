@@ -20,6 +20,7 @@
     "format": "biome format --write .",
     "e2e": "pnpm --filter @wren-cad/web e2e",
     "perf": "pnpm --filter @wren-cad/web perf",
+    "stress": "pnpm --filter @wren-cad/test-fixtures stress && pnpm --filter @wren-cad/web stress",
     "perf:viewport": "pnpm --filter @wren-cad/viewport perf",
     "kernel:build": "pnpm --filter @wren-cad/kernel build",
     "kernel:test": "pnpm --filter @wren-cad/kernel test"
