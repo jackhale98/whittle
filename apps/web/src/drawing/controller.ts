@@ -24,9 +24,12 @@ import { removeView } from './ops-views';
 import { type Built, runPipeline } from './pipeline';
 import { type DrawingTool, type DrawingUiState, initialDrawingUi, type Selected } from './state';
 
+/** How long the sheet must be left alone before the exact edges are computed. */
+const REFINE_DELAY_MS = 400;
+
 export class DrawingController {
   readonly ui: Observable<DrawingUiState> = observable(initialDrawingUi);
-  readonly kernel: DrawingKernel;
+  kernel: DrawingKernel;
   readonly source: ConfigDataSource;
   private token = 0;
   private timer: ReturnType<typeof setTimeout> | undefined;
@@ -36,14 +39,27 @@ export class DrawingController {
   private waiters: Array<() => void> = [];
   private building = false;
   private again = false;
+  /** Quality of the next build: a model or drawing edit starts at draft. */
+  private quality: 'draft' | 'exact' = 'draft';
+  /** An export (or a test) is waiting for exact edges: the next builds are exact. */
+  private exactRequested = false;
+  private refineTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(
     readonly wb: Workbench,
     kernel: DrawingKernel = createDrawingKernel(),
   ) {
     this.kernel = kernel;
-    this.source = new ConfigDataSource(wb, (r) => kernel.shapeFor(r));
-    this.ui.set((s) => ({ ...s, kernel: kernel.kind }));
+    this.source = new ConfigDataSource(wb, async (partId, slot) => {
+      const port = wb.modeling?.port;
+      if (!port?.shapeForDrawing) {
+        return {
+          ok: false,
+          error: { code: 'INTERNAL', message: 'The geometry kernel is still loading.' },
+        };
+      }
+      return port.shapeForDrawing(partId, slot);
+    });
   }
 
   // ------------------------------------------------------------------ lifecycle
@@ -62,6 +78,7 @@ export class DrawingController {
     for (const u of this.unsub) u();
     this.unsub = [];
     clearTimeout(this.timer);
+    clearTimeout(this.refineTimer);
     this.token++;
     this.kernel.dispose();
   }
@@ -222,10 +239,31 @@ export class DrawingController {
   // ------------------------------------------------------------------ building
 
   /** Rebuilds soon (coalesced). */
-  schedule(delay = 16): void {
+  schedule(delay = 16, exact = false): void {
     if (!this.ui.get().drawingId) return;
     clearTimeout(this.timer);
+    clearTimeout(this.refineTimer);
+    this.quality = exact || this.exactRequested ? 'exact' : 'draft';
     this.timer = setTimeout(() => void this.refresh(), delay);
+  }
+
+  /**
+   * Resolves when the edges on screen are the exact ones for the model as it is now (HLRBRep_Algo).
+   * Export awaits this: a drawing is never exported from the draft.
+   */
+  async ensureExact(): Promise<void> {
+    const have = () => {
+      const b = this.ui.get().built;
+      return b?.quality === 'exact' && this.isCurrent();
+    };
+    if (have()) return;
+    this.exactRequested = true;
+    try {
+      this.schedule(0, true);
+      await this.settled();
+    } finally {
+      this.exactRequested = false;
+    }
   }
 
   /** Resolves once the build for the document as it is now has been delivered (or failed). */
@@ -253,10 +291,11 @@ export class DrawingController {
     if (!id) return;
     this.building = true;
     const my = ++this.token;
+    const asked = this.quality;
     try {
       await ensureDrawingSupport();
       const doc = this.doc;
-      const r = await runPipeline(doc, id, this.source, this.kernel);
+      const r = await runPipeline(doc, id, this.source, this.kernel, asked);
       if (my !== this.token) return;
       if (r.kind === 'ok') {
         // The doc may have changed while projections ran: build again from that.
@@ -273,6 +312,14 @@ export class DrawingController {
               : (r.built.drawing.sheets[0]?.id ?? null),
         }));
         if (stale) this.again = true;
+        if (asked === 'exact') this.patch({ refining: false });
+        else if (r.built.quality === 'draft') {
+          // Exact output follows when idle (any edit before then starts over at draft).
+          this.patch({ refining: true });
+          if (!stale) {
+            this.refineTimer = setTimeout(() => this.schedule(0, true), REFINE_DELAY_MS);
+          }
+        }
       } else if (r.kind === 'pending') {
         // Keep showing the last build, marked as not current, and try again when the regen lands.
         this.ui.set((s) => ({ ...s, pending: s.built !== null }));

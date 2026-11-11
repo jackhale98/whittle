@@ -146,6 +146,38 @@ function centerCross(center: Vec2, r: number, source: ItemSource): DisplayItem[]
   ];
 }
 
+/**
+ * Joins a loop's flattened pieces head to tail. The kernel lists a wire's curves in wire order, but
+ * an arc or an ellipse keeps its counter-clockwise form even where the wire runs the other way, so
+ * a piece may need reversing to meet the one before it.
+ */
+export function chainLoop(pieces: readonly Vec2[][]): Vec2[] {
+  const pts = pieces.filter((p) => p.length > 0).map((p) => [...p]);
+  if (pts.length === 0) return [];
+  const d = (a: Vec2, b: Vec2) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+  const ends = (p: Vec2[]) => [p[0] as Vec2, p[p.length - 1] as Vec2] as const;
+  if (pts.length > 1) {
+    // The first piece is the one with no piece before it: its start meets the last piece (the loop
+    // closes) and its end meets the second. Keep the listed direction unless the other is clearly
+    // better (the pieces of a half disc share both end points, so ties go to the listed one).
+    const first = pts[0] as Vec2[];
+    const [a0, a1] = ends(first);
+    const nearest = (p: Vec2, q: Vec2[]) => Math.min(d(p, ends(q)[0]), d(p, ends(q)[1]));
+    const second = pts[1] as Vec2[];
+    const last = pts[pts.length - 1] as Vec2[];
+    const forward = nearest(a1, second) + nearest(a0, last);
+    const backward = nearest(a0, second) + nearest(a1, last);
+    if (backward < forward - 1e-6) first.reverse();
+  }
+  const out: Vec2[] = [...(pts[0] as Vec2[])];
+  for (const p of pts.slice(1)) {
+    const last = out[out.length - 1] as Vec2;
+    if (d(last, p[0] as Vec2) > d(last, p[p.length - 1] as Vec2)) p.reverse();
+    out.push(...p.slice(1));
+  }
+  return out;
+}
+
 function viewItems(
   v: SolvedView,
   proj: ViewProjection | undefined,
@@ -154,22 +186,21 @@ function viewItems(
   const items: DisplayItem[] = [];
   if (!proj) return items;
   const vid = v.view.id;
-  // Hatching first (under the edges).
+  // Hatching first (under the edges). `sectionFaces[].face` is a synthetic id of the kernel
+  // (`section:<segment>#<k>`), not a persistent name: it is never an item's `edge`, so nothing
+  // can pick or dimension a hatch.
   if (v.view.kind === 'section' && proj.sectionFaces) {
     const style = { ...drawing.style.hatch, ...(v.view.hatch ?? {}) };
     for (const f of proj.sectionFaces) {
       const loops = f.loops.map((loop) =>
-        loop.flatMap((c, i) => {
-          const pts = flattenPrimitive(curveToSheet(c, v), 0.05)[0] ?? [];
-          return i === 0 ? pts : pts.slice(1);
-        }),
+        chainLoop(loop.map((c) => flattenPrimitive(curveToSheet(c, v), 0.05)[0] ?? [])),
       );
       if (style.pattern === 'solid') {
         items.push({
           kind: 'fill',
           loops,
           role: 'hatch',
-          source: { kind: 'view', viewId: vid, edge: f.face },
+          source: { kind: 'view', viewId: vid },
         });
         continue;
       }
@@ -179,7 +210,7 @@ function viewItems(
           a,
           b,
           role: 'hatch',
-          source: { kind: 'view', viewId: vid, edge: f.face },
+          source: { kind: 'view', viewId: vid },
         });
     }
   }

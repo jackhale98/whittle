@@ -6,7 +6,8 @@
  *
  * Responsibilities
  *  1. Precache the app shell (HTML/JS/CSS/icons/manifest). NOT the kernel.
- *  2. Runtime CacheFirst for the kernel `*.wasm` (and `whittle-kernel*.js` glue) in a versioned
+ *  2. Runtime CacheFirst for the kernel `*.wasm` (and `whittle-kernel*.js` glue), and the drawing
+ *     kernel's (`wren-drawing*.js` glue, its `.wasm` is one of the `*.wasm`), in a versioned
  *     cache. The kernel is tens of MB; precaching would block install on the first visit and make
  *     phone-tier devices download it eagerly. It is fetched when the app first boots the kernel
  *     (non-blocking, PLAN §4) and is served from cache from then on, including offline.
@@ -69,7 +70,7 @@ registerRoute(
     cacheName: KERNEL_CACHE,
     plugins: [
       new CacheableResponsePlugin({ statuses: [200] }),
-      new ExpirationPlugin({ maxEntries: 8, purgeOnQuotaError: true }),
+      new ExpirationPlugin({ maxEntries: 16, purgeOnQuotaError: true }),
       isolationPlugin,
     ],
   }),

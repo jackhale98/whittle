@@ -1,29 +1,27 @@
 /**
  * The drawing kernel as the route uses it: a thin client over `DrawingKernelApi` that loads each
- * shape once and caches projections by request.
+ * shape once and caches projections by request. The implementation is the HLR drawing worker
+ * (`@wren-cad/kernel/drawing`, ADR-090 amendment) with its own trimmed Wasm build; the main thread
+ * never touches Wasm. The worker picks the threaded variant itself when cross-origin isolated,
+ * as the modelling worker does.
  *
- * Today the implementation is the PLACEHOLDER in `placeholder/` (a worker projecting the regen
- * meshes' feature edges, see ADR-092). When the HLR drawing worker lands, `createDrawingKernel`
- * returns it instead, `shapeFor` becomes `ModelingApi.shapeForDrawing`, and nothing else changes.
+ * Shapes come from `ModelingApi.shapeForDrawing` (see `ConfigDataSource`). The BREP's bytes are
+ * transferred to the worker. The route keeps its own copy (a transferred copy is sent), because a
+ * shape the worker has evicted from its LRU must be loadable again, and the modelling slot it came
+ * from may be closed by then (other configurations are regenerated in a slot that is closed at
+ * once).
  */
 
 import type {
   DrawingKernelApi,
   KernelError,
-  RegenResult,
   ShapeForDrawing,
   ViewProjection,
   ViewProjectionRequest,
 } from '@wren-cad/contracts';
 import { type Remote, transfer, wrap } from 'comlink';
-import { shapeFromRegen } from './placeholder/shape';
-
-export type KernelKind = 'placeholder' | 'hlr';
 
 export interface DrawingKernel {
-  kind: KernelKind;
-  /** The shape the drawing kernel is given for a regen result. */
-  shapeFor(result: RegenResult): ShapeForDrawing;
   project(
     shape: ShapeForDrawing,
     request: ViewProjectionRequest,
@@ -37,10 +35,8 @@ const MAX_CACHE = 240;
 export function drawingKernelOver(
   api: Pick<DrawingKernelApi, 'loadShape' | 'project'>,
   options: {
-    kind: KernelKind;
-    shapeFor(result: RegenResult): ShapeForDrawing;
     dispose(): void;
-    /** Hand the BREP's buffer to the worker instead of copying it (a shape is then loaded once). */
+    /** Hand a copy of the BREP's buffer to the worker instead of cloning it through the channel. */
     transfer?: boolean;
   },
 ): DrawingKernel {
@@ -51,7 +47,11 @@ export function drawingKernelOver(
     if (loaded.has(shape.key)) return Promise.resolve({ ok: true as const });
     let p = loading.get(shape.key);
     if (!p) {
-      const arg = options.transfer ? transfer(shape, [shape.brep.buffer as ArrayBuffer]) : shape;
+      let arg: ShapeForDrawing = shape;
+      if (options.transfer) {
+        const copy = { ...shape, brep: shape.brep.slice() };
+        arg = transfer(copy, [copy.brep.buffer as ArrayBuffer]);
+      }
       p = api.loadShape(arg).then((r) => {
         if (r.ok) loaded.add(shape.key);
         loading.delete(shape.key);
@@ -62,8 +62,6 @@ export function drawingKernelOver(
     return p;
   };
   return {
-    kind: options.kind,
-    shapeFor: options.shapeFor,
     async project(shape, request) {
       const key = JSON.stringify(request);
       const hit = cache.get(key);
@@ -91,16 +89,12 @@ export function drawingKernelOver(
   };
 }
 
-/** The placeholder kernel in its own worker. */
+/** The drawing worker. Its Wasm loads on the first call, not when it is created. */
 export function createDrawingKernel(): DrawingKernel {
-  const worker = new Worker(new URL('./placeholder/worker.ts', import.meta.url), {
+  const worker = new Worker(new URL('./worker.ts', import.meta.url), {
     type: 'module',
-    name: 'wren-drawing-placeholder',
+    name: 'wren-drawing',
   });
   const api = wrap<DrawingKernelApi>(worker) as Remote<DrawingKernelApi>;
-  return drawingKernelOver(api, {
-    kind: 'placeholder',
-    shapeFor: shapeFromRegen,
-    dispose: () => worker.terminate(),
-  });
+  return drawingKernelOver(api, { transfer: true, dispose: () => worker.terminate() });
 }

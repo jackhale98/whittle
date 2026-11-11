@@ -22,6 +22,13 @@ describe('service worker request rules', () => {
   it('runtime-caches only kernel files', () => {
     expect(isKernelAsset(new URL('https://x/wren-cad/assets/whittle-kernel-abc.wasm'))).toBe(true);
     expect(isKernelAsset(new URL('https://x/wren-cad/assets/whittle-kernel-st.js'))).toBe(true);
+    // The drawing kernel (its own trimmed Wasm and glue) is cached the same way.
+    expect(isKernelAsset(new URL('https://x/wren-cad/assets/wren-drawing-CDVJp2HI.wasm'))).toBe(
+      true,
+    );
+    expect(isKernelAsset(new URL('https://x/wren-cad/assets/wren-drawing-st-EgTt6Iam.js'))).toBe(
+      true,
+    );
     expect(isKernelAsset(new URL('https://x/wren-cad/api/files.json'))).toBe(false);
     expect(isKernelAsset(new URL('https://x/wren-cad/assets/index-abc.js'))).toBe(false);
   });

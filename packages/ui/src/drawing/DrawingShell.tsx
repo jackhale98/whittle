@@ -34,7 +34,7 @@ export interface DrawingShellProps {
   panels: readonly DrawingPanelDef[];
   panel: string;
   onPanel(id: string): void;
-  /** A line under the top bar (the placeholder kernel's "approximate" note). */
+  /** A line under the top bar. */
   notice?: ReactNode;
 }
 

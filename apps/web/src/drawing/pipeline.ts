@@ -42,7 +42,9 @@ export interface Built {
   data: ReadonlyMap<string, ConfigData>;
   build: DrawingBuild;
   projections: ReadonlyMap<Id, ViewProjection>;
-  /** Problems of the pipeline itself (a view's projection failed). */
+  /** `draft` (PolyAlgo, shown first) or `exact` (HLRBRep_Algo: idle, and always for export). */
+  quality: 'draft' | 'exact';
+  /** Problems of the pipeline itself (a view's projection failed, with the kernel's message). */
   problems: { viewId: Id; message: string }[];
   /** Evaluates an expression as the drawing's configuration sees it. */
   evalLength(expr: Expr): number | undefined;
@@ -112,6 +114,7 @@ export async function runPipeline(
   drawingId: Id,
   source: ConfigDataSource,
   kernel: DrawingKernel,
+  quality: 'draft' | 'exact' = 'draft',
 ): Promise<PipelineResult> {
   const drawing = wbDoc.drawings.find((d) => d.id === drawingId);
   if (!drawing) return { kind: 'missing', message: 'This drawing no longer exists' };
@@ -152,13 +155,25 @@ export async function runPipeline(
   const solved = solveViews({ drawing, bounds, evaluate });
   const projections = new Map<Id, ViewProjection>();
   const problems: Built['problems'] = [];
+  let degraded = false;
   await Promise.all(
     [...solved.values()].map(async (s) => {
       if (!s.ok) return;
       const cfg = data.get(host.keyOf(viewConfiguration(drawing, s.view))) ?? main;
-      const r = await kernel.project(cfg.shape, projectionRequest(s, cfg.shape.key, 'draft'));
-      if (r.ok) projections.set(s.view.id, r.value);
-      else problems.push({ viewId: s.view.id, message: r.error.message });
+      const r = await kernel.project(cfg.shape, projectionRequest(s, cfg.shape.key, quality));
+      if (r.ok) {
+        projections.set(s.view.id, r.value);
+        return;
+      }
+      problems.push({ viewId: s.view.id, message: r.error.message });
+      if (quality === 'exact') {
+        // Show the draft rather than nothing; the build is then not exact (export refuses it).
+        const d = await kernel.project(cfg.shape, projectionRequest(s, cfg.shape.key, 'draft'));
+        if (d.ok) {
+          projections.set(s.view.id, d.value);
+          degraded = true;
+        }
+      }
     }),
   );
 
@@ -224,6 +239,7 @@ export async function runPipeline(
       data,
       build,
       projections,
+      quality: degraded ? 'draft' : quality,
       problems,
       evalLength: (e) => ev(e, 'length'),
     },

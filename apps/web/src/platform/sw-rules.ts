@@ -25,9 +25,15 @@ export function mayHandle({ sameOrigin, request }: RouteMatchInput): boolean {
   return true;
 }
 
-/** Kernel Wasm and glue (`*.wasm`, `whittle-kernel*.js`): the only runtime-cached files. */
+/**
+ * Kernel Wasm and glue (`*.wasm`, `whittle-kernel*.js`) and the drawing kernel's glue
+ * (`wren-drawing*.js`; its `.wasm` is covered by the first rule): runtime-cached on first use, so
+ * modelling and drawings work offline. Neither is precached (tens of MB, loaded when needed).
+ */
 export function isKernelAsset(url: Pick<URL, 'pathname'>): boolean {
-  return url.pathname.endsWith('.wasm') || /\/whittle-kernel[^/]*\.js$/.test(url.pathname);
+  return (
+    url.pathname.endsWith('.wasm') || /\/(whittle-kernel|wren-drawing)[^/]*\.js$/.test(url.pathname)
+  );
 }
 
 /** The drawing route's self-hosted font (Osifont `.ttf`): fetched once for the sheet and the PDF. */

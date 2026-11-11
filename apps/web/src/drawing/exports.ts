@@ -26,9 +26,15 @@ export async function buildExport(
   format: DrawingExportFormat,
   scope: 'sheet' | 'all',
 ): Promise<ExportedFile[]> {
-  const b = c.built();
-  if (!b) throw new Error('The drawing has not been built yet.');
+  if (!c.built()) throw new Error('The drawing has not been built yet.');
   if (c.ui.get().pending) throw new Error('The model is updating: try again in a moment.');
+  // Always from the exact edges, never the draft.
+  await c.ensureExact();
+  const b = c.built();
+  if (!b || b.quality !== 'exact')
+    throw new Error(
+      `The exact edges could not be computed${b?.problems[0] ? `: ${b.problems[0].message}` : '.'}`,
+    );
   const current = c.sheet()?.id;
   const sheets = b.build.sheets.filter((s) => scope === 'all' || s.sheetId === current);
   if (sheets.length === 0) throw new Error('There is no sheet to export.');

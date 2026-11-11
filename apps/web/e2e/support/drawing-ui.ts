@@ -14,6 +14,12 @@ export interface DrawingState {
   selected: { kind: string; id?: string; slot?: string } | null;
   pending: boolean;
   error: string | null;
+  /** `draft` (shown first), `exact` (idle, and always for export) or `none` (not built). */
+  quality: string;
+  refining: boolean;
+  projectionProblems: string[];
+  /** Hatch lines on the composed sheet. */
+  hatchLines: number;
   projection: string | null;
   panel: string;
   hint: string | null;
@@ -43,6 +49,22 @@ export interface Edge {
   radius?: number;
 }
 
+/** The kernel's own output for a view (part mm), not the sheet's. */
+export interface Projection {
+  quality: string;
+  curves: {
+    role: string;
+    edge: string;
+    name?: string;
+    kind: string;
+    radius?: number;
+    center?: [number, number];
+    sweep?: number;
+  }[];
+  sectionFaces: { face: string; loops: number }[];
+  ms: number;
+}
+
 export interface PlacementInfo {
   id: string;
   annotationId: string;
@@ -55,6 +77,9 @@ export interface PlacementInfo {
 type W = {
   __wrenDrawing: {
     settled(): Promise<void>;
+    exact(): Promise<void>;
+    failKernel(): void;
+    projection(viewId: string): Projection | null;
     state(): DrawingState;
     edges(viewId: string): Edge[];
     placements(): PlacementInfo[];
@@ -66,6 +91,12 @@ export const drawing = (page: Page) => ({
     page.evaluate(() => (window as unknown as W).__wrenDrawing.state()),
   settled: (): Promise<void> =>
     page.evaluate(() => (window as unknown as W).__wrenDrawing.settled()),
+  failKernel: (): Promise<void> =>
+    page.evaluate(() => (window as unknown as W).__wrenDrawing.failKernel()),
+  /** Waits until the shown edges are the exact ones. */
+  exact: (): Promise<void> => page.evaluate(() => (window as unknown as W).__wrenDrawing.exact()),
+  projection: (viewId: string): Promise<Projection | null> =>
+    page.evaluate((id) => (window as unknown as W).__wrenDrawing.projection(id), viewId),
   edges: (viewId: string): Promise<Edge[]> =>
     page.evaluate((id) => (window as unknown as W).__wrenDrawing.edges(id), viewId),
   placements: (): Promise<PlacementInfo[]> =>

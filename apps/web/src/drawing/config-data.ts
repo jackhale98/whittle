@@ -12,6 +12,8 @@ import type {
   AnnotationResolution,
   Id,
   RegenResult,
+  RegenSlot,
+  Result,
   ShapeForDrawing,
   WrenDoc,
 } from '@wren-cad/contracts';
@@ -39,10 +41,11 @@ export function modelKey(doc: WrenDoc): string {
   return host.valueKey({ ...doc, drawings: [] });
 }
 
-export type ShapeFor = (result: RegenResult) => ShapeForDrawing;
+/** `ModelingApi.shapeForDrawing`: the final BREP of the part's latest regen in a slot. */
+export type ShapeFor = (partId: Id, slot: RegenSlot) => Promise<Result<ShapeForDrawing>>;
 
 export class ConfigDataSource {
-  private readonly byResult = new WeakMap<RegenResult, ConfigData>();
+  private readonly byResult = new WeakMap<RegenResult, Promise<ConfigData>>();
   private readonly others = new Map<string, ConfigData>();
 
   constructor(
@@ -68,14 +71,20 @@ export class ConfigDataSource {
       if (view?.source !== 'live') return { ok: false, reason: 'pending' };
       // Only the model matters: moving a view on the sheet does not make the regen stale.
       if (modelKey(view.doc) !== modelKey(wb.viewDoc())) return { ok: false, reason: 'pending' };
-      let data = this.byResult.get(view.result);
-      if (!data) {
-        data = this.make(configId, view.doc, view.result);
-        this.byResult.set(view.result, data);
+      let pending = this.byResult.get(view.result);
+      if (!pending) {
+        pending = this.make(part.id, 'main', configId, view.doc, view.result);
+        this.byResult.set(view.result, pending);
       }
-      // Mass arrives later than geometry: refresh the figure without rebuilding the shape.
-      const mass = massOf(view.result, view.doc);
-      return { ok: true, data: mass === data.mass ? data : { ...data, ...withMass(mass) } };
+      try {
+        const data = await pending;
+        // Mass arrives later than geometry: refresh the figure without rebuilding the shape.
+        const mass = massOf(view.result, view.doc);
+        return { ok: true, data: mass === data.mass ? data : { ...data, ...withMass(mass) } };
+      } catch (e) {
+        this.byResult.delete(view.result);
+        return { ok: false, reason: 'error', message: messageOf(e) };
+      }
     }
 
     const resolved = host.resolveConfiguration(doc, part.id, configId).doc;
@@ -98,22 +107,31 @@ export class ConfigDataSource {
         slot: host.slotOf(configId),
         ...(Object.keys(attachments).length ? { attachments } : {}),
       });
-      void modeling.port.closePart(part.id, host.slotOf(configId)).catch(() => {});
-      const data = this.make(configId, resolved, result);
+      const slot = host.slotOf(configId);
+      let data: ConfigData;
+      try {
+        data = await this.make(part.id, slot, configId, resolved, result);
+      } finally {
+        void modeling.port.closePart(part.id, slot).catch(() => {});
+      }
       this.others.set(key, data);
       for (const k of [...this.others.keys()].slice(0, Math.max(0, this.others.size - 6)))
         this.others.delete(k);
       return { ok: true, data };
     } catch (e) {
-      return {
-        ok: false,
-        reason: 'error',
-        message: e instanceof Error ? e.message : 'The configuration could not be built',
-      };
+      return { ok: false, reason: 'error', message: messageOf(e) };
     }
   }
 
-  private make(configId: Id | null, doc: WrenDoc, result: RegenResult): ConfigData {
+  private async make(
+    partId: Id,
+    slot: RegenSlot,
+    configId: Id | null,
+    doc: WrenDoc,
+    result: RegenResult,
+  ): Promise<ConfigData> {
+    const shape = await this.shapeFor(partId, slot);
+    if (!shape.ok) throw new Error(shape.error.message);
     return {
       configId,
       doc,
@@ -121,7 +139,7 @@ export class ConfigDataSource {
       resolutions: new Map(
         withHoleAnchors(result, doc.parts[0]?.annotations ?? []).map((r) => [r.annotationId, r]),
       ),
-      shape: this.shapeFor(result),
+      shape: shape.value,
       ...withMass(massOf(result, doc)),
     };
   }
@@ -135,3 +153,6 @@ function massOf(result: RegenResult, doc: WrenDoc): number | 'building' | undefi
 
 const withMass = (m: number | 'building' | undefined): { mass?: number | 'building' } =>
   m === undefined ? {} : { mass: m };
+
+const messageOf = (e: unknown): string =>
+  e instanceof Error ? e.message : 'The configuration could not be built';

@@ -30,7 +30,15 @@ export type ModelingPort = Pick<
   'regenerate' | 'refFor' | 'exportPart' | 'importFile' | 'closePart'
 > &
   Partial<
-    Pick<ModelingApi, 'configureRegen' | 'measure' | 'compare' | 'memoryStats' | 'massProperties'>
+    Pick<
+      ModelingApi,
+      | 'configureRegen'
+      | 'measure'
+      | 'compare'
+      | 'memoryStats'
+      | 'massProperties'
+      | 'shapeForDrawing'
+    >
   >;
 
 export interface RegenOutcome {
