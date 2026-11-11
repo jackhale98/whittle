@@ -25,10 +25,8 @@ const ORIGIN =
   'GAP-ORIGIN: Import places it, but it needs attention: the dimension is measured from the sketch origin and its reference (S:p(@origin) or a construction point) never resolves. The Dimension tool cannot pick the origin or a centre line either';
 const EXTRUDE =
   'GAP-EXTRUDE-DEPTH: Import places the extrude depth between the feature’s F:start and F:end faces, and those do not resolve when the extrude cuts or merges into a body: needs attention';
-const CHAMFER =
-  'GAP-CHAMFER: no chamfer callout: neither Import nor the Dimension tool makes one on this part (the tool makes linear, diameter and radius only)';
 const ANGLE =
-  'GAP-ANGLE: no angular dimension in the Dimension tool (Import does not promote a draft angle)';
+  'GAP-PICK-OUTLINE: the Angle tool and the Dimension tool now make angles between two straight named edges, but the 3 deg wall is a silhouette/section-face outline, which the drawing kernel does not name, so there is nothing to pick (the same gap as GAP-PICK; Import does not promote a draft angle)';
 const COUNT =
   'GAP-COUNT: no instance-count dimension or callout for a pattern (a note is free text, not a resolved value)';
 const NOPICK =
@@ -47,13 +45,6 @@ export const GAPS: Record<string, Gap[]> = {
     { dims: ['l2'], what: 'length of the middle step', reason: NOTHING },
     { dims: ['l3', 'd1', 'd2', 'd3'], what: 'end length and the three diameters', reason: NOPICK },
     { dims: ['fillet_r'], what: 'fillet radius', reason: NOPICK },
-    { dims: ['chamfer_c'], what: 'chamfer 2 mm', reason: CHAMFER },
-    {
-      dims: [],
-      what: 'the front view turned a quarter turn so the shaft lies down',
-      reason:
-        'GAP-ROTATE-VIEW: no way to rotate a view in the drawing UI (BaseView.rotation exists in the contract, nothing sets it)',
-    },
   ],
   'rp03-ball-knob': [
     {
@@ -62,13 +53,11 @@ export const GAPS: Record<string, Gap[]> = {
       reason: NOPICK,
     },
     { dims: ['stem_l'], what: 'stem length', reason: EXTRUDE },
-    { dims: ['chamfer_c'], what: 'stem chamfer 1.5 mm', reason: CHAMFER },
   ],
   'rp04-clamp-block': [
     { dims: ['corner_r', 'top_r'], what: 'corner and top-edge fillet radii', reason: NOTHING },
     { dims: ['boss_h'], what: 'boss height', reason: EXTRUDE },
     { dims: ['boss_up'], what: 'boss height above the push/pull', reason: NOPICK },
-    { dims: ['bot_c', 'boss_c'], what: 'bottom and boss chamfers', reason: CHAMFER },
   ],
   'rp05-moulded-housing': [
     { dims: ['height'], what: 'housing height', reason: EXTRUDE },
@@ -94,17 +83,17 @@ export const GAPS: Record<string, Gap[]> = {
       what: 'tapped hole spacing',
       reason: `${NOTHING}; the spec anchors the dimension 6 mm off the hole centres, which may be the cause`,
     },
+    {
+      dims: ['cb_y'],
+      what: 'counterbore position (18 mm from the centre line)',
+      reason:
+        'GAP-LAYOUT: Import cannot place it with the stepped cut line in the view: "No room for it on a view, even after moving views apart" (layoutDoesNotFit; the cut line y = 18 mm runs along the dimension). Planner lanes, packages/drawing',
+    },
     { dims: ['tap_n'], what: 'number of tapped holes (4)', reason: COUNT },
     {
       dims: ['cb_h', 'tap_depth'],
       what: 'counterbore and tap depths in the section',
       reason: NOPICK,
-    },
-    {
-      dims: [],
-      what: 'section through both hole rows (a stepped cut line)',
-      reason:
-        'GAP-OFFSET-SECTION: the Section tool draws one straight cut line; the spec cuts along y = 18 mm then steps to y = -18 mm (the contract allows it: SectionView.cut has 2 or more points)',
     },
   ],
   'rp09-flanged-hub': [

@@ -45,6 +45,7 @@ export interface DrawingHooks {
     viewId: string;
     layout: unknown;
     text: [number, number] | null;
+    box: { min: [number, number]; max: [number, number] } | null;
     attention: boolean;
   }[];
   state(): {
@@ -140,6 +141,12 @@ export function installDrawingHooks(c: DrawingController): void {
                 number,
                 number,
               ])
+            : null,
+          box: box.length
+            ? {
+                min: [Math.min(...box.map((v) => v[0])), Math.min(...box.map((v) => v[1]))],
+                max: [Math.max(...box.map((v) => v[0])), Math.max(...box.map((v) => v[1]))],
+              }
             : null,
           attention: placed?.attention ?? false,
         };

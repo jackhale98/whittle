@@ -7,8 +7,10 @@ import { app, boot, palette } from './helpers';
 import { CFG_LONG, configPartDoc } from './support/config-part';
 import {
   built,
+  cornerEdges,
   drag,
   drawing,
+  type Edge,
   newDrawing,
   openDemo,
   panelTab,
@@ -408,6 +410,20 @@ test.describe('annotations', () => {
     expect(s.texts).toContain('80');
     expect(s.texts).toContain('Ø6');
 
+    // No label sits on another view: each is clear of every view but its own.
+    for (const p of await drawing(page).placements()) {
+      if (!p.box) continue;
+      for (const v of s.views) {
+        if (v.id === p.viewId || !v.outline) continue;
+        const apart =
+          p.box.max[0] <= v.outline.min[0] ||
+          p.box.min[0] >= v.outline.max[0] ||
+          p.box.max[1] <= v.outline.min[1] ||
+          p.box.min[1] >= v.outline.max[1];
+        expect(apart, `label of ${p.id} overlaps view ${v.id}`).toBe(true);
+      }
+    }
+
     // Nothing is placed twice: a second import has nothing new to offer.
     await panelTab(page, 'Import').click();
     await page.getByTestId('import-open').click();
@@ -508,6 +524,19 @@ test.describe('annotations', () => {
       'Needs attention',
     );
     await expect(page.getByTestId('attention-panel')).not.toContainText('Ø6');
+    // Selecting one: the inspector shows no number either (T1 holds in the tolerance field too).
+    const flagged = (await drawing(page).placements()).find((x) => x.attention && x.text);
+    if (flagged?.text) {
+      await panelTab(page, 'Inspector').click();
+      await click(page, flagged.text);
+      await expect.poll(async () => (await drawing(page).state()).selected?.id).toBe(flagged.id);
+      const inspector = page.getByTestId('annotation-inspector');
+      await expect(inspector).toHaveAttribute('data-state', 'needsAttention');
+      await expect(inspector).not.toContainText('Ø6');
+      await expect(inspector.getByTestId('tolerance-field').getByRole('textbox')).not.toHaveValue(
+        /\d/,
+      );
+    }
     await a11y(page);
   });
 
@@ -996,4 +1025,528 @@ test('a hole feature is imported as a hole callout: size, fit and depth come fro
   await expect
     .poll(async () => (await drawing(page).state()).texts.some((t) => t.includes('Ø9')))
     .toBe(true);
+});
+
+// ------------------------------------------------------------------------------------------------
+// M4 gate follow-ups (ADR-092 amendment): placement fields, drag cancel, and the P1 drawing tools.
+// ------------------------------------------------------------------------------------------------
+
+const historyLen = async (page: Page) => (await app(page).history()).past.length;
+
+const printCalls = (page: Page) =>
+  page.evaluate(() => (window as unknown as { __prints: number }).__prints);
+const stubPrint = (page: Page) =>
+  page.addInitScript(() => {
+    (window as unknown as { __prints: number }).__prints = 0;
+    window.print = () => {
+      (window as unknown as { __prints: number }).__prints += 1;
+    };
+  });
+
+const placementOf = async (page: Page, id: string) =>
+  ((await drawings(page))[0] as Drawing).placements.find((x) => x.id === id);
+
+test.describe('placement fields (gate 1)', () => {
+  test('a placement field takes an expression, commits on Enter, and is one undo step', async ({
+    page,
+  }) => {
+    await openDemo(page);
+    await newDrawing(page);
+    await addStandardViews(page);
+    await importAll(page);
+    const radial = (await drawing(page).placements()).find(
+      (p) => p.layout.kind === 'radial' && p.text,
+    );
+    if (!radial?.text) throw new Error('no radial placement');
+    await click(page, radial.text);
+    await expect.poll(async () => (await drawing(page).state()).selected?.id).toBe(radial.id);
+    const field = page.getByLabel('Text distance (mm)');
+    const before = await historyLen(page);
+    const distance = async () => {
+      const p = await placementOf(page, radial.id);
+      return p?.layout.kind === 'radial' ? p.layout.distance : null;
+    };
+    // Typing alone commits nothing: no step per keystroke.
+    await field.fill('1');
+    await page.keyboard.type('2+3');
+    expect(await historyLen(page)).toBe(before);
+    await field.press('Enter');
+    await expect.poll(distance).toBe(15);
+    expect(await historyLen(page)).toBe(before + 1);
+    expect((await app(page).history()).past.at(-1)?.label).toBe('Move annotation');
+    // Units are accepted too: sheet millimetres, whatever the document's default unit.
+    await field.fill('0.5in');
+    await field.press('Enter');
+    await expect.poll(distance).toBeCloseTo(12.7, 3);
+    // One undo undoes one edit.
+    await page.getByTestId('drawing-undo').click();
+    await expect.poll(distance).toBe(15);
+    await a11y(page);
+  });
+});
+
+test.describe('drag cancel (gate 2)', () => {
+  test('Escape in the middle of a drag restores the placement and leaves nothing in history', async ({
+    page,
+  }) => {
+    await openDemo(page);
+    await newDrawing(page);
+    await addStandardViews(page);
+    await importAll(page);
+    const top = viewOf(await drawing(page).state(), 'projected', 'top');
+    const lane = (await drawing(page).placements()).find(
+      (p) => p.viewId === top?.id && p.layout.kind === 'lane' && p.text,
+    );
+    if (!lane?.text || lane.layout.kind !== 'lane') throw new Error('no lane placement');
+    const before = await historyLen(page);
+    const future0 = (await app(page).history()).future.length;
+    const layoutOf = async () => JSON.stringify((await placementOf(page, lane.id))?.layout);
+    const original = await layoutOf();
+    const from = await sheetToPage(page, lane.text);
+    const away = lane.layout.side === 'bottom' ? 3 : -3;
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    for (let i = 1; i <= 8; i++) await page.mouse.move(from.x, from.y + i * away);
+    // The drag is live: it has already moved the placement.
+    await expect.poll(layoutOf).not.toBe(original);
+    await page.keyboard.press('Escape');
+    await page.mouse.up();
+    await expect.poll(layoutOf).toBe(original);
+    const h = await app(page).history();
+    expect(h.past.length).toBe(before);
+    expect(h.future.length).toBe(future0);
+  });
+
+  test('Escape in the middle of dragging a view restores it', async ({ page }) => {
+    await openDemo(page);
+    const s0 = await newDrawing(page);
+    const front = viewOf(s0, 'base');
+    if (!front?.outline || !front.position) throw new Error('no front view');
+    const x0 = front.position[0];
+    const edge = (await drawing(page).edges(front.id)).find((e) => e.kind === 'line');
+    if (!edge) throw new Error('no edge');
+    const before = await historyLen(page);
+    const from = await sheetToPage(page, edge.at);
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    for (let i = 1; i <= 8; i++) await page.mouse.move(from.x + i * 6, from.y + i * 4);
+    const x = async () => viewOf(await drawing(page).state(), 'base')?.position?.[0] ?? 0;
+    await expect.poll(async () => Math.abs((await x()) - x0)).toBeGreaterThan(1);
+    await page.keyboard.press('Escape');
+    await page.mouse.up();
+    await expect.poll(async () => Math.abs((await x()) - x0)).toBeLessThan(0.001);
+    expect(await historyLen(page)).toBe(before);
+    expect((await app(page).history()).future.length).toBe(0);
+  });
+});
+
+test.describe('angular dimension (P1)', () => {
+  test('the Angle tool picks two edges that meet; the arc is placed and typed inline', async ({
+    page,
+  }) => {
+    await openDemo(page);
+    await newDrawing(page);
+    await addStandardViews(page);
+    const front = viewOf(await built(page), 'base');
+    if (!front) throw new Error('no front view');
+    const [e1, e2] = await cornerEdges(page, front.id);
+    await page.locator('[data-tool="angle"]').click();
+    await expect(page.getByTestId('prompt-chip')).toContainText('first');
+    await click(page, e1.at);
+    await expect(page.getByTestId('prompt-chip')).toContainText('second edge');
+    await click(page, e2.at);
+    await expect.poll(async () => (await annotations(page)).length).toBe(1);
+    const a = (await annotations(page))[0] as Annotation;
+    expect(a.kind).toBe('angle');
+    expect(a.origin.kind).toBe('drawing');
+    expect(a.refs).toHaveLength(2);
+    const p = ((await drawings(page))[0] as Drawing).placements[0];
+    expect(p?.layout.kind).toBe('arc');
+    const row = async () => (await drawing(page).state()).resolutions.find((r) => r.id === a.id);
+    await expect.poll(async () => (await row())?.state).toBe('ok');
+    const v = (await row())?.value ?? 0;
+    expect(Math.abs(v - 90) < 0.01 || Math.abs(v - Math.PI / 2) < 1e-4).toBe(true);
+    expect((await app(page).history()).past.at(-1)?.label).toBe('Add angle dimension');
+    await expect
+      .poll(async () => (await drawing(page).state()).texts.some((t) => t.includes('90')))
+      .toBe(true);
+    // The arc radius is an inline field with units; the other sector is a switch.
+    const radius = page.getByLabel('Arc radius (mm)');
+    await radius.fill('14+2');
+    await radius.press('Enter');
+    const arc = async () => {
+      const q = ((await drawings(page))[0] as Drawing).placements[0];
+      return q?.layout.kind === 'arc' ? q.layout : null;
+    };
+    await expect.poll(async () => (await arc())?.radius).toBe(16);
+    await page.getByRole('switch', { name: 'Opposite angle (same value)' }).click();
+    await expect.poll(async () => (await arc())?.opposite).toBe(true);
+    await a11y(page);
+  });
+
+  test('the Dimension tool on two edges that meet makes an angle', async ({ page }) => {
+    await openDemo(page);
+    await newDrawing(page);
+    await addStandardViews(page);
+    const front = viewOf(await built(page), 'base');
+    if (!front) throw new Error('no front view');
+    const [e1, e2] = await cornerEdges(page, front.id);
+    await page.locator('[data-tool="dimension"]').click();
+    await click(page, e1.at);
+    await click(page, e2.at);
+    await expect.poll(async () => (await annotations(page)).map((a) => a.kind)).toEqual(['angle']);
+  });
+});
+
+test.describe('print (P1)', () => {
+  test('Print writes the sheet at true scale into a print stylesheet and calls the browser print', async ({
+    page,
+  }) => {
+    await stubPrint(page);
+    await openDemo(page);
+    await newDrawing(page);
+    await addStandardViews(page);
+    await importAll(page);
+    await panelTab(page, 'Export').click();
+    await a11y(page);
+    await page.locator('[data-export="print"]').click();
+    await expect.poll(() => printCalls(page)).toBe(1);
+    const root = page.locator('#wren-print');
+    await expect(root).toHaveCount(1);
+    const svg = root.locator('svg').first();
+    // A3 landscape, in millimetres.
+    await expect(svg).toHaveAttribute('width', '420mm');
+    await expect(svg).toHaveAttribute('height', '297mm');
+    const css = await root.locator('style').textContent();
+    expect(css).toContain('size: 420mm 297mm');
+    expect(css).toContain('margin: 0');
+    // Invisible on screen; in print media the only thing shown, 420 mm wide at 96 dpi.
+    await expect(root).toBeHidden();
+    await page.emulateMedia({ media: 'print' });
+    await expect(root).toBeVisible();
+    const box = await svg.boundingBox();
+    expect(box?.width).toBeCloseTo((420 * 96) / 25.4, 0);
+    expect(box?.height).toBeCloseTo((297 * 96) / 25.4, 0);
+    await expect(page.getByTestId('drawing-route')).toBeHidden();
+    await page.emulateMedia({ media: 'screen' });
+    await page.evaluate(() => window.dispatchEvent(new Event('afterprint')));
+    await expect(root).toHaveCount(0);
+    // From the exact edges, as the exports are.
+    expect((await drawing(page).state()).quality).toBe('exact');
+  });
+
+  test('Ctrl+P prints the sheet instead of the app around it', async ({ page }) => {
+    await stubPrint(page);
+    await openDemo(page);
+    await newDrawing(page);
+    await page.getByTestId('sheet-viewer').focus();
+    await page.keyboard.press('Control+p');
+    await expect.poll(() => printCalls(page)).toBe(1);
+    await expect(page.locator('#wren-print svg')).toHaveCount(1);
+  });
+});
+
+test.describe('part properties table (P1)', () => {
+  const tableOf = async (page: Page) =>
+    ((await drawings(page))[0] as Drawing).tables[0] as
+      | { columns: string[]; massUnit?: string; position: [number, number] }
+      | undefined;
+
+  test('added from the toolbar in one step; columns, mass unit and position are inline; delete and undo', async ({
+    page,
+  }) => {
+    await openDemo(page);
+    await newDrawing(page);
+    const before = await historyLen(page);
+    await page.locator('[data-tool="table"]').click();
+    await expect.poll(async () => ((await drawings(page))[0] as Drawing).tables.length).toBe(1);
+    expect(await historyLen(page)).toBe(before + 1);
+    expect((await app(page).history()).past.at(-1)?.label).toBe('Add part properties table');
+    expect(((await drawings(page))[0] as Drawing).tables[0]?.kind).toBe('partProperties');
+    await built(page);
+    expect((await drawing(page).state()).texts).toEqual(
+      expect.arrayContaining(['PART NO.', 'MATERIAL', 'MASS']),
+    );
+    await expect(page.getByTestId('table-inspector')).toBeVisible();
+    await a11y(page);
+
+    // Columns: the configuration column is added, mass goes to kg.
+    await page.getByRole('switch', { name: 'Configuration' }).click();
+    await expect.poll(async () => (await tableOf(page))?.columns).toContain('configuration');
+    await page.getByRole('radio', { name: 'kg' }).click();
+    await expect.poll(async () => (await tableOf(page))?.massUnit).toBe('kg');
+    // The position is typed, with expressions (the alternative to dragging).
+    const x = page.getByLabel('Table position X (mm)');
+    await x.fill('300+20');
+    await x.press('Enter');
+    await expect.poll(async () => (await tableOf(page))?.position[0]).toBe(320);
+    // Dragging it: Escape restores.
+    const table = await tableOf(page);
+    if (!table) throw new Error('no table');
+    const n = await historyLen(page);
+    const start = await sheetToPage(page, [320 - 8, table.position[1] - 3]);
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    for (let i = 1; i <= 6; i++) await page.mouse.move(start.x - i * 8, start.y + i * 6);
+    await page.keyboard.press('Escape');
+    await page.mouse.up();
+    await expect.poll(async () => (await tableOf(page))?.position[0]).toBe(320);
+    expect(await historyLen(page)).toBe(n);
+    // Delete and undo.
+    await page.getByTestId('delete-table').click();
+    await expect.poll(async () => ((await drawings(page))[0] as Drawing).tables.length).toBe(0);
+    await page.getByTestId('drawing-undo').click();
+    await expect.poll(async () => ((await drawings(page))[0] as Drawing).tables.length).toBe(1);
+  });
+
+  test('a second table is not added: the sheet’s own is selected', async ({ page }) => {
+    await openDemo(page);
+    await newDrawing(page);
+    await page.locator('[data-tool="table"]').click();
+    await expect.poll(async () => ((await drawings(page))[0] as Drawing).tables.length).toBe(1);
+    await page.locator('[data-tool="table"]').click();
+    expect(((await drawings(page))[0] as Drawing).tables).toHaveLength(1);
+    await expect(page.getByTestId('drawing-toast')).toContainText('already has');
+  });
+});
+
+test.describe('half and offset sections (P1)', () => {
+  /** A section across the middle of the front view, drawn with the Section tool. */
+  async function drawSection(page: Page) {
+    await openDemo(page);
+    const s0 = await newDrawing(page);
+    const front = viewOf(s0, 'base');
+    if (!front?.outline) throw new Error('no front view');
+    const [minX, minY] = front.outline.min;
+    const [maxX, maxY] = front.outline.max;
+    await page.locator('[data-tool="section"]').click();
+    const y = (minY + maxY) / 2;
+    await drag(
+      page,
+      await sheetToPage(page, [minX + 1, y]),
+      await sheetToPage(page, [maxX - 1, y]),
+    );
+    await expect
+      .poll(async () => (await drawing(page).state()).views.some((v) => v.kind === 'section'))
+      .toBe(true);
+    await built(page);
+    return async () => {
+      const v = ((await drawings(page))[0] as Drawing).views.find((x) => x.kind === 'section');
+      return v && 'cut' in v ? v.cut : [];
+    };
+  }
+
+  test('a straight cut becomes a half section, then an offset one; vertices are typed or dragged', async ({
+    page,
+  }) => {
+    const cutOf = await drawSection(page);
+    const cutLen = async () => (await cutOf()).length;
+    expect(await cutLen()).toBe(2);
+    await expect(page.getByTestId('cut-kind')).toContainText('full section');
+    await page.getByTestId('cut-half').click();
+    await expect.poll(cutLen).toBe(3);
+    expect((await app(page).history()).past.at(-1)?.label).toBe('Make half section');
+    await expect(page.getByTestId('cut-kind')).toContainText('half section');
+    const sec = viewOf(await built(page), 'section');
+    expect(sec?.problems).toEqual([]);
+    expect((sec?.curves ?? 0) > 0).toBe(true);
+    // Back to straight with one undo; then an offset section.
+    await page.getByTestId('drawing-undo').click();
+    await expect.poll(cutLen).toBe(2);
+    await page.getByTestId('cut-offset').click();
+    await expect.poll(cutLen).toBe(4);
+    await expect(page.getByTestId('cut-kind')).toContainText('offset section');
+    expect(viewOf(await built(page), 'section')?.problems).toEqual([]);
+
+    // A vertex is typed inline: one undo step.
+    const before = await historyLen(page);
+    const x = page.getByLabel('Cut vertex 2 X (mm)');
+    const old = (await cutOf())[1];
+    if (old?.kind !== 'free') throw new Error('vertex is not free');
+    await x.fill(`${old.at[0]}+4`);
+    await x.press('Enter');
+    await expect
+      .poll(async () => {
+        const p = (await cutOf())[1];
+        return p?.kind === 'free' ? Math.round((p.at[0] - old.at[0]) * 1000) / 1000 : null;
+      })
+      .toBe(4);
+    expect(await historyLen(page)).toBe(before + 1);
+
+    // A vertex is dragged on the sheet; Escape restores it.
+    const handle = page.locator('[data-testid="cut-handle"][data-index="2"]');
+    const hb = await handle.boundingBox();
+    if (!hb) throw new Error('no cut handle');
+    const hx = hb.x + hb.width / 2;
+    const hy = hb.y + hb.height / 2;
+    const n = await historyLen(page);
+    const was = JSON.stringify(await cutOf());
+    const cutJson = async () => JSON.stringify(await cutOf());
+    await page.mouse.move(hx, hy);
+    await page.mouse.down();
+    for (let i = 1; i <= 6; i++) await page.mouse.move(hx + i * 4, hy);
+    await expect.poll(cutJson).not.toBe(was);
+    await page.keyboard.press('Escape');
+    await page.mouse.up();
+    await expect.poll(cutJson).toBe(was);
+    expect(await historyLen(page)).toBe(n);
+    // The sheet is rebuilt from the restored cut before the next press.
+    await built(page);
+    // And dragged for real: one step.
+    await page.mouse.move(hx, hy);
+    await page.mouse.down();
+    for (let i = 1; i <= 6; i++) await page.mouse.move(hx + i * 4, hy);
+    await page.mouse.up();
+    await expect.poll(cutJson).not.toBe(was);
+    expect(await historyLen(page)).toBe(n + 1);
+    expect((await app(page).history()).past.at(-1)?.label).toBe('Edit cut line');
+
+    // Add and remove a vertex.
+    await page.getByTestId('cut-add').click();
+    await expect.poll(cutLen).toBe(5);
+    await page.getByRole('button', { name: 'Remove vertex 3' }).click();
+    await expect.poll(cutLen).toBe(4);
+    await a11y(page);
+  });
+});
+
+test.describe('ordinate and chamfer dimensions (P1)', () => {
+  test('the Ordinate tool reads coordinates from one origin; they share a lane', async ({
+    page,
+  }) => {
+    await openDemo(page);
+    await newDrawing(page);
+    await addStandardViews(page);
+    const s0 = await built(page);
+    // A view with vertical edges at three different places: the origin and two features.
+    let found: { left: Edge; right: Edge; mid: Edge } | undefined;
+    for (const v of s0.views) {
+      const verticals = (await drawing(page).edges(v.id))
+        .filter((e) => e.kind === 'line' && e.a && e.b && Math.abs(e.a[0] - e.b[0]) < 0.01)
+        .sort((p, q) => p.at[0] - q.at[0]);
+      const left = verticals[0];
+      const right = verticals.at(-1);
+      const mid = verticals.find(
+        (e) => left && right && e.at[0] > left.at[0] + 3 && e.at[0] < right.at[0] - 3,
+      );
+      if (left && right && mid && !found) found = { left, right, mid };
+    }
+    if (!found) throw new Error('no view with vertical edges at three places');
+    const { left, right, mid } = found;
+    await page.locator('[data-tool="ordinate"]').click();
+    await expect(page.getByTestId('prompt-chip')).toContainText('origin');
+    await click(page, left.at);
+    await expect(page.getByTestId('prompt-chip')).toContainText('feature');
+    await click(page, right.at);
+    await expect.poll(async () => (await annotations(page)).length).toBe(1);
+    const a = (await annotations(page))[0] as Annotation;
+    expect(a.kind).toBe('ordinate');
+    expect(a.refs).toHaveLength(2);
+    expect(a.origin.kind).toBe('drawing');
+    // Along one of the view's axes: a unit vector.
+    const dir = 'direction' in a && a.direction ? a.direction : [0, 0, 0];
+    expect(Math.hypot(dir[0] ?? 0, dir[1] ?? 0, dir[2] ?? 0)).toBeCloseTo(1, 6);
+    await expect
+      .poll(async () => (await drawing(page).state()).resolutions.find((r) => r.id === a.id)?.state)
+      .toBe('ok');
+    expect((await app(page).history()).past.at(-1)?.label).toBe('Add ordinate dimension');
+    // The origin stays picked: another feature joins the same group, in the same lane.
+    await expect(page.getByTestId('prompt-chip')).toContainText('next');
+    await click(page, mid.at);
+    await expect.poll(async () => (await annotations(page)).length).toBe(2);
+    const lanes = ((await drawings(page))[0] as Drawing).placements.map((p) =>
+      p.layout.kind === 'lane' ? `${p.layout.side}:${p.layout.lane}` : p.layout.kind,
+    );
+    expect(new Set(lanes).size).toBe(1);
+    await a11y(page);
+  });
+
+  test('the Chamfer tool attaches a callout to the chamfer feature; other edges are refused', async ({
+    page,
+  }) => {
+    await openDemo(page);
+    await newDrawing(page);
+    await addStandardViews(page);
+    const s = await built(page);
+    let pick: { viewId: string; at: [number, number]; name: string } | undefined;
+    for (const v of s.views) {
+      for (const e of await drawing(page).edges(v.id)) {
+        if (e.kind === 'line' && /:chamfer\(/.test(e.name))
+          pick ??= { viewId: v.id, at: e.at, name: e.name };
+      }
+    }
+    if (!pick) throw new Error('no chamfer edge on any view');
+    await page.locator('[data-tool="chamfer"]').click();
+    await expect(page.getByTestId('prompt-chip')).toContainText('chamfer');
+    // An edge that is not on a chamfer is refused, with the reason.
+    const plain = (await drawing(page).edges(pick.viewId)).find(
+      (e) => e.kind === 'line' && !/:chamfer\(/.test(e.name),
+    );
+    if (plain) {
+      await click(page, plain.at);
+      await expect(page.getByTestId('drawing-toast')).toContainText('not on a chamfer');
+      expect(await annotations(page)).toHaveLength(0);
+    }
+    await click(page, pick.at);
+    await expect.poll(async () => (await annotations(page)).length).toBe(1);
+    const a = (await annotations(page))[0] as Annotation;
+    expect(a.kind).toBe('chamfer');
+    expect(a.refs[0]?.kind).toBe('face');
+    expect('source' in a && a.source?.kind).toBe('feature');
+    await expect
+      .poll(async () => (await drawing(page).state()).resolutions.find((r) => r.id === a.id)?.state)
+      .toBe('ok');
+    expect((await app(page).history()).past.at(-1)?.label).toBe('Add chamfer callout');
+    // The numbers are the feature's: distance and angle, never a placeholder.
+    await expect
+      .poll(async () =>
+        (await drawing(page).state()).texts.some((t) => /^[\d.]+ × [\d.]+°$/.test(t)),
+      )
+      .toBe(true);
+    // A second callout for the same chamfer is not made.
+    await click(page, pick.at);
+    await expect(page.getByTestId('drawing-toast')).toContainText('already has a callout');
+    expect(await annotations(page)).toHaveLength(1);
+    await a11y(page);
+  });
+});
+
+test.describe('rotate a base view (P1)', () => {
+  test('a base view turns by an angle expression; views from it follow; one undo step', async ({
+    page,
+  }) => {
+    await openDemo(page);
+    const s0 = await newDrawing(page);
+    const front = viewOf(s0, 'base');
+    if (!front?.outline) throw new Error('no front view');
+    const w0 = front.outline.max[0] - front.outline.min[0];
+    const h0 = front.outline.max[1] - front.outline.min[1];
+    const edge = (await drawing(page).edges(front.id)).find((e) => e.kind === 'line');
+    if (!edge) throw new Error('no edge');
+    await click(page, edge.at);
+    await expect.poll(async () => (await drawing(page).state()).selected?.kind).toBe('view');
+    const before = await historyLen(page);
+    const field = page.getByLabel('View rotation');
+    await field.fill('45+45');
+    await field.press('Enter');
+    await expect
+      .poll(async () => {
+        const v = ((await drawings(page))[0] as Drawing).views[0];
+        return v?.kind === 'base' ? v.rotation : null;
+      })
+      .toBe('45+45');
+    expect(await historyLen(page)).toBe(before + 1);
+    expect((await app(page).history()).past.at(-1)?.label).toBe('Rotate view');
+    // A quarter turn swaps the view's width and height on the sheet.
+    await built(page);
+    const o = viewOf(await drawing(page).state(), 'base')?.outline;
+    if (!o) throw new Error('no outline');
+    expect(o.max[0] - o.min[0]).toBeCloseTo(h0, 1);
+    expect(o.max[1] - o.min[1]).toBeCloseTo(w0, 1);
+    await a11y(page);
+    // Not an angle: refused inline, nothing stored.
+    await field.fill('5 mm');
+    await field.press('Enter');
+    expect(await historyLen(page)).toBe(before + 1);
+  });
 });

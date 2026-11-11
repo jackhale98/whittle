@@ -445,7 +445,7 @@ export function App({ wb }: { wb: Workbench }) {
       </div>
       {ui.drawing !== null && (
         <section
-          className="fixed inset-0 z-[var(--z-drawing,60)] bg-bg"
+          className="fixed inset-0 z-[var(--z-drawing,35)] bg-bg"
           data-testid="drawing-route"
           aria-label="Drawing"
         >

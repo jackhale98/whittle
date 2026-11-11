@@ -43,6 +43,8 @@ interface Entry {
   coalesceKey?: string;
   lastTime: number;
   open: boolean;
+  /** The redo stack the entry's first apply cleared, for `cancelGroup`. */
+  priorFuture?: Entry[];
 }
 
 type Listener = (doc: WrenDoc, change: { patches: JsonPatchOp[] }) => void;
@@ -160,6 +162,7 @@ export class DocumentStoreImpl implements DocumentStore {
         open: key !== undefined,
       };
       if (key !== undefined) entry.coalesceKey = key;
+      if (key !== undefined) entry.priorFuture = this.future;
       this.past.push(entry);
       if (this.past.length > this.maxHistory) this.past.shift();
     }
@@ -171,6 +174,27 @@ export class DocumentStoreImpl implements DocumentStore {
 
   commit(): void {
     this.closeGroup();
+  }
+
+  /**
+   * Abandons the open coalescing group `key` (a drag that was cancelled): its edits are reverted
+   * and the entry is dropped, so nothing stays on the undo stack or lands on the redo stack, and
+   * the redo stack the group cleared comes back. Returns false when no such group is open.
+   */
+  cancelGroup(key: string): boolean {
+    const entry = this.past[this.past.length - 1];
+    if (!entry?.open || entry.coalesceKey !== key) return false;
+    let next: WrenDoc;
+    try {
+      next = applyPatch(this.doc, entry.inverse).doc;
+    } catch {
+      return false;
+    }
+    this.past.pop();
+    this.future = entry.priorFuture ?? [];
+    this.doc = next;
+    this.notify(entry.inverse);
+    return true;
   }
 
   undo(): boolean {

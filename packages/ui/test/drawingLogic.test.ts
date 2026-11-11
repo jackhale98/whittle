@@ -1,6 +1,7 @@
 import type { DisplayList } from '@wren-cad/drawing/annotation';
 import { describe, expect, it } from 'vitest';
 import { hitTest, itemDistance, sourceKey } from '../src/drawing/hit';
+import { sheetUnits } from '../src/drawing/SheetValueField';
 import { toleranceText } from '../src/drawing/ToleranceField';
 import {
   fitView,
@@ -170,5 +171,17 @@ describe('the tolerance field text', () => {
     expect(toleranceText({ kind: 'fit', hole: 'H7', shaft: 'g6', show: 'symbol' })).toBe('H7/g6');
     expect(toleranceText({ kind: 'basic' })).toBe('[ ]');
     expect(toleranceText({ kind: 'reference' })).toBe('( )');
+  });
+});
+
+describe('sheet values', () => {
+  it('a bare number is sheet millimetres or degrees; anything with a unit or an operator is left alone', () => {
+    expect(sheetUnits('12', 'mm')).toBe('12mm');
+    expect(sheetUnits(' -0.5 ', 'mm')).toBe('-0.5mm');
+    expect(sheetUnits('30', 'deg')).toBe('30deg');
+    expect(sheetUnits('1.5e2', 'mm')).toBe('1.5e2mm');
+    expect(sheetUnits('0.5in', 'mm')).toBe('0.5in');
+    expect(sheetUnits('10+2', 'mm')).toBe('10+2');
+    expect(sheetUnits('w/2', 'mm')).toBe('w/2');
   });
 });

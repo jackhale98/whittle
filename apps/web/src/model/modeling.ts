@@ -38,6 +38,7 @@ export type ModelingPort = Pick<
       | 'memoryStats'
       | 'massProperties'
       | 'shapeForDrawing'
+      | 'annotationAnchors'
     >
   >;
 

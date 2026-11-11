@@ -12,6 +12,7 @@ import {
   sheetToView,
   type ViewSide,
   viewOutline,
+  viewToSheet,
 } from '@wren-cad/drawing';
 import {
   type HitRegion,
@@ -21,18 +22,23 @@ import {
   type SheetPointer,
 } from '@wren-cad/ui/drawing';
 import type { DrawingController } from './controller';
+import { moveVertex } from './cutline';
 import { dominantAxis, sideForDirection } from './model';
 import {
+  addChamfer,
   addDatum,
   addFinish,
   addFrame,
   addNote,
   createDimension,
+  createOrdinate,
   pickEdge,
   reattachPick,
   updatePlacement,
 } from './ops-annot';
+import { updateTable } from './ops-tables';
 import { addDetail, addProjectedView, addSection, updateView } from './ops-views';
+import type { Built } from './pipeline';
 import type { EdgePick } from './state';
 
 const sub = (a: Vec2, b: Vec2): Vec2 => [a[0] - b[0], a[1] - b[1]];
@@ -107,6 +113,7 @@ export function selectHit(c: DrawingController, hit: HitResult | null): void {
   else if (s.kind === 'placement') c.select({ kind: 'placement', id: s.placementId });
   else if (s.kind === 'view') c.select({ kind: 'view', id: s.viewId });
   else if (s.kind === 'note') c.select({ kind: 'note', id: s.noteId });
+  else if (s.kind === 'table') c.select({ kind: 'table', id: s.tableId });
   else if (s.kind === 'titleBlock' && s.slot) c.select({ kind: 'cell', slot: s.slot });
   else c.select(null);
 }
@@ -114,6 +121,65 @@ export function selectHit(c: DrawingController, hit: HitResult | null): void {
 // ---------------------------------------------------------------------------------------------
 // Moving views and annotations
 // ---------------------------------------------------------------------------------------------
+
+/** The vertices of the selected section's cut line, on the parent view (sheet mm). */
+export function cutHandlesOf(b: Built, viewId: Id): { index: number; at: Vec2 }[] {
+  const view = b.drawing.views.find((v) => v.id === viewId);
+  if (view?.kind !== 'section') return [];
+  const parent = b.build.views.get(view.parentId);
+  if (!parent?.ok) return [];
+  return view.cut.flatMap((p, index) =>
+    p.kind === 'free' ? [{ index, at: viewToSheet(parent, p.at) }] : [],
+  );
+}
+
+/** Dragging one vertex of a section's cut line: one undo step, and Esc or a cancel restores it. */
+function dragCutVertex(c: DrawingController, viewId: Id, index: number, start: Vec2): SheetDrag {
+  const b = c.built();
+  const view = c.view(viewId);
+  if (!b || view?.kind !== 'section') return {};
+  const parent = b.build.views.get(view.parentId);
+  const from = view.cut[index];
+  if (!parent?.ok || from?.kind !== 'free') return {};
+  const key = `drag:cut:${viewId}:${index}`;
+  const origin = from.at;
+  return {
+    move(p) {
+      const cur = c.view(viewId);
+      if (cur?.kind !== 'section') return;
+      const d = sub(p.at, start);
+      const to: Vec2 = [origin[0] + d[0] / parent.scale, origin[1] + d[1] / parent.scale];
+      updateView(c, { ...cur, cut: moveVertex(cur.cut, index, to) }, 'Edit cut line', key);
+    },
+    up() {
+      c.commit();
+    },
+    cancel() {
+      c.cancelEdit(key);
+    },
+  };
+}
+
+function moveTable(c: DrawingController, id: Id, start: Vec2): SheetDrag {
+  const table = c.drawing()?.tables.find((t) => t.id === id);
+  if (!table) return {};
+  const key = `drag:table:${id}`;
+  const origin = table.position;
+  return {
+    move(p) {
+      const cur = c.drawing()?.tables.find((t) => t.id === id);
+      if (!cur) return;
+      const d = sub(p.at, start);
+      updateTable(c, { ...cur, position: [origin[0] + d[0], origin[1] + d[1]] }, 'Move table', key);
+    },
+    up() {
+      c.commit();
+    },
+    cancel() {
+      c.cancelEdit(key);
+    },
+  };
+}
 
 function moveView(c: DrawingController, id: Id, start: Vec2): SheetDrag {
   const view = c.view(id);
@@ -146,7 +212,7 @@ function moveView(c: DrawingController, id: Id, start: Vec2): SheetDrag {
       c.commit();
     },
     cancel() {
-      c.commit();
+      c.cancelEdit(key);
     },
   };
 }
@@ -248,7 +314,7 @@ function movePlacement(c: DrawingController, placementId: Id, start: Vec2): Shee
       c.commit();
     },
     cancel() {
-      c.commit();
+      c.cancelEdit(key);
     },
   };
 }
@@ -425,6 +491,59 @@ async function onPick(
       await createDimension(c, same ? [first] : [first, pick]);
       return;
     }
+    case 'angle': {
+      const prev = c.ui.get().hint?.picks ?? [];
+      const first = prev[0];
+      if (!first) {
+        if (pick.shape !== 'line') {
+          c.toast('An angle is between two straight edges: pick a straight edge.', 'error');
+          return;
+        }
+        c.patch({ hint: { text: 'Pick the second edge', picks: [pick] } });
+        return;
+      }
+      if (pick.shape !== 'line') {
+        c.toast('An angle is between two straight edges: pick a straight edge.', 'error');
+        return;
+      }
+      c.patch({ hint: null });
+      await createDimension(c, [first, pick]);
+      return;
+    }
+    case 'ordinate': {
+      const origin = c.ui.get().hint?.picks[0];
+      if (!origin) {
+        if (pick.shape === 'other') {
+          c.toast('Pick a straight edge or a circle for the origin.', 'error');
+          return;
+        }
+        c.patch({
+          hint: { text: 'Pick a feature to read from this origin; Esc finishes', picks: [pick] },
+        });
+        return;
+      }
+      if (pick.viewId !== origin.viewId) {
+        c.toast('The features must be on the same view as the origin.', 'error');
+        return;
+      }
+      if (pick.name === origin.name) {
+        c.toast('That is the origin: pick a feature to measure from it.', 'error');
+        return;
+      }
+      if (pick.shape === 'other') {
+        c.toast('Pick a straight edge or a circle.', 'error');
+        return;
+      }
+      // The origin stays picked: each further pick adds another coordinate to the group.
+      await createOrdinate(c, [origin, pick]);
+      c.patch({
+        hint: { text: 'Pick the next feature, or Esc to finish', picks: [origin] },
+      });
+      return;
+    }
+    case 'chamfer':
+      await addChamfer(c, pick);
+      return;
     case 'datum':
       await addDatum(c, pick);
       return;
@@ -455,6 +574,9 @@ export function beginInteraction(c: DrawingController, p: SheetPointer): SheetDr
     case 'detail':
       return detailTool(c, p);
     case 'dimension':
+    case 'angle':
+    case 'ordinate':
+    case 'chamfer':
     case 'datum':
     case 'gdt':
     case 'finish':
@@ -468,6 +590,11 @@ export function beginInteraction(c: DrawingController, p: SheetPointer): SheetDr
   // Select: the handles of the selected view first, then what is under the pointer.
   const sel = c.ui.get().selected;
   if (sel?.kind === 'view') {
+    const bb = c.built();
+    const cutHandle = bb
+      ? cutHandlesOf(bb, sel.id).find((x) => len(sub(p.at, x.at)) < 13 * p.mm)
+      : undefined;
+    if (cutHandle) return dragCutVertex(c, sel.id, cutHandle.index, p.at);
     const sv = solvedView(c, sel.id);
     if (sv && sv.view.kind !== 'iso' && sv.view.kind !== 'detail') {
       const h = handlesOf(sv, p.mm).find((x) => len(sub(p.at, x.at)) < 13 * p.mm);
@@ -480,6 +607,7 @@ export function beginInteraction(c: DrawingController, p: SheetPointer): SheetDr
   const s = hit.source;
   if (s.kind === 'placement') return movePlacement(c, s.placementId, p.at);
   if (s.kind === 'view') return moveView(c, s.viewId, p.at);
+  if (s.kind === 'table') return moveTable(c, s.tableId, p.at);
   if (s.kind === 'titleBlock' && s.slot) {
     const slot = s.slot;
     return {

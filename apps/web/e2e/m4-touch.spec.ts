@@ -5,6 +5,7 @@ import { app, touch } from './helpers';
 import { fixtureDrawing } from './support/drawing-fixture';
 import {
   built,
+  cornerEdges,
   drawing,
   newDrawing,
   openDemo,
@@ -135,6 +136,152 @@ test.describe('tablet', () => {
     await expect.poll(zoom).toBeGreaterThan(z0);
     await t.doubleTap({ x: cx, y: box.y + 8 });
     await expect.poll(zoom).toBe(100);
+  });
+
+  test('the P1 tools work with fingers: angle, part properties table, print, half section, keypad fields', async ({
+    page,
+  }) => {
+    await page.addInitScript(() => {
+      (window as unknown as { __prints: number }).__prints = 0;
+      window.print = () => {
+        (window as unknown as { __prints: number }).__prints += 1;
+      };
+    });
+    await openDemo(page);
+    await newDrawing(page);
+    const t = await touch(page);
+    await page.getByTestId('drawing-panel-toggle').tap();
+    await panelTab(page, 'Views').tap();
+    await page.getByTestId('add-standard-views').tap();
+    await expect.poll(async () => (await drawing(page).state()).views.length).toBe(3);
+    const s = await built(page);
+    await page.getByTestId('drawing-panel-toggle').tap();
+
+    const front = viewOf(s, 'base');
+    if (!front) throw new Error('no front view');
+    // A half section: draw the cut with a finger, then bend it with a tap.
+    const [minX, minY] = front.outline?.min ?? [0, 0];
+    const [maxX, maxY] = front.outline?.max ?? [0, 0];
+    await page.locator('[data-tool="section"]').tap();
+    const y = (minY + maxY) / 2;
+    await t.drag(await sheetToPage(page, [minX + 1, y]), await sheetToPage(page, [maxX - 1, y]));
+    await expect
+      .poll(async () => (await drawing(page).state()).views.some((v) => v.kind === 'section'))
+      .toBe(true);
+    await built(page);
+    await page.getByTestId('drawing-panel-toggle').tap();
+    await page.getByTestId('cut-half').tap();
+    await expect
+      .poll(async () => {
+        const v = ((await drawings(page))[0] as Drawing).views.find((x) => x.kind === 'section');
+        return v && 'cut' in v ? v.cut.length : 0;
+      })
+      .toBe(3);
+    await a11y(page);
+    await page.getByTestId('drawing-panel-toggle').tap();
+
+    // Angle: two taps on edges that meet at a corner of the front view.
+    const [horiz, vert] = await cornerEdges(page, front.id);
+    const tool = page.locator('[data-tool="angle"]');
+    expect((await tool.boundingBox())?.width ?? 0).toBeGreaterThanOrEqual(44);
+    await tool.tap();
+    await expect(page.getByTestId('prompt-chip')).toContainText('first');
+    await t.tap([await sheetToPage(page, horiz.at)]);
+    await expect(page.getByTestId('prompt-chip')).toContainText('second edge');
+    await t.tap([await sheetToPage(page, vert.at)]);
+    await expect
+      .poll(async () => ((await app(page).doc()).parts[0]?.annotations ?? []).map((a) => a.kind))
+      .toEqual(['angle']);
+    // The arc radius is a keypad field on touch: AC, 1, 8, Enter.
+    await page.getByTestId('drawing-panel-toggle').tap();
+    await panelTab(page, 'Inspector').tap();
+    await page.getByRole('textbox', { name: 'Arc radius (mm)' }).tap();
+    const keypad = page.getByTestId('keypad');
+    await expect(keypad).toBeVisible();
+    await keypad.getByRole('button', { name: 'AC (clear)' }).tap();
+    await keypad.getByRole('button', { name: '1', exact: true }).tap();
+    await keypad.getByRole('button', { name: '8', exact: true }).tap();
+    await keypad.getByRole('button', { name: 'Enter' }).tap();
+    await expect
+      .poll(async () => {
+        const p = ((await drawings(page))[0] as Drawing).placements[0];
+        return p?.layout.kind === 'arc' ? p.layout.radius : null;
+      })
+      .toBe(18);
+    await a11y(page);
+    await page.getByTestId('drawing-panel-toggle').tap();
+
+    // The part properties table is one tap on the rail.
+    await page.locator('[data-tool="table"]').tap();
+    await expect.poll(async () => ((await drawings(page))[0] as Drawing).tables.length).toBe(1);
+    await built(page);
+    expect((await drawing(page).state()).texts).toContain('PART NO.');
+    await page.getByTestId('drawing-panel-toggle').tap();
+    await expect(page.getByTestId('table-inspector')).toBeVisible();
+    await page.getByRole('switch', { name: 'Configuration' }).tap();
+    await expect
+      .poll(
+        async () =>
+          (((await drawings(page))[0] as Drawing).tables[0] as { columns: string[] }).columns,
+      )
+      .toContain('configuration');
+    await a11y(page);
+
+    // Print is a button in the Export panel.
+    await panelTab(page, 'Export').tap();
+    await page.locator('[data-export="print"]').tap();
+    await expect
+      .poll(() => page.evaluate(() => (window as unknown as { __prints: number }).__prints))
+      .toBe(1);
+    await expect(page.locator('#wren-print svg')).toHaveAttribute('width', '420mm');
+    await page.evaluate(() => window.dispatchEvent(new Event('afterprint')));
+    await page.getByTestId('drawing-panel-toggle').tap();
+  });
+
+  test('ordinate and chamfer tools work with fingers', async ({ page }) => {
+    await openDemo(page);
+    await newDrawing(page);
+    const t = await touch(page);
+    await page.getByTestId('drawing-panel-toggle').tap();
+    await panelTab(page, 'Views').tap();
+    await page.getByTestId('add-standard-views').tap();
+    await expect.poll(async () => (await drawing(page).state()).views.length).toBe(3);
+    const s = await built(page);
+    await page.getByTestId('drawing-panel-toggle').tap();
+    const annotationKinds = async () =>
+      ((await app(page).doc()).parts[0]?.annotations ?? []).map((a) => a.kind);
+
+    // Ordinate: the origin and a feature, by tapping vertical edges at three places of one view.
+    for (const v of s.views) {
+      const verticals = (await drawing(page).edges(v.id))
+        .filter((e) => e.kind === 'line' && e.a && e.b && Math.abs(e.a[0] - e.b[0]) < 0.01)
+        .sort((p, q) => p.at[0] - q.at[0]);
+      const origin = verticals[0];
+      const feature = verticals.at(-1);
+      if (!origin || !feature || feature.at[0] - origin.at[0] < 20) continue;
+      await page.locator('[data-tool="ordinate"]').tap();
+      await t.tap([await sheetToPage(page, origin.at)]);
+      await expect(page.getByTestId('prompt-chip')).toContainText('feature');
+      await t.tap([await sheetToPage(page, feature.at)]);
+      await expect.poll(annotationKinds).toEqual(['ordinate']);
+      break;
+    }
+    await page.locator('[data-tool="ordinate"]').tap(); // off again
+    await expect.poll(async () => (await drawing(page).state()).tool).toBe('select');
+
+    // Chamfer: tap an edge of the chamfer's face.
+    for (const v of s.views) {
+      const edge = (await drawing(page).edges(v.id)).find(
+        (e) => e.kind === 'line' && /:chamfer\(/.test(e.name),
+      );
+      if (!edge) continue;
+      await page.locator('[data-tool="chamfer"]').tap();
+      await t.tap([await sheetToPage(page, edge.at)]);
+      await expect.poll(annotationKinds).toEqual(['ordinate', 'chamfer']);
+      break;
+    }
+    await page.getByTestId('drawing-panel-toggle').tap();
+    await a11y(page);
   });
 
   test('every panel is reachable and accessible on the tablet', async ({ page }) => {

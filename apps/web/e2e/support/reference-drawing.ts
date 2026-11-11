@@ -74,6 +74,11 @@ function toWren(orientation: string, w: (number | undefined)[]): V2 {
   return [get(axes[0]), get(axes[1])];
 }
 
+/** A section's cut point as Wren's view-plane position (part mm in the parent's front view). */
+export function viewPlane(view: DrawingViewSpec, p: V2): V2 {
+  return toWren('front', toPart(view, p));
+}
+
 export interface Placed {
   spec: DrawingViewSpec;
   /** The drawing's view id. */
@@ -94,7 +99,14 @@ export function sheetPoint(
   const o = v.spec.kind === 'section' ? 'front' : v.spec.orientation;
   const c = toWren(o, centre);
   const q = toWren(o, toPart(v.spec, p));
-  const at: V2 = [s.position[0] + s.scale * (q[0] - c[0]), s.position[1] + s.scale * (q[1] - c[1])];
+  // A turned base view (BaseView.rotation, degrees counter-clockwise) turns what it shows about
+  // its centre; views projected from it are not turned by the spec (axes already say how).
+  const rot = v.spec.kind === 'base' && v.spec.rotation ? (v.spec.rotation * Math.PI) / 180 : 0;
+  const dx = q[0] - c[0];
+  const dy = q[1] - c[1];
+  const rx = dx * Math.cos(rot) - dy * Math.sin(rot);
+  const ry = dx * Math.sin(rot) + dy * Math.cos(rot);
+  const at: V2 = [s.position[0] + s.scale * rx, s.position[1] + s.scale * ry];
   return { x: at[0], y: at[1], at };
 }
 
@@ -133,6 +145,23 @@ async function newViewId(page: Page, before: Set<string>): Promise<string> {
   return v.id;
 }
 
+/** Turns a base view in the plane, as the spec says (degrees, counter-clockwise), in the inspector. */
+async function rotateView(page: Page, id: string, degrees: number | undefined): Promise<void> {
+  if (!degrees) return;
+  await selectView(page, id);
+  await panelTab(page, 'Inspector').click();
+  const f = page.getByLabel('View rotation');
+  await f.fill(String(degrees));
+  await f.press('Enter');
+  await expect
+    .poll(async () => {
+      const v = ((await drawings(page))[0] as Drawing).views.find((x) => x.id === id);
+      return v?.kind === 'base' ? v.rotation : undefined;
+    })
+    .toBe(String(degrees));
+  await built(page);
+}
+
 /**
  * Makes the drawing's views, in spec order (parents first). The drawing starts with the default
  * base view; it is replaced when the spec's base view is another orientation.
@@ -157,11 +186,14 @@ export async function addViews(page: Page, spec: PartSpec): Promise<Placed[]> {
     if (v.kind === 'base') {
       if (v.orientation === firstName && !out.some((p) => p.id === first.id)) {
         out.push({ spec: v, id: first.id });
+        await rotateView(page, first.id, v.rotation);
         continue;
       }
       await panelTab(page, 'Views').click();
       await page.locator(`[data-view="${v.orientation}"]`).click();
-      out.push({ spec: v, id: await newViewId(page, before) });
+      const id = await newViewId(page, before);
+      out.push({ spec: v, id });
+      await rotateView(page, id, v.rotation);
     } else if (v.kind === 'projected') {
       const parent = out.find((p) => p.spec.id === v.parent);
       if (!parent) throw new Error(`parent of ${v.id}`);
@@ -189,7 +221,8 @@ export async function addViews(page: Page, spec: PartSpec): Promise<Placed[]> {
       state = await built(page);
       const o = state.views.find((x) => x.id === parent.id)?.outline;
       if (!o) throw new Error('no outline');
-      // The Section tool draws one straight cut line: the first and last point of the spec's cut.
+      // The Section tool draws one straight cut line: the first and last point of the spec's cut
+      // (more points are typed in below).
       const cut = v.section.cut;
       const a = sheetPoint(spec, parent, state, cut[0] as V2).at;
       const b = sheetPoint(spec, parent, state, cut.at(-1) as V2).at;
@@ -199,7 +232,31 @@ export async function addViews(page: Page, spec: PartSpec): Promise<Placed[]> {
       ];
       await page.locator('[data-tool="section"]').click();
       await drag(page, await sheetToPage(page, inside(a)), await sheetToPage(page, inside(b)));
-      out.push({ spec: v, id: await newViewId(page, before) });
+      const id = await newViewId(page, before);
+      out.push({ spec: v, id });
+      // A stepped (offset) or L-shaped (half) cut: add vertices and type each of the spec's points
+      // into the inspector's cut-line fields (view-plane mm).
+      if (cut.length > 2) {
+        await panelTab(page, 'Inspector').click();
+        for (let i = 2; i < cut.length; i++) await page.getByTestId('cut-add').click();
+        for (let i = 0; i < cut.length; i++) {
+          const q = toWren('front', toPart(v, cut[i] as V2));
+          for (const [axis, value] of [
+            ['X', q[0]],
+            ['Y', q[1]],
+          ] as const) {
+            const f = page.getByLabel(`Cut vertex ${i + 1} ${axis} (mm)`);
+            await f.fill(String(value));
+            await f.press('Enter');
+          }
+        }
+        await expect
+          .poll(async () => {
+            const sec = ((await drawings(page))[0] as Drawing).views.find((x) => x.id === id);
+            return sec?.kind === 'section' ? sec.cut.length : 0;
+          })
+          .toBe(cut.length);
+      }
     } else {
       throw new Error(`the driver has no detail views: ${v.id} (no spec drawing has one yet)`);
     }
@@ -353,7 +410,8 @@ export async function dimensionTool(
         WorldAxis,
         WorldAxis,
       ];
-      const axis = wren[0].replace('-', '') === measured ? 'h' : 'v';
+      // A turned view is drawn as the spec shows it: its h is the sheet's horizontal.
+      const axis = v.spec.rotation ? d.axis : wren[0].replace('-', '') === measured ? 'h' : 'v';
       for (const p of [d.from as V2, d.to as V2]) {
         const e = edgeAt(edges, sheetPoint(spec, v, state, p).at, axis);
         if (!e) return { note: `no edge or circle at ${p.join(', ')} in ${v.spec.caption}` };

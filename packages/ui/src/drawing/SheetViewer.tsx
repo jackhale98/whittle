@@ -360,6 +360,21 @@ export function SheetViewer({
     gesture.current = { kind: 'none' };
   };
 
+  // Escape during a drag abandons it: the drag restores what it changed and the press is spent.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      const g = gesture.current;
+      if (g.kind !== 'drag') return;
+      e.preventDefault();
+      e.stopPropagation();
+      g.drag.cancel?.();
+      gesture.current = { kind: 'none' };
+    };
+    document.addEventListener('keydown', onKey, true);
+    return () => document.removeEventListener('keydown', onKey, true);
+  }, []);
+
   // Wheel and trackpad pinch: a non-passive listener so the page never scrolls.
   useEffect(() => {
     const el = box.current;

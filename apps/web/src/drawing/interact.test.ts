@@ -3,7 +3,7 @@ import { solveViews, type ViewSolution } from '@wren-cad/drawing';
 import { describe, expect, it } from 'vitest';
 import type { DrawingController } from './controller';
 import { dragLayout, handlesOf } from './interact';
-import { nextDatumLabel, planDimension } from './ops-annot';
+import { nextDatumLabel, planAngle, planDimension } from './ops-annot';
 import type { Built } from './pipeline';
 import type { EdgePick } from './state';
 
@@ -142,10 +142,28 @@ describe('which dimension the picks mean', () => {
     });
   });
 
-  it('non-parallel edges are refused with the reason, never guessed', () => {
+  it('two edges that meet make an angle, with an arc placed clear of the vertex', () => {
     const { c } = fixture();
-    const d = planDimension(c, [line('a', [0, 0], [40, 0]), line('b', [0, 0], [40, 40])]);
-    expect(d).toEqual({ ok: false, message: expect.stringMatching(/not parallel/) });
+    const d = planDimension(c, [line('a', [0, 0], [40, 0]), line('b', [0, 0], [0, 40])]);
+    expect(d).toMatchObject({
+      ok: true,
+      viewId: 'V',
+      annotation: { kind: 'angle', at: ['self', 'self'] },
+      layout: { kind: 'arc' },
+    });
+    const radius = d.ok && d.layout.kind === 'arc' ? d.layout.radius : 0;
+    expect(radius).toBeGreaterThanOrEqual(8);
+    expect(radius).toBeLessThanOrEqual(30);
+  });
+
+  it('the angle needs two different straight edges that are not parallel, and says why', () => {
+    const { c } = fixture();
+    const same = planAngle(c, [line('a', [0, 0], [40, 0]), line('a', [0, 0], [40, 0])]);
+    expect(same).toEqual({ ok: false, message: expect.stringMatching(/two different edges/) });
+    const par = planAngle(c, [line('a', [0, 0], [40, 0]), line('b', [0, 9], [40, 9.2])]);
+    expect(par).toEqual({ ok: false, message: expect.stringMatching(/parallel/) });
+    const curved = planAngle(c, [line('a', [0, 0], [40, 0]), circle('h', [10, 10])]);
+    expect(curved).toEqual({ ok: false, message: expect.stringMatching(/straight edges/) });
   });
 
   it('a circle and an edge measure from the centre; two circles along the larger separation', () => {

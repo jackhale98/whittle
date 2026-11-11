@@ -122,6 +122,8 @@ const REASON: Record<string, string> = {
   suppressed: 'Not in this configuration',
   noSuitableView: 'No view shows it true-length',
   noGeometry: 'No geometry to place it on',
+  duplicate: 'Measures the same as another annotation',
+  layoutDoesNotFit: 'No room for it on a view, even after moving views apart',
 };
 
 function sourceName(part: Part, a: Annotation): string {
@@ -137,6 +139,19 @@ function sourceName(part: Part, a: Annotation): string {
     : 'The model';
 }
 
+/** Why a candidate is not placed; a duplicate names what it repeats. */
+function reasonText(plan: ImportPlan, b: Built, c: ImportPlan['candidates'][number]): string {
+  if (c.reason !== 'duplicate') return REASON[c.reason ?? ''] ?? c.reason ?? '';
+  const of = c.duplicateOf;
+  const repeated = of?.startsWith('annotation:')
+    ? (b.part.annotations ?? []).find((a) => a.id === of.slice('annotation:'.length))
+    : plan.candidates.find((x) => x.key === of)?.annotation;
+  const placed = of?.startsWith('annotation:') ? ' (already on the drawing)' : '';
+  return repeated
+    ? `Measures the same as ${annotationTitle(repeated)}${placed}`
+    : 'Measures the same as another annotation';
+}
+
 export function importRows(plan: ImportPlan, b: Built): ImportRow[] {
   return plan.candidates.map((c) => {
     const view = c.viewId ? b.drawing.views.find((v) => v.id === c.viewId) : undefined;
@@ -145,7 +160,7 @@ export function importRows(plan: ImportPlan, b: Built): ImportRow[] {
       title: annotationTitle(c.annotation),
       detail: c.kind === 'promote' ? sourceName(b.part, c.annotation) : 'Annotation of the part',
       kind: c.kind,
-      ...(c.reason ? { reason: REASON[c.reason] ?? c.reason } : {}),
+      ...(c.reason ? { reason: reasonText(plan, b, c) } : {}),
       ...(view ? { viewName: viewName(view) } : {}),
     };
   });

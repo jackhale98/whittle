@@ -537,6 +537,11 @@ export class Workbench {
     return true;
   }
 
+  /** Abandons the open edit group `key` (Esc or a pointer cancel mid-drag): nothing stays in history. */
+  cancelEdit(key: string): boolean {
+    return this.store.cancelGroup(key);
+  }
+
   commit(): void {
     if (this.joinKey !== null) return; // closed by `endMakeParameter`
     this.store.commit();

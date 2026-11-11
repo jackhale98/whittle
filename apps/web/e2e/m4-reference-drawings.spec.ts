@@ -11,6 +11,7 @@ import {
   importAll,
   loadPartSpec,
   showsValue,
+  viewPlane,
 } from './support/reference-drawing';
 import { ATTENTION_BUGS, GAPS } from './support/reference-drawing-gaps';
 
@@ -86,6 +87,9 @@ for (const part of PARTS) {
           kind: 'named',
           name: v.spec.orientation,
         });
+      // A turned base view (the spec's `rotation`, degrees counter-clockwise).
+      if (d?.kind === 'base' && v.spec.rotation !== undefined)
+        expect(d.rotation, `${v.spec.caption} rotation`).toBe(String(v.spec.rotation));
       if (d?.kind === 'projected') {
         const parent = views.find((x) => x.spec.id === v.spec.parent) as (typeof views)[number];
         expect(d.parentId).toBe(parent.id);
@@ -103,6 +107,20 @@ for (const part of PARTS) {
         const parent = views.find((x) => x.spec.id === v.spec.parent) as (typeof views)[number];
         expect(d.parentId).toBe(parent.id);
         expect(d.look).toBe(v.spec.section?.look);
+        // The cut line is the spec's, vertex for vertex (a stepped cut is an offset section).
+        const want = v.spec.section?.cut ?? [];
+        expect(d.cut.length, `${v.spec.caption} cut line points`).toBe(want.length);
+        // (A straight cut is dragged, so its two ends are only near the spec's: points are checked
+        // for stepped and L-shaped cuts, which are typed.)
+        if (want.length > 2)
+          want.forEach((pt, i) => {
+            const at = d.cut[i];
+            const q = viewPlane(v.spec, pt as [number, number]);
+            expect(at?.kind === 'free' ? at.at : null, `cut point ${i}`).toEqual([
+              expect.closeTo(q[0], 2),
+              expect.closeTo(q[1], 2),
+            ]);
+          });
       }
     }
     expect(state.projection).toBe(spec.drawing.projection);

@@ -20,6 +20,7 @@ import { host } from './host';
 import { createDrawingKernel, type DrawingKernel } from './kernel';
 import { newDrawing, ratioExpr, suggestScale, usableArea } from './model';
 import { removePlacement } from './ops-annot';
+import { removeTable } from './ops-tables';
 import { removeView } from './ops-views';
 import { type Built, runPipeline } from './pipeline';
 import { type DrawingTool, type DrawingUiState, initialDrawingUi, type Selected } from './state';
@@ -160,6 +161,7 @@ export class DrawingController {
     const sel = this.ui.get().selected;
     if (sel?.kind === 'view') removeView(this, sel.id);
     else if (sel?.kind === 'placement') removePlacement(this, sel.id);
+    else if (sel?.kind === 'table') removeTable(this, sel.id);
   }
 
   /**
@@ -344,6 +346,11 @@ export class DrawingController {
   /** Applies a document command as one undo step (or coalesced with `key`). */
   apply(command: Command, label: string, key?: string): boolean {
     return this.wb.apply(command, label, key);
+  }
+
+  /** Reverts an uncommitted drag group: the state from before the drag, nothing in history. */
+  cancelEdit(key: string): boolean {
+    return this.wb.cancelEdit(key);
   }
 
   commit(): void {

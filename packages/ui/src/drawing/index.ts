@@ -27,6 +27,7 @@ export {
 export { type HitRegion, type HitResult, hitTest, itemDistance, sourceKey } from './hit';
 export { ImportPanel, type ImportPanelProps, type ImportRow } from './ImportPanel';
 export { SHEET_SIZE_LABELS, SheetSettings, type SheetSettingsProps } from './SheetSettings';
+export { SheetValueField, type SheetValueFieldProps } from './SheetValueField';
 export {
   type SheetDrag,
   type SheetPointer,
@@ -40,6 +41,11 @@ export {
   type StandardChoiceValue,
   type StandardFamily,
 } from './StandardChoice';
+export {
+  PROPERTY_COLUMN_LABELS,
+  TableInspector,
+  type TableInspectorProps,
+} from './TableInspector';
 export {
   InlineCellEditor,
   type InlineCellEditorProps,
