@@ -90,3 +90,61 @@ describe('Make parameter (ADR-080)', () => {
     expect(wb.doc.params).toHaveLength(1);
   });
 });
+
+describe('a parameter edit with a sketch open (ADR-080)', () => {
+  /** A stand-in session: `refit` writes the moved geometry the way the real one does, queued. */
+  function withSketch(wb: WorkbenchClass, partId: string, whenRefit: () => void) {
+    let pending = 0;
+    let queue: Promise<void> = Promise.resolve();
+    wb.sketch = {
+      get busy() {
+        return pending > 0;
+      },
+      whenSettled: async () => {
+        while (pending > 0) await queue;
+      },
+      refit: () => {
+        pending++;
+        queue = queue.then(async () => {
+          await Promise.resolve();
+          whenRefit();
+          pending--;
+        });
+        return queue;
+      },
+    } as unknown as WorkbenchClass['sketch'];
+    return partId;
+  }
+
+  it('the refit joins the parameter edit: one undo step, label kept', async () => {
+    const { wb, partId } = bench();
+    wb.apply({ kind: 'addParam', param: { id: 'P1', name: 'w', expr: '10 mm' } });
+    wb.commit();
+    const steps = () => wb.store.history().past.length;
+    const before = steps();
+    withSketch(wb, partId, () =>
+      wb.apply({ kind: 'updateFeature', partId, featureId: 'X1', feature: extrude('99 mm') }),
+    );
+    wb.applyRefit({ kind: 'updateParam', paramId: 'P1', expr: '50 mm' });
+    await new Promise((r) => setTimeout(r, 30));
+    expect(wb.doc.params[0]?.expr).toBe('50 mm');
+    expect(depth(wb)).toBe('99 mm'); // the refit landed
+    expect(steps()).toBe(before + 1);
+    expect(wb.store.history().past.at(-1)?.label).toMatch(/Edit w/);
+    wb.sketch = null;
+    wb.undo();
+    expect(wb.doc.params[0]?.expr).toBe('10 mm');
+    expect(depth(wb)).toBe('10 mm');
+  });
+
+  it('without a sketch it is a plain committed edit', () => {
+    const { wb } = bench();
+    wb.apply({ kind: 'addParam', param: { id: 'P1', name: 'w', expr: '10 mm' } });
+    wb.commit();
+    const before = wb.store.history().past.length;
+    wb.applyRefit({ kind: 'updateParam', paramId: 'P1', expr: '20 mm' });
+    expect(wb.store.history().past.length).toBe(before + 1);
+    wb.applyRefit({ kind: 'updateParam', paramId: 'P1', expr: '30 mm' });
+    expect(wb.store.history().past.length).toBe(before + 2);
+  });
+});

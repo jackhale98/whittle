@@ -493,6 +493,33 @@ export class SketchSession {
     });
   }
 
+  /**
+   * A parameter changed while the sketch is open: re-solve with the new values and write the moved
+   * geometry (and the labels that follow it) into the document, so the sketch redraws at once. It
+   * adds no undo step of its own: the caller joins it to the parameter edit (`Workbench.applyRefit`).
+   * A drag in flight is left alone; its next step solves with the new values anyway.
+   */
+  refit(): Promise<void> {
+    return this.serial(async () => {
+      const f = this.feature();
+      const part = this.wb.part;
+      if (!f || !part || this.disposed || this.drag) return;
+      const res = await this.solveData(f);
+      if (res.status === 'solved' && JSON.stringify(res.entities) !== JSON.stringify(f.entities)) {
+        const constraints = carryLabels(f, { entities: res.entities, constraints: f.constraints });
+        const feature: SketchFeature = {
+          ...f,
+          entities: [...res.entities],
+          constraints: [...constraints],
+        };
+        this.wb.apply({ kind: 'updateFeature', partId: part.id, featureId: f.id, feature });
+      }
+      this.solvedFor = this.feature();
+      this.patch({ solve: res, conflictsDismissed: false });
+      this.scheduleOverlay();
+    });
+  }
+
   private serial<T>(fn: () => Promise<T>): Promise<T> {
     this.pending++;
     const next = this.queue.then(fn, fn).finally(() => {

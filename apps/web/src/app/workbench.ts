@@ -534,6 +534,24 @@ export class Workbench {
     return undefined;
   }
 
+  /**
+   * A parameter edit (Default or a configuration override). With a sketch open, the sketch
+   * re-solves and redraws at once, and its new geometry joins this edit's undo step (ADR-080).
+   */
+  applyRefit(command: Command): void {
+    const sketch = this.sketch;
+    if (!sketch) {
+      this.apply(command);
+      this.commit();
+      return;
+    }
+    const key = `param-edit:${ulid()}`;
+    if (!this.apply(command, undefined, key)) return;
+    this.joinKey = key;
+    void sketch.refit();
+    this.endMakeParameter();
+  }
+
   /** Closes the step, once a sketch's queued dimension edit has landed. */
   endMakeParameter(): void {
     const end = () => {

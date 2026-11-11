@@ -2212,7 +2212,7 @@ Owner feedback: "how do we apply parameters to actual dimensions? I couldn't fin
 
 **Bundle.** The initial route grew by 1.07 kB gzip (248.0 to 249.07 kB). The list, form, fx button, badge and drop registration are one lazy chunk (`ParamAssist`) loaded when a field first has parameters to offer; `ExpressionInput` keeps only the slots and the key/blur hooks. `paramUsage` and `selectParamUse` are lazy too.
 
-**Known limit.** While a sketch is open, changing a parameter does not redraw the sketch overlay until the next solve (the document stores the last solved geometry); the extruded body and a reopened sketch do follow. Fixing it means re-solving on parameter change, which writes to the document, so it needs its own decision.
+**Parameter edits redraw an open sketch.** The document stores the last solved geometry, so a parameter change used to leave an open sketch stale until its next solve. `Workbench.applyRefit` (used by `ConfigController.updateParam`, both Default and override edits) applies the parameter edit under a join key, then `SketchSession.refit()` re-solves with the new values (the resolved configuration) and writes the moved geometry and carried labels. The refit joins the parameter edit's undo step, so there is no step of its own and undo restores both. A drag in flight is left alone (its next step solves with the new values anyway), and an unchanged solve writes nothing.
 
 **Contracts.** No change. Proposal for the lead, optional: a `ParamUse` shape in `contracts` if the sync/compare features want to show where a parameter is used.
 
