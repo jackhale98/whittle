@@ -53,10 +53,11 @@ export interface RegenEngineDeps {
    * The kernel worker surface. `projectEdges` / `projectFaceOutline` (M3, kernel engineer) are
    * used for linked sketch entities when present; without them straight edges and circles parallel
    * to the sketch are projected in TypeScript and other sources are an error. Without `bounds`
-   * (engine fakes) the bounding-box checks read `massProperties` instead.
+   * (engine fakes) the bounding-box checks read `massProperties` instead. Without
+   * `subShapeGeometry` (engine fakes) annotation geometry is probed with `measureShapes`.
    */
-  kernel: Omit<KernelWorkerApi, 'bounds'> &
-    Partial<Pick<KernelWorkerApi, 'bounds'>> &
+  kernel: Omit<KernelWorkerApi, 'bounds' | 'subShapeGeometry'> &
+    Partial<Pick<KernelWorkerApi, 'bounds' | 'subShapeGeometry'>> &
     Partial<KernelApiInternals> &
     Partial<ProjectionApi>;
   /** Lazily loads planegcs (only when a sketch misses the cache). */

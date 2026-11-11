@@ -25,6 +25,7 @@ import {
   type KernelApiInternals,
   type KernelLowLevelApi,
 } from './kernel-api';
+import type { AnchorAnswer, AnchorQuery } from './regen/annotations';
 import { meshListTransferables, regenTransferables } from './regen/buffers';
 import type { CompareOutput } from './regen/compare';
 import {
@@ -56,6 +57,17 @@ export type ModelingWorkerApi = Omit<ModelingApi, 'regenerate' | 'compare'> &
      * next regen, a lower `maxVersionSlots` (proposed for the contract) releases slots at once.
      */
     configureRegen(options: RegenWorkerOptions): Promise<void>;
+    /**
+     * M4 (ADR-092 proposal 2, proposed for the contract): anchors of arbitrary refs in the latest
+     * regen of a part in `slot` (default `'main'`), resolved with the annotation rules; one answer
+     * per query, in order. The drawing import places promoted fillet, chamfer and revolve values
+     * with it. `INVALID_INPUT` when the slot has not been regenerated.
+     */
+    annotationAnchors(
+      partId: Id,
+      queries: AnchorQuery[],
+      slot?: RegenSlot,
+    ): Promise<Result<AnchorAnswer[]>>;
   };
 
 /** Runtime-configurable regen engine options (structured-clonable). */
@@ -124,6 +136,7 @@ export function createModelingApi(deps: ModelingApiDeps): ModelingApiImpl {
     importShapes: (bytes, format) => kernel.importShapes(bytes, format),
     configureThreads: (count) => kernel.configureThreads(count),
     measureShapes: (a, b) => kernel.measureShapes(a, b),
+    subShapeGeometry: (shape, kind, index) => kernel.subShapeGeometry(shape, kind, index),
     projectEdges: (shape, edges, plane) => kernel.projectEdges(shape, edges, plane),
     projectFaceOutline: (shape, face, plane) => kernel.projectFaceOutline(shape, face, plane),
     liveHandleCount: () => kernel.liveHandleCount(),
@@ -151,6 +164,7 @@ export function createModelingApi(deps: ModelingApiDeps): ModelingApiImpl {
     closePart: (partId, slot) => engine.closePart(partId, slot),
     configureRegen: (options) => engine.configure(options),
     measure: (partId, a, b) => engine.measure(partId, a, b),
+    annotationAnchors: (partId, queries, slot) => engine.annotationAnchors(partId, queries, slot),
     // The diff meshes are fresh kernel buffers that nothing else holds: transferred, not copied.
     async compare(partId, a, b, quality) {
       const r = await engine.compare(partId, a, b, quality);
