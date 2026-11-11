@@ -13,6 +13,8 @@ export type GestureAction =
   | 'repeat'
   | 'undo'
   | 'redo'
+  /** M3.8: a right click ends the sketch chain or spline in progress. */
+  | 'finish'
   | null;
 
 export interface GestureMode {
@@ -27,6 +29,11 @@ export interface GestureMode {
   tool?: boolean;
   /** Something is under the gesture's point. */
   onGeometry: boolean;
+  /**
+   * Settings: a right click finishes the sketch tool's chain or spline in progress (M3.8, default
+   * on). Off, or with nothing in progress, it opens the radial menu as before.
+   */
+  rightClickFinishes?: boolean;
 }
 
 /**
@@ -49,7 +56,9 @@ export function gestureAction(g: ViewportGesture, mode: GestureMode): GestureAct
     case 'threeFingerTap':
       return 'redo';
     case 'contextMenu':
-      // A right click (mouse): the radial menu, or under `rightOrbitRepeat` a quick one repeats.
+      // A right click (mouse) with a sketch chain or spline in progress finishes it (any preset,
+      // quick or not). Otherwise the radial menu, or under `rightOrbitRepeat` a quick one repeats.
+      if (mode.sketch && mode.drawing && mode.rightClickFinishes !== false) return 'finish';
       return g.repeat ? 'repeat' : 'radial';
     case 'setPivot':
       return null; // the viewport already moved its pivot

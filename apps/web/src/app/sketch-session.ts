@@ -48,6 +48,7 @@ import {
   type DrawToolId,
   click as drawClick,
   finishShape as drawFinish,
+  finishTool as drawFinishTool,
   move as drawMove,
   isSplineTool,
   preview,
@@ -1442,17 +1443,37 @@ export class SketchSession {
     const r = drawClick(state, base);
     this.patch({ draw: r.state, cursor: r.state.cursor });
     this.commitDrawEdit(r.edit, u.tool);
+    if (r.select) this.selectEntity(r.select, false); // the Point tool on an existing point
     this.scheduleOverlay();
   }
 
   private lastTap: { t: number; x: number; y: number } | null = null;
 
-  /** Enter or a double-tap: ends the spline being drawn. Returns whether there was one. */
+  /**
+   * Enter or a double-tap: ends the spline being drawn, or the line chain (M3.8). Returns
+   * whether there was one.
+   */
   finishShape(): boolean {
     const u = this.ui();
     if (!u?.draw) return false;
-    const r = drawFinish(u.draw);
+    const r = drawFinish(u.draw) ?? (u.draw.tool === 'line' ? drawFinishTool(u.draw) : null);
     if (!r) return false;
+    this.patch({ draw: r.state, cursor: r.state.cursor });
+    this.commitDrawEdit(r.edit, u.tool);
+    this.scheduleOverlay();
+    return true;
+  }
+
+  /**
+   * A right click or the touch Finish button (PLAN M3.8): ends the chain or spline in progress
+   * and stays in the tool; a partly placed shape is dropped. False when nothing is in progress.
+   */
+  finishTool(): boolean {
+    const u = this.ui();
+    if (!u?.draw) return false;
+    const r = drawFinishTool(u.draw);
+    if (!r) return false;
+    this.lastTap = null;
     this.patch({ draw: r.state, cursor: r.state.cursor });
     this.commitDrawEdit(r.edit, u.tool);
     this.scheduleOverlay();

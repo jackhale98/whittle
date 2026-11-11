@@ -52,7 +52,7 @@ describe('Pencil strokes → sketch edits', () => {
     ]);
   });
 
-  it('a line ending on an existing point merges with it (end-point inference)', () => {
+  it('a line ending on an existing point reuses it (end-point inference, no duplicate)', () => {
     const existing = lineTool([0, 0], [30, 0]);
     const sketch: SketchData = existing;
     const end = existing.entities.find((e) => e.kind === 'point' && e.x === 30);
@@ -64,8 +64,11 @@ describe('Pencil strokes → sketch edits', () => {
     expect(r?.kind).toBe('add');
     if (r?.kind !== 'add') return;
     expect(r.shape).toBe('line');
-    const coincident = r.edit.constraints.find((c) => c.kind === 'coincident');
-    expect(coincident && 'b' in coincident ? coincident.b : null).toBe(end?.id);
+    expect(r.edit.constraints.some((c) => c.kind === 'coincident')).toBe(false);
+    const line = r.edit.entities.find((e) => e.kind === 'line');
+    expect(line?.kind === 'line' && [line.start, line.end]).toContain(end?.id);
+    // One new point (the free end), none on top of the existing one.
+    expect(r.edit.entities.filter((e) => e.kind === 'point')).toHaveLength(1);
   });
 
   it('a circle keeps its centre: closed shapes get no end-point snaps', () => {

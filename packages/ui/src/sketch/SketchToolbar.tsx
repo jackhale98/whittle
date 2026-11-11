@@ -236,6 +236,12 @@ export interface SketchToolbarProps {
   /** Constraints applicable to the current selection; others are shown disabled. */
   enabledConstraints?: readonly GeometricConstraintKind[];
   onFinish(): void;
+  /**
+   * M3.8, touch density: a line chain or spline is in progress, so a Finish button shows beside
+   * Done ✕ and calls `onFinishShape` (ends the chain / commits the spline, the tool stays).
+   */
+  shapeInProgress?: boolean;
+  onFinishShape?(): void;
   /** Esc pressed with no tool active. */
   onEscape?(): void;
   /** Attach L / A / Shift+C / D / X / Esc listeners on `window` (default true). */
@@ -275,6 +281,8 @@ export function SketchToolbar({
   curveTools = sketchCurveTools,
   enabledConstraints,
   onFinish,
+  shapeInProgress = false,
+  onFinishShape,
   onEscape,
   shortcuts = true,
   matchShortcut,
@@ -437,6 +445,17 @@ export function SketchToolbar({
           >
             <X className={ic} strokeWidth={1.75} aria-hidden />
             {lbl('Done')}
+          </RToolbar.Button>
+        ) : null}
+        {touch && activeToolLabel && shapeInProgress && onFinishShape ? (
+          <RToolbar.Button
+            aria-label={`Finish the ${activeToolLabel.toLowerCase()}`}
+            data-testid="tool-finish"
+            onClick={() => onFinishShape()}
+            className={cn(itemBase, 'h-14 w-14 flex-col gap-0.5 text-accent-text')}
+          >
+            <Check className={ic} strokeWidth={2} aria-hidden />
+            {lbl('Finish')}
           </RToolbar.Button>
         ) : null}
         {sketchTools.map((spec) => {

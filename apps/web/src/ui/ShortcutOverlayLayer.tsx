@@ -28,6 +28,17 @@ export default function ShortcutOverlayLayer({ wb }: { wb: Workbench }) {
     };
   }, []);
   const contexts: KeymapContext[] = ui.sketch ? ['sketch', 'global'] : ['model', 'global'];
+  // M3.8: how to finish a line chain or spline without Esc (not keymap commands).
+  const extras = ui.sketch
+    ? [
+        {
+          id: 'sketch:finish',
+          label: 'Finish the line chain or spline',
+          group: 'Sketch',
+          keys: input.rightClickFinishes !== false ? ['Right click', 'Enter'] : ['Enter'],
+        },
+      ]
+    : [];
   return (
     <ShortcutOverlay
       commands={APP_COMMANDS}
@@ -36,6 +47,7 @@ export default function ShortcutOverlayLayer({ wb }: { wb: Workbench }) {
       visible={hold.visible}
       held={hold.held}
       layout={layout}
+      extras={extras}
     />
   );
 }

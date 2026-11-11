@@ -76,6 +76,7 @@ export {
   sketchBounds,
   splineGeom,
 } from './geometry';
+export { AlignmentClasses, type Axis, reusePoints } from './implied';
 export {
   ANGLE_TOLERANCE,
   bindCandidate,

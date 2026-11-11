@@ -46,6 +46,19 @@ describe('gesture map (PLAN §9.3)', () => {
     expect(gestureAction(g('contextMenu', 'mouse'), { ...model, sketch: true })).toBe('radial');
     expect(gestureAction(g('setPivot', 'mouse'), model)).toBeNull();
   });
+  it('M3.8: a right click with a sketch chain or spline in progress finishes it (setting on)', () => {
+    const drawing = { ...model, sketch: true, tool: true, drawing: true };
+    const rc = g('contextMenu', 'mouse');
+    expect(gestureAction(rc, drawing)).toBe('finish'); // default on
+    expect(gestureAction(rc, { ...drawing, rightClickFinishes: true })).toBe('finish');
+    // A quick click under rightOrbitRepeat finishes too (it never repeats mid-shape).
+    expect(gestureAction({ ...rc, repeat: true }, drawing)).toBe('finish');
+    // Nothing in progress: the radial menu, as before. The setting off: the menu.
+    expect(gestureAction(rc, { ...drawing, drawing: false })).toBe('radial');
+    expect(gestureAction(rc, { ...drawing, rightClickFinishes: false })).toBe('radial');
+    // Outside sketch mode the flag means nothing.
+    expect(gestureAction(rc, { ...model, drawing: true })).toBe('radial');
+  });
   it('two-finger tap undoes and three-finger tap redoes, in any mode', () => {
     expect(gestureAction(g('twoFingerTap'), model)).toBe('undo');
     expect(gestureAction(g('threeFingerTap'), { ...model, sketch: true })).toBe('redo');
