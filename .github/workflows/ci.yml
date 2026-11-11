@@ -221,7 +221,7 @@ jobs:
           name: web-dist
           path: apps/web/dist
       - name: Install chromium
-        run: pnpm --filter @wren-cad/web exec playwright install --with-deps chromium
+        run: scripts/ci-install-browsers.sh @wren-cad/web chromium
       - name: Run smoke tests
         run: pnpm --filter @wren-cad/web exec playwright test --trace retain-on-failure --grep @smoke --project=chromium --project=chromium-touch
       - name: Upload Playwright report
@@ -265,7 +265,7 @@ jobs:
           name: web-dist
           path: apps/web/dist
       - name: Install chromium
-        run: pnpm --filter @wren-cad/web exec playwright install --with-deps chromium
+        run: scripts/ci-install-browsers.sh @wren-cad/web chromium
       - name: Run Playwright
         # One worker (playwright.config.ts) and traces kept only for failures: a slow-runner flake
         # leaves a trace in the playwright-report artefact instead of a bare timeout. Chromium also
@@ -309,7 +309,7 @@ jobs:
           name: web-dist
           path: apps/web/dist
       - name: Install chromium
-        run: pnpm --filter @wren-cad/web exec playwright install --with-deps chromium
+        run: scripts/ci-install-browsers.sh @wren-cad/web chromium
       - name: Run Playwright
         run: pnpm --filter @wren-cad/web exec playwright test --trace retain-on-failure --project=chromium-reference --shard=${{ matrix.shard }}/3
       - name: Upload Playwright report
@@ -349,7 +349,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Install chromium
-        run: pnpm --filter @wren-cad/viewport exec playwright install --with-deps chromium
+        run: scripts/ci-install-browsers.sh @wren-cad/viewport chromium
       - name: Viewport E2E
         if: matrix.suite == 'viewport'
         run: pnpm --filter @wren-cad/viewport e2e --shard=${{ matrix.shard }}/3
@@ -384,7 +384,7 @@ jobs:
           name: web-dist
           path: apps/web/dist
       - name: Install chromium
-        run: pnpm --filter @wren-cad/web exec playwright install --with-deps chromium
+        run: scripts/ci-install-browsers.sh @wren-cad/web chromium
       # Shell time-to-interactive (cold, fast 4G) and peak memory after the demo bracket + edits.
       # Same as `pnpm perf` minus the rebuild: the build job's artefact is what ships.
       - name: Web perf (shell TTI, memory)
@@ -436,7 +436,7 @@ jobs:
           name: web-dist
           path: apps/web/dist
       - name: Install chromium
-        run: pnpm --filter @wren-cad/web exec playwright install --with-deps chromium
+        run: scripts/ci-install-browsers.sh @wren-cad/web chromium
       - name: Lighthouse CI
         working-directory: apps/web
         run: |

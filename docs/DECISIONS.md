@@ -2727,3 +2727,4 @@ Decisions:
   - It skips `kernel:test`, because that run already tested the same commit.
   - The cache step's post job saves the downloaded dist to main's cache.
   - With no verified run, the old path runs unchanged.
+- (Same day) Browser installs on CI now go through `scripts/ci-install-browsers.sh`. Run #81 lost six browser jobs at once when the runners could not resolve the Ubuntu mirrors. The script retries `--with-deps` twice with a back-off. If the mirrors are still down, it installs the browser alone with a warning; the runner image already has Chromium's libraries.

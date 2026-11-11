@@ -84,7 +84,7 @@ jobs:
           name: web-dist
           path: apps/web/dist
       - name: Install ${{ matrix.browser }}
-        run: pnpm --filter @wren-cad/web exec playwright install --with-deps ${{ matrix.browser }}
+        run: scripts/ci-install-browsers.sh @wren-cad/web ${{ matrix.browser }}
       - name: Run Playwright
         # Firefox runs headed under Xvfb: headless Firefox on GPU-less runners has no GL context at
         # all, while Xvfb + Mesa (llvmpipe) gives it a working software WebGL2 (ADR-005 section 7).
@@ -141,7 +141,7 @@ jobs:
       - name: Build
         run: pnpm build
       - name: Install chromium
-        run: pnpm --filter @wren-cad/web exec playwright install --with-deps chromium
+        run: scripts/ci-install-browsers.sh @wren-cad/web chromium
       - name: Soak
         env:
           WREN_SOAK: "1"
@@ -195,7 +195,7 @@ jobs:
       - name: Build
         run: pnpm build
       - name: Install chromium
-        run: pnpm --filter @wren-cad/web exec playwright install --with-deps chromium
+        run: scripts/ci-install-browsers.sh @wren-cad/web chromium
       - name: Browser benchmark (WebGL software fallback on the runner)
         shell: bash
         run: pnpm --filter @wren-cad/web exec playwright test --trace off --project=stress 2>&1 | tee apps/web/stress-browser.log
