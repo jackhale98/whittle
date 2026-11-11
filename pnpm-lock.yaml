@@ -222,6 +222,10 @@ importers:
       fflate:
         specifier: 0.8.3
         version: 0.8.3
+    devDependencies:
+      '@wren-cad/test-fixtures':
+        specifier: workspace:*
+        version: link:../test-fixtures
 
   packages/sketch:
     dependencies:

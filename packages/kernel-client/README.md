@@ -428,6 +428,30 @@ face/edge/vertex refs → all current bodies; `body` refs → the body table by 
   nominal for tapped holes), a thread's major diameter or a fillet's radius. Radius and diameter
   sources are converted to the annotation's kind. `appliesTo` and datum ids (`{ datum }`) must name
   an annotation of the right kind; `{ label }` is always unresolved (needs a bind, never guessed).
+  `hDistance` / `vDistance` sources are signed in the sketch and shown as distances (`|value|`).
+- **Sketch refs** (M4 gate, ADR-090 amendment "second gate round, kernel-client resolution").
+  `S<id>:p(@origin)`, `S<id>:e(@x)`, `S<id>:e(@y)` and sketch points `S<id>:p(<point>)` (stored
+  and construction points) resolve from the sketch's final solved state and frame, not from the
+  kernel's vertices (coincident points share one location there, so a construction origin and a
+  centre on it were ambiguous). The origin and points are `point` anchors; an axis is a `line`
+  through the origin along the frame's x or y, spanning the part (the bodies' bounding boxes and
+  the sketch's points projected on it). A sketch that is not in the final state (deleted,
+  suppressed, failed, rolled back) leaves the ref unresolved, with its structural cause. Sketch
+  curves still resolve through the kernel's names.
+- **Plane-like faces and successors.** A face ref of a `linear`, `ordinate` or `angle` annotation
+  (`at: 'self'`) is measured as its plane, so it resolves plane-like: a face split into coplanar
+  pieces is one plane (reported as `rebound` to a piece). A face name that no longer exists
+  resolves to its recorded successor (`refs.ts` `resolveSuccessor`), reported as `merged`: a
+  Boolean's `F<b>:face(N)` (the same face, carried on from a consumed tool body; any annotation
+  kind), or, plane-like only, a Shell's `F<s>:rim(N)` (the rim lies in the plane of the opened
+  face N). Exactly one successor feature and role must name N. Feature refs keep the plain rules.
+- **Count** (`text.count`, dimensions and hole callouts): `count` is the number of instances of
+  what `refs[0]` resolved to that exist in the final bodies: names equal once split suffixes are
+  dropped, copy wrappers (`inst<k>(…)`, `mirror(…)`, any depth) unwrapped, hole points made generic
+  (a hole with N points is N instances) and edge components sorted; split pieces count once. A
+  skipped pattern instance is not an instance (rp08: a pattern of 4 with one skipped is `3`). A
+  sketch, plane or datum ref is 1; a hole callout without refs counts its `instances`. Set only
+  when `ok`, like `value`.
 - **States.** `suppressed` when the annotation is, when its source feature is, or when every
   unresolved ref has the structural cause `suppressed` (also a suppressed datum or applied-to
   dimension). Otherwise anything unresolved or a value that cannot be had is `needsAttention`
@@ -465,7 +489,9 @@ face/edge/vertex refs → all current bodies; `body` refs → the body table by 
   never writes it (the `lastKnown` and `grown` memories are copies). For the drawing import's
   promoted fillet (`radius`: the rim arc), chamfer (the face's plane) and revolve values (start and
   end faces: the angle between their outward normals is π − θ, so the promotion wants
-  `measure: 'supplement'`).
+  `measure: 'supplement'`). Sketch origins and centre lines for the Dimension tool: for each
+  sketch to show, query `S<id>:p(@origin)` (`vertex`), `S<id>:e(@x)` and `S<id>:e(@y)` (`edge`):
+  a `point` and two `line` anchors on the sketch's final frame.
 - **Reuse.** A resolution is reused while the final state's content keys, merge table, feature
   states and keys, parameters and the annotation (plus its datums and applied-to dimension) are
   unchanged. A needs-attention one is reused only from the regen right before, so its cause stays
