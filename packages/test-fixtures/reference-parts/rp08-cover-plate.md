@@ -26,7 +26,7 @@ Stainless steel 304 (`whittle:stainless-steel-304`), density 8.00 g/cm^3.
 | `cs_d` | 12.4 mm | Countersink diameter at the face (90 degree cone) |
 | `tap_x0` | -36 mm | X of the first tapped hole |
 | `tap_dx` | 24 mm | Pattern spacing along X |
-| `tap_n` | 4 | Pattern count (including the original and the skipped one) |
+| `tap_n` | 3 | Number of tapped holes: the pattern has tap_n + 1 positions, position 1 skipped (corrected from the pattern setting 4, see the README) |
 | `tap_y` | -18 mm | Y of the tapped row |
 | `tap_depth` | 12 mm | Tapped hole depth (drill depth) |
 
@@ -39,7 +39,7 @@ Stainless steel 304 (`whittle:stainless-steel-304`), density 8.00 g/cm^3.
 5. **hole** (`h_cb`): Hole wizard: ISO counterbore for M6 (normal fit) at the first point, through all; counterbore cb_d x cb_h.
 6. **hole** (`h_cs`): Hole wizard: ISO countersink for M6 (normal fit) on the reference point, through all; countersink cs_d, 90 degrees.
 7. **hole** (`h_tap`): Hole wizard: tapped M8 (tap drill from the table) at the third point, blind to tap_depth, cosmetic thread over the full depth.
-8. **linearPattern** (`pat`): Linear pattern of the tapped hole along X: tap_n instances, spacing tap_dx, skip instance 1.
+8. **linearPattern** (`pat`): Linear pattern of the tapped hole along X: tap_n + 1 instances, spacing tap_dx, skip instance 1 (tap_n holes).
 
 ## Expected result
 
@@ -58,12 +58,12 @@ Stainless steel 304 (`whittle:stainless-steel-304`), density 8.00 g/cm^3.
 | Counterbored hole: counterbore step | `-pi ((cb_d/2)^2 - (6.6/2)^2) cb_h` | -395.338 |
 | Countersunk hole: clearance bore | `-pi (6.6/2)^2 plate_t` | -478.967 |
 | Countersunk hole: cone beyond the bore | `-(frustum(cs_d/2, 6.6/2, depth) - pi (6.6/2)^2 depth), depth = cs_d/2 - 6.6/2` | -112.729 |
-| Tapped holes (instances minus the skipped one) | `-(tap_n - 1) pi (6.8/2)^2 tap_depth` | -1307.405 |
+| Tapped holes (tap_n + 1 positions minus the skipped one) | `-tap_n pi (6.8/2)^2 tap_depth` | -1307.405 |
 | **Total** | | **95226.594** |
 
 Mass = volume x density = 95226.594 mm^3 x 8 g/cm^3 / 1000 = **761.8127 g**.
 
-Method and accuracy: Exact. Every hole is a cylinder, a step or a cone frustum. The counterbore and countersink diameters and depths are the named dimensions above (so the model does not depend on a table row that might be edited); only the clearance diameter (M6, normal fit, 6.6 mm) and the tap drill (M8, 6.8 mm) come from the ISO tables. The tapped hole is its drill diameter, flat-bottomed, to tap_depth; the cosmetic thread adds no geometry. The pattern has tap_n instances; instance 1 is skipped. Accuracy: floating point (1e-12 relative). If the kernel hole tables ever change these two values the golden fails by design.
+Method and accuracy: Exact. Every hole is a cylinder, a step or a cone frustum. The counterbore and countersink diameters and depths are the named dimensions above (so the model does not depend on a table row that might be edited); only the clearance diameter (M6, normal fit, 6.6 mm) and the tap drill (M8, 6.8 mm) come from the ISO tables. The tapped hole is its drill diameter, flat-bottomed, to tap_depth; the cosmetic thread adds no geometry. The pattern has tap_n + 1 positions; position 1 is skipped, so tap_n holes are drilled. Accuracy: floating point (1e-12 relative). If the kernel hole tables ever change these two values the golden fails by design.
 
 Standards values used:
 
@@ -77,7 +77,7 @@ Standards values used:
 | Stage 1: as drawn | 95226.594 | 761.8127 |
 | Stage 2: plate_t -> 18 mm | 122952.898 | 983.6232 |
 | Stage 3: cb_h -> 8 mm and cs_d -> 13 mm | 95107.615 | 760.8609 |
-| Stage 4: tap_n -> 5, tap_dx -> 16 mm, tap_x0 -> -32 mm | 94790.792 | 758.3263 |
+| Stage 4: tap_n -> 4 (five positions, one skipped), tap_dx -> 16 mm, tap_x0 -> -32 mm | 94790.792 | 758.3263 |
 
 ## Independent check
 
@@ -88,5 +88,5 @@ Built in FreeCAD 26.3.0 with `freecad/rp08.py` (a different construction than Wr
 | Stage 1: as drawn | 95226.594 | 95226.594 | 3.2e-13 |
 | Stage 2: plate_t -> 18 mm | 122952.898 | 122952.898 | -1.2e-12 |
 | Stage 3: cb_h -> 8 mm and cs_d -> 13 mm | 95107.615 | 95107.615 | -4.9e-13 |
-| Stage 4: tap_n -> 5, tap_dx -> 16 mm, tap_x0 -> -32 mm | 94790.792 | 94790.792 | 2.6e-13 |
+| Stage 4: tap_n -> 4 (five positions, one skipped), tap_dx -> 16 mm, tap_x0 -> -32 mm | 94790.792 | 94790.792 | 2.6e-13 |
 

@@ -116,7 +116,8 @@ and the UI script cannot drift apart.
 ```
 
 **Values** are expressions over the dimensions (`"thickness"`, `"-length/2"`, `"base_t + loft_h"`).
-Type them into the inline field as written. Counts are bare names (`"tap_n"`), angles are
+Type them into the inline field as written. Counts are expressions too (`"tap_n + 1"`: the
+pattern's positions, the skipped ones included, when the named count is the instances that exist), angles are
 `"3 deg"` or a dimension in degrees. Before the first step, create one parameter per entry of
 `dimensions` (`value` and `unit`).
 
@@ -177,6 +178,56 @@ It prints the volume and the relative difference to the analytic value for all 4
 assumptions are worth knowing: the housing's draft direction (walls lean inward going up from the
 neutral bottom face) and the hole tables' M6 clearance 6.6 mm and M8 tap drill 6.8 mm (ISO 273 and
 ISO 261); both are stated in the specs.
+
+## Spec corrections (M4 gate, round 3)
+
+Recorded per the lead's decisions (DECISIONS.md, ADR-090 amendment "lead decisions on counts and
+rp04"). Every correction keeps the geometry: the analytic volumes, the masses and the recorded
+FreeCAD results are unchanged at the baseline and at every stage (`reference-parts.test.ts` checks
+them against `freecad-results.json` to 1e-9; `reference-parts.kernel.test.ts` regenerates all 40
+cases on the real kernel to 0.1 %). The FreeCAD scripts were changed to read the corrected
+parameters; FreeCAD itself was not re-run (it is not installed in this environment), so the
+recorded results stand on the scripts building the same solids from the corrected values.
+
+**Counts are instance counts.** The spec SVGs of rp08, rp09 and rp10 draw the skipped pattern
+positions as hidden (dashed) outlines and the holes that exist as visible circles: 3 tapped holes
+(positions 0, 2, 3 of 4), 6 bolt holes (8 positions, 2 and 5 dashed) and 5 slots (6 positions, 3
+dashed). They show fewer holes than the pattern setting, so the spec value is corrected to the
+visible count, and the pattern's count becomes that plus the skipped positions:
+
+| Part | Dimension | Was (pattern setting) | Now (visible count) | Pattern count | Stage that set it |
+| --- | --- | --- | --- | --- | --- |
+| rp08 | `tap_n` | 4 | 3 | `tap_n + 1`, skip 1 | Stage 4: `tap_n` 5 → 4 (five positions) |
+| rp09 | `bolt_n` | 8 | 6 | `bolt_n + 2`, skip 2 and 5 | Stage 2: `bolt_n` 10 → 8 (ten positions) |
+| rp10 | `slot_n` | 6 | 5 | `slot_n + 1`, skip 3 | Stage 2: `slot_n` 7 → 6 (seven positions) |
+
+A drawing's `N×` is the number of instances in the model (the kernel's `AnnotationResolution.count`),
+so the recreated drawings now read 3×, 6× and 5×, as the spec drawings show.
+
+**rp04 `boss_h`.** The spec named `boss_h` the boss "as first extruded" (20) and dimensioned it from
+the plate top to a line 20 mm up, with `boss_up` (6) above it. Evidence for which side was wrong:
+
+- the spec drawing's own front view draws the boss as one rectangle from the plate top to
+  `T + 26` (no edge at 20 mm);
+- the FreeCAD reference builds one cylinder of height `boss_h + boss_up` = 26 (bounding box top at
+  z = 42 = 16 + 26), and its volume is the recorded mass;
+- the builder extrudes 20 and pulls the top face up 6: 26, the same solid.
+
+So the builder is right and the spec value is wrong: the finished part has no face 20 mm above the
+plate. `boss_h` is now the boss height as built, 26; the builder extrudes `boss_h - boss_up` and
+pulls up `boss_up`; stage 3 (which pulled 10 instead of 6 with the first extrusion unchanged) is now
+`boss_h` 30 with `boss_up` 10, the same solid as before. The drawing dimensions `boss_h` from the
+plate top to the boss top (inside its chamfer). `boss_up` stays on the drawing as the push/pull
+distance; the level it starts from is history, which the drawing suite lists as a construction
+gap.
+
+**Dimension anchors.** Two spec dimensions pointed at geometry that is not there:
+
+- rp08 `tap_dx` was drawn from the first tapped hole to position 1, the skipped one. It is now
+  drawn between two holes that exist (positions 2 and 3), its dimension line where it was.
+- rp10 `slot_x0` (the first slot centre's x, −45) was drawn from the plate's left end, a 15 mm
+  span; it is now drawn from the centre line. `slot_pitch` is drawn between like edges of the
+  first two slots (their left walls) instead of their centre planes, which no view draws.
 
 ## Adding a part
 

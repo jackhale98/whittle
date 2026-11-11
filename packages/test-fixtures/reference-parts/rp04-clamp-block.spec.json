@@ -52,9 +52,9 @@
       "description": "Boss diameter"
     },
     "boss_h": {
-      "value": 20,
+      "value": 26,
       "unit": "mm",
-      "description": "Boss height as first extruded"
+      "description": "Boss height above the plate, as built (extruded boss_h - boss_up, then pulled up by boss_up; corrected from 20, see the README)"
     },
     "boss_up": {
       "value": 6,
@@ -299,7 +299,7 @@
     {
       "tool": "extrude",
       "id": "boss",
-      "say": "Extrude the circle upwards by boss_h as a NEW body (a second body touching the plate).",
+      "say": "Extrude the circle upwards by boss_h - boss_up as a NEW body (a second body touching the plate).",
       "profile": [
         {
           "pick": "region",
@@ -317,7 +317,7 @@
       "direction": "normal",
       "end": {
         "kind": "blind",
-        "depth": "boss_h"
+        "depth": "boss_h - boss_up"
       },
       "op": "new"
     },
@@ -417,9 +417,10 @@
       }
     },
     {
-      "name": "Stage 3: boss_d -> 36 mm and boss_up -> 10 mm",
+      "name": "Stage 3: boss_d -> 36 mm, boss_up -> 10 mm with the boss as first extruded unchanged (boss_h -> 30)",
       "set": {
         "boss_d": 36,
+        "boss_h": 30,
         "boss_up": 10
       },
       "expected": {
@@ -566,7 +567,7 @@
       {
         "name": "boss_h",
         "kind": "linear",
-        "value": 20,
+        "value": 26,
         "unit": "mm",
         "view": "front",
         "axis": "v",
@@ -575,8 +576,8 @@
           16
         ],
         "to": [
-          15,
-          36
+          13,
+          42
         ]
       },
       {

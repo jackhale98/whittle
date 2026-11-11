@@ -52,9 +52,9 @@
       "description": "Slot pattern spacing"
     },
     "slot_n": {
-      "value": 6,
+      "value": 5,
       "unit": "",
-      "description": "Slot pattern count (including the original and the skipped one)"
+      "description": "Number of slots: the pattern has slot_n + 1 positions, position 3 skipped (corrected from the pattern setting 6, see the README)"
     },
     "ear_l": {
       "value": 20,
@@ -80,7 +80,7 @@
     "mirror"
   ],
   "standards": [],
-  "method": "Exact. Plate, ears and slots are boxes and the ear holes are cylinders. The slot pattern has slot_n instances; instance 3 is skipped, so slot_n - 1 slots are cut. The mirror copies the ear and its hole, so there are two of each. Accuracy: floating point (1e-12 relative). The surface area is the top and bottom faces plus the side walls (outer outline with the ears attached, slot walls, ear hole walls).",
+  "method": "Exact. Plate, ears and slots are boxes and the ear holes are cylinders. The slot pattern has slot_n + 1 positions; position 3 is skipped, so slot_n slots are cut. The mirror copies the ear and its hole, so there are two of each. Accuracy: floating point (1e-12 relative). The surface area is the top and bottom faces plus the side walls (outer outline with the ears attached, slot walls, ear hole walls).",
   "features": [
     {
       "tool": "sketch",
@@ -178,7 +178,7 @@
     {
       "tool": "linearPattern",
       "id": "slots",
-      "say": "Linear pattern of the slot along X: slot_n instances, spacing slot_pitch, skip instance 3.",
+      "say": "Linear pattern of the slot along X: slot_n + 1 instances, spacing slot_pitch, skip instance 3 (slot_n slots).",
       "source": {
         "kind": "features",
         "features": [
@@ -190,7 +190,7 @@
         "name": "origin:X"
       },
       "reverse": false,
-      "count": "slot_n",
+      "count": "slot_n + 1",
       "spacing": "slot_pitch",
       "skip": [
         3
@@ -321,9 +321,9 @@
   },
   "stages": [
     {
-      "name": "Stage 2: slot_n -> 7 and slot_pitch -> 15 mm",
+      "name": "Stage 2: slot_n -> 6 (seven positions, one skipped) and slot_pitch -> 15 mm",
       "set": {
-        "slot_n": 7,
+        "slot_n": 6,
         "slot_pitch": 15
       },
       "expected": {
@@ -505,7 +505,7 @@
         "view": "top",
         "axis": "h",
         "from": [
-          -60,
+          0,
           20
         ],
         "to": [
@@ -521,12 +521,12 @@
         "view": "top",
         "axis": "h",
         "from": [
-          -45,
-          -16
+          -48,
+          -12
         ],
         "to": [
-          -27,
-          -16
+          -30,
+          -12
         ]
       },
       {
@@ -564,7 +564,7 @@
       {
         "name": "slot_n",
         "kind": "count",
-        "value": 6,
+        "value": 5,
         "unit": "",
         "view": "top",
         "at": [

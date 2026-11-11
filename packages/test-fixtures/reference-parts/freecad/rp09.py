@@ -19,7 +19,7 @@ def build(d):
     pts = [(rb, 0), (R, 0), (R, t), (rh, t), (rh, t + hh), (rb, t + hh)]
     wire = Part.makePolygon([V(x, 0, z) for x, z in pts] + [V(rb, 0, 0)])
     body = Part.Face(wire).revolve(V(0, 0, 0), V(0, 0, 1), 360)
-    n = int(d["bolt_n"])
+    n = int(d["bolt_n"]) + len(SKIP)  # positions: bolt_n holes plus the skipped ones
     holes = []
     for k in range(n):
         if k in SKIP:

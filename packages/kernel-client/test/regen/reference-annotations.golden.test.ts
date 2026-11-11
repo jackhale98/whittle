@@ -536,8 +536,8 @@ describe.skipIf(!m3)(`regen golden (M4 gate): reference-part annotations${note}`
       expect(d.merged).toEqual([
         { path: '/refs/1', name: `F${boss}:end`, into: `F${join}:face(F${boss}:end)` },
       ]);
-      // boss_h as first extruded (20) against the boss as built (20 + boss_up 6): the drawing
-      // flags "differs from the model"; the kernel never moves the anchor to make them agree.
+      // The depth as first extruded (boss_h - boss_up = 20) against the boss as built (boss_h 26):
+      // the drawing flags "differs from the model"; the kernel never moves the anchor to agree.
       expect(d.value).toBeCloseTo(20, 12);
       expect(d.measured).toBeCloseTo(26, 9);
       expect(planeZ(d.anchors?.[1])).toBeCloseTo(42, 9);
@@ -626,8 +626,8 @@ describe.skipIf(!m3)(`regen golden (M4 gate): reference-part annotations${note}`
       expect(get(r, CALL).instances).toHaveLength(3);
       expect(get(r, ONE).count).toBe(1);
 
-      // Edit upstream: tap_n 5 → four holes.
-      const r2 = await regen(toStage(P, doc, { tap_n: 5, tap_dx: 16, tap_x0: -32 }));
+      // Edit upstream: tap_n 4 → four holes (five positions, one skipped).
+      const r2 = await regen(toStage(P, doc, { tap_n: 4, tap_dx: 16, tap_x0: -32 }));
       allOk(r2);
       for (const id of [DIA, CALL, EDGE]) expect(get(r2, id).count, id).toBe(4);
 
@@ -665,8 +665,8 @@ describe.skipIf(!m3)(`regen golden (M4 gate): reference-part annotations${note}`
       expect(get(r, DIA).count).toBe(6);
       expect(get(r, DIA).value).toBeCloseTo(9, 9);
       expect(get(r, CALL).count).toBe(6);
-      // Edit upstream: bolt_n 10 (2 and 5 still skipped).
-      const r2 = await regen(toStage(P, doc, { bolt_n: 10 }));
+      // Edit upstream: bolt_n 8 (ten positions, 2 and 5 still skipped).
+      const r2 = await regen(toStage(P, doc, { bolt_n: 8 }));
       allOk(r2);
       expect(get(r2, DIA).count).toBe(8);
       expect(get(r2, CALL).count).toBe(8);
@@ -713,8 +713,8 @@ describe.skipIf(!m3)(`regen golden (M4 gate): reference-part annotations${note}`
       expect(s.count).toBe(5);
       expect(get(r, EAR).count).toBe(2);
       expect(get(r, PLATE).count).toBe(1);
-      // Edit upstream: slot_n 7 → six slots.
-      const r2 = await regen(toStage(P, doc, { slot_n: 7, slot_pitch: 15 }));
+      // Edit upstream: slot_n 6 → six slots (seven positions, one skipped).
+      const r2 = await regen(toStage(P, doc, { slot_n: 6, slot_pitch: 15 }));
       allOk(r2);
       expect(get(r2, DIA).count).toBe(6);
       expect(get(r2, EAR).count).toBe(2);

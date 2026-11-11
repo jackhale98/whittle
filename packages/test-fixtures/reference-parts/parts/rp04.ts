@@ -51,7 +51,12 @@ export const rp04: PartDef = {
     top_r: { value: 3, unit: 'mm', description: 'Fillet on the whole top edge loop' },
     bot_c: { value: 2, unit: 'mm', description: 'Chamfer on the whole bottom edge loop' },
     boss_d: { value: 30, unit: 'mm', description: 'Boss diameter' },
-    boss_h: { value: 20, unit: 'mm', description: 'Boss height as first extruded' },
+    boss_h: {
+      value: 26,
+      unit: 'mm',
+      description:
+        'Boss height above the plate, as built (extruded boss_h - boss_up, then pulled up by boss_up; corrected from 20, see the README)',
+    },
     boss_up: { value: 6, unit: 'mm', description: 'Push/pull distance added to the boss top' },
     boss_c: { value: 2, unit: 'mm', description: 'Chamfer on the boss top edge' },
   },
@@ -63,7 +68,7 @@ export const rp04: PartDef = {
     const W = d('plate_w');
     const T = d('plate_t');
     const Rc = d('corner_r');
-    const H = T + d('boss_h') + d('boss_up');
+    const H = T + d('boss_h');
     const k = Rc * (1 - Math.SQRT1_2);
     // Mid-points of the bottom-loop arcs, one per corner, in the same order as CORNERS.
     const arcAt: [number, number, number][] = [
@@ -145,10 +150,10 @@ export const rp04: PartDef = {
       {
         tool: 'extrude',
         id: 'boss',
-        say: 'Extrude the circle upwards by boss_h as a NEW body (a second body touching the plate).',
+        say: 'Extrude the circle upwards by boss_h - boss_up as a NEW body (a second body touching the plate).',
         profile: [region('boss_sk', ['C'], [0, 0, T])],
         direction: 'normal',
-        end: { kind: 'blind', depth: 'boss_h' },
+        end: { kind: 'blind', depth: 'boss_h - boss_up' },
         op: 'new',
       },
       {
@@ -164,7 +169,7 @@ export const rp04: PartDef = {
         tool: 'pushPull',
         id: 'pull',
         say: 'Push/pull the boss top face outwards by boss_up.',
-        faces: [face('F{join}:face(F{boss}:end)', [0, 0, T + d('boss_h')])],
+        faces: [face('F{join}:face(F{boss}:end)', [0, 0, H - d('boss_up')])],
         distance: 'boss_up',
       },
       {
@@ -190,7 +195,7 @@ export const rp04: PartDef = {
     const r = d('top_r');
     const c = d('bot_c');
     const a = d('boss_d') / 2;
-    const hb = d('boss_h') + d('boss_up');
+    const hb = d('boss_h');
     const cb = d('boss_c');
     const straight = 2 * (L - 2 * Rc) + 2 * (W - 2 * Rc);
     const arcs = 4 * (PI / 2);
@@ -207,7 +212,7 @@ export const rp04: PartDef = {
         '-(c^2/2) [straight + 4 (pi/2)(Rc - c/3)]',
         -chamferArea(c) * (straight + arcs * (Rc - chamferCentroid(c))),
       ),
-      term('Boss after push/pull', 'pi (boss_d/2)^2 (boss_h + boss_up)', PI * a * a * hb),
+      term('Boss after push/pull', 'pi (boss_d/2)^2 boss_h', PI * a * a * hb),
       term(
         'Boss top chamfer',
         '-(cb^2/2) x 2 pi (a - cb/3)',
@@ -222,7 +227,10 @@ export const rp04: PartDef = {
   },
   stages: [
     { name: 'Stage 2: plate_l -> 120 mm', set: { plate_l: 120 } },
-    { name: 'Stage 3: boss_d -> 36 mm and boss_up -> 10 mm', set: { boss_d: 36, boss_up: 10 } },
+    {
+      name: 'Stage 3: boss_d -> 36 mm, boss_up -> 10 mm with the boss as first extruded unchanged (boss_h -> 30)',
+      set: { boss_d: 36, boss_h: 30, boss_up: 10 },
+    },
     { name: 'Stage 4: corner_r -> 12 mm and top_r -> 4 mm', set: { corner_r: 12, top_r: 4 } },
   ],
   draw: (d, dr) => {
@@ -231,7 +239,7 @@ export const rp04: PartDef = {
     const T = d('plate_t');
     const Rc = d('corner_r');
     const a = d('boss_d') / 2;
-    const hb = d('boss_h') + d('boss_up');
+    const hb = d('boss_h');
     const dim = (name: string) => ({ name, value: d(name), unit: 'mm' as const });
     const top = dr.view(TOP_OF_FRONT, 140, 90, 1.6).caption(-L / 2, W / 2 + 8, 'Top');
     top.path(
@@ -257,8 +265,10 @@ export const rp04: PartDef = {
     front.rect(-L / 2, 0, L / 2, T);
     front.rect(-a, T, a, T + hb);
     front.dimV(L / 2, 0, L / 2, T, 12, dim('plate_t'));
-    front.dimV(a, T, a, T + d('boss_h'), 10, dim('boss_h'));
-    front.dimV(-a, T + d('boss_h'), -a, T + hb, -10, dim('boss_up'));
+    // The boss as built: from the plate top to the boss top (its flat, inside the top chamfer).
+    front.dimV(a, T, a - d('boss_c'), T + hb, 10, dim('boss_h'));
+    // The push/pull distance: from where the boss top was first extruded (history, no edge) up.
+    front.dimV(-a, T + hb - d('boss_up'), -a, T + hb, -10, dim('boss_up'));
     // The fillet is seen edge-on: its arc is centred top_r in from the corner.
     front.leader(L / 2, T, d('top_r'), 45, 16, dim('top_r'), 'radius', [
       L / 2 - d('top_r'),

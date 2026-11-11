@@ -29,9 +29,10 @@ export const rp10: PartDef = {
     slot_x0: { value: -45, unit: 'mm', description: 'X of the first slot centre' },
     slot_pitch: { value: 18, unit: 'mm', description: 'Slot pattern spacing' },
     slot_n: {
-      value: 6,
+      value: 5,
       unit: '',
-      description: 'Slot pattern count (including the original and the skipped one)',
+      description:
+        'Number of slots: the pattern has slot_n + 1 positions, position 3 skipped (corrected from the pattern setting 6, see the README)',
     },
     ear_l: { value: 20, unit: 'mm', description: 'Ear length beyond the plate end' },
     ear_w: { value: 24, unit: 'mm', description: 'Ear width (Y)' },
@@ -39,7 +40,7 @@ export const rp10: PartDef = {
   },
   tags: ['extrude', 'cut', 'linearPattern', 'skip', 'mirror'],
   method:
-    'Exact. Plate, ears and slots are boxes and the ear holes are cylinders. The slot pattern has slot_n instances; instance 3 is skipped, so slot_n - 1 slots are cut. The mirror copies the ear and its hole, so there are two of each. Accuracy: floating point (1e-12 relative). The surface area is the top and bottom faces plus the side walls (outer outline with the ears attached, slot walls, ear hole walls).',
+    'Exact. Plate, ears and slots are boxes and the ear holes are cylinders. The slot pattern has slot_n + 1 positions; position 3 is skipped, so slot_n slots are cut. The mirror copies the ear and its hole, so there are two of each. Accuracy: floating point (1e-12 relative). The surface area is the top and bottom faces plus the side walls (outer outline with the ears attached, slot walls, ear hole walls).',
   steps: (d) => {
     const L = d('plate_l');
     const ex = L / 2 + d('ear_l') / 2;
@@ -90,11 +91,11 @@ export const rp10: PartDef = {
       {
         tool: 'linearPattern',
         id: 'slots',
-        say: 'Linear pattern of the slot along X: slot_n instances, spacing slot_pitch, skip instance 3.',
+        say: 'Linear pattern of the slot along X: slot_n + 1 instances, spacing slot_pitch, skip instance 3 (slot_n slots).',
         source: { kind: 'features', features: ['slot'] },
         direction: origin('origin:X'),
         reverse: false,
-        count: 'slot_n',
+        count: 'slot_n + 1',
         spacing: 'slot_pitch',
         skip: SKIP,
       },
@@ -148,12 +149,12 @@ export const rp10: PartDef = {
     const el = d('ear_l');
     const ew = d('ear_w');
     const hd = d('ear_hole_d');
-    const nSlots = Math.round(d('slot_n')) - SKIP.length;
+    const nSlots = Math.round(d('slot_n')); // slot_n + 1 positions, one skipped
     const terms = [
       term('Plate', 'plate_l x plate_w x plate_t', L * W * T),
       term(
-        'Slots (instances minus the skipped one)',
-        '-(slot_n - 1) slot_l slot_w plate_t',
+        'Slots (slot_n + 1 positions minus the skipped one)',
+        '-slot_n slot_l slot_w plate_t',
         -nSlots * sl * sw * T,
       ),
       term('Two ears', '2 ear_l ear_w plate_t', 2 * el * ew * T),
@@ -169,7 +170,10 @@ export const rp10: PartDef = {
     };
   },
   stages: [
-    { name: 'Stage 2: slot_n -> 7 and slot_pitch -> 15 mm', set: { slot_n: 7, slot_pitch: 15 } },
+    {
+      name: 'Stage 2: slot_n -> 6 (seven positions, one skipped) and slot_pitch -> 15 mm',
+      set: { slot_n: 6, slot_pitch: 15 },
+    },
     { name: 'Stage 3: ear_l -> 26 mm and ear_hole_d -> 10 mm', set: { ear_l: 26, ear_hole_d: 10 } },
     { name: 'Stage 4: plate_t -> 10 mm and slot_w -> 20 mm', set: { plate_t: 10, slot_w: 20 } },
   ],
@@ -202,7 +206,7 @@ export const rp10: PartDef = {
       ],
       true,
     );
-    const n = Math.round(d('slot_n'));
+    const n = Math.round(d('slot_n')) + SKIP.length; // positions, the skipped one included
     for (let k = 0; k < n; k++) {
       const x = d('slot_x0') + k * d('slot_pitch');
       top.rect(
@@ -219,13 +223,17 @@ export const rp10: PartDef = {
     top.dimH(L / 2, ew / 2, L / 2 + el, ew / 2, 6, dim('ear_l'));
     top.dimV(L / 2 + el, -ew / 2, L / 2 + el, ew / 2, 8, dim('ear_w'));
     top.leader(L / 2 + el / 2, 0, d('ear_hole_d') / 2, -60, 16, dim('ear_hole_d'));
-    top.dimH(-L / 2, W / 2, d('slot_x0'), W / 2, 7, dim('slot_x0'));
+    // From the centre line (x = 0): slot_x0 is the first slot centre's x from the origin. (It was
+    // drawn from the plate's left end, a 15 mm span printed -45.)
+    top.dimH(0, W / 2, d('slot_x0'), W / 2, 7, dim('slot_x0'));
+    // The pitch between like edges of the first two slots (their left walls), as it is measured on
+    // the part; the dimension line stays where it was, below the slots.
     top.dimH(
-      d('slot_x0'),
-      -W / 2 + 4,
-      d('slot_x0') + d('slot_pitch'),
-      -W / 2 + 4,
-      -4,
+      d('slot_x0') - d('slot_l') / 2,
+      -d('slot_w') / 2,
+      d('slot_x0') + d('slot_pitch') - d('slot_l') / 2,
+      -d('slot_w') / 2,
+      -(W / 2 - 4 - d('slot_w') / 2),
       dim('slot_pitch'),
     );
     top.dimH(

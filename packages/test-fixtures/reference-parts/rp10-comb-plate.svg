@@ -40,18 +40,18 @@
 <line x1="233.6" y1="99.503" x2="241.6" y2="113.36" stroke="#111" stroke-width="0.25"/>
 <path d="M233.6 99.503 L235.493 101.182 L234.107 101.982 Z" fill="#111"/>
 <text data-dim="ear_hole_d" data-value="8" x="242.6" y="113.36" text-anchor="start" font-size="3.2" font-family="monospace" fill="#111">ear_hole_d = 8 mm</text>
-<line x1="62" y1="69" x2="62" y2="58.7" stroke="#444" stroke-width="0.2"/>
+<line x1="140" y1="69" x2="140" y2="58.7" stroke="#444" stroke-width="0.2"/>
 <line x1="81.5" y1="69" x2="81.5" y2="58.7" stroke="#444" stroke-width="0.2"/>
-<line x1="62" y1="59.9" x2="81.5" y2="59.9" stroke="#111" stroke-width="0.25"/>
-<path d="M62 59.9 L64.4 59.1 L64.4 60.7 Z" fill="#111"/>
-<path d="M81.5 59.9 L79.1 60.7 L79.1 59.1 Z" fill="#111"/>
-<text data-dim="slot_x0" data-value="-45" x="71.75" y="58.7" text-anchor="middle" font-size="3.2" font-family="monospace" fill="#111">slot_x0 = -45 mm</text>
-<line x1="81.5" y1="115.8" x2="81.5" y2="122.2" stroke="#444" stroke-width="0.2"/>
-<line x1="104.9" y1="115.8" x2="104.9" y2="122.2" stroke="#444" stroke-width="0.2"/>
-<line x1="81.5" y1="121" x2="104.9" y2="121" stroke="#111" stroke-width="0.25"/>
-<path d="M81.5 121 L83.9 120.2 L83.9 121.8 Z" fill="#111"/>
-<path d="M104.9 121 L102.5 121.8 L102.5 120.2 Z" fill="#111"/>
-<text data-dim="slot_pitch" data-value="18" x="93.2" y="125" text-anchor="middle" font-size="3.2" font-family="monospace" fill="#111">slot_pitch = 18 mm</text>
+<line x1="81.5" y1="59.9" x2="140" y2="59.9" stroke="#111" stroke-width="0.25"/>
+<path d="M81.5 59.9 L83.9 59.1 L83.9 60.7 Z" fill="#111"/>
+<path d="M140 59.9 L137.6 60.7 L137.6 59.1 Z" fill="#111"/>
+<text data-dim="slot_x0" data-value="-45" x="110.75" y="58.7" text-anchor="middle" font-size="3.2" font-family="monospace" fill="#111">slot_x0 = -45 mm</text>
+<line x1="77.6" y1="110.6" x2="77.6" y2="117" stroke="#444" stroke-width="0.2"/>
+<line x1="101" y1="110.6" x2="101" y2="117" stroke="#444" stroke-width="0.2"/>
+<line x1="77.6" y1="115.8" x2="101" y2="115.8" stroke="#111" stroke-width="0.25"/>
+<path d="M77.6 115.8 L80 115 L80 116.6 Z" fill="#111"/>
+<path d="M101 115.8 L98.6 116.6 L98.6 115 Z" fill="#111"/>
+<text data-dim="slot_pitch" data-value="18" x="89.3" y="119.8" text-anchor="middle" font-size="3.2" font-family="monospace" fill="#111">slot_pitch = 18 mm</text>
 <line x1="77.6" y1="79.4" x2="77.6" y2="73" stroke="#444" stroke-width="0.2"/>
 <line x1="85.4" y1="79.4" x2="85.4" y2="73" stroke="#444" stroke-width="0.2"/>
 <line x1="77.6" y1="74.2" x2="85.4" y2="74.2" stroke="#111" stroke-width="0.25"/>
@@ -64,7 +64,7 @@
 <path d="M93.2 110.6 L92.4 108.2 L94 108.2 Z" fill="#111"/>
 <path d="M93.2 79.4 L94 81.8 L92.4 81.8 Z" fill="#111"/>
 <text data-dim="slot_w" data-value="24" x="94.4" y="95" text-anchor="start" font-size="3.2" font-family="monospace" fill="#111">slot_w = 24 mm</text>
-<text data-dim="slot_n" data-value="6" x="36" y="147" text-anchor="start" font-size="3.2" font-family="monospace" fill="#111">slot_n = 6</text>
+<text data-dim="slot_n" data-value="5" x="36" y="147" text-anchor="start" font-size="3.2" font-family="monospace" fill="#111">slot_n = 5</text>
 </g>
 <g data-view="Front">
 <text x="36" y="194" font-size="3.6" font-family="sans-serif" font-weight="bold" fill="#111">Front</text>

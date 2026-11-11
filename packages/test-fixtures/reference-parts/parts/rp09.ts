@@ -33,14 +33,15 @@ export const rp09: PartDef = {
     },
     pcd: { value: 90, unit: 'mm', description: 'Bolt circle diameter' },
     bolt_n: {
-      value: 8,
+      value: 6,
       unit: '',
-      description: 'Pattern count (including the original and the skipped ones)',
+      description:
+        'Number of bolt holes: the pattern has bolt_n + 2 positions, positions 2 and 5 skipped (corrected from the pattern setting 8, see the README)',
     },
   },
   tags: ['revolve', 'axis', 'circularPattern', 'skip'],
   method:
-    'Exact. The solid of revolution is two stacked annular cylinders; each bolt hole is a cylinder through the flange only (the bolt circle lies outside the hub). The pattern has bolt_n instances equally spaced over 360 degrees; instances 2 and 5 are skipped, so bolt_n - 2 holes are cut. The surface area adds the cylinders and annuli and replaces, for each hole, two annular patches by the hole wall. Accuracy: floating point (1e-12 relative).',
+    'Exact. The solid of revolution is two stacked annular cylinders; each bolt hole is a cylinder through the flange only (the bolt circle lies outside the hub). The pattern has bolt_n + 2 positions equally spaced over 360 degrees; positions 2 and 5 are skipped, so bolt_n holes are cut. The surface area adds the cylinders and annuli and replaces, for each hole, two annular patches by the hole wall. Accuracy: floating point (1e-12 relative).',
   steps: (d) => {
     const t = d('flange_t');
     const R = d('flange_d') / 2;
@@ -112,10 +113,10 @@ export const rp09: PartDef = {
       {
         tool: 'circularPattern',
         id: 'ring',
-        say: 'Circular pattern of the hole about the reference axis: bolt_n instances over 360 degrees, equal spacing, skip instances 2 and 5.',
+        say: 'Circular pattern of the hole about the reference axis: bolt_n + 2 instances over 360 degrees, equal spacing, skip instances 2 and 5 (bolt_n holes).',
         source: { kind: 'features', features: ['bolt'] },
         axis: { pick: 'axis', name: 'F{ax}:axis', at: [0, 0, 0] },
-        count: 'bolt_n',
+        count: 'bolt_n + 2',
         angle: '360 deg',
         equalSpacing: true,
         skip: SKIP,
@@ -129,14 +130,14 @@ export const rp09: PartDef = {
     const t = d('flange_t');
     const hh = d('hub_h');
     const rbolt = d('bolt_d') / 2;
-    const nHoles = Math.round(d('bolt_n')) - SKIP.length;
+    const nHoles = Math.round(d('bolt_n')); // bolt_n + 2 positions, two skipped
     const terms = [
       term('Flange disc', 'pi (flange_d/2)^2 flange_t', PI * R * R * t),
       term('Hub cylinder', 'pi (hub_d/2)^2 hub_h', PI * rh * rh * hh),
       term('Bore', '-pi (bore_d/2)^2 (flange_t + hub_h)', -PI * rb * rb * (t + hh)),
       term(
-        'Bolt holes (instances minus the skipped ones)',
-        '-(bolt_n - 2) pi (bolt_d/2)^2 flange_t',
+        'Bolt holes (bolt_n + 2 positions minus the two skipped)',
+        '-bolt_n pi (bolt_d/2)^2 flange_t',
         -nHoles * PI * rbolt * rbolt * t,
       ),
     ];
@@ -157,7 +158,10 @@ export const rp09: PartDef = {
     };
   },
   stages: [
-    { name: 'Stage 2: bolt_n -> 10 (instances 2 and 5 still skipped)', set: { bolt_n: 10 } },
+    {
+      name: 'Stage 2: bolt_n -> 8 (ten positions, 2 and 5 still skipped)',
+      set: { bolt_n: 8 },
+    },
     { name: 'Stage 3: pcd -> 100 mm', set: { pcd: 100 } },
     { name: 'Stage 4: hub_h -> 45 mm and bore_d -> 36 mm', set: { hub_h: 45, bore_d: 36 } },
   ],
@@ -175,7 +179,7 @@ export const rp09: PartDef = {
     const top = dr.view(TOP, 110, 135, 1.4).caption(-R, R + 10, 'Top');
     top.circle(0, 0, R).circle(0, 0, rh).circle(0, 0, rb);
     top.circle(0, 0, d('pcd') / 2, 'center');
-    const n = Math.round(d('bolt_n'));
+    const n = Math.round(d('bolt_n')) + SKIP.length; // positions, the skipped ones included
     for (let k = 0; k < n; k++) {
       const a = (2 * PI * k) / n;
       const x = (d('pcd') / 2) * Math.cos(a);
