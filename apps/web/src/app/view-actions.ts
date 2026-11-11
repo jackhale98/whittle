@@ -177,7 +177,9 @@ export function addPrimitive(wb: Workbench, shape: 'box' | 'cylinder'): void {
 export function addPlane(wb: Workbench): void {
   const part = wb.part;
   if (!part) return;
-  wb.addFeature(newPlane(part, { name: 'origin:XY', kind: 'face' }), '/definition/from');
+  // `from` is already the XY plane, so no pick starts: the plane is drawn at once (ADR-093). A pick
+  // field rolls its own feature back, which would hide the plane until the pick ended.
+  wb.addFeature(newPlane(part, { name: 'origin:XY', kind: 'face' }));
 }
 
 export function addBoolean(wb: Workbench): void {

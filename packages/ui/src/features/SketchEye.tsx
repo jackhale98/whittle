@@ -9,6 +9,8 @@ export interface SketchEyeProps {
   /** `auto` (or absent) = follows the consumed-sketch default: marked with a small dot. */
   visibility?: SketchVisibilityMode | undefined;
   touch: boolean;
+  /** Reference geometry (ADR-093): shown unless hidden, so there is no automatic mode to mark. */
+  reference?: boolean;
   onToggle(): void;
 }
 
@@ -17,14 +19,21 @@ export interface SketchEyeProps {
  * current state); a small dot marks a sketch still on "auto", and the row menu resets to auto.
  * The label names the action: "Show Sketch 2" / "Hide Sketch 2".
  */
-export function SketchEye({ name, shown, visibility, touch, onToggle }: SketchEyeProps) {
-  const auto = visibility === undefined || visibility === 'auto';
+export function SketchEye({
+  name,
+  shown,
+  visibility,
+  touch,
+  reference = false,
+  onToggle,
+}: SketchEyeProps) {
+  const auto = !reference && (visibility === undefined || visibility === 'auto');
   const Icon = shown ? Eye : EyeOff;
   return (
     <button
       type="button"
       tabIndex={-1}
-      data-testid="sketch-eye"
+      data-testid={reference ? 'reference-eye' : 'sketch-eye'}
       data-shown={shown}
       data-visibility={auto ? 'auto' : visibility}
       aria-label={`${shown ? 'Hide' : 'Show'} ${name}`}

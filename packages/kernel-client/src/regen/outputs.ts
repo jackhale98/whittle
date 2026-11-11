@@ -11,6 +11,7 @@ import type {
   MeshQuality,
   NamingMap,
   Part,
+  ReferenceResult,
   SketchResult,
   Vec2,
   Vec3,
@@ -20,7 +21,7 @@ import { expressionEngine, scopeOf, tryResolveDensity } from '@wren-cad/document
 import { copyMesh, faceIndex, faceSubMesh } from './buffers';
 import type { EngineCore } from './core';
 import { sampleEntity, toWorld } from './geometry';
-import type { BodyState, SketchState } from './state';
+import type { BodyState, ModelState, SketchState } from './state';
 
 export function densityOf(part: Part, doc: WrenDoc): number | undefined {
   if (!part.material) return undefined;
@@ -93,6 +94,55 @@ export async function sketchResult(
     regions,
     frame: { origin: s.frame.origin, x: s.frame.x, y: crossY(s.frame), z: s.frame.z },
   };
+}
+
+/** Smallest half-size (mm) a reference plane or axis is drawn with, so an empty part still shows one. */
+export const MIN_REFERENCE_EXTENT = 50;
+/** Reference extent = this × the bodies' bounding-box diagonal (half-size of the square / axis). */
+export const REFERENCE_EXTENT_FACTOR = 0.6;
+
+/**
+ * ADR-093: one result per plane, axis and point feature that evaluated (suppressed, failed,
+ * blocked and rolled-back ones never reach `state`), in history order, in their final position.
+ * `extent` is sized to the bodies' bounding box. Display only: nothing here feeds a cache key.
+ */
+export async function referenceResults(
+  core: EngineCore,
+  part: Part,
+  state: ModelState,
+  bodies: readonly BodyState[],
+): Promise<ReferenceResult[]> {
+  const found: { id: string; kind: ReferenceResult['kind']; frame: Frame }[] = [];
+  for (const f of part.features) {
+    if (f.type === 'plane') {
+      const p = state.planes.get(f.id);
+      if (p) found.push({ id: f.id, kind: 'plane', frame: p.frame });
+    } else if (f.type === 'axis' || f.type === 'point') {
+      const d = state.datums.get(f.id);
+      if (d) found.push({ id: f.id, kind: f.type, frame: d.frame });
+    }
+  }
+  if (found.length === 0) return [];
+  const min: Vec3 = [Infinity, Infinity, Infinity];
+  const max: Vec3 = [-Infinity, -Infinity, -Infinity];
+  for (const b of bodies) {
+    const bb = await core.boundsOf(b.shape);
+    if (!bb) continue;
+    for (let k = 0; k < 3; k++) {
+      min[k] = Math.min(min[k] as number, bb.bbox.min[k] as number);
+      max[k] = Math.max(max[k] as number, bb.bbox.max[k] as number);
+    }
+  }
+  const diag = Number.isFinite(min[0])
+    ? Math.hypot(max[0] - min[0], max[1] - min[1], max[2] - min[2])
+    : 0;
+  const extent = Math.max(MIN_REFERENCE_EXTENT, REFERENCE_EXTENT_FACTOR * diag);
+  return found.map(({ id, kind, frame }) => ({
+    featureId: id,
+    kind,
+    frame: { origin: frame.origin, x: frame.x, y: crossY(frame), z: frame.z },
+    extent,
+  }));
 }
 
 function crossY(f: Frame): Vec3 {

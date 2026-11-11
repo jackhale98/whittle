@@ -1,5 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-import type { Command, FeatureFolder, Part, SketchFeature, WrenDoc } from '@wren-cad/contracts';
+import type {
+  Command,
+  Feature,
+  FeatureFolder,
+  Part,
+  SketchFeature,
+  WrenDoc,
+} from '@wren-cad/contracts';
 import { describe, expect, it } from 'vitest';
 import {
   compileCommand,
@@ -10,7 +17,7 @@ import {
   toFiles,
   validateDoc,
 } from '../src';
-import { box, extrude, fillet, id, sketch } from './fixtures';
+import { box, extrude, fillet, id, planeFrame, ref, sketch } from './fixtures';
 
 const pid = id(1000);
 const F = (n: number, name: string, ...members: number[]): FeatureFolder => ({
@@ -292,6 +299,43 @@ describe('setSketchVisibility', () => {
     // absent equals auto: resetting an untouched sketch is a no-op
     const r = compileCommand(s.getDoc(), vis([id(1)], 'auto'));
     expect(r.ok && r.ops).toEqual([]);
+  });
+  it('covers reference geometry: planes, axes and points (ADR-093)', () => {
+    const p = partOf(0);
+    const axis: Feature = {
+      id: id(7),
+      type: 'axis',
+      name: 'Axis 7',
+      suppressed: false,
+      definition: {
+        kind: 'twoPoints',
+        a: ref('F1:vertex(a)', 'vertex'),
+        b: ref('F1:vertex(b)', 'vertex'),
+      },
+    };
+    const point: Feature = {
+      id: id(8),
+      type: 'point',
+      name: 'Point 8',
+      suppressed: false,
+      definition: { kind: 'coordinates', x: '0', y: '0', z: '0' },
+    };
+    p.features = [box(1), planeFrame(5), axis, point, sketch(6)];
+    p.rollbackIndex = 5;
+    const s = storeOf(p);
+    const get = () => part(s).features.map((f) => (f as { visibility?: string }).visibility);
+    roundTrip(s, vis([id(5)], 'hidden'), 'Hide Plane 5');
+    expect(get()).toEqual([undefined, 'hidden', undefined, undefined, undefined]);
+    roundTrip(s, vis([id(5), id(7), id(8)], 'hidden'), 'Hide 2 items');
+    expect(get()).toEqual([undefined, 'hidden', 'hidden', 'hidden', undefined]);
+    roundTrip(s, vis([id(5), id(7), id(8), id(6)], 'shown'), 'Show 4 items');
+    roundTrip(s, vis([id(5), id(7), id(8)], 'auto'), 'Reset visibility of 3 items');
+    expect(get()).toEqual([undefined, undefined, undefined, undefined, 'shown']);
+    expect(Object.hasOwn(part(s).features[1] as object, 'visibility')).toBe(false);
+    // absent equals auto, and a plane already shown by default is a no-op for 'auto'
+    const c = compileCommand(s.getDoc(), vis([id(5)], 'auto'));
+    expect(c.ok && c.ops).toEqual([]);
+    expect(validateDoc(s.getDoc())).toEqual([]);
   });
   it('fails for an unknown part or visibility', () => {
     const s = mk();

@@ -22,7 +22,7 @@ import type {
   JsonPatchOp,
   Param,
   Part,
-  SketchFeature,
+  SketchVisibility,
   WrenDoc,
 } from '@wren-cad/contracts';
 import { annotationExprFields } from './annotation-fields';
@@ -410,6 +410,9 @@ function compileSuppressMany(
   return { ok: true, label: `${verb} ${what}`, ops };
 }
 
+/** Feature types that carry a `visibility` field (sketches; reference geometry, ADR-093). */
+const VISIBILITY_TYPES: ReadonlySet<string> = new Set(['sketch', 'plane', 'axis', 'point']);
+
 function compileVisibility(
   doc: WrenDoc,
   cmd: Extract<Command, { kind: 'setSketchVisibility' }>,
@@ -424,12 +427,15 @@ function compileVisibility(
   const ops: JsonPatchOp[] = [];
   let known = 0;
   let name = '';
+  let others = false;
   part.features.forEach((f, j) => {
-    if (f.type !== 'sketch' || !wanted.has(f.id)) return;
+    // Sketches, and reference geometry (ADR-093); every other id is ignored.
+    if (!VISIBILITY_TYPES.has(f.type) || !wanted.has(f.id)) return;
     known++;
-    const cur = (f as SketchFeature).visibility;
+    const cur = (f as { visibility?: SketchVisibility }).visibility;
     if ((cur ?? 'auto') === cmd.visibility) return;
     name = f.name;
+    if (f.type !== 'sketch') others = true;
     const path = `/parts/${i}/features/${j}/visibility`;
     if (cmd.visibility === 'auto') ops.push({ op: 'remove', path });
     else ops.push({ op: cur === undefined ? 'add' : 'replace', path, value: cmd.visibility });
@@ -441,7 +447,12 @@ function compileVisibility(
         ? 'Hide'
         : 'Reset visibility of';
   const n = ops.length === 0 ? known : ops.length;
-  const what = n === 1 && name !== '' ? name : plural(n, 'sketch', 'sketches');
+  const what =
+    n === 1 && name !== ''
+      ? name
+      : others
+        ? plural(n, 'item', 'items')
+        : plural(n, 'sketch', 'sketches');
   return { ok: true, label: `${verb} ${what}`, ops };
 }
 

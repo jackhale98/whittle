@@ -66,6 +66,7 @@ import type { FaceInfo, SectionSettings } from '../model/faces';
 import { isOriginPlane, ORIGIN_FRAMES, type PlaneFrame, toPlaneFrame } from '../model/frames';
 import { foldHeals, type Heal } from '../model/heal';
 import { type Attachment, createRegenLoop, type Modeling, type RegenLoop } from '../model/modeling';
+import { readOriginToggle, writeOriginToggle } from '../model/reference-names';
 import { getDiagnostics } from '../platform/diagnostics';
 import { policyFor, type TierPolicy } from '../platform/tier-policy';
 import type { Accepts } from '../selection/pick';
@@ -713,6 +714,21 @@ export class Workbench {
 
   /** The ids of the sketches the viewport shows (what the tree's eye draws). */
   readonly shownSketchIds = observable<ReadonlySet<Id>>(new Set());
+
+  /** ADR-093: the plane, axis and point features the viewport draws (the tree's eye reads it). */
+  readonly shownReferenceIds = observable<ReadonlySet<Id>>(new Set());
+  /** The last reference set handed to the viewport (skips identical pushes). */
+  referenceKey = '';
+  /** "Show origin planes": a per-device view toggle (localStorage), hidden by default. */
+  readonly originPlanes = observable<boolean>(readOriginToggle());
+  originApplied = false;
+
+  setOriginPlanes(show: boolean): void {
+    if (show === this.originPlanes.get()) return;
+    writeOriginToggle(show);
+    this.originPlanes.set(show);
+    this.refreshSketchVisibility();
+  }
 
   /**
    * Which sketches are shown (`sketchShown`, ADR-060 / ADR-066): the document's per-sketch

@@ -118,6 +118,7 @@ import {
   stats,
 } from './probes';
 import { pickRect } from './rectPick';
+import { ReferenceLayer } from './references';
 import {
   attachContextHandlers,
   nextFrame,
@@ -136,10 +137,12 @@ import type {
   FitOptions,
   NavigationState,
   PickStats,
+  ReferenceStats,
   TouchStats,
   ViewportEngine,
   ViewportEngineOptions,
   ViewportEventMap,
+  ViewportReference,
 } from './types';
 import type { ViewCube } from './viewcube';
 import {
@@ -161,10 +164,13 @@ export type {
   FitOptions,
   NavigationState,
   PickStats,
+  ReferenceFrame,
+  ReferenceStats,
   TouchStats,
   ViewportEngine,
   ViewportEngineOptions,
   ViewportEventMap,
+  ViewportReference,
 } from './types';
 
 export const createViewport = (async (canvas, options = {}) =>
@@ -192,6 +198,8 @@ export class ViewportImpl implements ViewportEngine {
   readonly edgeMaterial: Line2NodeMaterial;
   readonly grid = new Grid();
   readonly shadow = new ContactShadow();
+  /** ADR-093: reference planes, axes and points. */
+  readonly references = new ReferenceLayer(this);
   readonly keyLight = new DirectionalLight(0xffffff, 1);
   /** Built after the first body frame (see scheduleEnvironment); null until then. */
   envTarget: { dispose(): void; texture: Scene['environment'] } | null = null;
@@ -522,6 +530,7 @@ export class ViewportImpl implements ViewportEngine {
     for (const id of [...this.markerSets.keys()]) this.setMarkers(id, null);
     this.idTarget?.dispose();
     this.idTarget = null;
+    this.references.dispose();
     this.grid.dispose();
     this.shadow.dispose();
     this.edgeMaterial.dispose();
@@ -571,6 +580,20 @@ export class ViewportImpl implements ViewportEngine {
 
   setCompare(overlay: CompareOverlay | null): void {
     setCompare(this, overlay);
+  }
+
+  setReferences(refs: readonly ViewportReference[]): void {
+    if (this.disposed) return;
+    this.references.setReferences(refs);
+  }
+
+  setOriginReferences(show: boolean): void {
+    if (this.disposed) return;
+    this.references.setOrigin(show);
+  }
+
+  getReferenceStats(): ReferenceStats {
+    return this.references.stats();
   }
 
   getCompareStats(): CompareStats {

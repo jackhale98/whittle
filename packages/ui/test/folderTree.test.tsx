@@ -348,6 +348,64 @@ describe('sketch eye', () => {
   });
 });
 
+describe('reference geometry eye (ADR-093)', () => {
+  const refs: Item[] = [
+    fe('p1', 'Plane 1', 'plane'),
+    fe('a1', 'Axis 1', 'axis'),
+    fe('q1', 'Point 1', 'point'),
+  ];
+  const withRefs = (over: Partial<Item> = {}) => [
+    ...refs.map((r) => ({ ...r, ...over })),
+    ...features,
+  ];
+
+  it('plane, axis and point rows get an eye: shown unless hidden, no automatic marker', async () => {
+    const { props } = setup({ features: withRefs() });
+    for (const [name, id] of [
+      ['Plane 1', 'p1'],
+      ['Axis 1', 'a1'],
+      ['Point 1', 'q1'],
+    ] as const) {
+      const eye = within(row(new RegExp(name))).getByRole('button', { name: `Hide ${name}` });
+      expect(eye).toHaveAttribute('data-testid', 'reference-eye');
+      expect(eye).toHaveAttribute('data-shown', 'true');
+      expect(within(eye).queryByTestId('auto-marker')).toBeNull();
+      await userEvent.click(eye);
+      expect(props.onSketchVisibility).toHaveBeenLastCalledWith([id], 'hidden');
+    }
+  });
+
+  it('a hidden reference offers Show, and the app can override with its resolved `shown`', async () => {
+    const hidden = refs.map((r) => ({ ...r, visibility: 'hidden' as const }));
+    const { props } = setup({ features: [...hidden, ...features] });
+    const eye = within(row(/Plane 1/)).getByRole('button', { name: 'Show Plane 1' });
+    expect(eye).toHaveAttribute('data-shown', 'false');
+    await userEvent.click(eye);
+    expect(props.onSketchVisibility).toHaveBeenCalledWith(['p1'], 'shown');
+  });
+
+  it('an unevaluated reference (suppressed, failed, rolled back) shows as hidden', () => {
+    setup({ features: [{ ...refs[0], shown: false } as Item, ...features] });
+    expect(
+      within(row(/Plane 1/)).getByRole('button', { name: 'Show Plane 1' }),
+    ).toBeInTheDocument();
+  });
+
+  it('the row menu hides it in the viewport, with no reset-to-automatic', async () => {
+    setup({ features: withRefs() });
+    row(/Axis 1/).focus();
+    await userEvent.keyboard('{ContextMenu}');
+    expect(await screen.findByRole('menuitem', { name: 'Hide in viewport' })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: /Reset to automatic/ })).toBeNull();
+  });
+
+  it('has a 44 px target on touch density and the row says what the viewport shows', () => {
+    setup({ features: withRefs(), density: 'touch' });
+    expect(within(row(/Plane 1/)).getByTestId('reference-eye').className).toMatch(/size-11/);
+    expect(row(/Plane 1/)).toHaveAccessibleName(/Shown in the viewport/);
+  });
+});
+
 /* ------------------------------------------------------------------ drag */
 
 describe('drag and drop', () => {

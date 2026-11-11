@@ -14,11 +14,12 @@ export const kerr = (
 ): KernelError => ({ code, message, ...extra });
 
 /**
- * A feature's definition for cache keys: without its name and suppression. Annotations are
- * part-level (ADR-090), so nothing about them can reach a feature's key.
+ * A feature's definition for cache keys: without its name, suppression and viewport visibility
+ * (ADR-093: showing or hiding a plane never rebuilds anything). Annotations are part-level
+ * (ADR-090), so nothing about them can reach a feature's key.
  */
 export function definition(f: Feature): unknown {
-  return { ...f, name: undefined, suppressed: undefined };
+  return { ...f, name: undefined, suppressed: undefined, visibility: undefined };
 }
 
 /** Ids of the features a mirror / pattern copies (they are not EntityRefs). */

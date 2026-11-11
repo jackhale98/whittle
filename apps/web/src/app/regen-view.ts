@@ -14,6 +14,7 @@ import type {
   WrenDoc,
 } from '@wren-cad/contracts';
 import { entityRefs } from '@wren-cad/document';
+import { REFERENCE_ENTITY } from '@wren-cad/viewport/ids';
 import {
   type CachedGeometry,
   decodeCache,
@@ -25,7 +26,8 @@ import { attentionItems, attentionMarkers, partDiagonal } from '../model/attenti
 import { explainStatus, followBlockedCauses } from '../model/explain';
 import { type FaceInfo, faceInfo } from '../model/faces';
 import { healsFrom } from '../model/heal';
-import { hitKey, pickVertices, toHighlight, vertexAt } from '../selection/pick';
+import { isDrawnReference, isReferenceName } from '../model/reference-names';
+import { hitKey, isReferenceHit, pickVertices, toHighlight, vertexAt } from '../selection/pick';
 import { mergeIssueStatuses } from './config-model';
 import type { RegenView, SelectionItem } from './state';
 import { failBoot, mark, markOnce } from './timing';
@@ -172,6 +174,10 @@ export function remapSelection(wb: Workbench, result: RegenResult): void {
   const u = wb.ui.get();
   const selection = u.selection.flatMap((s): SelectionItem[] => {
     const k = s.hit.kind;
+    // Reference geometry (ADR-093) has no mesh index: it stays while it is still drawn.
+    if (isReferenceHit(s.hit)) {
+      return isDrawnReference(s.hit.bodyId, result.references, wb.originApplied) ? [s] : [];
+    }
     if ((k !== 'face' && k !== 'edge' && k !== 'vertex') || !s.ref) return [s];
     const body = result.bodies.find((b) => b.id === s.hit.bodyId);
     const names =
@@ -381,6 +387,18 @@ export function highlightsForRefs(
   // Every reference of the feature (M3 features too), except its sketch plane.
   const refs: EntityRef[] = f.type === 'sketch' ? [] : entityRefs(f);
   for (const ref of refs) {
+    // Reference geometry (ADR-093): plane / axis / point features and, while shown, the origin ones.
+    if (isReferenceName(ref.name)) {
+      if (isDrawnReference(ref.name, result.references, true)) {
+        out.push({
+          bodyId: ref.name,
+          kind: ref.kind as 'face',
+          index: 0,
+          entity: REFERENCE_ENTITY,
+        });
+      }
+      continue;
+    }
     if (ref.kind === 'region') {
       for (const s of result.sketches) {
         const i = s.regions.findIndex((r) => r.name === ref.name);

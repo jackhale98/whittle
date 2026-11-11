@@ -116,6 +116,7 @@ export function App({ wb }: { wb: Workbench }) {
     writeNestSketches(nest);
   }, []);
 
+  const originPlanes = useObservable(wb.originPlanes);
   const commands = useMemo<PaletteCommand[]>(
     () => [
       {
@@ -198,6 +199,11 @@ export function App({ wb }: { wb: Workbench }) {
         hint: 'Put this part on a sheet',
         run: () => wb.openDrawing(null),
       },
+      {
+        id: 'origin-planes',
+        label: originPlanes ? 'Hide origin planes' : 'Show origin planes',
+        run: () => wb.setOriginPlanes(!originPlanes),
+      },
       { id: 'undo', label: 'Undo', run: () => wb.undo() },
       { id: 'redo', label: 'Redo', run: () => wb.redo() },
       {
@@ -222,7 +228,7 @@ export function App({ wb }: { wb: Workbench }) {
       },
       { id: 'about', label: `About Wren · ${diagnostics.appVersion}`, hint: 'Version' },
     ],
-    [diagnostics.appVersion, wb, nestSketches, setNestSketches],
+    [diagnostics.appVersion, wb, nestSketches, setNestSketches, originPlanes],
   );
 
   const beforeViewport = useMemo(() => wb.initialDocumentRead(), [wb]);

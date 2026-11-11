@@ -14,7 +14,7 @@ import type {
   PickHit,
   PickKind,
 } from '@wren-cad/contracts';
-import { deriveVertices } from '@wren-cad/viewport/ids';
+import { deriveVertices, REFERENCE_ENTITY } from '@wren-cad/viewport/ids';
 
 /** Pick radius in CSS px: mouse 6, pen 10, touch 22 (contract `PickOptions`). */
 export function toleranceFor(pointerType: string): number {
@@ -155,8 +155,23 @@ export function sketchRef(hit: PickHit): EntityRef | null {
   return null;
 }
 
+/**
+ * Reference geometry picks (ADR-093) carry their persistent name as `bodyId` (`F<id>:plane`,
+ * `F<id>:axis`, `F<id>:point`, `origin:XY`, ...): a plane is a face, an axis an edge, a point a
+ * vertex, so they feed sketch planes, revolve / pattern axes and measure like any other ref.
+ */
+export function isReferenceHit(hit: Pick<PickHit, 'entity'>): boolean {
+  return hit.entity === REFERENCE_ENTITY;
+}
+
+export function referenceHitRef(hit: PickHit): EntityRef | null {
+  // Reference picks are only ever face, edge or vertex hits.
+  return isReferenceHit(hit) ? { name: hit.bodyId, kind: hit.kind as EntityKind } : null;
+}
+
 /** The engine query for a body pick. */
 export function queryFor(hit: PickHit): EntityQuery | null {
+  if (isReferenceHit(hit)) return null;
   if (hit.kind === 'face' || hit.kind === 'edge' || hit.kind === 'vertex')
     return { bodyId: hit.bodyId, kind: hit.kind, index: hit.index };
   return null;
@@ -170,7 +185,7 @@ export async function refForHit(
   as?: EntityKind,
 ): Promise<EntityRef | null> {
   if (as === 'body') return { name: hit.bodyId, kind: 'body' };
-  const local = sketchRef(hit);
+  const local = referenceHitRef(hit) ?? sketchRef(hit);
   if (local) return local;
   const q = queryFor(hit);
   return q ? refFor(partId, q) : null;

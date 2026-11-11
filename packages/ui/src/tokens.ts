@@ -59,6 +59,8 @@ export interface ColorTokens {
    */
   compareAddedSwatch: string;
   compareRemovedSwatch: string;
+  /** Reference geometry drawn in the viewport: planes, axes, points (ADR-093). Non-text, >= 3:1 on the viewport. */
+  reference: string;
 }
 
 export const colors: Record<ThemeName, ColorTokens> = {
@@ -95,6 +97,7 @@ export const colors: Record<ThemeName, ColorTokens> = {
     compareRemovedSoft: '#fdebe1',
     compareAddedSwatch: '#00a878',
     compareRemovedSwatch: '#c2410c',
+    reference: '#0f766e',
   },
   dark: {
     bg: '#0c0f16',
@@ -129,6 +132,7 @@ export const colors: Record<ThemeName, ColorTokens> = {
     compareRemovedSoft: '#3d2116',
     compareAddedSwatch: '#3ddc97',
     compareRemovedSwatch: '#ff6a2e',
+    reference: '#2dd4bf',
   },
 };
 

@@ -162,9 +162,35 @@ export function pick(vp: ViewportImpl, x: number, y: number, options: PickOption
   }
 
   // Faces (ID buffer, BVH fallback).
+  let faceHit: PickHit | null = null;
   if (want('face') && !anySketchActive) {
-    const f = pickFace(vp, x, y, ray);
-    if (f) out.push(f);
+    faceHit = pickFace(vp, x, y, ray);
+    if (faceHit) out.push(faceHit);
+  }
+
+  // Reference geometry (ADR-093). A body face under the pointer always wins over a plane, so a
+  // plane never blocks the faces behind it (a plane through a part is picked where it is in the
+  // open, or from the tree); axes and points are thin hits that compete by screen distance.
+  if (vp.references.hasAny && !anySketchActive) {
+    const nearer = faceHit ? 0 : Number.POSITIVE_INFINITY;
+    // An axis is hidden by a body in front of it, but never at the price of building a BVH for a
+    // large body on the pick path (the same guard the orbit start uses).
+    const canOcclude = () =>
+      [...vp.bodies.values()].every(
+        (e) => !e.display.visible || e.bvh !== null || e.triangles <= NAV_SYNC_BVH_TRIANGLES,
+      );
+    for (const r of vp.references.pick(
+      ray,
+      project,
+      x,
+      y,
+      tol,
+      want,
+      nearer,
+      (p) => !canOcclude() || isVisiblePoint(vp, ray.origin, p),
+    )) {
+      out.push(r);
+    }
   }
 
   if (options.all) return withDepth(vp, [...handleHits, ...sortByDistance(out)]);

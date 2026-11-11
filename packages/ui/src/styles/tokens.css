@@ -69,6 +69,7 @@
   --color-compare-removed-soft: #fdebe1;
   --color-compare-added-swatch: #00a878;
   --color-compare-removed-swatch: #c2410c;
+  --color-reference: #0f766e;
 }
 
 :root {
@@ -135,6 +136,7 @@
     --color-compare-removed-soft: #3d2116;
     --color-compare-added-swatch: #3ddc97;
     --color-compare-removed-swatch: #ff6a2e;
+    --color-reference: #2dd4bf;
     --shadow-float:
       0 1px 2px rgb(0 0 0 / 0.3), 0 10px 28px -4px rgb(0 0 0 / 0.5),
       0 0 0 1px rgb(255 255 255 / 0.07);
@@ -186,6 +188,7 @@
   --color-compare-removed-soft: #3d2116;
   --color-compare-added-swatch: #3ddc97;
   --color-compare-removed-swatch: #ff6a2e;
+  --color-reference: #2dd4bf;
   --shadow-float:
     0 1px 2px rgb(0 0 0 / 0.3), 0 10px 28px -4px rgb(0 0 0 / 0.5), 0 0 0 1px rgb(255 255 255 / 0.07);
   --shadow-pop:

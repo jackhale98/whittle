@@ -18,6 +18,7 @@ import { useCallback, useMemo } from 'react';
 import { useObservable } from '../app/observable';
 import type { Workbench } from '../app/workbench';
 import { featureLineage } from '../model/lineage';
+import { isReferenceFeature } from '../model/reference-names';
 import { reorderFeatures } from '../model/tree-edits';
 import { useDoc } from './Inspector';
 
@@ -41,6 +42,7 @@ export function useTreeProps(wb: Workbench, o: TreeOptions): TreeProps {
   const ui = useObservable(wb.ui);
   const part = doc.parts[0];
   const shownIds = useObservable(wb.shownSketchIds);
+  const shownRefs = useObservable(wb.shownReferenceIds);
   const collapsed = useObservable(wb.collapsedFolders);
   const treeSel = useObservable(wb.treeSelection);
   const selectedId = ui.featureId ?? ui.sketch?.featureId ?? null;
@@ -59,9 +61,12 @@ export function useTreeProps(wb: Workbench, o: TreeOptions): TreeProps {
     return (part?.features ?? []).map((f) => {
       const e = eff.get(f.id);
       const g = e === undefined || e === (f.suppressed === true) ? f : { ...f, suppressed: e };
-      return g.type === 'sketch' ? { ...g, shown: shownIds.has(f.id) } : g;
+      if (g.type === 'sketch') return { ...g, shown: shownIds.has(f.id) };
+      // Reference geometry (ADR-093): the eye shows what the viewport draws.
+      if (isReferenceFeature(g)) return { ...g, shown: shownRefs.has(f.id) };
+      return g;
     });
-  }, [part?.features, effective?.features, shownIds]);
+  }, [part?.features, effective?.features, shownIds, shownRefs]);
   const active = wb.config.active;
   const configurationCount = part?.configurations?.length ?? 0;
   const overriddenSuppression = useMemo(

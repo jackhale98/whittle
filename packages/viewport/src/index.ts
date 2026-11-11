@@ -17,6 +17,15 @@ export { closestOnPolyline, defaultTolerance, distPointSegment2D } from './pick'
 export type { PlaneFrame } from './plane';
 export { lookAtPlanePose, rayToPlane } from './plane';
 export { boundaryEdges, buildPrism } from './prism';
+export {
+  axisEnds,
+  dashDotSegments,
+  MIN_ORIGIN_EXTENT,
+  originReferences,
+  outlineSegments,
+  planeCorners,
+  rayHitsPlane,
+} from './refgeom';
 export { entityColor } from './sketchStyle';
 export type {
   BodyMaterialState,
@@ -24,10 +33,13 @@ export type {
   CompareStats,
   FitOptions,
   PickStats,
+  ReferenceFrame,
+  ReferenceStats,
   TouchStats,
   ViewportEngine,
   ViewportEngineOptions,
   ViewportEventMap,
+  ViewportReference,
 } from './viewport';
 export { createViewport } from './viewport';
 export {
