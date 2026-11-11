@@ -21,18 +21,18 @@ NamedInput namedInputOf(const NamedShape& ns) { return NamedInput{ns.shape, ns.f
 // survives (unchanged, or Modified) keeps its name. With `onlyIfEmpty`, names already assigned
 // (e.g. from the target body) win over this input's.
 //
-// `origin` (optional, one slot per result face, kOriginTool when unclaimed) records which input
+// `origin` (optional, one slot per result face, kOriginUnknown when unclaimed) records which input
 // a face came from: the first input that reaches a slot claims it with `group`.
 void carryFaceNames(BRepBuilderAPI_MakeShape& algo, const NamedInput& input, const Topo& result,
                     std::vector<std::string>& names, bool onlyIfEmpty,
                     const std::function<std::string(const std::string&)>& rename = nullptr,
-                    std::vector<int>* origin = nullptr, int group = kOriginTool) {
+                    std::vector<int>* origin = nullptr, int group = kOriginUnknown) {
   const Topo in(input.shape);
   auto assign = [&](int resultIndex, const std::string& name) {
     if (resultIndex <= 0) return;
     if (origin != nullptr) {
       int& o = (*origin)[static_cast<size_t>(resultIndex - 1)];
-      if (o == kOriginTool) o = group;
+      if (o == kOriginUnknown) o = group;
     }
     if (name.empty()) return;
     std::string& slot = names[static_cast<size_t>(resultIndex - 1)];
@@ -91,12 +91,17 @@ NamedShape booleanNamed(BOPAlgo_Operation op, const std::vector<NamedInput>& obj
   const TopoDS_Shape result = bop.Shape();
   const Topo rt(result);
   std::vector<std::string> names(static_cast<size_t>(rt.faces.Extent()));
-  std::vector<int> origin(static_cast<size_t>(rt.faces.Extent()), kOriginTool);
+  std::vector<int> origin(static_cast<size_t>(rt.faces.Extent()), kOriginUnknown);
   for (size_t i = 0; i < objects.size(); ++i) {
     carryFaceNames(bop, objects[i], rt, names, false, nullptr, &origin, static_cast<int>(i));
   }
-  for (const NamedInput& t : tools) carryFaceNames(bop, t, rt, names, true, toolRename);
-  return unifyBooleanResult(result, std::move(names), origin, fallback);
+  // Every input is its own provenance group (objects 0 … n − 1, then each tool): only seams
+  // between two inputs, or between pieces of one input face, merge (whittle_unify.cpp).
+  for (size_t i = 0; i < tools.size(); ++i) {
+    carryFaceNames(bop, tools[i], rt, names, true, toolRename, &origin,
+                   static_cast<int>(objects.size() + i));
+  }
+  return unifyBooleanResult(result, std::move(names), origin, static_cast<int>(objects.size()), fallback);
 }
 
 const char* opLabel(BOPAlgo_Operation op) {

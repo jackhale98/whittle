@@ -236,6 +236,70 @@ describe.skipIf(!m3)(`regen golden: booleans merge coplanar faces (ADR-078)${not
     relClose(totalVolume(r.bodies), bracketVolume(d) - K * 4 * (d.thickness + d.height), 1e-9);
   }, 120_000);
 
+  it('a ref to a merged #k piece moves the merged face, never the piece that took its index', async () => {
+    // T's top at z = 10 is split by two walls into [10,20] (#0), [22,30] (#1), [32,40] (#2); #0
+    // is flush with P's top and merges into it. A push/pull stored on "#0" (fingerprint of the old
+    // piece) must move the merged [0,20] face (+200 mm³), reported as merged — not [22,30] (+80).
+    const boxAt = (
+      id: string,
+      origin: [number, number, number],
+      d: [number, number, number],
+      op: 'new' | 'add',
+    ): Feature => ({
+      id,
+      type: 'primitive',
+      name: 'Box',
+      suppressed: false,
+      op,
+      shape: 'box',
+      dx: `${d[0]}`,
+      dy: `${d[1]}`,
+      dz: `${d[2]}`,
+      frame: { origin, z: [0, 0, 1], x: [1, 0, 0] },
+    });
+    const [P, S, W1, W2, T, PP] = ['UP', 'US', 'UW1', 'UW2', 'UT', 'UPP'].map(fid) as [
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+    ];
+    const piece = `F${T}:face.zmax#0`;
+    const doc = makeDoc(
+      {},
+      [
+        boxAt(P, [0, 0, 0], [10, 10, 10], 'new'),
+        boxAt(S, [0, 0, 0], [40, 10, 2], 'add'),
+        boxAt(W1, [20, 0, 0], [2, 10, 20], 'add'),
+        boxAt(W2, [30, 0, 0], [2, 10, 20], 'add'),
+        boxAt(T, [0, 0, 5], [40, 10, 5], 'add'),
+        {
+          id: PP,
+          type: 'pushPull',
+          name: 'Push/pull',
+          suppressed: false,
+          faces: [
+            {
+              name: piece,
+              kind: 'face',
+              fingerprint: { centroid: [15, 5, 10], normal: [0, 0, 1], area: 100 },
+            },
+          ],
+          distance: '1 mm',
+        },
+      ],
+      PART,
+    );
+    const r = await regen(doc);
+    expect(states(r), describeFailures(r)).toEqual(Array(6).fill('ok'));
+    const st = r.features[5] as RegenFeatureStatus;
+    expect(st.merged).toEqual([{ path: '/faces/0', name: piece, into: `F${P}:face.zmax` }]);
+    expect(st.rebound).toBeUndefined();
+    // Slab 800 + P above it 800 + walls 2 × 360 + T outside P and the walls 1300, then +200.
+    relClose(totalVolume(r.bodies), 3620 + 200, 1e-9);
+  }, 120_000);
+
   it('shell 1 mm and 2 mm with the upright top open: analytic volume', async () => {
     const d = BRACKET_DIMS;
     for (const t of [1, 2]) {

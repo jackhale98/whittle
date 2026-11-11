@@ -749,7 +749,9 @@ for (const { variant } of VARIANTS) {
         );
         expect(ss.mass(fil2.shape).faceCount).toBe(5);
         expect(ss.mass(fil2.shape).volume).toBeLessThan(before);
-      });
+        // Two B-spline fillets: 1.5–3 s at load ~18 (old and new kernel alike), close to vitest's
+        // 5 s default; no timing is asserted, so give it room on a loaded machine.
+      }, 30_000);
     });
 
     // -----------------------------------------------------------------------------------------

@@ -16,7 +16,6 @@ import { fileURLToPath } from 'node:url';
 import type { Feature, Frame, ImportFeature, RegenRequest, Vec3 } from '@wren-cad/contracts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sha256Hex } from '../../src/regen/imports';
-import { bracketDoc } from './bracket';
 import {
   type Api,
   built,
@@ -32,6 +31,7 @@ import {
 } from './helpers';
 
 const GOLDEN = fileURLToPath(new URL('./fixtures/import-naming.golden.json', import.meta.url));
+const BRACKET_STEP = fileURLToPath(new URL('./fixtures/bracket-m1.step', import.meta.url));
 const UPDATE = process.env.WREN_UPDATE_IMPORT_GOLDEN === '1';
 
 const PART = fid('INPRT');
@@ -91,7 +91,10 @@ describe.skipIf(!built)(`imported names match the M1 engine's${skipNote}`, () =>
 
   beforeAll(async () => {
     api = await loadApi();
-    bracket = await attachmentOf(bracketDoc(), 'imports/bracket.step');
+    // Frozen: the M1 bracket as the engine built it before ADR-078 (17 faces, back and sides split
+    // at the plate's top), so the golden keeps guarding import naming, not the bracket's modelling.
+    const bytes = new Uint8Array(readFileSync(BRACKET_STEP));
+    bracket = { path: 'imports/bracket.step', bytes, sha256: await sha256Hex(bytes) };
     const boxes = makeDoc(
       {},
       (

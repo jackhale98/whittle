@@ -335,7 +335,7 @@ describe.skipIf(!built)(`regen golden: import${skipNote}`, () => {
     } finally {
       expect(fresh.liveHandleCount()).toBe(0);
     }
-  });
+  }, 60_000); // loads a second kernel and regenerates five times: over 5 s on a loaded machine
 
   it('replacing the file with a scaled one: refs follow by fingerprint and report rebinding', async () => {
     const refs = await downstream();

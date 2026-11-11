@@ -37,7 +37,7 @@ import {
 } from './geometry';
 import { kerr, meshOnlyError } from './helpers';
 import { mentionsImport } from './imports';
-import { type Candidate, type ResolvedTarget, resolveRef, type SubKind } from './resolve';
+import { baseName, type Candidate, type ResolvedTarget, resolveRef, type SubKind } from './resolve';
 import { type BodyState, mergeChain, primaryNaming, type WalkContext } from './state';
 import type { ReboundRef, RegenUnresolvedRef } from './types';
 
@@ -95,7 +95,8 @@ function candidates(ctx: WalkContext, ref: EntityRef, kind: SubKind): Candidate[
 /**
  * A ref whose name no body has any more, but which a boolean merged into another sub-shape
  * (ADR-078): resolve the survivor's name instead (nearest in the merge chain first), keeping the
- * ref's fingerprint for split survivors. Construction history, not a guess; the caller reports
+ * ref's fingerprint for split survivors, among the survivor's name family only (exact or `#k`;
+ * never a fingerprint-only match). Construction history, not a guess; the caller reports
  * it as `merged`. Null when the name was never merged or no survivor resolves.
  */
 async function resolveMerged(
@@ -107,7 +108,10 @@ async function resolveMerged(
 ): Promise<ResolvedTarget | null> {
   if (cands.some((c) => c.name === ref.name)) return null;
   for (const into of mergeChain(ctx.state, kind, ref.name)) {
-    const r = await resolveRef({ ...ref, name: into }, cands, rc);
+    // Only the survivor's own name or its split family: never a fingerprint-only match.
+    const family = cands.filter((c) => baseName(c.name) === baseName(into));
+    if (family.length === 0) continue;
+    const r = await resolveRef({ ...ref, name: into }, family, rc);
     if (r.ok) return { ...r.target, via: 'merged' };
   }
   return null;
