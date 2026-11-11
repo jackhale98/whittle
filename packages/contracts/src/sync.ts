@@ -338,7 +338,9 @@ export type DrawingMergeNoteKind =
   | 'duplicatePlacementDropped'
   | 'overrideRemovedWithAnnotation'
   | 'duplicateDatumLabel'
-  | 'duplicatePromotion';
+  | 'duplicatePromotion'
+  /** Each side removed the sheet the other kept: both are kept so the drawing has a sheet. */
+  | 'lastSheetKept';
 
 /** One line of a merge report; `kind` lets the UI group or icon it (`'folderMembership'`). */
 export interface MergeReportNote {
