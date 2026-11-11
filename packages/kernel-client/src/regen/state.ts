@@ -9,6 +9,7 @@
 import type {
   FeatureResult,
   Frame,
+  GrownRef,
   Id,
   ImportFeature,
   KernelError,
@@ -289,8 +290,11 @@ export interface WalkContext {
   importIds: Set<Id>;
   /** Imports used by this regen (sha256). */
   usedImports: Set<string>;
-  /** The feature being planned: id, the refs rebound so far and those resolved through a merge. */
-  current: { featureId: Id; rebound: ReboundRef[]; merged: MergedRef[] };
+  /**
+   * The feature being planned: id, the refs rebound so far, those resolved through a merge and
+   * those whose entity grew (M3.8).
+   */
+  current: { featureId: Id; rebound: ReboundRef[]; merged: MergedRef[]; grown: GrownRef[] };
   /** This regen's walk (cause.ts) and the walk entry of the feature being run. */
   walk: Walk;
   rec: WalkEntry | null;

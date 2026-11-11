@@ -67,8 +67,15 @@ std::string mesh(ShapeHandle shape, const std::string& optionsJson, MeshData& ou
 // 3×3, axes parallel to world) — ADR-004. 0 = geometry only.
 std::string massProperties(ShapeHandle shape, double densityKgPerMm3);
 
-// Result<ShapeFingerprints> (contracts kernel.ts), TopExp order.
+// Result<ShapeFingerprints> (contracts kernel.ts), TopExp order. Per face and edge memoised across
+// handles (ADR-084): a sub-shape shared with an earlier result is not integrated again.
 std::string fingerprints(ShapeHandle shape);
+
+// Cheap shape summary for the regen engine (ADR-084): Result<{"bbox":{"min":[..],"max":[..]},
+// "faceCount","edgeCount","vertexCount"}>. The bbox is exactly massProperties' (the same
+// geometry-exact Bnd_Box, BRepBndLib::AddOptimal without the tolerance gap) and so are the counts,
+// but nothing is integrated: no volume, area or inertia. Face boxes are memoised across handles.
+std::string bounds(ShapeHandle shape);
 
 // format: "step" | "stl" | "brep"; optionsJson: contracts ExportOptions. Writes to MEMFS and
 // returns Result<{"path":string,"files":[{"path":string,"name":string}]}> ("files" has one entry

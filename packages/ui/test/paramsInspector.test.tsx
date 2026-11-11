@@ -161,6 +161,22 @@ describe('PartInspector / MaterialPicker', () => {
     expect(screen.queryByText('Assign a material to see mass.')).toBeNull();
   });
 
+  it('shows a pending state while mass properties are computed, never a stale readout (ADR-084)', () => {
+    renderUI(
+      <PartInspector
+        part={{ name: 'P', material: { name: 'ABS', density: '1.04 g/cm^3' } }}
+        library={[]}
+        evaluate={(e) => evaluate(e, 'density')}
+        onSetMaterial={() => {}}
+        massPending
+      />,
+    );
+    expect(screen.getByTestId('mass-pending')).toHaveTextContent('Calculating mass properties…');
+    expect(screen.getByTestId('mass-pending')).toHaveAttribute('aria-busy', 'true');
+    expect(screen.queryByTestId('mass-readout')).toBeNull();
+    expect(screen.queryByText('Mass properties appear once the part has a solid.')).toBeNull();
+  });
+
   it('uses a custom format prop', () => {
     renderUI(
       <PartInspector

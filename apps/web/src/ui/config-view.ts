@@ -27,7 +27,10 @@ export interface ConfigurationView {
   defaultMessage: string | undefined;
   masses: ConfigMassRow[];
   /** Per configuration (`keyOf`): status, message and mass for the table. */
-  byKey: Record<string, { status: ConfigStatus; message?: string; mass?: MassSummaryView }>;
+  byKey: Record<
+    string,
+    { status: ConfigStatus; message?: string; mass?: MassSummaryView; massPending?: boolean }
+  >;
 }
 
 export const MISSING_TEXT =
@@ -35,6 +38,11 @@ export const MISSING_TEXT =
 
 export const formatMass = (m: MassSummaryView | undefined): string | undefined =>
   m?.mass !== undefined ? defaultMassFormat.mass(m.mass) : undefined;
+
+/** Text of a configuration's mass cell: pending while the live model's is computed (ADR-084). */
+export const MASS_PENDING_TEXT = 'Calculating…';
+export const massText = (b: { mass?: MassSummaryView; massPending?: boolean } | undefined) =>
+  b?.massPending ? MASS_PENDING_TEXT : formatMass(b?.mass);
 
 export function useConfigurationView(wb: Workbench): ConfigurationView {
   const doc = useSyncExternalStore(wb.subscribeDoc, wb.getDoc);
@@ -52,11 +60,16 @@ export function useConfigurationView(wb: Workbench): ConfigurationView {
   const live = regen?.source === 'live' ? (statuses as FeatureStatus[] | undefined) : undefined;
   const resolvedIssues = wb.config.resolved().issues;
   const mass = wb.massSummary();
+  const massPending = wb.massPending();
   for (const id of [null, ...configs.map((c) => c.id)] as (Id | null)[]) {
     const key = keyOf(id);
     if (id === activeId && !missing) {
       const s = configStatusOf(live, resolvedIssues, nameOf);
-      byKey[key] = { ...s, ...(live && mass ? { mass } : {}) };
+      byKey[key] = {
+        ...s,
+        ...(live && mass ? { mass } : {}),
+        ...(live && massPending ? { massPending } : {}),
+      };
       continue;
     }
     const e = builds.entries[key];
@@ -87,7 +100,7 @@ export function useConfigurationView(wb: Workbench): ConfigurationView {
   const def = get(null);
   const row = (id: Id | null, name: string, active: boolean): ConfigMassRow => {
     const b = get(id);
-    const m = formatMass(b.mass);
+    const m = massText(b);
     return { id, name, active, status: b.status, ...(m ? { mass: m } : {}) };
   };
   const masses: ConfigMassRow[] = [

@@ -311,7 +311,7 @@ export function createFakeModeling(kernel: KernelPort, options: FakeModelingOpti
       const mesh = await meshOf(b.shape, quality);
       if (!mesh) continue;
       const body: BodyResult = { id: b.id, shape: b.shape, mesh };
-      if (request.massProperties || part.material) {
+      if (request.massProperties ?? part.material !== undefined) {
         const mp = await kernel.massProperties(b.shape, density?.ok ? density.value : undefined);
         if (mp.ok) body.massProperties = mp.value;
       }

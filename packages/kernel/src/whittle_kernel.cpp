@@ -33,12 +33,134 @@ std::string metaJsonFor(const ShapeRecord& record, const Bnd_Box& box, int faceC
          ",\"edgeNames\":" + namesJson(record.edgeNames, edgeCount) + ",\"bbox\":" + bbox + "}";
 }
 
+// ---------------------------------------------------------------------------------------------
+// Per-sub-shape memo (ADR-084)
+// ---------------------------------------------------------------------------------------------
+// A boolean's result shares most of its faces and edges (TShapes) with its input, so of a
+// 400-face body whose last feature touched three faces, 397 faces already had their bounds and
+// fingerprints computed for an earlier handle. Those values are memoised per oriented sub-shape
+// (TShape, location, orientation: `std::hash<TopoDS_Shape>` and `IsEqual`) and computed by the
+// same code from the same sub-shape, so every result is bit-identical to computing it afresh. An
+// entry keeps its TShape alive; entries whose TShapes nothing outside the memo references are
+// swept at the next memo use after a `release` (at once after 64 releases, so a closed part's
+// sub-shapes do not linger) and whenever the memo has doubled since the last sweep. The façade is
+// single-threaded (whittle_kernel.h), like `ShapeRecord::topoCache`.
+struct SubShapeMemo {
+  // BRepBndLib::AddOptimal's per-face contribution (aLocBox.Get), or none for a void box.
+  std::unordered_map<TopoDS_Shape, std::pair<bool, std::array<double, 6>>> faceBoxes;
+  // The JSON objects `fingerprints` writes for a face / an edge.
+  std::unordered_map<TopoDS_Shape, std::string> faceFingerprints;
+  std::unordered_map<TopoDS_Shape, std::string> edgeFingerprints;
+  size_t sweptAt = 0;
+  int releasedSinceSweep = 0;
+
+  size_t size() const {
+    return faceBoxes.size() + faceFingerprints.size() + edgeFingerprints.size();
+  }
+
+  // Drops entries whose TShape is referenced only by the memo itself. Faces go first, so the
+  // edges they kept alive can go in the second pass.
+  void sweep() {
+    for (int pass = 0; pass < 2; ++pass) {
+      std::unordered_map<const TopoDS_TShape*, int> held;
+      auto count = [&](const auto& m) {
+        for (const auto& kv : m) held[kv.first.TShape().get()] += 1;
+      };
+      count(faceBoxes);
+      count(faceFingerprints);
+      count(edgeFingerprints);
+      auto prune = [&](auto& m) {
+        for (auto it = m.begin(); it != m.end();) {
+          const TopoDS_TShape* t = it->first.TShape().get();
+          if (t == nullptr || t->GetRefCount() <= held[t]) {
+            it = m.erase(it);
+          } else {
+            ++it;
+          }
+        }
+      };
+      prune(faceBoxes);
+      prune(faceFingerprints);
+      prune(edgeFingerprints);
+    }
+    sweptAt = size();
+    releasedSinceSweep = 0;
+  }
+
+  void maybeSweep() {
+    if (releasedSinceSweep > 0 || size() > 2 * sweptAt + 4096) sweep();
+  }
+
+  void released() {
+    if (++releasedSinceSweep >= 64) sweep();
+  }
+};
+
+SubShapeMemo& subShapeMemo() {
+  static SubShapeMemo memo;
+  return memo;
+}
+
 Bnd_Box exactBounds(const ShapeRecord& record) {
   Bnd_Box box;
   // Geometry-exact bounds without the tolerance gap BRepBndLib::Add would add. Mesh-only shapes
   // (STL import) have no geometry, so their triangulation is used.
-  BRepBndLib::AddOptimal(record.shape, box, /*useTriangulation=*/record.meshOnly,
-                         /*useShapeTolerance=*/false);
+  if (record.meshOnly) {
+    BRepBndLib::AddOptimal(record.shape, box, /*useTriangulation=*/true,
+                           /*useShapeTolerance=*/false);
+    return box;
+  }
+  // BRepBndLib::AddOptimal(shape, box, false, false) face by face, with each face's contribution
+  // memoised (ADR-084). AddOptimal on a compound holding only that face runs exactly its face
+  // loop for it (the face's edges and vertices are inside it, so the free edge and vertex loops
+  // add nothing) and `Update`s an empty box with that face's box; `Update` is a min/max, so the
+  // union is the same in any order.
+  SubShapeMemo& memo = subShapeMemo();
+  memo.maybeSweep();
+  BRep_Builder builder;
+  for (TopExp_Explorer ex(record.shape, TopAbs_FACE); ex.More(); ex.Next()) {
+    const TopoDS_Shape& face = ex.Current();
+    auto it = memo.faceBoxes.find(face);
+    if (it == memo.faceBoxes.end()) {
+      TopoDS_Compound one;
+      builder.MakeCompound(one);
+      builder.Add(one, face);
+      Bnd_Box fb;
+      BRepBndLib::AddOptimal(one, fb, /*useTriangulation=*/false, /*useShapeTolerance=*/false);
+      std::pair<bool, std::array<double, 6>> v{false, {0, 0, 0, 0, 0, 0}};
+      if (!fb.IsVoid()) {
+        v.first = true;
+        fb.Get(v.second[0], v.second[1], v.second[2], v.second[3], v.second[4], v.second[5]);
+      }
+      it = memo.faceBoxes.emplace(face, v).first;
+    }
+    if (it->second.first) {
+      const std::array<double, 6>& b = it->second.second;
+      box.Update(b[0], b[1], b[2], b[3], b[4], b[5]);
+    }
+  }
+  // Edges outside faces and vertices outside edges (sketches, wires): AddOptimal's own loops, on
+  // a compound of just those (cheap; not memoised).
+  TopoDS_Compound rest;
+  builder.MakeCompound(rest);
+  bool any = false;
+  for (TopExp_Explorer ex(record.shape, TopAbs_EDGE, TopAbs_FACE); ex.More(); ex.Next()) {
+    builder.Add(rest, ex.Current());
+    any = true;
+  }
+  for (TopExp_Explorer ex(record.shape, TopAbs_VERTEX, TopAbs_EDGE); ex.More(); ex.Next()) {
+    builder.Add(rest, ex.Current());
+    any = true;
+  }
+  if (any) {
+    Bnd_Box rb;
+    BRepBndLib::AddOptimal(rest, rb, /*useTriangulation=*/false, /*useShapeTolerance=*/false);
+    if (!rb.IsVoid()) {
+      double x0, y0, z0, x1, y1, z1;
+      rb.Get(x0, y0, z0, x1, y1, z1);
+      box.Update(x0, y0, z0, x1, y1, z1);
+    }
+  }
   return box;
 }
 
@@ -320,44 +442,77 @@ std::string massProperties(ShapeHandle shape, double densityKgPerMm3) {
   });
 }
 
+std::string bounds(ShapeHandle shape) {
+  return guarded("bounds", [&]() {
+    const auto record = requireShape(shape);
+    // Same box and counts as massProperties (prefilters and "unchanged" checks must decide
+    // exactly as they did with it), without the volume/area integration.
+    const Bnd_Box box = exactBounds(*record);
+    const Topo& topo = record->topo();
+    double x0 = 0, y0 = 0, z0 = 0, x1 = 0, y1 = 0, z1 = 0;
+    if (!box.IsVoid()) box.Get(x0, y0, z0, x1, y1, z1);
+    return okJson("{\"bbox\":{\"min\":" + jsonVec3(gp_XYZ(x0, y0, z0)) +
+                  ",\"max\":" + jsonVec3(gp_XYZ(x1, y1, z1)) +
+                  "},\"faceCount\":" + std::to_string(topo.faces.Extent()) +
+                  ",\"edgeCount\":" + std::to_string(topo.edges.Extent()) +
+                  ",\"vertexCount\":" + std::to_string(topo.vertices.Extent()) + "}");
+  });
+}
+
+std::string faceFingerprintJson(const TopoDS_Face& face) {
+  GProp_GProps props;
+  BRepGProp::SurfaceProperties(face, props);
+  const bool geometric = BRep_Tool::IsGeometric(face);
+  const char* type = "mesh";
+  std::string normal;
+  if (geometric) {
+    BRepAdaptor_Surface s(face, false);
+    type = surfaceTypeName(s.GetType());
+    gp_Pln pln;
+    gp_Dir n;
+    if (planeOf(face, pln, n)) normal = ",\"normal\":" + jsonVec3(n.XYZ());
+  }
+  return "{\"centroid\":" + jsonPoint(faceCentroid(face)) + normal +
+         ",\"area\":" + jsonNumber(props.Mass()) + ",\"surface\":\"" + type + "\"}";
+}
+
+std::string edgeFingerprintJson(const TopoDS_Edge& edge) {
+  const char* type = "degenerate";
+  if (!BRep_Tool::Degenerated(edge)) {
+    if (BRep_Tool::IsGeometric(edge)) {
+      BRepAdaptor_Curve c(edge);
+      type = curveTypeName(c.GetType());
+    } else {
+      type = "mesh";
+    }
+  }
+  return "{\"centroid\":" + jsonPoint(edgeCentroid(edge)) +
+         ",\"length\":" + jsonNumber(edgeLength(edge)) + ",\"curve\":\"" + type + "\"}";
+}
+
 std::string fingerprints(ShapeHandle shape) {
   return guarded("fingerprints", [&]() {
     const auto record = requireShape(shape);
     const Topo& topo = record->topo();
+    // Per face and edge memoised (ADR-084): the same JSON for the same oriented sub-shape.
+    SubShapeMemo& memo = subShapeMemo();
+    memo.maybeSweep();
+    auto cached = [](auto& map, const TopoDS_Shape& key, auto&& make) -> const std::string& {
+      auto it = map.find(key);
+      if (it == map.end()) it = map.emplace(key, make()).first;
+      return it->second;
+    };
     std::string json = "{\"faces\":[";
     for (int i = 1; i <= topo.faces.Extent(); ++i) {
       const TopoDS_Face& face = TopoDS::Face(topo.faces(i));
       if (i > 1) json.push_back(',');
-      GProp_GProps props;
-      BRepGProp::SurfaceProperties(face, props);
-      const bool geometric = BRep_Tool::IsGeometric(face);
-      const char* type = "mesh";
-      std::string normal;
-      if (geometric) {
-        BRepAdaptor_Surface s(face, false);
-        type = surfaceTypeName(s.GetType());
-        gp_Pln pln;
-        gp_Dir n;
-        if (planeOf(face, pln, n)) normal = ",\"normal\":" + jsonVec3(n.XYZ());
-      }
-      json += "{\"centroid\":" + jsonPoint(faceCentroid(face)) + normal +
-              ",\"area\":" + jsonNumber(props.Mass()) + ",\"surface\":\"" + type + "\"}";
+      json += cached(memo.faceFingerprints, face, [&]() { return faceFingerprintJson(face); });
     }
     json += "],\"edges\":[";
     for (int i = 1; i <= topo.edges.Extent(); ++i) {
       const TopoDS_Edge& edge = TopoDS::Edge(topo.edges(i));
       if (i > 1) json.push_back(',');
-      const char* type = "degenerate";
-      if (!BRep_Tool::Degenerated(edge)) {
-        if (BRep_Tool::IsGeometric(edge)) {
-          BRepAdaptor_Curve c(edge);
-          type = curveTypeName(c.GetType());
-        } else {
-          type = "mesh";
-        }
-      }
-      json += "{\"centroid\":" + jsonPoint(edgeCentroid(edge)) +
-              ",\"length\":" + jsonNumber(edgeLength(edge)) + ",\"curve\":\"" + type + "\"}";
+      json += cached(memo.edgeFingerprints, edge, [&]() { return edgeFingerprintJson(edge); });
     }
     json += "],\"vertices\":[";
     for (int i = 1; i <= topo.vertices.Extent(); ++i) {
@@ -450,6 +605,8 @@ std::string configureThreads(int32_t count) {
 void release(ShapeHandle shape) {
   try {
     handles().erase(shape);
+    // Sub-shapes only this handle used no longer need their memo entries (ADR-084).
+    subShapeMemo().released();
   } catch (...) {
     // Never throw across the boundary; releasing an unknown handle is a no-op.
   }

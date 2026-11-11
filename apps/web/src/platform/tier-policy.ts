@@ -12,7 +12,8 @@ export interface TierPolicy {
   tier: DeviceTier;
   /**
    * `configureRegen({ maxSpareResults })` / `createKernelClient({ regen: { maxSpareResults } })`.
-   * `undefined` = keep the regen engine's default (128).
+   * `undefined` = keep the regen engine's default (128, or three earlier states of a large part;
+   * ADR-084).
    */
   regenMaxSpareResults: number | undefined;
   /** Mesh quality the document settles at. Phones stay coarse (viewer-first, memory). */

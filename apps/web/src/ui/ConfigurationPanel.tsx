@@ -10,7 +10,7 @@ import { lazy, Suspense, useMemo } from 'react';
 import { keyOf } from '../app/config-model';
 import { useObservable } from '../app/observable';
 import type { Workbench } from '../app/workbench';
-import { formatMass, useConfigurationView } from './config-view';
+import { massText, useConfigurationView } from './config-view';
 import { LIBRARY, useDoc } from './Inspector';
 
 const ConfigurationTable = lazy(() => import('@wren-cad/ui/config-table'));
@@ -25,7 +25,7 @@ export default function ConfigurationPanel({ wb, touch }: { wb: Workbench; touch
     () =>
       (model?.rows ?? []).map((r) => {
         const b = view.byKey[keyOf(r.id)];
-        const mass = formatMass(b?.mass);
+        const mass = massText(b);
         return {
           ...r,
           status: b?.status ?? ('unbuilt' as const),
@@ -37,7 +37,7 @@ export default function ConfigurationPanel({ wb, touch }: { wb: Workbench; touch
   );
   if (!model || !state.panel) return null;
   const def = view.byKey[keyOf(null)];
-  const defMass = formatMass(def?.mass);
+  const defMass = massText(def);
   return (
     <section
       aria-label="Configurations"

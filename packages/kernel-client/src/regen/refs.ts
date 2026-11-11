@@ -171,11 +171,15 @@ export async function resolveSub(
   if (r.ok) {
     const t = r.target;
     ctx.pc.lastResolved.set(memo, { shape: t.shape, kind: t.kind, index: t.index });
-    if (t.name === ref.name && t.via === 'name') return t;
+    if (t.name === ref.name && t.via === 'name') {
+      await noteGrowth(core, ctx, ref, t, path);
+      return t;
+    }
     if (t.via === 'merged') {
       // Reported, not healed: the stored name stays valid (and returns to its own face if an
       // upstream edit un-merges it).
       ctx.current.merged.push({ path, name: ref.name, into: t.name });
+      await noteGrowth(core, ctx, ref, t, path);
       return t;
     }
     const fp = await core.fingerprints(t.shape);
@@ -214,6 +218,40 @@ export async function resolveSub(
   unresolved.push(u);
   return null;
 }
+
+/**
+ * M3.8 `FeatureStatus.grown`: a ref that resolved by its exact name (or a merge alias) to a body
+ * face or edge whose area / length is now more than `GROWN.ratio` times the stored fingerprint's,
+ * and more than `GROWN.min` (mm², mm) larger: the name still holds, but it may now mean more than
+ * was picked (a fillet edge that a face merge made 8 → 48 mm long). Report only, never a reason to
+ * re-resolve. Vertices have no size; sketch regions and planes are left out (editing a sketch is
+ * meant to change its regions). Only refs with a stored fingerprint are measured, from the
+ * per-handle fingerprints (memoised in the kernel per sub-shape, ADR-084).
+ */
+async function noteGrowth(
+  core: EngineCore,
+  ctx: WalkContext,
+  ref: EntityRef,
+  t: ResolvedTarget,
+  path: string,
+): Promise<void> {
+  const was =
+    t.kind === 'face'
+      ? ref.fingerprint?.area
+      : t.kind === 'edge'
+        ? ref.fingerprint?.length
+        : undefined;
+  if (was === undefined || !Number.isFinite(was) || !ctx.state.bodies.has(t.owner)) return;
+  const fp = await core.fingerprints(t.shape);
+  const now = t.kind === 'face' ? fp?.faces[t.index]?.area : fp?.edges[t.index]?.length;
+  if (now === undefined || !Number.isFinite(now)) return;
+  if (now > GROWN.ratio * Math.abs(was) && now - Math.abs(was) > GROWN.min) {
+    ctx.current.grown.push({ path, name: ref.name, was, now });
+  }
+}
+
+/** `grown` threshold (M3.8): more than 1.5× the stored size and more than 1 mm² / 1 mm larger. */
+export const GROWN = { ratio: 1.5, min: 1 } as const;
 
 export function resolveBody(
   ctx: WalkContext,

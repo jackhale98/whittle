@@ -41,6 +41,7 @@ import type {
   Feature,
   Id,
   KernelError,
+  MassProperties,
   Measurement,
   MeasureTarget,
   MeshBuffers,
@@ -127,7 +128,7 @@ export class RegenEngine {
     this.core = new EngineCore(deps);
     this.cache = new ResultCache(
       this.core,
-      validSpare(deps.options?.maxSpareResults) ?? 128,
+      validSpare(deps.options?.maxSpareResults),
       validSlots(deps.options?.maxVersionSlots) ?? DEFAULT_VERSION_SLOTS,
     );
     this.now = deps.options?.now ?? (() => performance.now());
@@ -166,7 +167,10 @@ export class RegenEngine {
   ): Promise<void> {
     return this.serial(async () => {
       const spare = validSpare(options.maxSpareResults);
-      if (spare !== undefined) this.cache.maxSpare = spare;
+      if (spare !== undefined) {
+        this.cache.maxSpare = spare;
+        this.cache.auto = false;
+      }
       const slots = validSlots(options.maxVersionSlots);
       if (slots !== undefined) {
         this.cache.maxSlots = slots;
@@ -413,6 +417,22 @@ export class RegenEngine {
     return side;
   }
 
+  /**
+   * `KernelApi.massProperties` through the engine (ADR-084): serialised with regens, and for
+   * shapes the regen cache owns, memoised per handle and density with the mass properties regens
+   * compute, so the app's deferred fetch after a regen never integrates a body twice.
+   */
+  massProperties(shape: ShapeHandle, density?: number): Promise<Result<MassProperties>> {
+    return this.serial(async () => {
+      const valid = density === undefined || (Number.isFinite(density) && density > 0);
+      if (valid && this.core.ownedHandles.has(shape)) {
+        const mp = await this.core.massOf(shape, density);
+        if (mp) return { ok: true, value: mp };
+      }
+      return this.core.kernel.massProperties(shape, density);
+    });
+  }
+
   /** Is `shape` owned by the regen cache (released by the engine, never by callers)? */
   ownsHandle(shape: ShapeHandle): boolean {
     return this.core.ownedHandles.has(shape);
@@ -483,7 +503,7 @@ export class RegenEngine {
       attachments: request.attachments ?? {},
       importIds: new Set(part.features.filter((f) => f.type === 'import').map((f) => f.id)),
       usedImports: new Set(),
-      current: { featureId: '', rebound: [], merged: [] },
+      current: { featureId: '', rebound: [], merged: [], grown: [] },
       walk: newWalk(),
       rec: null,
       index: new Map(part.features.map((f, i) => [f.id, i])),
@@ -519,7 +539,8 @@ export class RegenEngine {
 
     // Outputs.
     const density = densityOf(part, doc);
-    const wantMass = request.massProperties === true || part.material !== undefined;
+    // Contract (ADR-084): omitted = the part has a material; `false` skips them even then.
+    const wantMass = request.massProperties ?? part.material !== undefined;
     const finalBodies = [...ctx.state.bodies.values()];
     const bodies: BodyResult[] = [];
     for (const b of finalBodies) {
@@ -569,7 +590,7 @@ export class RegenEngine {
   // -------------------------------------------------------------------------------------------
 
   private async runFeature(ctx: WalkContext, f: Feature): Promise<RegenFeatureStatus> {
-    ctx.current = { featureId: f.id, rebound: [], merged: [] };
+    ctx.current = { featureId: f.id, rebound: [], merged: [], grown: [] };
     const status = (
       state: RegenFeatureStatus['state'],
       extra: Partial<RegenFeatureStatus> = {},
@@ -577,6 +598,7 @@ export class RegenEngine {
       const s = { featureId: f.id, state, cached: false, ms: 0, ...extra } as RegenFeatureStatus;
       if (ctx.current.rebound.length > 0) s.rebound = ctx.current.rebound;
       if (ctx.current.merged.length > 0) s.merged = ctx.current.merged;
+      if (ctx.current.grown.length > 0) s.grown = ctx.current.grown;
       return s;
     };
     const fail = (taint: string[]) => {

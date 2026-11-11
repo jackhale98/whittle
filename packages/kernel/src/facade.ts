@@ -40,6 +40,11 @@ export interface WhittleKernelModule {
   /** `Result<ShapeFingerprints>` JSON (TopExp order). */
   fingerprints(shape: number): string;
   /**
+   * `Result<ShapeBounds>` JSON: massProperties' bbox and topology counts without integrating
+   * anything (ADR-084). Optional: builds before it lack it (callers fall back to massProperties).
+   */
+  bounds?(shape: number): string;
+  /**
    * Writes `format` (`step` | `stl` | `brep`) to MEMFS. `shapesJson`: `ExportShape[]`;
    * `optionsJson`: contracts `ExportOptions`. Returns `Result<RawExportResult>` JSON; the caller
    * reads every file with `FS.readFile` and unlinks it.

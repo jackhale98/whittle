@@ -13,15 +13,23 @@ import type { RegenMemoryStats, RegenSlotStats } from './types';
 
 export class ResultCache {
   private readonly core: EngineCore;
+  /**
+   * Spare entries kept per slot. Configured (device tiers, `configureRegen`): a hard bound.
+   * Default (`auto`): at least `DEFAULT_SPARE_RESULTS`, and enough for `AUTO_SPARE_STATES` earlier
+   * full states of the part (ADR-084), while the Wasm heap is under `AUTO_SPARE_HEAP_BYTES`.
+   */
   maxSpare: number;
+  /** `maxSpare` was not configured: scale it with the part (see `spareFor`). */
+  auto: boolean;
   maxSlots: number;
   /** Per part, per slot (`'main'` and up to `maxSlots` version slots). */
   readonly parts = new Map<Id, Map<RegenSlot, PartCache>>();
   slotTick = 0;
 
-  constructor(core: EngineCore, maxSpare: number, maxSlots: number) {
+  constructor(core: EngineCore, maxSpare: number | undefined, maxSlots: number) {
     this.core = core;
-    this.maxSpare = maxSpare;
+    this.maxSpare = maxSpare ?? DEFAULT_SPARE_RESULTS;
+    this.auto = maxSpare === undefined;
     this.maxSlots = maxSlots;
   }
 
@@ -105,10 +113,23 @@ export class ResultCache {
     const spare = [...pc.entries.values()]
       .filter((e) => !keep.has(e.key))
       .sort((a, b) => b.lastUsed - a.lastUsed);
-    for (const e of spare.slice(this.maxSpare)) {
+    for (const e of spare.slice(this.spareFor(pc))) {
       await this.core.releaseEntry(e);
       pc.entries.delete(e.key);
     }
+  }
+
+  /**
+   * The spare budget of a slot. With the default budget, a 100-feature part whose early feature
+   * is edited leaves 100 spare entries per edit, so 128 kept only one earlier state and a second
+   * undo was a full regen: the default therefore keeps `AUTO_SPARE_STATES` states of the latest
+   * regen's size, unless the Wasm heap has already grown past `AUTO_SPARE_HEAP_BYTES`.
+   */
+  spareFor(pc: PartCache): number {
+    if (!this.auto) return this.maxSpare;
+    const heap = this.core.kernel.wasmHeapBytes?.() ?? -1;
+    if (heap > AUTO_SPARE_HEAP_BYTES) return this.maxSpare;
+    return Math.max(this.maxSpare, AUTO_SPARE_STATES * (pc.latest?.keys.size ?? 0));
   }
 
   /**
@@ -149,6 +170,13 @@ export class ResultCache {
     };
   }
 }
+
+/** Default spare budget per slot (and the floor of the automatic one). */
+export const DEFAULT_SPARE_RESULTS = 128;
+/** Earlier full states of a part the default budget keeps (undo depth of early edits). */
+export const AUTO_SPARE_STATES = 3;
+/** Above this Wasm heap the default budget stops scaling with the part (desktop memory). */
+export const AUTO_SPARE_HEAP_BYTES = 1.5 * 2 ** 30;
 
 /** Spare (unused by the latest regen) imported attachments kept per part, LRU. */
 const IMPORT_SPARE = 8;

@@ -354,6 +354,31 @@ for (const { variant, init } of VARIANTS) {
       k.release(result.shape);
     });
 
+    it('bounds: the bbox and counts of massProperties, without integrating (ADR-084)', () => {
+      const frame = { origin: [100, -50, 7] as Vec3, z: [0, 0, 1] as Vec3, x: [0, 1, 0] as Vec3 };
+      for (const feature of [box(), box({ frame })]) {
+        const result = ok<FeatureResult>(
+          k.execFeature(JSON.stringify(feature), JSON.stringify(values(10, 20, 30))),
+        );
+        const mp = ok<MassProperties>(k.massProperties(result.shape, 0));
+        const b = ok<Pick<MassProperties, 'bbox' | 'faceCount' | 'edgeCount' | 'vertexCount'>>(
+          (k.bounds as (shape: number) => string)(result.shape),
+        );
+        // Bit for bit: the regen engine's prefilters must decide exactly as they did with it.
+        expect(b).toEqual({
+          bbox: mp.bbox,
+          faceCount: 6,
+          edgeCount: 12,
+          vertexCount: 8,
+        });
+        k.release(result.shape);
+      }
+      for (const handle of [0, -3, 9999]) {
+        expect(err((k.bounds as (shape: number) => string)(handle)).code).toBe('INVALID_HANDLE');
+      }
+      expect(k.liveHandleCount()).toBe(0);
+    });
+
     it('returns structured errors and never throws', () => {
       const cases: { feature: string; inputs: string; code: KernelError['code'] }[] = [
         {

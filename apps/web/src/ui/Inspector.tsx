@@ -330,7 +330,7 @@ export function Inspector({
         library={LIBRARY}
         {...(() => {
           const m = wb.massSummary();
-          return m ? { mass: m } : {};
+          return m ? { mass: m } : { massPending: wb.massPending() };
         })()}
         evaluate={(e) => wb.evaluate(e, 'density')}
         onSetMaterial={(m, scope) => wb.config.setMaterial(m, scope)}

@@ -80,6 +80,11 @@ export interface PartInspectorProps {
   /** Built-in library (passed in so the UI package ships no data). */
   library: readonly MaterialLibraryItem[];
   mass?: MassSummary;
+  /**
+   * The geometry is newer than any mass properties (they are computed after it, ADR-084): shows
+   * "Calculating…" instead of a readout, never the previous part's values.
+   */
+  massPending?: boolean;
   format?: MassFormat;
   /** Density/other expression evaluation for the custom-material form. */
   evaluate(expr: Expr): EvalResult;
@@ -105,11 +110,21 @@ export function MassReadout({
   mass,
   format = defaultMassFormat,
   hasMaterial,
+  pending = false,
 }: {
   mass?: MassSummary;
   format?: MassFormat;
   hasMaterial: boolean;
+  /** Mass properties are being computed for the current geometry (ADR-084). */
+  pending?: boolean;
 }) {
+  if (pending) {
+    return (
+      <p className="text-ui text-fg-muted" aria-busy="true" data-testid="mass-pending">
+        Calculating mass properties…
+      </p>
+    );
+  }
   if (!mass) {
     return (
       <p className="text-ui text-fg-muted">Mass properties appear once the part has a solid.</p>
@@ -262,6 +277,7 @@ export function PartInspector({
   configuration,
   library,
   mass,
+  massPending = false,
   format,
   evaluate,
   formatValue,
@@ -363,7 +379,7 @@ export function PartInspector({
       </Section>
       {configuration ? <PropertiesSection cfg={configuration} touch={touch} /> : null}
       <Section title="Mass properties">
-        <MassReadout mass={mass} format={format} hasMaterial={!!mat} />
+        <MassReadout mass={mass} format={format} hasMaterial={!!mat} pending={massPending} />
         {configuration && configuration.masses.length > 1 ? (
           <div className="mt-3">
             <h4 className="pb-1 text-2xs font-semibold tracking-wider text-fg-muted uppercase">

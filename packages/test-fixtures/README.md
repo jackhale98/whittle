@@ -54,12 +54,14 @@ rewrites it).
 | --- | --- | --- |
 | Fixture is well formed, deterministic, matches the committed `.wrencad` | `pnpm test` (`stress-part.fixture.test.ts`) | yes |
 | Goldens on the real kernel: all features ok, analytic volume deltas, regression volume/area/faces | `WREN_STRESS=1` (`stress-part.golden.test.ts`) | nightly |
-| Node regen benchmark (cold, edit last / mid / early, suppress, undo, 50-edit memory) | `WREN_STRESS=1` (`stress-part.bench.test.ts`), `pnpm stress` | report-only |
+| Node regen benchmark (cold, edit last / mid / early, suppress, undo, second undo, 50-edit memory) | `WREN_STRESS=1` (`stress-part.bench.test.ts`), `pnpm stress` | report-only |
 | Browser benchmark (open, regen, edit, orbit, push/pull, memory) | `pnpm --filter @wren-cad/web stress` | report-only |
 
-A cold regen takes minutes on a loaded machine. `WREN_KERNEL_DIST=<dir>` benchmarks another kernel
-build (A/B), `WREN_STRESS_RUNS=<n>` sets the runs per scenario, `WREN_STRESS_OUT=<file>` writes JSON.
-Compare CPU time, not wall time, when the machine is shared.
+A cold regen takes 10-20 s (it took minutes before ADR-084). `WREN_KERNEL_DIST=<dir>` benchmarks
+another kernel build (A/B), `WREN_STRESS_RUNS=<n>` sets the runs per scenario, `WREN_STRESS_OUT=<file>`
+writes JSON, `WREN_STRESS_ONLY=<groups>` picks scenarios and `WREN_STRESS_MASS=deferred` regenerates
+with `massProperties: false` (ABS kept) and times the separate fetch at the material's density, as
+the app's live loop does when they are expensive (ADR-084). Compare CPU time, not wall time, when the machine is shared.
 
 ## Who uses them
 

@@ -128,6 +128,7 @@ last resort is an empty string (the worker reports it as a malformed result).
 | `mesh(shape, options, out)`                | `{}`; buffers in `MeshData`                                     |
 | `massProperties(shape, densityKgPerMm3)`   | `MassProperties`; `mass` + `inertia` when density > 0           |
 | `fingerprints(shape)`                      | `ShapeFingerprints` (TopExp order)                              |
+| `bounds(shape)`                            | `{bbox, faceCount, edgeCount, vertexCount}`, no integration     |
 | `exportShapes(shapes, format, options)`    | `{path, files:[{path,name}]}` in MEMFS (`step`, `stl`, `brep`)  |
 | `importFile(path, format)`                 | `{bodies:[{shape,name?}]}` (`step`, `iges`, `brep`, `stl`)      |
 | `measure(query)`                           | `Measurement` (M2; `{a, b?}`, see below)                        |
@@ -362,6 +363,15 @@ with a planar face bounded by a free-form edge, or an extrusion/revolution of a 
 NURBS and integrate adaptively (relative 1e-12, better than 1e-9 achieved; about 3× the default's time on
 those shapes only). Fingerprint areas and naming centroids keep the default; fingerprint lengths of
 free-form edges use `GCPnts_AbscissaPoint` (1e-10).
+
+**Sub-shape memo (ADR-084).** `bounds`, the bbox of `massProperties` and `mesh`, and `fingerprints`
+are memoised per oriented face and edge (TShape, location, orientation) across handles: a boolean's
+result shares most of its faces with its input, so only the faces a feature touched are measured
+again (the stress part's final body: bounds 440 → 1 ms, fingerprints 250 → 6 ms). The values come
+from the same code on the same sub-shape and are byte-identical (`test/memo.golden.test.ts`).
+Entries keep their TShape alive and are swept once nothing else references it. Mass properties
+are not memoised: OCCT integrates every face about the whole shape's rough barycentre, so a face's
+contribution changes with any vertex.
 
 ### Naming (packages/contracts/src/naming.ts)
 

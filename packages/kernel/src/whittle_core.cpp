@@ -147,6 +147,7 @@
 #include <climits>
 #include <cmath>
 #include <cstdio>
+#include <array>
 #include <cstdlib>
 #include <cstring>
 #include <exception>

@@ -13,6 +13,7 @@
 //   mesh(shape: number, optionsJson: string, out: MeshData): string
 //   massProperties(shape: number, densityKgPerMm3: number): string
 //   fingerprints(shape: number): string
+//   bounds(shape: number): string
 //   exportShapes(shapesJson: string, format: string, optionsJson: string): string
 //   importFile(path: string, format: string): string
 //   measure(queryJson: string): string
@@ -82,6 +83,7 @@ EMSCRIPTEN_BINDINGS(whittle_kernel) {
   emscripten::function("mesh", &whittle::bindings::meshInto);
   emscripten::function("massProperties", &whittle::massProperties);
   emscripten::function("fingerprints", &whittle::fingerprints);
+  emscripten::function("bounds", &whittle::bounds);
   emscripten::function("exportShapes", &whittle::exportShapes);
   emscripten::function("importFile", &whittle::importFile);
   emscripten::function("measure", &whittle::measure);

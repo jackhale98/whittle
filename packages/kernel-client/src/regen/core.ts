@@ -17,6 +17,7 @@ import type {
   ShapeFingerprints,
   ShapeHandle,
 } from '@wren-cad/contracts';
+import type { ShapeBounds } from '../kernel-api';
 import { edgeCircle, edgeEndpoints, edgeLine, faceAxis, type GeoQuery } from './datums';
 import { type ReprojectLinked, reprojectLinkedFallback } from './linked';
 import type { CacheEntry, RawImport } from './state';
@@ -38,6 +39,7 @@ export class EngineCore {
   /** Per-handle caches; dropped when the handle is released. */
   private readonly fps = new Map<ShapeHandle, ShapeFingerprints | null>();
   private readonly mass = new Map<string, MassProperties | null>();
+  private readonly bounds = new Map<ShapeHandle, ShapeBounds | null>();
   private readonly meshes = new Map<string, MeshBuffers>();
   /** Every handle owned by a cache entry (the UI must never release these). */
   readonly ownedHandles = new Set<ShapeHandle>();
@@ -66,6 +68,27 @@ export class EngineCore {
     return v;
   }
 
+  /**
+   * Bounding box and topology counts (ADR-084): the same values as `massOf`'s, without its
+   * volume / area integration (which dominated large-part regens). Served from `massOf`'s cache
+   * when that already has the handle.
+   */
+  async boundsOf(shape: ShapeHandle): Promise<ShapeBounds | null> {
+    const cached = this.bounds.get(shape);
+    if (cached !== undefined) return cached;
+    const known = this.mass.get(`${shape}|0`);
+    let v: ShapeBounds | null;
+    if (known) v = known;
+    else if (this.kernel.bounds) {
+      const r = await this.kernel.bounds(shape);
+      v = r.ok ? r.value : null;
+    } else {
+      v = await this.massOf(shape);
+    }
+    this.bounds.set(shape, v);
+    return v;
+  }
+
   async meshOf(shape: ShapeHandle, quality: MeshQuality): Promise<MeshBuffers | null> {
     const k = `${shape}|${quality}`;
     const cached = this.meshes.get(k);
@@ -79,6 +102,7 @@ export class EngineCore {
   async releaseHandle(shape: ShapeHandle): Promise<void> {
     this.ownedHandles.delete(shape);
     this.fps.delete(shape);
+    this.bounds.delete(shape);
     for (const k of [...this.mass.keys()]) if (k.startsWith(`${shape}|`)) this.mass.delete(k);
     this.meshes.delete(`${shape}|coarse`);
     this.meshes.delete(`${shape}|fine`);
@@ -150,7 +174,8 @@ export class EngineCore {
       massProperties: this.mass.size,
       meshes: this.meshes.size,
       meshBytes,
-      geometry: this.geoMemo.size,
+      // Bounds (ADR-084) are probed geometry too; the contract has no field of their own.
+      geometry: this.geoMemo.size + this.bounds.size,
     };
   }
 }

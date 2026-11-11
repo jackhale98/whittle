@@ -13,12 +13,14 @@ import type {
   ExportOptions,
   Id,
   KernelError,
+  MassProperties,
   Measurement,
   MeasureTarget,
   MeshQuality,
   ModelingApi,
   RegenResult,
   Result,
+  ShapeHandle,
   WrenDoc,
 } from '@wren-cad/contracts';
 
@@ -27,7 +29,9 @@ export type ModelingPort = Pick<
   ModelingApi,
   'regenerate' | 'refFor' | 'exportPart' | 'importFile' | 'closePart'
 > &
-  Partial<Pick<ModelingApi, 'configureRegen' | 'measure' | 'compare' | 'memoryStats'>>;
+  Partial<
+    Pick<ModelingApi, 'configureRegen' | 'measure' | 'compare' | 'memoryStats' | 'massProperties'>
+  >;
 
 export interface RegenOutcome {
   result: RegenResult;
@@ -68,6 +72,23 @@ export interface RegenLoopOptions {
   onResult(outcome: RegenOutcome): void;
   /** The engine threw (worker crashed, bad input). Regeneration continues on the next edit. */
   onError?(error: KernelError): void;
+  /**
+   * Mass properties for the latest delivered result (ADR-084): the same outcome, with
+   * `massProperties` on each body that came without them. Mass properties are a full volume
+   * integration of every body (seconds on a large part), so the loop only asks for them in the
+   * regen request while they are known to be cheap for this part (the last separate fetch took
+   * at most `INLINE_MASS_MS` and the last inline regen stayed within the edit budget). Otherwise
+   * it regenerates with `massProperties: false` (contract: none, even with a material) and
+   * fetches them with `massProperties(shape, density)` once nothing else is queued, so they never
+   * delay the geometry.
+   */
+  onMass?(outcome: RegenOutcome): void;
+  /**
+   * The density (kg/mm³) of the part's material in `doc`, as the engine would resolve it, for the
+   * deferred fetch; `undefined` without a material (or an unresolvable one). Without this option a
+   * part with a material always gets its mass properties inline.
+   */
+  density?(doc: WrenDoc, partId: Id): number | undefined;
   idle?: IdleScheduler;
   /** Skip the fine pass (tests, low-power). */
   fine?: boolean;
@@ -89,7 +110,10 @@ export interface Attachment {
 export interface RegenLoop {
   /** The document changed: regenerate it (coarse now, fine when idle). */
   request(): void;
-  /** Resolves when nothing is running or queued and the latest result has been delivered. */
+  /**
+   * Resolves when nothing is running or queued and the latest result has been delivered, with
+   * its mass properties when `onMass` is set.
+   */
   whenIdle(): Promise<void>;
   /**
    * Runs `fn` with the engine to itself: waits for the loop to go idle, holds back every regen
@@ -107,6 +131,33 @@ export interface RegenLoop {
 }
 
 const firstPart = (doc: WrenDoc): Id | null => doc.parts[0]?.id ?? null;
+
+/** Mass memo key: a shape at a density (a material or parameter edit keeps the shapes). */
+const massKey = (shape: ShapeHandle, density: number | undefined) => `${shape}|${density ?? ''}`;
+
+/** `result` with the mass properties already fetched for its (unchanged) shapes filled in. */
+function withKnownMass(
+  result: RegenResult,
+  memo: ReadonlyMap<string, MassProperties>,
+  density: number | undefined,
+) {
+  const known = (b: RegenResult['bodies'][number]) =>
+    lacksMass(b) ? memo.get(massKey(b.shape, density)) : undefined;
+  if (memo.size === 0 || !result.bodies.some(known)) return result;
+  const bodies = result.bodies.map((b) => {
+    const mp = known(b);
+    return mp ? { ...b, massProperties: mp } : b;
+  });
+  return { ...result, bodies };
+}
+
+/** A separate mass fetch at most this long (ms) puts mass properties back into the regen request. */
+export const INLINE_MASS_MS = 40;
+/** An inline-mass regen longer than this (ms, the PLAN §10 edit budget) defers them again. */
+const INLINE_MASS_REGEN_MS = 300;
+
+/** A live body without mass properties (cached-mesh bodies have no shape: `0`). */
+const lacksMass = (b: RegenResult['bodies'][number]) => !b.massProperties && b.shape !== 0;
 
 function asKernelError(err: unknown): KernelError {
   return {
@@ -139,9 +190,16 @@ export function createRegenLoop(options: RegenLoopOptions): RegenLoop {
   let cancelFine: (() => void) | null = null;
   let finePendingFor: WrenDoc | null = null;
   let waiters: Array<() => void> = [];
+  /** The latest delivered outcome while its bodies still lack mass properties. */
+  let massFor: RegenOutcome | null = null;
+  /** Mass properties by shape handle (never reused) and density, pruned to the latest bodies. */
+  let massMemo = new Map<string, MassProperties>();
+  const wantMass = options.onMass !== undefined && port.massProperties !== undefined;
+  /** Ask for mass properties in the regen request (cheap for this part, see `onMass`). */
+  let inlineMass = !wantMass;
 
   const settle = () => {
-    if (busy || dirty || finePendingFor) return;
+    if (busy || dirty || finePendingFor || massFor) return;
     const w = waiters;
     waiters = [];
     for (const fn of w) fn();
@@ -159,13 +217,17 @@ export function createRegenLoop(options: RegenLoopOptions): RegenLoop {
       );
       const attachments: Record<string, Uint8Array> = {};
       for (const a of fresh) attachments[a.path] = a.bytes;
+      const material = doc.parts.find((p) => p.id === partId)?.material !== undefined;
+      // Deferred needs the density for the separate fetch; without it, with a material, inline.
+      const inline = inlineMass || (material && !options.density);
       const result = await port.regenerate({
         doc,
         partId,
         quality,
-        massProperties: true,
+        massProperties: inline,
         ...(fresh.length ? { attachments } : {}),
       });
+      if (inline && wantMass && result.totalMs > INLINE_MASS_REGEN_MS) inlineMass = false;
       for (const a of fresh) sent.add(`${partId}:${a.sha256}`);
       if (disposed) return;
       const stale =
@@ -175,10 +237,60 @@ export function createRegenLoop(options: RegenLoopOptions): RegenLoop {
       if (!stale) {
         lastDelivered = mySeq;
         lastRevision.set(result.partId, result.revision);
-        onResult({ result, quality, doc });
+        const density = options.density?.(doc, result.partId);
+        const outcome = { result: withKnownMass(result, massMemo, density), quality, doc };
+        // The memo follows the latest bodies (inline mass properties included).
+        const memo = new Map<string, MassProperties>();
+        for (const b of outcome.result.bodies) {
+          if (b.massProperties) memo.set(massKey(b.shape, density), b.massProperties);
+        }
+        massMemo = memo;
+        onResult(outcome);
+        massFor = wantMass && outcome.result.bodies.some(lacksMass) ? outcome : null;
       }
     } catch (err) {
       if (!disposed) onError?.(asKernelError(err));
+    } finally {
+      busy = false;
+    }
+  }
+
+  /** Fetches the missing mass properties of `o` (one body at a time; yields to a new edit). */
+  async function runMass(o: RegenOutcome): Promise<void> {
+    if (!port.massProperties) return;
+    busy = true;
+    try {
+      const density = options.density?.(o.doc, o.result.partId);
+      const memo = new Map<string, MassProperties>();
+      let spent = 0;
+      let fetched = 0;
+      for (const b of o.result.bodies) {
+        const key = massKey(b.shape, density);
+        if (b.massProperties) memo.set(key, b.massProperties);
+        if (!lacksMass(b)) continue;
+        const known = massMemo.get(key);
+        if (known) {
+          memo.set(key, known);
+          continue;
+        }
+        // A new edit goes first; the rest waits for the next idle moment.
+        if (dirty || disposed) break;
+        const t0 = performance.now();
+        const r = await port.massProperties?.(b.shape, density);
+        spent += performance.now() - t0;
+        fetched++;
+        if (r?.ok) memo.set(key, r.value);
+      }
+      massMemo = memo;
+      if (fetched > 0) inlineMass = spent <= INLINE_MASS_MS;
+      if (disposed || dirty || fetched === 0) return;
+      const bodies = o.result.bodies.map((b) => {
+        const mp = lacksMass(b) ? memo.get(massKey(b.shape, density)) : undefined;
+        return mp ? { ...b, massProperties: mp } : b;
+      });
+      options.onMass?.({ ...o, result: { ...o.result, bodies } });
+    } catch {
+      // Informational only: the inspector shows no mass until the next result.
     } finally {
       busy = false;
     }
@@ -202,6 +314,12 @@ export function createRegenLoop(options: RegenLoopOptions): RegenLoop {
 
   function pump(): void {
     if (disposed || busy) return;
+    if (!dirty && !finePendingFor && massFor) {
+      const o = massFor;
+      massFor = null;
+      void runMass(o).then(pump);
+      return;
+    }
     if (dirty) {
       dirty = false;
       cancelFine?.();
@@ -224,11 +342,11 @@ export function createRegenLoop(options: RegenLoopOptions): RegenLoop {
       pump();
     },
     whenIdle() {
-      if (!busy && !dirty && !finePendingFor) return Promise.resolve();
+      if (!busy && !dirty && !finePendingFor && !massFor) return Promise.resolve();
       return new Promise((resolve) => waiters.push(resolve));
     },
     async exclusive(fn) {
-      while (busy || dirty || finePendingFor) {
+      while (busy || dirty || finePendingFor || massFor) {
         await new Promise<void>((resolve) => waiters.push(resolve));
         if (disposed) break;
       }
