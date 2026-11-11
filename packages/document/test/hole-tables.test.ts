@@ -6,8 +6,8 @@ import {
   HOLE_TABLES,
   holeRow,
   ISO_HOLES,
-  resolveHoleSize,
 } from '../src/hole-tables';
+import { resolveHoleSize } from '../src/hole-size';
 
 const inch = (v: number) => v * 25.4;
 const DEG = Math.PI / 180;
