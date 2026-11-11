@@ -38,6 +38,8 @@ import {
   type DocumentStoreImpl,
   expressionEngine,
   scopeOf,
+  ulid,
+  validateParamName,
 } from '@wren-cad/document';
 import {
   type ExportRequest,
@@ -498,10 +500,12 @@ export class Workbench {
     );
     this.heals = new Map();
     this.healsFor = null;
-    const lbl = label ?? folded.label;
+    // A joined edit (Make parameter) merges into the step that opened it and keeps its label.
+    const lbl = this.joinKey !== null ? undefined : (label ?? folded.label);
+    const key = this.joinKey ?? coalesceKey;
     const r = this.store.apply(folded.command, {
       ...(lbl ? { label: lbl } : {}),
-      ...(coalesceKey ? { coalesceKey } : {}),
+      ...(key ? { coalesceKey: key } : {}),
     });
     if (!r.ok) {
       this.toast(r.error, 'error');
@@ -511,7 +515,33 @@ export class Workbench {
   }
 
   commit(): void {
+    if (this.joinKey !== null) return; // closed by `endMakeParameter`
     this.store.commit();
+  }
+
+  /** Set by `makeParameter`: every `apply` until `endMakeParameter` joins its undo step (ADR-080). */
+  private joinKey: string | null = null;
+
+  /** Make parameter: adds `name = expr`; the field's next edit (it commits the name) joins the step. */
+  makeParameter(name: string, expr: Expr): string | undefined {
+    const bad = validateParamName(name);
+    if (bad) return bad;
+    if (this.doc.params.some((p) => p.name === name)) return `“${name}” is already used`;
+    const key = `make-param:${ulid()}`;
+    const param = { id: ulid(), name, expr };
+    if (!this.apply({ kind: 'addParam', param }, `Make parameter ${name}`, key)) return 'Failed';
+    this.joinKey = key;
+    return undefined;
+  }
+
+  /** Closes the step, once a sketch's queued dimension edit has landed. */
+  endMakeParameter(): void {
+    const end = () => {
+      this.joinKey = null;
+      this.store.commit();
+    };
+    if (this.sketch?.busy) void this.track(this.sketch.whenSettled().then(end));
+    else end();
   }
 
   /** Undo/redo wait for sketch edits still being solved (they land first, then are undone). */

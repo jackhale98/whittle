@@ -50,6 +50,7 @@ import { M3Gallery } from './m3Gallery';
 import { M35Gallery } from './m35Gallery';
 import { M36Gallery } from './m36Gallery';
 import { M37Gallery } from './m37Gallery';
+import { ParamsGallery } from './paramsGallery';
 import { SectionGallery } from './sectionGallery';
 import { SyncGallery } from './syncGallery';
 
@@ -587,6 +588,8 @@ export function Gallery({
       case 'm3-tree':
       case 'm3-bar':
         return <M3Gallery section={section} tier={tier} />;
+      case 'params-link':
+        return <ParamsGallery tier={tier} />;
       case 'section-chip':
       case 'section-panel':
         return <SectionGallery section={section} tier={tier} />;

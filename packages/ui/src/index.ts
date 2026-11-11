@@ -31,7 +31,11 @@ export {
 } from './components/floating';
 export { ChamferIcon } from './components/icons';
 export { PromptChip, type PromptChipProps } from './components/PromptChip';
-export { ParamNamesContext } from './components/paramNames';
+export {
+  type ParamLinks,
+  ParamLinksContext,
+  ParamNamesContext,
+} from './components/paramNames';
 export {
   Button,
   type ButtonProps,
@@ -287,6 +291,9 @@ export {
   writeNavigation,
 } from './logic/navigationStorage';
 export { NEST_SKETCHES_KEY, readNestSketches, writeNestSketches } from './logic/nestPref';
+export { beginParamDrag, registerParamDrop } from './logic/paramDrag';
+export { type ParamInfo, paramRefs } from './logic/paramLinks';
+export { RESERVED_WORDS, UNIT_WORDS, validateNewParamName } from './logic/paramName';
 export {
   clampCenter,
   layoutSlots,
@@ -376,6 +383,7 @@ export {
   type ParamsConfiguration,
   ParamsTable,
   type ParamsTableProps,
+  type ParamUse,
 } from './params/ParamsTable';
 export { AppShell, type AppShellProps } from './shells/AppShell';
 export { BottomSheet, type BottomSheetProps } from './shells/BottomSheet';

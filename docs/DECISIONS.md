@@ -2123,6 +2123,7 @@ Owner: "hard to turn off, and section doesn't let you rotate the cut plane at al
 - **Contract proposal (not made).** If arcs need to be first-class: `HandleSpec` gains `{ kind: 'arc'; origin: Vec3; axis: Vec3; start: Vec3; sweep: number; radius?: number }` (radius in CSS px, constant while zooming), drawn as a thick arc and hit-tested against the arc; `PickHit` for it stays `{ kind: 'handle', entity: <id> }`.
 
 
+
 ## ADR-074 — Part configurations: sparse overrides over an implicit Default, resolved before regen (M3.7, 2026-11-10)
 
 Owner decisions D1–D4 are in PLAN §M3.7; the research is `docs/ux-research/reports/Drawings and configurations UX.md` (List 1).
@@ -2196,6 +2197,24 @@ Owner bug report: after dimensioning a circle, its centre could not be grabbed, 
   - A click on the selected label, a double-click or Enter edits it.
   - Delete or Backspace (on the label or with it selected) removes it, and so does the Delete chip, shown with the radius/diameter and reference chips when the label is selected or being edited.
   - A label with no selection model (`onSelect` absent, e.g. the UI harness) still edits on a click.
+
+## ADR-080 — Parameters you can find and apply: autocomplete, Make parameter, link display, Used by, drag (2026-11-10)
+
+Owner feedback: "how do we apply parameters to actual dimensions? I couldn't find a way to utilize them." Typing a name into a value field worked, but nothing on a desktop said so. Other CAD tools solve it with autocomplete in the dimension box (Fusion), named variables you pick (Onshape) and linked values (SolidWorks).
+
+**Decision.** Four additions to every value field, none of them a dialog (PLAN §9.2):
+- **Autocomplete.** `ExpressionInput` offers matching parameters with their evaluated values in an inline listbox. The input is a plain textbox until the list opens, then it is an ARIA combobox (`role=combobox`, `aria-expanded`, `aria-controls`, `aria-activedescendant`). ↑/↓ move and wrap; Enter and Tab accept; Esc closes the list and keeps the edit. The identifier under the caret is replaced, so it works mid-formula. An identifier after a number is a unit (`25mm`, `2 mm`) and is never completed. `fx`, a leading `=` (dropped) and Alt+↓ open the full list. Enter on a name that is already complete commits as before. The role is not permanent because 100+ tests and E2E steps select fields as `textbox`.
+- **Make parameter.** The last row of the full list. It opens an inline form (name, the expression it will get, live validation). A bare number takes the field's unit (`12` becomes `12 mm`). Names are checked against existing parameters, units and built-ins (`logic/paramName.ts`; `apps/web` has a test that the lists match the document's `UNITS`, `FUNCTIONS` and `CONSTANTS`). The host does it as one undo step: `Workbench.makeParameter` adds the parameter and sets `joinKey`, so every `apply` until `endMakeParameter` merges into the same history entry and `commit()` is a no-op. A sketch dimension commits through the sketch queue, so `endMakeParameter` waits for it to land.
+- **Link display.** A field whose text refers to a parameter gets an `fx` badge, an accent colour and a screen-reader description. A dimension label shows `width = Ø80` (exact name) or an `fx` badge (formula). The accessible name starts with the visible text (WCAG 2.5.3, axe `label-content-name-mismatch`), and the badge is CSS, not text. "Used by N" in the Params tab, from `paramUsage(doc)` (`apps/web/src/app/param-usage.ts`): direct references through `exprFields`, one entry per field, reference dimensions skipped. It is computed in a lazy chunk. An entry selects the feature; a sketch dimension opens the sketch and selects the dimension (`selectParamUse`).
+- **Drag.** The Params tab has a link button per parameter. Drag uses pointer events, because HTML5 drag and drop does not fire for touch. `logic/paramDrag.ts` keeps a registry of drop targets (`data-param-drop`), finds the one under the pointer with `elementsFromPoint` (so it works over the HTML overlays on the viewport), and shows a ghost chip. Fields and dimension labels register themselves. A drop commits the name in one undo step. Esc cancels a drag.
+
+**Values come from the host.** The shell builds `ParamLinksContext` from `paramsTable.params` and the app's own `evaluate`, so the list shows exactly what the document evaluates to (including the resolved configuration once `evaluate` takes it). The UI never evaluates parameters itself.
+
+**Bundle.** The initial route grew by 1.07 kB gzip (248.0 to 249.07 kB). The list, form, fx button, badge and drop registration are one lazy chunk (`ParamAssist`) loaded when a field first has parameters to offer; `ExpressionInput` keeps only the slots and the key/blur hooks. `paramUsage` and `selectParamUse` are lazy too.
+
+**Known limit.** While a sketch is open, changing a parameter does not redraw the sketch overlay until the next solve (the document stores the last solved geometry); the extruded body and a reopened sketch do follow. Fixing it means re-solving on parameter change, which writes to the document, so it needs its own decision.
+
+**Contracts.** No change. Proposal for the lead, optional: a `ParamUse` shape in `contracts` if the sync/compare features want to show where a parameter is used.
 
 ## ADR-078 — Booleans merge the coplanar faces they create; absorbed names resolve as reported aliases (2026-11-10)
 

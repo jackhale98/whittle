@@ -22,10 +22,14 @@ import {
   splitSpan,
 } from '../format';
 import { applyKeypadKey, type KeypadKey } from '../logic/keypad';
-import { ParamNamesContext } from './paramNames';
+import type { AssistApi, AssistState } from '../logic/paramLinks';
+import { ParamLinksContext, ParamNamesContext } from './paramNames';
 import { cn } from './primitives';
 
 const Keypad = lazy(() => import('./Keypad'));
+// Parameter autocomplete, fx, "Make parameter", the link badge and the drop target load on first
+// use: a field with no parameters to offer never fetches them (ADR-080).
+const ParamAssist = lazy(() => import('./ParamAssist'));
 
 /** True on devices whose primary pointer is a finger / pencil. */
 export function useCoarsePointer(): boolean {
@@ -78,6 +82,11 @@ export interface ExpressionInputProps {
   testId?: string;
   /** 16 px text (stops iOS Safari zooming into the field on focus). Default off: 13 px. */
   largeText?: boolean;
+  /**
+   * Parameters in this field (ADR-080): `full` = autocomplete, fx list, "Make parameter", link
+   * badge and drop target (default); `complete` = autocomplete, fx list and badge only; `off` = none.
+   */
+  paramLinks?: 'full' | 'complete' | 'off';
 }
 
 type Evaluated = { text: string; result: EvalResult | undefined };
@@ -100,6 +109,7 @@ export function ExpressionInput({
   step = 1,
   keypad = 'auto',
   paramNames,
+  paramLinks = 'full',
   label,
   placeholder,
   disabled,
@@ -113,17 +123,25 @@ export function ExpressionInput({
   largeText,
 }: ExpressionInputProps) {
   const ctxNames = useContext(ParamNamesContext);
+  const links = useContext(ParamLinksContext);
   const names = paramNames ?? ctxNames;
   const [draft, setDraft] = useState<string | null>(null);
   const [focused, setFocused] = useState(false);
   const [keypadOn, setKeypadOn] = useState(false);
   const [osKeyboard, setOsKeyboard] = useState(false);
   const [box, setBox] = useState<HTMLDivElement | null>(null);
+  const [startSlot, setStartSlot] = useState<HTMLElement | null>(null);
+  const [endSlot, setEndSlot] = useState<HTMLElement | null>(null);
+  const [sel, setSel] = useState<[number, number]>([0, 0]);
+  const [assist, setAssist] = useState<AssistState | null>(null);
+  const assistApi = useRef<AssistApi>({});
   const input = useRef<HTMLInputElement>(null);
   /** A preview was sent since the last commit or cancel. */
   const previewed = useRef(false);
   const mirror = useRef<HTMLSpanElement>(null);
   const errorId = useId();
+  const listId = useId();
+  const linkId = useId();
   const coarse = useCoarsePointer();
   const wantsKeypad = !disabled && (keypad === 'always' || (keypad === 'auto' && coarse));
 
@@ -159,6 +177,8 @@ export function ExpressionInput({
   }, [autoFocus]);
 
   const closeKeypad = useCallback(() => setKeypadOn(false), []);
+  const hasParams = names.length > 0 || links.params.length > 0 || !!links.make;
+  const withParams = !disabled && paramLinks !== 'off' && hasParams;
 
   function commit(raw: string): boolean {
     if (!raw.trim() && !allowEmpty) return false;
@@ -176,6 +196,7 @@ export function ExpressionInput({
 
   function edit(next: string) {
     setDraft(next);
+    assistApi.current.onEdit?.();
     if (!onPreview) return;
     if (!evaluate || (next.trim() && evaluate(next).ok)) {
       previewed.current = true;
@@ -190,7 +211,32 @@ export function ExpressionInput({
     if (was) onCancel?.();
   }
 
+  // A parameter dragged from the Params tab and dropped on the field replaces the value. An unfit
+  // one (an angle on a length) is put in the field instead, so the error explains itself.
+  function dropParam(name: string) {
+    if (evaluate && !evaluate(name).ok) {
+      setDraft(name);
+      input.current?.focus();
+    } else commit(name);
+  }
+
+  function leave() {
+    if (draft !== null) {
+      if (draft === value) setDraft(null);
+      else commit(draft);
+    }
+  }
+
+  function onChange(e: ChangeEvent<HTMLInputElement>) {
+    const next = e.target.value;
+    const caret = e.target.selectionStart ?? next.length;
+    if (assistApi.current.onChange?.(next, caret, text)) return;
+    setSel([caret, caret]);
+    edit(next);
+  }
+
   function onKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+    if (assistApi.current.onKeyDown?.(e)) return;
     if (e.key === 'Enter') {
       e.preventDefault();
       if (commit(text)) {
@@ -244,7 +290,9 @@ export function ExpressionInput({
   }
 
   const [pre, mid, post] = splitSpan(text, error);
-  const invalid = !!error && (draft !== null || !focused);
+  // An error waits while the parameter list is open: the name is still being typed (and `=`
+  // empties the field on purpose).
+  const invalid = !!error && (draft !== null || !focused) && !assist?.listOpen;
   const tall = size === 'touch';
 
   return (
@@ -252,6 +300,7 @@ export function ExpressionInput({
       <div
         ref={setBox}
         data-invalid={invalid || undefined}
+        data-linked={assist?.linked ?? undefined}
         data-testid={testId}
         className={cn(
           'group/expr flex min-w-0 items-center gap-1.5 rounded-control bg-surface-2 px-2.5 transition-shadow duration-fast',
@@ -262,6 +311,7 @@ export function ExpressionInput({
             : 'shadow-[inset_0_0_0_1px_var(--color-border)] focus-within:shadow-[inset_0_0_0_2px_var(--color-accent)] hover:shadow-[inset_0_0_0_1px_var(--color-border-strong)] focus-within:hover:shadow-[inset_0_0_0_2px_var(--color-accent)]',
         )}
       >
+        {withParams ? <span ref={setStartSlot} className="contents" /> : null}
         <div className="relative min-w-0 flex-1 self-stretch">
           {/* Mirror: same metrics as the input, invisible text, wavy underline under the error span. */}
           <div
@@ -288,10 +338,27 @@ export function ExpressionInput({
           <input
             ref={input}
             type="text"
+            // A combobox only while its list is open; the rest of the time it is a plain textbox.
+            {...(assist?.listOpen
+              ? {
+                  role: 'combobox' as const,
+                  'aria-expanded': true,
+                  'aria-controls': assist.listId,
+                  'aria-haspopup': 'listbox' as const,
+                  'aria-activedescendant': assist.activeId,
+                }
+              : {})}
+            aria-autocomplete={withParams ? 'list' : undefined}
             aria-label={label}
             aria-invalid={invalid || undefined}
-            aria-describedby={invalid ? errorId : undefined}
-            inputMode={keypadOn ? 'none' : osKeyboard ? 'text' : undefined}
+            aria-describedby={cn(invalid && errorId, assist?.linked && linkId) || undefined}
+            inputMode={
+              keypadOn || (wantsKeypad && !osKeyboard && assist?.listOpen)
+                ? 'none'
+                : osKeyboard
+                  ? 'text'
+                  : undefined
+            }
             autoComplete="off"
             autoCapitalize="off"
             autoCorrect="off"
@@ -299,7 +366,13 @@ export function ExpressionInput({
             disabled={disabled}
             placeholder={placeholder}
             value={text}
-            onChange={(e: ChangeEvent<HTMLInputElement>) => edit(e.target.value)}
+            onChange={onChange}
+            onSelect={
+              withParams
+                ? (e) =>
+                    setSel([e.currentTarget.selectionStart ?? 0, e.currentTarget.selectionEnd ?? 0])
+                : undefined
+            }
             onScroll={syncMirror}
             onKeyDown={onKeyDown}
             onFocus={(e) => {
@@ -307,18 +380,19 @@ export function ExpressionInput({
               e.currentTarget.select();
               if (wantsKeypad && !osKeyboard) setKeypadOn(true);
             }}
-            onBlur={() => {
+            onBlur={(e) => {
+              // Focus moving into the parameter list or the make form is not leaving the field;
+              // while the make form is open the edit is kept (it ends with the form).
+              const keep = assistApi.current.onBlur?.(e.relatedTarget);
               setFocused(false);
               setOsKeyboard(false);
               closeKeypad();
-              if (draft !== null) {
-                if (draft === value) setDraft(null);
-                else commit(draft);
-              }
+              if (!keep) leave();
             }}
             className={cn(
               largeText ? 'text-base' : 'text-ui',
-              'tnum relative h-full w-full min-w-0 bg-transparent text-fg outline-none placeholder:text-fg-subtle disabled:text-fg-muted',
+              'tnum relative h-full w-full min-w-0 bg-transparent outline-none placeholder:text-fg-subtle disabled:text-fg-muted',
+              assist?.linked ? 'text-accent-text' : 'text-fg',
               align === 'right' && 'text-right',
             )}
           />
@@ -352,11 +426,45 @@ export function ExpressionInput({
             {unitHint}
           </span>
         ) : null}
+        {withParams ? <span ref={setEndSlot} className="contents" /> : null}
       </div>
       {invalid && error ? (
         <p id={errorId} role="alert" className="text-2xs leading-4 text-danger-text">
           {error.message}
         </p>
+      ) : null}
+      {withParams && box ? (
+        <Suspense fallback={null}>
+          <ParamAssist
+            api={assistApi}
+            input={input}
+            box={box}
+            startSlot={startSlot}
+            endSlot={endSlot}
+            text={text}
+            sel={sel}
+            focused={focused}
+            paramNames={paramNames}
+            paramLinks={paramLinks}
+            valid={!!ok}
+            unitHint={unitHint}
+            label={label}
+            size={size}
+            disabled={!!disabled}
+            keypadOn={keypadOn}
+            closeKeypad={closeKeypad}
+            edit={edit}
+            onMade={(name) => {
+              setDraft(null);
+              onCommit(name);
+            }}
+            onDrop={dropParam}
+            leave={leave}
+            linkId={linkId}
+            listId={listId}
+            onState={setAssist}
+          />
+        </Suspense>
       ) : null}
       {keypadOn && box ? (
         <Suspense fallback={null}>

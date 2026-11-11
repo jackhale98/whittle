@@ -14,11 +14,13 @@ import {
 } from 'react';
 import { BirdMark } from '../brand/Bird';
 import type { PaletteCommand } from '../components/CommandPalette';
-import { ParamNamesContext } from '../components/paramNames';
+import { type ParamLinks, ParamLinksContext, ParamNamesContext } from '../components/paramNames';
 import { Button, cn, IconButton, TooltipProvider } from '../components/primitives';
 import { toolHint, tools } from '../components/tools';
 import { ExportMenu } from '../export/ExportMenu';
 import type { FeatureTreeProps } from '../features/FeatureTree';
+import { defaultFormatValue } from '../format';
+import type { ParamInfo } from '../logic/paramLinks';
 import type { SheetSnap } from '../logic/sheet';
 import type { ParamsTableProps } from '../params/ParamsTable';
 import { type ThemeControl, useTheme } from '../theme';
@@ -135,6 +137,31 @@ export function ShellRoot({
     [props.paramsTable?.params],
   );
 
+  // What every value field below knows about the parameters (ADR-080). The values come from the
+  // host's `evaluate`; the memo key is their text so fields re-render only when one changes.
+  const pt = props.paramsTable;
+  const infos: ParamInfo[] = (pt?.params ?? []).map((p) => {
+    const r = p.expr.trim() ? pt?.evaluate(p.expr) : undefined;
+    const value = r?.ok ? (pt?.formatValue ?? defaultFormatValue)(r.value, r.dimension) : undefined;
+    return {
+      name: p.name,
+      ...(value !== undefined ? { value } : {}),
+      ...(p.description ? { description: p.description } : {}),
+    };
+  });
+  const infoKey = JSON.stringify(infos);
+  const onMake = pt?.onMake;
+  const onMakeDone = pt?.onMakeDone;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `infoKey` is the content of `infos`
+  const links = useMemo<ParamLinks>(
+    () => ({
+      params: infos,
+      ...(onMake ? { make: onMake } : {}),
+      ...(onMakeDone ? { makeDone: onMakeDone } : {}),
+    }),
+    [infoKey, onMake, onMakeDone],
+  );
+
   const openPalette = useCallback(() => {
     setPaletteWanted(true);
     setPaletteOpen(true);
@@ -144,26 +171,28 @@ export function ShellRoot({
     <LazyMotion features={loadMotionFeatures} strict>
       <TooltipProvider>
         <ParamNamesContext.Provider value={paramNames}>
-          <div
-            data-testid="app-shell"
-            data-tier={tier}
-            className={cn(
-              'relative h-dvh w-full overflow-clip bg-bg text-fg select-none',
-              className,
-            )}
-          >
-            {children({ theme, openPalette })}
-          </div>
-          {props.tutorial ? <TutorialCoach {...props.tutorial} /> : null}
-          {paletteWanted ? (
-            <Suspense fallback={null}>
-              <CommandPalette
-                open={paletteOpen}
-                onOpenChange={setPaletteOpen}
-                commands={commands}
-              />
-            </Suspense>
-          ) : null}
+          <ParamLinksContext.Provider value={links}>
+            <div
+              data-testid="app-shell"
+              data-tier={tier}
+              className={cn(
+                'relative h-dvh w-full overflow-clip bg-bg text-fg select-none',
+                className,
+              )}
+            >
+              {children({ theme, openPalette })}
+            </div>
+            {props.tutorial ? <TutorialCoach {...props.tutorial} /> : null}
+            {paletteWanted ? (
+              <Suspense fallback={null}>
+                <CommandPalette
+                  open={paletteOpen}
+                  onOpenChange={setPaletteOpen}
+                  commands={commands}
+                />
+              </Suspense>
+            ) : null}
+          </ParamLinksContext.Provider>
         </ParamNamesContext.Provider>
       </TooltipProvider>
     </LazyMotion>
