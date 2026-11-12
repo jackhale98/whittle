@@ -71,6 +71,12 @@ std::string loadShape(const std::string& path);
 //                    "index":int (input edge, TopExp order; −1 = none),
 //                    "face":int (outlines and seams on a silhouette: the input face
 //                                outlined, TopExp order; −1 = none),
+//                    "cutFace":int (section views, edges of a cut face: the input face the cut
+//                                   passes through along the edge, TopExp order, i.e. the cut
+//                                   face's other neighbour in the cut body when that is exactly
+//                                   one face mapped back to an input face; −1 = none: every other
+//                                   curve, a step between two cut faces or a tool's step face,
+//                                   an unknown neighbour. ADR-095),
 //                    "curve":Curve2}],
 //         "sectionFaces":[{"segment":int,"loops":[[Curve2…]…]}],
 //         "stats":{"hlrMs":number,"cutMs":number,"edges":int,"faces":int}}>

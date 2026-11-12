@@ -13,6 +13,13 @@
 //  - Draft: HLRBRep_PolyAlgo reports the input edge of every segment (or the face, for outlines).
 //  - Section views: the cut's history (BRepAlgoAPI Modified) maps the cut body's edges and faces
 //    back.
+// Section views also name the edges of the cut faces (M4.1, ADR-095): such an edge carries the
+// input face the cut passes through along it (TopExp order, `faceNames[i]`), found from the edge's
+// face ancestors in the cut body: exactly two distinct faces, one of them a cut face, the other
+// one a face that maps back to an input face. A step between two cut faces, an edge shared with a
+// tool face that is not a cut face (the step of an offset section) or one whose neighbour is
+// unknown gets −1. Exact output maps HLR edges back like edge indices (NewSOldS for split edges);
+// draft output gets them from PolyAlgo's input edge; slices from the cut faces' own edges.
 // Outlines instead carry the index of the input face they outline (TopExp order, so the worker
 // applies `faceNames[i]`; ADR-090 amendment, second gate round):
 //  - Exact: an outline is an internal edge of one HLRBRep_FaceData. That face is the OutLiner's
@@ -47,6 +54,7 @@ struct OutCurve {
   int cls = kSharp;
   int index = -1;  // input edge (TopExp order), −1 = none
   int face = -1;   // outlines: input face (TopExp order), −1 = none
+  int cutFace = -1;  // section views, edges of a cut face: the input face cut there, −1 = none
   Curve2D curve;
 };
 
@@ -198,6 +206,10 @@ using EdgeOrigin = std::function<int(const TopoDS_Shape&)>;
 // Input face index (0-based TopExp order of the loaded shape) of a face of the shape HLR runs on,
 // or −1.
 using FaceOrigin = std::function<int(const TopoDS_Shape&)>;
+// Section views: for an edge of a cut face of the shape HLR runs on, the input face (0-based
+// TopExp order of the loaded shape) the cut passes through along it, or −1 (any other edge, a
+// step, an unknown neighbour).
+using CutFaceOf = std::function<int(const TopoDS_Shape&)>;
 
 // ---------------------------------------------------------------------------------------------
 // Exact: HLRBRep_Algo
@@ -212,6 +224,7 @@ struct HlrPiece {
   int iface = 0;   // outlines (seams on the silhouette): their HLRBRep_Data face, 1-based; 0 = none
   int index = -1;  // input edge (TopExp order), −1 = none (set before merging)
   int face = -1;   // outlines: input face (TopExp order), −1 = none (set before merging)
+  int cutFace = -1;  // cut-face edges: the input face cut there, −1 = none (set before merging)
   // Merge keys (mergePieces): the input edge or −edge, and the 3D curve with its location.
   int group = 0;
   const Geom_Curve* curve = nullptr;
@@ -353,12 +366,14 @@ void mergePieces(const occ::handle<HLRBRep_Data>& ds, std::vector<HlrPiece>& pie
     if (a.cls != b.cls) return a.cls < b.cls;
     if (a.visible != b.visible) return a.visible > b.visible;
     if (a.face != b.face) return a.face < b.face;
+    if (a.cutFace != b.cutFace) return a.cutFace < b.cutFace;
     if (a.curve != b.curve) return std::less<const Geom_Curve*>()(a.curve, b.curve);
     return a.u1 < b.u1;
   });
   auto same = [](const HlrPiece& a, const HlrPiece& b) {
     return a.group == b.group && a.cls == b.cls && a.visible == b.visible && a.face == b.face &&
-           a.curve != nullptr && a.curve == b.curve && a.loc.IsEqual(b.loc);
+           a.cutFace == b.cutFace && a.curve != nullptr && a.curve == b.curve &&
+           a.loc.IsEqual(b.loc);
   };
   auto touches = [](double u, double v) {
     return std::fabs(u - v) <= 1e-9 * std::max(1.0, std::fabs(u));
@@ -395,7 +410,8 @@ void mergePieces(const occ::handle<HLRBRep_Data>& ds, std::vector<HlrPiece>& pie
 }
 
 void runExact(const TopoDS_Shape& shape, const ViewRequest& req, const EdgeOrigin& originOf,
-              const FaceOrigin& faceOriginOf, std::vector<OutCurve>& out) {
+              const FaceOrigin& faceOriginOf, const CutFaceOf& cutFaceOf,
+              std::vector<OutCurve>& out) {
   occ::handle<HLRBRep_Algo> algo = new HLRBRep_Algo();
   algo->Add(shape);
   algo->Projector(projectorFor(req.frame));
@@ -440,6 +456,21 @@ void runExact(const TopoDS_Shape& shape, const ViewRequest& req, const EdgeOrigi
     cached = idx;
     return idx;
   };
+  // The input face cut along an HLRBRep_Data edge (section views), mapped back like inputIndex:
+  // the edge itself, or the edge the OutLiner split it from.
+  std::vector<int> cutFaceOfDs(static_cast<size_t>(ds->NbEdges()) + 1, -2);
+  auto inputCutFace = [&](int ie) {
+    int& cached = cutFaceOfDs[static_cast<size_t>(ie)];
+    if (cached != -2) return cached;
+    const TopoDS_Shape& e = ds->EdgeMap().FindKey(ie);
+    int idx = cutFaceOf(e);
+    if (idx < 0) {
+      const TopoDS_Shape old = topoData.NewSOldS(e);
+      if (!old.IsNull() && old.ShapeType() == TopAbs_EDGE && !old.IsSame(e)) idx = cutFaceOf(old);
+    }
+    cached = idx;
+    return idx;
+  };
   // The input face of an HLRBRep_Data face: the OutLiner's copy maps back to it
   // (HLRTopoBRep_OutLiner::ProcessFace, AddOldS). −1 when unknown.
   const int nbFaces = ds->NbFaces();
@@ -463,10 +494,12 @@ void runExact(const TopoDS_Shape& shape, const ViewRequest& req, const EdgeOrigi
     if (p.cls == kOutline) {
       p.index = -1;
       p.face = outlineFace(p);
+      p.cutFace = -1;
     } else {
       p.index = inputIndex(p.edge);
       // A seam on the silhouette: the face it is closed on (it has no other).
       p.face = inputFaceOf(p.iface);
+      p.cutFace = inputCutFace(p.edge);
     }
   }
   mergePieces(ds, pieces);
@@ -482,6 +515,7 @@ void runExact(const TopoDS_Shape& shape, const ViewRequest& req, const EdgeOrigi
       oc.cls = p.cls;
       oc.index = p.index;
       oc.face = p.face;
+      oc.cutFace = p.cutFace;
       oc.curve = std::move(c);
       out.push_back(std::move(oc));
     }
@@ -551,7 +585,8 @@ std::vector<std::vector<gp_XY>> chainSegments(const std::vector<std::pair<gp_XY,
 }
 
 void runDraft(const TopoDS_Shape& shape, const ViewRequest& req, const EdgeOrigin& originOf,
-              const FaceOrigin& faceOriginOf, std::vector<OutCurve>& out) {
+              const FaceOrigin& faceOriginOf, const CutFaceOf& cutFaceOf,
+              std::vector<OutCurve>& out) {
 #if defined(__EMSCRIPTEN_PTHREADS__)
   const bool parallel = true;
 #else
@@ -569,8 +604,9 @@ void runDraft(const TopoDS_Shape& shape, const ViewRequest& req, const EdgeOrigi
   const gp_Trsf& T = algo->Projector().Transformation();
 
   // Group key: visible, class, input edge, outlined face (outlines of different faces stay apart,
-  // and a seam's segments on the silhouette apart from its others).
-  using Key = std::tuple<bool, int, int, int>;
+  // and a seam's segments on the silhouette apart from its others), input face cut along the edge
+  // (section views: cut edges of different faces stay apart, though none has an input edge).
+  using Key = std::tuple<bool, int, int, int, int>;
   std::map<Key, std::vector<std::pair<gp_XY, gp_XY>>> groups;
   ShapeMap outlineFaces;
   // By outlineFaces index (1-based; 0 = outlines no face): the input face, or −1.
@@ -640,11 +676,13 @@ void runDraft(const TopoDS_Shape& shape, const ViewRequest& req, const EdgeOrigi
     auto at = [&](double t) { return t <= 0 ? a : (t >= 1 ? b : a + d * t); };
     int index = -1;
     int face = 0;
+    int cutFace = -1;
     if (intl) {
       // S is the face of the loaded shape the outline segment lies on (PolyAlgo's face map).
       face = faceKey(S);
     } else {
       index = originOf(S);
+      cutFace = cutFaceOf(S);
       if (outl) {
         const TopoDS_Shape seamFace = seamFaceOf(S);
         if (!seamFace.IsNull()) face = faceKey(seamFace);
@@ -653,12 +691,12 @@ void runDraft(const TopoDS_Shape& shape, const ViewRequest& req, const EdgeOrigi
     HLRAlgo_EdgeIterator it;
     for (it.InitVisible(status); it.MoreVisible(); it.NextVisible()) {
       it.Visible(sta, tolSta, end, tolEnd);
-      groups[Key(true, cls, index, face)].emplace_back(at(sta), at(end));
+      groups[Key(true, cls, index, face, cutFace)].emplace_back(at(sta), at(end));
     }
     if (req.hidden) {
       for (it.InitHidden(status); it.MoreHidden(); it.NextHidden()) {
         it.Hidden(sta, tolSta, end, tolEnd);
-        groups[Key(false, cls, index, face)].emplace_back(at(sta), at(end));
+        groups[Key(false, cls, index, face, cutFace)].emplace_back(at(sta), at(end));
       }
     }
   }
@@ -669,6 +707,7 @@ void runDraft(const TopoDS_Shape& shape, const ViewRequest& req, const EdgeOrigi
       oc.cls = std::get<1>(g.first);
       oc.index = std::get<2>(g.first);
       oc.face = outlineFaceOrigin[static_cast<size_t>(std::get<3>(g.first))];
+      oc.cutFace = std::get<4>(g.first);
       if (chain.size() == 2) {
         oc.curve = makeLine(chain[0], chain[1]);
       } else {
@@ -688,6 +727,10 @@ struct SectionCut {
   TopoDS_Shape result;
   std::vector<int> edgeOrigin;  // by result edge (0-based TopExp order): input edge or −1
   std::vector<int> faceOrigin;  // by result face (0-based TopExp order): input face or −1
+  // By result edge (0-based TopExp order): for an edge of a cut face, the input face the cut passes
+  // through along it (its other face's faceOrigin); −1 for every other edge, a step between two
+  // cut faces, an edge shared with a tool's step face, or an unknown neighbour.
+  std::vector<int> edgeCutFace;
   std::vector<std::pair<int, TopoDS_Face>> faces;  // (cut segment, face on the cutting surface)
 };
 
@@ -831,6 +874,39 @@ SectionCut cutForSection(const TopoDS_Shape& shape, const ShapeMap& inputEdges,
       }
     }
   }
+  // Names for the cut faces' edges (ADR-095): an edge of a cut face between exactly two distinct
+  // faces of the result, the other one not a cut face and mapped back to an input face, carries
+  // that input face. Anything else stays −1; never a guess.
+  cut.edgeCutFace.assign(static_cast<size_t>(rt.edges.Extent()), -1);
+  ShapeMap cutFaces;
+  for (const auto& cf : cut.faces) cutFaces.Add(cf.second);
+  ShapeListMap edgeFaces;
+  TopExp::MapShapesAndAncestors(cut.result, TopAbs_EDGE, TopAbs_FACE, edgeFaces);
+  for (const auto& cf : cut.faces) {
+    for (TopExp_Explorer ex(cf.second, TopAbs_EDGE); ex.More(); ex.Next()) {
+      const TopoDS_Shape& e = ex.Current();
+      const int ei = rt.edges.FindIndex(e);
+      const int ai = edgeFaces.FindIndex(e);
+      if (ei < 1 || ai < 1) continue;
+      // The distinct faces on the edge (a face is listed twice on its seam).
+      std::vector<TopoDS_Shape> around;
+      for (const TopoDS_Shape& f : edgeFaces(ai)) {
+        bool seen = false;
+        for (const TopoDS_Shape& g : around) seen = seen || g.IsSame(f);
+        if (!seen) around.push_back(f);
+      }
+      int named = -1;
+      if (around.size() == 2) {
+        const bool cut0 = cutFaces.Contains(around[0]);
+        const bool cut1 = cutFaces.Contains(around[1]);
+        if (cut0 != cut1) {
+          const int fi = rt.faces.FindIndex(cut0 ? around[1] : around[0]);
+          if (fi > 0) named = cut.faceOrigin[static_cast<size_t>(fi - 1)];
+        }
+      }
+      cut.edgeCutFace[static_cast<size_t>(ei - 1)] = named >= 0 ? named : -1;
+    }
+  }
   return cut;
 }
 
@@ -882,6 +958,7 @@ std::string projectViewJson(const ShapeRecord& record, const ViewRequest& req) {
   TopoDS_Shape target = record.shape;
   EdgeOrigin originOf = [&](const TopoDS_Shape& e) { return inputEdges.FindIndex(e) - 1; };
   FaceOrigin faceOriginOf = [&](const TopoDS_Shape& f) { return inputFaces.FindIndex(f) - 1; };
+  CutFaceOf cutFaceOf = [](const TopoDS_Shape&) { return -1; };
   SectionCut cut;
   if (req.hasSection) {
     const auto t0 = std::chrono::steady_clock::now();
@@ -898,6 +975,11 @@ std::string projectViewJson(const ShapeRecord& record, const ViewRequest& req) {
     faceOriginOf = [resultTopo, &cut](const TopoDS_Shape& f) {
       const int idx = resultTopo->faces.FindIndex(f);
       return idx > 0 ? cut.faceOrigin[static_cast<size_t>(idx - 1)] : -1;
+    };
+    cutFaceOf = [resultTopo, &cut](const TopoDS_Shape& e) {
+      if (e.IsNull() || e.ShapeType() != TopAbs_EDGE) return -1;
+      const int idx = resultTopo->edges.FindIndex(e);
+      return idx > 0 ? cut.edgeCutFace[static_cast<size_t>(idx - 1)] : -1;
     };
     // Cut faces, ordered per segment by the centre of their box in the view (x, then y).
     std::vector<std::tuple<int, double, double, size_t>> order;
@@ -931,17 +1013,19 @@ std::string projectViewJson(const ShapeRecord& record, const ViewRequest& req) {
         std::vector<Curve2D> pieces;
         projectSegment(c, c.FirstParameter(), c.LastParameter(), req.frame, req.sampleTolerance,
                        pieces);
+        const int named = cutFaceOf(e);
         for (Curve2D& p : pieces) {
           OutCurve oc;
+          oc.cutFace = named;
           oc.curve = std::move(p);
           curves.push_back(std::move(oc));
         }
       }
     }
   } else if (req.exact) {
-    runExact(target, req, originOf, faceOriginOf, curves);
+    runExact(target, req, originOf, faceOriginOf, cutFaceOf, curves);
   } else {
-    runDraft(target, req, originOf, faceOriginOf, curves);
+    runDraft(target, req, originOf, faceOriginOf, cutFaceOf, curves);
   }
   hlrMs = elapsedMs(t1);
 
@@ -957,6 +1041,7 @@ std::string projectViewJson(const ShapeRecord& record, const ViewRequest& req) {
         c2.cls = oc.cls;
         c2.index = oc.index;
         c2.face = oc.face;
+        c2.cutFace = oc.cutFace;
         c2.curve = std::move(p);
         clipped.push_back(std::move(c2));
       }
@@ -973,7 +1058,7 @@ std::string projectViewJson(const ShapeRecord& record, const ViewRequest& req) {
     out += ",\"edge\":\"";
     out += edgeClassName(oc.cls);
     out += "\",\"index\":" + std::to_string(oc.index) + ",\"face\":" + std::to_string(oc.face) +
-           ",\"curve\":";
+           ",\"cutFace\":" + std::to_string(oc.cutFace) + ",\"curve\":";
     writeCurve(out, oc.curve);
     out.push_back('}');
   }
