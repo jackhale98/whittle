@@ -10,6 +10,9 @@
  * outlines. An empty name, an index of −1 or an unnamed shape leaves the curve without
  * that name. An index past the names is a mismatch between shape and names and fails the call: a
  * curve is never given a guessed name (CLAUDE.md, never silently guess a topological reference).
+ * In section views an edge of a cut face carries `cutFace`: the input face the cut passes through
+ * along it, in the same order, so it names `faceNames[cutFace]` (M4.1, ADR-095). The same rules
+ * apply: −1, absent or an empty name leaves `cutFace` absent; an index past the names fails.
  *
  * Section faces have no model counterpart (they lie on the cutting surface): they are named
  * `section:<segment>#<k>`, segment = the cut-line segment, k = their order on it (left to right,
@@ -125,7 +128,8 @@ export function decodeProjection(
       !ROLES.includes(role) ||
       !CLASSES.includes(edge) ||
       !Number.isInteger(c.index) ||
-      (c.face !== undefined && !Number.isInteger(c.face))
+      (c.face !== undefined && !Number.isInteger(c.face)) ||
+      (c.cutFace !== undefined && !Number.isInteger(c.cutFace))
     ) {
       return internal('The drawing kernel returned a malformed curve', `curve ${i}`);
     }
@@ -159,6 +163,18 @@ export function decodeProjection(
       }
       const name = faceNames[face];
       if (name !== undefined && name !== '') out.face = name;
+    }
+    // Section views: an edge of a cut face names the model face the cut passes through there.
+    const cutFace = c.cutFace === undefined ? -1 : (c.cutFace as number);
+    if (cutFace >= 0 && faceNames.length > 0) {
+      if (cutFace >= faceNames.length) {
+        return internal(
+          "The part's face names do not match its shape",
+          `cut face ${cutFace} of a shape with ${faceNames.length} named faces`,
+        );
+      }
+      const name = faceNames[cutFace];
+      if (name !== undefined && name !== '') out.cutFace = name;
     }
     curves.push(out);
   }

@@ -172,10 +172,19 @@ export function fnv1a64(text: string): string {
 }
 
 /**
- * `ViewProjection.key`: the shape key plus a hash of every other request field, so equal requests
- * on an equal shape share a `.wren/` cache entry.
+ * The projection output format, salted into every `ViewProjection.key`. Bump it whenever the
+ * drawing kernel returns more (or different) data for an unchanged request, so projections cached
+ * from an older kernel are not reused.
+ *  - 1 (implicit, no salt): M4.
+ *  - 2: section cut edges carry `cutFace` (M4.1, ADR-095).
+ */
+export const PROJECTION_FORMAT = 2;
+
+/**
+ * `ViewProjection.key`: the shape key plus a hash of the projection format and every other
+ * request field, so equal requests on an equal shape share a `.wren/` cache entry.
  */
 export function projectionKey(request: ViewProjectionRequest): string {
   const { shapeKey, ...rest } = request;
-  return `${shapeKey}:${fnv1a64(canonicalJson(rest))}`;
+  return `${shapeKey}:${fnv1a64(`v${PROJECTION_FORMAT}:${canonicalJson(rest)}`)}`;
 }

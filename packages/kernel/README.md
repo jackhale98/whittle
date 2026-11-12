@@ -167,13 +167,26 @@ Façade calls: `drawingInfo()`, `loadShape(memfsPath)` (`{handle, edges, faces, 
   are one boolean cut; `sectionFaces` are the images of the tools' segment faces, named
   `section:<segment>#<k>` (k left to right, then bottom to top). `slice` returns the cut faces'
   boundaries only. Section faces are not clipped by a detail circle (renderers clip hatching).
+- **Cut edges** (M4.1, ADR-095): every edge of a cut face carries `cutFace`, the name of the model
+  face the cut passes through along it (`faceNames[i]`), so a pick on it refs that face. It is
+  found from the edge's face ancestors in the cut body (`TopExp::MapShapesAndAncestors`): exactly
+  two distinct faces, one a cut face, the other mapped back to an input face through the cut's
+  history. A step between two cut faces (a bent cut line), an edge on the tool's step face (an
+  offset section) or an unknown neighbour gets none. Exact output maps HLR edges back like edge
+  indices (`NewSOldS` for split edges), draft from PolyAlgo's input edge, slices from the cut
+  faces' own edges; detail clips keep it. A cut edge that is also a piece of a model edge keeps
+  its edge `name` too.
 - **Details**: curves are clipped to the circle exactly (lines and arcs analytically, ellipses and
   B-splines by root finding, then trimmed).
 - **Bounds**: the 8 corners of `ShapeForDrawing.bounds` projected (detail views: the clip circle).
-  `key` is the shape key plus a 64-bit FNV-1a of the canonical request; `ms` is the call's wall time.
+  `key` is the shape key plus a 64-bit FNV-1a of the projection format (`PROJECTION_FORMAT`, 2
+  since cut edges carry `cutFace`) and the canonical request, so projections cached from an
+  older kernel are not reused; `ms` is the call's wall time.
 - A trap inside Wasm drops the instance and its shapes; the next `loadShape` starts a fresh kernel.
 
-Goldens: `test/drawing.golden.test.ts` (both variants; needs both `dist/` and `drawing/dist/`).
+Goldens: `test/drawing.golden.test.ts` and `test/drawing-section-names.golden.test.ts` (cut-edge
+names on a box with a blind hole: full, offset and bent cuts in exact, draft and slice), both
+variants; they need both `dist/` and `drawing/dist/`.
 Unit tests without Wasm: `test/drawing/*.test.ts`. Timing: `test-fixtures/test/hlr-timing.bench.test.ts`.
 
 ## JS surface

@@ -232,6 +232,78 @@ describe('decodeProjection', () => {
     }
   });
 
+  it('section cut edges name the model face cut there; −1, absent and empty names stay unnamed', () => {
+    const r = decodeProjection(
+      raw(
+        [
+          { role: 'visible', edge: 'sharp', index: -1, face: -1, cutFace: 2, curve: line },
+          { role: 'visible', edge: 'sharp', index: 0, face: -1, cutFace: 0, curve: line },
+          { role: 'hidden', edge: 'sharp', index: -1, face: -1, cutFace: 0, curve: line },
+          { role: 'visible', edge: 'sharp', index: -1, face: -1, cutFace: 1, curve: line },
+          { role: 'visible', edge: 'sharp', index: -1, face: -1, cutFace: -1, curve: line },
+          { role: 'visible', edge: 'sharp', index: 2, face: -1, curve: line },
+        ],
+        [{ segment: 0, loops: [[line]] }],
+      ),
+      names,
+      faces,
+      true,
+    );
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.value.curves.map((c) => c.cutFace)).toEqual([
+      'F1:face.top',
+      'F1:face.side',
+      'F1:face.side',
+      undefined,
+      undefined,
+      undefined,
+    ]);
+    // A cut edge that is also (a piece of) a model edge keeps its edge name too; cutFace is not
+    // an outline's `face`.
+    expect(r.value.curves[1]).toEqual({
+      role: 'visible',
+      edge: 'sharp',
+      name: 'F1:edge(a|b)',
+      cutFace: 'F1:face.side',
+      curve: line,
+    });
+    expect(r.value.curves[0]).toEqual({
+      role: 'visible',
+      edge: 'sharp',
+      cutFace: 'F1:face.top',
+      curve: line,
+    });
+    for (const c of r.value.curves) expect(c.face).toBeUndefined();
+    expect(r.value.sectionFaces?.map((f) => f.face)).toEqual(['section:0#0']);
+  });
+
+  it('an unnamed shape gives cut edges without cutFace', () => {
+    const r = decodeProjection(
+      raw([{ role: 'visible', edge: 'sharp', index: -1, face: -1, cutFace: 5, curve: line }]),
+      [],
+      [],
+      false,
+    );
+    expect(r.ok).toBe(true);
+    expect(r.ok && r.value.curves[0]?.cutFace).toBeUndefined();
+  });
+
+  it('never guesses: a cut face past the names is an INTERNAL error', () => {
+    const r = decodeProjection(
+      raw([{ role: 'visible', edge: 'sharp', index: -1, face: -1, cutFace: 3, curve: line }]),
+      names,
+      faces,
+      false,
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.error.code).toBe('INTERNAL');
+      expect(r.error.message).toMatch(/face names/);
+      expect(r.error.detail).toMatch(/cut face 3/);
+    }
+  });
+
   it('rejects malformed curves and roles', () => {
     for (const bad of [
       { role: 'ghost', edge: 'sharp', index: 0, curve: line },
@@ -239,6 +311,9 @@ describe('decodeProjection', () => {
       { role: 'visible', edge: 'sharp', index: 0.5, curve: line },
       { role: 'visible', edge: 'outline', index: -1, face: '0', curve: line },
       { role: 'visible', edge: 'outline', index: -1, face: 1.5, curve: line },
+      { role: 'visible', edge: 'sharp', index: -1, cutFace: '0', curve: line },
+      { role: 'visible', edge: 'sharp', index: -1, cutFace: 0.5, curve: line },
+      { role: 'visible', edge: 'sharp', index: -1, cutFace: null, curve: line },
       { role: 'visible', edge: 'sharp', index: 0, curve: { kind: 'line', a: [0, 0] } },
     ]) {
       const r = decodeProjection(raw([bad]), names, faces, false);

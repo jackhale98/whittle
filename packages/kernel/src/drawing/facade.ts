@@ -67,6 +67,12 @@ export interface RawProjectedCurve {
    * Absent from façades built before the ADR-090 second gate round (read as −1).
    */
   face?: number;
+  /**
+   * Section views, edges of a cut face: the input face (TopExp) the cut passes through along the
+   * edge (the cut face's other neighbour in the cut body); −1 = none (steps, unknown neighbours,
+   * every other curve). Absent from façades built before M4.1 (read as −1; ADR-095).
+   */
+  cutFace?: number;
   curve: Curve2;
 }
 

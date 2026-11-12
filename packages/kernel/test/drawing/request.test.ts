@@ -11,6 +11,7 @@ import {
   canonicalJson,
   fnv1a64,
   orthonormalFrame,
+  PROJECTION_FORMAT,
   projectionKey,
   toFacadeRequest,
   tolerancesFor,
@@ -173,6 +174,15 @@ describe('projectionKey', () => {
     expect(projectionKey(request({ clip: { center: [0, 0], radius: 1 } }))).not.toBe(
       projectionKey(a),
     );
+  });
+
+  it('is salted with the projection format, so projections cached without cutFace are not reused', () => {
+    const a = request();
+    const { shapeKey: _shapeKey, ...rest } = a;
+    // M4.1 (ADR-095): section cut edges carry cutFace; the old, unsalted key must not match.
+    expect(PROJECTION_FORMAT).toBe(2);
+    expect(projectionKey(a)).not.toBe(`part@1:${fnv1a64(canonicalJson(rest))}`);
+    expect(projectionKey(a)).toBe(`part@1:${fnv1a64(`v2:${canonicalJson(rest)}`)}`);
   });
 
   it('canonicalJson drops undefined members and sorts keys', () => {

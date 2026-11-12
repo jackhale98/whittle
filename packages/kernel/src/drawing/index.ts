@@ -36,6 +36,7 @@ export {
   canonicalJson,
   fnv1a64,
   orthonormalFrame,
+  PROJECTION_FORMAT,
   projectionKey,
   toFacadeRequest,
   tolerancesFor,
