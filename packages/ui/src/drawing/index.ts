@@ -9,6 +9,7 @@ export {
   type AnnotationInspectorProps,
   CHARACTERISTIC_LABELS,
   type CharacteristicChoice,
+  type DiameterForm,
   type LeaderInfo,
 } from './AnnotationInspector';
 export { AttentionPanel, type AttentionPanelProps, type AttentionRow } from './AttentionPanel';

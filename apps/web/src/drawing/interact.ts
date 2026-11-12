@@ -39,24 +39,9 @@ import type { DrawingController } from './controller';
 import { moveVertex } from './cutline';
 import { arcDrag, detailRadius, textDrag } from './drag-math';
 import { leaderHandleDrag } from './interact-leader';
+import { pickTool, viewHit } from './interact-pick';
 import { dominantAxis, sideForDirection } from './model';
-import {
-  addChamfer,
-  addFinish,
-  addNote,
-  createDimension,
-  createOrdinate,
-  pickEdge,
-  reattachPick,
-  updatePlacement,
-} from './ops-annot';
-import {
-  addDatumOnSize,
-  addDatumOnSurface,
-  addFrameOnSize,
-  addFrameOnSurface,
-  dimensionAt,
-} from './ops-gdt';
+import { updatePlacement } from './ops-annot';
 import { updateTable } from './ops-tables';
 import { addDetail, addProjectedView, addSection, updateView } from './ops-views';
 import {
@@ -74,7 +59,6 @@ import {
   placementPreview,
   previewDrag,
 } from './preview-drag';
-import type { EdgePick } from './state';
 
 export { type DragFrame, previewDrag };
 
@@ -834,168 +818,7 @@ function detailTool(c: DrawingController, p: SheetPointer): SheetDrag | null {
   };
 }
 
-/**
- * What a picking tool (Dimension, Angle, Chamfer, datums, frames...) picks at `p`: model geometry
- * only. Those tools pick edges and outlines, never an annotation, so a dimension drawn over an edge
- * (an extension line along a fillet, say) does not hide that edge from them.
- */
-export function viewHit(c: DrawingController, p: Pick<SheetPointer, 'at' | 'tol'>) {
-  const composed = currentSheet(c);
-  if (!composed) return null;
-  const items = composed.list.items.filter((i) => i.source?.kind === 'view');
-  return hitTest({ ...composed.list, items }, p.at, p.tol);
-}
-
-function edgeAt(c: DrawingController, p: SheetPointer): EdgePick | null {
-  const hit = viewHit(c, p);
-  if (hit?.source.kind !== 'view') return null;
-  if (hit.source.edge) return pickEdge(c, hit.source.viewId, hit.source.edge, p.at);
-  // An outline has no edge name: with its face (`ProjectedCurve.face`) it picks that face.
-  if (hit.source.face) return pickEdge(c, hit.source.viewId, hit.source.face, p.at, 'face');
-  return null;
-}
-
-function pickTool(c: DrawingController, _p: SheetPointer): SheetDrag {
-  const tool = c.ui.get().tool;
-  return {
-    up(q, moved) {
-      if (moved) return;
-      // Datums and frames: a size dimension under the pointer means its feature of size.
-      if (tool === 'datum' || tool === 'gdt') {
-        const size = dimensionAt(c, q);
-        if (size) {
-          if (tool === 'datum') void addDatumOnSize(c, size);
-          else addFrameOnSize(c, size);
-          return;
-        }
-      }
-      const pick = edgeAt(c, q);
-      if (!pick) {
-        c.patch({
-          hint: {
-            text:
-              pick === null && tool === 'dimension'
-                ? 'Pick an edge on a view'
-                : 'Pick an edge on a view',
-            picks: [],
-          },
-        });
-        return;
-      }
-      void onPick(c, tool, pick, q.alt || q.shift);
-    },
-  };
-}
-
-async function onPick(
-  c: DrawingController,
-  tool: ReturnType<DrawingController['ui']['get']>['tool'],
-  pick: EdgePick,
-  alt: boolean,
-): Promise<void> {
-  switch (tool) {
-    case 'dimension': {
-      const prev = c.ui.get().hint?.picks ?? [];
-      if (prev.length === 0) {
-        if (pick.shape === 'circle') {
-          await createDimension(c, [pick], alt);
-          return;
-        }
-        if (pick.shape === 'other') {
-          c.toast('That edge is curved: pick a straight edge or a circle.', 'error');
-          return;
-        }
-        c.patch({
-          hint: {
-            text: 'Pick a second edge, or the same edge again for its length',
-            picks: [pick],
-          },
-        });
-        return;
-      }
-      const first = prev[0] as EdgePick;
-      // Two picks of one face's outline are its two sides (a diameter), not one edge's length.
-      const same =
-        first.name === pick.name &&
-        first.viewId === pick.viewId &&
-        first.ref !== 'face' &&
-        pick.ref !== 'face';
-      c.patch({ hint: null });
-      await createDimension(c, same ? [first] : [first, pick]);
-      return;
-    }
-    case 'angle': {
-      const prev = c.ui.get().hint?.picks ?? [];
-      const first = prev[0];
-      if (!first) {
-        if (pick.shape !== 'line') {
-          c.toast('An angle is between two straight edges: pick a straight edge.', 'error');
-          return;
-        }
-        c.patch({ hint: { text: 'Pick the second edge', picks: [pick] } });
-        return;
-      }
-      if (pick.shape !== 'line') {
-        c.toast('An angle is between two straight edges: pick a straight edge.', 'error');
-        return;
-      }
-      c.patch({ hint: null });
-      await createDimension(c, [first, pick]);
-      return;
-    }
-    case 'ordinate': {
-      const origin = c.ui.get().hint?.picks[0];
-      if (!origin) {
-        if (pick.shape === 'other') {
-          c.toast('Pick a straight edge or a circle for the origin.', 'error');
-          return;
-        }
-        c.patch({
-          hint: { text: 'Pick a feature to read from this origin; Esc finishes', picks: [pick] },
-        });
-        return;
-      }
-      if (pick.viewId !== origin.viewId) {
-        c.toast('The features must be on the same view as the origin.', 'error');
-        return;
-      }
-      if (pick.name === origin.name) {
-        c.toast('That is the origin: pick a feature to measure from it.', 'error');
-        return;
-      }
-      if (pick.shape === 'other') {
-        c.toast('Pick a straight edge or a circle.', 'error');
-        return;
-      }
-      // The origin stays picked: each further pick adds another coordinate to the group.
-      await createOrdinate(c, [origin, pick]);
-      c.patch({
-        hint: { text: 'Pick the next feature, or Esc to finish', picks: [origin] },
-      });
-      return;
-    }
-    case 'chamfer':
-      await addChamfer(c, pick);
-      return;
-    case 'datum':
-      await addDatumOnSurface(c, pick);
-      return;
-    case 'gdt':
-      await addFrameOnSurface(c, pick);
-      return;
-    case 'finish':
-      await addFinish(c, pick);
-      return;
-    case 'note':
-      await addNote(c, pick);
-      return;
-    case 'reattach':
-      await reattachPick(c, pick);
-      return;
-    default:
-      return;
-  }
-}
+export { viewHit };
 
 /** What a press on the sheet starts, by tool. `null` lets the viewer pan. */
 export function beginInteraction(c: DrawingController, p: SheetPointer): SheetDrag | null {

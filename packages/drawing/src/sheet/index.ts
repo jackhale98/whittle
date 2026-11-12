@@ -6,5 +6,6 @@
 
 export * from './build';
 export * from './compose';
+export * from './construction';
 export * from './hatch';
 export * from './obstacles';

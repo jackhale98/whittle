@@ -62,6 +62,13 @@ import {
   updateAnnotation,
   updatePlacement,
 } from './ops-annot';
+import {
+  type DiameterForm,
+  diameterFormOf,
+  fromNormalOf,
+  setAngleFromNormal,
+  setDiameterForm,
+} from './ops-forms';
 import { addSheet, deleteSheet, moveViewToSheet, planViewMove } from './ops-sheets';
 import { removeTable, updateTable } from './ops-tables';
 import {
@@ -320,8 +327,27 @@ export function AnnotationPanelBody({
   const src = sourceText(b.part, a);
   const leader = leaderInfo(b, placement.id);
   const applies = appliesToInfo(b, a);
+  // M4.1: a diameter's linear form, and an angle from its second face's normal.
+  const form = 'source' in a && a.source ? undefined : diameterFormOf(b, a, placement);
+  const fromNormal = fromNormalOf(a);
   return (
     <AnnotationInspector
+      {...(form !== undefined
+        ? {
+            diameterForm: {
+              value: form,
+              onChange: (f: DiameterForm) => setDiameterForm(c, placement.id, f),
+            },
+          }
+        : {})}
+      {...(fromNormal !== undefined
+        ? {
+            fromNormal: {
+              checked: fromNormal,
+              onChange: (on: boolean) => setAngleFromNormal(c, a.id, on),
+            },
+          }
+        : {})}
       annotation={a}
       placement={placement}
       valueText={text}

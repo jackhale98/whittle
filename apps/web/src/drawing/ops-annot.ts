@@ -20,6 +20,7 @@ import type {
 } from '@wren-cad/contracts';
 import {
   anchorLookup,
+  curveRole,
   importAnchorQueries,
   importCommands,
   planImport,
@@ -54,38 +55,57 @@ function curveDistance(curve: ProjectedCurve['curve'], p: Vec2): number {
   return Number.POSITIVE_INFINITY;
 }
 
+const ROLE_RANK = { visible: 0, tangent: 1, hidden: 2 } as const;
+
 /**
  * What an edge on a view is, from the kernel's projected curves (the run of that name nearest the
  * pointer). With
  * `by: 'face'`, `name` is a face and the pick is the outline of it nearest the pointer: a cylinder
- * seen side-on has two (two outlines, or an outline and the seam on its silhouette).
+ * seen side-on has two (two outlines, or an outline and the seam on its silhouette). With
+ * `by: 'cut'` (M4.1), `name` is the model face a section's cut edge lies on (`cutFace`): the pick
+ * refs that face. Tangent and hidden runs count when the view draws them (M4.1); at the same
+ * distance a visible run wins over a tangent one, and that over a hidden one.
  */
 export function pickEdge(
   c: DrawingController,
   viewId: Id,
   name: string,
   at: Vec2,
-  by: 'edge' | 'face' = 'edge',
+  by: 'edge' | 'face' | 'cut' = 'edge',
 ): EdgePick | null {
   const proj = c.built()?.projections.get(viewId);
+  const sv = c.built()?.build.views.get(viewId);
+  const roleOf = (x: ProjectedCurve): EdgePick['role'] | null => {
+    if (!sv?.ok) return x.role === 'visible' ? 'visible' : null;
+    const r = curveRole(x, sv);
+    return r === 'visible' || r === 'tangent' || r === 'hidden' ? r : null;
+  };
+  const key = (x: ProjectedCurve) => (by === 'face' ? x.face : by === 'cut' ? x.cutFace : x.name);
   // The run under the pointer: an edge can be drawn in several pieces (a curved blend piece and
   // an arc of one name), and a face has two sides seen side-on.
-  const runs = (proj?.curves ?? []).filter(
-    (x) => (by === 'face' ? x.face : x.name) === name && x.role === 'visible',
-  );
-  const sv = c.built()?.build.views.get(viewId);
-  let k: ProjectedCurve | undefined = runs[0];
+  const runs = (proj?.curves ?? []).flatMap((x) => {
+    const role = key(x) === name ? roleOf(x) : null;
+    return role ? [{ x, role }] : [];
+  });
+  let best = runs[0];
   if (runs.length > 1 && sv?.ok) {
     const q = sheetToView(sv, at);
-    k = runs.map((x) => ({ x, d: curveDistance(x.curve, q) })).sort((a, b) => a.d - b.d)[0]?.x;
+    best = runs
+      .map((r) => ({ ...r, d: curveDistance(r.x.curve, q) }))
+      .sort((a, b) =>
+        Math.abs(a.d - b.d) <= 1e-6 ? ROLE_RANK[a.role] - ROLE_RANK[b.role] : a.d - b.d,
+      )[0];
   }
+  const k = best?.x;
   const curve = k?.curve;
-  if (!k || !curve) return null;
+  if (!best || !k || !curve) return null;
   const base = {
     viewId,
     name,
     at,
-    ...(by === 'face' ? { ref: 'face' as const } : {}),
+    role: best.role,
+    ...(by !== 'edge' ? { ref: 'face' as const } : {}),
+    ...(by === 'cut' ? { cut: true as const } : {}),
     ...(k.face ? { face: k.face } : {}),
   };
   if (curve.kind === 'arc')
@@ -107,13 +127,14 @@ export function pickEdge(
 export async function refOf(
   c: DrawingController,
   name: string,
-  kind: 'edge' | 'face' = 'edge',
+  kind: 'edge' | 'face' | 'vertex' = 'edge',
 ): Promise<EntityRef> {
   const plain: EntityRef = { name, kind };
   const wb = c.wb;
   const r = wb.regen.get()?.result;
   const part = wb.part;
-  if (!r || !part || !wb.modeling) return plain;
+  // Construction refs (M4.1) and vertices are exact names with no mesh entry to fingerprint.
+  if (!r || !part || !wb.modeling || kind === 'vertex') return plain;
   for (const b of r.bodies) {
     const i = (kind === 'face' ? b.mesh.faceNames : b.mesh.edgeNames).indexOf(name);
     if (i < 0) continue;
@@ -165,8 +186,23 @@ function laneFor(b: Built, viewId: Id, side: 'top' | 'bottom' | 'left' | 'right'
 
 const cross2 = (a: Vec2, b: Vec2) => a[0] * b[1] - a[1] * b[0];
 
-/** The angle between two straight edges of one view: an arc around where they meet. */
-export function planAngle(c: DrawingController, picks: EdgePick[]): DimensionPlan {
+/** Why "from the normal of the second face" cannot be used with this second pick, if it cannot. */
+export function fromNormalProblem(second: EdgePick): string | undefined {
+  return second.cut
+    ? undefined
+    : 'Measuring from a face’s normal needs the face itself: pick the cut edge of that face in a section view.';
+}
+
+/**
+ * The angle between two straight edges of one view: an arc around where they meet. `fromNormal`
+ * (M4.1, a draft angle): from the second face's normal, refs [drafted, neutral] at
+ * ['self', 'axis']; the second pick must be a section's cut edge (a face, seen edge-on).
+ */
+export function planAngle(
+  c: DrawingController,
+  picks: EdgePick[],
+  fromNormal = false,
+): DimensionPlan {
   const b = c.built();
   const first = picks[0];
   const second = picks[1];
@@ -179,6 +215,8 @@ export function planAngle(c: DrawingController, picks: EdgePick[]): DimensionPla
   const eb = ends(second);
   if (!ea || !eb) return { ok: false, message: 'An angle is between two straight edges.' };
   if (first.name === second.name) return { ok: false, message: 'Pick two different edges.' };
+  const normalProblem = fromNormal ? fromNormalProblem(second) : undefined;
+  if (normalProblem) return { ok: false, message: normalProblem };
   const ta = dir(ea[0], ea[1]);
   const tb = dir(eb[0], eb[1]);
   const x = cross2(ta, tb);
@@ -203,18 +241,61 @@ export function planAngle(c: DrawingController, picks: EdgePick[]): DimensionPla
       kind: 'angle',
       origin: { kind: 'drawing' as const, drawingId: b.drawing.id },
       refs: [],
-      at: ['self', 'self'],
+      at: ['self', fromNormal ? 'axis' : 'self'],
     } as Omit<Annotation, 'id'>,
     layout: { kind: 'arc', radius: Math.round(radius * 10) / 10 },
   };
 }
 
-/** Which dimension the picks mean, and where it goes. Pure: refs are attached by the caller. */
-/** A lane on the side of the view nearest the picks, for a dimension along a view axis. */
-function laneBeside(
+/**
+ * The view axis a direction in the view plane runs along, only when exactly aligned (1e-6, M4.1):
+ * a drafted wall 3° off vertical is measured along its true normal, never snapped to x.
+ */
+export function exactAxis(n: Vec2): 'x' | 'y' | null {
+  if (Math.abs(n[1]) < 1e-6) return 'x';
+  if (Math.abs(n[0]) < 1e-6) return 'y';
+  return null;
+}
+
+/**
+ * A circle's size in linear form (M4.1, ADR-095): refs [c, c] at ['min', 'max'] along the view's
+ * x or y, the extension lines at the circle's extremes, in a lane beside the view.
+ */
+export function planAcross(c: DrawingController, pick: EdgePick, axis: 'x' | 'y'): DimensionPlan {
+  const b = c.built();
+  const sv = b?.build.views.get(pick.viewId);
+  if (!b || !sv?.ok) return { ok: false, message: 'That view is not available.' };
+  if (pick.shape !== 'circle') return { ok: false, message: 'Pick a circle.' };
+  return {
+    ok: true,
+    viewId: pick.viewId,
+    annotation: {
+      kind: 'linear',
+      origin: { kind: 'drawing' as const, drawingId: b.drawing.id },
+      refs: [],
+      at: ['min', 'max'],
+      direction: axis === 'x' ? sv.frame.x : sv.frame.y,
+    } as Omit<Annotation, 'id'>,
+    layout: laneBeside(b, sv, [pick], axis),
+  };
+}
+
+/** Which way a linear-across goes for a second pick on a circle: along the larger offset. */
+export function acrossAxis(pick: EdgePick, sv: SolvedView): 'x' | 'y' {
+  const c = centre(pick);
+  if (!c) return 'x';
+  const d = sub(sheetToView(sv, pick.at), c);
+  return Math.abs(d[0]) >= Math.abs(d[1]) ? 'x' : 'y';
+}
+
+/**
+ * A lane on the side of the view nearest the picks, for a dimension along a view axis; an offset
+ * from the geometry when it is along neither.
+ */
+export function laneBeside(
   b: Built,
   sv: SolvedView,
-  picks: EdgePick[],
+  picks: readonly Pick<EdgePick, 'at'>[],
   measuredAxis: 'x' | 'y' | null,
 ): PlacementLayout {
   const outline = viewOutline(sv);
@@ -253,6 +334,40 @@ export function planDimension(
   // silhouette, `ProjectedCurve.face`), or one face-named outline circle (a sphere): the
   // diameter of that face, measured by the kernel from the face (ADR-090 amendment).
   const second0 = picks[1];
+  // Two cut edges of one model face in a section (M4.1): parallel and apart, they are across a
+  // cylinder (its diameter); collinear, they are pieces of one line of that face (refused).
+  if (
+    picks.length === 2 &&
+    first.cut &&
+    second0?.cut &&
+    first.name === second0.name &&
+    first.viewId === second0.viewId
+  ) {
+    const ea = ends(first);
+    const eb = ends(second0);
+    if (!ea || !eb)
+      return { ok: false, message: 'Pick two straight cut edges of the face, on its two sides.' };
+    const ta = dir(ea[0], ea[1]);
+    if (Math.abs(cross2(ta, dir(eb[0], eb[1]))) > 1e-6)
+      return {
+        ok: false,
+        message:
+          'Those cut edges of one face are not parallel, so they are not across a diameter. Pick cut edges of two different faces.',
+      };
+    if (Math.abs(cross2(ta, sub(eb[0], ea[0]))) < 1e-6)
+      return {
+        ok: false,
+        message:
+          'Those are two pieces of one cut line of the same face. Pick cut edges of two different faces, or the two sides of a bore.',
+      };
+    return {
+      ok: true,
+      viewId: first.viewId,
+      annotation: { kind: 'diameter', origin, refs: [] } as Omit<Annotation, 'id'>,
+      layout: laneBeside(b, sv, picks, exactAxis([-ta[1], ta[0]])),
+      faceRef: first.name,
+    };
+  }
   const outlined =
     first.face &&
     (picks.length === 1
@@ -266,9 +381,7 @@ export function planDimension(
     let kind: 'radius' | 'diameter' = radius ? 'radius' : 'diameter';
     if (side) {
       const t = dir(side[0], side[1]);
-      const n: Vec2 = [-t[1], t[0]];
-      const axis = Math.abs(n[0]) > 0.98 ? 'x' : Math.abs(n[1]) > 0.98 ? 'y' : null;
-      layout = laneBeside(b, sv, picks, axis);
+      layout = laneBeside(b, sv, picks, exactAxis([-t[1], t[0]]));
       kind = 'diameter';
     }
     return {
@@ -319,8 +432,10 @@ export function planDimension(
   let measuredAxis: 'x' | 'y' | null = null;
   const at: RefPoint[] = [];
 
+  // A circle is measured at its centre; a construction point is itself (M4.1).
+  const atOf = (p: EdgePick): RefPoint => (p.shape === 'point' ? 'self' : 'center');
   if (ca && cb) {
-    at.push('center', 'center');
+    at.push(atOf(first), atOf(second));
     const d = sub(cb, ca);
     measuredAxis = Math.abs(d[0]) >= Math.abs(d[1]) ? 'x' : 'y';
     direction = measuredAxis === 'x' ? frame.x : frame.y;
@@ -329,15 +444,17 @@ export function planDimension(
     const t = dir(line[0], line[1]);
     const n: Vec2 = [-t[1], t[0]];
     direction = to3(frame, n);
-    measuredAxis = Math.abs(n[0]) > 0.98 ? 'x' : Math.abs(n[1]) > 0.98 ? 'y' : null;
-    at.push(ca ? 'center' : 'self', cb ? 'center' : 'self');
+    // A lane only along an exact view axis (M4.1); otherwise offset from the geometry.
+    measuredAxis = exactAxis(n);
+    at.push(ca ? atOf(first) : 'self', cb ? atOf(second) : 'self');
   } else if (ea && eb) {
     const ta = dir(ea[0], ea[1]);
     const tb = dir(eb[0], eb[1]);
     // Not parallel: the angle between them (the same plan the Angle tool makes).
     if (Math.abs(ta[0] * tb[0] + ta[1] * tb[1]) < 0.985) return planAngle(c, picks);
-    const n: Vec2 = [-ta[1], ta[0]];
-    measuredAxis = Math.abs(n[0]) > 0.98 ? 'x' : Math.abs(n[1]) > 0.98 ? 'y' : null;
+    // A direction (and a lane) only when the edges are exactly along a view axis (M4.1):
+    // otherwise the natural separation, so a drafted wall measures its true normal thickness.
+    measuredAxis = exactAxis([-ta[1], ta[0]]);
     direction = measuredAxis === 'x' ? frame.x : measuredAxis === 'y' ? frame.y : undefined;
     at.push('self', 'self');
   } else return { ok: false, message: 'Pick two edges.' };
@@ -358,25 +475,44 @@ export function planDimension(
   };
 }
 
+/** How the picks are dimensioned, beyond what they are (M4.1). */
+export interface DimensionMode {
+  /** A circle's radius instead of its diameter (Alt). */
+  radius?: boolean;
+  /** One circle in linear form across the view's x or y (Shift on its second pick). */
+  across?: 'x' | 'y';
+  /** An angle from the second face's normal (a draft angle; Shift on the second pick). */
+  fromNormal?: boolean;
+}
+
 /** Creates the dimension for `picks` (one undo step: the annotation and its placement). */
 export async function createDimension(
   c: DrawingController,
   picks: EdgePick[],
-  radius = false,
+  mode: boolean | DimensionMode = false,
 ): Promise<boolean> {
   const b = c.built();
-  const plan = planDimension(c, picks, radius);
+  const m: DimensionMode = typeof mode === 'boolean' ? { radius: mode } : mode;
+  const first = picks[0];
+  const plan =
+    m.across && first
+      ? planAcross(c, first, m.across)
+      : m.fromNormal
+        ? planAngle(c, picks, true)
+        : planDimension(c, picks, m.radius === true);
   if (!b || !plan.ok) {
     c.toast(plan.ok ? 'There is nothing to dimension.' : plan.message, 'error');
     return false;
   }
+  // One pick measured from both its ends or both its extremes refs it twice.
   const names =
-    picks.length === 1 && picks[0]?.shape === 'line'
-      ? [picks[0].name, picks[0].name]
+    picks.length === 1 && (picks[0]?.shape === 'line' || m.across)
+      ? [picks[0]?.name as string, picks[0]?.name as string]
       : picks.map((p) => p.name);
+  const kinds = names.map((_, i) => (picks[i] ?? picks[0])?.ref ?? 'edge');
   const refs = plan.faceRef
     ? [await refOf(c, plan.faceRef, 'face')]
-    : await Promise.all(names.map((n, i) => refOf(c, n, picks[i]?.ref ?? 'edge')));
+    : await Promise.all(names.map((n, i) => refOf(c, n, kinds[i])));
   const id = host.ulid();
   const annotation = { ...plan.annotation, id, refs } as Annotation;
   const placement: AnnotationPlacement = {
@@ -426,7 +562,7 @@ export async function createOrdinate(c: DrawingController, picks: EdgePick[]): P
     );
     return false;
   }
-  const refs = await Promise.all([origin, feature].map((p) => refOf(c, p.name)));
+  const refs = await Promise.all([origin, feature].map((p) => refOf(c, p.name, p.ref ?? 'edge')));
   const id = host.ulid();
   const annotation = {
     ...plan.annotation,
@@ -714,7 +850,7 @@ export async function reattachPick(c: DrawingController, pick: EdgePick): Promis
     }));
     return;
   }
-  const refs = await Promise.all(picked.map((p) => refOf(c, p.name)));
+  const refs = await Promise.all(picked.map((p) => refOf(c, p.name, p.ref ?? 'edge')));
   const old = b.part.annotations?.find((x) => x.id === st.annotationId);
   const at = old?.at;
   const ok = c.apply(

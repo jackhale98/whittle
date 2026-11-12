@@ -103,7 +103,10 @@ function classRank(s: ItemSource | undefined): number {
     case 'placement':
       return 0;
     case 'view':
-      return s.edge === undefined ? 2 : 1;
+      // Model edges (and section cut edges, M4.1) first; then face outlines and the rest of the
+      // view; construction geometry last of the view: a model edge always outranks it (ADR-095).
+      if (s.edge !== undefined || s.cut !== undefined) return 1;
+      return s.construction !== undefined ? 3 : 2;
     case 'note':
       return 2;
     case 'centerMark':
@@ -118,8 +121,32 @@ function classRank(s: ItemSource | undefined): number {
 }
 
 /**
+ * Within one class, which of two coincident items (equal distance within `TIE`) wins (M4.1,
+ * ADR-095): a section's cut edge over the model edge drawn on it (the cut names the face the
+ * section shows), then visible over tangent over hidden lines.
+ */
+function preference(item: DisplayItem): number {
+  const s = item.source;
+  if (s?.kind === 'view' && s.cut !== undefined) return 0;
+  switch (item.role) {
+    case 'visible':
+      return 1;
+    case 'tangent':
+      return 2;
+    case 'hidden':
+      return 3;
+    default:
+      return 4;
+  }
+}
+
+/** Distances closer than this (sheet mm) are one place: the tie-break decides. */
+const TIE = 1e-3;
+
+/**
  * The best pick at `p` within `tol` mm: nearest geometry of the highest class, else the
- * smallest containing region. `null` when the point is on empty paper.
+ * smallest containing region. `null` when the point is on empty paper. Coincident items of one
+ * class are decided by `preference`.
  */
 export function hitTest(
   list: DisplayList,
@@ -129,7 +156,7 @@ export function hitTest(
   /** A larger tolerance for an annotation's text (a 44 px target on touch, ADR-094). */
   textTol: number = tol,
 ): HitResult | null {
-  let best: { r: HitResult; rank: number } | null = null;
+  let best: { r: HitResult; rank: number; pref: number } | null = null;
   for (const item of list.items) {
     const src = item.source;
     if (!src || SKIP_ROLES.has(item.role) || src.kind === 'template' || src.kind === 'scaleBar')
@@ -140,8 +167,14 @@ export function hitTest(
     const d = itemDistance(item, p, reach);
     if (d > reach) continue;
     const rank = classRank(src);
-    if (!best || rank < best.rank || (rank === best.rank && d < best.r.dist))
-      best = { r: { source: src, dist: d, onGeometry: true, itemKind: item.kind }, rank };
+    const pref = preference(item);
+    const better =
+      !best ||
+      rank < best.rank ||
+      (rank === best.rank &&
+        (Math.abs(d - best.r.dist) <= TIE ? pref < best.pref : d < best.r.dist));
+    if (better)
+      best = { r: { source: src, dist: d, onGeometry: true, itemKind: item.kind }, rank, pref };
   }
   if (best) return best.r;
   let inRegion: { r: HitResult; area: number; rank: number } | null = null;

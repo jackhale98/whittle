@@ -72,11 +72,13 @@ import { partToSheet, type SolvedView, viewOutline } from '../view/solve';
 import {
   anchorDirection,
   attachPoint,
+  extremePoint,
   isSurfaceFaceOn,
   projectCircle,
   projectedSegment,
   sheetPoints,
   spanNormal,
+  torusMeridian,
   viewDirection,
 } from './anchors';
 import { datumTriangleFilled, datumTriangleSize } from './leader-forms';
@@ -364,10 +366,16 @@ function measuredPoints(
   ctx: PlacementContext,
 ): Vec2[][] | null {
   const out: Vec2[][] = [];
+  const direction = 'direction' in a ? a.direction : undefined;
   for (let i = 0; i < 2; i++) {
     const an = anchors[i];
     if (!an) return null;
-    out.push(sheetPoints(ctx.view, an, a.at?.[i]));
+    const at = a.at?.[i];
+    // An extreme (M4.1): the extension foot is the entity's tangent point or end along the
+    // dimension's direction. Without a direction the validator flags it; measure as `self`.
+    if ((at === 'min' || at === 'max') && direction)
+      out.push([partToSheet(ctx.view, extremePoint(an, at, direction))]);
+    else out.push(sheetPoints(ctx.view, an, at));
   }
   return out;
 }
@@ -453,6 +461,23 @@ function dimensionGeometry(
       b.issues.push({ kind: 'anchorsMissing' });
       return null;
     }
+    // A torus (a fillet at a shaft step, M4.1): its radius on the meridian circle on the side the
+    // stored leader angle points to (deterministic from the placement).
+    if (an.kind === 'torus') {
+      if (a.kind !== 'radius' || placement.layout.kind !== 'radial') return notMeasurable();
+      const m = torusMeridian(v, an, placement.layout.angle);
+      if (!m) return notMeasurable();
+      return radialLayout({
+        center: m.center,
+        radius: m.radius,
+        angle: placement.layout.angle,
+        distance: placement.layout.distance,
+        kind: 'radius',
+        label: labelFor(a, res, ctx, 'radius'),
+        style,
+        h,
+      });
+    }
     // A sphere is anchored by its centre (kernel-client): it is seen as a circle of its own radius
     // in every view, so it is laid out like a circle seen face-on, with S before the symbol.
     const sphere = an.kind === 'point' && res?.state === 'ok' && res.value !== undefined;
@@ -520,6 +545,19 @@ function dimensionGeometry(
     };
     let r0 = ray(s0);
     let r1 = ray(s1);
+    // A planar face at `axis` is its normal (M4.1, a draft angle from the neutral face): that leg
+    // runs from where the two edge-on lines meet along the face's projected normal, on the side of
+    // the other leg (the drafted wall's side).
+    const legs = [r0, r1];
+    for (const i of [0, 1] as const) {
+      const an = anchors[i] as AnnotationAnchor;
+      if (a.at?.[i] !== 'axis' || an.kind !== 'plane') continue;
+      const n = viewDirection(v, an.normal);
+      if (!n) return notMeasurable();
+      const other = legs[1 - i] as { dir: Vec2 };
+      legs[i] = { dir: dot2(n, other.dir) < 0 ? scale2(n, -1) : n, ext: 0 };
+    }
+    [r0, r1] = legs as [typeof r0, typeof r1];
     if (a.measure === 'supplement') r1 = { dir: scale2(r1.dir, -1), ext: 0 };
     if (placement.layout.opposite) {
       r0 = { dir: scale2(r0.dir, -1), ext: 0 };
