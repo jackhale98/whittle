@@ -154,11 +154,16 @@ const SHAPE_WORDS: Partial<Record<AnnotationAnchor['kind'], string>> = {
 };
 
 /**
- * A radius on the face a curved outline outlines (M4.1): one pick. The face's radius anchor from
- * the modelling worker decides: a torus (a fillet at a shaft step), a circle or a sphere gets a
- * radius on that face; anything else is refused with the reason, never guessed.
+ * A radius (or, asked for, a diameter) on the face a curved outline outlines (M4.1): the outline
+ * picked twice, as a circle is. The face's radius anchor from the modelling worker decides: a torus
+ * (a fillet at a shaft step; always a radius), a circle or a sphere gets the dimension on that
+ * face; anything else is refused with the reason, never guessed.
  */
-export async function addRadiusOnFace(c: DrawingController, pick: EdgePick): Promise<boolean> {
+export async function addRadiusOnFace(
+  c: DrawingController,
+  pick: EdgePick,
+  opts: { diameter?: boolean } = {},
+): Promise<boolean> {
   const b = c.built();
   const face = pick.ref === 'face' ? pick.name : pick.face;
   if (!b || !face) {
@@ -198,7 +203,8 @@ export async function addRadiusOnFace(c: DrawingController, pick: EdgePick): Pro
   const id = host.ulid();
   const annotation: Annotation = {
     id,
-    kind: 'radius',
+    // A torus is sized by its radius (a fillet); a round face's diameter when asked for.
+    kind: opts.diameter && anchor.kind !== 'torus' ? 'diameter' : 'radius',
     origin: { kind: 'drawing', drawingId: now.drawing.id },
     refs: [ref],
   };
@@ -215,7 +221,7 @@ export async function addRadiusOnFace(c: DrawingController, pick: EdgePick): Pro
       annotation,
       place: { drawingId: now.drawing.id, placement },
     },
-    'Add radius dimension',
+    annotation.kind === 'diameter' ? 'Add diameter dimension' : 'Add radius dimension',
   );
   if (ok) {
     c.select({ kind: 'placement', id: placement.id });

@@ -272,7 +272,9 @@ test.describe('hidden lines are picked when the view draws them (M4.1)', () => {
 });
 
 test.describe('a radius on a fillet’s spline outline (M4.1, rp02)', () => {
-  test('one pick on the outline gives the fillet radius on its torus face', async ({ page }) => {
+  test('the outline picked twice gives the fillet radius on its torus face (it waits like a circle)', async ({
+    page,
+  }) => {
     await boot(page);
     const rp02 = PARTS.find((x) => x.id.startsWith('rp02'));
     if (!rp02) throw new Error('no rp02');
@@ -291,6 +293,10 @@ test.describe('a radius on a fillet’s spline outline (M4.1, rp02)', () => {
     expect(h).toMatchObject({ shape: 'other', ref: 'face' });
     await page.locator('[data-tool="dimension"]').click();
     await zoomAt(page, spline.at);
+    await click(page, spline.at);
+    // A curved outline waits like a circle: nothing yet, then the same outline again.
+    await expect.poll(async () => (await drawing(page).state()).hint ?? null).not.toBeNull();
+    expect((await annotations(page)).filter((a) => a.kind === 'radius')).toHaveLength(0);
     await click(page, spline.at);
     await expect
       .poll(async () => (await annotations(page)).filter((a) => a.kind === 'radius').length)

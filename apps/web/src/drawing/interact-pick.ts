@@ -6,8 +6,10 @@
  * hidden lines pick when the view draws them; construction geometry is offered by the measuring
  * tools; a circle waits for a second pick (another circle: centre to centre; the same circle:
  * its diameter, Alt a radius, Shift its size in linear form); a curved outline that is not an arc
- * gives a radius on its face when that face is round; the Angle tool measures from the second
- * face's normal with Shift.
+ * (a fillet's or a sphere's B-spline outline) waits the same way, and picked again on the same face
+ * gives that face's diameter, Alt its radius (a torus: always its radius), when the face is round;
+ * an arc and a spline piece of one face's outline are the same round entity. The Angle tool
+ * measures from the second face's normal with Shift.
  */
 
 import type { SheetDrag, SheetPointer } from '@wren-cad/ui/drawing';
@@ -109,6 +111,18 @@ export function pickTool(c: DrawingController, _p: SheetPointer): SheetDrag {
 const sameEntity = (a: EdgePick, b: EdgePick) =>
   a.name === b.name && a.viewId === b.viewId && (a.ref ?? 'edge') === (b.ref ?? 'edge');
 
+/** The face a picked outline belongs to (an outline, or a seam on a silhouette), if any. */
+const outlineFace = (p: EdgePick) => p.face ?? (p.ref === 'face' && !p.cut ? p.name : undefined);
+
+/** Two picks of one round thing: the same circle, or pieces (arc or spline) of one face's outline. */
+const sameRound = (a: EdgePick, b: EdgePick) => {
+  const round = (p: EdgePick) => p.shape === 'circle' || p.shape === 'other';
+  if (!round(a) || !round(b) || a.viewId !== b.viewId) return false;
+  if (sameEntity(a, b)) return true;
+  const fa = outlineFace(a);
+  return fa !== undefined && fa === outlineFace(b);
+};
+
 export async function onPick(
   c: DrawingController,
   tool: DrawingTool,
@@ -120,16 +134,14 @@ export async function onPick(
       const prev = c.ui.get().hint?.picks ?? [];
       const first = prev[0];
       if (!first) {
-        if (pick.shape === 'other') {
-          // A curved outline that is not an arc (a fillet's torus): a radius on its face, if round.
-          if (pick.ref === 'face' || pick.face) await addRadiusOnFace(c, pick);
-          else c.toast('That edge is curved: pick a straight edge or a circle.', 'error');
+        if (pick.shape === 'other' && outlineFace(pick) === undefined) {
+          c.toast('That edge is curved: pick a straight edge or a circle.', 'error');
           return;
         }
         c.patch({
           hint: {
             text:
-              pick.shape === 'circle'
+              pick.shape === 'circle' || pick.shape === 'other'
                 ? CIRCLE_WAIT
                 : pick.shape === 'point'
                   ? 'Pick a second edge, circle or point'
@@ -140,12 +152,26 @@ export async function onPick(
         return;
       }
       c.patch({ hint: null });
-      // The same circle again: its diameter (Alt: radius; Shift: across it, in linear form).
-      if (first.shape === 'circle' && pick.shape === 'circle' && sameEntity(first, pick)) {
+      // The same circle again: its diameter (Alt: radius; Shift: across it, in linear form). A
+      // piece of the same face's outline counts as the same circle.
+      if (sameRound(first, pick)) {
+        const circle = first.shape === 'circle' ? first : pick.shape === 'circle' ? pick : null;
         const sv = c.built()?.build.views.get(pick.viewId);
-        if (mods.shift && sv?.ok)
-          await createDimension(c, [first], { across: acrossAxis(pick, sv) });
-        else await createDimension(c, [first], mods.alt);
+        if (circle) {
+          if (mods.shift && sv?.ok)
+            await createDimension(c, [circle], { across: acrossAxis(pick, sv) });
+          else await createDimension(c, [circle], mods.alt);
+        } else {
+          // Only spline pieces (a fillet's torus, a sphere drawn as a B-spline): on the face.
+          await addRadiusOnFace(c, first, { diameter: !mods.alt });
+        }
+        return;
+      }
+      if (first.shape === 'other') {
+        c.toast(
+          'A curved outline is measured by itself: pick it again for its size (Alt: radius).',
+          'error',
+        );
         return;
       }
       // Two picks of one face's outline are its two sides (a diameter), not one edge's length.

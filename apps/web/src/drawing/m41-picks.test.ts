@@ -410,6 +410,10 @@ describe('a spline outline: a radius on its face, when round', () => {
     };
     const f = fake([spline], { answers: (q) => (q.annotationKind === 'radius' ? torus : null) });
     await click(f, [24.1, 1.25]);
+    // A curved outline waits like a circle: nothing yet.
+    expect(added(f)).toHaveLength(0);
+    expect(f.ui().hint?.text).toBe(CIRCLE_WAIT);
+    await click(f, [24.1, 1.25]);
     expect(added(f)[0]).toMatchObject({
       kind: 'radius',
       refs: [{ name: 'F3:fillet(edge(F1:a|F1:b))', kind: 'face' }],
@@ -448,8 +452,63 @@ describe('a spline outline: a radius on its face, when round', () => {
     };
     const f = fake([spline], { answers: () => plane });
     await click(f, [24.1, 1.25]);
+    await click(f, [24.1, 1.25]);
     expect(added(f)).toHaveLength(0);
     expect(f.toasts.at(-1)).toMatch(/flat, so it has no radius/);
+  });
+});
+
+describe('pieces of one round outline are one circle (a sphere cut by a flat and a stem)', () => {
+  const face = 'F1:sphere';
+  const arc = {
+    role: 'visible',
+    edge: 'outline',
+    face,
+    curve: { kind: 'arc', center: [0, 0], radius: 8, start: 0, end: Math.PI },
+  } as unknown as ProjectedCurve;
+  const piece = {
+    role: 'visible',
+    edge: 'outline',
+    face,
+    curve: {
+      kind: 'bspline',
+      degree: 2,
+      poles: [
+        [-8, 0],
+        [-8, -8],
+        [0, -8],
+      ],
+      knots: [0, 0, 0, 1, 1, 1],
+    },
+  } as unknown as ProjectedCurve;
+  const sphere: AnnotationAnchor = { kind: 'point', at: [0, 0, 0] };
+
+  it('a spline piece first, then the arc of the same face: the diameter, not a one-pick radius', async () => {
+    const f = fake([arc, piece], { answers: () => sphere });
+    await click(f, [-6.5, -6]);
+    expect(added(f)).toHaveLength(0);
+    expect(f.ui().hint?.text).toBe(CIRCLE_WAIT);
+    await click(f, [0, 8]);
+    expect(added(f)[0]).toMatchObject({ kind: 'diameter', refs: [{ name: face, kind: 'face' }] });
+  });
+
+  it('two spline picks of a round face: its diameter; Alt: its radius', async () => {
+    const f = fake([piece], { answers: () => sphere });
+    await click(f, [-6.5, -6]);
+    await click(f, [-6.5, -6]);
+    expect(added(f)[0]).toMatchObject({ kind: 'diameter', refs: [{ name: face, kind: 'face' }] });
+    const g = fake([piece], { answers: () => sphere });
+    await click(g, [-6.5, -6]);
+    await click(g, [-6.5, -6], { alt: true, shift: false });
+    expect(added(g)[0]).toMatchObject({ kind: 'radius' });
+  });
+
+  it('a spline then something else is refused with the reason, nothing added', async () => {
+    const f = fake([piece, line('edge(F2:x)', [20, -10], [20, 10])], { answers: () => sphere });
+    await click(f, [-6.5, -6]);
+    await click(f, [20, 0]);
+    expect(added(f)).toHaveLength(0);
+    expect(f.toasts.at(-1)).toMatch(/pick it again/);
   });
 });
 

@@ -683,8 +683,9 @@ export async function dimensionTool(
         // The tool waits after a circle: the same circle again is its diameter (Alt: radius).
         seq.push({ e }, { e, ...(d.kind === 'radius' ? { mod: 'Alt' as Mod } : {}) });
       } else if (e) {
-        // A curved outline that is not an arc (a fillet's torus): one pick gives its radius.
-        seq.push({ e });
+        // A curved outline that is not an arc (a fillet's torus): it waits like a circle; the same
+        // outline again gives its radius (a torus is always sized by its radius).
+        seq.push({ e }, { e, ...(d.kind === 'radius' ? { mod: 'Alt' as Mod } : {}) });
       } else {
         // A diameter seen side-on (a groove or bore along the view): its two straight sides,
         // `radius` either side of the centre, dimensioned across.
@@ -888,22 +889,6 @@ export async function dimensionTool(
         () => true,
         () => false,
       );
-    // The tool may have made something other than what the spec asks for (a radius where a
-    // diameter is wanted, when the pick landed on a different piece of the outline): undo it and
-    // pick again, rather than keep an annotation of the wrong kind.
-    if (created) {
-      const got = (await annotations(page)).find((a) => !before.has(a.id));
-      const fine =
-        d.kind === 'linear'
-          ? ['linear', 'aligned', 'ordinate', 'diameter'].includes(got?.kind ?? '')
-          : got?.kind === d.kind;
-      if (!fine && attempt < 2) {
-        toasts.push(`made a ${got?.kind}`);
-        await page.getByTestId('drawing-undo').click();
-        await expect.poll(async () => (await annotations(page)).length).toBe(before.size);
-        created = false;
-      }
-    }
     if (!created) await page.keyboard.press('Escape');
   }
   if (!created) {

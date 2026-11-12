@@ -880,6 +880,7 @@ From the M4 certification suite (owner decision 2026-11-11), in this order:
 
 - **Design:** ADR-095 (contracts 2026-11-12). rp04 `boss_up` and rp10 `slot_x0` are made from model entities the reference parts gain (a reference plane, a construction point), not from a guessed level.
 - **Accept:** each closed gap's `test.fixme` becomes a passing assertion. The certification suite reaches 94 of 94.
+- **Status 2026-11-12:** all 16 closed; `GAPS` is empty and the suite checks the annotation kind against the spec. Spec corrections recorded in the reference-parts README: rp07 `inset` was a misdiagnosis (its edge is visible), rp08 `tap_depth` is drawn at the hole the stepped cut passes through, rp06 `ch_d` is a linear width seen from above.
 
 ### M4.5 — 3D mice and CAD mice
 

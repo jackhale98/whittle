@@ -7,7 +7,7 @@
   - **Circles wait for a second pick:** pick another circle for the centre distance, or the same circle again for its diameter (Alt for a radius, Shift for its size as a plain linear dimension across it). The inspector switches a diameter between **Ø**, **↔ linear across** and **↕ linear across**, one undo step each.
   - **Section views:** the edges of a cut face pick the model face the cut runs through, so a wall thickness or a bore's diameter in a section follows the model. A drafted wall measures its true thickness.
   - **Draft angles:** in the Angle tool, Shift on the second cut edge (or **From the normal of the second face** in the inspector) measures from that face's normal.
-  - **Fillets drawn as curves:** one pick on a fillet's curved outline gives its radius, when its face is round. Otherwise the tool says why.
+  - **Fillets and spheres drawn as curves:** a curved outline waits like a circle. Pick it again, or another piece of the same face's outline, for its size: a fillet's radius, a round face's diameter (Alt: radius). A face that is not round is refused with the reason.
   - **Hidden and tangent lines** can be picked when the view shows them. Visible lines win where they overlap.
 
 - **Drawings: datums on widths, leaders on an edge's extension, smooth leader drags** (ADR-094 amendment).
