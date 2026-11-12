@@ -231,6 +231,7 @@ export function attachViewport(
     viewport.onCamera((c) => wb.onCamera(c)),
   );
   viewport.setNavigation(wb.input.get().navigation);
+  wb.motion.start(); // 3D mouse: the adapter loads when idle, only where WebHID exists
   // Touch tiers: the Pencil draws or selects and never orbits; fingers keep navigating, and
   // touch taps right after a pen contact are palm rejected.
   if (wb.tier !== 'desktop') viewport.setInputPolicy({ penDraws: true });

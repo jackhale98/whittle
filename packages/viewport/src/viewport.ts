@@ -14,6 +14,7 @@ import type {
   InputPolicy,
   Marker,
   MeshBuffers,
+  MotionSample,
   NavigationOptions,
   PickHit,
   PickOptions,
@@ -30,6 +31,7 @@ import type {
   ViewportStats,
 } from '@wren-cad/contracts';
 import { DEFAULT_NAVIGATION } from '@wren-cad/contracts';
+import { createMotionState, type MotionState, motionSample } from './motion/nav';
 import CameraControls from 'camera-controls';
 import {
   Box3,
@@ -322,6 +324,14 @@ export class ViewportImpl implements ViewportEngine {
    */
   wheel: WheelState | null = null;
   restTimer = 0;
+  // ---- M4.5 3D mouse (ADR-096)
+  readonly motionState: MotionState = createMotionState();
+  /** Last pointer position over the canvas (CSS px): the pivot and zoom anchor of 3D mouse motion. */
+  cursor: { x: number; y: number } | null = null;
+  /** `performance.now()` of the last pointer move (wheel echo rule). */
+  lastPointerMoveAt = 0;
+  /** Pointers with a button or finger down on the canvas (motion is ignored meanwhile). */
+  readonly pointersDown = new Set<number>();
   /** `performance.now()` of the last wheel event or moving frame (rest work waits for quiet). */
   lastActivityAt = 0;
 
@@ -511,6 +521,8 @@ export class ViewportImpl implements ViewportEngine {
     if (this.disposed) return;
     this.disposed = true;
     clearTimeout(this.restTimer);
+    if (this.motionState.watchdog !== null) clearTimeout(this.motionState.watchdog);
+    this.motionState.integ.reset();
     if (this.raf) cancelAnimationFrame(this.raf);
     this.raf = 0;
     this.resizeObserver?.disconnect();
@@ -658,6 +670,11 @@ export class ViewportImpl implements ViewportEngine {
 
   getNavigationState(): NavigationState {
     return getNavigationState(this);
+  }
+
+  /** M4.5 (ADR-096): one 6-DoF sample from a 3D mouse; see `TouchViewport.motion`. */
+  motion(sample: MotionSample): void {
+    motionSample(this, sample);
   }
 
   /**

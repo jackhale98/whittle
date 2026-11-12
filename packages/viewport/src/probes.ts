@@ -21,6 +21,7 @@ export function isCameraMoving(vp: ViewportImpl): boolean {
   // (reduced motion): the 'sleep' event is the reliable end of a transition.
   return (
     vp.interacting ||
+    vp.motionState.integ.active ||
     (vp.wheel !== null && !vp.wheel.settled) ||
     (vp.controls.active && vp.cameraAwake)
   );

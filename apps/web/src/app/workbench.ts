@@ -96,6 +96,7 @@ import {
   type SettingsTab,
   type UiState,
 } from './state';
+import { MotionService } from './motion';
 import * as hooks from './test-hooks';
 import { failBoot, mark, markOnce } from './timing';
 import * as tools from './tools';
@@ -120,6 +121,8 @@ export class Workbench {
   readonly libraryEntries = observable<import('@wren-cad/contracts').LibraryEntry[] | null>(null);
 
   viewport: TouchViewport | null = null;
+  /** 3D mouse (M4.5, ADR-096): lazily loaded WebHID adapter, state, pairing, buttons. See `motion.ts`. */
+  readonly motion = new MotionService(() => this.viewport);
   canvas: HTMLCanvasElement | null = null;
   modeling: Modeling | null = null;
   /** Device tier and what it means (PLAN §8.4): regen budget, mesh quality, kernel boot. */
@@ -307,6 +310,7 @@ export class Workbench {
   }
 
   dispose(): void {
+    this.motion.dispose();
     for (const fn of this.cleanup) fn();
     this.cleanup = [];
     this.loop?.dispose();

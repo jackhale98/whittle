@@ -7,6 +7,7 @@ import {
   WHEEL_SMOOTH_TAU_S,
 } from './constants';
 import { WHEEL_SYNC_BVH_TRIANGLES, type WheelState } from './internal';
+import { isWheelEcho } from './motion/integrate';
 import { navSurfaceHit } from './navControl';
 import { rayAt } from './picking';
 import { requestRender } from './renderLoop';
@@ -37,6 +38,10 @@ export function onWheel(vp: ViewportImpl, e: WheelEvent): void {
   e.preventDefault();
   e.stopImmediatePropagation();
   if (vp.nav) return; // a drag owns the camera
+  // A vendor driver also turns push/pull into wheel events: while 3D mouse motion is arriving and
+  // the pointer is still, they are echoes of the same push (ADR-096 item 3).
+  const at = performance.now();
+  if (isWheelEcho(at, vp.motionState.lastMotionAt, vp.lastPointerMoveAt)) return;
   const notches = wheelNotches(e.deltaY, e.deltaMode, vp.navigation.invertZoom);
   if (notches === 0) return;
   const rect = vp.canvas.getBoundingClientRect();

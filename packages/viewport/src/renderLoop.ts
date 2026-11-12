@@ -18,6 +18,7 @@ import {
 import { idFresh, kickIdRefresh } from './picking';
 import type { ViewportImpl } from './viewport';
 import { clipPlanes } from './views';
+import { stepMotion } from './motion/nav';
 import { stepWheel } from './wheel';
 
 export function resize(vp: ViewportImpl): void {
@@ -147,7 +148,8 @@ export function frame(vp: ViewportImpl, now: number): void {
   vp.lastFrameTime = now;
 
   const wheeling = stepWheel(vp, dt);
-  const moving = vp.controls.update(dt) || wheeling;
+  const motioning = stepMotion(vp);
+  const moving = vp.controls.update(dt) || wheeling || motioning;
   if (moving) vp.lastActivityAt = performance.now();
   if (moving || vp.dirty) {
     vp.dirty = false;

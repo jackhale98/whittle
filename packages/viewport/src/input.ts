@@ -4,6 +4,7 @@ import { applyRoll } from './camera';
 import { LONG_PRESS_GRACE_MS, LONG_PRESS_JANK_MS } from './constants';
 import type { GestureOutput, PointerKind, PointerSample } from './gestures';
 import { eventTime, inputPending } from './internal';
+import { endMotion } from './motion/nav';
 import { dispatchNav } from './navControl';
 import type { Mods, NavPointerKind, NavSample } from './navigation';
 import { defaultTolerance } from './pick';
@@ -125,6 +126,8 @@ export function attachPointerGestures(vp: ViewportImpl): void {
   // Capture phase on window runs before camera-controls' own pointerdown listener.
   const down = (e: PointerEvent) => {
     if (e.target !== canvas || vp.disposed) return;
+    vp.pointersDown.add(e.pointerId);
+    if (vp.motionState.integ.active) endMotion(vp); // a press ends 3D mouse motion
     // A host-replayed press (e.g. sketch mode handing a held-back finger to the camera) is for
     // camera-controls only: the recogniser already saw the real one, and a second entry would
     // reset that finger's start and tap slop.
@@ -171,6 +174,11 @@ export function attachPointerGestures(vp: ViewportImpl): void {
   };
   const move = (e: PointerEvent) => {
     if (vp.disposed) return;
+    if (e.target === canvas) {
+      const r = canvas.getBoundingClientRect();
+      vp.cursor = { x: e.clientX - r.left, y: e.clientY - r.top };
+      vp.lastPointerMoveAt = performance.now();
+    }
     if (e.target === canvas && e.buttons === 0 && vp.handles.size > 0) {
       const s = sample('move', e);
       setHoveredHandle(vp, handleAt(vp, s.x, s.y, defaultTolerance(s.pointerType))?.id ?? null);
@@ -188,11 +196,15 @@ export function attachPointerGestures(vp: ViewportImpl): void {
   };
   const end = (type: 'up' | 'cancel') => (e: PointerEvent) => {
     if (vp.disposed) return;
+    vp.pointersDown.delete(e.pointerId);
     dispatch(vp, vp.recognizer.handle(sample(type, e)));
     armLongPress(vp);
     dispatchNav(vp, vp.navMachine.handle(navSample(type, e)));
   };
-  const blur = () => dispatchNav(vp, vp.navMachine.abort());
+  const blur = () => {
+    vp.pointersDown.clear();
+    dispatchNav(vp, vp.navMachine.abort());
+  };
   const up = end('up');
   const cancel = end('cancel');
   const leave = () => setHoveredHandle(vp, null);

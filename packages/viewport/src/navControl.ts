@@ -63,6 +63,7 @@ export function getNavigationState(vp: ViewportImpl): NavigationState {
     pivot: p ? [p[0], p[1], p[2]] : null,
     pivotSource: vp.lastPivot?.source ?? null,
     markerVisible: vp.pivotMarker?.group.visible === true,
+    motionActive: vp.motionState.integ.active,
     pivotScreen: s ? { x: s.x, y: s.y } : null,
     lastPivotMs: vp.lastPivotMs,
   };

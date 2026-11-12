@@ -155,6 +155,8 @@ export interface NavigationState {
   pivotSource: PivotSource | null;
   /** The pivot marker is shown right now. */
   markerVisible: boolean;
+  /** A 3D mouse motion session is running (M4.5). */
+  motionActive: boolean;
   /** Screen position (CSS px) of the pivot right now; null when there is none. */
   pivotScreen: { x: number; y: number } | null;
   /** Milliseconds the last orbit/pan start spent resolving its pivot (the pick under the cursor). */
