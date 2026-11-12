@@ -334,6 +334,19 @@ describe('createMotionInput states', () => {
     expect(got).toHaveLength(2);
   });
 
+  it('state() returns a stable object between changes (for useSyncExternalStore)', async () => {
+    const hid = new FakeHid();
+    const dev = new FakeDevice();
+    hid.granted = [dev];
+    const { input } = make(hid);
+    await flush();
+    expect(input.state()).toBe(input.state());
+    const a = input.state();
+    dev.report(1, [0x5e, 0x01, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    expect(input.state()).not.toBe(a);
+    expect(input.state()).toBe(input.state());
+  });
+
   it('survives a throwing consumer', async () => {
     const hid = new FakeHid();
     const dev = new FakeDevice();

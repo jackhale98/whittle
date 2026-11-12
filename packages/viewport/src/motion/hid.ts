@@ -146,7 +146,17 @@ export function createMotionInput(opts: MotionInputOptions): MotionInput {
 
   const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
+  // `state()` must return the same object until something changed (React's useSyncExternalStore
+  // calls it on every render and treats a new object as a new snapshot).
+  let version = 0;
+  let cached: { version: number; value: MotionInputState } | null = null;
   const state = (): MotionInputState => {
+    if (cached?.version === version) return cached.value;
+    const value = buildState();
+    cached = { version, value };
+    return value;
+  };
+  const buildState = (): MotionInputState => {
     if (!hid) return { path: 'none', state: 'unsupported' };
     const t = tracks.values().next().value as Track | undefined;
     if (!t) return { path: 'none', state: paired ? 'disconnected' : 'notPaired' };
@@ -177,6 +187,7 @@ export function createMotionInput(opts: MotionInputOptions): MotionInput {
   /** Transitions go out at once; axis and button changes at most every `STATE_THROTTLE_MS`. */
   const publish = (urgent: boolean) => {
     if (disposed) return;
+    version++;
     const wait = STATE_THROTTLE_MS - (now() - lastEmit);
     if (urgent || wait <= 0) emit();
     else if (emitTimer === null) emitTimer = setTimeout(emit, wait);

@@ -36,6 +36,8 @@ export function attachFakeMotion(wb: Workbench): void {
       emit({ ...cur, buttons: [] });
     },
   };
+  // The fake owns the slot: the real device layer (lazy, WebHID browsers) must not replace it.
+  wb.deviceDispose ??= () => {};
   setMotionInput(wb, fake);
 }
 
