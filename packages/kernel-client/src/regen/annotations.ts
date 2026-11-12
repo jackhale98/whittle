@@ -11,6 +11,9 @@
  * the sketch origin and axes come from the sketch's final state (`sketchRef`); faces measured as
  * planes resolve plane-like; a face name that no longer exists may resolve to its recorded
  * successor (`resolveSuccessor`, reported as `merged`); `count` for `text.count`.
+ * M4.1 (ADR-095): origin and construction axes span the part; `F<pattern>:pitch` is the pitch
+ * circle of a circular pattern of holes (exact, else unresolved with an error); refs at `min` /
+ * `max` are anchored at their extreme points; a torus face's size anchor is its `torus`.
  *
  * States:
  *  - `suppressed` (ADR-090 decision 7, "not in this configuration"): the annotation is suppressed,
@@ -44,14 +47,11 @@ import type {
   DimensionText,
   EntityRef,
   Feature,
-  GrownRef,
   HoleFeature,
   Id,
   KernelError,
-  MergedRef,
   NamedDimension,
   RefPoint,
-  UnresolvedRef,
   Vec3,
 } from '@wren-cad/contracts';
 import { SKETCH_ORIGIN, SKETCH_X_AXIS, SKETCH_Y_AXIS } from '@wren-cad/contracts';
@@ -66,10 +66,12 @@ import {
 import {
   type AxisGeo,
   anchorOf,
+  extremeAnchor,
   measureAnnotation,
   type RefGeo,
   rimAnchor,
   subGeometry,
+  torusAnchor,
 } from './annotation-geometry';
 import { causeLabel } from './attribution';
 import {
@@ -81,10 +83,13 @@ import {
   type Walk,
 } from './cause';
 import type { EngineCore } from './core';
+import { canonicalDir } from './datums';
 import {
   add,
+  cross,
   dot,
   frameY,
+  norm,
   normalize,
   ORIGIN_AXES,
   ORIGIN_PLANES,
@@ -99,6 +104,7 @@ import {
   fingerprintOf,
   PLANE_NAME,
   POINT_NAME,
+  resolveAxis,
   resolveSub,
   resolveSuccessor,
 } from './refs';
@@ -215,6 +221,12 @@ interface Resolved {
   refs: AnnotationMemo['refs'];
 }
 
+/** Why an annotation needs attention (its `error`), besides an unresolved ref's own message. */
+interface Problem {
+  error: KernelError;
+  cause?: AttentionCause;
+}
+
 /** The pseudo `EntityRef` of a non-geometric binding (a source feature, an annotation id). */
 const bindingRef = (name: string): EntityRef => ({ name, kind: 'body' });
 
@@ -236,8 +248,8 @@ async function resolveOne(
   const unresolved: RegenUnresolvedRef[] = [];
   /** Causes that make the annotation "not in this configuration" (suppressed). */
   const suppressedBy: (AttentionCause | null)[] = [];
-  /** Reasons the annotation needs attention without an unresolved ref. */
-  const problems: { error: KernelError; cause?: AttentionCause }[] = [];
+  /** Reasons the annotation needs attention, besides an unresolved ref's own. */
+  const problems: Problem[] = [];
 
   // Source (dimensions and hole callouts).
   const source = 'source' in a ? a.source : undefined;
@@ -264,7 +276,7 @@ async function resolveOne(
     const ref = a.refs[i] as EntityRef;
     const target: RefTarget = {};
     const use = { kind: a.kind, at: at(i) };
-    geos.push(await refGeometry(core, ctx, ref, `/refs/${i}`, unresolved, use, target));
+    geos.push(await refGeometry(core, ctx, ref, `/refs/${i}`, unresolved, use, target, problems));
     targets.push(target);
   }
 
@@ -370,9 +382,10 @@ async function resolveOne(
   if (ctx.current.rebound.length > 0) res.rebound = ctx.current.rebound;
   if (a.refs.length > 0) {
     res.anchors = [];
+    const direction = 'direction' in a ? a.direction : undefined;
     for (let i = 0; i < geos.length; i++) {
       const g = geos[i];
-      res.anchors.push(g ? await anchorFor(core, ctx, g, at(i), a.kind) : null);
+      res.anchors.push(g ? await anchorFor(core, ctx, g, at(i), a.kind, direction) : null);
     }
   }
 
@@ -490,7 +503,7 @@ interface SourceOut {
   feature?: Feature;
   unresolved?: RegenUnresolvedRef;
   suppressed?: AttentionCause;
-  problem?: { error: KernelError; cause?: AttentionCause };
+  problem?: Problem;
 }
 
 /** The source's feature, its state in this walk and its value (mm / rad). */
@@ -692,6 +705,10 @@ interface RefTarget {
  * split face that are all coplanar are one plane (resolve.ts), reported as `rebound`. A face name
  * that no longer exists may resolve to its recorded successor (`resolveSuccessor`: a Boolean's
  * `face(N)`, a Shell's `rim(N)`), reported as `merged`.
+ *
+ * M4.1 (ADR-095): origin and construction axes span the part (`partSpan`), so a view can draw
+ * and pick them; `F<pattern>:pitch` is a circular pattern's pitch circle (`pitchCircle`). A ref
+ * that names an entity that cannot be had says why in `problems` (the annotation's `error`).
  */
 async function refGeometry(
   core: EngineCore,
@@ -701,11 +718,15 @@ async function refGeometry(
   unresolved: RegenUnresolvedRef[],
   use: RefUse = { at: 'self' },
   target: RefTarget = {},
+  problems: Problem[] = [],
 ): Promise<RefGeo | null> {
   const op = ORIGIN_PLANES[ref.name];
   if (op) return { t: 'plane', origin: op.origin, normal: normalize(op.z) };
   const oa = ORIGIN_AXES[ref.name];
-  if (oa) return { t: 'axis', origin: oa.origin, dir: normalize(oa.z), extent: [0, 0] };
+  if (oa) {
+    const dir = normalize(oa.z);
+    return { t: 'axis', origin: oa.origin, dir, extent: await partSpan(core, ctx, oa.origin, dir) };
+  }
   if (ref.name === 'origin:O') return { t: 'point', at: [0, 0, 0] };
   const pl = PLANE_NAME.exec(ref.name);
   if (pl) {
@@ -719,13 +740,16 @@ async function refGeometry(
     const d = ctx.state.datums.get(ax[1] as string);
     const wanted = AXIS_NAME.test(ref.name) ? 'axis' : 'point';
     if (d?.kind === wanted) {
-      return wanted === 'axis'
-        ? { t: 'axis', origin: d.frame.origin, dir: normalize(d.frame.z), extent: [0, 0] }
-        : { t: 'point', at: d.frame.origin };
+      if (wanted === 'point') return { t: 'point', at: d.frame.origin };
+      const dir = normalize(d.frame.z);
+      const extent = await partSpan(core, ctx, d.frame.origin, dir);
+      return { t: 'axis', origin: d.frame.origin, dir, extent };
     }
     unresolved.push({ path, ref, reason: 'missing' });
     return null;
   }
+  const pitch = PITCH_NAME.exec(ref.name);
+  if (pitch) return pitchCircle(core, ctx, ref, pitch[1] as Id, path, unresolved, problems);
   if (ref.kind === 'body') {
     const b = ctx.state.bodies.get(ref.name);
     if (!b) {
@@ -804,6 +828,24 @@ async function sketchRef(
   if (id !== SKETCH_X_AXIS && id !== SKETCH_Y_AXIS) return null;
   const o = toWorld(frame, 0, 0);
   const dir = normalize(id === SKETCH_X_AXIS ? frame.x : frameY(frame));
+  const points = s.entities.flatMap((e) => (e.kind === 'point' ? [toWorld(frame, e.x, e.y)] : []));
+  const [lo, hi] = await partSpan(core, ctx, o, dir, points);
+  return { t: 'line', a: add(o, scale(dir, lo)), b: add(o, scale(dir, hi)) };
+}
+
+/**
+ * Where a construction line through `o` along unit `dir` spans the part: the projections onto it
+ * of the bodies' bounding-box corners and of `points`, and at least ±1 mm about `o` (parameters
+ * along `dir`). Sketch axes, origin axes and axis features use it, so a view can draw them as
+ * centre lines and pick them; only their position and direction measure.
+ */
+async function partSpan(
+  core: EngineCore,
+  ctx: WalkContext,
+  o: Vec3,
+  dir: Vec3,
+  points: readonly Vec3[] = [],
+): Promise<[number, number]> {
   let lo = -1;
   let hi = 1;
   const reach = (p: Vec3) => {
@@ -811,7 +853,7 @@ async function sketchRef(
     lo = Math.min(lo, t);
     hi = Math.max(hi, t);
   };
-  for (const e of s.entities) if (e.kind === 'point') reach(toWorld(frame, e.x, e.y));
+  for (const p of points) reach(p);
   for (const b of ctx.state.bodies.values()) {
     if (b.meshOnly) continue;
     const bb = await core.boundsOf(b.shape);
@@ -820,7 +862,138 @@ async function sketchRef(
     for (const x of [min[0], max[0]])
       for (const y of [min[1], max[1]]) for (const z of [min[2], max[2]]) reach([x, y, z]);
   }
-  return { t: 'line', a: add(o, scale(dir, lo)), b: add(o, scale(dir, hi)) };
+  return [lo, hi];
+}
+
+// ---------------------------------------------------------------------------------------------
+// Pitch circles of circular patterns of holes (M4.1, ADR-095)
+// ---------------------------------------------------------------------------------------------
+
+/** `F<pattern>:pitch`: the pitch circle of a circular pattern of holes. */
+export const PITCH_NAME = /^F([0-9A-Za-z]+):pitch$/;
+
+/**
+ * The pitch circle of circular pattern `id` in the final state: about the pattern's axis as it
+ * resolves now, through the axes of its hole instances (the source holes' own instances and this
+ * pattern's copies of them, as `holeInstances` finds them; copies made by other features are on
+ * other circles and are left out). Its centre is on the axis at the original instance's entry
+ * level, its normal the axis direction (canonical).
+ *
+ * Exact, or nothing: when the pattern is gone, suppressed, failed or after the rollback bar the ref
+ * is missing and cause.ts says why. When it is not a circular pattern, its sources are not all
+ * holes, an instance is not a round bore parallel to the axis, or the instances are not all at one
+ * radius from the axis (within 1e-6 relative), the ref is missing and `problems` carries the
+ * reason. Never a guessed circle.
+ */
+async function pitchCircle(
+  core: EngineCore,
+  ctx: WalkContext,
+  ref: EntityRef,
+  id: Id,
+  path: string,
+  unresolved: RegenUnresolvedRef[],
+  problems: Problem[],
+): Promise<RefGeo | null> {
+  const missing = (): null => {
+    unresolved.push({ path, ref, reason: 'missing' });
+    return null;
+  };
+  const i = ctx.index.get(id);
+  const f = i === undefined ? undefined : ctx.part.features[i];
+  // Deleted, suppressed, failed or rolled back: the cause (structural) says which.
+  if (!f || ctx.walk.byId.get(f.id)?.state !== 'ok') return missing();
+  const fail = (message: string, hint: string): null => {
+    problems.push({
+      error: kerr('UNRESOLVED_REFERENCE', message, { hint, entityRefs: [ref.name] }),
+    });
+    return missing();
+  };
+  const noCircle = `‘${f.name}’ has no pitch circle`;
+  if (f.type !== 'circularPattern') {
+    return fail(`${noCircle}: it is not a circular pattern`, 'Pick a circular pattern of holes.');
+  }
+  const sources =
+    f.source.kind === 'features'
+      ? f.source.features.map((s) => {
+          const k = ctx.index.get(s);
+          return k === undefined ? undefined : ctx.part.features[k];
+        })
+      : [];
+  const holes = sources.filter((s): s is HoleFeature => s?.type === 'hole');
+  if (holes.length === 0 || holes.length !== sources.length) {
+    return fail(
+      `${noCircle}: it does not pattern holes only`,
+      'Dimension the instances themselves, or pattern holes.',
+    );
+  }
+
+  // The axis as it resolves in the final state (resolved as the pattern resolves it, its reports
+  // stay out of the annotation's).
+  const mine = ctx.current;
+  ctx.current = { featureId: f.id, rebound: [], merged: [], grown: [] };
+  const ax = await resolveAxis(core, ctx, f.axis, '/axis', [], false);
+  ctx.current = mine;
+  if (!ax || 'code' in ax) {
+    return fail(`${noCircle}: its axis is no longer in the model`, 'Fix the pattern’s axis.');
+  }
+  const axis = { o: ax.line.origin, d: normalize(ax.line.dir) };
+
+  const walls: InstanceFace[] = [];
+  for (const h of holes) {
+    for (const w of await holeInstances(core, ctx, h.id)) if (copiedBy(w.name, f.id)) walls.push(w);
+  }
+  if (walls.length === 0) {
+    return fail(`${noCircle}: its holes are no longer in the model`, 'Check the hole feature.');
+  }
+  const bores: { wall: InstanceFace; g: AxisGeo; r: number }[] = [];
+  for (const w of walls) {
+    const g = await subGeometry(core, { ...w, kind: 'face' });
+    if (g?.t !== 'axis' || g.radius === undefined) {
+      return fail(`${noCircle}: a hole instance is not a round bore`, 'Check the hole feature.');
+    }
+    if (norm(cross(g.dir, axis.d)) > 1e-9) {
+      return fail(
+        `${noCircle}: its holes are not parallel to its axis`,
+        'Dimension the instances themselves.',
+      );
+    }
+    g.name = w.name;
+    bores.push({ wall: w, g, r: norm(cross(sub(g.origin, axis.o), axis.d)) });
+  }
+  const radii = bores.map((b) => b.r);
+  const [rMin, rMax] = [Math.min(...radii), Math.max(...radii)];
+  if (rMax - rMin > 1e-6 * (1 + rMax)) {
+    return fail(
+      `${noCircle}: its holes are not all at one radius from its axis`,
+      'Dimension the instances themselves.',
+    );
+  }
+  if (!(rMax > 1e-9)) return fail(`${noCircle}: its holes are on its axis`, 'Check the pattern.');
+
+  // The centre: on the axis, level with the original instance's entry (a circular pattern keeps
+  // every copy at that level).
+  const first = bores[0] as (typeof bores)[number];
+  const hole = holeWallOf(ctx, first.g.name);
+  const end = hole ? await wallEntry(core, ctx, first.g, hole) : null;
+  if (end === null) {
+    return fail(`${noCircle}: the holes’ entry face is not known`, 'Check the hole feature.');
+  }
+  const entry = add(first.g.origin, scale(first.g.dir, first.g.extent[end]));
+  const center = add(axis.o, scale(axis.d, dot(sub(entry, axis.o), axis.d)));
+  return { t: 'circle', center, normal: canonicalDir(axis.d), radius: first.r };
+}
+
+/**
+ * Is hole face `name` an original instance, or a copy made by pattern `patternId` alone (its copy
+ * wrappers are all `F<pattern>:inst<k>(…)`)?
+ */
+function copiedBy(name: string, patternId: Id): boolean {
+  let inner = name;
+  for (let m = COPY.exec(inner); m; m = COPY.exec(inner)) {
+    if (!inner.startsWith(`F${patternId}:inst`)) return false;
+    inner = m[1] as string;
+  }
+  return true;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -834,7 +1007,9 @@ const SIZE_KINDS = new Set<Annotation['kind']>(['radius', 'diameter']);
  * The anchor of one resolved ref for an annotation of `kind`. A cylindrical face (`self`) of a
  * radius or diameter is its rim circle, as the drawing dimensions circles: a hole wall's at its
  * entry, any other at the far end of its canonical axis. A hole callout's ref on a hole wall is
- * the callout's rim (`calloutAnchor`). Everything else is `anchorOf`.
+ * the callout's rim (`calloutAnchor`). M4.1: a torus face (`self`) of a radius or diameter is its
+ * `torus` anchor; a ref at `min` / `max` is its extreme point along the dimension's `direction`
+ * (the entity itself when it has none, or without a direction). Everything else is `anchorOf`.
  */
 async function anchorFor(
   core: EngineCore,
@@ -842,7 +1017,14 @@ async function anchorFor(
   g: RefGeo,
   at: RefPoint,
   kind: Annotation['kind'] | undefined,
+  direction?: Vec3,
 ): Promise<AnnotationAnchor> {
+  if (at === 'min' || at === 'max') {
+    return extremeAnchor(g, at, direction) ?? (await anchorOf(core, g, 'self'));
+  }
+  if (g.t === 'torus' && at === 'self' && kind !== undefined && SIZE_KINDS.has(kind)) {
+    return torusAnchor(g);
+  }
   if (g.t === 'axis' && at === 'self' && g.target && kind !== undefined) {
     if (kind === 'holeCallout' && g.radius !== undefined) return calloutAnchor(core, ctx, g);
     if (SIZE_KINDS.has(kind) && g.radius !== undefined) {

@@ -438,6 +438,38 @@ face/edge/vertex refs → all current bodies; `body` refs → the body table by 
   the sketch's points projected on it). A sketch that is not in the final state (deleted,
   suppressed, failed, rolled back) leaves the ref unresolved, with its structural cause. Sketch
   curves still resolve through the kernel's names.
+- **Construction refs** (M4.1, ADR-095). `origin:O`, `origin:X|Y|Z`, `S<id>:p(@origin)`,
+  `S<id>:e(@x|@y)`, `S<id>:p(<point>)` and `F<id>:plane|axis|point` resolve as above. Origin axes
+  and axis features are `axis` anchors spanning the part like sketch axes (`partSpan`: the bodies'
+  bounding-box corners projected on the line, at least ±1 mm about its origin), no longer
+  `extent: [0, 0]`; only their position and direction measure. `F<p>:pitch` is the pitch circle
+  of circular pattern `p` (`pitchCircle`): a `circle` about the pattern's axis as it resolves in
+  the final state, through the axes of the holes' instances (the source holes' own instances and
+  `p`'s copies of them; copies by other patterns or mirrors are on other circles and left out),
+  centred on the axis at the original instance's entry level, normal along the axis
+  (`canonicalDir`). Diameter and radius measure it; `min` / `max` work on it. A deleted,
+  suppressed, failed or rolled-back pattern leaves the ref unresolved with its structural cause
+  (so a suppressed one makes the annotation `suppressed`). A feature that is not a circular
+  pattern, sources that are not all holes, an instance that is not a round bore parallel to the
+  axis, instances at different radii (1e-6 relative) or holes on the axis leave it unresolved
+  with an `UNRESOLVED_REFERENCE` `error` saying which: never a guessed circle.
+- **Extremes** (M4.1). `at: 'min' | 'max'` on a linear or ordinate dimension with a `direction`
+  is the ref's extreme point along it (`extremePoint`): a circle's (an arc's: its circle's) or a
+  sphere's tangent point; for a cylinder or cone face the farther of its two rim tangent points,
+  the middle of the tangent line when both are as far (a cylinder across its axis); a straight
+  edge's farther end (its middle when square to the direction); a point itself. Its anchor is that
+  `point`. A plane, an axis without a radius, a torus and other faces or curves have none: the
+  annotation needs attention with the reason, anchored by the entity. Without a direction, or on
+  another kind, min/max is unmeasurable too (the document rule flags it as well). Anchor queries
+  have no direction, so a query at `min`/`max` returns the entity's plain anchor.
+- **Draft angles and torus radii** (M4.1). In an angle, a planar face at `axis` is the line along
+  its normal (a circle or torus at `axis`: its axis), and such a pair never goes to the kernel's
+  `measureShapes` (which would measure the face): refs [drafted face, neutral face] at
+  ['self', 'axis'] give the draft (3° on rp05). A torus face (`subShapeGeometry` `torus`; exact
+  only, the probes have none) is `RefGeo` `torus`: a radius measures its minor radius (a diameter
+  twice that), and its anchor for `radius` / `diameter` (`at: 'self'`, resolutions and anchor
+  queries) is the `torus` anchor (`center`, canonical `axis`, `major`, `minor`). Otherwise a torus
+  is anchored by its centroid as before (`center`: its centre; `axis`: its axis).
 - **Plane-like faces and successors.** A face ref of a `linear`, `ordinate` or `angle` annotation
   (`at: 'self'`) is measured as its plane, so it resolves plane-like: a face split into coplanar
   pieces is one plane (reported as `rebound` to a piece). A face name that no longer exists
@@ -529,6 +561,25 @@ counterbore and countersink rims, a diameter on a blind hole's wall; anchor quer
 rim arc and axis, the chamfer plane, a revolve's start and end faces, a merged face, unresolved
 refs with their cause, read-only, refusals) and `shape-for-drawing.test.ts` (BREP round trip for one and two bodies: counts,
 names and per-index fingerprints; the key; refusals).
+
+M4.1 (ADR-095), on the reference parts in `reference-annotations.golden.test.ts`, each with an
+upstream edit: `F<ring>:pitch` on rp09 is Ø90 at the flange top (radius 45, linear across 90) and
+follows `pcd` 100 (and `bolt_n` 8); the deleted pattern is needs attention with cause `deleted`,
+the suppressed one `suppressed` (and the anchor query says so); `F<hub>:pitch` and
+`F<bolt>:pitch` are errors. Origin axes span rp09 (±60, −1..42; 57 after `hub_h` 45), the axis
+feature spans the hub, and both measure by position only (axis feature to a bolt hole's axis 45,
+50 after `pcd`). rp03: `origin:X` to the flat's rim (with and without a direction), its face, and
+`origin:XY` / `origin:O` to the plane feature = 18 (10 after `flat_h`); the ball across = 50 (60).
+rp08: `origin:Y` / `origin:X` to the countersink rim centre = 30 / 18 (also after `plate_t` and
+`cs_d`), the point feature, sketch points, `@origin` and `@x`; `tap_depth` planes = 12. rp09
+`hub_h` planes = 30 (45). rp05: the drafted wall to its shell face, no direction = 3 (4 after
+`wall`); draft angles on all four walls = 3° (5° after `draft_a`), 93° between the normals. rp09
+rim across = 120 on the face and on the edge, along x and y (130 after `flange_d`), bore to rim at
+max/max 44; a plane at min/max, min/max without a direction or on an aligned dimension need
+attention with the reason. rp02 fillet: radius 3 (diameter 6), the `torus` anchor (centre z 18,
+major 18), the anchor query; 4 after `fillet_r`. In `annotations.golden.test.ts`: a synthetic
+ring of four M6 holes at 20 mm is Ø40 at the top face; holes at two radii and a ring of extruded
+cuts are errors.
 
 `pnpm --filter @wren-cad/kernel-client test` runs the golden suite in Node against the real kernel
 (`packages/kernel/dist`, skipped when missing) and real planegcs: plate, the M1 bracket with three

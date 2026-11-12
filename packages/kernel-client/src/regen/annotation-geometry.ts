@@ -20,14 +20,17 @@
  * Conventions (part mm and radians):
  *  - linear with `direction`: the distance between the two refs' measuring points projected on it
  *    (a plane's centroid, a line's mid point, an axis' origin, a circle's or sphere's centre);
+ *    `min` / `max` (M4.1, ADR-095) are the ref's extreme points along it (`extremePoint`);
  *  - linear without one: the separation of parallel planes or lines, or of a plane (or a line) and
- *    a point; anything else is not measurable without a direction;
+ *    a point; anything else is not measurable without a direction, and neither are `min` / `max`;
  *  - aligned: point to point, else the exact minimum distance between the two sub-shapes;
  *  - ordinate: |coordinate of refs[1] − refs[0]| along `direction`;
- *  - radius / diameter: of a circular edge, a cylindrical face or a sphere;
+ *  - radius / diameter: of a circular edge, a cylindrical face or a sphere; of a torus face (a
+ *    fillet at a shaft step, M4.1) its minor radius;
  *  - angle: the kernel's exact angle for planar faces and straight edges (face–face between outward
  *    normals, edges sharing a vertex the corner angle, other pairs between the lines), else the
- *    same conventions from the directions; `supplement` is π minus it.
+ *    same conventions from the directions; `supplement` is π minus it. A planar face at `axis`
+ *    (M4.1) is the line along its normal (the pull direction of a draft), as is a circle at `axis`.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
@@ -97,8 +100,24 @@ export type RefGeo =
   | AxisGeo
   | { t: 'sphere'; center: Vec3; radius: number; target: SubTarget }
   | { t: 'point'; at: Vec3; target?: SubTarget }
+  | TorusGeo
   /** Another face or edge: its centroid, and a polyline for edges. */
   | { t: 'other'; centroid: Vec3; points?: Vec3[]; target?: SubTarget };
+
+/**
+ * A torus face (M4.1: a fillet at a shaft step, whose outline in a view is a B-spline): its centre
+ * and canonical axis, major and minor radii, and the face's centroid (what it is measured and
+ * anchored by when it is not a size).
+ */
+export interface TorusGeo {
+  t: 'torus';
+  center: Vec3;
+  axis: Vec3;
+  major: number;
+  minor: number;
+  centroid: Vec3;
+  target: SubTarget;
+}
 
 /** Geometry of a face, edge or vertex of a live shape (memoised per handle). */
 export async function subGeometry(core: EngineCore, t: SubTarget): Promise<RefGeo | null> {
@@ -116,9 +135,14 @@ export async function subGeometry(core: EngineCore, t: SubTarget): Promise<RefGe
     // Faces of sketches and planes have no material side and keep their frame's normal.
     if (f.normal) return { t: 'plane', origin: f.centroid, normal: normalize(f.normal), target: t };
     const other: RefGeo = { t: 'other', centroid: f.centroid, target: t };
+    if (f.surface === 'torus') {
+      // Exact only: the probes have no torus (a kernel build without `subShapeGeometry`).
+      const x = await core.exactOf(t);
+      return (x ? exactFace(x, t, f.centroid) : null) ?? other;
+    }
     if (f.surface !== 'cylinder' && f.surface !== 'cone' && f.surface !== 'sphere') return other;
     const x = await core.exactOf(t);
-    if (x) return exactFace(x, t) ?? other;
+    if (x) return exactFace(x, t, f.centroid) ?? other;
     return (await probedFace(core, t, f.surface, f.area)) ?? other;
   }
   const e = fp.edges[t.index];
@@ -135,7 +159,7 @@ export async function subGeometry(core: EngineCore, t: SubTarget): Promise<RefGe
 }
 
 /** A face's `subShapeGeometry` as a ref geometry (null for surfaces anchored by their centroid). */
-function exactFace(x: SubShapeGeometry, t: SubTarget): RefGeo | null {
+function exactFace(x: SubShapeGeometry, t: SubTarget, centroid: Vec3): RefGeo | null {
   if (x.kind !== 'face') return null;
   if (x.surface === 'cylinder' && x.radius > 0) {
     const a = canonicalAxis(x.origin, x.axis, x.extent);
@@ -156,6 +180,17 @@ function exactFace(x: SubShapeGeometry, t: SubTarget): RefGeo | null {
   }
   if (x.surface === 'sphere' && x.radius > 0) {
     return { t: 'sphere', center: x.center, radius: x.radius, target: t };
+  }
+  if (x.surface === 'torus' && x.minorRadius > 0) {
+    return {
+      t: 'torus',
+      center: x.origin,
+      axis: canonicalDir(normalize(x.axis)),
+      major: x.majorRadius,
+      minor: x.minorRadius,
+      centroid,
+      target: t,
+    };
   }
   return null;
 }
@@ -437,6 +472,13 @@ async function rawAnchor(core: EngineCore, g: RefGeo, at: RefPoint): Promise<Ann
       return { kind: 'axis', origin: g.origin, direction: g.dir, extent: g.extent };
     case 'sphere':
       return { kind: 'point', at: g.center };
+    case 'torus':
+      // As a size (radius, diameter) it is `torusAnchor`; otherwise its centre, its axis, or the
+      // face itself by its centroid (as any other curved face).
+      if (at === 'center') return { kind: 'point', at: g.center };
+      if (at === 'axis')
+        return { kind: 'axis', origin: g.center, direction: g.axis, extent: [0, 0] };
+      return { kind: 'point', at: g.centroid };
     case 'point':
       return { kind: 'point', at: g.at };
     case 'other':
@@ -450,6 +492,34 @@ async function rawAnchor(core: EngineCore, g: RefGeo, at: RefPoint): Promise<Ann
 }
 
 const mid = (a: Vec3, b: Vec3): Vec3 => scale(add(a, b), 0.5);
+
+/** The `torus` anchor of a torus face (M4.1): what a radius on a fillet at a shaft step points at. */
+export function torusAnchor(g: TorusGeo): AnnotationAnchor {
+  return noNegativeZero({
+    kind: 'torus',
+    center: g.center,
+    axis: g.axis,
+    major: g.major,
+    minor: g.minor,
+  });
+}
+
+/**
+ * The anchor of a ref at `min` / `max` (M4.1) for a dimension along `direction`: its extreme point
+ * (`extremePoint`). Null when the ref has none (a plane), or without a direction (an anchor query):
+ * the caller then anchors the entity itself.
+ */
+export function extremeAnchor(
+  g: RefGeo,
+  at: 'min' | 'max',
+  direction: Vec3 | undefined,
+): AnnotationAnchor | null {
+  if (!direction) return null;
+  const p = extremePoint(g, at, direction);
+  return isPoint(p) ? noNegativeZero({ kind: 'point', at: p }) : null;
+}
+
+const isPoint = (p: Vec3 | Unmeasurable): p is Vec3 => Array.isArray(p);
 
 /**
  * The outer boundary of a planar face as a closed polygon (world mm): `projectFaceOutline` onto
@@ -582,10 +652,76 @@ function measuringPoint(g: RefGeo, at: RefPoint): Vec3 | null {
       return add(g.origin, scale(g.dir, (g.extent[0] + g.extent[1]) / 2));
     case 'sphere':
       return g.center;
+    case 'torus':
+      return at === 'center' ? g.center : null;
     case 'point':
       return g.at;
     case 'other':
       return null;
+  }
+}
+
+/** Extreme points are only defined for these (M4.1). */
+const NO_EXTREME: Unmeasurable = {
+  reason: 'Only a circle, a cylinder, a sphere or a straight edge has an extreme point',
+  hint: 'Measure this reference itself, or pick a round or straight one.',
+};
+
+/** `v` without its component along unit `n`, normalised; null when `v` is along `n`. */
+function across(v: Vec3, n: Vec3): Vec3 | null {
+  const w = sub(v, scale(n, dot(v, n)));
+  return norm(w) < 1e-9 ? null : normalize(w);
+}
+
+/**
+ * The extreme point of a ref along `direction` (M4.1, ADR-095): `max` the farthest along it, `min`
+ * the farthest against it. Exact, from the ref's own geometry:
+ *  - a circle (an arc too: its circle) and a sphere: the tangent point, the centre plus the radius
+ *    across;
+ *  - a cylinder or cone face: the farther of its two rim circles' tangent points (the middle of the
+ *    face's tangent line when both are as far, as for a cylinder across its axis);
+ *  - a straight edge: its farther end (its middle when it is square to the direction);
+ *  - a point: itself.
+ * A circle seen along its axis is extreme everywhere: its centre. A plane, an axis without a
+ * radius and any other surface or curve have no extreme point: unmeasurable, with the reason.
+ */
+export function extremePoint(g: RefGeo, at: 'min' | 'max', direction: Vec3): Vec3 | Unmeasurable {
+  if (norm(direction) < 1e-12) return { reason: 'The dimension has no direction' };
+  const d = scale(normalize(direction), at === 'max' ? 1 : -1);
+  const farther = (p: Vec3, q: Vec3): Vec3 => {
+    const s = dot(sub(q, p), d);
+    const tol = 1e-9 * (1 + Math.abs(dot(p, d)) + Math.abs(dot(q, d)));
+    return Math.abs(s) <= tol ? mid(p, q) : s > 0 ? q : p;
+  };
+  switch (g.t) {
+    case 'point':
+      return g.at;
+    case 'line':
+      return farther(g.a, g.b);
+    case 'sphere':
+      return add(g.center, scale(d, g.radius));
+    case 'circle': {
+      const u = across(d, g.normal);
+      return u ? add(g.center, scale(u, g.radius)) : g.center;
+    }
+    case 'axis': {
+      const r = g.ends ?? (g.radius !== undefined ? [g.radius, g.radius] : undefined);
+      if (!r) return NO_EXTREME;
+      const u = across(d, g.dir);
+      const rim = (k: 0 | 1): Vec3 => {
+        const c = add(g.origin, scale(g.dir, g.extent[k]));
+        return u ? add(c, scale(u, r[k])) : c;
+      };
+      return farther(rim(0), rim(1));
+    }
+    case 'plane':
+      return {
+        reason: 'A flat face has no extreme point along the direction',
+        hint: 'Measure the face itself, or pick one of its edges.',
+      };
+    case 'torus':
+    case 'other':
+      return NO_EXTREME;
   }
 }
 
@@ -596,6 +732,7 @@ function asPoint(g: RefGeo, at: RefPoint): Vec3 | null {
   if (g.t === 'line' || g.t === 'axis')
     return at === 'self' || at === 'axis' ? null : measuringPoint(g, at);
   if (g.t === 'plane') return at === 'center' ? g.origin : null;
+  if (g.t === 'torus') return at === 'center' ? g.center : null;
   return null;
 }
 
@@ -605,6 +742,7 @@ function asLine(g: RefGeo, at: RefPoint): { o: Vec3; d: Vec3 } | null {
   if (g.t === 'line') return { o: g.a, d: normalize(sub(g.b, g.a)) };
   if (g.t === 'axis') return { o: g.origin, d: g.dir };
   if (g.t === 'circle' && at === 'axis') return { o: g.center, d: g.normal };
+  if (g.t === 'torus' && at === 'axis') return { o: g.center, d: g.axis };
   return null;
 }
 
@@ -654,13 +792,23 @@ function naturalSeparation(
   };
 }
 
-/** A ref's direction for angles: a plane's normal, a line's or an axis' direction. */
-function directionOf(g: RefGeo): { d: Vec3; plane: boolean } | null {
-  if (g.t === 'plane') return { d: g.normal, plane: true };
+/**
+ * A ref's direction for angles: a plane's normal (`plane`), a line's or an axis' direction. At
+ * `axis` (M4.1) a plane is the line along its normal (the pull direction a draft is measured
+ * from), and a circle or a torus is the line of its axis.
+ */
+function directionOf(g: RefGeo, at: RefPoint): { d: Vec3; plane: boolean } | null {
+  if (g.t === 'plane') return { d: g.normal, plane: at !== 'axis' };
   if (g.t === 'line') return { d: normalize(sub(g.b, g.a)), plane: false };
   if (g.t === 'axis') return { d: g.dir, plane: false };
+  if (g.t === 'circle' && at === 'axis') return { d: g.normal, plane: false };
+  if (g.t === 'torus' && at === 'axis') return { d: g.axis, plane: false };
   return null;
 }
+
+/** Refs the kernel's exact angle measures as they are: straight edges, planes not at `axis`. */
+const kernelAngle = (g: RefGeo, at: RefPoint): boolean =>
+  g.t === 'line' || (g.t === 'plane' && at !== 'axis');
 
 const clampUnit = (x: number) => Math.max(-1, Math.min(1, x));
 
@@ -674,14 +822,27 @@ export async function measureAnnotation(
   const atOf = (i: number): RefPoint => at[i] ?? 'self';
   const g0 = geos[0];
   const g1 = geos[1];
+  const extreme = (p: RefPoint): p is 'min' | 'max' => p === 'min' || p === 'max';
+  const linear = a.kind === 'linear' || a.kind === 'ordinate';
+  if (geos.some((_, i) => extreme(atOf(i))) && !(linear && a.direction)) {
+    // The document rule (annotation-rules.ts) flags it too; never measured some other way.
+    return {
+      reason: 'An extreme point (min or max) needs a linear or ordinate dimension with a direction',
+      hint: 'Choose a horizontal or vertical direction.',
+    };
+  }
   switch (a.kind) {
     case 'linear':
     case 'ordinate': {
       if (!g0 || !g1) return { reason: 'A dimension needs two references' };
       if (a.direction) {
         const d = normalize(a.direction);
-        const pa = measuringPoint(g0, atOf(0)) ?? centroidOf(g0);
-        const pb = measuringPoint(g1, atOf(1)) ?? centroidOf(g1);
+        const point = (g: RefGeo, p: RefPoint): Vec3 | Unmeasurable =>
+          extreme(p) ? extremePoint(g, p, d) : (measuringPoint(g, p) ?? centroidOf(g));
+        const pa = point(g0, atOf(0));
+        if (!isPoint(pa)) return pa;
+        const pb = point(g1, atOf(1));
+        if (!isPoint(pb)) return pb;
         return Math.abs(dot(sub(pb, pa), d));
       }
       return naturalSeparation(g0, atOf(0), g1, atOf(1));
@@ -705,18 +866,20 @@ export async function measureAnnotation(
           ? g0.radius
           : g0.t === 'axis'
             ? g0.radius
-            : undefined;
+            : g0.t === 'torus'
+              ? g0.minor
+              : undefined;
       if (r === undefined) {
         return {
           reason: 'This reference is not round',
-          hint: 'Pick a circular edge, a cylindrical face or a sphere.',
+          hint: 'Pick a circular edge, or a cylindrical, spherical or toroidal face.',
         };
       }
       return a.kind === 'diameter' ? 2 * r : r;
     }
     case 'angle': {
       if (!g0 || !g1) return { reason: 'An angle needs two references' };
-      const angle = await angleBetween(core, g0, g1);
+      const angle = await angleBetween(core, g0, atOf(0), g1, atOf(1));
       if (angle === null) {
         return {
           reason: 'An angle is measured between straight edges, flat faces or axes',
@@ -743,6 +906,7 @@ function centroidOf(g: RefGeo): Vec3 {
       return add(g.origin, scale(g.dir, (g.extent[0] + g.extent[1]) / 2));
     case 'point':
       return g.at;
+    case 'torus':
     case 'other':
       return g.centroid;
   }
@@ -751,14 +915,24 @@ function centroidOf(g: RefGeo): Vec3 {
 /**
  * Angle between two refs ([0, π]). Two planes: between their outward normals, from the exact
  * fingerprint directions already at hand (the kernel's face–face angle is the same since the M4
- * `planeOf` fix, at the price of a call). Pairs with a straight edge: the kernel's exact angle
- * where it gives one.
+ * `planeOf` fix, at the price of a call). Pairs of a straight edge and a straight edge or a plane:
+ * the kernel's exact angle where it gives one. A plane at `axis` is the line along its normal
+ * (M4.1) and never goes to the kernel (which would measure the face): a draft angle, refs
+ * [drafted face, neutral face] at ['self', 'axis'], is the angle between the drafted face and the
+ * pull direction.
  */
-async function angleBetween(core: EngineCore, a: RefGeo, b: RefGeo): Promise<number | null> {
-  const da = directionOf(a);
-  const db = directionOf(b);
+async function angleBetween(
+  core: EngineCore,
+  a: RefGeo,
+  atA: RefPoint,
+  b: RefGeo,
+  atB: RefPoint,
+): Promise<number | null> {
+  const da = directionOf(a, atA);
+  const db = directionOf(b, atB);
   if (!da || !db) return null;
-  if (a.target && b.target && a.t !== 'axis' && b.t !== 'axis' && !(da.plane && db.plane)) {
+  const exact = kernelAngle(a, atA) && kernelAngle(b, atB) && !(da.plane && db.plane);
+  if (exact && a.target && b.target) {
     const m = await core.kernel.measureShapes(a.target, b.target);
     if (m.ok && m.value.angle !== undefined && Number.isFinite(m.value.angle)) return m.value.angle;
   }

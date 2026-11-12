@@ -12,6 +12,10 @@
  *    through a Boolean (rp04).
  *  - Counts: `count` for `text.count`, the instances that exist (skipped pattern instances are not
  *    holes): rp08 tapped holes, rp09 bolt holes, rp10 slots and the mirrored ear hole.
+ *  - M4.1 (ADR-095), the drawing pick gaps on the modeling side: construction refs (origin axes
+ *    spanning the part, plane, axis and point features, sketch points) and pitch circles
+ *    (`F<pattern>:pitch`); faces measured in section views (natural separations, draft angles at
+ *    `axis`); extremes (`min` / `max`); torus radii.
  *
  * Edit upstream, check downstream: each case is re-run at a CSWP stage of the part.
  *
@@ -718,6 +722,674 @@ describe.skipIf(!m3)(`regen golden (M4 gate): reference-part annotations${note}`
       allOk(r2);
       expect(get(r2, DIA).count).toBe(6);
       expect(get(r2, EAR).count).toBe(2);
+    }, 120_000);
+  });
+
+  // -------------------------------------------------------------------------------------------
+  // M4.1 (ADR-095): construction refs, pitch circles, extremes, draft angles, torus radii
+  // -------------------------------------------------------------------------------------------
+
+  describe('M4.1 CONSTRUCTION: pitch circles of circular patterns (rp09 pcd)', () => {
+    const P = partDef('rp09');
+    const DIA = fid('M1PD');
+    const RAD = fid('M1PR');
+    const ACROSS = fid('M1PA');
+
+    function annotated(): { doc: WrenDoc; ring: Id; pitch: EntityRef } {
+      const doc = buildDoc(P);
+      const ring = stepId(P, doc, 'ring');
+      const pitch: EntityRef = { name: `F${ring}:pitch`, kind: 'edge' };
+      part(doc).annotations = [
+        { id: DIA, kind: 'diameter', origin: model, refs: [pitch] },
+        { id: RAD, kind: 'radius', origin: model, refs: [pitch] },
+        {
+          id: ACROSS,
+          kind: 'linear',
+          origin: model,
+          refs: [pitch, pitch],
+          at: ['min', 'max'],
+          direction: [0, 1, 0],
+        },
+      ];
+      return { doc, ring, pitch };
+    }
+
+    function circle(a: AnnotationAnchor | null | undefined) {
+      if (a?.kind !== 'circle') throw new Error(`circle anchor: ${JSON.stringify(a)}`);
+      return a;
+    }
+
+    it('F<ring>:pitch is the Ø90 circle about the pattern axis at the flange top; it follows pcd', async () => {
+      const { doc, pitch } = annotated();
+      const r = await regen(doc);
+      allOk(r);
+      const d = get(r, DIA);
+      expect(d.state, JSON.stringify(d)).toBe('ok');
+      expect(d.value).toBeCloseTo(90, 9);
+      expect(d.measured).toBeCloseTo(90, 9);
+      const c = circle(d.anchors?.[0]);
+      close(c.center, [0, 0, 12]);
+      close(c.normal, [0, 0, 1]);
+      expect(c.radius).toBeCloseTo(45, 9);
+      expect(c.start).toBeUndefined();
+      expect(get(r, RAD).value).toBeCloseTo(45, 9);
+      // Linear across the circle: 90, its feet at the extremes along y.
+      const a = get(r, ACROSS);
+      expect(a.state).toBe('ok');
+      expect(a.value).toBeCloseTo(90, 9);
+      close(point(a.anchors?.[0]), [0, -45, 12]);
+      close(point(a.anchors?.[1]), [0, 45, 12]);
+
+      // The anchor query a drawing makes for construction candidates gives the same circle.
+      const q = await api.annotationAnchors(part(doc).id, [{ ref: pitch }]);
+      if (!q.ok) throw new Error(JSON.stringify(q.error));
+      expect(q.value[0]?.unresolved).toBeUndefined();
+      const qc = circle(q.value[0]?.anchor);
+      close(qc.center, [0, 0, 12]);
+      expect(qc.radius).toBeCloseTo(45, 9);
+
+      // Edit upstream: bolt_n 8 (more instances, same circle), then pcd 100.
+      const r2 = await regen(toStage(P, doc, { bolt_n: 8 }));
+      allOk(r2);
+      expect(get(r2, DIA).value).toBeCloseTo(90, 9);
+      const r3 = await regen(toStage(P, doc, { pcd: 100 }));
+      allOk(r3);
+      expect(get(r3, DIA).state).toBe('ok');
+      expect(get(r3, DIA).value).toBeCloseTo(100, 9);
+      expect(get(r3, RAD).value).toBeCloseTo(50, 9);
+      expect(get(r3, ACROSS).value).toBeCloseTo(100, 9);
+      close(circle(get(r3, DIA).anchors?.[0]).center, [0, 0, 12]);
+    }, 120_000);
+
+    it('a deleted pattern: needs attention, cause deleted; a suppressed one: suppressed', async () => {
+      const { doc, ring } = annotated();
+      await regen(doc);
+      const gone = structuredClone(doc);
+      part(gone).features = part(gone).features.filter((f) => f.id !== ring);
+      part(gone).rollbackIndex = part(gone).features.length;
+      const r1 = await regen(gone);
+      const d1 = get(r1, DIA);
+      expect(d1.state).toBe('needsAttention');
+      expect(d1.cause).toEqual({ featureId: ring, kind: 'deleted' });
+      expect(d1.unresolved?.map((u) => [u.path, u.reason])).toEqual([['/refs/0', 'missing']]);
+      expect(d1.value).toBeUndefined();
+      expect(d1.anchors).toEqual([null]);
+
+      const sup = structuredClone(doc);
+      const f = part(sup).features.find((x) => x.id === ring);
+      if (f) f.suppressed = true;
+      const r2 = await regen(sup);
+      const d2 = get(r2, DIA);
+      expect(d2.state).toBe('suppressed');
+      expect(d2.cause).toEqual({ featureId: ring, kind: 'suppressed' });
+      expect(d2.value).toBeUndefined();
+      // The query says why too.
+      const q = await api.annotationAnchors(part(sup).id, [
+        { ref: { name: `F${ring}:pitch`, kind: 'edge' } },
+      ]);
+      if (!q.ok) throw new Error(JSON.stringify(q.error));
+      expect(q.value[0]?.anchor).toBeNull();
+      expect(q.value[0]?.unresolved?.cause).toEqual({ featureId: ring, kind: 'suppressed' });
+    }, 120_000);
+
+    it('a feature that is not a circular pattern of holes has no pitch circle: an error, never a guess', async () => {
+      const doc = buildDoc(P);
+      const hub = stepId(P, doc, 'hub');
+      const bolt = stepId(P, doc, 'bolt');
+      const NOT = fid('M1PN');
+      const HOLE = fid('M1PH');
+      part(doc).annotations = [
+        {
+          id: NOT,
+          kind: 'diameter',
+          origin: model,
+          refs: [{ name: `F${hub}:pitch`, kind: 'edge' }],
+        },
+        {
+          id: HOLE,
+          kind: 'diameter',
+          origin: model,
+          refs: [{ name: `F${bolt}:pitch`, kind: 'edge' }],
+        },
+      ];
+      const r = await regen(doc);
+      allOk(r);
+      for (const id of [NOT, HOLE]) {
+        const a = get(r, id);
+        expect(a.state).toBe('needsAttention');
+        expect(a.value).toBeUndefined();
+        expect(a.cause).toBeUndefined();
+        expect(a.unresolved?.map((u) => u.path)).toEqual(['/refs/0']);
+        expect(a.error?.message).toMatch(/not a circular pattern/);
+      }
+    }, 120_000);
+  });
+
+  describe('M4.1 CONSTRUCTION: origin and construction axes, planes and points', () => {
+    function axis(a: AnnotationAnchor | null | undefined) {
+      if (a?.kind !== 'axis') throw new Error(`axis anchor: ${JSON.stringify(a)}`);
+      return a;
+    }
+
+    it('origin axes and axis features span the part (rp09: Ø120 × 42), and follow it', async () => {
+      const P = partDef('rp09');
+      const doc = buildDoc(P);
+      const ax = stepId(P, doc, 'ax');
+      const queries = [
+        { ref: { name: 'origin:X', kind: 'edge' as const } },
+        { ref: { name: 'origin:Y', kind: 'edge' as const } },
+        { ref: { name: 'origin:Z', kind: 'edge' as const } },
+        { ref: { name: `F${ax}:axis`, kind: 'edge' as const } },
+      ];
+      await regen(doc);
+      const q = await api.annotationAnchors(part(doc).id, queries);
+      if (!q.ok) throw new Error(JSON.stringify(q.error));
+      const [x, y, z, f] = [0, 1, 2, 3].map((i) => axis(q.value[i]?.anchor)) as [
+        ReturnType<typeof axis>,
+        ReturnType<typeof axis>,
+        ReturnType<typeof axis>,
+        ReturnType<typeof axis>,
+      ];
+      for (const [a, dir] of [
+        [x, [1, 0, 0]],
+        [y, [0, 1, 0]],
+        [z, [0, 0, 1]],
+      ] as const) {
+        close(a.origin, [0, 0, 0]);
+        close(a.direction, [...dir]);
+      }
+      // Across the bodies' bounds, and at least ±1 mm about the origin.
+      expect(x.extent[0]).toBeCloseTo(-60, 9);
+      expect(x.extent[1]).toBeCloseTo(60, 9);
+      expect(y.extent[0]).toBeCloseTo(-60, 9);
+      expect(y.extent[1]).toBeCloseTo(60, 9);
+      expect(z.extent[0]).toBeCloseTo(-1, 9);
+      expect(z.extent[1]).toBeCloseTo(42, 9);
+      // The reference axis from the bore: on Z, spanning the hub's height.
+      expect(Math.abs(f.direction[2])).toBeCloseTo(1, 12);
+      const ends = f.extent.map((t) => f.origin[2] + t * f.direction[2]).sort((a, b) => a - b);
+      expect(ends[0]).toBeLessThanOrEqual(1e-9);
+      expect(ends[1]).toBeGreaterThanOrEqual(42 - 1e-9);
+
+      // Measured by position and direction only: the reference axis to the bolt hole's axis is
+      // the pitch radius, the Z axis to it too, the X axis to the hole's centre line 0.
+      const sk = stepId(P, doc, 'bolt_sk');
+      const bolt = stepId(P, doc, 'bolt');
+      const wall = face(`F${bolt}:hole(S${sk}:p(P)):wall`);
+      const ids = { ax: fid('M1AA'), z: fid('M1AZ'), x: fid('M1AX') };
+      const measured = structuredClone(doc);
+      part(measured).annotations = [
+        {
+          id: ids.ax,
+          kind: 'linear',
+          origin: model,
+          refs: [queries[3]?.ref as EntityRef, wall],
+          at: ['self', 'axis'],
+        },
+        {
+          id: ids.z,
+          kind: 'linear',
+          origin: model,
+          refs: [queries[2]?.ref as EntityRef, wall],
+          at: ['self', 'axis'],
+          direction: [1, 0, 0],
+        },
+        {
+          id: ids.x,
+          kind: 'linear',
+          origin: model,
+          refs: [queries[0]?.ref as EntityRef, wall],
+          at: ['self', 'axis'],
+          direction: [0, 1, 0],
+        },
+      ];
+      const rm = await regen(measured);
+      allOk(rm);
+      expect(get(rm, ids.ax).value).toBeCloseTo(45, 9);
+      expect(get(rm, ids.z).value).toBeCloseTo(45, 9);
+      expect(get(rm, ids.x).value).toBeCloseTo(0, 9);
+      const rp = await regen(toStage(P, measured, { pcd: 100 }));
+      expect(get(rp, ids.ax).value).toBeCloseTo(50, 9);
+
+      // Edit upstream: hub_h 45 makes the part 57 tall.
+      await regen(toStage(P, doc, { hub_h: 45, bore_d: 36 }));
+      const q2 = await api.annotationAnchors(part(doc).id, queries.slice(2, 3));
+      if (!q2.ok) throw new Error(JSON.stringify(q2.error));
+      expect(axis(q2.value[0]?.anchor).extent[1]).toBeCloseTo(57, 9);
+    }, 120_000);
+
+    it('rp03: origin:X to the flat (its rim seen edge-on, its face, its plane) = 18; flat_h 10 → 10', async () => {
+      const P = partDef('rp03');
+      const doc = buildDoc(P);
+      const ball = stepId(P, doc, 'ball');
+      const ballSk = stepId(P, doc, 'ball_sk');
+      const flat = stepId(P, doc, 'flat');
+      const plane = stepId(P, doc, 'flat_pl');
+      const sphere = `F${ball}:side(S${ballSk}:e(A1))`;
+      const rim: EntityRef = {
+        name: `edge(${[sphere, `F${flat}:start`].sort().join('|')})`,
+        kind: 'edge',
+      };
+      const X: EntityRef = { name: 'origin:X', kind: 'edge' };
+      const ids = {
+        rimZ: fid('M1FZ'),
+        rim: fid('M1FR'),
+        face: fid('M1FF'),
+        plane: fid('M1FP'),
+        point: fid('M1FO'),
+        ball: fid('M1FB'),
+      };
+      part(doc).annotations = [
+        // As the Dimension tool makes it in the front view: vertical, between two horizontal lines.
+        { id: ids.rimZ, kind: 'linear', origin: model, refs: [X, rim], direction: [0, 0, 1] },
+        { id: ids.rim, kind: 'linear', origin: model, refs: [X, rim] },
+        { id: ids.face, kind: 'linear', origin: model, refs: [X, face(`F${flat}:start`)] },
+        {
+          id: ids.plane,
+          kind: 'linear',
+          origin: model,
+          refs: [face('origin:XY'), face(`F${plane}:plane`)],
+        },
+        {
+          id: ids.point,
+          kind: 'linear',
+          origin: model,
+          refs: [{ name: 'origin:O', kind: 'vertex' }, face(`F${plane}:plane`)],
+        },
+        // The ball across, at its extremes (a sphere's tangent points).
+        {
+          id: ids.ball,
+          kind: 'linear',
+          origin: model,
+          refs: [face(sphere), face(sphere)],
+          at: ['min', 'max'],
+          direction: [1, 0, 0],
+        },
+      ];
+      const r = await regen(doc);
+      allOk(r);
+      for (const id of [ids.rimZ, ids.rim, ids.face, ids.plane, ids.point]) {
+        const a = get(r, id);
+        expect(a.state, JSON.stringify(a)).toBe('ok');
+        expect(a.value, id).toBeCloseTo(18, 9);
+      }
+      // The X axis anchor spans the part (the ball's Ø50 and the stem), so it can be drawn.
+      const xa = get(r, ids.rim).anchors?.[0];
+      if (xa?.kind !== 'axis') throw new Error('axis');
+      expect(xa.extent[0]).toBeCloseTo(-25, 6);
+      expect(xa.extent[1]).toBeCloseTo(25, 6);
+      const b = get(r, ids.ball);
+      expect(b.value).toBeCloseTo(50, 9);
+      close(point(b.anchors?.[0]), [-25, 0, 0]);
+      close(point(b.anchors?.[1]), [25, 0, 0]);
+
+      // Edit upstream: flat_h 10, then ball_d 60.
+      const r2 = await regen(toStage(P, doc, { flat_h: 10 }));
+      allOk(r2);
+      for (const id of [ids.rimZ, ids.rim, ids.face, ids.plane, ids.point]) {
+        expect(get(r2, id).value, id).toBeCloseTo(10, 9);
+      }
+      const r3 = await regen(toStage(P, doc, { ball_d: 60 }));
+      allOk(r3);
+      expect(get(r3, ids.ball).value).toBeCloseTo(60, 9);
+      expect(get(r3, ids.rimZ).value).toBeCloseTo(18, 9);
+    }, 120_000);
+
+    it('rp08: origin:Y / origin:X to the countersink rim centre = 30 / 18; sketch and point refs', async () => {
+      const P = partDef('rp08');
+      const doc = buildDoc(P);
+      const base = stepId(P, doc, 'base');
+      const pt = stepId(P, doc, 'cs_pt');
+      const pts = stepId(P, doc, 'pts_sk');
+      const cs = stepId(P, doc, 'h_cs');
+      const csink = `F${cs}:hole(F${pt}:point):csink`;
+      const rim: EntityRef = {
+        name: `edge(${[`F${base}:end`, csink].sort().join('|')})`,
+        kind: 'edge',
+      };
+      const ids = {
+        csX: fid('M1CX'),
+        csY: fid('M1CY'),
+        ptX: fid('M1PX'),
+        cbX: fid('M1BX'),
+        tapX: fid('M1TX'),
+        tapY: fid('M1TY'),
+      };
+      const Y: EntityRef = { name: 'origin:Y', kind: 'edge' };
+      const X: EntityRef = { name: 'origin:X', kind: 'edge' };
+      const sp = (id: string): EntityRef => ({ name: `S${pts}:p(${id})`, kind: 'vertex' });
+      part(doc).annotations = [
+        {
+          id: ids.csX,
+          kind: 'linear',
+          origin: model,
+          refs: [Y, rim],
+          at: ['self', 'center'],
+          direction: [1, 0, 0],
+        },
+        {
+          id: ids.csY,
+          kind: 'linear',
+          origin: model,
+          refs: [X, rim],
+          at: ['self', 'center'],
+          direction: [0, 1, 0],
+        },
+        {
+          id: ids.ptX,
+          kind: 'linear',
+          origin: model,
+          refs: [Y, { name: `F${pt}:point`, kind: 'vertex' }],
+          direction: [1, 0, 0],
+        },
+        { id: ids.cbX, kind: 'linear', origin: model, refs: [Y, sp('CB')], direction: [1, 0, 0] },
+        {
+          id: ids.tapX,
+          kind: 'linear',
+          origin: model,
+          refs: [sp('@origin'), sp('TP')],
+          direction: [1, 0, 0],
+        },
+        {
+          id: ids.tapY,
+          kind: 'linear',
+          origin: model,
+          refs: [{ name: `S${pts}:e(@x)`, kind: 'edge' }, sp('TP')],
+        },
+      ];
+      const r = await regen(doc);
+      allOk(r);
+      const want: [string, number][] = [
+        [ids.csX, 30],
+        [ids.csY, 18],
+        [ids.ptX, 30],
+        [ids.cbX, 30],
+        [ids.tapX, 36],
+        [ids.tapY, 18],
+      ];
+      for (const [id, v] of want) {
+        const a = get(r, id);
+        expect(a.state, JSON.stringify(a)).toBe('ok');
+        expect(a.value, id).toBeCloseTo(v, 9);
+      }
+      close(point(get(r, ids.csX).anchors?.[1]), [30, 18, 14]);
+      // Edit upstream: plate_t 18 and cs_d 13 move the rim up and out; the centre stays.
+      const r2 = await regen(toStage(P, doc, { plate_t: 18, cs_d: 13 }));
+      allOk(r2);
+      for (const [id, v] of want) expect(get(r2, id).value, id).toBeCloseTo(v, 9);
+      close(point(get(r2, ids.csX).anchors?.[1]), [30, 18, 18]);
+      const r3 = await regen(toStage(P, doc, { tap_x0: -32 }));
+      expect(get(r3, ids.tapX).value).toBeCloseTo(32, 9);
+    }, 120_000);
+  });
+
+  describe('M4.1 SECTION: faces measured in section views', () => {
+    it('rp09 hub (hub_h) = 30 between the flange top and the hub top; stage 4 → 45', async () => {
+      const P = partDef('rp09');
+      const doc = buildDoc(P);
+      const hub = stepId(P, doc, 'hub');
+      const prof = stepId(P, doc, 'prof_sk');
+      const H = fid('M1HH');
+      part(doc).annotations = [
+        {
+          id: H,
+          kind: 'linear',
+          origin: model,
+          refs: [face(`F${hub}:side(S${prof}:e(L3))`), face(`F${hub}:side(S${prof}:e(L5))`)],
+        },
+      ];
+      const r = await regen(doc);
+      allOk(r);
+      expect(get(r, H).state).toBe('ok');
+      expect(get(r, H).value).toBeCloseTo(30, 9);
+      expect(planeZ(get(r, H).anchors?.[0])).toBeCloseTo(12, 9);
+      expect(planeZ(get(r, H).anchors?.[1])).toBeCloseTo(42, 9);
+      const r2 = await regen(toStage(P, doc, { hub_h: 45, bore_d: 36 }));
+      allOk(r2);
+      expect(get(r2, H).value).toBeCloseTo(45, 9);
+    }, 120_000);
+
+    it('rp08 tapped hole (tap_depth) = 12 from the top to its floor; plate_t 18 keeps it', async () => {
+      const P = partDef('rp08');
+      const doc = buildDoc(P);
+      const base = stepId(P, doc, 'base');
+      const pts = stepId(P, doc, 'pts_sk');
+      const tap = stepId(P, doc, 'h_tap');
+      const T = fid('M1TD');
+      part(doc).annotations = [
+        {
+          id: T,
+          kind: 'linear',
+          origin: model,
+          refs: [face(`F${base}:end`), face(`F${tap}:hole(S${pts}:p(TP)):bottom`)],
+        },
+      ];
+      const r = await regen(doc);
+      allOk(r);
+      expect(get(r, T).state).toBe('ok');
+      expect(get(r, T).value).toBeCloseTo(12, 9);
+      expect(planeZ(get(r, T).anchors?.[1])).toBeCloseTo(2, 9);
+      const r2 = await regen(toStage(P, doc, { plate_t: 18 }));
+      allOk(r2);
+      expect(get(r2, T).value).toBeCloseTo(12, 9);
+      expect(planeZ(get(r2, T).anchors?.[1])).toBeCloseTo(6, 9);
+    }, 120_000);
+
+    it('rp05 drafted walls: the natural separation is the wall (3; stage 2 → 4); the draft angle is 3° (stage 3 → 5°)', async () => {
+      const P = partDef('rp05');
+      const doc = buildDoc(P);
+      const base = stepId(P, doc, 'base');
+      const sk = stepId(P, doc, 'base_sk');
+      const sh = stepId(P, doc, 'sh');
+      const wallFace = (l: string) => `F${base}:side(S${sk}:e(${l}))`;
+      const WALL = fid('M1W');
+      const ANGLE = ['L1', 'L2', 'L3', 'L4'].map((l) => fid(`M1D${l}`));
+      const NORMALS = fid('M1DN');
+      const neutral = face(`F${base}:start`);
+      part(doc).annotations = [
+        {
+          id: WALL,
+          kind: 'linear',
+          origin: model,
+          refs: [face(wallFace('L2')), face(`F${sh}:shell(${wallFace('L2')})`)],
+        },
+        ...['L1', 'L2', 'L3', 'L4'].map(
+          (l, i): Annotation => ({
+            id: ANGLE[i] as Id,
+            kind: 'angle',
+            origin: model,
+            refs: [face(wallFace(l)), neutral],
+            at: ['self', 'axis'],
+          }),
+        ),
+        // Between the outward normals instead: 90° + the draft.
+        {
+          id: NORMALS,
+          kind: 'angle',
+          origin: model,
+          refs: [face(wallFace('L2')), neutral],
+        },
+      ];
+      const deg = Math.PI / 180;
+      const r = await regen(doc);
+      allOk(r);
+      const w = get(r, WALL);
+      expect(w.state, JSON.stringify(w)).toBe('ok');
+      expect(w.value).toBeCloseTo(3, 9);
+      for (const id of ANGLE) {
+        const a = get(r, id);
+        expect(a.state, JSON.stringify(a)).toBe('ok');
+        expect(a.value, id).toBeCloseTo(3 * deg, 12);
+      }
+      // The neutral face at `axis` is still anchored as the face (the layout draws its normal).
+      const n = get(r, ANGLE[1] as Id).anchors?.[1];
+      if (n?.kind !== 'plane') throw new Error(`plane anchor: ${JSON.stringify(n)}`);
+      close(n.normal, [0, 0, -1], 12);
+      expect(get(r, NORMALS).value).toBeCloseTo(93 * deg, 12);
+
+      // Edit upstream: wall 4, then draft_a 5°.
+      const r2 = await regen(toStage(P, doc, { wall: 4 }));
+      allOk(r2);
+      expect(get(r2, WALL).value).toBeCloseTo(4, 9);
+      expect(get(r2, ANGLE[1] as Id).value).toBeCloseTo(3 * deg, 12);
+      const r3 = await regen(toStage(P, doc, { draft_a: 5 }));
+      allOk(r3);
+      for (const id of ANGLE) expect(get(r3, id).value, id).toBeCloseTo(5 * deg, 12);
+      expect(get(r3, WALL).value).toBeCloseTo(3, 9);
+    }, 120_000);
+  });
+
+  describe('M4.1 EXTREMES: min / max along the direction (rp09 flange_d)', () => {
+    it('the rim across is 120 (face or edge); a plane or no direction is unmeasurable, with the reason', async () => {
+      const P = partDef('rp09');
+      const doc = buildDoc(P);
+      const hub = stepId(P, doc, 'hub');
+      const prof = stepId(P, doc, 'prof_sk');
+      const s = (l: string) => `F${hub}:side(S${prof}:e(${l}))`;
+      const rimEdge: EntityRef = {
+        name: `edge(${[s('L1'), s('L2')].sort().join('|')})`,
+        kind: 'edge',
+      };
+      const ids = {
+        face: fid('M1XF'),
+        edge: fid('M1XE'),
+        y: fid('M1XY'),
+        boreToRim: fid('M1XB'),
+        plane: fid('M1XP'),
+        noDir: fid('M1XN'),
+        aligned: fid('M1XA'),
+      };
+      const across = (id: Id, ref: EntityRef, direction: [number, number, number]): Annotation => ({
+        id,
+        kind: 'linear',
+        origin: model,
+        refs: [ref, ref],
+        at: ['min', 'max'],
+        direction,
+      });
+      part(doc).annotations = [
+        across(ids.face, face(s('L2')), [1, 0, 0]),
+        across(ids.edge, rimEdge, [1, 0, 0]),
+        across(ids.y, face(s('L2')), [0, 1, 0]),
+        {
+          id: ids.boreToRim,
+          kind: 'linear',
+          origin: model,
+          refs: [face(s('L6')), face(s('L2'))],
+          at: ['max', 'max'],
+          direction: [1, 0, 0],
+        },
+        across(ids.plane, face(s('L3')), [1, 0, 0]),
+        {
+          id: ids.noDir,
+          kind: 'linear',
+          origin: model,
+          refs: [face(s('L2')), face(s('L2'))],
+          at: ['min', 'max'],
+        },
+        {
+          id: ids.aligned,
+          kind: 'aligned',
+          origin: model,
+          refs: [rimEdge, rimEdge],
+          at: ['min', 'max'],
+        },
+      ];
+      const r = await regen(doc);
+      allOk(r);
+      for (const id of [ids.face, ids.edge, ids.y]) {
+        const a = get(r, id);
+        expect(a.state, JSON.stringify(a)).toBe('ok');
+        expect(a.value, id).toBeCloseTo(120, 9);
+      }
+      // The face's extremes are the middle of its tangent lines; the edge's on the circle.
+      close(point(get(r, ids.face).anchors?.[0]), [-60, 0, 6]);
+      close(point(get(r, ids.face).anchors?.[1]), [60, 0, 6]);
+      close(point(get(r, ids.edge).anchors?.[0]), [-60, 0, 0]);
+      close(point(get(r, ids.edge).anchors?.[1]), [60, 0, 0]);
+      close(point(get(r, ids.y).anchors?.[1]), [0, 60, 6]);
+      expect(get(r, ids.boreToRim).value).toBeCloseTo(60 - 16, 9);
+
+      const pl = get(r, ids.plane);
+      expect(pl.state).toBe('needsAttention');
+      expect(pl.value).toBeUndefined();
+      expect(pl.unresolved).toBeUndefined();
+      expect(pl.error?.message).toMatch(/flat face has no extreme point/);
+      // Anchored as the face itself.
+      expect(pl.anchors?.[0]?.kind).toBe('plane');
+      for (const id of [ids.noDir, ids.aligned]) {
+        const a = get(r, id);
+        expect(a.state, id).toBe('needsAttention');
+        expect(a.value).toBeUndefined();
+        expect(a.error?.message).toMatch(/needs a linear or ordinate dimension with a direction/);
+      }
+
+      // Edit upstream: flange_d 130.
+      const r2 = await regen(toStage(P, doc, { flange_d: 130 }));
+      allOk(r2);
+      for (const id of [ids.face, ids.edge, ids.y])
+        expect(get(r2, id).value, id).toBeCloseTo(130, 9);
+    }, 120_000);
+  });
+
+  describe('M4.1 OUTLINE-SPLINE: torus radii (rp02 fillet_r)', () => {
+    it('a radius on the fillet’s torus face is its minor radius (3; stage 3 → 4), anchored as a torus', async () => {
+      const P = partDef('rp02');
+      const doc = buildDoc(P);
+      const shaft = stepId(P, doc, 'shaft');
+      const prof = stepId(P, doc, 'prof_sk');
+      const fil = stepId(P, doc, 'fil');
+      const s = (l: string) => `F${shaft}:side(S${prof}:e(${l}))`;
+      const torus = face(`F${fil}:fillet(edge(${[s('L3'), s('L4')].sort().join('|')}))`);
+      const R = fid('M1TR');
+      const D = fid('M1TD');
+      const SRC = fid('M1TS');
+      part(doc).annotations = [
+        { id: R, kind: 'radius', origin: model, refs: [torus] },
+        { id: D, kind: 'diameter', origin: model, refs: [torus] },
+        {
+          id: SRC,
+          kind: 'radius',
+          origin: model,
+          refs: [torus],
+          source: { kind: 'featureField', featureId: fil, path: '/radius' },
+        },
+      ];
+      const r = await regen(doc);
+      allOk(r);
+      const a = get(r, R);
+      expect(a.state, JSON.stringify(a)).toBe('ok');
+      expect(a.value).toBeCloseTo(3, 9);
+      expect(get(r, D).value).toBeCloseTo(6, 9);
+      expect(get(r, SRC).value).toBeCloseTo(3, 12);
+      expect(get(r, SRC).measured).toBeCloseTo(3, 9);
+      const t = a.anchors?.[0];
+      if (t?.kind !== 'torus') throw new Error(`torus anchor: ${JSON.stringify(t)}`);
+      // The corner at (d2/2, l1) = (15, 15): the tube's centre circle is 3 out and 3 up from it.
+      close(t.center, [0, 0, 18]);
+      close(t.axis, [0, 0, 1]);
+      expect(t.major).toBeCloseTo(18, 9);
+      expect(t.minor).toBeCloseTo(3, 9);
+
+      // The query the drawing makes for a spline outline pick: radius → the torus; plain → the face.
+      const q = await api.annotationAnchors(part(doc).id, [
+        { ref: torus, annotationKind: 'radius' },
+        { ref: torus },
+      ]);
+      if (!q.ok) throw new Error(JSON.stringify(q.error));
+      expect(q.value[0]?.anchor?.kind).toBe('torus');
+      expect(q.value[1]?.anchor?.kind).toBe('point');
+
+      // Edit upstream: l2 55 and fillet_r 4.
+      const r2 = await regen(toStage(P, doc, { l2: 55, fillet_r: 4 }));
+      allOk(r2);
+      expect(get(r2, R).value).toBeCloseTo(4, 9);
+      expect(get(r2, SRC).measured).toBeCloseTo(4, 9);
+      const t2 = get(r2, R).anchors?.[0];
+      if (t2?.kind !== 'torus') throw new Error('torus');
+      expect(t2.minor).toBeCloseTo(4, 9);
+      expect(t2.major).toBeCloseTo(19, 9);
+      close(t2.center, [0, 0, 19]);
     }, 120_000);
   });
 });

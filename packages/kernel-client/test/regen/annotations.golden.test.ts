@@ -845,6 +845,116 @@ describe.skipIf(!m3)(`regen golden (M4): annotations after the walk${note}`, () 
     }, 120_000);
   });
 
+  // M4.1 (ADR-095): `F<pattern>:pitch`, exact or an error, never a guessed circle.
+  describe('pitch circles of circular patterns', () => {
+    const S1 = fid('PCS1');
+    const E1 = fid('PCE1');
+    const S2 = fid('PCS2');
+    const H = fid('PCH');
+    const S3 = fid('PCS3');
+    const E3 = fid('PCE3');
+    const CP = fid('PCCP');
+    const DIA = fid('PCDIA');
+    const top = `F${E1}:end`;
+    const pitch: EntityRef = { name: `F${CP}:pitch`, kind: 'edge' };
+
+    /**
+     * An 80 × 80 × 10 plate centred on the origin; ISO M6 holes at `points` (top face) or, with
+     * `cut`, a Ø6 extruded cut at (20, 0); four copies about origin:Z.
+     */
+    function ringDoc(points: [number, number][], cut = false): WrenDoc {
+      const s1 = new Sk();
+      const r1 = s1.rect('p', 'L', -40, -40, 40, 40, '80 mm', '80 mm');
+      s1.geo({ kind: 'fix', entity: r1.a });
+      const s2 = new Sk();
+      points.forEach(([x, y], i) => {
+        s2.point(`p${i}`, x, y);
+        s2.geo({ kind: 'fix', entity: `p${i}` });
+      });
+      const s3 = new Sk();
+      s3.circle('C', 20, 0, 3);
+      s3.geo({ kind: 'fix', entity: 'Cc' });
+      s3.dim({ kind: 'diameter', curve: 'C' }, '6 mm');
+      const hole: HoleFeature = {
+        id: H,
+        type: 'hole',
+        name: 'Hole',
+        suppressed: false,
+        points: points.map((_, i) => ({ name: `S${S2}:p(p${i})`, kind: 'vertex' as const })),
+        face: face(top),
+        standard: 'ISO',
+        kind: 'simple',
+        size: 'M6',
+        fit: 'normal',
+        end: { kind: 'throughAll' },
+      };
+      const ring: Feature = {
+        id: CP,
+        type: 'circularPattern',
+        name: 'Ring',
+        suppressed: false,
+        source: { kind: 'features', features: [cut ? E3 : H] },
+        axis: edge('origin:Z'),
+        count: '4',
+        angle: '360 deg',
+        equalSpacing: true,
+      };
+      const features: Feature[] = [
+        s1.feature(S1),
+        extrude(E1, [region(S1, 'L1,L2,L3,L4')], '10 mm'),
+        ...(cut
+          ? [
+              s3.feature(S3, face(top), 'Cut sketch'),
+              extrude(E3, [region(S3, 'C')], 'throughAll', 'cut', 'reverse'),
+            ]
+          : [s2.feature(S2, face(top), 'Hole points'), hole]),
+        ring,
+      ];
+      const doc = makeDoc({}, features, PART);
+      part(doc).annotations = [{ id: DIA, kind: 'diameter', origin: model, refs: [pitch] }];
+      return doc;
+    }
+
+    it('one hole at 20 from the axis: Ø40 at the top face', async () => {
+      const r = await regen(ringDoc([[20, 0]]));
+      expect(states(r), describeFailures(r)).toEqual(Array(5).fill('ok'));
+      const d = get(r, DIA);
+      expect(d.state, JSON.stringify(d)).toBe('ok');
+      expect(d.value).toBeCloseTo(40, 9);
+      expectClose(d.anchors, [
+        { kind: 'circle', center: [0, 0, 10], normal: [0, 0, 1], radius: 20 },
+      ]);
+    }, 120_000);
+
+    it('holes at two radii: an error naming why; no value, no anchor', async () => {
+      const r = await regen(
+        ringDoc([
+          [20, 0],
+          [0, 25],
+        ]),
+      );
+      expect(states(r), describeFailures(r)).toEqual(Array(5).fill('ok'));
+      const d = get(r, DIA);
+      expect(d.state).toBe('needsAttention');
+      expect(d.value).toBeUndefined();
+      expect(d.measured).toBeUndefined();
+      expect(d.anchors).toEqual([null]);
+      expect(d.unresolved?.map((u) => [u.path, u.reason])).toEqual([['/refs/0', 'missing']]);
+      expect(d.error?.code).toBe('UNRESOLVED_REFERENCE');
+      expect(d.error?.message).toMatch(/not all at one radius/);
+      expect(d.error?.entityRefs).toEqual([pitch.name]);
+    }, 120_000);
+
+    it('a pattern of a cut that is not a hole: an error, even though it is round', async () => {
+      const r = await regen(ringDoc([], true));
+      expect(states(r), describeFailures(r)).toEqual(Array(5).fill('ok'));
+      const d = get(r, DIA);
+      expect(d.state).toBe('needsAttention');
+      expect(d.value).toBeUndefined();
+      expect(d.error?.message).toMatch(/does not pattern holes only/);
+    }, 120_000);
+  });
+
   // ADR-092 proposal 2: anchors of refs that are not annotations yet, for the drawing import's
   // promoted fillet, chamfer and revolve values (packages/drawing `ImportInput.resolveAnchor`).
   describe('anchor queries (annotationAnchors)', () => {
