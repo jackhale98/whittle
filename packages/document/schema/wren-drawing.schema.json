@@ -1485,14 +1485,16 @@
       "type": "string"
     },
     "RefPoint": {
-      "description": "Which point of a referenced entity an annotation measures from (parallel to `refs`). `self`: the entity itself (a face, an edge's line). `center`: circle, arc or sphere centre. `axis`: a cylindrical or conical face's axis. `start` / `end` / `mid`: of an edge.",
+      "description": "Which point of a referenced entity an annotation measures from (parallel to `refs`). `self`: the entity itself (a face, an edge's line). `center`: circle, arc or sphere centre. `axis`: a cylindrical or conical face's axis; on a planar face in an angle dimension, the face's normal (the pull direction a draft angle is measured from; M4.1). `start` / `end` / `mid`: of an edge. `min` / `max` (M4.1, ADR-095): the entity's extreme point along the dimension's `direction`, only for linear and ordinate dimensions that have one: a circle's, cylinder's or sphere's tangent point, a line's lower or upper end. A diameter in linear form (\"across the flats\" of a circle) is refs [c, c] at ['min', 'max'].",
       "enum": [
         "self",
         "center",
         "axis",
         "start",
         "end",
-        "mid"
+        "mid",
+        "min",
+        "max"
       ],
       "type": "string"
     },

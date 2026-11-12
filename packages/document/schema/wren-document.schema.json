@@ -50,7 +50,7 @@
           "$ref": "#/definitions/AnnotationOrigin"
         },
         "refs": {
-          "description": "Model geometry the annotation is attached to, by persistent name (PLAN §7.3). Arity and role per kind are in the .md table (\"refs per kind\"). Resolved against the part's final state in the view's configuration. Unresolved = needs attention: never re-attached to a guessed entity, and the old value is never displayed (trap T1). Reattach replaces the list (every kind, trap T2). May be empty only where the kind says so (a hole callout bound by `source`, a frame or a datum bound by `appliesTo`).",
+          "description": "Model geometry the annotation is attached to, by persistent name (PLAN §7.3). Arity and role per kind are in the .md table (\"refs per kind\"). Resolved against the part's final state in the view's configuration. Unresolved = needs attention: never re-attached to a guessed entity, and the old value is never displayed (trap T1). Reattach replaces the list (every kind, trap T2). May be empty only where the kind says so (a hole callout bound by `source`, a frame or a datum bound by `appliesTo`).\n\nConstruction refs (M4.1, ADR-095), drawn on a view as thin chain lines once a placement there uses them, and offered as pick targets while a picking tool is active: `origin:O`, `origin:X|Y|Z`, `S<id>:p(@origin)`, `S<id>:e(@x|@y)`, `S<id>:p(<point>)`, `F<id>:plane|axis|point`, and `F<pattern>:pitch` (the pitch circle of a circular pattern of holes: about the pattern axis, through the instances' axes; unresolved if they are not holes or not all at one radius, never guessed).",
           "items": {
             "$ref": "#/definitions/EntityRef"
           },
@@ -125,7 +125,7 @@
     },
     "AngleDimension": {
       "additionalProperties": false,
-      "description": "Angle between two straight edges, planar faces or axes. refs: [a, b]. `measure`: the angle between them as oriented (≤ 180°, default) or its supplement.",
+      "description": "Angle dimension. refs: two edges or faces seen edge-on. A draft angle is refs [drafted face, neutral face] at ['self', 'axis']: from the neutral face's normal (M4.1).",
       "properties": {
         "at": {
           "description": "Point qualifiers parallel to `refs`; absent or shorter = `'self'` for the rest.",
@@ -177,7 +177,7 @@
           "$ref": "#/definitions/AnnotationOrigin"
         },
         "refs": {
-          "description": "Model geometry the annotation is attached to, by persistent name (PLAN §7.3). Arity and role per kind are in the .md table (\"refs per kind\"). Resolved against the part's final state in the view's configuration. Unresolved = needs attention: never re-attached to a guessed entity, and the old value is never displayed (trap T1). Reattach replaces the list (every kind, trap T2). May be empty only where the kind says so (a hole callout bound by `source`, a frame or a datum bound by `appliesTo`).",
+          "description": "Model geometry the annotation is attached to, by persistent name (PLAN §7.3). Arity and role per kind are in the .md table (\"refs per kind\"). Resolved against the part's final state in the view's configuration. Unresolved = needs attention: never re-attached to a guessed entity, and the old value is never displayed (trap T1). Reattach replaces the list (every kind, trap T2). May be empty only where the kind says so (a hole callout bound by `source`, a frame or a datum bound by `appliesTo`).\n\nConstruction refs (M4.1, ADR-095), drawn on a view as thin chain lines once a placement there uses them, and offered as pick targets while a picking tool is active: `origin:O`, `origin:X|Y|Z`, `S<id>:p(@origin)`, `S<id>:e(@x|@y)`, `S<id>:p(<point>)`, `F<id>:plane|axis|point`, and `F<pattern>:pitch` (the pitch circle of a circular pattern of holes: about the pattern axis, through the instances' axes; unresolved if they are not holes or not all at one radius, never guessed).",
           "items": {
             "$ref": "#/definitions/EntityRef"
           },
@@ -891,7 +891,7 @@
           "$ref": "#/definitions/AnnotationOrigin"
         },
         "refs": {
-          "description": "Model geometry the annotation is attached to, by persistent name (PLAN §7.3). Arity and role per kind are in the .md table (\"refs per kind\"). Resolved against the part's final state in the view's configuration. Unresolved = needs attention: never re-attached to a guessed entity, and the old value is never displayed (trap T1). Reattach replaces the list (every kind, trap T2). May be empty only where the kind says so (a hole callout bound by `source`, a frame or a datum bound by `appliesTo`).",
+          "description": "Model geometry the annotation is attached to, by persistent name (PLAN §7.3). Arity and role per kind are in the .md table (\"refs per kind\"). Resolved against the part's final state in the view's configuration. Unresolved = needs attention: never re-attached to a guessed entity, and the old value is never displayed (trap T1). Reattach replaces the list (every kind, trap T2). May be empty only where the kind says so (a hole callout bound by `source`, a frame or a datum bound by `appliesTo`).\n\nConstruction refs (M4.1, ADR-095), drawn on a view as thin chain lines once a placement there uses them, and offered as pick targets while a picking tool is active: `origin:O`, `origin:X|Y|Z`, `S<id>:p(@origin)`, `S<id>:e(@x|@y)`, `S<id>:p(<point>)`, `F<id>:plane|axis|point`, and `F<pattern>:pitch` (the pitch circle of a circular pattern of holes: about the pattern axis, through the instances' axes; unresolved if they are not holes or not all at one radius, never guessed).",
           "items": {
             "$ref": "#/definitions/EntityRef"
           },
@@ -1248,7 +1248,7 @@
           "$ref": "#/definitions/AnnotationOrigin"
         },
         "refs": {
-          "description": "Model geometry the annotation is attached to, by persistent name (PLAN §7.3). Arity and role per kind are in the .md table (\"refs per kind\"). Resolved against the part's final state in the view's configuration. Unresolved = needs attention: never re-attached to a guessed entity, and the old value is never displayed (trap T1). Reattach replaces the list (every kind, trap T2). May be empty only where the kind says so (a hole callout bound by `source`, a frame or a datum bound by `appliesTo`).",
+          "description": "Model geometry the annotation is attached to, by persistent name (PLAN §7.3). Arity and role per kind are in the .md table (\"refs per kind\"). Resolved against the part's final state in the view's configuration. Unresolved = needs attention: never re-attached to a guessed entity, and the old value is never displayed (trap T1). Reattach replaces the list (every kind, trap T2). May be empty only where the kind says so (a hole callout bound by `source`, a frame or a datum bound by `appliesTo`).\n\nConstruction refs (M4.1, ADR-095), drawn on a view as thin chain lines once a placement there uses them, and offered as pick targets while a picking tool is active: `origin:O`, `origin:X|Y|Z`, `S<id>:p(@origin)`, `S<id>:e(@x|@y)`, `S<id>:p(<point>)`, `F<id>:plane|axis|point`, and `F<pattern>:pitch` (the pitch circle of a circular pattern of holes: about the pattern axis, through the instances' axes; unresolved if they are not holes or not all at one radius, never guessed).",
           "items": {
             "$ref": "#/definitions/EntityRef"
           },
@@ -1458,7 +1458,7 @@
           "$ref": "#/definitions/AnnotationOrigin"
         },
         "refs": {
-          "description": "Model geometry the annotation is attached to, by persistent name (PLAN §7.3). Arity and role per kind are in the .md table (\"refs per kind\"). Resolved against the part's final state in the view's configuration. Unresolved = needs attention: never re-attached to a guessed entity, and the old value is never displayed (trap T1). Reattach replaces the list (every kind, trap T2). May be empty only where the kind says so (a hole callout bound by `source`, a frame or a datum bound by `appliesTo`).",
+          "description": "Model geometry the annotation is attached to, by persistent name (PLAN §7.3). Arity and role per kind are in the .md table (\"refs per kind\"). Resolved against the part's final state in the view's configuration. Unresolved = needs attention: never re-attached to a guessed entity, and the old value is never displayed (trap T1). Reattach replaces the list (every kind, trap T2). May be empty only where the kind says so (a hole callout bound by `source`, a frame or a datum bound by `appliesTo`).\n\nConstruction refs (M4.1, ADR-095), drawn on a view as thin chain lines once a placement there uses them, and offered as pick targets while a picking tool is active: `origin:O`, `origin:X|Y|Z`, `S<id>:p(@origin)`, `S<id>:e(@x|@y)`, `S<id>:p(<point>)`, `F<id>:plane|axis|point`, and `F<pattern>:pitch` (the pitch circle of a circular pattern of holes: about the pattern axis, through the instances' axes; unresolved if they are not holes or not all at one radius, never guessed).",
           "items": {
             "$ref": "#/definitions/EntityRef"
           },
@@ -3125,7 +3125,7 @@
           "$ref": "#/definitions/AnnotationOrigin"
         },
         "refs": {
-          "description": "Model geometry the annotation is attached to, by persistent name (PLAN §7.3). Arity and role per kind are in the .md table (\"refs per kind\"). Resolved against the part's final state in the view's configuration. Unresolved = needs attention: never re-attached to a guessed entity, and the old value is never displayed (trap T1). Reattach replaces the list (every kind, trap T2). May be empty only where the kind says so (a hole callout bound by `source`, a frame or a datum bound by `appliesTo`).",
+          "description": "Model geometry the annotation is attached to, by persistent name (PLAN §7.3). Arity and role per kind are in the .md table (\"refs per kind\"). Resolved against the part's final state in the view's configuration. Unresolved = needs attention: never re-attached to a guessed entity, and the old value is never displayed (trap T1). Reattach replaces the list (every kind, trap T2). May be empty only where the kind says so (a hole callout bound by `source`, a frame or a datum bound by `appliesTo`).\n\nConstruction refs (M4.1, ADR-095), drawn on a view as thin chain lines once a placement there uses them, and offered as pick targets while a picking tool is active: `origin:O`, `origin:X|Y|Z`, `S<id>:p(@origin)`, `S<id>:e(@x|@y)`, `S<id>:p(<point>)`, `F<id>:plane|axis|point`, and `F<pattern>:pitch` (the pitch circle of a circular pattern of holes: about the pattern axis, through the instances' axes; unresolved if they are not holes or not all at one radius, never guessed).",
           "items": {
             "$ref": "#/definitions/EntityRef"
           },
@@ -3247,7 +3247,7 @@
           "$ref": "#/definitions/AnnotationOrigin"
         },
         "refs": {
-          "description": "Model geometry the annotation is attached to, by persistent name (PLAN §7.3). Arity and role per kind are in the .md table (\"refs per kind\"). Resolved against the part's final state in the view's configuration. Unresolved = needs attention: never re-attached to a guessed entity, and the old value is never displayed (trap T1). Reattach replaces the list (every kind, trap T2). May be empty only where the kind says so (a hole callout bound by `source`, a frame or a datum bound by `appliesTo`).",
+          "description": "Model geometry the annotation is attached to, by persistent name (PLAN §7.3). Arity and role per kind are in the .md table (\"refs per kind\"). Resolved against the part's final state in the view's configuration. Unresolved = needs attention: never re-attached to a guessed entity, and the old value is never displayed (trap T1). Reattach replaces the list (every kind, trap T2). May be empty only where the kind says so (a hole callout bound by `source`, a frame or a datum bound by `appliesTo`).\n\nConstruction refs (M4.1, ADR-095), drawn on a view as thin chain lines once a placement there uses them, and offered as pick targets while a picking tool is active: `origin:O`, `origin:X|Y|Z`, `S<id>:p(@origin)`, `S<id>:e(@x|@y)`, `S<id>:p(<point>)`, `F<id>:plane|axis|point`, and `F<pattern>:pitch` (the pitch circle of a circular pattern of holes: about the pattern axis, through the instances' axes; unresolved if they are not holes or not all at one radius, never guessed).",
           "items": {
             "$ref": "#/definitions/EntityRef"
           },
@@ -3812,7 +3812,7 @@
           "$ref": "#/definitions/AnnotationOrigin"
         },
         "refs": {
-          "description": "Model geometry the annotation is attached to, by persistent name (PLAN §7.3). Arity and role per kind are in the .md table (\"refs per kind\"). Resolved against the part's final state in the view's configuration. Unresolved = needs attention: never re-attached to a guessed entity, and the old value is never displayed (trap T1). Reattach replaces the list (every kind, trap T2). May be empty only where the kind says so (a hole callout bound by `source`, a frame or a datum bound by `appliesTo`).",
+          "description": "Model geometry the annotation is attached to, by persistent name (PLAN §7.3). Arity and role per kind are in the .md table (\"refs per kind\"). Resolved against the part's final state in the view's configuration. Unresolved = needs attention: never re-attached to a guessed entity, and the old value is never displayed (trap T1). Reattach replaces the list (every kind, trap T2). May be empty only where the kind says so (a hole callout bound by `source`, a frame or a datum bound by `appliesTo`).\n\nConstruction refs (M4.1, ADR-095), drawn on a view as thin chain lines once a placement there uses them, and offered as pick targets while a picking tool is active: `origin:O`, `origin:X|Y|Z`, `S<id>:p(@origin)`, `S<id>:e(@x|@y)`, `S<id>:p(<point>)`, `F<id>:plane|axis|point`, and `F<pattern>:pitch` (the pitch circle of a circular pattern of holes: about the pattern axis, through the instances' axes; unresolved if they are not holes or not all at one radius, never guessed).",
           "items": {
             "$ref": "#/definitions/EntityRef"
           },
@@ -4176,7 +4176,7 @@
           "$ref": "#/definitions/AnnotationOrigin"
         },
         "refs": {
-          "description": "Model geometry the annotation is attached to, by persistent name (PLAN §7.3). Arity and role per kind are in the .md table (\"refs per kind\"). Resolved against the part's final state in the view's configuration. Unresolved = needs attention: never re-attached to a guessed entity, and the old value is never displayed (trap T1). Reattach replaces the list (every kind, trap T2). May be empty only where the kind says so (a hole callout bound by `source`, a frame or a datum bound by `appliesTo`).",
+          "description": "Model geometry the annotation is attached to, by persistent name (PLAN §7.3). Arity and role per kind are in the .md table (\"refs per kind\"). Resolved against the part's final state in the view's configuration. Unresolved = needs attention: never re-attached to a guessed entity, and the old value is never displayed (trap T1). Reattach replaces the list (every kind, trap T2). May be empty only where the kind says so (a hole callout bound by `source`, a frame or a datum bound by `appliesTo`).\n\nConstruction refs (M4.1, ADR-095), drawn on a view as thin chain lines once a placement there uses them, and offered as pick targets while a picking tool is active: `origin:O`, `origin:X|Y|Z`, `S<id>:p(@origin)`, `S<id>:e(@x|@y)`, `S<id>:p(<point>)`, `F<id>:plane|axis|point`, and `F<pattern>:pitch` (the pitch circle of a circular pattern of holes: about the pattern axis, through the instances' axes; unresolved if they are not holes or not all at one radius, never guessed).",
           "items": {
             "$ref": "#/definitions/EntityRef"
           },
@@ -4250,7 +4250,7 @@
           "$ref": "#/definitions/AnnotationOrigin"
         },
         "refs": {
-          "description": "Model geometry the annotation is attached to, by persistent name (PLAN §7.3). Arity and role per kind are in the .md table (\"refs per kind\"). Resolved against the part's final state in the view's configuration. Unresolved = needs attention: never re-attached to a guessed entity, and the old value is never displayed (trap T1). Reattach replaces the list (every kind, trap T2). May be empty only where the kind says so (a hole callout bound by `source`, a frame or a datum bound by `appliesTo`).",
+          "description": "Model geometry the annotation is attached to, by persistent name (PLAN §7.3). Arity and role per kind are in the .md table (\"refs per kind\"). Resolved against the part's final state in the view's configuration. Unresolved = needs attention: never re-attached to a guessed entity, and the old value is never displayed (trap T1). Reattach replaces the list (every kind, trap T2). May be empty only where the kind says so (a hole callout bound by `source`, a frame or a datum bound by `appliesTo`).\n\nConstruction refs (M4.1, ADR-095), drawn on a view as thin chain lines once a placement there uses them, and offered as pick targets while a picking tool is active: `origin:O`, `origin:X|Y|Z`, `S<id>:p(@origin)`, `S<id>:e(@x|@y)`, `S<id>:p(<point>)`, `F<id>:plane|axis|point`, and `F<pattern>:pitch` (the pitch circle of a circular pattern of holes: about the pattern axis, through the instances' axes; unresolved if they are not holes or not all at one radius, never guessed).",
           "items": {
             "$ref": "#/definitions/EntityRef"
           },
@@ -5279,7 +5279,7 @@
           "$ref": "#/definitions/AnnotationOrigin"
         },
         "refs": {
-          "description": "Model geometry the annotation is attached to, by persistent name (PLAN §7.3). Arity and role per kind are in the .md table (\"refs per kind\"). Resolved against the part's final state in the view's configuration. Unresolved = needs attention: never re-attached to a guessed entity, and the old value is never displayed (trap T1). Reattach replaces the list (every kind, trap T2). May be empty only where the kind says so (a hole callout bound by `source`, a frame or a datum bound by `appliesTo`).",
+          "description": "Model geometry the annotation is attached to, by persistent name (PLAN §7.3). Arity and role per kind are in the .md table (\"refs per kind\"). Resolved against the part's final state in the view's configuration. Unresolved = needs attention: never re-attached to a guessed entity, and the old value is never displayed (trap T1). Reattach replaces the list (every kind, trap T2). May be empty only where the kind says so (a hole callout bound by `source`, a frame or a datum bound by `appliesTo`).\n\nConstruction refs (M4.1, ADR-095), drawn on a view as thin chain lines once a placement there uses them, and offered as pick targets while a picking tool is active: `origin:O`, `origin:X|Y|Z`, `S<id>:p(@origin)`, `S<id>:e(@x|@y)`, `S<id>:p(<point>)`, `F<id>:plane|axis|point`, and `F<pattern>:pitch` (the pitch circle of a circular pattern of holes: about the pattern axis, through the instances' axes; unresolved if they are not holes or not all at one radius, never guessed).",
           "items": {
             "$ref": "#/definitions/EntityRef"
           },
@@ -5308,14 +5308,16 @@
       "type": "object"
     },
     "RefPoint": {
-      "description": "Which point of a referenced entity an annotation measures from (parallel to `refs`). `self`: the entity itself (a face, an edge's line). `center`: circle, arc or sphere centre. `axis`: a cylindrical or conical face's axis. `start` / `end` / `mid`: of an edge.",
+      "description": "Which point of a referenced entity an annotation measures from (parallel to `refs`). `self`: the entity itself (a face, an edge's line). `center`: circle, arc or sphere centre. `axis`: a cylindrical or conical face's axis; on a planar face in an angle dimension, the face's normal (the pull direction a draft angle is measured from; M4.1). `start` / `end` / `mid`: of an edge. `min` / `max` (M4.1, ADR-095): the entity's extreme point along the dimension's `direction`, only for linear and ordinate dimensions that have one: a circle's, cylinder's or sphere's tangent point, a line's lower or upper end. A diameter in linear form (\"across the flats\" of a circle) is refs [c, c] at ['min', 'max'].",
       "enum": [
         "self",
         "center",
         "axis",
         "start",
         "end",
-        "mid"
+        "mid",
+        "min",
+        "max"
       ],
       "type": "string"
     },
@@ -6214,7 +6216,7 @@
           "type": "string"
         },
         "refs": {
-          "description": "Model geometry the annotation is attached to, by persistent name (PLAN §7.3). Arity and role per kind are in the .md table (\"refs per kind\"). Resolved against the part's final state in the view's configuration. Unresolved = needs attention: never re-attached to a guessed entity, and the old value is never displayed (trap T1). Reattach replaces the list (every kind, trap T2). May be empty only where the kind says so (a hole callout bound by `source`, a frame or a datum bound by `appliesTo`).",
+          "description": "Model geometry the annotation is attached to, by persistent name (PLAN §7.3). Arity and role per kind are in the .md table (\"refs per kind\"). Resolved against the part's final state in the view's configuration. Unresolved = needs attention: never re-attached to a guessed entity, and the old value is never displayed (trap T1). Reattach replaces the list (every kind, trap T2). May be empty only where the kind says so (a hole callout bound by `source`, a frame or a datum bound by `appliesTo`).\n\nConstruction refs (M4.1, ADR-095), drawn on a view as thin chain lines once a placement there uses them, and offered as pick targets while a picking tool is active: `origin:O`, `origin:X|Y|Z`, `S<id>:p(@origin)`, `S<id>:e(@x|@y)`, `S<id>:p(<point>)`, `F<id>:plane|axis|point`, and `F<pattern>:pitch` (the pitch circle of a circular pattern of holes: about the pattern axis, through the instances' axes; unresolved if they are not holes or not all at one radius, never guessed).",
           "items": {
             "$ref": "#/definitions/EntityRef"
           },

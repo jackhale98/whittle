@@ -475,6 +475,15 @@ export interface ProjectedCurve {
    * edge `name` too.
    */
   face?: string;
+  /**
+   * Section views (M4.1, ADR-095): this curve is an edge of a cut face (it lies on the cutting
+   * surface), and this is the persistent name of the model face the cut passes through along it
+   * (the cut face's other neighbour in the cut result). A pick on it refs that face
+   * (`kind: 'face'`), so a dimension between cut edges measures model faces and re-resolves like
+   * any face ref. Absent on steps between two cut segments, and wherever that neighbour is not
+   * exactly one named model face.
+   */
+  cutFace?: string;
   curve: Curve2;
 }
 

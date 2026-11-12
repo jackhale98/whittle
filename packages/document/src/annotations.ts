@@ -73,6 +73,8 @@ export const REF_POINTS = [
   'start',
   'end',
   'mid',
+  'min',
+  'max',
 ] as const satisfies readonly RefPoint[];
 
 export const ZONE_MODIFIERS = [

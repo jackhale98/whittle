@@ -431,6 +431,25 @@ describe('hole callouts and sources', () => {
     expect(annotationIssues(doc, part(doc).id, pts)).toContainEqual({ kind: 'directionMissing' });
   });
 
+  it('min and max points need a linear or ordinate dimension with a direction (M4.1)', () => {
+    const doc = sampleDoc();
+    const base = at(900) as Annotation;
+    const across = {
+      ...base,
+      refs: [ref('c', 'edge'), ref('c', 'edge')],
+      at: ['min', 'max'],
+    } as Annotation;
+    const fits = (a: Annotation) =>
+      annotationIssues(doc, part(doc).id, a).some((i) => i.kind === 'refsDoNotFit');
+    if ((across as { direction?: unknown }).direction === undefined)
+      (across as { direction?: unknown }).direction = [1, 0, 0];
+    expect(fits(across)).toBe(false);
+    const noDirection = { ...across } as Annotation;
+    delete (noDirection as { direction?: unknown }).direction;
+    expect(fits(noDirection)).toBe(true);
+    expect(fits({ ...(at(901) as Annotation), at: ['min', 'self'] } as Annotation)).toBe(true);
+  });
+
   it('a fit on an angle is refused with an explanation', () => {
     const doc = sampleDoc();
     const a = {

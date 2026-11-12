@@ -47,9 +47,14 @@ export type AnnotationSource =
 /**
  * Which point of a referenced entity an annotation measures from (parallel to `refs`).
  * `self`: the entity itself (a face, an edge's line). `center`: circle, arc or sphere centre.
- * `axis`: a cylindrical or conical face's axis. `start` / `end` / `mid`: of an edge.
+ * `axis`: a cylindrical or conical face's axis; on a planar face in an angle dimension, the face's
+ * normal (the pull direction a draft angle is measured from; M4.1). `start` / `end` / `mid`: of an
+ * edge. `min` / `max` (M4.1, ADR-095): the entity's extreme point along the dimension's
+ * `direction`, only for linear and ordinate dimensions that have one: a circle's, cylinder's or
+ * sphere's tangent point, a line's lower or upper end. A diameter in linear form ("across the
+ * flats" of a circle) is refs [c, c] at ['min', 'max'].
  */
-export type RefPoint = 'self' | 'center' | 'axis' | 'start' | 'end' | 'mid';
+export type RefPoint = 'self' | 'center' | 'axis' | 'start' | 'end' | 'mid' | 'min' | 'max';
 
 /** Fields every annotation has. */
 export interface AnnotationBase {
@@ -63,6 +68,13 @@ export interface AnnotationBase {
    * the old value is never displayed (trap T1). Reattach replaces the list (every kind, trap T2).
    * May be empty only where the kind says so (a hole callout bound by `source`, a frame or a datum
    * bound by `appliesTo`).
+   *
+   * Construction refs (M4.1, ADR-095), drawn on a view as thin chain lines once a placement there
+   * uses them, and offered as pick targets while a picking tool is active: `origin:O`,
+   * `origin:X|Y|Z`, `S<id>:p(@origin)`, `S<id>:e(@x|@y)`, `S<id>:p(<point>)`,
+   * `F<id>:plane|axis|point`, and `F<pattern>:pitch` (the pitch circle of a circular pattern of
+   * holes: about the pattern axis, through the instances' axes; unresolved if they are not holes or
+   * not all at one radius, never guessed).
    */
   refs: EntityRef[];
   /** Point qualifiers parallel to `refs`; absent or shorter = `'self'` for the rest. */
@@ -171,6 +183,10 @@ export interface DiameterDimension extends DimensionBase {
 /**
  * Angle between two straight edges, planar faces or axes. refs: [a, b]. `measure`: the angle
  * between them as oriented (≤ 180°, default) or its supplement.
+ */
+/**
+ * Angle dimension. refs: two edges or faces seen edge-on. A draft angle is refs [drafted face,
+ * neutral face] at ['self', 'axis']: from the neutral face's normal (M4.1).
  */
 export interface AngleDimension extends DimensionBase {
   kind: 'angle';

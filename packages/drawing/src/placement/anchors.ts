@@ -49,6 +49,9 @@ export function anchorPoints(a: AnnotationAnchor, at: RefPoint = 'self'): Vec3[]
       if (at === 'start') return a.points.slice(0, 1);
       if (at === 'end') return a.points.slice(-1);
       return a.points;
+    case 'torus':
+      // M4.1: the layout places a torus radius on a meridian (placement/layout); as points, its centre.
+      return [a.center];
   }
 }
 
@@ -121,6 +124,8 @@ export function attachPoint(v: SolvedView, a: AnnotationAnchor, t?: number): Vec
   switch (a.kind) {
     case 'point':
       return partToSheet(v, a.at);
+    case 'torus':
+      return partToSheet(v, a.center);
     case 'circle': {
       const pc = projectCircle(v, a);
       if (pc.kind === 'faceOn') {

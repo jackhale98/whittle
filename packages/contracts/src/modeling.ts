@@ -199,7 +199,12 @@ export type AnnotationAnchor =
   | { kind: 'circle'; center: Vec3; normal: Vec3; radius: number; start?: Vec3; end?: Vec3 }
   | { kind: 'axis'; origin: Vec3; direction: Vec3; extent: [number, number] }
   | { kind: 'plane'; origin: Vec3; normal: Vec3; outline: Vec3[] }
-  | { kind: 'curve'; points: Vec3[] };
+  | { kind: 'curve'; points: Vec3[] }
+  /**
+   * M4.1: a torus face (a fillet at a shaft step), for radius dimensions. The layout uses the
+   * meridian circle (radius `minor`) seen face-on, on the side the stored leader angle points to.
+   */
+  | { kind: 'torus'; center: Vec3; axis: Vec3; major: number; minor: number };
 
 /**
  * Regen engine output per annotation (kernel-client, in the worker, after the last feature):
@@ -243,6 +248,7 @@ export interface AnchorQuery {
   /**
    * The annotation kind the anchor is for, as in a resolution: `radius` / `diameter` anchor a
    * cylindrical face by its rim circle, `holeCallout` a hole wall by the callout's entry rim.
+   * `radius` on a torus face gives a `torus` anchor (M4.1).
    * Omitted: the plain anchor (a cylindrical face is its axis).
    */
   annotationKind?: Annotation['kind'];

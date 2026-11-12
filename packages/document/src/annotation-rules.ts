@@ -169,6 +169,16 @@ function linearNeedsDirection(a: Annotation): boolean {
 }
 
 /**
+ * `min` / `max` points (M4.1, ADR-095) are extremes along the dimension's direction: only a linear
+ * or ordinate dimension with a `direction` has one.
+ */
+function extremePointProblem(a: Annotation): string | undefined {
+  if (!(a.at ?? []).some((p) => p === 'min' || p === 'max')) return undefined;
+  if ((a.kind === 'linear' || a.kind === 'ordinate') && a.direction !== undefined) return undefined;
+  return 'An extreme point (min or max) needs a linear or ordinate dimension with a direction';
+}
+
+/**
  * Semantic problems of one annotation of a part, for the needs-attention panel. Pure.
  * `standard` is the standard of the displaying drawing (or the project default); an annotation's
  * own `standard` wins for legality, and a different one on the drawing is a `standardMismatch`.
@@ -196,6 +206,8 @@ export function annotationIssues(
     issues.push({ kind: 'sourceGone', source: annotation.source });
   }
   if (linearNeedsDirection(annotation)) issues.push({ kind: 'directionMissing' });
+  const extremes = extremePointProblem(annotation);
+  if (extremes !== undefined) issues.push({ kind: 'refsDoNotFit', message: extremes });
   if ('tolerance' in annotation && annotation.tolerance?.kind === 'fit') {
     if (
       annotation.kind === 'angle' ||

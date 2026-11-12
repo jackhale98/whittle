@@ -878,6 +878,7 @@ From the M4 certification suite (owner decision 2026-11-11), in this order:
    - GAP-PICK-HIDDEN (rp07 inset): hidden lines are pickable.
    - GAP-PICK-EXTREMES (rp09 flange_d): a linear dimension across a circle's extremes.
 
+- **Design:** ADR-095 (contracts 2026-11-12). rp04 `boss_up` and rp10 `slot_x0` are made from model entities the reference parts gain (a reference plane, a construction point), not from a guessed level.
 - **Accept:** each closed gap's `test.fixme` becomes a passing assertion. The certification suite reaches 94 of 94.
 
 ### M4.5 — 3D mice and CAD mice

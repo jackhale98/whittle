@@ -3370,3 +3370,20 @@ Follow-up round on the drawing workstream, after the lead accepted proposals 1 a
 - **`ensureExact` could return a stale exact build.** It counted an exact build as current when the model's key matched, even if the drawing had changed since (an undo of a drawing edit). The next draft build then replaced it, and on the tablet a circle pick right after `exact()` saw polylines.
   - `ensureExact` now also requires the build's drawing to be the document's.
   - `resume()` rebuilds held-back work at the quality it was asked for, so a refinement to exact edges does not fall back to the draft because a press came in meanwhile.
+
+## ADR-095: M4.1 drawing pick gaps: construction refs, named section edges, extremes, torus radii (2026-11-12)
+
+**Context.** The M4 certification suite placed 78 of 94 specified dimensions; 16 are named gaps (`apps/web/e2e/support/reference-drawing-gaps.ts`, PLAN M4.1). The owner asked for all 16.
+
+**Decision.**
+
+1. **Construction refs.** Origin planes/axes, sketch origins and axes, sketch points, plane/axis/point features and a new `F<pattern>:pitch` (pitch circle of a circular pattern of holes) are valid `EntityRef` names. They are drawn on a view as thin chain lines only when a placement there uses them, and offered as transient pick targets while a picking tool is active. Their geometry comes from `annotationAnchors`, projected in TS: no kernel change. Model edges outrank construction items in a hit. `F<p>:pitch` resolves only when every instance is a hole at one radius about the pattern axis; otherwise it is unresolved with an error, never guessed. No persisted per-view construction list (can come later as `ViewBase.construction`).
+2. **Named section edges.** `ProjectedCurve.cutFace`: an edge of a cut face carries the persistent name of the model face the cut passes through along it (the cut face's other neighbour in the cut result, computed in the drawing kernel from the edge's face ancestors). A pick on it refs that model face, so dimensions in a section re-resolve like any face ref. Steps between cut segments, and edges whose neighbour is not exactly one named face, have none. `planDimension` sets a `direction` only when edges are exactly axis-aligned (1e-6), so a drafted wall measures its true normal thickness.
+3. **Draft angles.** `at: 'axis'` on a planar face in an angle dimension is the face's normal. A draft angle is refs [drafted face, neutral face] at ['self', 'axis'].
+4. **Extremes.** `RefPoint` gains `min` / `max`: an entity's extreme point along the dimension's `direction` (linear and ordinate only; a rule flags anything else). A diameter in linear form is refs [c, c] at ['min', 'max'].
+5. **Torus radii.** `AnnotationAnchor` gains `torus`. A fillet at a shaft step, whose outline comes back as a B-spline, gets a radius on its torus face; the layout draws it on the meridian on the side of the stored leader angle.
+6. **Centre to centre.** The Dimension tool waits for a second pick after a circle: the same circle again gives its diameter (Alt: radius), another circle the centre distance.
+7. **Tangent and hidden lines** are pickable when the view draws them; visible outranks hidden at equal distance. The default tangent display does not change.
+8. **Spec-side, two parts (lead decision, reported to the owner):** rp04 `boss_up` measured a level the part had only partway through its history, and rp10 `slot_x0` a slot centre the finished part has no entity for. Neither can be made without inventing a reference. The reference parts gain the honest model entity a designer would add: rp04 a reference plane `boss_lvl` at the push/pull's start level, rp10 a construction centre point in the slot sketch. The dimensions are then made from those.
+
+**Consequences.** One drawing-kernel change (cut-face naming; CI build). Imported dimensions that already ref sketch origins or axes now draw their centre lines (golden churn). SCHEMA_VERSION stays 4: `RefPoint` only widens.
