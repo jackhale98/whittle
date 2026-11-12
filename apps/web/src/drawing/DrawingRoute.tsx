@@ -27,7 +27,7 @@ import { useObservable } from '../app/observable';
 import type { Workbench } from '../app/workbench';
 import { titleRows } from './adapters';
 import { DrawingController } from './controller';
-import { beginInteraction, currentSheet, viewHit } from './interact';
+import { beginInteraction, currentSheet, nudgeText, viewHit } from './interact';
 import { SheetOverlay } from './Overlay';
 import { openImport } from './ops-annot';
 import { addPartPropertiesTable } from './ops-tables';
@@ -109,10 +109,15 @@ export default function DrawingRoute({ wb, id, tier, onClose }: DrawingRouteProp
   const reviewOnly = tier === 'phone';
 
   useEffect(() => {
+    // Drag previews are drawn by the viewer straight onto the sheet (ADR-094).
+    c.viewer = { transient: (spec) => (viewer.current as SheetViewerApi).transient(spec) };
     c.start();
     installDrawingHooks(c);
     void (id ? c.open(id) : c.openNew());
-    return () => c.dispose();
+    return () => {
+      c.viewer = null;
+      c.dispose();
+    };
   }, [c, id]);
 
   const b = ui.built;
@@ -301,6 +306,28 @@ export default function DrawingRoute({ wb, id, tier, onClose }: DrawingRouteProp
       e.preventDefault();
       return true;
     }
+    // The selected dimension's text moves with the arrow keys (ADR-094): along its line, or above,
+    // inline and below it; Shift steps 5 mm.
+    if (
+      ui.selected?.kind === 'placement' &&
+      !readOnly &&
+      !e.ctrlKey &&
+      !e.metaKey &&
+      !e.altKey &&
+      e.key.startsWith('Arrow')
+    ) {
+      const arrow: Vec2 =
+        e.key === 'ArrowLeft'
+          ? [-1, 0]
+          : e.key === 'ArrowRight'
+            ? [1, 0]
+            : e.key === 'ArrowUp'
+              ? [0, 1]
+              : [0, -1];
+      e.preventDefault();
+      nudgeText(c, ui.selected.id, arrow, e.shiftKey);
+      return true;
+    }
     if ((e.key === 'Delete' || e.key === 'Backspace') && ui.selected && !readOnly) {
       e.preventDefault();
       c.deleteSelected();
@@ -418,7 +445,9 @@ export default function DrawingRoute({ wb, id, tier, onClose }: DrawingRouteProp
             if (ui.tool === 'select') c.select(null);
           }}
           onKeyDown={onKeyDown}
-          overlay={(o) => (b ? <SheetOverlay ui={ui} b={b} mm={o.mm} sheet={o.sheet} /> : null)}
+          overlay={(o) =>
+            b ? <SheetOverlay ui={ui} b={b} mm={o.mm} sheet={o.sheet} touch={touch} /> : null
+          }
           floating={(f) =>
             cellEditor ? (
               <InlineCellEditor

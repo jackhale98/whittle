@@ -260,6 +260,13 @@ export function ViewPanelBody({ c, b, size }: { c: DrawingController; b: Built; 
               letter: view.letter,
               radius: view.radius,
               onRadius: (radius: number) => put({ ...view, radius }, 'Change detail size'),
+              ...(view.center.kind === 'free'
+                ? {
+                    center: { x: view.center.at[0], y: view.center.at[1] },
+                    onCenter: (x: number, y: number) =>
+                      put({ ...view, center: { kind: 'free', at: [x, y] } }, 'Move detail circle'),
+                  }
+                : {}),
               onLetter: (letter: string) => put({ ...view, letter }, 'Change detail letter'),
             },
           }

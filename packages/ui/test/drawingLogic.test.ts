@@ -127,6 +127,19 @@ describe('picking on a sheet', () => {
     expect(itemDistance(list.items[2] as never, [31.5, 20], 1)).toBe(0);
   });
 
+  it('a dimension text has a reach of its own: a 44 px target on touch (ADR-094)', () => {
+    // 6 mm from the text box (its half width is about 3 mm), clear of the dimension line.
+    const far: [number, number] = [38, 20];
+    expect(hitTest(list, far, 2)).toBeNull();
+    const hit = hitTest(list, far, 2, [], 8);
+    expect(hit?.source.kind).toBe('placement');
+    expect(hit?.itemKind).toBe('text');
+    // A pick on the dimension line itself is not the text.
+    expect(hitTest(list, [20, 30], 2, [], 8)?.itemKind).toBe('line');
+    // The larger reach is for annotation text only: a view's edge keeps its own tolerance.
+    expect(hitTest(list, [30, 5], 2, [], 8)).toBeNull();
+  });
+
   it('never picks hatch or the template frame; arcs by their curve', () => {
     expect(hitTest(list, [30, 0], 2)).toBeNull();
     expect(hitTest(list, [30, 15], 0.5)).toBeNull();

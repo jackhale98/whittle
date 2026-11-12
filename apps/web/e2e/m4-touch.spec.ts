@@ -459,3 +459,135 @@ test.describe('phone: review only', () => {
     await expect(page.locator('[data-reattach]')).toHaveCount(0);
   });
 });
+
+// ------------------------------------------------------------------------------------------------
+// Drawing usability (ADR-094) with fingers: dimension text and detail circle handles are 44 px
+// targets, and dragging them is a preview with one commit.
+// ------------------------------------------------------------------------------------------------
+
+test.describe('tablet drags (ADR-094)', () => {
+  test.use({
+    viewport: { width: 1180, height: 820 },
+    userAgent: devices['iPad Pro 11'].userAgent,
+    deviceScaleFactor: 1,
+    isMobile: true,
+    hasTouch: true,
+  });
+  test.slow();
+
+  const historyLen = async (page: Page) => (await app(page).history()).past.length;
+  const unit = (a: [number, number], b: [number, number]): [number, number] => {
+    const l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+    return [(b[0] - a[0]) / l, (b[1] - a[1]) / l];
+  };
+
+  async function viewsOnTablet(page: Page) {
+    await openDemo(page);
+    await newDrawing(page, { projection: 'First angle' });
+    await page.getByTestId('drawing-panel-toggle').tap();
+    await panelTab(page, 'Views').tap();
+    await page.getByTestId('add-standard-views').tap();
+    await expect.poll(async () => (await drawing(page).state()).views.length).toBe(3);
+    return built(page);
+  }
+
+  test('a dimension text is dragged with a finger: along its line and across it, one step', async ({
+    page,
+  }) => {
+    await viewsOnTablet(page);
+    await panelTab(page, 'Import').tap();
+    await page.getByTestId('import-open').tap();
+    await page.getByRole('button', { name: 'Check all' }).tap();
+    await page.getByTestId('import-place').tap();
+    await expect(page.getByTestId('drawing-toast')).toContainText('Placed');
+    await built(page);
+    await page.getByTestId('drawing-panel-toggle').tap();
+    const pl = (await drawing(page).placements()).find(
+      (p) => p.layout.kind === 'lane' && p.line && p.box,
+    );
+    if (!pl?.line || !pl.box) throw new Error('no linear dimension');
+    const t = await touch(page);
+    const centre: [number, number] = [
+      (pl.box.min[0] + pl.box.max[0]) / 2,
+      (pl.box.min[1] + pl.box.max[1]) / 2,
+    ];
+    const u = unit(pl.line[0], pl.line[1]);
+    const a = await sheetToPage(page, [0, 0]);
+    const b = await sheetToPage(page, [10, 0]);
+    const k = (b.x - a.x) / 10;
+    const from = await sheetToPage(page, centre);
+    // A tap selects the dimension, and its text gets a grab outline.
+    await t.tap([from]);
+    await expect.poll(async () => (await drawing(page).state()).selected?.id).toBe(pl.id);
+    await expect(page.getByTestId('text-grab')).toBeVisible();
+    const before = await historyLen(page);
+    // Drag 12 mm along the line, and 8 mm across it, with one finger.
+    const to = {
+      x: from.x + u[0] * 12 * k + -u[1] * -8 * k,
+      y: from.y - u[1] * 12 * k - u[0] * -8 * k,
+    };
+    await t.down([from]);
+    for (let i = 1; i <= 10; i++)
+      await t.move([
+        { x: from.x + ((to.x - from.x) * i) / 10, y: from.y + ((to.y - from.y) * i) / 10 },
+      ]);
+    await expect(page.getByTestId('text-side-hint')).toBeVisible();
+    expect(await historyLen(page)).toBe(before);
+    await t.up();
+    await expect.poll(() => historyLen(page)).toBe(before + 1);
+    const stored = ((await drawings(page))[0] as Drawing).placements.find((p) => p.id === pl.id);
+    expect(Math.abs(stored?.text?.shift ?? 0)).toBeGreaterThan(5);
+    expect(['above', 'below', 'inline']).toContain(stored?.text?.side);
+    await a11y(page);
+  });
+
+  test('the detail circle has 44 px handles; a finger resizes it live and commits once', async ({
+    page,
+  }) => {
+    const s = await viewsOnTablet(page);
+    await page.getByTestId('drawing-panel-toggle').tap();
+    const tv = viewOf(s, 'projected', 'top');
+    if (!tv?.outline) throw new Error('no top view');
+    const t = await touch(page);
+    await page.locator('[data-tool="detail"]').tap();
+    const cx = tv.outline.min[0] + 14;
+    const cy = (tv.outline.min[1] + tv.outline.max[1]) / 2;
+    await t.drag(await sheetToPage(page, [cx, cy]), await sheetToPage(page, [cx + 8, cy]));
+    await expect
+      .poll(async () => (await drawing(page).state()).views.some((v) => v.kind === 'detail'))
+      .toBe(true);
+    const s2 = await built(page);
+    const detail = viewOf(s2, 'detail');
+    if (!detail) throw new Error('no detail');
+    await page.getByTestId('drawing-panel-toggle').tap();
+    await panelTab(page, 'Views').tap();
+    await page.locator(`[data-view-row="${detail.id}"]`).tap();
+    await expect.poll(async () => (await drawing(page).state()).selected?.id).toBe(detail.id);
+    await page.getByTestId('drawing-panel-toggle').tap();
+    const radius = page.locator('[data-testid="detail-handle"][data-kind="radius"] circle').first();
+    const hb = await radius.boundingBox();
+    if (!hb) throw new Error('no handle');
+    expect(hb.width).toBeGreaterThanOrEqual(44);
+    const r0 =
+      (await drawing(page).state()).views.find((v) => v.id === detail.id)?.clip?.radius ?? 0;
+    const from = { x: hb.x + hb.width / 2, y: hb.y + hb.height / 2 };
+    const before = await historyLen(page);
+    await t.down([from]);
+    for (let i = 1; i <= 10; i++) await t.move([{ x: from.x + i * 4, y: from.y }]);
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () => document.querySelector('[data-transient="model"]')?.childElementCount ?? 0,
+        ),
+      )
+      .toBeGreaterThan(0);
+    expect(await historyLen(page)).toBe(before);
+    await t.up();
+    await expect.poll(() => historyLen(page)).toBe(before + 1);
+    await built(page);
+    const r1 =
+      (await drawing(page).state()).views.find((v) => v.id === detail.id)?.clip?.radius ?? 0;
+    expect(r1).toBeGreaterThan(r0 + 1);
+    await a11y(page);
+  });
+});

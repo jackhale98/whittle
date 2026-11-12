@@ -1,7 +1,8 @@
-import { fireEvent, screen, within } from '@testing-library/react';
+import { act, fireEvent, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { Annotation, AnnotationPlacement, EvalResult, ViewDisplay } from '@wren-cad/contracts';
 import type { SvgNode } from '@wren-cad/drawing/svg';
+import { createRef } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import {
   AnnotationInspector,
@@ -15,6 +16,7 @@ import {
   InlineCellEditor,
   SheetSettings,
   SheetViewer,
+  type SheetViewerApi,
   StandardChoice,
   TableInspector,
   TitleBlockEditor,
@@ -178,6 +180,150 @@ describe('SheetViewer', () => {
     // Attributes are React's, not the model's kebab-case.
     expect(viewer.querySelector('line')).toHaveAttribute('stroke-width', '0.5');
     expect(viewer.querySelector('text')?.textContent).toBe('?');
+  });
+
+  describe('drag previews (ADR-094)', () => {
+    const hosted: SvgNode = {
+      tag: 'svg',
+      attrs: {},
+      children: [
+        {
+          tag: 'g',
+          attrs: {},
+          children: [
+            { tag: 'g', attrs: { 'data-source': 'view:V1', 'data-host': 'V1' }, children: [] },
+            { tag: 'g', attrs: { 'data-source': 'placement:P1', 'data-host': 'V1' }, children: [] },
+            { tag: 'g', attrs: { 'data-source': 'view:V2', 'data-host': 'V2' }, children: [] },
+            { tag: 'g', attrs: { 'data-source': 'view:V3', 'data-host': 'V1' }, children: [] },
+          ],
+        },
+      ],
+    };
+    const mount = (m: SvgNode = hosted) => {
+      const ref = createRef<SheetViewerApi>();
+      const view = renderUI(
+        <div style={{ width: 800, height: 600 }}>
+          <SheetViewer ref={ref} model={m} sheet={{ w: 420, h: 297 }} fitKey="s" label="Sheet" />
+        </div>,
+      );
+      return { ref, view };
+    };
+    const group = (key: string, host?: string) =>
+      document.querySelector<SVGElement>(
+        `[data-source="${key}"]${host ? `[data-host="${host}"]` : ''}`,
+      );
+
+    it('translates whole groups by view and by source, and puts them back', () => {
+      const { ref } = mount();
+      const tr = ref.current?.transient({ move: { hosts: ['V1'], sources: ['view:V2'] } });
+      tr?.update({ dx: 12, dy: -3 });
+      for (const k of ['view:V1', 'placement:P1', 'view:V2', 'view:V3'])
+        expect(group(k)?.style.transform).toBe('translate(12px, -3px)');
+      tr?.end('cancel');
+      for (const k of ['view:V1', 'placement:P1', 'view:V2', 'view:V3'])
+        expect(group(k)?.style.transform).toBe('');
+    });
+
+    it('hides groups, a source in one view only, and draws nodes in the preview layers', () => {
+      const { ref } = mount();
+      const tr = ref.current?.transient({
+        hide: ['placement:P1', { source: 'view:V3', host: 'V1' }],
+      });
+      expect(group('placement:P1')?.style.display).toBe('none');
+      expect(group('view:V3')?.style.display).toBe('none');
+      expect(group('view:V1')?.style.display).toBe('');
+      tr?.update({
+        nodes: [{ tag: 'line', attrs: { x1: '0', y1: '0', x2: '5', y2: '5' } }],
+        overlay: [{ tag: 'circle', attrs: { cx: '1', cy: '1', r: '2' } }],
+      });
+      expect(document.querySelector('[data-transient="model"] line')).not.toBeNull();
+      expect(document.querySelector('[data-transient="overlay"] circle')).not.toBeNull();
+      tr?.end('cancel');
+      expect(group('placement:P1')?.style.display).toBe('');
+      expect(document.querySelector('[data-transient="model"]')?.childElementCount).toBe(0);
+      expect(document.querySelector('[data-transient="overlay"]')?.childElementCount).toBe(0);
+    });
+
+    it('a released preview stays until the rebuilt sheet arrives, then gives way to it', () => {
+      const { ref, view } = mount();
+      const tr = ref.current?.transient({ move: { hosts: ['V1'] } });
+      tr?.update({ dx: 5, dy: 5 });
+      tr?.end('hold');
+      expect(group('view:V1')?.style.transform).toBe('translate(5px, 5px)');
+      view.rerender(
+        <div style={{ width: 800, height: 600 }}>
+          <SheetViewer
+            ref={ref}
+            model={{ ...hosted }}
+            sheet={{ w: 420, h: 297 }}
+            fitKey="s"
+            label="Sheet"
+          />
+        </div>,
+      );
+      expect(group('view:V1')?.style.transform).toBe('');
+    });
+
+    it('a new drag clears a held one first, and a finished preview ignores later frames', () => {
+      const { ref } = mount();
+      const a = ref.current?.transient({ move: { hosts: ['V1'] } });
+      a?.update({ dx: 5, dy: 5 });
+      a?.end('hold');
+      const b = ref.current?.transient({ move: { hosts: ['V2'] } });
+      expect(group('view:V1')?.style.transform).toBe('');
+      b?.update({ dx: 1, dy: 1 });
+      b?.end('cancel');
+      b?.update({ dx: 9, dy: 9 });
+      expect(group('view:V2')?.style.transform).toBe('');
+    });
+
+    it('hands a drag one position per animation frame, and the last one on release', () => {
+      vi.useFakeTimers({ toFake: ['requestAnimationFrame', 'cancelAnimationFrame'] });
+      try {
+        const moves: number[] = [];
+        const ups: number[] = [];
+        renderUI(
+          <div style={{ width: 800, height: 600 }}>
+            <SheetViewer
+              model={hosted}
+              sheet={{ w: 420, h: 297 }}
+              fitKey="s"
+              label="Sheet"
+              begin={() => ({
+                move: (p) => moves.push(p.px.x),
+                up: (p) => ups.push(p.px.x),
+              })}
+            />
+          </div>,
+        );
+        const viewer = screen.getByRole('application');
+        const ev = (x: number) => ({
+          pointerId: 1,
+          pointerType: 'mouse',
+          button: 0,
+          clientX: x,
+          clientY: 5,
+        });
+        fireEvent.pointerDown(viewer, ev(5));
+        for (const x of [10, 20, 30]) fireEvent.pointerMove(viewer, ev(x));
+        // Three events in one frame are one hand-off, with the newest position.
+        expect(moves).toEqual([]);
+        act(() => {
+          vi.advanceTimersByTime(20);
+        });
+        expect(moves).toEqual([30]);
+        fireEvent.pointerMove(viewer, ev(40));
+        fireEvent.pointerUp(viewer, ev(50));
+        // Released before the frame: nothing stale is delivered after the release.
+        act(() => {
+          vi.advanceTimersByTime(20);
+        });
+        expect(moves).toEqual([30]);
+        expect(ups).toEqual([50]);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 
   it('does not show a stale sheet as current: pending dims it and marks it busy', () => {
@@ -587,6 +733,46 @@ describe('TableInspector', () => {
 });
 
 describe('AnnotationInspector', () => {
+  it('places a dimension text above, inline or below its line, and shifts it, as typed alternatives to dragging (ADR-094)', async () => {
+    const onPlacement = vi.fn();
+    renderUI(<AnnotationInspector {...inspector({ onPlacement })} />);
+    const group = screen.getByRole('radiogroup', { name: 'Dimension text position' });
+    // Auto is the standard's own default: nothing stored.
+    expect(within(group).getByRole('radio', { name: 'Auto' })).toBeChecked();
+    await userEvent.click(within(group).getByRole('radio', { name: 'Below' }));
+    expect(onPlacement).toHaveBeenLastCalledWith({ ...placement, text: { side: 'below' } });
+    const shift = screen.getByRole('textbox', { name: 'Text shift along the line (mm)' });
+    await userEvent.clear(shift);
+    await userEvent.type(shift, '6{Enter}');
+    expect(onPlacement).toHaveBeenLastCalledWith({ ...placement, text: { shift: 6 } });
+  });
+
+  it('a zero shift is no shift: the text is auto-centred again, and the side stays', async () => {
+    const onPlacement = vi.fn();
+    const moved = { ...placement, text: { shift: 6, side: 'below' as const } };
+    renderUI(<AnnotationInspector {...inspector({ placement: moved, onPlacement })} />);
+    const shift = screen.getByRole('textbox', { name: 'Text shift along the line (mm)' });
+    expect(shift).toHaveValue('6');
+    await userEvent.clear(shift);
+    await userEvent.type(shift, '0{Enter}');
+    expect(onPlacement).toHaveBeenLastCalledWith({ ...placement, text: { side: 'below' } });
+    // Auto takes the side away, leaving the shift.
+    onPlacement.mockClear();
+    await userEvent.click(screen.getByRole('radio', { name: 'Auto' }));
+    expect(onPlacement).toHaveBeenLastCalledWith({ ...placement, text: { shift: 6 } });
+  });
+
+  it('a radial dimension has no text line to place against', () => {
+    renderUI(
+      <AnnotationInspector
+        {...inspector({
+          placement: { ...placement, layout: { kind: 'radial', angle: 45, distance: 6 } },
+        })}
+      />,
+    );
+    expect(screen.queryByRole('radiogroup', { name: 'Dimension text position' })).toBeNull();
+  });
+
   it('shows the value, edits the stated value and the tolerance, and moves the lane inline', async () => {
     const onChange = vi.fn();
     const onPlacement = vi.fn();

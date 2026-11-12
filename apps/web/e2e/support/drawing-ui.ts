@@ -23,6 +23,8 @@ export interface DrawingState {
   projection: string | null;
   panel: string;
   hint: string | null;
+  /** Builds delivered so far. */
+  builds: number;
   views: {
     id: string;
     kind: string;
@@ -33,6 +35,7 @@ export interface DrawingState {
     outline: { min: [number, number]; max: [number, number] } | null;
     curves: number;
     problems: string[];
+    clip: { center: [number, number]; radius: number } | null;
   }[];
   placements: number;
   attention: { key: string; severity: string; message: string }[];
@@ -89,6 +92,10 @@ export interface PlacementInfo {
   /** The label's bounds on the sheet. */
   box: { min: [number, number]; max: [number, number] } | null;
   attention: boolean;
+  /** The dimension line between the arrow tips (linear dimensions). */
+  line: [[number, number], [number, number]] | null;
+  /** The stored text placement. */
+  textPlacement: { shift?: number; side?: string } | null;
 }
 
 /** A placed annotation's real extent from the display list (sheet mm). */

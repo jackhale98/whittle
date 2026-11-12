@@ -60,6 +60,17 @@ function sourceKey(s: ItemSource | undefined): string {
   }
 }
 
+/**
+ * The view whose sheet space an item is drawn in: moving that view moves the item (ADR-094, the
+ * editor translates these groups while a view is dragged). Absent for the template, notes, tables.
+ */
+function hostOf(s: ItemSource | undefined): string | undefined {
+  if (s?.kind === 'view') return s.on ?? s.viewId;
+  if (s?.kind === 'centerMark') return s.viewId;
+  if (s?.kind === 'placement') return s.viewId;
+  return undefined;
+}
+
 function arcPath(cx: number, cy: number, rad: number, a0: number, a1: number): string {
   const sweep = a1 - a0;
   const x0 = cx + rad * Math.cos(a0);
@@ -185,6 +196,29 @@ function itemNode(
   }
 }
 
+/**
+ * Nodes for display items, in paint order and without the per-source grouping: the editor draws a
+ * dragged item's preview with these (ADR-094). Same strokes and text as `svgModel`.
+ */
+export function svgItems(
+  items: readonly DisplayItem[],
+  style: Pick<DrawingStyle, 'lineGroup' | 'lineWidths'>,
+  options: SvgOptions = {},
+): SvgNode[] {
+  const o: Required<SvgOptions> = {
+    ink: options.ink ?? '#000',
+    attention: options.attention ?? '#d0342c',
+    paper: options.paper ?? 'none',
+    fontFamily: options.fontFamily ?? `${drawingFont().family}, sans-serif`,
+  };
+  const out: SvgNode[] = [];
+  for (const item of items) {
+    const node = itemNode(item, style, o);
+    if (node) out.push(node);
+  }
+  return out;
+}
+
 /** The editor model: groups per source in paint order (`data-source` keys for picking). */
 export function svgModel(
   list: DisplayList,
@@ -203,9 +237,14 @@ export function svgModel(
   for (const item of list.items) {
     const node = itemNode(item, style, o);
     if (!node) continue;
-    const key = sourceKey(item.source);
+    const host = hostOf(item.source);
+    const key = `${sourceKey(item.source)}@${host ?? ''}`;
     if (!current || key !== currentKey) {
-      current = { tag: 'g', attrs: { 'data-source': key }, children: [] };
+      current = {
+        tag: 'g',
+        attrs: { 'data-source': sourceKey(item.source), ...(host ? { 'data-host': host } : {}) },
+        children: [],
+      };
       if (item.attention) current.attrs['data-attention'] = 'true';
       groups.push(current);
       currentKey = key;

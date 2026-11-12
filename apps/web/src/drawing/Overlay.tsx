@@ -2,7 +2,7 @@
 
 import { viewOutline } from '@wren-cad/drawing';
 import type { Size } from '@wren-cad/ui/drawing';
-import { cutHandlesOf, handlesOf } from './interact';
+import { cutHandlesOf, detailGripsOf, handlesOf } from './interact';
 import type { Built } from './pipeline';
 import type { DrawingUiState } from './state';
 
@@ -12,11 +12,14 @@ export function SheetOverlay({
   ui,
   b,
   mm,
+  touch,
 }: {
   ui: DrawingUiState;
   b: Built;
   mm: number;
   sheet: Size;
+  /** Finger or pen: grips are 44 px targets. */
+  touch?: boolean;
 }) {
   const out: React.ReactNode[] = [];
   const sel = ui.selected;
@@ -24,7 +27,13 @@ export function SheetOverlay({
     const sv = b.build.views.get(sel.id);
     if (sv?.ok) {
       const o = viewOutline(sv);
+      const inner: React.ReactNode[] = [];
       out.push(
+        <g key="sel-view" data-host={sel.id} data-source={`overlay:view:${sel.id}`}>
+          {inner}
+        </g>,
+      );
+      inner.push(
         <rect
           key="sel"
           x={o.min[0] - 2}
@@ -52,7 +61,7 @@ export function SheetOverlay({
             h.at[0] - dx * r * 0.5 + dy * r * 0.7,
             h.at[1] - dy * r * 0.5 - dx * r * 0.7,
           ];
-          out.push(
+          inner.push(
             <g key={`h${dx}${dy}`} data-testid="view-handle" data-dir={`${dx},${dy}`}>
               <circle
                 cx={h.at[0]}
@@ -76,29 +85,86 @@ export function SheetOverlay({
   // offset sections); the inspector has the same vertices as typed fields.
   if (sel?.kind === 'view' && ui.tool === 'select') {
     const hs = cutHandlesOf(b, sel.id);
-    if (hs.length > 1)
+    const sv = b.drawing.views.find((v) => v.id === sel.id);
+    if (hs.length > 0 && sv?.kind === 'section')
       out.push(
-        <polyline
-          key="cut-line"
-          points={hs.map((h) => h.at.join(',')).join(' ')}
+        <g key="cut" data-host={sv.parentId} data-source={`overlay:cut:${sel.id}`}>
+          {hs.length > 1 ? (
+            <polyline
+              points={hs.map((h) => h.at.join(',')).join(' ')}
+              fill="none"
+              stroke={ACCENT}
+              strokeWidth={1.2 * mm}
+              strokeDasharray={`${8 * mm} ${3 * mm}`}
+            />
+          ) : null}
+          {hs.map((h) => (
+            <circle
+              key={`cut${h.index}`}
+              cx={h.at[0]}
+              cy={h.at[1]}
+              r={(touch ? 12 : 5) * mm}
+              fill="var(--color-surface)"
+              stroke={ACCENT}
+              strokeWidth={1.5 * mm}
+              data-testid="cut-handle"
+              data-index={h.index}
+            />
+          ))}
+        </g>,
+      );
+    // A detail's circle on its parent: a radius handle and a centre handle (ADR-094).
+    const grips = detailGripsOf(b, sel.id);
+    const dv = b.drawing.views.find((v) => v.id === sel.id);
+    if (grips.length > 0 && dv?.kind === 'detail') {
+      const gr = (touch ? 22 : 9) * mm;
+      out.push(
+        <g key="detail" data-host={dv.parentId} data-source={`overlay:detail:${sel.id}`}>
+          {grips.map((gp) => (
+            <g key={gp.kind} data-testid="detail-handle" data-kind={gp.kind}>
+              <circle
+                cx={gp.at[0]}
+                cy={gp.at[1]}
+                r={gr}
+                fill="var(--color-surface)"
+                stroke={ACCENT}
+                strokeWidth={1.5 * mm}
+              />
+              <polyline
+                points={`${gp.at[0] - 0.55 * gr},${gp.at[1]} ${gp.at[0] + 0.55 * gr},${gp.at[1]}`}
+                fill="none"
+                stroke={ACCENT}
+                strokeWidth={1.5 * mm}
+              />
+              {gp.kind === 'center' ? (
+                <polyline
+                  points={`${gp.at[0]},${gp.at[1] - 0.55 * gr} ${gp.at[0]},${gp.at[1] + 0.55 * gr}`}
+                  fill="none"
+                  stroke={ACCENT}
+                  strokeWidth={1.5 * mm}
+                />
+              ) : null}
+            </g>
+          ))}
+        </g>,
+      );
+    }
+  }
+  // The selected dimension's text is a drag target of its own (along the line, above, below): its
+  // box is outlined, and on touch it is a 44 px target (pickAt).
+  if (sel?.kind === 'placement') {
+    const placed = b.build.placed.find((x) => x.placementId === sel.id);
+    if (placed && placed.textBox.length > 0)
+      out.push(
+        <polygon
+          key="text-box"
+          data-source={`placement:${sel.id}`}
+          data-testid="text-grab"
+          points={placed.textBox.map((p) => `${p[0]},${p[1]}`).join(' ')}
           fill="none"
           stroke={ACCENT}
-          strokeWidth={1.2 * mm}
-          strokeDasharray={`${8 * mm} ${3 * mm}`}
-        />,
-      );
-    for (const h of hs)
-      out.push(
-        <circle
-          key={`cut${h.index}`}
-          cx={h.at[0]}
-          cy={h.at[1]}
-          r={5 * mm}
-          fill="var(--color-surface)"
-          stroke={ACCENT}
-          strokeWidth={1.5 * mm}
-          data-testid="cut-handle"
-          data-index={h.index}
+          strokeWidth={1 * mm}
+          strokeDasharray={`${3 * mm} ${2 * mm}`}
         />,
       );
   }

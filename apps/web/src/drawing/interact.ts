@@ -3,26 +3,44 @@
  * command; drags share a coalescing key and close on release, so one drag is one undo step.
  */
 
-import type { AnnotationPlacement, Id, PlacementLayout, Vec2 } from '@wren-cad/contracts';
+import type {
+  AnnotationPlacement,
+  Curve2,
+  DrawingView,
+  Id,
+  PlacementLayout,
+  Vec2,
+} from '@wren-cad/contracts';
 import {
   alignedDirection,
+  cuttingPlaneItems,
+  detailCircleItems,
+  detailWithCircle,
+  labelItems,
   partToSheet,
   SIDE_VECTORS,
   type SolvedView,
   sheetToView,
   type ViewSide,
+  viewItems,
   viewOutline,
+  viewToPart,
   viewToSheet,
 } from '@wren-cad/drawing';
+import { type SvgNode, svgItems } from '@wren-cad/drawing/svg';
 import {
   type HitRegion,
   type HitResult,
   hitTest,
   type SheetDrag,
   type SheetPointer,
+  type SheetTransient,
+  type SheetTransientFrame,
+  type SheetTransientSpec,
 } from '@wren-cad/ui/drawing';
 import type { DrawingController } from './controller';
 import { moveVertex } from './cutline';
+import { arcDrag, detailRadius, textDrag } from './drag-math';
 import { dominantAxis, sideForDirection } from './model';
 import {
   addChamfer,
@@ -38,6 +56,13 @@ import {
 } from './ops-annot';
 import { updateTable } from './ops-tables';
 import { addDetail, addProjectedView, addSection, updateView } from './ops-views';
+import {
+  cutLineNodes,
+  detailGripNodes,
+  selectionRect,
+  textBoxOutline,
+  textSideHint,
+} from './overlay-nodes';
 import type { Built } from './pipeline';
 import type { EdgePick } from './state';
 
@@ -95,10 +120,16 @@ export function regionsOf(c: DrawingController): HitRegion[] {
   return out;
 }
 
+/** A grip's reach in screen px: a 44 px target (22 px radius) for a finger or pen, else 13. */
+export const gripReach = (p: Pick<SheetPointer, 'pointerType' | 'mm'>) =>
+  (p.pointerType === 'mouse' ? 13 : 22) * p.mm;
+
 export function pickAt(c: DrawingController, p: SheetPointer): HitResult | null {
   const composed = currentSheet(c);
   if (!composed) return null;
-  return hitTest(composed.list, p.at, p.tol, regionsOf(c));
+  // A dimension's text is a 44 px target on touch (ADR-094): it drags apart from its line.
+  const textTol = p.pointerType === 'mouse' ? p.tol : 22 * p.mm;
+  return hitTest(composed.list, p.at, p.tol, regionsOf(c), textTol);
 }
 
 function solvedView(c: DrawingController, id: Id): SolvedView | undefined {
@@ -119,8 +150,72 @@ export function selectHit(c: DrawingController, hit: HitResult | null): void {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Moving views and annotations
+// Moving views and annotations (ADR-094: a drag is a preview; one commit on release)
 // ---------------------------------------------------------------------------------------------
+
+/** What a drag frame is: the preview to show, and the one edit to make if it is released here. */
+export interface DragFrame {
+  frame: SheetTransientFrame;
+  /** The edit to commit on release; `null` when it would change nothing. */
+  commit: (() => void) | null;
+}
+
+/**
+ * A drag that stores nothing until it is released. The preview (`spec`: groups moved or hidden,
+ * `frame`: translation and extra nodes) is drawn straight onto the sheet, once per animation
+ * frame; the build is held; release makes the one edit, which is one undo step. Escape or a cancel
+ * leaves nothing behind: the document was never touched.
+ */
+export function previewDrag(
+  c: DrawingController,
+  spec: SheetTransientSpec,
+  at: (p: SheetPointer) => DragFrame | null,
+): SheetDrag {
+  let tr: SheetTransient | null = null;
+  c.hold();
+  const show = (p: SheetPointer): DragFrame | null => {
+    const f = at(p);
+    if (!f) return null;
+    tr ??= c.transient(spec);
+    tr.update(f.frame);
+    return f;
+  };
+  return {
+    move(p) {
+      show(p);
+    },
+    up(p, moved) {
+      const f = moved ? show(p) : null;
+      if (f?.commit) {
+        f.commit();
+        c.commit();
+        tr?.end('hold');
+      } else tr?.end('cancel');
+      c.resume();
+    },
+    cancel() {
+      tr?.end('cancel');
+      c.resume();
+    },
+  };
+}
+
+/** The views that move with `id` when it moves: its aligned descendants, transitively. */
+export function dependentsOf(b: Built, id: Id): Id[] {
+  const out: Id[] = [];
+  const seen = new Set<Id>([id]);
+  for (let grew = true; grew; ) {
+    grew = false;
+    for (const v of b.drawing.views) {
+      if (seen.has(v.id) || v.layout.kind !== 'aligned' || !('parentId' in v)) continue;
+      if (!seen.has(v.parentId)) continue;
+      seen.add(v.id);
+      out.push(v.id);
+      grew = true;
+    }
+  }
+  return out;
+}
 
 /** The vertices of the selected section's cut line, on the parent view (sheet mm). */
 export function cutHandlesOf(b: Built, viewId: Id): { index: number; at: Vec2 }[] {
@@ -133,31 +228,74 @@ export function cutHandlesOf(b: Built, viewId: Id): { index: number; at: Vec2 }[
   );
 }
 
-/** Dragging one vertex of a section's cut line: one undo step, and Esc or a cancel restores it. */
+export interface DetailGrip {
+  kind: 'radius' | 'center';
+  at: Vec2;
+}
+
+/**
+ * The grips of a selected detail view's circle, on its parent (sheet mm): the radius handle on the
+ * circle's east side, and a centre handle when the centre is a free point (one that follows a model
+ * entity is edited by re-attaching, not by dragging).
+ */
+export function detailGripsOf(b: Built, viewId: Id): DetailGrip[] {
+  const view = b.drawing.views.find((v) => v.id === viewId);
+  if (view?.kind !== 'detail') return [];
+  const parent = b.build.views.get(view.parentId);
+  const d = b.build.views.get(viewId);
+  if (!parent?.ok || !d?.ok || !d.clip) return [];
+  const c = viewToSheet(parent, d.clip.center);
+  const r = d.clip.radius * parent.scale;
+  const out: DetailGrip[] = [{ kind: 'radius', at: [c[0] + r, c[1]] }];
+  if (view.center.kind === 'free') out.push({ kind: 'center', at: c });
+  return out;
+}
+
+const PREVIEW_NODE = (children: SvgNode[]): SvgNode => ({
+  tag: 'g',
+  attrs: { 'data-selected': 'true' },
+  children,
+});
+
+/** Dragging one vertex of a section's cut line: the line follows live; the section re-cuts on release. */
 function dragCutVertex(c: DrawingController, viewId: Id, index: number, start: Vec2): SheetDrag {
   const b = c.built();
   const view = c.view(viewId);
   if (!b || view?.kind !== 'section') return {};
   const parent = b.build.views.get(view.parentId);
   const from = view.cut[index];
-  if (!parent?.ok || from?.kind !== 'free') return {};
+  const sv = solvedView(c, viewId);
+  if (!parent?.ok || from?.kind !== 'free' || !sv?.section) return {};
   const key = `drag:cut:${viewId}:${index}`;
   const origin = from.at;
-  return {
-    move(p) {
-      const cur = c.view(viewId);
-      if (cur?.kind !== 'section') return;
+  const section = sv.section;
+  return previewDrag(
+    c,
+    { hide: [{ source: `view:${viewId}`, host: view.parentId }, `overlay:cut:${viewId}`] },
+    (p) => {
       const d = sub(p.at, start);
       const to: Vec2 = [origin[0] + d[0] / parent.scale, origin[1] + d[1] / parent.scale];
-      updateView(c, { ...cur, cut: moveVertex(cur.cut, index, to) }, 'Edit cut line', key);
+      const cut = moveVertex(view.cut, index, to);
+      // The cutting plane as it would be drawn with the vertex there (the look stays as stored).
+      const cut3 = cut.flatMap((q) => (q.kind === 'free' ? [viewToPart(parent.frame, q.at)] : []));
+      const items =
+        cut3.length === cut.length
+          ? cuttingPlaneItems({ ...sv, section: { ...section, cut: cut3 } }, parent, b.drawing)
+          : [];
+      const pts = cut.flatMap((q) => (q.kind === 'free' ? [viewToSheet(parent, q.at)] : []));
+      return {
+        frame: {
+          nodes: [PREVIEW_NODE(svgItems(items, b.drawing.style))],
+          overlay: cutLineNodes(pts, p.mm, 5),
+        },
+        commit: () => {
+          const cur = c.view(viewId);
+          if (cur?.kind === 'section')
+            updateView(c, { ...cur, cut: moveVertex(cur.cut, index, to) }, 'Edit cut line', key);
+        },
+      };
     },
-    up() {
-      c.commit();
-    },
-    cancel() {
-      c.cancelEdit(key);
-    },
-  };
+  );
 }
 
 function moveTable(c: DrawingController, id: Id, start: Vec2): SheetDrag {
@@ -165,56 +303,201 @@ function moveTable(c: DrawingController, id: Id, start: Vec2): SheetDrag {
   if (!table) return {};
   const key = `drag:table:${id}`;
   const origin = table.position;
-  return {
-    move(p) {
-      const cur = c.drawing()?.tables.find((t) => t.id === id);
-      if (!cur) return;
-      const d = sub(p.at, start);
-      updateTable(c, { ...cur, position: [origin[0] + d[0], origin[1] + d[1]] }, 'Move table', key);
-    },
-    up() {
-      c.commit();
-    },
-    cancel() {
-      c.cancelEdit(key);
-    },
-  };
+  return previewDrag(c, { move: { sources: [`table:${id}`] } }, (p) => {
+    const d = sub(p.at, start);
+    return {
+      frame: { dx: d[0], dy: d[1] },
+      commit: () => {
+        const cur = c.drawing()?.tables.find((t) => t.id === id);
+        if (cur)
+          updateTable(
+            c,
+            { ...cur, position: [origin[0] + d[0], origin[1] + d[1]] },
+            'Move table',
+            key,
+          );
+      },
+    };
+  });
 }
 
 function moveView(c: DrawingController, id: Id, start: Vec2): SheetDrag {
   const view = c.view(id);
   const sv = solvedView(c, id);
-  if (!view || !sv) return {};
+  const b = c.built();
+  if (!view || !sv || !b) return {};
   const key = `drag:view:${id}`;
   const origin = view.layout.kind === 'free' ? view.layout.position : null;
   const dist0 = view.layout.kind === 'aligned' ? view.layout.distance : 0;
   const parent = 'parentId' in view ? solvedView(c, view.parentId) : undefined;
+  // Everything drawn in the moved views' space goes with them: their lines, centre marks,
+  // dimensions, the cutting planes and detail circles drawn on them, and the selection handles.
+  const hosts = [id, ...dependentsOf(b, id)];
+  return previewDrag(c, { move: { hosts } }, (p) => {
+    const d = sub(p.at, start);
+    if (view.layout.kind === 'aligned' && 'from' in view && parent) {
+      const dir = alignedDirection(SIDE_VECTORS[view.from], b.drawing.projection);
+      const distance = Math.max(5, dist0 + dot(d, dir));
+      const k = distance - dist0;
+      return {
+        frame: { dx: dir[0] * k, dy: dir[1] * k },
+        commit: () => {
+          const cur = c.view(id);
+          if (cur?.layout.kind === 'aligned')
+            updateView(
+              c,
+              { ...cur, layout: { kind: 'aligned', distance } } as DrawingView,
+              'Move view',
+              key,
+            );
+        },
+      };
+    }
+    if (!origin || view.layout.kind !== 'free') return null;
+    return {
+      frame: { dx: d[0], dy: d[1] },
+      commit: () => {
+        const cur = c.view(id);
+        if (cur?.layout.kind === 'free')
+          updateView(
+            c,
+            { ...cur, layout: { kind: 'free', position: [origin[0] + d[0], origin[1] + d[1]] } },
+            'Move view',
+            key,
+          );
+      },
+    };
+  });
+}
+
+/** Whether a projected curve can be inside a circle (a cheap box test: kept if unsure). */
+function nearCircle(k: Curve2, centre: Vec2, r: number): boolean {
+  const pts: Vec2[] = [];
+  switch (k.kind) {
+    case 'line':
+      pts.push(k.a, k.b);
+      break;
+    case 'arc':
+      pts.push(
+        [k.center[0] - k.radius, k.center[1] - k.radius],
+        [k.center[0] + k.radius, k.center[1] + k.radius],
+      );
+      break;
+    case 'ellipse': {
+      const m = Math.hypot(k.major[0], k.major[1]);
+      pts.push([k.center[0] - m, k.center[1] - m], [k.center[0] + m, k.center[1] + m]);
+      break;
+    }
+    case 'bspline':
+      pts.push(...k.poles);
+      break;
+    case 'polyline':
+      pts.push(...k.points);
+      break;
+  }
+  if (pts.length === 0) return true;
+  const xs = pts.map((q) => q[0]);
+  const ys = pts.map((q) => q[1]);
+  return !(
+    Math.max(...xs) < centre[0] - r ||
+    Math.min(...xs) > centre[0] + r ||
+    Math.max(...ys) < centre[1] - r ||
+    Math.min(...ys) > centre[1] + r
+  );
+}
+
+/** Detail circle: radius handle or centre handle. The detail view redraws live from its parent's lines. */
+function dragDetail(
+  c: DrawingController,
+  id: Id,
+  kind: DetailGrip['kind'],
+  start: SheetPointer,
+): SheetDrag {
   const b = c.built();
-  return {
-    move(p) {
-      const d = sub(p.at, start);
-      const cur = c.view(id);
-      if (!cur || !b) return;
-      if (cur.layout.kind === 'aligned' && 'from' in cur && parent) {
-        const dir = alignedDirection(SIDE_VECTORS[cur.from], b.drawing.projection);
-        const distance = Math.max(5, dist0 + dot(d, dir));
-        updateView(c, { ...cur, layout: { kind: 'aligned', distance } }, 'Move view', key);
-      } else if (origin && cur.layout.kind === 'free') {
-        updateView(
-          c,
-          { ...cur, layout: { kind: 'free', position: [origin[0] + d[0], origin[1] + d[1]] } },
-          'Move view',
-          key,
-        );
-      }
+  const view = c.view(id);
+  const detail = solvedView(c, id);
+  if (!b || view?.kind !== 'detail' || !detail?.clip) return {};
+  const parent = solvedView(c, view.parentId);
+  const parentProj = b.projections.get(view.parentId);
+  if (!parent || !parentProj) return {};
+  const key = `drag:detail:${id}`;
+  const centre0 = detail.clip.center;
+  const radius0 = detail.clip.radius;
+  const sheetCentre0 = viewToSheet(parent, centre0);
+  const grab = sub(start.at, sheetCentre0);
+  const gripR = start.pointerType === 'mouse' ? 9 : 22;
+  const clipId = `wren-detail-clip-${id}`;
+  return previewDrag(
+    c,
+    { hide: [`view:${id}`, `overlay:detail:${id}`, `overlay:view:${id}`] },
+    (p) => {
+      let centre = centre0;
+      let radius = radius0;
+      if (kind === 'radius') radius = detailRadius(sheetCentre0, parent.scale, p.at);
+      else centre = sheetToView(parent, sub(p.at, grab));
+      centre = [Math.round(centre[0] * 1000) / 1000, Math.round(centre[1] * 1000) / 1000];
+      const next = detailWithCircle(detail, centre, radius);
+      // The parent's lines near the circle, redrawn at the detail's scale and clipped to it.
+      const near = parentProj.curves.filter((k) => nearCircle(k.curve, centre, radius));
+      const lines = viewItems(next, { ...parentProj, curves: near }, b.drawing);
+      const o = viewOutline(next);
+      const sheetCentre = viewToSheet(parent, centre);
+      const nodes: SvgNode[] = [
+        PREVIEW_NODE([
+          {
+            tag: 'clipPath',
+            attrs: { id: clipId },
+            children: [
+              {
+                tag: 'circle',
+                attrs: {
+                  cx: String(next.position[0]),
+                  cy: String(next.position[1]),
+                  r: String(radius * next.scale),
+                },
+              },
+            ],
+          },
+          {
+            tag: 'g',
+            attrs: { 'clip-path': `url(#${clipId})` },
+            children: svgItems(lines, b.drawing.style),
+          },
+          ...svgItems(
+            [...labelItems(next, b.drawing), ...detailCircleItems(next, parent, b.drawing)],
+            b.drawing.style,
+          ),
+        ]),
+      ];
+      return {
+        frame: {
+          nodes,
+          overlay: [
+            selectionRect(o.min, o.max, p.mm),
+            ...detailGripNodes(
+              sheetCentre,
+              radius * parent.scale,
+              p.mm,
+              gripR,
+              view.center.kind === 'free',
+            ),
+          ],
+        },
+        commit: () => {
+          const cur = c.view(id);
+          if (cur?.kind !== 'detail') return;
+          if (kind === 'radius') updateView(c, { ...cur, radius }, 'Change detail size', key);
+          else
+            updateView(
+              c,
+              { ...cur, center: { kind: 'free', at: centre } },
+              'Move detail circle',
+              key,
+            );
+        },
+      };
     },
-    up() {
-      c.commit();
-    },
-    cancel() {
-      c.cancelEdit(key);
-    },
-  };
+  );
 }
 
 /** The layout a dragged placement takes when the pointer is at `p`. Exported for tests. */
@@ -282,13 +565,19 @@ export function dragLayout(
   }
 }
 
-function movePlacement(c: DrawingController, placementId: Id, start: Vec2): SheetDrag {
+function movePlacement(
+  c: DrawingController,
+  placementId: Id,
+  start: SheetPointer,
+  onText: boolean,
+): SheetDrag {
   const b = c.built();
   const pl = b?.drawing.placements.find((x) => x.id === placementId);
   if (!b || !pl) return {};
   const sv = solvedView(c, pl.viewId);
   if (!sv) return {};
   const placed = b.build.placed.find((x) => x.placementId === placementId);
+  const ann = (b.part.annotations ?? []).find((a) => a.id === pl.annotationId);
   const res = b.main.resolutions.get(pl.annotationId);
   const anchor = res?.anchors?.[0];
   const circle =
@@ -297,26 +586,177 @@ function movePlacement(c: DrawingController, placementId: Id, start: Vec2): Shee
       : undefined;
   const key = `drag:placement:${placementId}`;
   const startLayout = pl.layout;
-  return {
-    move(p) {
-      const cur = c.drawing()?.placements.find((x) => x.id === placementId);
-      if (!cur) return;
-      const layout = dragLayout(startLayout, start, p.at, {
-        outline: viewOutline(sv),
-        firstLane: b.drawing.style.dimension.firstLane,
-        laneSpacing: b.drawing.style.dimension.laneSpacing,
-        ...(placed?.line ? { line: placed.line } : {}),
-        ...(circle ? { circle } : {}),
-      });
-      updatePlacement(c, { ...cur, layout } as AnnotationPlacement, 'Move annotation', key);
-    },
-    up() {
-      c.commit();
-    },
-    cancel() {
-      c.cancelEdit(key);
-    },
+  const h = b.drawing.style.text.dimension;
+  const box = placed?.textBox ?? [];
+  const boxCentre: Vec2 | null =
+    box.length > 0
+      ? [
+          box.reduce((s, v) => s + v[0], 0) / box.length,
+          box.reduce((s, v) => s + v[1], 0) / box.length,
+        ]
+      : null;
+  // The text of a linear dimension drags along and across its line; anything else (the line, a
+  // radial or leader dimension, an angle) drags as a whole, text and line together.
+  const linearText =
+    onText &&
+    boxCentre !== null &&
+    placed?.line !== undefined &&
+    (startLayout.kind === 'lane' || startLayout.kind === 'offset') &&
+    ann?.kind !== 'ordinate';
+  const arc = startLayout.kind === 'arc' ? placed?.items.find((i) => i.kind === 'arc') : undefined;
+  const text0 = pl.text;
+
+  const preview = (next: AnnotationPlacement, hint: SvgNode[]): DragFrame | null => {
+    const r = b.build.relayout(next);
+    if (!r) return null;
+    const same = JSON.stringify(next) === JSON.stringify(pl);
+    return {
+      frame: {
+        nodes: [PREVIEW_NODE(svgItems(r.items, b.drawing.style))],
+        overlay: [textBoxOutline(r.textBox, start.mm), ...hint],
+      },
+      commit: same
+        ? null
+        : () => {
+            const cur = c.drawing()?.placements.find((x) => x.id === placementId);
+            if (!cur) return;
+            const stored = { ...cur, layout: next.layout } as AnnotationPlacement;
+            if (next.text) stored.text = next.text;
+            else delete stored.text;
+            updatePlacement(c, stored, linearText ? 'Move dimension text' : 'Move annotation', key);
+          },
+    };
   };
+
+  return previewDrag(c, { hide: [`placement:${placementId}`] }, (p) => {
+    if (linearText && placed?.line && boxCentre) {
+      const t = textDrag(
+        { line: placed.line, shift: text0?.shift ?? 0, centre: boxCentre, h },
+        start.at,
+        p.at,
+      );
+      const text: NonNullable<AnnotationPlacement['text']> = {
+        ...(t.shift !== undefined ? { shift: t.shift } : {}),
+        side: t.side,
+      };
+      return preview({ ...pl, text }, textSideHint(placed.line, h, t.side, p.at, start.mm));
+    }
+    if (startLayout.kind === 'arc' && arc?.kind === 'arc' && boxCentre) {
+      const a = arcDrag(
+        { vertex: arc.center, radius: arc.radius, shift: text0?.shift ?? 0, centre: boxCentre },
+        p.at,
+        onText ? 'text' : 'arc',
+      );
+      const text = { ...(text0 ?? {}) };
+      if (onText) {
+        if (a.shift !== undefined) text.shift = a.shift;
+        else delete text.shift;
+      }
+      const next: AnnotationPlacement = {
+        ...pl,
+        layout: { ...startLayout, radius: a.radius },
+      };
+      if (Object.keys(text).length > 0) next.text = text;
+      else delete next.text;
+      return preview(next, []);
+    }
+    const layout = dragLayout(startLayout, start.at, p.at, {
+      outline: viewOutline(sv),
+      firstLane: b.drawing.style.dimension.firstLane,
+      laneSpacing: b.drawing.style.dimension.laneSpacing,
+      ...(placed?.line ? { line: placed.line } : {}),
+      ...(circle ? { circle } : {}),
+    });
+    return preview({ ...pl, layout } as AnnotationPlacement, []);
+  });
+}
+
+/**
+ * Moves the selected dimension's text one step with an arrow key (ADR-094): along its line (shift),
+ * or across it (above, inline, below); a radial, leader or angle dimension's text moves as a whole.
+ * Presses within a few seconds are one undo step. Reads the stored placement, so presses made
+ * before the sheet has rebuilt still add up.
+ */
+export function nudgeText(
+  c: DrawingController,
+  placementId: Id,
+  arrow: Vec2,
+  big: boolean,
+): boolean {
+  const b = c.built();
+  const pl = c.drawing()?.placements.find((x) => x.id === placementId);
+  const placed = b?.build.placed.find((x) => x.placementId === placementId);
+  const sv = pl ? solvedView(c, pl.viewId) : undefined;
+  if (!b || !pl || !placed || !sv) return false;
+  const key = `nudge:placement:${placementId}`;
+  const step = big ? 5 : 1;
+  const box = placed.textBox;
+  if (box.length === 0) return false;
+  const centre: Vec2 = [
+    box.reduce((s, v) => s + v[0], 0) / box.length,
+    box.reduce((s, v) => s + v[1], 0) / box.length,
+  ];
+  const ann = (b.part.annotations ?? []).find((a) => a.id === pl.annotationId);
+  const shifted = (shift: number): NonNullable<AnnotationPlacement['text']> => {
+    const text = { ...(pl.text ?? {}) };
+    if (Math.abs(shift) < 1e-9) delete text.shift;
+    else text.shift = Math.round(shift * 100) / 100;
+    return text;
+  };
+  const put = (next: AnnotationPlacement, label: string) => updatePlacement(c, next, label, key);
+  if (
+    (pl.layout.kind === 'lane' || pl.layout.kind === 'offset') &&
+    placed.line &&
+    ann?.kind !== 'ordinate'
+  ) {
+    const l = sub(placed.line[1], placed.line[0]);
+    const ll = len(l) || 1;
+    const u: Vec2 = [l[0] / ll, l[1] / ll];
+    const n: Vec2 = [-u[1], u[0]];
+    const along = dot(arrow, u);
+    const across = dot(arrow, n);
+    if (Math.abs(along) >= Math.abs(across))
+      return put(
+        { ...pl, text: shifted((pl.text?.shift ?? 0) + Math.sign(along) * step) },
+        'Move dimension text',
+      );
+    const order = ['below', 'inline', 'above'] as const;
+    const cur = pl.text?.side ?? b.drawing.style.dimension.textPosition;
+    const i = order.indexOf(cur === 'above' || cur === 'below' ? cur : 'inline');
+    const side = order[Math.max(0, Math.min(2, i + Math.sign(across)))] as
+      | 'above'
+      | 'below'
+      | 'inline';
+    return put({ ...pl, text: { ...(pl.text ?? {}), side } }, 'Move dimension text');
+  }
+  if (pl.layout.kind === 'arc') {
+    const arc = placed.items.find((i) => i.kind === 'arc');
+    if (arc?.kind !== 'arc') return false;
+    const t = sub(centre, arc.center);
+    const tl = len(t) || 1;
+    const tangent: Vec2 = [-t[1] / tl, t[0] / tl];
+    const radial: Vec2 = [t[0] / tl, t[1] / tl];
+    if (Math.abs(dot(arrow, tangent)) >= Math.abs(dot(arrow, radial)))
+      return put(
+        { ...pl, text: shifted((pl.text?.shift ?? 0) + Math.sign(dot(arrow, tangent)) * step) },
+        'Move dimension text',
+      );
+    const radius = Math.max(2, pl.layout.radius + Math.sign(dot(arrow, radial)) * step);
+    return put({ ...pl, layout: { ...pl.layout, radius } }, 'Move annotation');
+  }
+  const layout = dragLayout(
+    pl.layout,
+    centre,
+    [centre[0] + arrow[0] * step, centre[1] + arrow[1] * step],
+    {
+      outline: viewOutline(sv),
+      firstLane: b.drawing.style.dimension.firstLane,
+      laneSpacing: b.drawing.style.dimension.laneSpacing,
+      ...(placed.line ? { line: placed.line } : {}),
+    },
+  );
+  if (JSON.stringify(layout) === JSON.stringify(pl.layout)) return false;
+  return put({ ...pl, layout } as AnnotationPlacement, 'Move annotation');
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -612,12 +1052,19 @@ export function beginInteraction(c: DrawingController, p: SheetPointer): SheetDr
   if (sel?.kind === 'view') {
     const bb = c.built();
     const cutHandle = bb
-      ? cutHandlesOf(bb, sel.id).find((x) => len(sub(p.at, x.at)) < 13 * p.mm)
+      ? cutHandlesOf(bb, sel.id).find((x) => len(sub(p.at, x.at)) < gripReach(p))
       : undefined;
     if (cutHandle) return dragCutVertex(c, sel.id, cutHandle.index, p.at);
+    const grip = bb
+      ? detailGripsOf(bb, sel.id)
+          .map((g) => ({ g, d: len(sub(p.at, g.at)) }))
+          .filter((x) => x.d < gripReach(p))
+          .sort((x, y) => x.d - y.d)[0]
+      : undefined;
+    if (grip) return dragDetail(c, sel.id, grip.g.kind, p);
     const sv = solvedView(c, sel.id);
     if (sv && sv.view.kind !== 'iso' && sv.view.kind !== 'detail') {
-      const h = handlesOf(sv, p.mm).find((x) => len(sub(p.at, x.at)) < 13 * p.mm);
+      const h = handlesOf(sv, p.mm).find((x) => len(sub(p.at, x.at)) < gripReach(p));
       if (h) return dragOut(c, sv, h);
     }
   }
@@ -625,7 +1072,7 @@ export function beginInteraction(c: DrawingController, p: SheetPointer): SheetDr
   if (!hit) return null;
   selectHit(c, hit);
   const s = hit.source;
-  if (s.kind === 'placement') return movePlacement(c, s.placementId, p.at);
+  if (s.kind === 'placement') return movePlacement(c, s.placementId, p, hit.itemKind === 'text');
   if (s.kind === 'view') return moveView(c, s.viewId, p.at);
   if (s.kind === 'table') return moveTable(c, s.tableId, p.at);
   if (s.kind === 'titleBlock' && s.slot) {

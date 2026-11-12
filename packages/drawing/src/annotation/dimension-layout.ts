@@ -78,12 +78,16 @@ function placeLabel(
   label: TextBlock,
   at: Vec2,
   angleDeg: number,
-  mode: 'above' | 'inline',
+  mode: 'above' | 'below' | 'inline',
   h: number,
 ): { prims: Primitive[]; corners: Vec2[] } {
   const a = (angleDeg * Math.PI) / 180;
   const y0 =
-    mode === 'above' ? 0.4 * h - label.box.min[1] : -(label.box.min[1] + label.box.max[1]) / 2;
+    mode === 'above'
+      ? 0.4 * h - label.box.min[1]
+      : mode === 'below'
+        ? -0.4 * h - label.box.max[1]
+        : -(label.box.min[1] + label.box.max[1]) / 2;
   const x0 = -label.width / 2;
   const pt = (p: Vec2): Vec2 => add2(at, rotate2([p[0] + x0, p[1] + y0], a));
   const prims = label.prims.map((p) => movePrim(p, pt, angleDeg));
@@ -134,6 +138,12 @@ export interface LinearLayoutInput {
   style: DimensionStyle;
   h: number;
   shift?: number;
+  /**
+   * Where the text sits against the dimension line (ADR-094): above or below it, or inline (in a
+   * break of the line). Absent = the style's `textPosition`. "Above" is the side the reading
+   * direction's up points to, so it is the same side whichever way the line runs.
+   */
+  side?: 'above' | 'below' | 'inline';
   witness?: { flip?: boolean; hide?: [boolean, boolean] };
   arrows?: 'auto' | 'inside' | 'outside';
 }
@@ -185,12 +195,26 @@ export function linearLayout(input: LinearLayoutInput): DimensionGeometry {
 
   const aligned = style.textOrientation === 'aligned';
   const textAngle = aligned ? readableAngle(u) : 0;
-  const lab = placeLabel(input.label, at(textS, L), textAngle, style.textPosition, h);
+  const mode = input.side ?? style.textPosition;
+  let lab: ReturnType<typeof placeLabel>;
+  if (aligned || mode === 'inline' || Math.abs(u[1]) < 1e-6) {
+    lab = placeLabel(input.label, at(textS, L), textAngle, mode, h);
+  } else {
+    // Horizontal text beside a line that is not horizontal: lift it clear of the line, along the
+    // reading direction's up, by its own extent in that direction.
+    const up = perp2(u);
+    const extent =
+      0.5 *
+      (Math.abs(up[0]) * input.label.width +
+        Math.abs(up[1]) * (input.label.box.max[1] - input.label.box.min[1]));
+    const lift = (mode === 'above' ? 1 : -1) * (0.4 * h + extent);
+    lab = placeLabel(input.label, add2(at(textS, L), scale2(up, lift)), 0, 'inline', h);
+  }
 
   // Dimension line (with a break for inline text).
   const from = Math.min(lineFrom, s1);
   const to = Math.max(lineTo, s2);
-  if (style.textPosition === 'inline') {
+  if (mode === 'inline') {
     const gap = 0.4 * h;
     const w = aligned ? half : textHalfExtentAlong(lab.corners, u, at(textS, L));
     const b0 = textS - w - gap;

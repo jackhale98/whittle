@@ -12,7 +12,16 @@ type Tier = 'desktop' | 'tablet' | 'phone';
 
 const STATES: Record<string, string[]> = {
   'm4-choice': ['default', 'chosen', 'asme'],
-  'm4-viewer': ['default', 'selected', 'attention', 'pending', 'hover'],
+  'm4-viewer': [
+    'default',
+    'selected',
+    'attention',
+    'pending',
+    'hover',
+    'drag-view',
+    'drag-dimension',
+    'drag-detail',
+  ],
   'm4-toolbar': ['default', 'dimension', 'disabled', 'horizontal'],
   'm4-picker': ['default', 'disabled'],
   'm4-views': ['default', 'selected', 'empty', 'problem', 'review'],
@@ -21,6 +30,7 @@ const STATES: Record<string, string[]> = {
     'own-scale',
     'section',
     'detail',
+    'detail-center',
     'config',
     'missing',
     'dependents',
@@ -38,6 +48,7 @@ const STATES: Record<string, string[]> = {
     'hole',
     'suppressed',
     'radial',
+    'text-moved',
   ],
   'm4-tolerance': ['default', 'stored', 'fit'],
   'm4-import': ['default', 'none', 'empty'],

@@ -10,6 +10,7 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -53,7 +54,40 @@ export interface SheetDrag {
   cancel?(): void;
 }
 
+/**
+ * A drag's preview, drawn without React and without the store (ADR-094): whole groups of the sheet
+ * are translated (the compositor moves them), groups are hidden while a preview stands in for them,
+ * and extra nodes are drawn above the sheet. Per pointer frame the owner calls `update`.
+ */
+export interface SheetTransientSpec {
+  /** Translated as a whole: groups with these `data-host` (views) or `data-source` keys. */
+  move?: { hosts?: readonly string[]; sources?: readonly string[] };
+  /**
+   * Not drawn while the preview stands in for them: `data-source` keys, or one source drawn in a
+   * given view's space only (a section's cutting plane on its parent, not its own geometry).
+   */
+  hide?: readonly (string | { source: string; host: string })[];
+}
+
+export interface SheetTransientFrame {
+  /** Translation of the moved groups, sheet mm (y up). */
+  dx?: number;
+  dy?: number;
+  /** Drawn in the sheet's model space above its geometry, replacing the last frame's. */
+  nodes?: readonly SvgNode[];
+  /** Drawn above everything, in the overlay's space (handles, hints). */
+  overlay?: readonly SvgNode[];
+}
+
+export interface SheetTransient {
+  update(frame: SheetTransientFrame): void;
+  /** `cancel`: gone now. `hold`: stays until the sheet is next rebuilt (a release awaiting its build). */
+  end(how: 'cancel' | 'hold'): void;
+}
+
 export interface SheetViewerApi {
+  /** Starts a drag preview; see `SheetTransientSpec`. */
+  transient(spec: SheetTransientSpec): SheetTransient;
   fit(): void;
   zoomIn(): void;
   zoomOut(): void;
@@ -133,6 +167,21 @@ function renderNode(
   );
 }
 
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+function toDom(n: SvgNode | string): Node {
+  if (typeof n === 'string') return document.createTextNode(n);
+  const el = document.createElementNS(SVG_NS, n.tag);
+  for (const [k, v] of Object.entries(n.attrs)) el.setAttribute(k, v);
+  for (const c of n.children ?? []) el.append(toDom(c));
+  return el;
+}
+
+const cssEscape = (v: string) => (typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(v) : v);
+
+/** How long a released preview waits for the rebuilt sheet before it goes anyway. */
+const HOLD_MS = 2500;
+
 /**
  * The sheet viewer: pan and zoom for mouse, touch and keyboard, with tool drags handed to the
  * owner. The paper is drawn at true scale in mm; strokes never get thinner than the sheet's.
@@ -165,6 +214,11 @@ export function SheetViewer({
   const fitRef = useRef(fit);
   fitRef.current = fit;
   const fitted = useRef('');
+  const svgRef = useRef<SVGSVGElement>(null);
+  const modelLayer = useRef<SVGGElement>(null);
+  const overlayLayer = useRef<SVGGElement>(null);
+  /** Previews released but not yet replaced by the rebuilt sheet. */
+  const held = useRef(new Set<() => void>());
 
   // Track the viewer's size.
   useEffect(() => {
@@ -195,9 +249,85 @@ export function SheetViewer({
 
   const set = useCallback((v: View2D) => setView(v), []);
 
+  const transient = useCallback((spec: SheetTransientSpec): SheetTransient => {
+    for (const r of [...held.current]) r();
+    const root = svgRef.current;
+    const touched: SVGElement[] = [];
+    const hidden: SVGElement[] = [];
+    const moved: SVGElement[] = [];
+    if (root) {
+      for (const h of spec.hide ?? []) {
+        const sel =
+          typeof h === 'string'
+            ? `[data-source="${cssEscape(h)}"]`
+            : `[data-source="${cssEscape(h.source)}"][data-host="${cssEscape(h.host)}"]`;
+        for (const el of root.querySelectorAll<SVGElement>(sel)) {
+          el.style.display = 'none';
+          hidden.push(el);
+        }
+      }
+      const pick = (sel: string) => {
+        for (const el of root.querySelectorAll<SVGElement>(sel)) {
+          el.style.willChange = 'transform';
+          moved.push(el);
+        }
+      };
+      for (const h of spec.move?.hosts ?? []) pick(`[data-host="${cssEscape(h)}"]`);
+      for (const k of spec.move?.sources ?? []) pick(`[data-source="${cssEscape(k)}"]`);
+    }
+    touched.push(...hidden, ...moved);
+    let lastNodes: readonly SvgNode[] | undefined;
+    let lastOverlay: readonly SvgNode[] | undefined;
+    let done = false;
+    const restore = () => {
+      if (done) return;
+      done = true;
+      for (const el of touched) {
+        el.style.transform = '';
+        el.style.willChange = '';
+        el.style.display = '';
+      }
+      modelLayer.current?.replaceChildren();
+      overlayLayer.current?.replaceChildren();
+      held.current.delete(restore);
+    };
+    return {
+      update(f) {
+        if (done) return;
+        if (f.dx !== undefined || f.dy !== undefined) {
+          const t = `translate(${f.dx ?? 0}px, ${f.dy ?? 0}px)`;
+          for (const el of moved) el.style.transform = t;
+        }
+        if (f.nodes !== undefined && f.nodes !== lastNodes) {
+          lastNodes = f.nodes;
+          modelLayer.current?.replaceChildren(...f.nodes.map(toDom));
+        }
+        if (f.overlay !== undefined && f.overlay !== lastOverlay) {
+          lastOverlay = f.overlay;
+          overlayLayer.current?.replaceChildren(...f.overlay.map(toDom));
+        }
+      },
+      end(how) {
+        if (how === 'cancel') {
+          restore();
+          return;
+        }
+        held.current.add(restore);
+        setTimeout(restore, HOLD_MS);
+      },
+    };
+  }, []);
+
+  // The rebuilt sheet replaces what a released preview stood in for.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs when the model changes
+  useLayoutEffect(() => {
+    for (const r of [...held.current]) r();
+  }, [model]);
+
   useImperativeHandle(
     ref,
     () => ({
+      transient,
       fit: () => fitRef.current && set(fitRef.current),
       zoomIn: () => {
         const f = fitRef.current;
@@ -219,14 +349,23 @@ export function SheetViewer({
         set({ k, x: size.w / 2 - cx * k, y: size.h / 2 - (sheet.h - cy) * k });
       },
     }),
-    [set, sheet, size.h, size.w],
+    [set, sheet, size.h, size.w, transient],
   );
 
   // Pointers ----------------------------------------------------------------------------
   const pointers = useRef(new Map<number, { x: number; y: number; type: string }>());
   const gesture = useRef<
     | { kind: 'none' }
-    | { kind: 'drag'; id: number; drag: SheetDrag; start: { x: number; y: number }; moved: boolean }
+    | {
+        kind: 'drag';
+        id: number;
+        drag: SheetDrag;
+        start: { x: number; y: number };
+        moved: boolean;
+        /** The newest pointer position not yet handed to the drag (one hand-off per frame). */
+        latest: SheetPointer | null;
+        raf: number;
+      }
     | {
         kind: 'pan';
         id: number;
@@ -240,8 +379,10 @@ export function SheetViewer({
   >({ kind: 'none' });
   const lastTap = useRef(0);
 
+  /** The viewer's rectangle while a drag runs: reading it per move would force a layout each time. */
+  const rect = useRef<DOMRect | null>(null);
   const local = (e: { clientX: number; clientY: number }) => {
-    const r = box.current?.getBoundingClientRect();
+    const r = rect.current ?? box.current?.getBoundingClientRect();
     return { x: e.clientX - (r?.left ?? 0), y: e.clientY - (r?.top ?? 0) };
   };
   const pointer = (e: ReactPointerEvent | PointerEvent): SheetPointer => {
@@ -260,6 +401,14 @@ export function SheetViewer({
     };
   };
 
+  const endDrag = useCallback((g: Extract<typeof gesture.current, { kind: 'drag' }>) => {
+    if (g.raf) cancelAnimationFrame(g.raf);
+    g.raf = 0;
+    g.latest = null;
+    rect.current = null;
+    g.drag.cancel?.();
+  }, []);
+
   const down = (e: ReactPointerEvent<HTMLDivElement>) => {
     if ((e.target as HTMLElement).closest('[data-viewer-ui]')) return;
     box.current?.focus({ preventScroll: true });
@@ -273,7 +422,7 @@ export function SheetViewer({
     const g = gesture.current;
     if (pointers.current.size === 2) {
       // A second finger turns whatever is happening into a pinch.
-      if (g.kind === 'drag') g.drag.cancel?.();
+      if (g.kind === 'drag') endDrag(g);
       const ids = [...pointers.current.keys()].slice(0, 2) as [number, number];
       gesture.current = { kind: 'pinch', ids };
       return;
@@ -283,7 +432,16 @@ export function SheetViewer({
     const mouseNav = e.pointerType === 'mouse' && (e.button === 1 || e.button === 2);
     const drag = mouseNav ? null : (begin?.(info) ?? null);
     if (drag) {
-      gesture.current = { kind: 'drag', id: e.pointerId, drag, start: p, moved: false };
+      rect.current = box.current?.getBoundingClientRect() ?? null;
+      gesture.current = {
+        kind: 'drag',
+        id: e.pointerId,
+        drag,
+        start: p,
+        moved: false,
+        latest: null,
+        raf: 0,
+      };
       e.preventDefault();
     } else {
       gesture.current = {
@@ -319,7 +477,18 @@ export function SheetViewer({
     }
     if (g.kind === 'drag' && g.id === e.pointerId) {
       if (!g.moved && Math.hypot(p.x - g.start.x, p.y - g.start.y) > 3) g.moved = true;
-      g.drag.move?.(pointer(e));
+      // One hand-off per frame, with the newest position: the events the browser coalesced into
+      // this one carry nothing a drag of a position needs (ADR-094).
+      const co = e.nativeEvent.getCoalescedEvents?.() ?? [];
+      g.latest = pointer(co.length > 0 ? (co[co.length - 1] as PointerEvent) : e);
+      if (!g.raf) {
+        g.raf = requestAnimationFrame(() => {
+          g.raf = 0;
+          const at = g.latest;
+          g.latest = null;
+          if (at && gesture.current === g) g.drag.move?.(at);
+        });
+      }
       return;
     }
     if (g.kind === 'pan' && g.id === e.pointerId) {
@@ -337,8 +506,12 @@ export function SheetViewer({
     pointers.current.delete(e.pointerId);
     const g = gesture.current;
     if (g.kind === 'drag' && g.id === e.pointerId) {
-      g.drag.up?.(pointer(e), g.moved);
+      const at = pointer(e);
+      if (g.raf) cancelAnimationFrame(g.raf);
+      g.raf = 0;
+      rect.current = null;
       gesture.current = { kind: 'none' };
+      g.drag.up?.(at, g.moved);
     } else if (g.kind === 'pan' && g.id === e.pointerId) {
       if (!g.moved && g.button === 0) {
         const now = e.timeStamp;
@@ -356,7 +529,7 @@ export function SheetViewer({
   const cancel = (e: ReactPointerEvent<HTMLDivElement>) => {
     pointers.current.delete(e.pointerId);
     const g = gesture.current;
-    if (g.kind === 'drag') g.drag.cancel?.();
+    if (g.kind === 'drag') endDrag(g);
     gesture.current = { kind: 'none' };
   };
 
@@ -368,12 +541,12 @@ export function SheetViewer({
       if (g.kind !== 'drag') return;
       e.preventDefault();
       e.stopPropagation();
-      g.drag.cancel?.();
+      endDrag(g);
       gesture.current = { kind: 'none' };
     };
     document.addEventListener('keydown', onKey, true);
     return () => document.removeEventListener('keydown', onKey, true);
-  }, []);
+  }, [endDrag]);
 
   // Wheel and trackpad pinch: a non-passive listener so the page never scrolls.
   useEffect(() => {
@@ -471,6 +644,7 @@ export function SheetViewer({
       style={{ cursor: cursor ?? 'default' }}
     >
       <svg
+        ref={svgRef}
         width={size.w}
         height={size.h}
         role="img"
@@ -501,11 +675,14 @@ export function SheetViewer({
           >
             {drawn}
           </g>
+          {/* Drag previews (ADR-094): filled by the viewer's transient layer, never by React. */}
+          <g transform={flip} className="sheet-model" data-transient="model" ref={modelLayer} />
           {overlay ? (
             <g transform={flip} data-testid="sheet-overlay">
               {overlay({ mm, sheet })}
             </g>
           ) : null}
+          <g transform={flip} data-transient="overlay" ref={overlayLayer} />
         </g>
       </svg>
       {floating?.({ toScreen: conv, box: size })}

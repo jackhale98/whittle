@@ -12,6 +12,7 @@ import type {
   Id,
   Sheet,
 } from '@wren-cad/contracts';
+import type { SheetTransient, SheetTransientSpec } from '@wren-cad/ui/drawing';
 import { type Observable, observable } from '../app/observable';
 import type { Workbench } from '../app/workbench';
 import { ensureDrawingSupport } from '../doc/drawing-support';
@@ -27,6 +28,8 @@ import { type DrawingTool, type DrawingUiState, initialDrawingUi, type Selected 
 
 /** How long the sheet must be left alone before the exact edges are computed. */
 const REFINE_DELAY_MS = 400;
+
+const NO_TRANSIENT: SheetTransient = { update() {}, end() {} };
 
 export class DrawingController {
   readonly ui: Observable<DrawingUiState> = observable(initialDrawingUi);
@@ -45,6 +48,13 @@ export class DrawingController {
   /** An export (or a test) is waiting for exact edges: the next builds are exact. */
   private exactRequested = false;
   private refineTimer: ReturnType<typeof setTimeout> | undefined;
+  /** Builds delivered so far (tests and the drag perf probe: a drag must not rebuild). */
+  builds = 0;
+  /** The sheet viewer's drag previews (ADR-094); absent until the viewer mounts (and in tests). */
+  viewer: { transient(spec: SheetTransientSpec): SheetTransient } | null = null;
+  /** A drag is on: builds wait until it ends, so the sheet under the preview does not change. */
+  private held = false;
+  private deferred = false;
 
   constructor(
     readonly wb: Workbench,
@@ -80,8 +90,28 @@ export class DrawingController {
     this.unsub = [];
     clearTimeout(this.timer);
     clearTimeout(this.refineTimer);
+    this.held = false;
     this.token++;
     this.kernel.dispose();
+  }
+
+  /** Starts a drag preview on the sheet: nothing is written and nothing is rebuilt until release. */
+  transient(spec: SheetTransientSpec): SheetTransient {
+    return this.viewer?.transient(spec) ?? NO_TRANSIENT;
+  }
+
+  /** A drag begins: builds wait for it. */
+  hold(): void {
+    this.held = true;
+  }
+
+  /** A drag ended (committed or cancelled): a build that was waiting runs now. */
+  resume(): void {
+    this.held = false;
+    if (this.deferred) {
+      this.deferred = false;
+      this.schedule(0);
+    }
   }
 
   patch(p: Partial<DrawingUiState>): void {
@@ -270,7 +300,7 @@ export class DrawingController {
 
   /** Resolves once the build for the document as it is now has been delivered (or failed). */
   settled(): Promise<void> {
-    if (!this.building && !this.timer && !this.again && !this.ui.get().pending) {
+    if (!this.building && !this.timer && !this.again && !this.deferred && !this.ui.get().pending) {
       return Promise.resolve();
     }
     return new Promise((r) => this.waiters.push(r));
@@ -285,6 +315,10 @@ export class DrawingController {
 
   async refresh(): Promise<void> {
     this.timer = undefined;
+    if (this.held) {
+      this.deferred = true;
+      return;
+    }
     if (this.building) {
       this.again = true;
       return;
@@ -299,9 +333,16 @@ export class DrawingController {
       const doc = this.doc;
       const r = await runPipeline(doc, id, this.source, this.kernel, asked);
       if (my !== this.token) return;
+      if (this.held) {
+        // A drag began while this was being built: the sheet under its preview must not change.
+        // The build is made again from the document as it is when the drag ends.
+        this.deferred = true;
+        return;
+      }
       if (r.kind === 'ok') {
         // The doc may have changed while projections ran: build again from that.
         const stale = doc !== this.doc;
+        this.builds++;
         this.ui.set((s) => ({
           ...s,
           built: r.built,

@@ -8,8 +8,8 @@ import type {
   ViewProjection,
 } from '@wren-cad/contracts';
 import { buildDrawing } from '@wren-cad/drawing';
-import { svgModel } from '@wren-cad/drawing/svg';
-import { type ReactNode, useMemo, useState } from 'react';
+import { type SvgNode, svgItems, svgModel } from '@wren-cad/drawing/svg';
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { solveViews } from '../../drawing/src';
 import {
   ANNOTATIONS,
@@ -33,6 +33,7 @@ import {
   InlineCellEditor,
   SheetSettings,
   SheetViewer,
+  type SheetViewerApi,
   StandardChoice,
   TitleBlockEditor,
   ToleranceField,
@@ -150,6 +151,10 @@ function sampleSheet(opts: { attention?: boolean; pending?: boolean } = {}) {
     w: list.width,
     h: list.height,
     attention: built.attention,
+    style: d.style,
+    /** One placement laid out again, as a drag preview does (ADR-094). */
+    relayout: built.relayout,
+    placed: built.placed,
   };
 }
 
@@ -226,17 +231,112 @@ function Choice() {
   );
 }
 
+/** The drag preview states of the viewer (ADR-094): what the sheet shows while something is dragged. */
+function useDragPreview(
+  ref: React.RefObject<SheetViewerApi | null>,
+  s: string,
+  sheet: ReturnType<typeof sampleSheet>,
+) {
+  useEffect(() => {
+    const v = ref.current;
+    if (!v || !s.startsWith('drag-')) return;
+    const accent = 'var(--color-accent)';
+    if (s === 'drag-view') {
+      // A view, with its dimensions and selection, translated as one under the pointer.
+      v.transient({ move: { hosts: ['V1'] } }).update({ dx: 24, dy: -10 });
+      return;
+    }
+    if (s === 'drag-dimension') {
+      // A dimension's text dragged below its line, snapping to "below" with its hint.
+      const p = sheet.placed.find((x) => x.placementId === 'p1');
+      const next = sheet.relayout({
+        id: 'p1',
+        viewId: 'V1',
+        annotationId: 'A1',
+        layout: { kind: 'lane', side: 'bottom', lane: 0 },
+        text: { shift: 14, side: 'below' },
+      });
+      const line = p?.line;
+      if (!next || !line) return;
+      const mm = 0.4;
+      const dash = (o: number, on: boolean): SvgNode => ({
+        tag: 'line',
+        attrs: {
+          x1: String(line[0][0] - 6),
+          y1: String(line[0][1] + o),
+          x2: String(line[1][0] + 6),
+          y2: String(line[1][1] + o),
+          stroke: accent,
+          'stroke-width': String((on ? 2 : 1) * mm),
+          'stroke-opacity': on ? '1' : '0.45',
+          ...(on ? {} : { 'stroke-dasharray': `${4 * mm} ${4 * mm}` }),
+        },
+      });
+      v.transient({ hide: ['placement:p1'] }).update({
+        nodes: [
+          {
+            tag: 'g',
+            attrs: { 'data-selected': 'true' },
+            children: svgItems(next.items, sheet.style),
+          },
+        ],
+        overlay: [
+          dash(3.2, false),
+          dash(0, false),
+          dash(-3.2, true),
+          {
+            tag: 'text',
+            attrs: {
+              transform: `translate(${line[0][0] + 30} ${line[0][1] - 14}) scale(1 -1)`,
+              'font-size': String(12 * mm),
+              fill: accent,
+              stroke: 'none',
+            },
+            children: ['Below the line'],
+          },
+        ],
+      });
+      return;
+    }
+    // drag-detail: a detail circle resized, with its two grips.
+    const c: [number, number] = [150, 150];
+    const ring = (at: [number, number], r: number, fill: string): SvgNode => ({
+      tag: 'circle',
+      attrs: {
+        cx: String(at[0]),
+        cy: String(at[1]),
+        r: String(r),
+        fill,
+        stroke: accent,
+        'stroke-width': '0.5',
+      },
+    });
+    v.transient({ hide: [] }).update({
+      nodes: [{ tag: 'g', attrs: { 'data-selected': 'true' }, children: [ring(c, 22, 'none')] }],
+      overlay: [
+        ring([c[0] + 22, c[1]], 3.6, 'var(--color-surface)'),
+        ring(c, 3.6, 'var(--color-surface)'),
+      ],
+    });
+  }, [ref, s, sheet]);
+}
+
 function Viewer() {
   const s = state();
   const sheet = useMemo(() => sampleSheet({ attention: s === 'attention' }), [s]);
+  const ref = useRef<SheetViewerApi>(null);
+  useDragPreview(ref, s, sheet);
   return (
     <div className="h-[520px] w-full max-w-4xl p-3" data-testid="g-m4-viewer">
       <SheetViewer
+        ref={ref}
         model={sheet.model}
         sheet={{ w: sheet.w, h: sheet.h }}
         fitKey={`g-${s}`}
         label="Sheet 1 of Bracket drawing: 5 views, 4 annotations"
-        selected={s === 'selected' ? new Set(['view:V1', 'placement:p1']) : new Set()}
+        selected={
+          s === 'selected' || s === 'drag-view' ? new Set(['view:V1', 'placement:p1']) : new Set()
+        }
         hover={s === 'hover' ? 'view:V2' : null}
         pending={s === 'pending'}
       />
@@ -382,14 +482,22 @@ function ViewInsp() {
             position: { x: 330, y: 200 },
             onPosition: () => {},
           }
-        : s === 'detail'
+        : s === 'detail' || s === 'detail-center'
           ? {
               kind: 'detail',
               title: 'Detail B',
               derivedLabel: 'B (2:1)',
               showLabel: true,
               scale: '2',
-              detail: { letter: 'B', radius: 8, onRadius: () => {}, onLetter: () => {} },
+              detail: {
+                letter: 'B',
+                radius: 8,
+                onRadius: () => {},
+                onLetter: () => {},
+                ...(s === 'detail-center'
+                  ? { center: { x: 42.5, y: 18 }, onCenter: () => {} }
+                  : {}),
+              },
               position: { x: 330, y: 125 },
               onPosition: () => {},
             }
@@ -513,15 +621,17 @@ function AnnotationInsp() {
                       }
                     : s === 'suppressed'
                       ? { state: 'suppressed', valueText: undefined }
-                      : s === 'radial'
-                        ? {
-                            annotation: { ...dim, kind: 'diameter' } as Annotation,
-                            placement: {
-                              ...placement,
-                              layout: { kind: 'radial', angle: 45, distance: 6 },
-                            },
-                          }
-                        : {};
+                      : s === 'text-moved'
+                        ? { placement: { ...placement, text: { shift: 6, side: 'below' } } }
+                        : s === 'radial'
+                          ? {
+                              annotation: { ...dim, kind: 'diameter' } as Annotation,
+                              placement: {
+                                ...placement,
+                                layout: { kind: 'radial', angle: 45, distance: 6 },
+                              },
+                            }
+                          : {};
   return (
     <Frame id="g-m4-annotation">
       <AnnotationInspector {...inspectorProps(props)} />

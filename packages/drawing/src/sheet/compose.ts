@@ -178,7 +178,8 @@ export function chainLoop(pieces: readonly Vec2[][]): Vec2[] {
   return out;
 }
 
-function viewItems(
+/** A view's geometry (hatching, edges, centre marks) on the sheet, from a projection. */
+export function viewItems(
   v: SolvedView,
   proj: ViewProjection | undefined,
   drawing: Drawing,
@@ -288,7 +289,7 @@ export function cuttingPlaneItems(
 ): DisplayItem[] {
   const view = section.view;
   if (view.kind !== 'section' || !section.section) return [];
-  const source: ItemSource = { kind: 'view', viewId: view.id };
+  const source: ItemSource = { kind: 'view', viewId: view.id, on: parent.view.id };
   const pts = section.section.cut.map((p) => viewToSheet(parent, projectToView(parent.frame, p)));
   if (pts.length < 2) return [];
   const items: DisplayItem[] = [{ kind: 'polyline', points: pts, role: 'cuttingPlane', source }];
@@ -343,7 +344,7 @@ export function detailCircleItems(
 ): DisplayItem[] {
   const view = detail.view;
   if (view.kind !== 'detail' || !detail.clip) return [];
-  const source: ItemSource = { kind: 'view', viewId: view.id };
+  const source: ItemSource = { kind: 'view', viewId: view.id, on: parent.view.id };
   const c = viewToSheet(parent, detail.clip.center);
   const r = detail.clip.radius * parent.scale;
   const h = drawing.style.text.viewLabel;

@@ -31,6 +31,9 @@ export { SheetValueField, type SheetValueFieldProps } from './SheetValueField';
 export {
   type SheetDrag,
   type SheetPointer,
+  type SheetTransient,
+  type SheetTransientFrame,
+  type SheetTransientSpec,
   SheetViewer,
   type SheetViewerApi,
   type SheetViewerProps,

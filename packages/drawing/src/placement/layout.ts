@@ -212,7 +212,12 @@ export function layoutPlacement(
       : leaderGeometry(placement, annotation, res, ctx, b);
   const meta = {
     role: 'dimension' as const,
-    source: { kind: 'placement' as const, placementId: placement.id, annotationId: annotation.id },
+    source: {
+      kind: 'placement' as const,
+      placementId: placement.id,
+      annotationId: annotation.id,
+      viewId: placement.viewId,
+    },
     ...(b.attention ? { attention: true } : {}),
   };
   const items = (out?.prims ?? []).map(
@@ -364,6 +369,7 @@ function dimensionGeometry(
     style,
     h,
     ...(placement.text?.shift !== undefined ? { shift: placement.text.shift } : {}),
+    ...(placement.text?.side !== undefined ? { side: placement.text.side } : {}),
     ...(placement.witness ? { witness: placement.witness } : {}),
     ...(placement.arrows ? { arrows: placement.arrows } : {}),
   };

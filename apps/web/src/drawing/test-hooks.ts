@@ -60,6 +60,10 @@ export interface DrawingHooks {
     text: [number, number] | null;
     box: { min: [number, number]; max: [number, number] } | null;
     attention: boolean;
+    /** The dimension line between the arrow tips (linear dimensions). */
+    line: [[number, number], [number, number]] | null;
+    /** The stored text placement (`shift`, `side`). */
+    textPlacement: { shift?: number; side?: string } | null;
   }[];
   /**
    * Every laid-out placement's real extent, from the display list items it drew (sheet mm): the
@@ -111,6 +115,8 @@ export interface DrawingHooks {
     hatchLines: number;
     panel: string;
     hint: string | null;
+    /** Builds delivered so far. */
+    builds: number;
     projection: string | null;
     views: {
       id: string;
@@ -122,6 +128,8 @@ export interface DrawingHooks {
       outline: { min: [number, number]; max: [number, number] } | null;
       curves: number;
       problems: string[];
+      /** A detail view's circle: centre (parent view plane, part mm) and radius. */
+      clip: { center: [number, number]; radius: number } | null;
     }[];
     placements: number;
     attention: { key: string; severity: string; message: string }[];
@@ -209,6 +217,8 @@ export function installDrawingHooks(c: DrawingController): void {
               }
             : null,
           attention: placed?.attention ?? false,
+          line: placed?.line ?? null,
+          textPlacement: p.text ?? null,
         };
       });
     },
@@ -344,6 +354,7 @@ export function installDrawingHooks(c: DrawingController): void {
         hatchLines: (composed?.list.items ?? []).filter((i) => i.role === 'hatch').length,
         panel: ui.panel,
         hint: ui.hint?.text ?? null,
+        builds: c.builds,
         projection: b?.drawing.projection ?? null,
         views: (b?.drawing.views ?? []).map((v) => {
           const s = b?.build.views.get(v.id);
@@ -357,6 +368,7 @@ export function installDrawingHooks(c: DrawingController): void {
             outline: s?.ok ? viewOutline(s) : null,
             curves: b?.projections.get(v.id)?.curves.length ?? 0,
             problems: s && !s.ok ? s.problems.map((p) => p.kind) : [],
+            clip: s?.ok && s.clip ? { center: s.clip.center, radius: s.clip.radius } : null,
           };
         }),
         placements: b?.drawing.placements.length ?? 0,

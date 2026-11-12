@@ -100,6 +100,67 @@ const DIMENSION_KINDS: readonly Annotation['kind'][] = [
 ];
 const isDimension = (a: Annotation): a is DimensionAnnotation => DIMENSION_KINDS.includes(a.kind);
 
+/**
+ * Where a dimension's text sits (ADR-094): above, inline or below its line, and shifted along it.
+ * The same two values dragging the text on the sheet sets, or the arrow keys with the dimension
+ * selected: the typed alternative to a drag (WCAG 2.5.7).
+ */
+function TextPlacement({
+  p,
+  placement,
+  sz,
+}: {
+  p: AnnotationInspectorProps;
+  placement: AnnotationPlacement;
+  sz: 'md' | 'touch';
+}) {
+  const kind = placement.layout.kind;
+  const linear = kind === 'lane' || kind === 'offset';
+  if (!linear && kind !== 'arc') return null;
+  const text = placement.text ?? {};
+  const put = (next: NonNullable<AnnotationPlacement['text']>) => {
+    const { text: _t, ...rest } = placement;
+    p.onPlacement(Object.keys(next).length > 0 ? { ...rest, text: next } : rest);
+  };
+  return (
+    <Section title="Text position">
+      {linear ? (
+        <Segmented
+          label="Dimension text position"
+          size={sz}
+          value={text.side ?? 'auto'}
+          onChange={(side) => {
+            const { side: _s, ...rest } = text;
+            put(side === 'auto' ? rest : { ...rest, side });
+          }}
+          options={[
+            { value: 'auto', label: 'Auto' },
+            { value: 'above', label: 'Above' },
+            { value: 'inline', label: 'Inline' },
+            { value: 'below', label: 'Below' },
+          ]}
+        />
+      ) : null}
+      <SheetValueField
+        label={kind === 'arc' ? 'Text shift along the arc (mm)' : 'Text shift along the line (mm)'}
+        value={text.shift ?? 0}
+        unit="mm"
+        step={1}
+        evaluate={p.evaluate}
+        onCommit={(shift) => {
+          const { shift: _s, ...rest } = text;
+          put(Math.abs(shift) < 1e-9 ? rest : { ...rest, shift });
+        }}
+        size={sz}
+      />
+      <p className="text-2xs text-fg-subtle">
+        Or drag the text on the sheet, or move it with the arrow keys while the dimension is
+        selected (Shift for 5 mm). Past an extension line the text goes outside the dimension.
+      </p>
+    </Section>
+  );
+}
+
 function layoutFields(
   layout: PlacementLayout,
   set: (l: PlacementLayout) => void,
@@ -411,6 +472,10 @@ export function AnnotationInspector(p: AnnotationInspectorProps) {
             Or drag it on the sheet. The placement keeps its lane or offset when the model changes.
           </p>
         </Section>
+      ) : null}
+
+      {p.placement && isDimension(a) ? (
+        <TextPlacement p={p} placement={p.placement} sz={sz} />
       ) : null}
 
       <Section title="Annotation">

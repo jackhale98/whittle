@@ -28,6 +28,8 @@ export interface HitResult {
   dist: number;
   /** The pick was on a drawn line or text (not just inside a region). */
   onGeometry: boolean;
+  /** The kind of the item picked (`text`: a dimension's value, which drags apart from its line). */
+  itemKind?: DisplayItem['kind'];
 }
 
 const SKIP_ROLES = new Set(['hatch', 'frame']);
@@ -124,6 +126,8 @@ export function hitTest(
   p: Vec2,
   tol: number,
   regions: readonly HitRegion[] = [],
+  /** A larger tolerance for an annotation's text (a 44 px target on touch, ADR-094). */
+  textTol: number = tol,
 ): HitResult | null {
   let best: { r: HitResult; rank: number } | null = null;
   for (const item of list.items) {
@@ -132,11 +136,12 @@ export function hitTest(
       continue;
     // The title block is picked by cell regions, not by its text.
     if (src.kind === 'titleBlock') continue;
-    const d = itemDistance(item, p, tol);
-    if (d > tol) continue;
+    const reach = item.kind === 'text' && src.kind === 'placement' ? Math.max(tol, textTol) : tol;
+    const d = itemDistance(item, p, reach);
+    if (d > reach) continue;
     const rank = classRank(src);
     if (!best || rank < best.rank || (rank === best.rank && d < best.r.dist))
-      best = { r: { source: src, dist: d, onGeometry: true }, rank };
+      best = { r: { source: src, dist: d, onGeometry: true, itemKind: item.kind }, rank };
   }
   if (best) return best.r;
   let inRegion: { r: HitResult; area: number; rank: number } | null = null;

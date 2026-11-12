@@ -45,10 +45,13 @@ export type ItemSource =
   | { kind: 'titleBlock'; slot?: string }
   /**
    * `edge`: the model edge's persistent name. `face`: the face an outline (or a seam on a
-   * silhouette) outlines (`ProjectedCurve.face`), so a pick on it can be a face ref.
+   * silhouette) outlines (`ProjectedCurve.face`), so a pick on it can be a face ref. `on`: the
+   * view whose sheet space the item is drawn in when that is not `viewId` itself (a section's
+   * cutting plane and a detail's circle are drawn on their parent): moving that view moves them.
+   * A placement's `viewId` is the view it is dimensioning, for the same reason (ADR-094).
    */
-  | { kind: 'view'; viewId: Id; edge?: string; face?: string }
-  | { kind: 'placement'; placementId: Id; annotationId: Id }
+  | { kind: 'view'; viewId: Id; edge?: string; face?: string; on?: Id }
+  | { kind: 'placement'; placementId: Id; annotationId: Id; viewId?: Id }
   | { kind: 'centerMark'; viewId: Id; markId?: Id }
   | { kind: 'note'; noteId: Id }
   | { kind: 'table'; tableId: Id }

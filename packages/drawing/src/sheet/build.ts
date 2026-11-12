@@ -10,6 +10,7 @@
 import type {
   Annotation,
   AnnotationIssue,
+  AnnotationPlacement,
   AnnotationResolution,
   Drawing,
   DrawingTable,
@@ -23,7 +24,13 @@ import type {
 } from '@wren-cad/contracts';
 import type { FitDeviationLookup } from '../annotation/tolerance';
 import { type AttentionEntry, aggregateAttention, viewConfiguration } from '../attention/aggregate';
-import { type FeatureCalloutData, layoutView, type PlacedAnnotation } from '../placement/layout';
+import {
+  type FeatureCalloutData,
+  layoutPlacement,
+  layoutView,
+  type PlacedAnnotation,
+  type PlacementContext,
+} from '../placement/layout';
 import type { TitleBlockData } from '../template/title-block';
 import type { TemplateLayout } from '../template/types';
 import { type ExprEvaluator, type RefResolver, solveViews, type ViewSolution } from '../view/solve';
@@ -58,6 +65,12 @@ export interface DrawingBuild {
   placed: PlacedAnnotation[];
   sheets: ComposedSheet[];
   attention: AttentionEntry[];
+  /**
+   * Lays out one placement as the build did, with `placement` in place of its stored one (a drag's
+   * preview: ADR-094). Cheap (one placement); touches nothing in the build. `undefined` when the
+   * placement's view or annotation is not in it.
+   */
+  relayout(placement: AnnotationPlacement): PlacedAnnotation | undefined;
 }
 
 export function buildDrawing(input: DrawingBuildInput): DrawingBuild {
@@ -70,23 +83,26 @@ export function buildDrawing(input: DrawingBuildInput): DrawingBuild {
   });
   const annotations = new Map((input.annotations ?? []).map((a) => [a.id, a]));
   const placed: PlacedAnnotation[] = [];
+  const contexts = new Map<Id, Omit<PlacementContext, 'placed'>>();
   for (const v of drawing.views) {
     const sol = views.get(v.id);
     if (!sol?.ok || !input.annotations) continue;
     const res = input.resolutions(viewConfiguration(drawing, v)) ?? new Map();
+    const ctx: Omit<PlacementContext, 'placed'> = {
+      view: sol,
+      style: drawing.style,
+      standard: drawing.standard.gps,
+      evaluate: input.evaluateAnnotation,
+      annotations,
+      resolutions: res,
+      ...(input.fitDeviations ? { fitDeviations: input.fitDeviations } : {}),
+      ...(input.features ? { features: input.features } : {}),
+    };
+    contexts.set(v.id, ctx);
     placed.push(
       ...layoutView(
         drawing.placements.filter((p) => p.viewId === v.id),
-        {
-          view: sol,
-          style: drawing.style,
-          standard: drawing.standard.gps,
-          evaluate: input.evaluateAnnotation,
-          annotations,
-          resolutions: res,
-          ...(input.fitDeviations ? { fitDeviations: input.fitDeviations } : {}),
-          ...(input.features ? { features: input.features } : {}),
-        },
+        ctx,
       ),
     );
   }
@@ -115,5 +131,19 @@ export function buildDrawing(input: DrawingBuildInput): DrawingBuild {
     placed,
     templates,
   });
-  return { views, placed, sheets, attention };
+  let placedById: Map<Id, PlacedAnnotation> | undefined;
+  const placedMap = () => {
+    if (!placedById) placedById = new Map(placed.map((x) => [x.placementId, x]));
+    return placedById;
+  };
+  const relayout = (placement: AnnotationPlacement): PlacedAnnotation | undefined => {
+    const ctx = contexts.get(placement.viewId);
+    const a = annotations.get(placement.annotationId);
+    if (!ctx || !a) return undefined;
+    return layoutPlacement(placement, a, {
+      ...ctx,
+      placed: placedMap(),
+    });
+  };
+  return { views, placed, sheets, attention, relayout };
 }

@@ -105,7 +105,18 @@ export interface ViewInspectorProps {
   };
   /** A base view's in-plane rotation (an angle expression: `90`, `90deg`, `a/2`); empty: none. */
   rotation?: { value: Expr; evaluate(expr: Expr): EvalResult; onChange(expr: Expr | null): void };
-  detail?: { letter: string; radius: number; onRadius(r: number): void; onLetter(l: string): void };
+  detail?: {
+    letter: string;
+    radius: number;
+    onRadius(r: number): void;
+    onLetter(l: string): void;
+    /**
+     * The circle's centre on the parent view's plane (part mm), when it is a free point: the typed
+     * alternative to dragging the circle's handles (ADR-094).
+     */
+    center?: { x: number; y: number };
+    onCenter?(x: number, y: number): void;
+  };
   /** Views derived from this one (deleting removes them too). */
   dependents: number;
   onDelete(): void;
@@ -254,6 +265,40 @@ export function ViewInspector(p: ViewInspectorProps) {
               showValue={false}
             />
           </Field>
+          {p.detail.center && p.detail.onCenter ? (
+            <div className="grid grid-cols-2 gap-2">
+              <Field label="Centre X">
+                <ExpressionInput
+                  label="Detail circle centre X"
+                  value={mmFmt(p.detail.center.x)}
+                  evaluate={p.evaluate}
+                  unitHint="mm"
+                  onCommit={(t) => {
+                    const r = p.evaluate(t);
+                    if (r.ok && p.detail?.center) p.detail.onCenter?.(r.value, p.detail.center.y);
+                  }}
+                  size={sz}
+                  paramLinks="off"
+                  showValue={false}
+                />
+              </Field>
+              <Field label="Centre Y">
+                <ExpressionInput
+                  label="Detail circle centre Y"
+                  value={mmFmt(p.detail.center.y)}
+                  evaluate={p.evaluate}
+                  unitHint="mm"
+                  onCommit={(t) => {
+                    const r = p.evaluate(t);
+                    if (r.ok && p.detail?.center) p.detail.onCenter?.(p.detail.center.x, r.value);
+                  }}
+                  size={sz}
+                  paramLinks="off"
+                  showValue={false}
+                />
+              </Field>
+            </div>
+          ) : null}
         </Section>
       ) : null}
 

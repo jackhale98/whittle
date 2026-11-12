@@ -306,6 +306,20 @@ export function solveViews(input: SolveViewsInput): Map<Id, ViewSolution> {
   return out;
 }
 
+/**
+ * A solved detail view with its circle moved or resized (parent view plane, part mm), as `solveViews`
+ * would solve it with that centre and radius: same scale, frame and sheet position. The editor
+ * previews a circle drag with it (ADR-094) before the change is stored.
+ */
+export function detailWithCircle(v: SolvedView, center: Vec2, radius: number): SolvedView {
+  return {
+    ...v,
+    center,
+    clip: { center, radius },
+    bounds: { min: sub2(center, [radius, radius]), max: add2(center, [radius, radius]) },
+  };
+}
+
 /** The drawing worker request for a solved view. */
 export function projectionRequest(
   v: SolvedView,

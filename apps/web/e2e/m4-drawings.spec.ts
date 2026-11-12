@@ -710,8 +710,14 @@ test.describe('annotations', () => {
           : lane.layout.side === 'left'
             ? [-9, 0]
             : [9, 0];
-    const from = await sheetToPage(page, lane.text);
-    const to = await sheetToPage(page, [lane.text[0] + out[0], lane.text[1] + out[1]]);
+    // Press on the dimension line (the text drags apart from it, ADR-094).
+    if (!lane.line) throw new Error('no dimension line');
+    const at: [number, number] = [
+      (lane.line[0][0] * 3 + lane.line[1][0]) / 4,
+      (lane.line[0][1] * 3 + lane.line[1][1]) / 4,
+    ];
+    const from = await sheetToPage(page, at);
+    const to = await sheetToPage(page, [at[0] + out[0], at[1] + out[1]]);
     await drag(page, from, to);
     await expect
       .poll(async () => {
@@ -1107,10 +1113,25 @@ test.describe('drag cancel (gate 2)', () => {
     await page.mouse.move(from.x, from.y);
     await page.mouse.down();
     for (let i = 1; i <= 8; i++) await page.mouse.move(from.x, from.y + i * away);
-    // The drag is live: it has already moved the placement.
-    await expect.poll(layoutOf).not.toBe(original);
+    // The drag is a preview (ADR-094): the dimension is redrawn under the pointer, and the stored
+    // placement is not touched until release.
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () => document.querySelector('[data-transient="model"]')?.childElementCount ?? 0,
+        ),
+      )
+      .toBeGreaterThan(0);
+    expect(await layoutOf()).toBe(original);
     await page.keyboard.press('Escape');
     await page.mouse.up();
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () => document.querySelector('[data-transient="model"]')?.childElementCount ?? 0,
+        ),
+      )
+      .toBe(0);
     await expect.poll(layoutOf).toBe(original);
     const h = await app(page).history();
     expect(h.past.length).toBe(before);
@@ -1131,9 +1152,19 @@ test.describe('drag cancel (gate 2)', () => {
     await page.mouse.down();
     for (let i = 1; i <= 8; i++) await page.mouse.move(from.x + i * 6, from.y + i * 4);
     const x = async () => viewOf(await drawing(page).state(), 'base')?.position?.[0] ?? 0;
-    await expect.poll(async () => Math.abs((await x()) - x0)).toBeGreaterThan(1);
+    const moved = () =>
+      page.evaluate(
+        () =>
+          [...document.querySelectorAll<SVGElement>('[data-host]')].filter(
+            (e) => e.style.transform !== '',
+          ).length,
+      );
+    // The view is previewed under the pointer; its stored position is untouched (ADR-094).
+    await expect.poll(moved).toBeGreaterThan(0);
+    expect(Math.abs((await x()) - x0)).toBeLessThan(0.001);
     await page.keyboard.press('Escape');
     await page.mouse.up();
+    await expect.poll(moved).toBe(0);
     await expect.poll(async () => Math.abs((await x()) - x0)).toBeLessThan(0.001);
     expect(await historyLen(page)).toBe(before);
     expect((await app(page).history()).future.length).toBe(0);
@@ -1292,6 +1323,27 @@ test.describe('part properties table (P1)', () => {
     await page.mouse.up();
     await expect.poll(async () => (await tableOf(page))?.position[0]).toBe(320);
     expect(await historyLen(page)).toBe(n);
+    // Dragged for real: the table is previewed under the pointer (ADR-094), one step on release.
+    await built(page);
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    for (let i = 1; i <= 6; i++) await page.mouse.move(start.x - i * 8, start.y + i * 6);
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            [...document.querySelectorAll<SVGElement>('[data-source^="table:"]')].filter(
+              (e) => e.style.transform !== '',
+            ).length,
+        ),
+      )
+      .toBeGreaterThan(0);
+    expect((await tableOf(page))?.position[0]).toBe(320);
+    await page.mouse.up();
+    await expect.poll(async () => (await tableOf(page))?.position[0]).toBeLessThan(310);
+    expect(await historyLen(page)).toBe(n + 1);
+    expect((await app(page).history()).past.at(-1)?.label).toBe('Move table');
+    await built(page);
     // Delete and undo.
     await page.getByTestId('delete-table').click();
     await expect.poll(async () => ((await drawings(page))[0] as Drawing).tables.length).toBe(0);
@@ -1385,9 +1437,24 @@ test.describe('half and offset sections (P1)', () => {
     await page.mouse.move(hx, hy);
     await page.mouse.down();
     for (let i = 1; i <= 6; i++) await page.mouse.move(hx + i * 4, hy);
-    await expect.poll(cutJson).not.toBe(was);
+    // The cut line follows the pointer as a preview; nothing is stored until release (ADR-094).
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () => document.querySelector('[data-transient="overlay"]')?.childElementCount ?? 0,
+        ),
+      )
+      .toBeGreaterThan(0);
+    expect(await cutJson()).toBe(was);
     await page.keyboard.press('Escape');
     await page.mouse.up();
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () => document.querySelector('[data-transient="overlay"]')?.childElementCount ?? 0,
+        ),
+      )
+      .toBe(0);
     await expect.poll(cutJson).toBe(was);
     expect(await historyLen(page)).toBe(n);
     // The sheet is rebuilt from the restored cut before the next press.
@@ -1548,5 +1615,440 @@ test.describe('rotate a base view (P1)', () => {
     await field.fill('5 mm');
     await field.press('Enter');
     expect(await historyLen(page)).toBe(before + 1);
+  });
+});
+
+// ------------------------------------------------------------------------------------------------
+// Drawing usability after the M4 release (ADR-094): drags are previews, dimension text moves, and a
+// detail's circle can be resized.
+// ------------------------------------------------------------------------------------------------
+
+type P2 = [number, number];
+const unit = (a: P2, b: P2): P2 => {
+  const l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+  return [(b[0] - a[0]) / l, (b[1] - a[1]) / l];
+};
+/** A screen-pixel step along a sheet direction (sheet y is up, the page's is down). */
+const step = (u: P2, px: number) => ({ x: u[0] * px, y: -u[1] * px });
+const mid = (b: { min: P2; max: P2 }): P2 => [(b.min[0] + b.max[0]) / 2, (b.min[1] + b.max[1]) / 2];
+const transientCount = (page: Page) =>
+  page.evaluate(() => document.querySelector('[data-transient="model"]')?.childElementCount ?? 0);
+const movedGroups = (page: Page) =>
+  page.evaluate(
+    () =>
+      [...document.querySelectorAll<SVGElement>('[data-host]')].filter(
+        (e) => e.style.transform !== '',
+      ).length,
+  );
+/** Screen pixels per sheet mm. */
+const pxPerMm = async (page: Page) => {
+  const a = await sheetToPage(page, [0, 0]);
+  const b = await sheetToPage(page, [10, 0]);
+  return (b.x - a.x) / 10;
+};
+
+test.describe('drag previews (ADR-094)', () => {
+  test('a view drag writes nothing and rebuilds nothing until release, then is one undo step', async ({
+    page,
+  }) => {
+    await openDemo(page);
+    await newDrawing(page);
+    await addStandardViews(page);
+    await importAll(page);
+    const s0 = await built(page);
+    const front = viewOf(s0, 'base');
+    if (!front?.position) throw new Error('no front view');
+    const edge = (await drawing(page).edges(front.id)).find((e) => e.kind === 'line');
+    if (!edge) throw new Error('no edge');
+    const from = await sheetToPage(page, edge.at);
+    const before = await historyLen(page);
+    const doc0 = JSON.stringify(((await drawings(page))[0] as Drawing).views);
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    for (let i = 1; i <= 12; i++) await page.mouse.move(from.x + i * 5, from.y + i * 3);
+    // The preview: the view's groups (lines, dimensions, handles) are translated on the sheet.
+    await expect.poll(() => movedGroups(page)).toBeGreaterThan(3);
+    // Nothing stored, nothing rebuilt, nothing in history.
+    expect(await historyLen(page)).toBe(before);
+    expect(JSON.stringify(((await drawings(page))[0] as Drawing).views)).toBe(doc0);
+    const builds = (await drawing(page).state()).builds;
+    await page.mouse.move(from.x + 90, from.y + 50);
+    expect((await drawing(page).state()).builds).toBe(builds);
+    await page.mouse.up();
+    // Release: one commit, one step, and the preview gives way to the rebuilt sheet.
+    await expect.poll(() => historyLen(page)).toBe(before + 1);
+    expect((await app(page).history()).past.at(-1)?.label).toBe('Move view');
+    const s1 = await built(page);
+    expect(viewOf(s1, 'base')?.position?.[0]).toBeGreaterThan(front.position[0] + 5);
+    await expect.poll(() => movedGroups(page)).toBe(0);
+    await page.getByTestId('drawing-undo').click();
+    await expect
+      .poll(async () => viewOf(await drawing(page).state(), 'base')?.position?.[0])
+      .toBeCloseTo(front.position[0], 3);
+  });
+
+  test('a dimension line drags as a preview too: the stored placement is unchanged until release', async ({
+    page,
+  }) => {
+    await openDemo(page);
+    await newDrawing(page);
+    await addStandardViews(page);
+    await importAll(page);
+    const pl = (await drawing(page).placements()).find(
+      (p) => p.layout.kind === 'lane' && p.line && p.text,
+    );
+    if (!pl?.line || !pl.text || pl.layout.kind !== 'lane') throw new Error('no linear dimension');
+    const u = unit(pl.line[0], pl.line[1]);
+    // Press on the line itself (not the text): near its first arrow.
+    const grab = await sheetToPage(page, [pl.line[0][0] + u[0] * 2, pl.line[0][1] + u[1] * 2]);
+    // Outwards: up for a top lane, left for a left one (the line's left normal), the other way else.
+    const away = pl.layout.side === 'top' || pl.layout.side === 'left' ? 1 : -1;
+    const across: P2 = [-u[1] * away, u[0] * away];
+    const before = await historyLen(page);
+    const layout0 = JSON.stringify(pl.layout);
+    await page.mouse.move(grab.x, grab.y);
+    await page.mouse.down();
+    const d = step(across, 1);
+    for (let i = 1; i <= 24; i++) await page.mouse.move(grab.x + d.x * i * 4, grab.y + d.y * i * 4);
+    await expect.poll(() => transientCount(page)).toBeGreaterThan(0);
+    expect(await historyLen(page)).toBe(before);
+    expect(JSON.stringify((await placementOf(page, pl.id))?.layout)).toBe(layout0);
+    await page.mouse.up();
+    await expect.poll(() => historyLen(page)).toBe(before + 1);
+    expect(JSON.stringify((await placementOf(page, pl.id))?.layout)).not.toBe(layout0);
+    await built(page);
+    await expect.poll(() => transientCount(page)).toBe(0);
+  });
+});
+
+test.describe('dimension text (ADR-094)', () => {
+  /** The first imported linear dimension with a line. */
+  async function linearDimension(page: Page) {
+    await openDemo(page);
+    await newDrawing(page);
+    await addStandardViews(page);
+    await importAll(page);
+    const pl = (await drawing(page).placements()).find(
+      (p) => p.layout.kind === 'lane' && p.line && p.box,
+    );
+    if (!pl?.line || !pl.box) throw new Error('no linear dimension');
+    return pl;
+  }
+  const textOf = async (page: Page, id: string) => {
+    const p = (await drawing(page).placements()).find((x) => x.id === id);
+    if (!p?.box || !p.line) throw new Error('no placement');
+    return { centre: mid(p.box), line: p.line, stored: p.textPlacement };
+  };
+  /** Signed distance of a point from the dimension line (positive: its left, which reads "above"). */
+  const across = (line: [P2, P2], p: P2) => {
+    const u = unit(line[0], line[1]);
+    return (p[0] - line[0][0]) * -u[1] + (p[1] - line[0][1]) * u[0];
+  };
+  const along = (line: [P2, P2], p: P2) => {
+    const u = unit(line[0], line[1]);
+    return (p[0] - line[0][0]) * u[0] + (p[1] - line[0][1]) * u[1];
+  };
+
+  test('dragging the text along its line shifts it; past an extension line it goes outside', async ({
+    page,
+  }) => {
+    const pl = await linearDimension(page);
+    const t0 = await textOf(page, pl.id);
+    const u = unit(t0.line[0], t0.line[1]);
+    const span = Math.hypot(t0.line[1][0] - t0.line[0][0], t0.line[1][1] - t0.line[0][1]);
+    const grab = await sheetToPage(page, t0.centre);
+    const before = await historyLen(page);
+    const k = await pxPerMm(page);
+    // A short drag along the line: the text shifts by that much and the line is unchanged.
+    await page.mouse.move(grab.x, grab.y);
+    await page.mouse.down();
+    const d = step(u, 6 * k);
+    for (let i = 1; i <= 8; i++)
+      await page.mouse.move(grab.x + (d.x * i) / 8, grab.y + (d.y * i) / 8);
+    await expect(page.getByTestId('text-side-hint')).toBeVisible();
+    expect(await historyLen(page)).toBe(before);
+    await page.mouse.up();
+    await expect.poll(async () => (await placementOf(page, pl.id))?.text?.shift).toBeCloseTo(6, 0);
+    expect((await app(page).history()).past.at(-1)?.label).toBe('Move dimension text');
+    await built(page);
+    const t1 = await textOf(page, pl.id);
+    expect(along(t1.line, t1.centre) - along(t0.line, t0.centre)).toBeCloseTo(6, 0);
+    expect(t1.line).toEqual(t0.line);
+
+    // Past the extension line: the text sits outside the measured span, the line reaching it.
+    const grab1 = await sheetToPage(page, t1.centre);
+    const far = step(u, (span / 2 + 14) * k);
+    await page.mouse.move(grab1.x, grab1.y);
+    await page.mouse.down();
+    for (let i = 1; i <= 10; i++)
+      await page.mouse.move(grab1.x + (far.x * i) / 10, grab1.y + (far.y * i) / 10);
+    await page.mouse.up();
+    await expect
+      .poll(async () => (await placementOf(page, pl.id))?.text?.shift ?? 0)
+      .toBeGreaterThan(span / 2);
+    await built(page);
+    const t2 = await textOf(page, pl.id);
+    expect(along(t2.line, t2.centre)).toBeGreaterThan(along(t2.line, t2.line[1]));
+    // The measured span did not change: the arrows stay on the extension lines.
+    expect(t2.line[0][0]).toBeCloseTo(t0.line[0][0], 6);
+    expect(t2.line[1][1]).toBeCloseTo(t0.line[1][1], 6);
+  });
+
+  test('dragging it across the line snaps to above, inline or below, with a hint', async ({
+    page,
+  }) => {
+    const pl = await linearDimension(page);
+    const t0 = await textOf(page, pl.id);
+    const u = unit(t0.line[0], t0.line[1]);
+    const n: P2 = [-u[1], u[0]];
+    const k = await pxPerMm(page);
+    // The text starts above the line (ISO).
+    expect(across(t0.line, t0.centre)).toBeGreaterThan(0);
+    const hint = page.getByTestId('text-side-hint');
+    const dragBy = async (mm: number) => {
+      const g = await sheetToPage(page, (await textOf(page, pl.id)).centre);
+      const d = step(n, mm * k);
+      await page.mouse.move(g.x, g.y);
+      await page.mouse.down();
+      for (let i = 1; i <= 8; i++) await page.mouse.move(g.x + (d.x * i) / 8, g.y + (d.y * i) / 8);
+    };
+    await dragBy(-9);
+    await expect(hint).toHaveAttribute('data-side', 'below');
+    await page.mouse.up();
+    await expect.poll(async () => (await placementOf(page, pl.id))?.text?.side).toBe('below');
+    await built(page);
+    const t1 = await textOf(page, pl.id);
+    expect(across(t1.line, t1.centre)).toBeLessThan(-1);
+    // Back onto the line: inline.
+    await dragBy(Math.abs(across(t1.line, t1.centre)));
+    await expect(hint).toHaveAttribute('data-side', 'inline');
+    await page.mouse.up();
+    await expect.poll(async () => (await placementOf(page, pl.id))?.text?.side).toBe('inline');
+    await built(page);
+    // Each drag was one undo step; undo walks back.
+    const h = await app(page).history();
+    expect(h.past.filter((e) => e.label === 'Move dimension text').length).toBe(2);
+    await page.getByTestId('drawing-undo').click();
+    await expect.poll(async () => (await placementOf(page, pl.id))?.text?.side).toBe('below');
+    await page.getByTestId('drawing-undo').click();
+    await expect.poll(async () => (await placementOf(page, pl.id))?.text?.side).toBeUndefined();
+  });
+
+  test('the arrow keys move the selected dimension text, and a run of them is one undo step', async ({
+    page,
+  }) => {
+    const pl = await linearDimension(page);
+    const t0 = await textOf(page, pl.id);
+    const g = await sheetToPage(page, t0.centre);
+    await page.mouse.click(g.x, g.y);
+    await expect.poll(async () => (await drawing(page).state()).selected?.id).toBe(pl.id);
+    const u = unit(t0.line[0], t0.line[1]);
+    const horizontal = Math.abs(u[0]) >= Math.abs(u[1]);
+    const key = horizontal ? 'ArrowRight' : 'ArrowUp';
+    const before = await historyLen(page);
+    await page.keyboard.press(key);
+    await page.keyboard.press(key);
+    await page.keyboard.press(`Shift+${key}`);
+    await expect.poll(async () => (await placementOf(page, pl.id))?.text?.shift).toBeCloseTo(7, 1);
+    expect(await historyLen(page)).toBe(before + 1);
+    await built(page);
+    const t1 = await textOf(page, pl.id);
+    expect(Math.abs(along(t1.line, t1.centre) - along(t0.line, t0.centre))).toBeCloseTo(7, 0);
+    // Across the line: the text steps from above, through inline, to below.
+    const down = horizontal ? 'ArrowDown' : 'ArrowRight';
+    await page.keyboard.press(down);
+    await expect.poll(async () => (await placementOf(page, pl.id))?.text?.side).toBe('inline');
+    await page.keyboard.press(down);
+    await expect.poll(async () => (await placementOf(page, pl.id))?.text?.side).toBe('below');
+    // Without a dimension selected, the arrows pan the sheet again.
+    await page.keyboard.press('Escape');
+    await expect.poll(async () => (await drawing(page).state()).selected).toBeNull();
+  });
+
+  test('the inspector places the text without dragging: above, inline, below, and a typed shift', async ({
+    page,
+  }) => {
+    const pl = await linearDimension(page);
+    const t0 = await textOf(page, pl.id);
+    const g = await sheetToPage(page, t0.centre);
+    await page.mouse.click(g.x, g.y);
+    await expect.poll(async () => (await drawing(page).state()).selected?.id).toBe(pl.id);
+    const group = page.getByRole('radiogroup', { name: 'Dimension text position' });
+    await group.getByRole('radio', { name: 'Below' }).click();
+    await expect.poll(async () => (await placementOf(page, pl.id))?.text?.side).toBe('below');
+    await built(page);
+    const t1 = await textOf(page, pl.id);
+    expect(across(t1.line, t1.centre)).toBeLessThan(-1);
+    const shift = page.getByLabel('Text shift along the line (mm)');
+    await shift.fill('2*5');
+    await shift.press('Enter');
+    await expect.poll(async () => (await placementOf(page, pl.id))?.text?.shift).toBe(10);
+    await group.getByRole('radio', { name: 'Auto' }).click();
+    await expect.poll(async () => (await placementOf(page, pl.id))?.text?.side).toBeUndefined();
+    await a11y(page);
+  });
+
+  test('a radial dimension and a leader drag their text freely', async ({ page }) => {
+    await openDemo(page);
+    await newDrawing(page);
+    await addStandardViews(page);
+    await importAll(page);
+    const all = await drawing(page).placements();
+    let tried = 0;
+    for (const kind of ['radial', 'leader']) {
+      const pl = all.find((p) => p.layout.kind === kind && p.text);
+      if (!pl?.text) continue;
+      tried++;
+      const from = await sheetToPage(page, pl.text);
+      const layout0 = JSON.stringify((await placementOf(page, pl.id))?.layout);
+      const before = await historyLen(page);
+      await page.mouse.move(from.x, from.y);
+      await page.mouse.down();
+      for (let i = 1; i <= 8; i++) await page.mouse.move(from.x + i * 5, from.y - i * 4);
+      expect(JSON.stringify((await placementOf(page, pl.id))?.layout)).toBe(layout0);
+      await page.mouse.up();
+      await expect.poll(() => historyLen(page)).toBe(before + 1);
+      expect(JSON.stringify((await placementOf(page, pl.id))?.layout)).not.toBe(layout0);
+      await built(page);
+    }
+    expect(tried).toBeGreaterThan(0);
+  });
+
+  test('an angle dimension drags its text along the arc and its radius in and out', async ({
+    page,
+  }) => {
+    await openDemo(page);
+    await newDrawing(page);
+    await addStandardViews(page);
+    const front = viewOf(await built(page), 'base');
+    if (!front) throw new Error('no front view');
+    const [e1, e2] = await cornerEdges(page, front.id);
+    await page.locator('[data-tool="angle"]').click();
+    await click(page, e1.at);
+    await click(page, e2.at);
+    await expect.poll(async () => (await annotations(page)).length).toBe(1);
+    await built(page);
+    const pl = (await drawing(page).placements()).find((p) => p.layout.kind === 'arc');
+    if (!pl?.box) throw new Error('no angle');
+    const r0 = (await placementOf(page, pl.id))?.layout;
+    const from = await sheetToPage(page, mid(pl.box));
+    await page.locator('[data-tool="select"]').click();
+    const before = await historyLen(page);
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    for (let i = 1; i <= 10; i++) await page.mouse.move(from.x + i * 8, from.y - i * 6);
+    expect(await historyLen(page)).toBe(before);
+    await page.mouse.up();
+    await expect.poll(() => historyLen(page)).toBe(before + 1);
+    const p1 = await placementOf(page, pl.id);
+    expect(JSON.stringify(p1?.layout)).not.toBe(JSON.stringify(r0));
+  });
+});
+
+test.describe('detail circle (ADR-094)', () => {
+  async function withDetail(page: Page) {
+    await openDemo(page);
+    await newDrawing(page);
+    await addStandardViews(page);
+    const s = await built(page);
+    const tv = viewOf(s, 'projected', 'top');
+    if (!tv?.outline) throw new Error('no top view');
+    await page.locator('[data-tool="detail"]').click();
+    const cx = tv.outline.min[0] + 14;
+    const cy = (tv.outline.min[1] + tv.outline.max[1]) / 2;
+    await drag(page, await sheetToPage(page, [cx, cy]), await sheetToPage(page, [cx + 8, cy]));
+    await expect
+      .poll(async () => (await drawing(page).state()).views.some((v) => v.kind === 'detail'))
+      .toBe(true);
+    const s2 = await built(page);
+    const detail = viewOf(s2, 'detail');
+    if (!detail) throw new Error('no detail');
+    // Select it from the Views panel.
+    await panelTab(page, 'Views').click();
+    await page.locator(`[data-view-row="${detail.id}"]`).click();
+    await expect.poll(async () => (await drawing(page).state()).selected?.id).toBe(detail.id);
+    // Settled on the exact edges, so no refinement lands during a drag.
+    await drawing(page).exact();
+    await expect.poll(async () => (await drawing(page).state()).refining).toBe(false);
+    return detail;
+  }
+  const circle = async (page: Page, id: string) =>
+    (await drawing(page).state()).views.find((v) => v.id === id)?.clip;
+  const grip = (page: Page, kind: 'radius' | 'center') =>
+    page.locator(`[data-testid="detail-handle"][data-kind="${kind}"] circle`).first();
+  const centreOf = async (el: ReturnType<typeof grip>) => {
+    const b = await el.boundingBox();
+    if (!b) throw new Error('no handle');
+    return { x: b.x + b.width / 2, y: b.y + b.height / 2 };
+  };
+
+  test('the selected detail shows a radius and a centre handle on its parent; the radius drags live and commits once', async ({
+    page,
+  }) => {
+    const detail = await withDetail(page);
+    const c0 = await circle(page, detail.id);
+    if (!c0) throw new Error('no circle');
+    await expect(page.getByTestId('detail-handle')).toHaveCount(2);
+    const from = await centreOf(grip(page, 'radius'));
+    const before = await historyLen(page);
+    const builds = (await drawing(page).state()).builds;
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    for (let i = 1; i <= 12; i++) await page.mouse.move(from.x + i * 3, from.y);
+    // Live: the detail view is redrawn clipped to the new circle, with nothing stored or rebuilt.
+    await expect.poll(() => transientCount(page)).toBeGreaterThan(0);
+    await expect(page.locator('[data-transient="model"] [clip-path]')).toHaveCount(1);
+    expect(await historyLen(page)).toBe(before);
+    expect((await circle(page, detail.id))?.radius).toBeCloseTo(c0.radius, 6);
+    expect((await drawing(page).state()).builds).toBe(builds);
+    await page.mouse.up();
+    await expect.poll(() => historyLen(page)).toBe(before + 1);
+    expect((await app(page).history()).past.at(-1)?.label).toBe('Change detail size');
+    await built(page);
+    const c1 = await circle(page, detail.id);
+    expect(c1?.radius ?? 0).toBeGreaterThan(c0.radius + 1);
+    expect(c1?.center[0]).toBeCloseTo(c0.center[0], 6);
+    await expect.poll(() => transientCount(page)).toBe(0);
+    // Escape in the middle leaves nothing behind.
+    const r2 = c1?.radius ?? 0;
+    const f2 = await centreOf(grip(page, 'radius'));
+    const h2 = await historyLen(page);
+    await page.mouse.move(f2.x, f2.y);
+    await page.mouse.down();
+    for (let i = 1; i <= 6; i++) await page.mouse.move(f2.x - i * 4, f2.y);
+    await expect.poll(() => transientCount(page)).toBeGreaterThan(0);
+    await page.keyboard.press('Escape');
+    await page.mouse.up();
+    await expect.poll(() => transientCount(page)).toBe(0);
+    expect(await historyLen(page)).toBe(h2);
+    expect((await circle(page, detail.id))?.radius).toBeCloseTo(r2, 6);
+  });
+
+  test('the centre handle moves the circle; the inspector has typed radius and centre fields', async ({
+    page,
+  }) => {
+    const detail = await withDetail(page);
+    const c0 = await circle(page, detail.id);
+    if (!c0) throw new Error('no circle');
+    const from = await centreOf(grip(page, 'center'));
+    const before = await historyLen(page);
+    await drag(page, from, { x: from.x + 24, y: from.y + 10 });
+    await expect.poll(() => historyLen(page)).toBe(before + 1);
+    expect((await app(page).history()).past.at(-1)?.label).toBe('Move detail circle');
+    await built(page);
+    const c1 = await circle(page, detail.id);
+    expect(c1?.center[0] ?? 0).toBeGreaterThan(c0.center[0] + 1);
+    expect(c1?.radius).toBeCloseTo(c0.radius, 6);
+    // Typed, with units and expressions.
+    const rf = page.getByLabel('Detail circle radius');
+    await rf.fill('2*5');
+    await rf.press('Enter');
+    await expect.poll(async () => (await circle(page, detail.id))?.radius).toBeCloseTo(10, 3);
+    const cx = page.getByLabel('Detail circle centre X');
+    await cx.fill('1in');
+    await cx.press('Enter');
+    await expect.poll(async () => (await circle(page, detail.id))?.center[0]).toBeCloseTo(25.4, 3);
+    await expect(page.getByLabel('Detail circle centre Y')).toBeVisible();
+    await a11y(page);
   });
 });

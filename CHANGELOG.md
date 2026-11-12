@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **Drawing sheet: dragging is smooth, dimension text moves, a detail circle can be resized** (owner feedback after M4, ADR-094 amendment).
+  - **Drags:** a drag is drawn at display rate and writes nothing until you let go: one undo step, Escape leaves nothing. Frame time on the bracket drawing fell from about 190 to 300 ms to under 10 ms (p95), on the tablet tier from about 290 ms to about 13 ms. Views, dimensions, tables, cut-line vertices and detail circles.
+  - **Dimension text:** drag it along its line (past an extension line it goes outside), or across the line to snap above, inline or below, with a hint. Arrow keys move the selected dimension's text; the inspector has the same as Text position and a typed shift. Angle, radial and leader text drag freely. Touch: a 44 px target. SVG, PDF and DXF carry the side.
+  - **Detail circle:** a selected detail view has a radius handle and a centre handle on its parent, the detail redraws live, one undo step; the inspector has radius and centre fields.
+
 - **Reference planes, axes and points are drawn in the model view** (owner report: a plane made in the model view was not shown). A plane is a translucent square with an outline and its name, an axis is a dash-dot line, a point a crosshair, in a teal reference colour in both themes, drawn after the bodies without ever hiding them. Click one to select it: a plane starts a sketch, an axis feeds a revolve or a pattern, a point is a point reference. Every plane, axis and point row in the feature tree has an eye (every shell, 44 px on touch); hiding is document data, survives a reload and makes the reference not pickable in the view. **Show origin planes** / **Hide origin planes** in the palette (per device) draws the XY, XZ, YZ planes and the X, Y, Z axes; they also appear while the sketch plane chooser is open. The palette's Plane command no longer starts a pick that hid the new plane. ADR-093.
 
 - M4 gate follow-ups (ADR-092 amendment):
