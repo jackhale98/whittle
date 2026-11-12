@@ -3451,3 +3451,16 @@ A curved outline that is not an arc (a fillet's torus, or a piece of a sphere's 
 - **A button's radial menu** opens at the last pointer position (the canvas centre if none), like the key; pressing the button again closes it.
 - **Axis bars use `role="meter"`** on a div (signed bar from the centre), since a native `<meter>` cannot draw from the middle.
 - **Test hook:** `__wrenApp.motion.attach()` plugs in a fake `MotionInput` for E2E and `window.__wrenMotionFake` drives it.
+
+## ADR-097: the shell's start-up time is the gate; the initial-route JS cap is a 500 kB backstop (owner, 2026-11-12)
+
+**Context.** PLAN §10 capped initial-route JS at 250 kB gzip as a proxy for "interactive shell within 1.5 s, cold, fast 4G, mid-range laptop". The cap was set by the lead, not by an outside constraint, and it became the thing optimised for: several ADRs (070, 075 and many bundle notes) exist only to stay under it, agents chased fractions of a kB against a 237 kB working target, and small panels were split into lazy chunks that flash "Loading…" on first open. Meanwhile a first visit downloads several MB of kernel Wasm (its own ≤ 6 s budget), repeat visits load the shell from the service-worker cache with V8's code cache, and roughly 250 kB more gzip costs about 0.2–0.4 s cold on fast 4G on a laptop (an estimate, not measured).
+
+**Decision (owner).**
+
+1. The release gate for start-up is the measured cold shell time-to-interactive (`apps/web/e2e/perf/shell.perf.ts`, fast 4G, budget 1.5 s × the CI factor of ADR-010), which already gates the deploy.
+2. The initial-route JS cap becomes a **500 kB gzip backstop** (`apps/web/.size-limit.mjs`, bundle report). There is no tighter working target.
+3. The structural rule stays: large editors and optional subsystems (drawings, simulation, 3D-mouse input, sync providers) load on demand, so start-up stays flat as Wren grows. Small panels no longer need to be split just to save bytes.
+4. If the TTI probe starts failing, or real-device start-up regresses, trim the initial route first.
+
+**Consequences.** Less engineering time on byte-shaving; fewer first-open loading flashes become acceptable to remove. The bundle report still lists every chunk, so growth stays visible.

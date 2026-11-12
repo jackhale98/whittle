@@ -229,7 +229,7 @@ currently boots the kernel on every tier at startup (`Workbench.bootKernel`).
 
 | Budget (PLAN §10) | Where it is checked |
 | --- | --- |
-| Initial-route JavaScript ≤ 250 kB gzip | `size-limit` in the CI `build` job (`apps/web/.size-limit.mjs`) |
+| Initial-route JavaScript ≤ 500 kB gzip (backstop, ADR-097; the gate is the shell TTI probe) | `size-limit` in the CI `build` job (`apps/web/.size-limit.mjs`) |
 | Shell visible in ≤ 1.5 s (warm) | Asserted in `apps/web/e2e/perf/shell.perf.ts` (`pnpm perf`) |
 | Regeneration after the last feature of a 50-feature part ≤ 300 ms | Asserted (median) in `packages/kernel-client/test/regen/cache.test.ts` |
 | Sketch drag solve ≤ 4 ms for 200 entities | Asserted (median) in `packages/sketch/test/drag.test.ts`; limit relaxed to 12 ms on CI |
