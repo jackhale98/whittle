@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **3D mouse settings, diagnostics and buttons** (M4.5, ADR-096 amendment; the UI half, the device layer is separate).
+  - **Settings, Navigation, 3D mouse:** **Pair a 3D mouse** (one click, the browser asks once), the paired device's name, sensitivity 0.25 to 4, a dead zone, rotate and pan/zoom on or off, dominant axis, and an invert switch for each of the six axes. Values change in place and are remembered on this device.
+  - **3D mouse diagnostics** (Settings, or the command palette): always says what is going on and the fix. A browser that cannot read a 3D mouse, a device not yet paired, one that is unplugged, one a vendor driver may be holding (close the driver's app or allow browser access in its settings), and a live device with six axis bars and the buttons pressed. It also explains doubled zoom: turn off the driver's wheel emulation for the browser.
+  - **Buttons:** the keymap editor lists the 3D mouse's buttons as you press them, each with a command: fit, radial menu, repeat last, front, top, right or isometric view, toggle rotation or dominant axis, or nothing. Button 1 opens the radial menu and button 2 fits by default. The mapping is remembered on this device.
+
 - **Drawings: more things to dimension** (M4.1, ADR-095 amendment).
   - **Centre lines while measuring:** with the Dimension, Angle or Ordinate tool on, the origin's axes, each sketch's origin and axes, construction points, reference planes, axes and points, and a circular pattern's pitch circle show as thin chain lines over the views. Pick one like an edge. A dimension that uses one draws it on the sheet. A model edge always wins over a centre line under the pointer.
   - **Circles wait for a second pick:** pick another circle for the centre distance, or the same circle again for its diameter (Alt for a radius, Shift for its size as a plain linear dimension across it). The inspector switches a diameter between **Ø**, **↔ linear across** and **↕ linear across**, one undo step each.

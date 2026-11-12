@@ -132,6 +132,12 @@ export function App({ wb }: { wb: Workbench }) {
         run: () => wb.openSettings('keyboard'),
       },
       {
+        id: 'motion-diagnostics',
+        label: '3D mouse diagnostics',
+        hint: 'Pair it, see the axes, fix a conflict',
+        run: () => wb.openSettings('motion'),
+      },
+      {
         id: 'radial-settings',
         label: 'Radial menu settings',
         hint: 'Choose what the right-click wheel offers',

@@ -47,6 +47,7 @@ import {
   type ExportRequest,
   eventBindingId,
   type KeymapOverrides,
+  type MotionInputLike,
   type SheetSnap,
   type SheetTabId,
   type ToolId,
@@ -79,6 +80,7 @@ import type { BubbleActionId } from './gestures';
 import { commandFor, type InputSettings, loadInput } from './input';
 import * as keys from './keyboard';
 import { MeasureTool } from './measure-tool';
+import type { MotionPrefs } from './motion';
 import { type Observable, observable } from './observable';
 import * as pointer from './pointer';
 import { PointerDowns } from './pointers';
@@ -1251,6 +1253,27 @@ export class Workbench {
 
   setKeymapOverrides(overrides: KeymapOverrides): void {
     keys.setKeymapOverrides(this, overrides);
+  }
+
+  // ------------------------------------------------------------------ 3D mouse (M4.5, ADR-096)
+
+  /**
+   * Per-device 3D mouse settings and button mapping (`wren.motion`, `wren.motionButtons`). Null
+   * until the 3D mouse code loads (it is a lazy chunk: the initial route stays within budget).
+   */
+  readonly motionPrefs: Observable<MotionPrefs | null> = observable<MotionPrefs | null>(null);
+  /** The device layer, once the viewport side hands it in (`setMotionInput`). */
+  readonly motionInput: Observable<MotionInputLike | null> = observable<MotionInputLike | null>(
+    null,
+  );
+  motionUnwatch: (() => void) | null = null;
+
+  /**
+   * Plug the device layer in (the integration point for the viewport's MotionInput). Loads the
+   * 3D mouse chunk, pushes the stored settings to the device and starts listening to its buttons.
+   */
+  setMotionInput(input: MotionInputLike | null): void {
+    void import('./motion').then((m) => m.setMotionInput(this, input));
   }
 
   openSettings(tab: SettingsTab = 'navigation'): void {
