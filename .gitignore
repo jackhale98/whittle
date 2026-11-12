@@ -17,3 +17,7 @@ test-results/
 __pycache__/
 apps/web/bundle-report.*
 .venv-dxf
+
+# Built kernels can be symlinked from another checkout (agent worktrees): a symlink is a file,
+# which `dist/` does not match.
+dist
