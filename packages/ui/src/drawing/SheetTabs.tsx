@@ -52,6 +52,14 @@ export function SheetTabs({
   const index = sheets.findIndex((s) => s.id === current);
   const cur = index >= 0 ? sheets[index] : undefined;
 
+  // The current tab stays in sight when the strip scrolls (many sheets, a narrow screen).
+  useEffect(() => {
+    if (!current) return;
+    const tabs = list.current?.querySelectorAll<HTMLElement>('[data-sheet-tab]') ?? [];
+    const el = [...tabs].find((t) => t.dataset.sheetTab === current);
+    el?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+  }, [current]);
+
   // A sheet that went away (undo, a peer's edit) takes its pending rename or confirmation along.
   useEffect(() => {
     if (renaming && !sheets.some((s) => s.id === renaming.id)) setRenaming(null);
