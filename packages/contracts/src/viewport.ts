@@ -296,6 +296,14 @@ export interface NavigationOptions {
   invertZoom: boolean;
   /** Orbit gain multiplier, 0.25–4. Default 1. */
   rotateSpeed: number;
+  /**
+   * ADR-098 (owner, 2026-11-12): `orthographic` (default) keeps parallel edges parallel, so a
+   * hole seen straight on shows no wall and sizes do not change with depth, as MCAD users
+   * expect. `perspective` is the 35° camera Wren used before, for presentation. Every navigation
+   * input (wheel and pinch zoom toward the cursor, cursor-pivot orbit, pan, fit, 3D mouse) behaves
+   * the same in both; switching keeps what is on screen (same target, same apparent size).
+   */
+  projection: 'orthographic' | 'perspective';
 }
 
 export const DEFAULT_NAVIGATION: NavigationOptions = {
@@ -305,6 +313,7 @@ export const DEFAULT_NAVIGATION: NavigationOptions = {
   showPivot: true,
   invertZoom: false,
   rotateSpeed: 1,
+  projection: 'orthographic',
 };
 
 /** A screen rectangle in canvas CSS px (any corner order). */
