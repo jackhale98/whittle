@@ -131,6 +131,7 @@ describe('navigation persistence', () => {
       showPivot: false,
       invertZoom: true,
       rotateSpeed: 2,
+      projection: 'perspective',
     };
     writeNavigation(v);
     expect(readNavigation()).toEqual(v);

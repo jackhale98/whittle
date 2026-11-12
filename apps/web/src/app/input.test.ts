@@ -20,6 +20,7 @@ const navigation: NavigationOptions = {
   showPivot: true,
   invertZoom: false,
   rotateSpeed: 1,
+  projection: 'orthographic',
 };
 
 const settings = (keymap = {}): InputSettings => ({

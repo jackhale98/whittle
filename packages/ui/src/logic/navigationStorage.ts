@@ -32,6 +32,10 @@ export function sanitizeNavigation(raw: unknown): NavigationOptions {
     showPivot: typeof o.showPivot === 'boolean' ? o.showPivot : d.showPivot,
     invertZoom: typeof o.invertZoom === 'boolean' ? o.invertZoom : d.invertZoom,
     rotateSpeed: Math.min(4, Math.max(0.25, speed)),
+    projection:
+      o.projection === 'perspective' || o.projection === 'orthographic'
+        ? o.projection
+        : d.projection,
   };
 }
 
