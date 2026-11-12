@@ -213,7 +213,7 @@ describe('3D mouse settings section', () => {
     expect(screen.getByTestId('motion-device')).toHaveTextContent('Paired: Test 3D mouse');
     await userEvent.click(screen.getByRole('button', { name: 'Pair a 3D mouse' }));
     expect(pair).toHaveBeenCalledOnce();
-    await userEvent.click(screen.getByRole('switch', { name: 'Invert Rz' }));
+    await userEvent.click(screen.getByRole('switch', { name: 'Reverse twist (Rz)' }));
     expect(change).toHaveBeenLastCalledWith({
       ...DEFAULT_MOTION_SETTINGS,
       invert: { ...DEFAULT_MOTION_SETTINGS.invert, rz: true },

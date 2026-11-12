@@ -27,6 +27,16 @@ const AXIS_LABEL: Record<MotionAxis, string> = {
   rz: 'Tilt left / right',
 };
 /** Screen-axis naming used by the contract: x right, y up, z toward the viewer. */
+/** What each axis does with the cap, for the reverse switches (owner: "Invert Rx" was not found). */
+const AXIS_ACTION: Record<MotionAxis, string> = {
+  tx: 'slide left/right',
+  ty: 'lift/press',
+  tz: 'push/pull',
+  rx: 'tilt forward/back',
+  ry: 'tilt left/right',
+  rz: 'twist',
+};
+
 const AXIS_SHORT: Record<MotionAxis, string> = {
   tx: 'X',
   ty: 'Y',
@@ -194,12 +204,14 @@ export function MotionSettingsSection({
           className={sw}
         />
         <fieldset className="m-0 flex min-w-0 flex-col gap-1 border-0 p-0">
-          <legend className="mb-1 text-xs font-medium text-fg-muted">Invert axes</legend>
-          <div className="grid grid-cols-2 gap-x-3">
+          <legend className="mb-1 text-xs font-medium text-fg-muted">
+            Reverse a direction (if a move goes the wrong way)
+          </legend>
+          <div className="grid grid-cols-1 gap-x-3">
             {MOTION_AXES.map((a) => (
               <Switch
                 key={a}
-                label={`Invert ${AXIS_SHORT[a]}`}
+                label={`Reverse ${AXIS_ACTION[a]} (${AXIS_SHORT[a]})`}
                 checked={value.invert[a]}
                 onChange={(v) => set({ invert: { ...value.invert, [a]: v } })}
                 className={touch ? 'min-h-11' : 'min-h-7'}

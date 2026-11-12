@@ -65,7 +65,7 @@ test('Settings -> Navigation -> 3D mouse: pair from a click, values persist acro
   await section.getByRole('button', { name: 'Pair a 3D mouse' }).click();
   expect(await page.evaluate(() => (window as unknown as W).__wrenMotionFake.pairs())).toBe(1);
 
-  await section.getByRole('switch', { name: 'Invert Rz' }).click();
+  await section.getByRole('switch', { name: 'Reverse twist (Rz)' }).click();
   await section.getByRole('switch', { name: 'Dominant axis only' }).click();
   await section.getByRole('switch', { name: 'Rotate' }).click();
   const sens = section.getByRole('slider', { name: '3D mouse sensitivity' });
@@ -83,7 +83,7 @@ test('Settings -> Navigation -> 3D mouse: pair from a click, values persist acro
   await boot(page);
   panel = await settings(page, 'Settings');
   const s2 = panel.getByTestId('motion-settings');
-  await expect(s2.getByRole('switch', { name: 'Invert Rz' })).toHaveAttribute(
+  await expect(s2.getByRole('switch', { name: 'Reverse twist (Rz)' })).toHaveAttribute(
     'aria-checked',
     'true',
   );

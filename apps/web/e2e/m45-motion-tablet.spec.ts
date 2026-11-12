@@ -32,7 +32,7 @@ test('3D mouse section on the tablet shell: 44 px targets', async ({ page }) => 
   for (const loc of [
     sec.getByRole('button', { name: 'Pair a 3D mouse' }),
     sec.getByRole('switch', { name: 'Rotate' }),
-    sec.getByRole('switch', { name: 'Invert X' }),
+    sec.getByRole('switch', { name: 'Reverse slide left/right (X)' }),
   ]) {
     const b = await loc.boundingBox();
     expect(b?.height).toBeGreaterThanOrEqual(44);

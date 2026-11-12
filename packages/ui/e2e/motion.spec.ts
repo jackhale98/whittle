@@ -60,7 +60,7 @@ test('touch targets are 44 px on the touch shells', async ({ page }, info) => {
   for (const loc of [
     root.getByRole('button', { name: 'Pair a 3D mouse' }),
     root.getByRole('switch', { name: 'Rotate' }),
-    root.getByRole('switch', { name: 'Invert X' }),
+    root.getByRole('switch', { name: 'Reverse slide left/right (X)' }),
     root.getByRole('combobox', { name: 'Button 1' }),
   ]) {
     const b = await loc.boundingBox();
