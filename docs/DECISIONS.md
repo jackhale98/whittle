@@ -3441,3 +3441,13 @@ A curved outline that is not an arc (a fillet's torus, or a piece of a sphere's 
 4. **Buttons map in Wren** (`MotionButtonCommand`, keymap editor), not through vendor per-app profiles. Settings are per device, like other navigation settings.
 5. **Never silent.** `MotionInputState` drives a diagnostics panel: unsupported browser, not paired, disconnected, no reports (a driver may hold the device; how to fix), live with axis bars and buttons.
 6. The vendor's own JS/driver bridge and a spacenavd WebSocket bridge stay P2 (PLAN M4.5).
+
+**Amendment (UI, 2026-11-12).**
+
+- **Where it lives.** Settings, Navigation gains a "3D mouse" section; the diagnostics panel is a "3D mouse" tab of the same Settings panel (also the palette command "3D mouse diagnostics"); the button mapping is a section at the end of the keymap editor (`KeymapEditor` takes a `footer`). All inline, no dialogs. Panels are in `packages/ui/src/panels/MotionPanels.tsx`, persistence and the mapping in `packages/ui/src/logic/motionSettings.ts`; the app side is `apps/web/src/app/motion.ts`.
+- **Device-local storage**, like `wren.navigation`: `wren.motion` (settings, sanitised and clamped) and `wren.motionButtons` (button number to command). Not per physical device model: one set per browser profile, which is the same scope as the navigation settings.
+- **The UI codes against a structural `MotionInputLike`** (the agreed `MotionInput` plus an optional `onButton(listener(button, down))`), so `packages/ui` never imports the viewport. Without `onButton`, presses are derived from `buttons` edges in the roughly 10 Hz state feed, which can miss a tap shorter than one tick; the device layer should offer `onButton` for exact presses.
+- **Button numbers are discovered live:** the list shows buttons 1 and 2 plus any pressed so far or mapped. Unmapped buttons do nothing.
+- **A button's radial menu** opens at the last pointer position (the canvas centre if none), like the key; pressing the button again closes it.
+- **Axis bars use `role="meter"`** on a div (signed bar from the centre), since a native `<meter>` cannot draw from the middle.
+- **Test hook:** `__wrenApp.motion.attach()` plugs in a fake `MotionInput` for E2E and `window.__wrenMotionFake` drives it.

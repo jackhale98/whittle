@@ -8,6 +8,9 @@ import {
   IconButton,
   KeymapEditor,
   type LayoutMap,
+  MotionButtonMapping,
+  MotionDiagnostics,
+  MotionSettingsSection,
   NavigationSettings,
   readLayoutMap,
   Segmented,
@@ -15,6 +18,12 @@ import {
 import { X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { APP_COMMANDS, withRightClickFinishes } from '../app/input';
+import {
+  ensureMotionPrefs,
+  setMotionButtons,
+  setMotionSettings,
+  useMotionState,
+} from '../app/motion';
 import { useObservable } from '../app/observable';
 import type { Workbench } from '../app/workbench';
 import { RadialSettings } from './RadialSettings';
@@ -22,6 +31,20 @@ import { RadialSettings } from './RadialSettings';
 export default function SettingsPanel({ wb, touch }: { wb: Workbench; touch: boolean }) {
   const ui = useObservable(wb.ui);
   const input = useObservable(wb.input);
+  useState(() => ensureMotionPrefs(wb));
+  const prefs = useObservable(wb.motionPrefs) ?? ensureMotionPrefs(wb);
+  const device = useObservable(wb.motionInput);
+  const motionState = useMotionState(device);
+  const [seenButtons, setSeenButtons] = useState(0);
+  const pressed = motionState.path === 'webhid' ? motionState.buttons : [];
+  const topPressed = Math.max(0, ...pressed);
+  useEffect(() => {
+    if (topPressed > 0) setSeenButtons((n) => Math.max(n, topPressed));
+  }, [topPressed]);
+  // Pairing needs a user gesture: it is called straight from the button's click handler.
+  const pair = () => {
+    void device?.pair().catch(() => {});
+  };
   const [layout, setLayout] = useState<LayoutMap | null>(null);
   const panel = useRef<HTMLElement>(null);
   const tab = ui.settings ?? 'navigation';
@@ -80,19 +103,35 @@ export default function SettingsPanel({ wb, touch }: { wb: Workbench; touch: boo
           options={[
             { value: 'navigation', label: 'Navigation' },
             { value: 'keyboard', label: 'Keyboard' },
+            { value: 'motion', label: '3D mouse' },
             { value: 'radial', label: 'Radial menu' },
           ]}
         />
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-3.5 py-3">
         {tab === 'navigation' ? (
-          <NavigationSettings
-            value={input.navigation}
-            onChange={(n) => wb.setNavigationSettings(n)}
-            rightClickFinishes={input.rightClickFinishes !== false}
-            onRightClickFinishesChange={(on) => wb.input.set((s) => withRightClickFinishes(s, on))}
-            size={touch ? 'touch' : 'md'}
-          />
+          <>
+            <NavigationSettings
+              value={input.navigation}
+              onChange={(n) => wb.setNavigationSettings(n)}
+              rightClickFinishes={input.rightClickFinishes !== false}
+              onRightClickFinishesChange={(on) =>
+                wb.input.set((s) => withRightClickFinishes(s, on))
+              }
+              size={touch ? 'touch' : 'md'}
+            />
+            <MotionSettingsSection
+              value={prefs.settings}
+              onChange={(s) => setMotionSettings(wb, s)}
+              state={motionState}
+              onPair={pair}
+              onOpenDiagnostics={() => wb.openSettings('motion')}
+              size={touch ? 'touch' : 'md'}
+              className="px-0"
+            />
+          </>
+        ) : tab === 'motion' ? (
+          <MotionDiagnostics state={motionState} onPair={pair} size={touch ? 'touch' : 'md'} />
         ) : tab === 'radial' ? (
           <RadialSettings size={touch ? 'touch' : 'md'} />
         ) : (
@@ -102,6 +141,15 @@ export default function SettingsPanel({ wb, touch }: { wb: Workbench; touch: boo
             onChange={(o) => wb.setKeymapOverrides(o)}
             layout={layout}
             size={touch ? 'touch' : 'md'}
+            footer={
+              <MotionButtonMapping
+                map={prefs.buttons}
+                onChange={(m) => setMotionButtons(wb, m)}
+                seen={seenButtons}
+                pressed={pressed}
+                size={touch ? 'touch' : 'md'}
+              />
+            }
           />
         )}
       </div>

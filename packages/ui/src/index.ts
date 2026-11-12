@@ -287,6 +287,29 @@ export {
 export type { KeypadKey } from './logic/keypad';
 export { applyKeypadKey, type EditResult } from './logic/keypad';
 export {
+  buttonCount,
+  commandForButton,
+  DEFAULT_MOTION_BUTTONS,
+  MOTION_AXES,
+  MOTION_BUTTON_COMMAND_IDS,
+  MOTION_BUTTONS_KEY,
+  MOTION_SETTINGS_KEY,
+  type MotionAxis,
+  type MotionButtonMap,
+  type MotionInputLike,
+  type MotionSettingsAction,
+  motionSettingsReducer,
+  pressedEdges,
+  readButtonMap,
+  readMotionSettings,
+  sanitizeButtonMap,
+  sanitizeMotionSettings,
+  setButtonCommand,
+  watchButtons,
+  writeButtonMap,
+  writeMotionSettings,
+} from './logic/motionSettings';
+export {
   NAVIGATION_KEY,
   readNavigation,
   sanitizeNavigation,
@@ -375,6 +398,16 @@ export {
   useSpring,
 } from './motion';
 export { MeasurePanel, type MeasurePanelProps } from './panels/MeasurePanel';
+export {
+  MOTION_STATE_TEXT,
+  MotionButtonMapping,
+  type MotionButtonMappingProps,
+  MotionDiagnostics,
+  type MotionDiagnosticsProps,
+  MotionSettingsSection,
+  type MotionSettingsSectionProps,
+  WHEEL_NOTE,
+} from './panels/MotionPanels';
 export {
   NAVIGATION_PRESETS,
   NavigationSettings,
