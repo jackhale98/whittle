@@ -44,8 +44,9 @@ export interface MotionState {
   lastSampleAt: number;
   lastMotionAt: number;
   watchdog: ReturnType<typeof setTimeout> | null;
-  /** Camera writes made by motion (diagnostics, tests). */
+  /** Camera writes made by motion and the CPU ms they took (diagnostics, perf probes). */
   frames: number;
+  applyMs: number;
 }
 
 export function createMotionState(): MotionState {
@@ -57,6 +58,7 @@ export function createMotionState(): MotionState {
     lastMotionAt: 0,
     watchdog: null,
     frames: 0,
+    applyMs: 0,
   };
 }
 
@@ -183,6 +185,7 @@ const crossV = (a: Vec3, b: Vec3): Vec3 => [
  * - t.z > 0 (pull toward the viewer) zooms out about the pivot, t.z < 0 zooms in.
  */
 export function applyMotion(vp: ViewportImpl, d: MotionDelta): void {
+  const t0 = performance.now();
   const mo = vp.motionState;
   const pivot = mo.pivot as Vec3;
   const { pose, dist } = readPose(vp);
@@ -247,6 +250,7 @@ export function applyMotion(vp: ViewportImpl, d: MotionDelta): void {
     }
   }
 
-  mo.frames++;
   writePose(vp, p, dd, setUp);
+  mo.frames++;
+  mo.applyMs += performance.now() - t0;
 }

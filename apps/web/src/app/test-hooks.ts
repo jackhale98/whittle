@@ -75,11 +75,9 @@ export function testHooks(wb: Workbench) {
       await wb.viewport?.nextFrame();
     },
     flushSave: () => wb.flushSave(),
-    /** 3D mouse (M4.5): the adapter state, the samples it has fed the viewport, and loading it. */
+    /** 3D mouse (M4.5): the adapter state the diagnostics panel shows. */
     motion: {
       state: () => wb.motion.state.get(),
-      samples: () => wb.motion.samples,
-      ensure: async () => (await wb.motion.ensure()) !== null,
     },
     /**
      * What a mouse click at canvas px would pick in the current mode, as the click itself

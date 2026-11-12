@@ -157,6 +157,9 @@ export interface NavigationState {
   markerVisible: boolean;
   /** A 3D mouse motion session is running (M4.5). */
   motionActive: boolean;
+  /** Camera writes made for 3D mouse motion, and the CPU ms they took in total (perf probes). */
+  motionFrames: number;
+  motionApplyMs: number;
   /** Screen position (CSS px) of the pivot right now; null when there is none. */
   pivotScreen: { x: number; y: number } | null;
   /** Milliseconds the last orbit/pan start spent resolving its pivot (the pick under the cursor). */
