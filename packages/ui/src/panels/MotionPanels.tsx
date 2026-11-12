@@ -71,7 +71,8 @@ export const MOTION_STATE_TEXT: Record<
   },
   disconnected: {
     title: 'Paired device not connected',
-    detail: 'Plug the 3D mouse in (or wake its receiver). Wren reconnects on its own.',
+    detail:
+      'Plug the 3D mouse in (or wake its receiver) and Wren reconnects on its own. If it is plugged in, the browser has forgotten its permission (it does for some devices after a restart or an unplug): pair it again.',
   },
   noReports: {
     title: 'Connected, but no movement is arriving',
@@ -126,7 +127,11 @@ export function MotionSettingsSection({
               Pair a 3D mouse
             </Button>
             <span className="text-xs text-fg-muted" data-testid="motion-device">
-              {name ? `Paired: ${name}` : 'No device paired'}
+              {name
+                ? `Paired: ${name}`
+                : state.path === 'none' && state.state === 'disconnected'
+                  ? 'Paired before, not connected now: pair it again if it is plugged in'
+                  : 'No device paired'}
             </span>
           </div>
         )}
@@ -285,10 +290,10 @@ export function MotionDiagnostics({
           {text.detail}
         </p>
       </div>
-      {key === 'notPaired' ? (
+      {key === 'notPaired' || key === 'disconnected' || key === 'noReports' ? (
         <div>
           <Button variant="primary" size={size} onClick={onPair} data-testid="motion-pair-diag">
-            Pair a 3D mouse
+            {key === 'notPaired' ? 'Pair a 3D mouse' : 'Pair again'}
           </Button>
         </div>
       ) : null}

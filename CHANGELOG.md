@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **3D mouse fixes from the first real-device check:** tilting forward/back and twisting now turn the model the right way; after a reload the mouse reconnects more reliably (only its motion interface is used, a busy device is retried, and coming back to the window rescans), and when the browser has forgotten the permission the diagnostics and Settings offer **Pair again**.
 - **3D mouse navigation** (M4.5, ADR-096 amendment; the device and viewport half).
   - **A 3D mouse now orbits, pans and zooms in the viewport**, not just zooms. Pair it in Settings; it reconnects on later visits. Chrome and Edge only (WebHID); Safari and Firefox say so plainly.
   - **Orbit** turns about the same pivot as a mouse orbit (the surface under the cursor, else the model's centre), with the pivot marker, and follows the turntable or trackball setting. **Pan** moves the model in the view plane at about one view width per second at full push, at any zoom. **Push and pull** zoom toward the surface under the cursor, like the wheel.

@@ -261,7 +261,8 @@ describe('createMotionInput states', () => {
     dev.report(2, [0, 0, 0, 0, 0xaf, 0]);
     expect(samples).toHaveLength(2);
     expect(samples[1]?.t[0]).toBeCloseTo(1);
-    expect(samples[1]?.r[2]).toBeCloseTo((0.5 - 0.04) / 0.96);
+    // Twist reads -r.z after the owner's device check (report.ts).
+    expect(samples[1]?.r[2]).toBeCloseTo(-(0.5 - 0.04) / 0.96);
     input.dispose();
   });
 
@@ -367,5 +368,77 @@ describe('createMotionInput states', () => {
     expect(() => dev.report(3, [1, 0, 0, 0])).not.toThrow();
     err.mockRestore();
     input.dispose();
+  });
+});
+
+describe('reconnect after a reload (owner report 2026-11-12)', () => {
+  it('a vendor-specific interface under a known product id is not taken for the 3D mouse', async () => {
+    const hid = new FakeHid();
+    const vendor = new FakeDevice(0x256f, 0xc635, 'Test 6-DoF', [{ usagePage: 0xff00, usage: 1 }]);
+    const axes = new FakeDevice(0x256f, 0xc635, 'Test 6-DoF');
+    hid.granted = [vendor, axes];
+    const { input } = make(hid);
+    await flush();
+    expect(vendor.listenerCount).toBe(0);
+    expect(axes.listenerCount).toBe(1);
+    expect(input.state()).toMatchObject({ path: 'webhid', state: 'live' });
+    input.dispose();
+  });
+
+  it('the state follows the interface that sends, not the first one granted', async () => {
+    const hid = new FakeHid();
+    const quiet = new FakeDevice(0x256f, 0xc635, 'Quiet');
+    const live = new FakeDevice(0x256f, 0xc635, 'Sending');
+    hid.granted = [quiet, live];
+    const { input } = make(hid);
+    await flush();
+    live.report(1, [0x5e, 0x01, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    vi.advanceTimersByTime(4000);
+    expect(input.state()).toMatchObject({
+      path: 'webhid',
+      state: 'live',
+      device: { name: 'Sending' },
+    });
+    input.dispose();
+  });
+
+  it('a failed open is retried, and goes live once the other holder lets go', async () => {
+    const hid = new FakeHid();
+    const dev = new FakeDevice();
+    dev.openError = new Error('held by another program');
+    hid.granted = [dev];
+    const { input } = make(hid);
+    await flush();
+    expect(input.state()).toMatchObject({ path: 'webhid', state: 'noReports' });
+    dev.openError = null;
+    vi.advanceTimersByTime(3000);
+    await flush();
+    expect(dev.opened).toBe(true);
+    dev.report(1, [0x5e, 0x01, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    expect(input.state()).toMatchObject({ path: 'webhid', state: 'live' });
+    input.dispose();
+  });
+
+  it('coming back to the window rescans the granted devices', async () => {
+    const hid = new FakeHid();
+    const target = new EventTarget();
+    const g = globalThis as { addEventListener?: unknown; removeEventListener?: unknown };
+    const saved = [g.addEventListener, g.removeEventListener];
+    g.addEventListener = target.addEventListener.bind(target);
+    g.removeEventListener = target.removeEventListener.bind(target);
+    try {
+      store.set('wren.motion.paired', '1');
+      const { input } = make(hid);
+      await flush();
+      expect(input.state()).toEqual({ path: 'none', state: 'disconnected' });
+      hid.granted = [new FakeDevice()];
+      target.dispatchEvent(new Event('focus'));
+      await flush();
+      expect(input.state()).toMatchObject({ path: 'webhid' });
+      input.dispose();
+    } finally {
+      g.addEventListener = saved[0];
+      g.removeEventListener = saved[1];
+    }
   });
 });

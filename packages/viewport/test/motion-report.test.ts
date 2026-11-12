@@ -117,11 +117,12 @@ describe('normalisation and axis mapping', () => {
   it('pull toward the user = +t.z', () => {
     approx(sample([[1, CLASSIC.pullToward]]).t, [0, 0, 0.5]);
   });
-  it('tilt forward = +r.x', () => {
-    approx(sample([[2, CLASSIC.tiltForward]]).r, [1, 0, 0]);
+  // Signs from the owner's real-device check (2026-11-12): tilt forward/back and twist reversed.
+  it('tilt forward = -r.x', () => {
+    approx(sample([[2, CLASSIC.tiltForward]]).r, [-1, 0, 0]);
   });
-  it('twist = r.z', () => {
-    approx(sample([[2, CLASSIC.twist]]).r, [0, 0, 0.5]);
+  it('twist clockwise = -r.z', () => {
+    approx(sample([[2, CLASSIC.twist]]).r, [0, 0, -0.5]);
   });
   it('keeps the other half when only one split report arrives', () => {
     const acc = new AxisAccumulator();
@@ -129,17 +130,17 @@ describe('normalisation and axis mapping', () => {
     acc.apply(parseReport(2, CLASSIC.twist));
     const a = acc.sample({ ...S, deadZone: 0 }, 5);
     approx(a.t, [1, 0, 0]);
-    approx(a.r, [0, 0, 0.5]);
+    approx(a.r, [0, 0, -0.5]);
     expect(a.time).toBe(5);
     acc.apply(parseReport(1, CLASSIC.rest)); // translation released, rotation still held
     const b = acc.sample({ ...S, deadZone: 0 }, 6);
     approx(b.t, [0, 0, 0]);
-    approx(b.r, [0, 0, 0.5]);
+    approx(b.r, [0, 0, -0.5]);
   });
   it('maps a combined report on a second model', () => {
     const a = sample([[1, COMPACT.mixed]]);
     approx(a.t, [1, 0, 0]);
-    approx(a.r, [0, -0.5, 0.5]);
+    approx(a.r, [0, -0.5, -0.5]);
     const z = sample([[1, COMPACT.rest]]);
     expect(z.t).toEqual([0, 0, 0]);
     expect(z.r).toEqual([0, 0, 0]);
@@ -147,7 +148,7 @@ describe('normalisation and axis mapping', () => {
   it('deviceToScreen swaps y and z and flips the vertical', () => {
     expect(deviceToScreen({ t: [1, 2, 3], r: [4, 5, 6] })).toEqual({
       t: [1, -3, 2],
-      r: [4, 5, 6],
+      r: [-4, 5, -6],
     });
   });
   it('honours a per-model full scale', () => {

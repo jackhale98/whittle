@@ -112,12 +112,15 @@ function writeFlag(v: boolean): void {
 
 /** Is this granted device a 3D mouse (table, vendor or multi-axis collection)? */
 export function isMotionDevice(d: HIDDeviceLike): boolean {
-  if (findMotionDevice(d.vendorId, d.productId)) return true;
-  if (d.collections?.some((c) => c.usagePage === MOTION_USAGE_PAGE && c.usage === MOTION_USAGE)) {
-    return true;
+  // A receiver or a model can expose several HID interfaces under one product id (the
+  // multi-axis one plus vendor-specific ones that never send motion). When the browser tells us
+  // the collections, only the multi-axis interface counts, whatever the id table says.
+  if (d.collections && d.collections.length > 0) {
+    return d.collections.some((c) => c.usagePage === MOTION_USAGE_PAGE && c.usage === MOTION_USAGE);
   }
+  if (findMotionDevice(d.vendorId, d.productId)) return true;
   // Without collection info only trust the vendor ids of the family.
-  return !d.collections && MOTION_VENDOR_IDS.includes(d.vendorId);
+  return MOTION_VENDOR_IDS.includes(d.vendorId);
 }
 
 interface Track {
@@ -130,8 +133,13 @@ interface Track {
   /** No report within `NO_REPORTS_MS`, or the open failed (a driver may hold the device). */
   silent: boolean;
   timer: ReturnType<typeof setTimeout> | null;
+  /** Failed opens retried so far. */
+  retries: number;
   onReport: (e: HIDInputReportEventLike) => void;
 }
+
+const OPEN_RETRIES = 5;
+const OPEN_RETRY_MS = 3000;
 
 export function createMotionInput(opts: MotionInputOptions): MotionInput {
   const hid = opts.hid ?? defaultHid();
@@ -158,7 +166,9 @@ export function createMotionInput(opts: MotionInputOptions): MotionInput {
   };
   const buildState = (): MotionInputState => {
     if (!hid) return { path: 'none', state: 'unsupported' };
-    const t = tracks.values().next().value as Track | undefined;
+    // The track that is sending, else one that is not known to be silent, else any.
+    const all = [...tracks.values()];
+    const t = all.find((x) => x.got) ?? all.find((x) => !x.silent) ?? all[0];
     if (!t) return { path: 'none', state: paired ? 'disconnected' : 'notPaired' };
     return {
       path: 'webhid',
@@ -211,7 +221,7 @@ export function createMotionInput(opts: MotionInputOptions): MotionInput {
     }
   };
 
-  const attach = (dev: HIDDeviceLike) => {
+  const attach = (dev: HIDDeviceLike, retries = 0) => {
     if (disposed || tracks.has(dev) || !isMotionDevice(dev)) return;
     const info = findMotionDevice(dev.vendorId, dev.productId);
     const t: Track = {
@@ -223,6 +233,7 @@ export function createMotionInput(opts: MotionInputOptions): MotionInput {
       got: false,
       silent: false,
       timer: null,
+      retries,
       onReport: (e) => report(t, e),
     };
     tracks.set(dev, t);
@@ -243,10 +254,21 @@ export function createMotionInput(opts: MotionInputOptions): MotionInput {
         }, NO_REPORTS_MS);
       },
       () => {
-        // The browser could not open it (another program, usually the vendor driver, holds it).
+        // The browser could not open it (another program, usually the vendor driver, or another
+        // Wren window holds it). Say so, and try again a few times: it may let go.
         if (disposed || tracks.get(dev) !== t) return;
         t.silent = true;
         publish(true);
+        if (t.retries < OPEN_RETRIES) {
+          t.retries++;
+          t.timer = setTimeout(() => {
+            t.timer = null;
+            if (disposed || tracks.get(dev) !== t || dev.opened) return;
+            tracks.delete(dev);
+            dev.removeEventListener('inputreport', t.onReport);
+            attach(dev, t.retries);
+          }, OPEN_RETRY_MS);
+        }
       },
     );
   };
@@ -296,6 +318,7 @@ export function createMotionInput(opts: MotionInputOptions): MotionInput {
   };
 
   const onConnect = (e: { device: HIDDeviceLike }) => attach(e.device);
+  let rescan: (() => void) | null = null;
   const onDisconnect = (e: { device: HIDDeviceLike }) => {
     const t =
       tracks.get(e.device) ??
@@ -316,14 +339,25 @@ export function createMotionInput(opts: MotionInputOptions): MotionInput {
     } catch {
       // an exotic implementation: pairing still works
     }
-    void (async () => {
+    const scan = async () => {
       try {
         for (const d of await hid.getDevices()) attach(d);
       } catch {
         // permissions policy or a locked-down browser: treat as nothing granted
       }
       publish(true);
-    })();
+    };
+    void scan();
+    // Coming back to the window (after plugging the device in, or another window let go of it).
+    rescan = () => {
+      if (!disposed && tracks.size === 0) void scan();
+    };
+    try {
+      globalThis.addEventListener?.('focus', rescan);
+      globalThis.document?.addEventListener?.('visibilitychange', rescan);
+    } catch {
+      // no window: tests and workers
+    }
   }
 
   return {
@@ -355,6 +389,14 @@ export function createMotionInput(opts: MotionInputOptions): MotionInput {
     dispose() {
       if (disposed) return;
       disposed = true;
+      if (rescan) {
+        try {
+          globalThis.removeEventListener?.('focus', rescan);
+          globalThis.document?.removeEventListener?.('visibilitychange', rescan);
+        } catch {
+          // no window
+        }
+      }
       if (emitTimer !== null) clearTimeout(emitTimer);
       try {
         hid?.removeEventListener('connect', onConnect);

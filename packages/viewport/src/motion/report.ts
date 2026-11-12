@@ -10,16 +10,17 @@
  * Device frame (raw counts): x to the right, y toward the user, z down, so pushing the cap right
  * is +x, pulling it toward you is +y and pushing it down is +z. For rotation the sign convention
  * is "natural": tilting forward, tilting right and twisting clockwise (seen from above) read
- * positive. These signs follow the published layouts and are on the owner's real-device
- * checklist; a model that differs is corrected with the per-axis invert settings.
+ * positive in the raw report. The owner's real-device check (2026-11-12) found the view's response
+ * to tilt forward/back and to twist reversed, so those two are negated in `deviceToScreen`. A
+ * model that differs further is corrected with the per-axis invert settings.
  *
  * Screen axes (`MotionSample`): x right, y up, z toward the viewer.
  *   t.x = device x            push right        -> +t.x
  *   t.y = -device z           pull up           -> +t.y (push down is -t.y)
  *   t.z = device y            pull toward you   -> +t.z (push away is -t.z)
- *   r.x = device rx           tilt forward      -> +r.x
+ *   r.x = -device rx          tilt forward      -> -r.x (checked on a device)
  *   r.y = device ry           tilt right        -> +r.y
- *   r.z = device rz           twist clockwise   -> +r.z
+ *   r.z = -device rz          twist clockwise   -> -r.z (checked on a device)
  */
 
 import type { MotionSample, MotionSettings, Vec3 } from '@wren-cad/contracts';
@@ -98,7 +99,8 @@ export function deviceToScreen(a: RawAxes): { t: Vec3; r: Vec3 } {
   return {
     // `+ 0` turns -0 into 0 so a resting device compares equal to zero.
     t: [a.t[0], -a.t[2] + 0, a.t[1]],
-    r: [a.r[0], a.r[1], a.r[2]],
+    // Tilt forward/back and twist negated after the owner's real-device check (2026-11-12).
+    r: [-a.r[0] + 0, a.r[1], -a.r[2] + 0],
   };
 }
 

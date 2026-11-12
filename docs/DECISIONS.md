@@ -3475,3 +3475,8 @@ A curved outline that is not an arc (a fillet's torus, or a piece of a sphere's 
 4. If the TTI probe starts failing, or real-device start-up regresses, trim the initial route first.
 
 **Consequences.** Less engineering time on byte-shaving; fewer first-open loading flashes become acceptable to remove. The bundle report still lists every chunk, so growth stays visible.
+
+### ADR-096 amendment: the owner's real-device check (2026-11-12)
+
+- **Rotation signs.** On the owner's 3D mouse, the view's response to tilt forward/back and to twist (rotation about the vertical) was reversed. `deviceToScreen` now negates device rx and rz; tilt left/right is unchanged (not reported wrong). The per-axis invert settings still correct any further model differences.
+- **Reconnect after a reload.** Paired once, the device was not there after a reload. Three hardening steps: (1) when the browser reports a device's collections, only the multi-axis interface (usage page 0x01, usage 0x08) is attached, never a sibling vendor-specific interface under the same product id; (2) the state follows the interface that is sending, not the first one granted; (3) a failed `open()` (another window or the driver holds it) is retried every 3 s, five times, and granted devices are rescanned when the window regains focus or becomes visible. Chrome does not keep a WebHID permission for some devices across a restart or an unplug (devices without a serial number), and only a user gesture can re-grant it, so the **disconnected** and **no reports** states now offer **Pair again**, and Settings says "Paired before, not connected now".
