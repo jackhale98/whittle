@@ -1,11 +1,12 @@
 import { expect, test } from '@playwright/test';
-import type { Drawing } from '@wren-cad/contracts';
+import type { Annotation, Drawing } from '@wren-cad/contracts';
 import { buildDoc, PARTS } from '@wren-cad/test-fixtures/reference-parts';
 import { app, boot } from './helpers';
 import { PERF_FACTOR } from './perf/budgets';
 import { built, drawing, type Extent, newDrawing } from './support/drawing-ui';
 import {
   addViews,
+  asLinearAcross,
   bindImported,
   dimensionTool,
   importAll,
@@ -29,8 +30,11 @@ import { GAPS } from './support/reference-drawing-gaps';
  * The hooks are otherwise only read.
  *
  * Product gaps are listed in `support/reference-drawing-gaps.ts`, each with a gap id and the
- * reason. The dimensions in it must stay unmet: the test fails when one starts to pass, so the
- * table cannot go stale. Each gap is also a `test.fixme` below, so it shows in the report.
+ * reason. The table is empty (M4.1 closed the 16 the M4 gate found: 94 of 94), so every specified
+ * dimension must be met. A gap found again is listed there: the dimension must then stay unmet (the
+ * test fails when it starts to pass, so the table cannot go stale).
+ *
+ * A dimension is met only when the annotation is of the spec's kind: a Ø120 is not a linear 120.
  *
  * `WREN_CERT_ALL=1` tries the listed gaps too and reports every dimension met or not (as test
  * annotations) instead of failing on the first: for re-baselining the table.
@@ -91,22 +95,53 @@ function dimensionMet(
   id: string,
   state: Built,
   placements: Placements,
+  annotations: Annotation[],
 ): boolean {
   const res = state.resolutions.find((r) => r.id === id);
   const onView = placements.some((p) => p.annotationId === id && p.viewId === viewId);
-  const tol = TOL[d.unit];
+  // Resolutions carry angles in radians; the spec prints degrees.
+  const k = d.unit === 'deg' ? Math.PI / 180 : 1;
+  const tol = TOL[d.unit] * k;
   const equal =
     res?.state === 'ok' &&
     res.value !== null &&
-    Math.abs(Math.abs(res.value) - Math.abs(d.value)) <= tol &&
+    Math.abs(Math.abs(res.value) - Math.abs(d.value) * k) <= tol &&
     (res.measured === null || Math.abs(Math.abs(res.measured) - Math.abs(res.value)) <= tol);
-  return onView && equal && showsValue(state.texts, Math.abs(d.value));
+  return (
+    onView &&
+    equal &&
+    kindMatches(
+      d,
+      annotations.find((a) => a.id === id),
+    ) &&
+    showsValue(state.texts, Math.abs(d.value))
+  );
 }
 
-function explainMiss(id: string, viewId: string, state: Built, placements: Placements): string {
+/**
+ * The annotation is of the spec's kind: a `linear` spec dimension is a linear, aligned or ordinate
+ * annotation (a diameter or a radius of the same value is not one); the others are their own kind.
+ */
+function kindMatches(d: SpecDim, a: Annotation | undefined): boolean {
+  if (!a) return false;
+  if (d.kind === 'linear')
+    return a.kind === 'linear' || a.kind === 'aligned' || a.kind === 'ordinate';
+  return a.kind === d.kind;
+}
+
+function explainMiss(
+  id: string,
+  viewId: string,
+  state: Built,
+  placements: Placements,
+  annotations: Annotation[],
+): string {
   const res = state.resolutions.find((r) => r.id === id);
   const onView = placements.some((p) => p.annotationId === id && p.viewId === viewId);
-  return `resolved ${res?.state} ${res?.value} (measured ${res?.measured}), on view ${onView}`;
+  return `resolved ${res?.state} ${res?.value} (measured ${res?.measured}), on view ${onView}, annotation ${JSON.stringify(
+    annotations.find((a) => a.id === id),
+    (k, v) => (k === 'fingerprint' || k === 'origin' ? undefined : v),
+  )}`;
 }
 
 for (const part of PARTS) {
@@ -145,9 +180,16 @@ for (const part of PARTS) {
       if ('id' in r) bound.set(d.name, r.id);
       else notes.set(d.name, r.note);
     }
+    // A linear dimension across a round part, which Import or the tool made as a diameter, is
+    // switched to the linear form across in the inspector.
+    for (const d of spec.drawing.dimensions) {
+      const id = bound.get(d.name);
+      if (d.kind === 'linear' && id) await asLinearAcross(page, d, id);
+    }
     const state = await built(page);
     const placements = await drawing(page).placements();
     const extents = await drawing(page).extents();
+    const anns = (await app(page).doc()).parts[0]?.annotations ?? [];
     info.annotations.push({
       type: 'dimensions',
       description: `${spec.drawing.dimensions.length} on the spec drawing, ${bound.size} placed`,
@@ -227,8 +269,9 @@ for (const part of PARTS) {
           .join(', ')})`;
       } else {
         const id = bound.get(d.name);
-        ok = id !== undefined && dimensionMet(d, v.id, id, state, placements);
-        why = notes.get(d.name) ?? (id ? explainMiss(id, v.id, state, placements) : 'not placed');
+        ok = id !== undefined && dimensionMet(d, v.id, id, state, placements, anns);
+        why =
+          notes.get(d.name) ?? (id ? explainMiss(id, v.id, state, placements, anns) : 'not placed');
       }
       if (ok) met.push(d.name);
       if (gapNames.has(d.name)) {
@@ -298,18 +341,15 @@ for (const part of PARTS) {
       }
       const after = await built(page);
       const afterPlacements = await drawing(page).placements();
+      const afterAnns = (await app(page).doc()).parts[0]?.annotations ?? [];
       const nowWorking = tried
         .filter(
-          (t) => t.id !== undefined && dimensionMet(t.d, t.viewId, t.id, after, afterPlacements),
+          (t) =>
+            t.id !== undefined &&
+            dimensionMet(t.d, t.viewId, t.id, after, afterPlacements, afterAnns),
         )
         .map((t) => t.d.name);
       expect(nowWorking, 'listed product gaps that now work: remove them from GAPS').toEqual([]);
     }
   });
 }
-
-// Product gaps (PLAN M4.1): listed as fixme entries for the report. The part tests above try every
-// gap with the drawing tools (check 5) and fail when one starts to work.
-for (const [id, gaps] of Object.entries(GAPS))
-  for (const g of gaps)
-    test.fixme(`M4 reference drawing ${id}: ${g.dims.join(', ')} (${g.what}): ${g.reason}`, () => {});

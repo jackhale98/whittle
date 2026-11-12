@@ -696,15 +696,19 @@
       },
       {
         "name": "ch_d",
-        "kind": "diameter",
+        "kind": "linear",
         "value": 10,
         "unit": "mm",
         "view": "top",
-        "at": [
-          30,
-          0
+        "axis": "h",
+        "from": [
+          25,
+          12.5
         ],
-        "radius": 5
+        "to": [
+          35,
+          12.5
+        ]
       },
       {
         "name": "blk_t",

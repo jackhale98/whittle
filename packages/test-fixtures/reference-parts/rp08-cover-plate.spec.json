@@ -705,11 +705,11 @@
         "view": "front-section",
         "axis": "v",
         "from": [
-          -36,
+          12,
           2
         ],
         "to": [
-          -36,
+          12,
           14
         ],
         "refs": [

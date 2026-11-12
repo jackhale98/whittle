@@ -283,7 +283,10 @@ export const rp08: PartDef = {
       -12,
       dim('cb_h'),
     );
-    front.dimV(d('tap_x0'), T - d('tap_depth'), d('tap_x0'), T, -12, dim('tap_depth'), {
+    // At the second tapped hole (position 2, x = tap_x0 + 2 tap_dx): the stepped cut passes through
+    // the tapped row only from x = 0 on, so the first hole (at tap_x0) is not cut.
+    const tx = d('tap_x0') + 2 * d('tap_dx');
+    front.dimV(tx, T - d('tap_depth'), tx, T, -12, dim('tap_depth'), {
       refs: [
         { name: 'F{h_tap}:hole(S{pts_sk}:p(TP)):bottom', kind: 'face' },
         { name: 'F{base}:end', kind: 'face' },

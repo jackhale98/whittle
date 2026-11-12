@@ -271,6 +271,12 @@ need, and some drawings were corrected.
   midpoint at the wrong place, (-40, 30) to (-25, 30): 15 mm past the end of the inset edge, which
   runs from (-25, -15) to (-25, 15). The SVG now draws the outline solid and the dimension runs from
   (-40, 0) to (-25, 0), on the two edges. Nothing needs a hidden-line pick for it.
+- **Phase 2 (certification driver) corrections.** rp08 `tap_depth` is drawn at the second tapped
+  hole (x = `tap_x0` + 2 `tap_dx`): the stepped cut passes through the tapped row only from x = 0 on,
+  so the first hole (at `tap_x0`) is not in the section. rp06 `ch_d` is a linear width across the
+  groove's walls in the top view (its path's last leg), not a Ø leader: the groove's circular
+  section is not seen from above, and a diameter cannot be picked there. The suite's new kind
+  check (a `linear` spec dimension must be a linear, aligned or ordinate annotation) is why.
 - **Not given refs** (their entity names are not yet pinned by a golden): rp06 `rod_h`, `rod_tail`
   (tangent edges), rp08 `tap_dx` (hole centres), rp07 `inset`.
 

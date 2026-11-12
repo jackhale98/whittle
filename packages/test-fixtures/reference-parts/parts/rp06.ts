@@ -241,7 +241,10 @@ export const rp06: PartDef = {
     top.dimH(-d('rod_x'), -W / 2 + 4, 0, -W / 2 + 4, 0, dim('rod_x'));
     top.dimV(-d('rod_x'), 0, -d('rod_x'), d('rod_y'), -14, dim('rod_y'));
     top.leader(-d('rod_x'), d('rod_y'), d('rod_d') / 2, 90, 10, dim('rod_d'));
-    top.leader(tx + bt, 0, d('ch_d') / 2, 0, 14, dim('ch_d'));
+    // The groove's width where it runs along y (its path's last leg, x = ch_turn_x + ch_bend): a
+    // linear dimension between its two walls, which is what the top view shows of the groove
+    // (its circular section is not seen from above).
+    top.dimH(tx + bt - d('ch_d') / 2, W / 4, tx + bt + d('ch_d') / 2, W / 4, 8, dim('ch_d'));
     // Side view along X: horizontal axis = Y, vertical = Z. The rod path is in this plane.
     const side = dr
       .view(

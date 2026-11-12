@@ -101,12 +101,12 @@
 <path d="M76.375 223.375 L75.575 220.975 L77.175 220.975 Z" fill="#111"/>
 <path d="M76.375 213.3 L77.175 215.7 L75.575 215.7 Z" fill="#111"/>
 <text data-dim="cb_h" data-value="6.5" x="75.175" y="218.338" text-anchor="end" font-size="3.2" font-family="monospace" fill="#111">cb_h = 6.5 mm</text>
-<line x1="94.2" y1="231.9" x2="76.8" y2="231.9" stroke="#444" stroke-width="0.2"/>
-<line x1="94.2" y1="213.3" x2="76.8" y2="213.3" stroke="#444" stroke-width="0.2"/>
-<line x1="75.6" y1="231.9" x2="75.6" y2="213.3" stroke="#111" stroke-width="0.25"/>
-<path d="M75.6 231.9 L74.8 229.5 L76.4 229.5 Z" fill="#111"/>
-<path d="M75.6 213.3 L76.4 215.7 L74.8 215.7 Z" fill="#111"/>
-<text data-dim="tap_depth" data-value="12" x="74.4" y="222.6" text-anchor="end" font-size="3.2" font-family="monospace" fill="#111">tap_depth = 12 mm</text>
+<line x1="168.6" y1="231.9" x2="151.2" y2="231.9" stroke="#444" stroke-width="0.2"/>
+<line x1="168.6" y1="213.3" x2="151.2" y2="213.3" stroke="#444" stroke-width="0.2"/>
+<line x1="150" y1="231.9" x2="150" y2="213.3" stroke="#111" stroke-width="0.25"/>
+<path d="M150 231.9 L149.2 229.5 L150.8 229.5 Z" fill="#111"/>
+<path d="M150 213.3 L150.8 215.7 L149.2 215.7 Z" fill="#111"/>
+<text data-dim="tap_depth" data-value="12" x="148.8" y="222.6" text-anchor="end" font-size="3.2" font-family="monospace" fill="#111">tap_depth = 12 mm</text>
 </g>
 <rect x="215" y="257" width="190" height="35" fill="#fff" stroke="#111" stroke-width="0.6"/>
 <text x="218" y="266" font-size="6" font-family="sans-serif" font-weight="bold" fill="#111">Wren reference part</text>

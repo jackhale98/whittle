@@ -409,9 +409,11 @@ test.describe('section cut edges (M4.1, needs ProjectedCurve.cutFace)', () => {
       );
     let pair: [Edge, Edge] | undefined;
     for (const w of walls) {
-      const f = cuts.find(
-        (e) => e !== w && e.a && e.b && Math.abs(e.a[1] - e.b[1]) < 1e-3 && meets(w, e),
-      );
+      // The lowest horizontal cut line meeting the wall: the bottom (the neutral face), not the
+      // rim at the top.
+      const f = cuts
+        .filter((e) => e !== w && e.a && e.b && Math.abs(e.a[1] - e.b[1]) < 1e-3 && meets(w, e))
+        .sort((p, q) => p.at[1] - q.at[1])[0];
       if (f) {
         pair = [w, f];
         break;
@@ -420,7 +422,8 @@ test.describe('section cut edges (M4.1, needs ProjectedCurve.cutFace)', () => {
     if (!pair) throw new Error('no drafted wall meeting a horizontal cut line');
     const [wall, floor] = pair;
     await page.locator('[data-tool="angle"]').click();
-    await zoomAt(page, wall.at);
+    // Zoomed in about the middle of the two lines, so both stay on screen.
+    await zoomAt(page, [(wall.at[0] + floor.at[0]) / 2, (wall.at[1] + floor.at[1]) / 2]);
     await click(page, wall.at);
     await expect(page.getByTestId('prompt-chip')).toContainText('Shift');
     await click(page, floor.at, 'Shift');

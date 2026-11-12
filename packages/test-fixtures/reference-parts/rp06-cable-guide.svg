@@ -52,9 +52,12 @@
 <line x1="105" y1="61.5" x2="105" y2="51.5" stroke="#111" stroke-width="0.25"/>
 <path d="M105 61.5 L104.2 59.1 L105.8 59.1 Z" fill="#111"/>
 <text data-dim="rod_d" data-value="8" x="106" y="51.5" text-anchor="start" font-size="3.2" font-family="monospace" fill="#111">rod_d = 8 mm</text>
-<line x1="202.5" y1="90" x2="216.5" y2="90" stroke="#111" stroke-width="0.25"/>
-<path d="M202.5 90 L204.9 89.2 L204.9 90.8 Z" fill="#111"/>
-<text data-dim="ch_d" data-value="10" x="217.5" y="90" text-anchor="start" font-size="3.2" font-family="monospace" fill="#111">ch_d = 10 mm</text>
+<line x1="187.5" y1="71.25" x2="187.5" y2="58.05" stroke="#444" stroke-width="0.2"/>
+<line x1="202.5" y1="71.25" x2="202.5" y2="58.05" stroke="#444" stroke-width="0.2"/>
+<line x1="187.5" y1="59.25" x2="202.5" y2="59.25" stroke="#111" stroke-width="0.25"/>
+<path d="M187.5 59.25 L189.9 58.45 L189.9 60.05 Z" fill="#111"/>
+<path d="M202.5 59.25 L200.1 60.05 L200.1 58.45 Z" fill="#111"/>
+<text data-dim="ch_d" data-value="10" x="195" y="58.05" text-anchor="middle" font-size="3.2" font-family="monospace" fill="#111">ch_d = 10 mm</text>
 </g>
 <g data-view="Right">
 <text x="285" y="48" font-size="3.6" font-family="sans-serif" font-weight="bold" fill="#111">Right</text>
