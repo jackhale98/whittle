@@ -18,6 +18,8 @@ export { type PartSpec, specFor } from './lib/spec';
 export type {
   DrawingDimKind,
   DrawingDimSpec,
+  DrawingRefPoint,
+  DrawingRefSpec,
   DrawingSpec,
   DrawingViewSpec,
   PartDef,

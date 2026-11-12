@@ -50,12 +50,13 @@
 <path d="M180 189.4 L179.2 187 L180.8 187 Z" fill="#111"/>
 <path d="M180 147.8 L180.8 150.2 L179.2 150.2 Z" fill="#111"/>
 <text data-dim="boss_h" data-value="26" x="181.2" y="168.6" text-anchor="start" font-size="3.2" font-family="monospace" fill="#111">boss_h = 26 mm</text>
-<line x1="116" y1="157.4" x2="101.2" y2="157.4" stroke="#444" stroke-width="0.2"/>
-<line x1="116" y1="147.8" x2="101.2" y2="147.8" stroke="#444" stroke-width="0.2"/>
-<line x1="100" y1="157.4" x2="100" y2="147.8" stroke="#111" stroke-width="0.25"/>
-<path d="M100 157.4 L99.2 155 L100.8 155 Z" fill="#111"/>
-<path d="M100 147.8 L100.8 150.2 L99.2 150.2 Z" fill="#111"/>
-<text data-dim="boss_up" data-value="6" x="98.8" y="152.6" text-anchor="end" font-size="3.2" font-family="monospace" fill="#111">boss_up = 6 mm</text>
+<line x1="103.2" y1="157.4" x2="176.8" y2="157.4" stroke="#2a5db0" stroke-width="0.25" stroke-dasharray="6 1.5 1 1.5" fill="none"/>
+<line x1="119.2" y1="157.4" x2="104.4" y2="157.4" stroke="#444" stroke-width="0.2"/>
+<line x1="119.2" y1="147.8" x2="104.4" y2="147.8" stroke="#444" stroke-width="0.2"/>
+<line x1="103.2" y1="157.4" x2="103.2" y2="147.8" stroke="#111" stroke-width="0.25"/>
+<path d="M103.2 157.4 L102.4 155 L104 155 Z" fill="#111"/>
+<path d="M103.2 147.8 L104 150.2 L102.4 150.2 Z" fill="#111"/>
+<text data-dim="boss_up" data-value="6" x="102" y="152.6" text-anchor="end" font-size="3.2" font-family="monospace" fill="#111">boss_up = 6 mm</text>
 <line x1="223.394" y1="186.006" x2="234.708" y2="174.692" stroke="#111" stroke-width="0.25"/>
 <path d="M223.394 186.006 L224.525 183.743 L225.657 184.875 Z" fill="#111"/>
 <text data-dim="top_r" data-value="3" x="235.708" y="174.692" text-anchor="start" font-size="3.2" font-family="monospace" fill="#111">top_r = 3 mm</text>

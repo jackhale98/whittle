@@ -60,7 +60,16 @@ export const rp04: PartDef = {
     boss_up: { value: 6, unit: 'mm', description: 'Push/pull distance added to the boss top' },
     boss_c: { value: 2, unit: 'mm', description: 'Chamfer on the boss top edge' },
   },
-  tags: ['extrude', 'fillet', 'chamfer', 'propagate', 'noPropagate', 'boolean', 'pushPull'],
+  tags: [
+    'extrude',
+    'fillet',
+    'chamfer',
+    'propagate',
+    'noPropagate',
+    'boolean',
+    'pushPull',
+    'plane',
+  ],
   method:
     'Exact. Every blend runs along a loop of straight edges and quarter arcs, so Pappus gives its volume: the corner area of the cross-section times the length of the path of its centroid. Along a convex arc of radius Rc the centroid of a fillet gap lies 0.2234 r inside the wall, of a chamfer triangle c/3 inside. The top fillet is a single pick with propagation on; the bottom chamfer picks all eight edges with propagation off, and both are the same kind of loop. Accuracy: floating point (1e-12 relative).',
   steps: (d) => {
@@ -185,6 +194,16 @@ export const rp04: PartDef = {
         mode: { kind: 'distance', distance: 'boss_c' },
         propagate: false,
       },
+      {
+        tool: 'plane',
+        id: 'boss_lvl',
+        say: 'Reference plane: offset plate_t + boss_h - boss_up above the Top plane, the level the boss top was first extruded to before the push/pull. It follows the parameters, so boss_up can be dimensioned from it.',
+        definition: {
+          kind: 'offset',
+          from: origin('origin:XY'),
+          distance: 'plate_t + boss_h - boss_up',
+        },
+      },
     ];
   },
   model: (d) => {
@@ -267,8 +286,17 @@ export const rp04: PartDef = {
     front.dimV(L / 2, 0, L / 2, T, 12, dim('plate_t'));
     // The boss as built: from the plate top to the boss top (its flat, inside the top chamfer).
     front.dimV(a, T, a - d('boss_c'), T + hb, 10, dim('boss_h'));
-    // The push/pull distance: from where the boss top was first extruded (history, no edge) up.
-    front.dimV(-a, T + hb - d('boss_up'), -a, T + hb, -10, dim('boss_up'));
+    // The push/pull distance: from the reference plane `boss_lvl` (where the boss top was first
+    // extruded, drawn edge-on as a centre line) up to the boss top. The points are on the flat of
+    // the top, inside its chamfer.
+    const lvl = T + hb - d('boss_up');
+    front.line(-a - 8, lvl, a + 8, lvl, 'center');
+    front.dimV(-(a - d('boss_c')), lvl, -(a - d('boss_c')), T + hb, -10, dim('boss_up'), {
+      refs: [
+        { name: 'F{boss_lvl}:plane', kind: 'face' },
+        { name: 'F{join}:face(F{boss}:end)', kind: 'face' },
+      ],
+    });
     // The fillet is seen edge-on: its arc is centred top_r in from the corner.
     front.leader(L / 2, T, d('top_r'), 45, 16, dim('top_r'), 'radius', [
       L / 2 - d('top_r'),

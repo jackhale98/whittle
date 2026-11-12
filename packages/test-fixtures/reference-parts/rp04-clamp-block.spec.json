@@ -74,7 +74,8 @@
     "propagate",
     "noPropagate",
     "boolean",
-    "pushPull"
+    "pushPull",
+    "plane"
   ],
   "standards": [],
   "method": "Exact. Every blend runs along a loop of straight edges and quarter arcs, so Pappus gives its volume: the corner area of the cross-section times the length of the path of its centroid. Along a convex arc of radius Rc the centroid of a fillet gap lies 0.2234 r inside the wall, of a chamfer triangle c/3 inside. The top fillet is a single pick with propagation on; the bottom chamfer picks all eight edges with propagation off, and both are the same kind of loop. Accuracy: floating point (1e-12 relative).",
@@ -375,6 +376,19 @@
         "distance": "boss_c"
       },
       "propagate": false
+    },
+    {
+      "tool": "plane",
+      "id": "boss_lvl",
+      "say": "Reference plane: offset plate_t + boss_h - boss_up above the Top plane, the level the boss top was first extruded to before the push/pull. It follows the parameters, so boss_up can be dimensioned from it.",
+      "definition": {
+        "kind": "offset",
+        "from": {
+          "pick": "plane",
+          "name": "origin:XY"
+        },
+        "distance": "plate_t + boss_h - boss_up"
+      }
     }
   ],
   "expected": {
@@ -588,12 +602,22 @@
         "view": "front",
         "axis": "v",
         "from": [
-          -15,
+          -13,
           36
         ],
         "to": [
-          -15,
+          -13,
           42
+        ],
+        "refs": [
+          {
+            "name": "F{boss_lvl}:plane",
+            "kind": "face"
+          },
+          {
+            "name": "F{join}:face(F{boss}:end)",
+            "kind": "face"
+          }
         ]
       },
       {

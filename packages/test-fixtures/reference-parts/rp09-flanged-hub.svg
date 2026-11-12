@@ -16,8 +16,8 @@
 <circle cx="65.452" cy="179.548" r="6.3" stroke="#555" stroke-width="0.3" stroke-dasharray="2 1.2" fill="none"/>
 <circle cx="110" cy="198" r="6.3" stroke="#111" stroke-width="0.5" fill="none"/>
 <circle cx="154.548" cy="179.548" r="6.3" stroke="#111" stroke-width="0.5" fill="none"/>
-<line x1="26" y1="219" x2="26" y2="231.4" stroke="#444" stroke-width="0.2"/>
-<line x1="194" y1="219" x2="194" y2="231.4" stroke="#444" stroke-width="0.2"/>
+<line x1="26" y1="135" x2="26" y2="231.4" stroke="#444" stroke-width="0.2"/>
+<line x1="194" y1="135" x2="194" y2="231.4" stroke="#444" stroke-width="0.2"/>
 <line x1="26" y1="230.2" x2="194" y2="230.2" stroke="#111" stroke-width="0.25"/>
 <path d="M26 230.2 L28.4 229.4 L28.4 231 Z" fill="#111"/>
 <path d="M194 230.2 L191.6 231 L191.6 229.4 Z" fill="#111"/>

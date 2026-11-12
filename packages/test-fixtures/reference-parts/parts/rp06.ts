@@ -252,6 +252,9 @@ export const rp06: PartDef = {
           orientation: 'right',
           side: 'right',
           axes: ['Y', 'Z'],
+          // rod_h and rod_tail are measured to the ends of the straight legs, where the rod's
+          // bend starts: tangent (smooth) edges, which the product does not draw unless asked.
+          display: { tangent: 'thin' },
         },
         320,
         160,
@@ -265,6 +268,11 @@ export const rp06: PartDef = {
     side.line(ry, T, ry, T + rh);
     side.arc(ry - rb, T + rh, rb, 0, 90);
     side.line(ry - rb, T + rh + rb, ry - rb - d('rod_tail'), T + rh + rb);
+    // The tangent edges where the straight legs meet the bend: circles about the rod's path seen
+    // edge-on, rod_d long, drawn thin.
+    const rr = d('rod_d') / 2;
+    side.line(ry - rr, T + rh, ry + rr, T + rh, 'tangent');
+    side.line(ry - rb, T + rh + rb - rr, ry - rb, T + rh + rb + rr, 'tangent');
     side.dimV(-W / 2, 0, -W / 2, T, -12, dim('blk_t'));
     side.dimV(ry, T, ry, T + rh, 10, dim('rod_h'));
     side.leader(ry - rb, T + rh, rb, 45, 12, dim('rod_bend'), 'radius');

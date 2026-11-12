@@ -13,6 +13,7 @@ import {
   edgeName,
   origin,
   region,
+  side,
   sum,
   term,
 } from '../lib/geom';
@@ -204,7 +205,18 @@ export const rp03: PartDef = {
       [a, -z0],
     ]);
     v.line(0, h + 8, 0, -L - 8, 'center');
-    v.dimV(R + 6, 0, R + 6, h, 14, dim('flat_h'));
+    // The flat's height above the ball centre: from the X axis (the ball's equator, a centre line)
+    // to the flat's rim, the edge where the flat meets the sphere.
+    v.line(-R - 3, 0, R + 3, 0, 'center');
+    v.dimV(R + 6, 0, R + 6, h, 14, dim('flat_h'), {
+      refs: [
+        { name: 'origin:X', kind: 'edge' },
+        {
+          name: edgeName(side('ball', 'ball_sk', 'A1'), 'F{flat}:start'),
+          kind: 'edge',
+        },
+      ],
+    });
     v.dimH(-R, 0, R, 0, -R - 4, dim('ball_d'));
     v.dimH(-a, -L, a, -L, -8, dim('stem_d'));
     v.dimV(R + 6, -L, R + 6, 0, 12, dim('stem_l'));

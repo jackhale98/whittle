@@ -401,7 +401,13 @@
           18,
           18
         ],
-        "radius": 3
+        "radius": 3,
+        "refs": [
+          {
+            "name": "F{fil}:fillet(edge(F{shaft}:side(S{prof_sk}:e(L3))|F{shaft}:side(S{prof_sk}:e(L4))))",
+            "kind": "face"
+          }
+        ]
       },
       {
         "name": "chamfer_c",

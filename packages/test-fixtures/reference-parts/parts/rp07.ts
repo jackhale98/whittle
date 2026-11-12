@@ -188,12 +188,16 @@ export const rp07: PartDef = {
     const dim = (name: string) => ({ name, value: d(name), unit: 'mm' as const });
     const top = dr.view(TOP_OF_FRONT, 110, 90, 1.6).caption(-L / 2, W / 2 + 8, 'Top');
     top.rect(-L / 2, -W / 2, L / 2, W / 2);
-    top.rect(-L / 2 + i, -W / 2 + i, L / 2 - i, W / 2 - i, 'hidden');
+    // The loft's base outline, inset from the plate's. The loft narrows going up, so its sides face
+    // up and this outline is visible from above (it was drawn dashed, which was a misreading).
+    top.rect(-L / 2 + i, -W / 2 + i, L / 2 - i, W / 2 - i);
     top.rect(-d('top_l') / 2, -d('top_w') / 2, d('top_l') / 2, d('top_w') / 2);
     top.circle(0, 0, d('bore_d') / 2).centerCross(0, 0, d('bore_d') / 2);
     top.dimH(-L / 2, -W / 2, L / 2, -W / 2, -9, dim('base_l'));
     top.dimV(L / 2, -W / 2, L / 2, W / 2, 14, dim('base_w'));
-    top.dimH(-L / 2, W / 2, -L / 2 + i, W / 2, 8, dim('inset'));
+    // From the middle of the plate's left edge to the loft's base edge, on the same line (y = 0);
+    // the dimension line is above the plate.
+    top.dimH(-L / 2, 0, -L / 2 + i, 0, W / 2 + 8, dim('inset'));
     top.dimH(-d('top_l') / 2, d('top_w') / 2, d('top_l') / 2, d('top_w') / 2, 6, dim('top_l'));
     top.dimV(d('top_l') / 2, -d('top_w') / 2, d('top_l') / 2, d('top_w') / 2, 8, dim('top_w'));
     top.leader(0, 0, d('bore_d') / 2, -60, 12, dim('bore_d'));

@@ -40,8 +40,11 @@
 <line x1="233.6" y1="99.503" x2="241.6" y2="113.36" stroke="#111" stroke-width="0.25"/>
 <path d="M233.6 99.503 L235.493 101.182 L234.107 101.982 Z" fill="#111"/>
 <text data-dim="ear_hole_d" data-value="8" x="242.6" y="113.36" text-anchor="start" font-size="3.2" font-family="monospace" fill="#111">ear_hole_d = 8 mm</text>
-<line x1="140" y1="69" x2="140" y2="58.7" stroke="#444" stroke-width="0.2"/>
-<line x1="81.5" y1="69" x2="81.5" y2="58.7" stroke="#444" stroke-width="0.2"/>
+<line x1="140" y1="128.8" x2="140" y2="61.2" stroke="#2a5db0" stroke-width="0.25" stroke-dasharray="6 1.5 1 1.5" fill="none"/>
+<line x1="76.43" y1="95" x2="86.57" y2="95" stroke="#2a5db0" stroke-width="0.25" stroke-dasharray="6 1.5 1 1.5" fill="none"/>
+<line x1="81.5" y1="100.07" x2="81.5" y2="89.93" stroke="#2a5db0" stroke-width="0.25" stroke-dasharray="6 1.5 1 1.5" fill="none"/>
+<line x1="140" y1="95" x2="140" y2="58.7" stroke="#444" stroke-width="0.2"/>
+<line x1="81.5" y1="95" x2="81.5" y2="58.7" stroke="#444" stroke-width="0.2"/>
 <line x1="81.5" y1="59.9" x2="140" y2="59.9" stroke="#111" stroke-width="0.25"/>
 <path d="M81.5 59.9 L83.9 59.1 L83.9 60.7 Z" fill="#111"/>
 <path d="M140 59.9 L137.6 60.7 L137.6 59.1 Z" fill="#111"/>

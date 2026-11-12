@@ -567,7 +567,10 @@
         "axes": [
           "Y",
           "Z"
-        ]
+        ],
+        "display": {
+          "tangent": "thin"
+        }
       }
     ],
     "dimensions": [

@@ -30,7 +30,7 @@ Acetal (POM) (`whittle:acetal-pom`), density 1.41 g/cm^3.
 
 1. **sketch** (`base_sk`): Sketch on Top (XY): a rectangle plate_l x plate_w centred on the origin.
 2. **extrude** (`base`): Extrude by plate_t as a new body.
-3. **sketch** (`slot_sk`): Sketch on Top: one slot, slot_l x slot_w, centred on y = 0 with its centre at slot_x0.
+3. **sketch** (`slot_sk`): Sketch on Top: one slot, slot_l x slot_w, centred on y = 0 with its centre at slot_x0, and a construction centre point SC at (slot_x0, 0): dimension it slot_x0 from the origin and keep it level with the origin.
 4. **extrude** (`slot`): Cut-extrude the slot through all (both ways from the sketch plane).
 5. **linearPattern** (`slots`): Linear pattern of the slot along X: slot_n + 1 instances, spacing slot_pitch, skip instance 3 (slot_n slots).
 6. **sketch** (`ear_sk`): Sketch on Top: the +X ear, a rectangle ear_l x ear_w against the plate end.

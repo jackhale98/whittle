@@ -554,6 +554,17 @@
         "to": [
           30,
           18
+        ],
+        "refs": [
+          {
+            "name": "origin:Y",
+            "kind": "edge"
+          },
+          {
+            "name": "edge(F{base}:end|F{h_cs}:hole(F{cs_pt}:point):csink)",
+            "kind": "edge",
+            "at": "center"
+          }
         ]
       },
       {
@@ -564,12 +575,23 @@
         "view": "top",
         "axis": "v",
         "from": [
-          50,
+          30,
           0
         ],
         "to": [
-          50,
+          30,
           18
+        ],
+        "refs": [
+          {
+            "name": "origin:X",
+            "kind": "edge"
+          },
+          {
+            "name": "edge(F{base}:end|F{h_cs}:hole(F{cs_pt}:point):csink)",
+            "kind": "edge",
+            "at": "center"
+          }
         ]
       },
       {
@@ -689,6 +711,16 @@
         "to": [
           -36,
           14
+        ],
+        "refs": [
+          {
+            "name": "F{h_tap}:hole(S{pts_sk}:p(TP)):bottom",
+            "kind": "face"
+          },
+          {
+            "name": "F{base}:end",
+            "kind": "face"
+          }
         ]
       }
     ]

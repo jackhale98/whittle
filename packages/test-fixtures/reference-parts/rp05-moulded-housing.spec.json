@@ -351,14 +351,23 @@
         "value": 3,
         "unit": "mm",
         "view": "front-section",
-        "axis": "h",
         "from": [
-          -45,
-          0
+          44.475922,
+          10
         ],
         "to": [
-          -42,
-          0
+          41.480034,
+          9.842992
+        ],
+        "refs": [
+          {
+            "name": "F{base}:side(S{base_sk}:e(L2))",
+            "kind": "face"
+          },
+          {
+            "name": "F{sh}:shell(F{base}:side(S{base_sk}:e(L2)))",
+            "kind": "face"
+          }
         ]
       },
       {
@@ -368,8 +377,29 @@
         "unit": "deg",
         "view": "front-section",
         "at": [
-          44.903688828678355,
+          44.903689,
           34
+        ],
+        "from": [
+          43.951844,
+          20
+        ],
+        "to": [
+          0,
+          0
+        ],
+        "refs": [
+          {
+            "name": "F{base}:side(S{base_sk}:e(L2))",
+            "kind": "face",
+            "at": "self"
+          },
+          {
+            "name": "F{base}:start",
+            "kind": "face",
+            "at": "axis",
+            "fromNormal": true
+          }
         ]
       }
     ]

@@ -37,6 +37,7 @@ Aluminium 7075-T6 (`whittle:aluminium-7075-t6`), density 2.81 g/cm^3.
 8. **boolean** (`join`): Combine: add the boss body to the plate body.
 9. **pushPull** (`pull`): Push/pull the boss top face outwards by boss_up.
 10. **chamfer** (`cboss`): Chamfer the boss top edge by boss_c (propagate off: it is a single circular edge).
+11. **plane** (`boss_lvl`): Reference plane: offset plate_t + boss_h - boss_up above the Top plane, the level the boss top was first extruded to before the push/pull. It follows the parameters, so boss_up can be dimensioned from it.
 
 ## Expected result
 

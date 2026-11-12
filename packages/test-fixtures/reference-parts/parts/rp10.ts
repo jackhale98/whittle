@@ -66,7 +66,7 @@ export const rp10: PartDef = {
       {
         tool: 'sketch',
         id: 'slot_sk',
-        say: 'Sketch on Top: one slot, slot_l x slot_w, centred on y = 0 with its centre at slot_x0.',
+        say: 'Sketch on Top: one slot, slot_l x slot_w, centred on y = 0 with its centre at slot_x0, and a construction centre point SC at (slot_x0, 0): dimension it slot_x0 from the origin and keep it level with the origin.',
         on: origin('origin:XY'),
         ops: [
           {
@@ -76,6 +76,15 @@ export const rp10: PartDef = {
             y: '-slot_w/2',
             w: 'slot_l',
             h: 'slot_w',
+          },
+          {
+            op: 'point',
+            id: 'SC',
+            x: 'slot_x0',
+            y: '0',
+            dims: 'x',
+            align: 'h',
+            construction: true,
           },
         ],
       },
@@ -223,9 +232,17 @@ export const rp10: PartDef = {
     top.dimH(L / 2, ew / 2, L / 2 + el, ew / 2, 6, dim('ear_l'));
     top.dimV(L / 2 + el, -ew / 2, L / 2 + el, ew / 2, 8, dim('ear_w'));
     top.leader(L / 2 + el / 2, 0, d('ear_hole_d') / 2, -60, 16, dim('ear_hole_d'));
-    // From the centre line (x = 0): slot_x0 is the first slot centre's x from the origin. (It was
-    // drawn from the plate's left end, a 15 mm span printed -45.)
-    top.dimH(0, W / 2, d('slot_x0'), W / 2, 7, dim('slot_x0'));
+    // From the centre line (x = 0, the plane `origin:Y` seen from above) to the slot's centre
+    // point SC: slot_x0 is the first slot centre's x from the origin. (It was drawn from the
+    // plate's left end, a 15 mm span printed -45.)
+    top.line(0, -W / 2 - 6, 0, W / 2 + 6, 'center');
+    top.centerCross(d('slot_x0'), 0, 3);
+    top.dimH(0, 0, d('slot_x0'), 0, W / 2 + 7, dim('slot_x0'), {
+      refs: [
+        { name: 'origin:Y', kind: 'edge' },
+        { name: 'S{slot_sk}:p(SC)', kind: 'vertex' },
+      ],
+    });
     // The pitch between like edges of the first two slots (their left walls), as it is measured on
     // the part; the dimension line stays where it was, below the slots.
     top.dimH(

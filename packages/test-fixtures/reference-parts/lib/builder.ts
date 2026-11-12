@@ -181,6 +181,8 @@ class SketchBuilder {
       case 'point': {
         this.pt(o.id, this.n(o.x), this.n(o.y), o.construction === true);
         this.place(o.id, o.x, o.y, o.dims ?? 'xy');
+        if (o.align === 'h') this.geo({ kind: 'horizontalPoints', a: 'o', b: o.id });
+        if (o.align === 'v') this.geo({ kind: 'verticalPoints', a: 'o', b: o.id });
         return;
       }
       case 'line': {
