@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Per-chunk bundle report (PLAN H1). Lists every JS file in dist/ with raw and gzip size, marks the
 // ones index.html loads eagerly ("initial") and prints the initial-route headroom against the
-// 250 kB gzip budget (the gate itself stays `pnpm size`, .size-limit.mjs). Everything else is a lazy
+// 500 kB gzip backstop (ADR-097) (the gate itself stays `pnpm size`, .size-limit.mjs). Everything else is a lazy
 // chunk: if a new editor shows up in the initial list, it stopped lazy-loading.
 //
 // Usage: node scripts/bundle-report.mjs [--dist dist] [--md report.md] [--json report.json]
@@ -18,7 +18,7 @@ import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
 
-const BUDGET_GZIP = 250 * 1000; // size-limit's "kB" is 1000 bytes
+const BUDGET_GZIP = 500 * 1000; // size-limit's "kB" is 1000 bytes
 
 const here = dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);

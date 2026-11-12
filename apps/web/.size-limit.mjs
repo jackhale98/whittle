@@ -1,4 +1,5 @@
-// PLAN §10 budget: initial-route JS <= 250 kB gzip. "Initial route" = exactly the scripts that
+// PLAN §10 backstop: initial-route JS <= 500 kB gzip (ADR-097; the gate users feel is the shell
+// TTI probe, e2e/perf/shell.perf.ts). "Initial route" = exactly the scripts that
 // dist/index.html loads eagerly (<script src> + <link rel="modulepreload">). Lazy chunks, the
 // service worker, the kernel glue and every .wasm are excluded by construction.
 // Run `pnpm --filter @wren-cad/web build` first.
@@ -35,7 +36,7 @@ export default [
   {
     name: 'initial route JS (gzip)',
     path: files,
-    limit: '250 kB',
+    limit: '500 kB',
     gzip: true,
   },
 ];

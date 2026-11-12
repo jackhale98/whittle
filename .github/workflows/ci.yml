@@ -183,7 +183,7 @@ jobs:
           VITE_GITHUB_CLIENT_ID: ${{ vars.VITE_GITHUB_CLIENT_ID }}
           VITE_GITLAB_CLIENT_ID: ${{ vars.VITE_GITLAB_CLIENT_ID }}
           VITE_BITBUCKET_CLIENT_ID: ${{ vars.VITE_BITBUCKET_CLIENT_ID }}
-      - name: Initial-route JS budget (<= 250 kB gzip)
+      - name: Initial-route JS backstop (<= 500 kB gzip, ADR-097)
         run: pnpm --filter @wren-cad/web size
       # Every JS chunk, raw and gzip, initial vs lazy, with the initial-route headroom (PLAN H1).
       # Written to the job summary and uploaded; a new editor in the initial list stopped lazy-loading.

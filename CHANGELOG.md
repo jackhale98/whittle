@@ -8,6 +8,8 @@
   - **Never fights a drag:** while a mouse, pen or finger gesture is in progress the device is ignored. If the vendor driver also sends wheel events for push and pull, those echoes are dropped so the zoom does not double.
   - Loaded only when the browser has WebHID, after the first paint.
 
+
+- **Start-up budget** (owner, ADR-097): the release gate for start-up is the measured cold shell start (1.5 s on fast 4G); the initial-route JavaScript cap is raised from 250 to 500 kB gzip as a backstop. Large editors still load on demand.
 - **3D mouse settings, diagnostics and buttons** (M4.5, ADR-096 amendment; the UI half, the device layer is separate).
   - **Settings, Navigation, 3D mouse:** **Pair a 3D mouse** (one click, the browser asks once), the paired device's name, sensitivity 0.25 to 4, a dead zone, rotate and pan/zoom on or off, dominant axis, and an invert switch for each of the six axes. Values change in place and are remembered on this device.
   - **3D mouse diagnostics** (Settings, or the command palette): always says what is going on and the fix. A browser that cannot read a 3D mouse, a device not yet paired, one that is unplugged, one a vendor driver may be holding (close the driver's app or allow browser access in its settings), and a live device with six axis bars and the buttons pressed. It also explains doubled zoom: turn off the driver's wheel emulation for the browser.
