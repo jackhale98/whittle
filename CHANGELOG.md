@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **Drawings: more things to dimension** (M4.1, ADR-095 amendment).
+  - **Centre lines while measuring:** with the Dimension, Angle or Ordinate tool on, the origin's axes, each sketch's origin and axes, construction points, reference planes, axes and points, and a circular pattern's pitch circle show as thin chain lines over the views. Pick one like an edge. A dimension that uses one draws it on the sheet. A model edge always wins over a centre line under the pointer.
+  - **Circles wait for a second pick:** pick another circle for the centre distance, or the same circle again for its diameter (Alt for a radius, Shift for its size as a plain linear dimension across it). The inspector switches a diameter between **Ø**, **↔ linear across** and **↕ linear across**, one undo step each.
+  - **Section views:** the edges of a cut face pick the model face the cut runs through, so a wall thickness or a bore's diameter in a section follows the model. A drafted wall measures its true thickness.
+  - **Draft angles:** in the Angle tool, Shift on the second cut edge (or **From the normal of the second face** in the inspector) measures from that face's normal.
+  - **Fillets drawn as curves:** one pick on a fillet's curved outline gives its radius, when its face is round. Otherwise the tool says why.
+  - **Hidden and tangent lines** can be picked when the view shows them. Visible lines win where they overlap.
+
 - **Drawings: datums on widths, leaders on an edge's extension, smooth leader drags** (ADR-094 amendment).
   - **A datum on any feature of size:** pick a width or a diameter dimension. The datum names that dimension (its median plane or axis) and follows it. The inspector says what it is bound to. Import places such datums in line with their dimension.
   - **Extension lines:** a datum's triangle and a frame's arrow slide past the end of the surface's line onto its extension, which is drawn as an extension line.

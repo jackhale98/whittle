@@ -165,6 +165,8 @@ export interface DrawingHooks {
     placements: number;
     attention: { key: string; severity: string; message: string }[];
     texts: string[];
+    /** M4.1: construction refs the sheet draws because a placement uses them (exact names). */
+    construction: string[];
     resolutions: {
       id: string;
       state: string;
@@ -483,6 +485,13 @@ export function installDrawingHooks(c: DrawingController): void {
           message: e.message,
         })),
         texts: (composed?.list.items ?? []).flatMap((i) => (i.kind === 'text' ? [i.text] : [])),
+        construction: [
+          ...new Set(
+            (composed?.list.items ?? []).flatMap((i) =>
+              i.source?.kind === 'view' && i.source.construction ? [i.source.construction] : [],
+            ),
+          ),
+        ],
         resolutions: [...(b?.main.resolutions.values() ?? [])].map((r) => ({
           id: r.annotationId,
           state: r.state,

@@ -29,6 +29,7 @@ import {
   viewOutline,
   viewToSheet,
 } from '@wren-cad/drawing';
+import { flattenPrimitive } from '@wren-cad/drawing/annotation';
 import type { DrawingController } from './controller';
 import { host } from './host';
 import type { Built } from './pipeline';
@@ -52,7 +53,25 @@ function curveDistance(curve: ProjectedCurve['curve'], p: Vec2): number {
     return len(sub(p, [curve.a[0] + t * d[0], curve.a[1] + t * d[1]]));
   }
   if (curve.kind === 'arc') return Math.abs(len(sub(p, curve.center)) - curve.radius);
-  return Number.POSITIVE_INFINITY;
+  // A spline, an ellipse or a polyline (M4.1: a fillet's outline): along its flattened run.
+  const prim =
+    curve.kind === 'bspline'
+      ? {
+          kind: 'spline' as const,
+          degree: curve.degree,
+          poles: curve.poles,
+          knots: curve.knots,
+          ...(curve.weights ? { weights: curve.weights } : {}),
+        }
+      : curve;
+  let best = Number.POSITIVE_INFINITY;
+  for (const run of flattenPrimitive(prim, 0.01))
+    for (let i = 0; i + 1 < run.length; i++)
+      best = Math.min(
+        best,
+        curveDistance({ kind: 'line', a: run[i] as Vec2, b: run[i + 1] as Vec2 }, p),
+      );
+  return best;
 }
 
 const ROLE_RANK = { visible: 0, tangent: 1, hidden: 2 } as const;
@@ -443,9 +462,11 @@ export function planDimension(
     const line = (ea ?? eb) as [Vec2, Vec2];
     const t = dir(line[0], line[1]);
     const n: Vec2 = [-t[1], t[0]];
-    direction = to3(frame, n);
-    // A lane only along an exact view axis (M4.1); otherwise offset from the geometry.
+    // A lane only along an exact view axis (M4.1); otherwise offset from the geometry. The
+    // direction is always stored: a point (a centre, a construction point) to a line measures
+    // along it, never as the 3D distance (ADR-095).
     measuredAxis = exactAxis(n);
+    direction = measuredAxis === 'x' ? frame.x : measuredAxis === 'y' ? frame.y : to3(frame, n);
     at.push(ca ? atOf(first) : 'self', cb ? atOf(second) : 'self');
   } else if (ea && eb) {
     const ta = dir(ea[0], ea[1]);

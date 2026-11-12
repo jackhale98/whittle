@@ -40,6 +40,8 @@ export interface DrawingState {
   placements: number;
   attention: { key: string; severity: string; message: string }[];
   texts: string[];
+  /** M4.1: construction refs drawn on the sheet because a placement uses them. */
+  construction: string[];
   resolutions: {
     id: string;
     state: string;
@@ -54,6 +56,14 @@ export interface Edge {
   name: string;
   /** The face an outline (or a seam on a silhouette) outlines. */
   face?: string;
+  /** M4.1: a section cut edge's model face. */
+  cut?: string;
+  /** M4.1: a construction candidate's exact ref name (`edges(id, { construction: true })`). */
+  construction?: string;
+  /** M4.1: `visible`, `tangent`, `hidden` (as drawn) or `construction`. */
+  role?: string;
+  /** The kernel's edge kind (`sharp`, `smooth`, `outline`...). */
+  edge?: string;
   kind: string;
   at: [number, number];
   a?: [number, number];
@@ -72,6 +82,8 @@ export interface Projection {
     edge: string;
     name?: string;
     face?: string;
+    /** M4.1: a section cut edge's model face (absent with an older drawing kernel). */
+    cutFace?: string;
     kind: string;
     radius?: number;
     center?: [number, number];
@@ -150,7 +162,7 @@ type W = {
     failKernel(): void;
     projection(viewId: string): Projection | null;
     state(): DrawingState;
-    edges(viewId: string): Edge[];
+    edges(viewId: string, opts?: { construction?: boolean }): Edge[];
     placements(): PlacementInfo[];
   };
 };
@@ -166,8 +178,11 @@ export const drawing = (page: Page) => ({
   exact: (): Promise<void> => page.evaluate(() => (window as unknown as W).__wrenDrawing.exact()),
   projection: (viewId: string): Promise<Projection | null> =>
     page.evaluate((id) => (window as unknown as W).__wrenDrawing.projection(id), viewId),
-  edges: (viewId: string): Promise<Edge[]> =>
-    page.evaluate((id) => (window as unknown as W).__wrenDrawing.edges(id), viewId),
+  edges: (viewId: string, opts?: { construction?: boolean }): Promise<Edge[]> =>
+    page.evaluate(
+      ([id, o]) => (window as unknown as W).__wrenDrawing.edges(id as string, o ?? undefined),
+      [viewId, opts ?? null] as const,
+    ),
   placements: (): Promise<PlacementInfo[]> =>
     page.evaluate(() => (window as unknown as W).__wrenDrawing.placements()),
   hit: (at: [number, number], tol = 1): Promise<{ source: unknown; pick: unknown }> =>

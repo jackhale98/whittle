@@ -3387,3 +3387,40 @@ Follow-up round on the drawing workstream, after the lead accepted proposals 1 a
 8. **Spec-side, two parts (lead decision, reported to the owner):** rp04 `boss_up` measured a level the part had only partway through its history, and rp10 `slot_x0` a slot centre the finished part has no entity for. Neither can be made without inventing a reference. The reference parts gain the honest model entity a designer would add: rp04 a reference plane `boss_lvl` at the push/pull's start level, rp10 a construction centre point in the slot sketch. The dimensions are then made from those.
 
 **Consequences.** One drawing-kernel change (cut-face naming; CI build). Imported dimensions that already ref sketch origins or axes now draw their centre lines (golden churn). SCHEMA_VERSION stays 4: `RefPoint` only widens.
+
+### ADR-095 amendment: workstream C, the drawing side of the pick gaps (2026-11-12)
+
+**Construction geometry.**
+- `constructionQueries(part)` (packages/drawing, pure) lists the candidates in a fixed priority: origin O/X/Y/Z, then history order (each sketch's `@origin`, `@x`, `@y` and its standalone points, plane/axis/point features, circular patterns' `:pitch`). Suppressed features are left out. A standalone point is a construction point or one no curve uses as an end, a centre, a pole or a through point; a profile corner is a model vertex and is not offered.
+- `ConfigDataSource.make` asks for them with one `annotationAnchors` call, in the regen's slot before it closes, so the candidates are memoised with the regen result like the shape. A failed call offers nothing.
+- Projection (`projectConstruction`): lines and axes seen end-on are skipped, planes not seen edge-on are skipped, a pitch circle is a circle face-on and a line across side-on. Lines are spanned across the view's projected part bounds plus 3 sheet mm (`CONSTRUCTION_OVERRUN`); a line that misses them is not shown. Points are a small cross.
+- Dedupe (`constructionShapes`): identical geometry (same infinite line, point or circle within 1e-5 mm in the view plane) keeps one shape, the first by priority. Names are never merged: the kept shape's exact name is what a pick stores.
+- Pick targets are shown only by the measuring tools (Dimension, Angle, Ordinate, Reattach). Datums, frames, finishes and notes need a surface, so they are not offered construction geometry, and their picks ignore drawn construction items.
+- `buildDrawing` draws used construction refs from each placement's resolution anchors (`usedConstruction`), role `center`, source `view.construction`. A ref without an anchor draws nothing. Which names count is `isConstruction` (default: every construction name except non-origin sketch points; the app adds the standalone points), so imported sketch dimensions that ref a profile corner do not grow crosses.
+
+**Picking.**
+- Ranks in `hitTest` (packages/ui): model edges and cut edges 1, face outlines and other view items 2, construction 3, so a model edge always outranks construction. Within a rank, items closer than 1e-3 sheet mm are a tie, decided cut edge, then visible, tangent, hidden.
+- `viewHit` (the picking tools) now considers only pickable view items (an edge, a face outline, a cut edge, construction). A view label or a cutting-plane line no longer swallows a pick near an edge.
+- `pickEdge` takes `by: 'cut'`. It accepts tangent and hidden runs when `curveRole` says the view draws them. Among runs of one name it takes the nearest; at equal distance, visible before tangent before hidden. Distance to a spline, ellipse or polyline run is measured on its flattened run. Before, it was Infinity, so a fillet face's arc always beat its spline outline.
+- A cut pick is `EdgePick { name: cutFace, ref: 'face', cut: true }`. A section's cut edge is also accepted by datums and frames as its face seen edge-on.
+
+**Dimension tool.**
+- A circle waits for a second pick. The same circle again (same name, view and ref kind) gives its diameter, with Alt a radius, with Shift the circle's size in linear form. A construction point also waits.
+- Linear form: refs [c, c] at ['min', 'max'], direction the view's x or y. The axis is the one along which the second click lies further from the centre. The layout is a lane beside the view.
+- Two cut edges of one face, parallel and apart (|cross| > 1e-6), are its diameter. Collinear ones, and non-parallel ones, are refused with the reason.
+- `exactAxis` (1e-6) replaces the 0.98 snap everywhere in `planDimension`: two lines, a circle or point and a line, and a side-on face's two outlines. Off-axis picks get no `direction` between lines (natural separation) and an `offset` layout.
+- A centre or construction point to a line always stores a `direction`: the view axis when exactly aligned, else the line's in-view normal. The kernel-client then never measures the 3D distance. A construction point is measured at `self`, a circle at `center`.
+- A first pick on a curved outline that is not an arc, but has a face, asks `annotationAnchors({ ref: face, annotationKind: 'radius' })`. A torus, circle or sphere (point) anchor stores a radius on that face. On a torus the leader angle points at the picked side, so the layout picks that meridian. Anything else is refused, naming the face's shape.
+
+**Angle tool.** Shift on the second pick, or the inspector's **From the normal of the second face** switch, stores at ['self', 'axis']. The second pick must be a cut edge, a face seen edge-on; a model edge is refused with the reason. The switch is shown for any angle whose second ref is a face.
+
+**Inspector forms.** **Form: Ø / ↔ linear across / ↕ linear across** is shown for a diameter with one ref, and for a linear [c, c] at [min, max] whose direction is the view's x or y. Sourced (driven) annotations are excluded.
+- `setDiameterForm` rewrites the annotation in place (same id; tolerance, stated value and text kept) and its placement, under one coalescing key, then commits: one undo step.
+- Back to Ø is radial when the circle is seen face-on, else it keeps its lane.
+
+**Layout.**
+- min/max feet: `extremePoint` (a circle's tangent point along the direction, the centre when the direction is along its axis, else the anchor's lowest or highest point). B returns min/max anchors as points already at the extremes, which pass through unchanged.
+- Torus radius: `torusMeridian`; seen along its axis it is not measurable in the view.
+- A planar face at `axis` in an angle: its leg is the projected normal from where the edge-on lines meet, turned to the other leg's side, drawn as an extension line.
+
+**Test hooks.** `edges(viewId, { construction? })` lists every pickable curve the view draws, with `role`, `edge`, `cut` and spline-like kinds. Visible named curves come first, in their old order, so existing callers see the same first entries. Construction candidates come only on request. `hit()` picks as a measuring tool does. `projection()` carries `cutFace`. `state().construction` lists the used construction refs drawn on the sheet.

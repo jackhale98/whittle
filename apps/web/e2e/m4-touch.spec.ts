@@ -486,8 +486,12 @@ test.describe('tablet', () => {
     }
     if (!onCircle) throw new Error('no clear spot on the circle');
     // The undo above rebuilt the draft (polylines): circles are picked on the exact edges.
+    await built(page);
     await drawing(page).exact();
     await page.locator('[data-tool="dimension"]').tap();
+    // The tool waits after a circle (M4.1): the same circle tapped again is its diameter.
+    await tapAt(onCircle);
+    await expect(page.getByTestId('prompt-chip')).toContainText('same circle again');
     await tapAt(onCircle);
     await expect.poll(async () => (await of('diameter')).length).toBe(1);
     await built(page);
@@ -513,6 +517,68 @@ test.describe('tablet', () => {
     expect(frame.appliesTo).toBe(dia?.id);
     await undo();
     await expect.poll(async () => (await of('geometricTolerance')).length).toBe(0);
+    await a11y(page);
+  });
+
+  test('M4.1 with fingers: two holes tapped are a centre distance; centre lines show while measuring; a diameter’s form', async ({
+    page,
+  }) => {
+    await openDemo(page);
+    await newDrawing(page);
+    await page.getByTestId('drawing-panel-toggle').tap();
+    await panelTab(page, 'Views').tap();
+    await page.getByTestId('add-standard-views').tap();
+    await expect.poll(async () => (await drawing(page).state()).views.length).toBe(3);
+    await page.getByTestId('drawing-panel-toggle').tap();
+    await drawing(page).exact();
+    const s = await built(page);
+    const top = viewOf(s, 'projected', 'top');
+    if (!top) throw new Error('no top view');
+    const holes = (await drawing(page).edges(top.id))
+      .filter(
+        (e) =>
+          e.kind === 'arc' &&
+          e.radius !== undefined &&
+          e.radius < 4 &&
+          e.start !== undefined &&
+          e.end !== undefined &&
+          Math.abs(e.end - e.start - 2 * Math.PI) < 1e-6,
+      )
+      .sort((p, q) => p.at[1] - q.at[1] || p.at[0] - q.at[0]);
+    const [a, b] = holes;
+    if (!a || !b) throw new Error('no holes');
+    const t = await touch(page);
+    const tapAt = async (p: [number, number]) => t.tap([await sheetToPage(page, p)]);
+    const anns = async () => (await app(page).doc()).parts[0]?.annotations ?? [];
+
+    await page.locator('[data-tool="dimension"]').tap();
+    // The measuring tools show the construction candidates over the sheet.
+    await expect(page.getByTestId('construction-candidates')).toHaveCount(1);
+    await tapAt(a.at);
+    await expect(page.getByTestId('prompt-chip')).toContainText('same circle again');
+    await tapAt(b.at);
+    await expect.poll(async () => (await anns()).length).toBe(1);
+    expect((await anns())[0]).toMatchObject({ kind: 'linear', at: ['center', 'center'] });
+
+    // The same hole tapped twice: its diameter; the inspector turns it into linear across.
+    await built(page);
+    await drawing(page).exact();
+    await tapAt(a.at);
+    await tapAt(a.at);
+    await expect.poll(async () => (await anns()).length).toBe(2);
+    const dia = (await anns())[1];
+    expect(dia?.kind).toBe('diameter');
+    await built(page);
+    await page.getByTestId('drawing-panel-toggle').tap();
+    const across = page
+      .getByRole('radiogroup', { name: 'Dimension form' })
+      .getByRole('radio', { name: 'Linear across, horizontal' });
+    const box = await across.boundingBox();
+    expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
+    await across.tap();
+    await expect
+      .poll(async () => (await anns()).find((x) => x.id === dia?.id)?.kind)
+      .toBe('linear');
     await a11y(page);
   });
 
