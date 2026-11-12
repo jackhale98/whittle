@@ -325,7 +325,8 @@ function checkLeader(c: Checker, l: Obj, at: string): void {
   ) {
     if (a.kind === 'ref') {
       c.num(a.index, `${at}.attach.index`, { int: true, min: 0 });
-      if (a.t !== undefined) c.num(a.t, `${at}.attach.t`, { min: 0, max: 1 });
+      // Outside [0, 1] = on the edge's extension line (ADR-094), at most ten edge lengths out.
+      if (a.t !== undefined) c.num(a.t, `${at}.attach.t`, { min: -10, max: 11 });
     } else {
       c.nonEmpty(a.placementId, `${at}.attach.placementId`);
       if (a.kind === 'dimensionLine') c.num(a.t, `${at}.attach.t`, { min: 0, max: 1 });

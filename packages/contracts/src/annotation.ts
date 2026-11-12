@@ -61,8 +61,8 @@ export interface AnnotationBase {
    * per kind are in the .md table ("refs per kind"). Resolved against the part's final state in the
    * view's configuration. Unresolved = needs attention: never re-attached to a guessed entity, and
    * the old value is never displayed (trap T1). Reattach replaces the list (every kind, trap T2).
-   * May be empty only where the kind says so (a hole callout bound by `source`, a frame bound by
-   * `appliesTo`).
+   * May be empty only where the kind says so (a hole callout bound by `source`, a frame or a datum
+   * bound by `appliesTo`).
    */
   refs: EntityRef[];
   /** Point qualifiers parallel to `refs`; absent or shorter = `'self'` for the rest. */
@@ -192,6 +192,13 @@ export interface DatumFeatureAnnotation extends AnnotationBase {
   /** `A`, `B`… (ISO and ASME exclude I, O, Q; checked against the standard). */
   label: string;
   standard?: GpsStandard;
+  /**
+   * The size dimension whose feature of size this datum is (ADR-094): the median plane of a width,
+   * the axis of a diameter. Its refs are used and `refs` may be empty, as for a frame's
+   * `appliesTo`; the triangle sits in line with that dimension's line. A missing dimension id is
+   * needs attention.
+   */
+  appliesTo?: Id;
 }
 
 export type GeometricCharacteristic =

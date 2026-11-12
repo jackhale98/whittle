@@ -274,7 +274,11 @@ export type DrawingViewKind = DrawingView['kind'];
 
 /** Where a leader starts. */
 export type LeaderAttach =
-  /** On the annotation's `refs[index]` as projected; `t` ∈ [0, 1] along it (absent = auto). */
+  /**
+   * On the annotation's `refs[index]` as projected, at `t` along it (absent = auto). `t` ∈ [0, 1]
+   * is on the projected edge; outside it is on the edge's extension line (ADR-094), which the
+   * layout draws as an extension line out to the attach point. Finite, |t| bounded by the validator.
+   */
   | { kind: 'ref'; index: number; t?: number }
   /** Next to another placement's text (a frame under its size dimension). */
   | { kind: 'placement'; placementId: Id }
