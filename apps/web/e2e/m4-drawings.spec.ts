@@ -2340,8 +2340,9 @@ test.describe('datums and frames on surfaces and features of size (ADR-094)', ()
     expect(placed?.leader?.text[0] ?? 0).toBeLessThan(left.a[0]);
     await undoRedo(page, datums, 1);
 
-    // Drag the triangle along its line, and past its end and off to the side: it stays on the
-    // line (at its end). One undo step.
+    // Drag the triangle past the line's end and off to the side: it slides onto the line's
+    // extension and stays on the line (ADR-094). The drag is a preview: nothing is stored until
+    // release, which is one undo step.
     await page.locator('[data-tool="select"]').click();
     await built(page);
     placed = (await drawing(page).placements()).find((p) => p.annotationId === datum.id);
@@ -2354,21 +2355,58 @@ test.describe('datums and frames on surfaces and features of size (ADR-094)', ()
     await expect(page.locator('[data-testid="leader-handle"][data-kind="attach"]')).toHaveCount(1);
     const [p0, p1] = placed.leader.on;
     const t0 = attachT(await placementOf(page, id));
+    const stored0 = JSON.stringify(await placementOf(page, id));
     before = await historyLen(page);
-    await drag(
-      page,
-      await sheetToPage(page, placed.leader.at),
-      await sheetToPage(page, [p0[0] + (p1[0] - p0[0]) * 1.15 + 3, p0[1] + (p1[1] - p0[1]) * 1.15]),
-    );
-    await expect.poll(async () => attachT(await placementOf(page, id))).toBe(1);
+    const from = await sheetToPage(page, placed.leader.at);
+    const to = await sheetToPage(page, [
+      p0[0] + (p1[0] - p0[0]) * 1.15 + 3,
+      p0[1] + (p1[1] - p0[1]) * 1.15,
+    ]);
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    for (let i = 1; i <= 10; i++)
+      await page.mouse.move(
+        from.x + ((to.x - from.x) * i) / 10,
+        from.y + ((to.y - from.y) * i) / 10,
+      );
+    // Mid-drag: the preview is drawn, the document and history are untouched.
+    await expect(
+      page.locator('[data-transient="overlay"] [data-leader-handle="attach"]'),
+    ).toHaveCount(1);
+    expect(JSON.stringify(await placementOf(page, id))).toBe(stored0);
+    expect(await historyLen(page)).toBe(before);
+    await page.mouse.up();
+    await expect.poll(async () => attachT(await placementOf(page, id))).toBeGreaterThan(1.1);
     expect(await historyLen(page)).toBe(before + 1);
     expect(await lastLabel(page)).toBe('Move leader');
     await built(page);
     const ext = (await drawing(page).placements()).find((p) => p.id === id);
+    // On the line's extension: the same line, past its end, with an extension line drawn.
     expect(Math.abs((ext?.leader?.at[0] ?? 0) - left.a[0])).toBeLessThan(0.05);
+    const L = Math.hypot(p1[0] - p0[0], p1[1] - p0[1]);
     expect(
-      Math.hypot((ext?.leader?.at[0] ?? 0) - p1[0], (ext?.leader?.at[1] ?? 0) - p1[1]),
-    ).toBeLessThan(0.05);
+      Math.hypot((ext?.leader?.at[0] ?? 0) - p0[0], (ext?.leader?.at[1] ?? 0) - p0[1]),
+    ).toBeGreaterThan(L + 1);
+    const segs = (await drawing(page).extents()).find((e) => e.placementId === id)?.segments ?? [];
+    expect(
+      segs.some(
+        ([a, b]) =>
+          Math.abs(a[0] - left.a[0]) < 0.05 &&
+          Math.abs(b[0] - left.a[0]) < 0.05 &&
+          Math.hypot(b[0] - a[0], b[1] - a[1]) > 3,
+      ),
+    ).toBe(true);
+    // Escape in the middle of a drag leaves nothing behind.
+    const stored1 = JSON.stringify(await placementOf(page, id));
+    const h1 = await historyLen(page);
+    const from2 = await sheetToPage(page, ext?.leader?.at ?? placed.leader.at);
+    await page.mouse.move(from2.x, from2.y);
+    await page.mouse.down();
+    await page.mouse.move(from2.x + 10, from2.y + 25, { steps: 5 });
+    await page.keyboard.press('Escape');
+    await page.mouse.up();
+    expect(JSON.stringify(await placementOf(page, id))).toBe(stored1);
+    expect(await historyLen(page)).toBe(h1);
     await page.getByTestId('drawing-undo').click();
     await expect.poll(async () => attachT(await placementOf(page, id))).toBeCloseTo(t0 ?? 0.5, 6);
     // The text drags too (one step), and the inspector has the inline alternatives.
@@ -2419,6 +2457,61 @@ test.describe('datums and frames on surfaces and features of size (ADR-094)', ()
     await a11y(page);
   });
 
+  test('a datum on a width: its median plane, in line with the width’s dimension line; undo', async ({
+    page,
+  }) => {
+    const { left, right } = await setup(page);
+    // The plate's width in the top view: two parallel side lines.
+    await page.locator('[data-tool="dimension"]').click();
+    await click(page, left.at);
+    await click(page, right.at);
+    await expect.poll(count(page, 'linear')).toBe(1);
+    const width = (await annotations(page)).find((a) => a.kind === 'linear') as Annotation;
+    await built(page);
+    const wp = (await drawing(page).placements()).find((p) => p.annotationId === width.id);
+    if (!wp?.text || !wp.line) throw new Error('no width placement');
+
+    await page.locator('[data-tool="datum"]').click();
+    const before = await historyLen(page);
+    await click(page, wp.text);
+    await expect.poll(count(page, 'datumFeature')).toBe(1);
+    expect(await historyLen(page)).toBe(before + 1);
+    const datum = (await annotations(page)).find((a) => a.kind === 'datumFeature') as Extract<
+      Annotation,
+      { kind: 'datumFeature' }
+    >;
+    // No longer refused: it names the width (ADR-094), with no refs of its own.
+    expect(datum.appliesTo).toBe(width.id);
+    expect(datum.refs).toEqual([]);
+    await built(page);
+    expect((await drawing(page).state()).resolutions.find((r) => r.id === datum.id)?.state).toBe(
+      'ok',
+    );
+    const tp = (await drawing(page).placements()).find((p) => p.annotationId === datum.id);
+    expect(tp?.layout).toMatchObject({
+      kind: 'leader',
+      attach: { kind: 'dimensionLine', placementId: wp.id },
+    });
+    const end = tp?.layout.attach?.t as 0 | 1;
+    const tip = wp.line[end];
+    expect(
+      Math.hypot((tp?.leader?.at[0] ?? 0) - tip[0], (tp?.leader?.at[1] ?? 0) - tip[1]),
+    ).toBeLessThan(1e-6);
+    expect(tp?.items).toContain('fill');
+    // The inspector says what it is bound to.
+    await page.locator('[data-tool="select"]').click();
+    if (!tp?.text) throw new Error('no datum text');
+    await click(page, tp.text);
+    await panelTab(page, 'Inspector').click();
+    await expect(page.getByTestId('applies-to')).toContainText('median plane');
+    await a11y(page);
+    // Dragging the width's line takes the datum with it (it follows in the preview, then after).
+    await page.getByTestId('drawing-undo').click();
+    await expect.poll(count(page, 'datumFeature')).toBe(0);
+    await page.getByTestId('drawing-redo').click();
+    await expect.poll(count(page, 'datumFeature')).toBe(1);
+  });
+
   test('on a feature of size: in line with the diameter’s line, and with its text; undo for each', async ({
     page,
   }) => {
@@ -2440,9 +2533,13 @@ test.describe('datums and frames on surfaces and features of size (ADR-094)', ()
     await expect.poll(count(page, 'datumFeature')).toBe(1);
     expect(await historyLen(page)).toBe(before + 1);
     expect(await lastLabel(page)).toBe('Add datum on a feature of size');
-    const datum = (await annotations(page)).find((a) => a.kind === 'datumFeature') as Annotation;
-    expect(datum.at).toEqual(['axis']);
-    expect(datum.refs[0]?.kind).toBe('face');
+    const datum = (await annotations(page)).find((a) => a.kind === 'datumFeature') as Extract<
+      Annotation,
+      { kind: 'datumFeature' }
+    >;
+    // It names the size dimension (its axis), with no refs of its own (ADR-094).
+    expect(datum.appliesTo).toBe(dia.id);
+    expect(datum.refs).toEqual([]);
     await built(page);
     expect((await drawing(page).state()).resolutions.find((r) => r.id === datum.id)?.state).toBe(
       'ok',

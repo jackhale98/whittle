@@ -3325,3 +3325,48 @@ Drawing workstream (packages/drawing, packages/ui/src/drawing, apps/web/src/draw
 4. Optionally, `DrawingStyle.datumTriangle?: 'filled' | 'open'`.
 
 **Bundle.** Initial route 236.67 kB gzip, unchanged (limit 250). Everything here is in the lazy drawing chunk.
+
+### ADR-094 amendment: datum `appliesTo`, leaders on an edge's extension, leader drags as previews (2026-11-12)
+
+Follow-up round on the drawing workstream, after the lead accepted proposals 1 and 2 (d0a48b4).
+
+**Datum on a feature of size: `DatumFeatureAnnotation.appliesTo`.**
+- **Document.** A datum with `appliesTo` may have no refs, as a frame may (`annotationRefsProblem`). `appliesTo` must be non-empty.
+- **Rules.** The target must exist, else "The dimension this datum applies to no longer exists". It must also be a feature of size: a diameter, or a linear dimension between two refs measured from themselves (a width). Anything else is refused with "…not an angle dimension" (`refsDoNotFit`, provisional D9). Frame and datum share one check, `appliesToProblem`.
+- **Deleting the dimension** leaves the datum's `appliesTo` in place, as for a frame. The datum then needs attention, never a silent rebinding.
+- **Kernel client.** Datums with `appliesTo` resolve in the second pass, with the frames. Their memo key includes the dimension's resolution.
+  - A missing or non-dimension target is unresolved (`/appliesTo`).
+  - A suppressed dimension makes the datum suppressed.
+  - A dimension that needs attention makes the datum need attention too: "The dimension this datum applies to needs attention".
+  - No refs means no anchors; the layout reads the dimension's.
+  - Golden test: `annotations.golden.test.ts`, "a datum on a feature of size".
+- **Drawing tool.** Picking a width or a diameter makes `{ refs: [], appliesTo: <dimension> }`. The width is no longer refused. A diameter no longer looks up its cylinder by name: the dimension is the binding, so the datum follows any edit to it. A second datum on the same dimension is refused, and the existing one is selected instead. A frame's default datum skips datums bound to its own dimension.
+- **Layout.** The datum sits in line with the dimension line (`dimensionLine`, `t` 0 or 1), as before. On a `ref` attach (no dimension placed) it falls back to the dimension's anchors, as a frame does.
+- **Import.** A datum with `appliesTo` is placed after its dimension, in that dimension's view, in line with its line. If the dimension is not on the drawing, the datum is not placed (`noSuitableView`), because it is never drawn on a guessed face. Frames and datums bound by `appliesTo` with no refs are matched to views through the dimension's anchors. Frames had no view before this.
+- **Inspector.** "On the feature of size of the 80 width (its median plane). It follows that dimension.", or "…no longer exists". Shown for datums and frames.
+
+**Leaders on an edge's extension (`LeaderAttach.ref.t` outside [0, 1]).**
+- **Storage.** `ATTACH_T_RANGE` is now [-10, 11], the validator's range, so `storableAttachT` only bounds the value.
+- **Drag.** The attach handle slides past either end onto the extension. It still snaps to 0, 0.5 and 1 within 6 px.
+- **Layout.** The extension line runs from the end, one extension gap off the outline, to the triangle's far corner (or the arrow tip) plus the overshoot. At `t` 0 or 1 nothing extra is drawn. Goldens for t = 1.2, −0.1 and −0.5, and for t = 0 with no extension line.
+- **Import.** The datum options include the extension again, 8 mm past either end, clear of a dimension that runs along the same side.
+
+**Leader drags are previews.**
+- **Same path as every other drag.** The attach-point, bend and add-a-bend drags now use `previewDrag`, in its own module `preview-drag.ts` (re-exported from interact.ts, so leader drags import it without a cycle). Leader text drags already did, through the placement drag.
+- **Per frame:** `placementPreview` (`DrawingBuild.relayout`) lays the leader out again and draws it in the transient layer. The stored placement and its React overlay group (`overlay:leader:<id>`) are hidden, and the handles and the line they slide on are drawn at their new places.
+- **Release:** one `updatePlacement` ("Move leader", "Bend leader"), one undo step. A release that changes nothing writes nothing. Escape leaves nothing behind.
+- **Followers (optional item 4).** `DrawingBuild.relayout(placement, moved)` lays a placement out against placements that were laid out again. A dimension being dragged now carries the leaders attached to it in the preview: a frame under its text, a datum on its line. The same applies under a leader drag.
+- **Perf probe** (`e2e/perf/drawing-drag.perf.ts`), leader scenarios on the bracket drawing, with zero store writes and zero rebuilds during each drag:
+
+| p95 per drag frame | desktop | tablet (2× CPU throttle) |
+| --- | --- | --- |
+| leader attach point, onto the extension | 7.8 ms | 10.6 ms |
+| leader text | 6.7 ms | 10.8 ms |
+| add a leader bend | 7.8 ms | 10.5 ms |
+| worst over the whole probe | 9.3 ms | 13.1 ms |
+
+**Fixes found on the way.**
+- **The tabs lagged the document.** The merged branch's sheet-tab E2E failed: after an undo of a reorder, clicking tab 2 opened sheet 1. The tabs were drawn from the last *build* (`b.drawing.sheets`), and a build can arrive after the next click: the drag work holds builds during a drag and drops one that finishes meanwhile. Until it landed, the old order was on screen, and Playwright clicked the tab that was still second. The tabs (and the delete confirmation's contents) now read the document, so an add, rename, reorder or undo shows at once. The test is unchanged and passes.
+- **`ensureExact` could return a stale exact build.** It counted an exact build as current when the model's key matched, even if the drawing had changed since (an undo of a drawing edit). The next draft build then replaced it, and on the tablet a circle pick right after `exact()` saw polylines.
+  - `ensureExact` now also requires the build's drawing to be the document's.
+  - `resume()` rebuilds held-back work at the quality it was asked for, so a refinement to exact edges does not fall back to the draft because a press came in meanwhile.

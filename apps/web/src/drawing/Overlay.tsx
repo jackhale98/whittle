@@ -171,23 +171,31 @@ export function SheetOverlay({
   }
   // A selected leader's handles: its attach point (held on its line), bends, and "add a bend".
   if (sel?.kind === 'placement' && ui.tool === 'select') {
-    for (const h of leaderHandlesOf(b, sel.id)) {
-      const k = h.kind === 'bend' ? `lb${h.index}` : `l${h.kind}`;
+    const hs = leaderHandlesOf(b, sel.id);
+    if (hs.length > 0)
       out.push(
-        <g key={k} data-testid="leader-handle" data-kind={h.kind}>
-          <circle
-            cx={h.at[0]}
-            cy={h.at[1]}
-            r={(h.kind === 'addBend' ? 3.5 : 4.5) * mm}
-            fill={h.kind === 'attach' ? ACCENT : 'var(--color-surface)'}
-            fillOpacity={h.kind === 'attach' ? 0.35 : 1}
-            stroke={ACCENT}
-            strokeWidth={1.3 * mm}
-            strokeDasharray={h.kind === 'addBend' ? `${2 * mm} ${1.5 * mm}` : undefined}
-          />
+        // One group, so a drag's preview can hide it while it draws the handles where they go.
+        <g key="leader" data-source={`overlay:leader:${sel.id}`}>
+          {hs.map((h) => (
+            <g
+              key={h.kind === 'bend' ? `lb${h.index}` : `l${h.kind}`}
+              data-testid="leader-handle"
+              data-kind={h.kind}
+            >
+              <circle
+                cx={h.at[0]}
+                cy={h.at[1]}
+                r={(h.kind === 'addBend' ? 3.5 : 4.5) * mm}
+                fill={h.kind === 'attach' ? ACCENT : 'var(--color-surface)'}
+                fillOpacity={h.kind === 'attach' ? 0.35 : 1}
+                stroke={ACCENT}
+                strokeWidth={1.3 * mm}
+                strokeDasharray={h.kind === 'addBend' ? `${2 * mm} ${1.5 * mm}` : undefined}
+              />
+            </g>
+          ))}
         </g>,
       );
-    }
   }
   const g = ui.ghost;
   if (g?.kind === 'line')

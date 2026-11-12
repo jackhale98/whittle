@@ -73,6 +73,11 @@ export interface AnnotationInspectorProps {
   onReattach?(): void;
   /** Leader placements: what the leader is attached to, as laid out (ADR-094). */
   leader?: LeaderInfo;
+  /**
+   * A datum or frame bound to a size dimension (`appliesTo`, ADR-094): that dimension in words
+   * (`Ø6 diameter`, `80 width`), and what it makes the datum (`median plane`, `axis`).
+   */
+  appliesTo?: { dimension: string; feature?: string; missing?: boolean };
   size?: 'md' | 'touch';
 }
 
@@ -327,6 +332,24 @@ function layoutFields(
   }
 }
 
+/** What a datum or a frame on a feature of size is bound to (it follows that dimension). */
+function AppliesTo({
+  dimension,
+  feature,
+  missing,
+}: NonNullable<AnnotationInspectorProps['appliesTo']>) {
+  return (
+    <p
+      className={cn('text-xs', missing ? 'text-danger-text' : 'text-fg-muted')}
+      data-testid="applies-to"
+    >
+      {missing
+        ? 'The size dimension it applies to no longer exists.'
+        : `On the feature of size of ${dimension}${feature ? ` (its ${feature})` : ''}. It follows that dimension.`}
+    </p>
+  );
+}
+
 /** Inspector of one annotation: its value (read-only when driven by the model), tolerance, kind-specific fields and where it sits on the view. */
 export function AnnotationInspector(p: AnnotationInspectorProps) {
   const a = p.annotation;
@@ -492,11 +515,19 @@ export function AnnotationInspector(p: AnnotationInspectorProps) {
               className={cn(input, 'w-24')}
             />
           </Field>
+          {p.appliesTo ? <AppliesTo {...p.appliesTo} /> : null}
         </Section>
       ) : null}
 
       {a.kind === 'geometricTolerance' ? (
-        <FrameFields a={a} p={p} set={set} sz={sz} input={input} />
+        <>
+          <FrameFields a={a} p={p} set={set} sz={sz} input={input} />
+          {p.appliesTo ? (
+            <div className="px-4 pb-2">
+              <AppliesTo {...p.appliesTo} />
+            </div>
+          ) : null}
+        </>
       ) : null}
 
       {a.kind === 'surfaceFinish' ? (

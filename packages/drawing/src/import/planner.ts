@@ -777,12 +777,14 @@ function leaderRequest(
     if (a.kind === 'surfaceFinish') return null;
     const [dx, dy] = layout.text;
     // A datum on a surface keeps its leader across the surface line (ADR-094): at the middle,
-    // a quarter in from each end, then near the ends (clear of a dimension's text along the same
-    // side), each further out. Not on the line's extension: `t` is stored in [0, 1] (contract).
+    // on the line's extension past either end (clear of a dimension along the same side), then
+    // a quarter in from each end, each further out.
     const seg =
       a.kind === 'datumFeature' && outwardOffset(v, an, 1) ? projectedSegment(v, an) : null;
     if (seg && layout.attach.kind === 'ref') {
-      const ts = [0.5, 0.25, 0.75, 0.1, 0.9];
+      const L = dist2(seg[0], seg[1]);
+      const ext = L > 1e-9 ? Math.round((8 / L) * 1e4) / 1e4 : 0;
+      const ts = [0.5, 1 + ext, -ext, 0.25, 0.75];
       const ks = [1, 1.5, 2, 3];
       const opts = ts.flatMap((t) => ks.map((k) => ({ t, text: [dx * k, dy * k] as Vec2 })));
       const attach = layout.attach;
@@ -861,7 +863,15 @@ export function planImport(input: ImportInput): ImportPlan {
       pending.push({ ...base, checked: false, reason: 'suppressed' });
     else if (r?.state !== 'ok') pending.push({ ...base, checked: false, reason: 'needsAttention' });
     else {
-      const anchors = r.anchors ?? [];
+      // A frame or a datum bound to a dimension (`appliesTo`) with no refs of its own is seen
+      // where that dimension's geometry is seen.
+      const bound =
+        (a.kind === 'geometricTolerance' || a.kind === 'datumFeature') &&
+        a.refs.length === 0 &&
+        a.appliesTo !== undefined
+          ? input.resolutions.get(a.appliesTo)?.anchors
+          : undefined;
+      const anchors = r.anchors ?? bound ?? [];
       pending.push({ ...base, checked: true, anchors, layout: anchors });
     }
   }
@@ -1065,7 +1075,17 @@ export function planImport(input: ImportInput): ImportPlan {
       placementOf.get(dimId) ??
       drawing.placements.find((x) => x.annotationId === dimId && x.viewId === c.placement?.viewId);
     const dim = annotationsById.get(dimId);
-    if (!target || target.viewId !== c.placement.viewId || !dim) continue;
+    if (!target || target.viewId !== c.placement.viewId || !dim) {
+      // A datum that names its dimension is drawn in line with it, or not at all: with the
+      // dimension not on this view, it waits for that dimension to be placed.
+      if (a.appliesTo !== undefined && a.refs.length === 0) {
+        delete c.placement;
+        delete c.viewId;
+        c.reason = 'noSuitableView';
+        c.checked = false;
+      }
+      continue;
+    }
     const laid = layoutPlacement(target, dim, {
       view,
       style,
@@ -1093,9 +1113,10 @@ export function planImport(input: ImportInput): ImportPlan {
 }
 
 /**
- * Datums on a feature of size: a datum on a cylinder's axis (`at: ['axis']`) whose face a
- * diameter dimension of the part (or of this import) measures. Datum id → that dimension's id.
- * The face is matched by name: the dimension's ref is the face, or an edge of it.
+ * Datums on a feature of size, datum id → the size dimension's id: a datum that names it
+ * (`appliesTo`, ADR-094), or a datum on a cylinder's axis (`at: ['axis']`) whose face a diameter
+ * of the part (or of this import) measures (the face matched by name: the dimension's ref is the
+ * face, or an edge of it).
  */
 function sizeDimensionOf(
   existing: readonly Annotation[],
@@ -1105,6 +1126,10 @@ function sizeDimensionOf(
   const diameters = all.filter((x) => x.kind === 'diameter');
   const out = new Map<Id, Id>();
   for (const a of all) {
+    if (a.kind === 'datumFeature' && a.appliesTo !== undefined) {
+      out.set(a.id, a.appliesTo);
+      continue;
+    }
     if (a.kind !== 'datumFeature' || a.at?.[0] !== 'axis') continue;
     const face = a.refs[0]?.name;
     if (!face) continue;

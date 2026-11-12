@@ -105,7 +105,7 @@ export const gpsFamily = (s: GpsStandard): 'iso' | 'asme' =>
 
 /**
  * What the kind requires of `refs` (arity per kind, the table in the proposal §2.2), or undefined
- * when the list fits. A frame with `appliesTo` may have no refs.
+ * when the list fits. A frame or a datum with `appliesTo` may have no refs.
  */
 export function annotationRefsProblem(a: Annotation): string | undefined {
   const n = a.refs.length;
@@ -124,7 +124,11 @@ export function annotationRefsProblem(a: Annotation): string | undefined {
     case 'chamfer':
       return exactly(1, `A ${a.kind} dimension`);
     case 'datumFeature':
-      return exactly(1, 'A datum feature');
+      // A datum on a feature of size names its dimension (`appliesTo`, ADR-094): no refs needed.
+      if (n === 1 || (n === 0 && a.appliesTo !== undefined)) return undefined;
+      return n === 0
+        ? 'A datum feature needs a feature, or a size dimension it applies to'
+        : `A datum feature needs one reference, not ${n}`;
     case 'surfaceFinish':
       return exactly(1, 'A surface finish symbol');
     case 'geometricTolerance':
@@ -194,6 +198,7 @@ export function checkAnnotation(c: Checker, a: unknown, at: string): void {
     case 'datumFeature':
       c.str(a.label, `${at}.label`);
       standard();
+      if (a.appliesTo !== undefined) c.nonEmpty(a.appliesTo, `${at}.appliesTo`);
       break;
     case 'geometricTolerance':
       standard();

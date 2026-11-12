@@ -147,8 +147,10 @@ export async function resolveAnnotations(
     label: causeLabel,
   };
   const out = new Map<Id, AnnotationResolution>();
-  // Frames bound to a dimension (`appliesTo`) read that dimension's resolution: second pass.
-  const later = (a: Annotation) => a.kind === 'geometricTolerance' && a.appliesTo !== undefined;
+  // Frames and datums bound to a dimension (`appliesTo`, ADR-094) read that dimension's
+  // resolution: second pass.
+  const later = (a: Annotation) =>
+    (a.kind === 'geometricTolerance' || a.kind === 'datumFeature') && a.appliesTo !== undefined;
   for (const pass of [false, true]) {
     for (const a of anns) {
       if (later(a) !== pass) continue;
@@ -192,12 +194,14 @@ function stateKey(ctx: WalkContext): string {
   });
 }
 
-/** What else an annotation's resolution reads: datum annotations and the frame's dimension. */
+/** What else an annotation's resolution reads: datum annotations and the bound dimension. */
 function dependencies(
   a: Annotation,
   byId: ReadonlyMap<Id, Annotation>,
   done: ReadonlyMap<Id, AnnotationResolution>,
 ): unknown {
+  if (a.kind === 'datumFeature')
+    return a.appliesTo === undefined ? null : { applies: done.get(a.appliesTo) ?? null };
   if (a.kind !== 'geometricTolerance') return null;
   const datums = (a.datums ?? []).flatMap((c) =>
     c.datums.map((d) => ('datum' in d ? (byId.get(d.datum) ?? null) : null)),
@@ -279,25 +283,27 @@ async function resolveOne(
         } else if (target.suppressed === true) suppressedBy.push(null);
       });
     });
-    if (a.appliesTo !== undefined) {
-      const target = byId.get(a.appliesTo);
-      const r = done.get(a.appliesTo);
-      if (!target || !DIMENSION_KINDS.has(target.kind) || !r) {
-        unresolved.push({ path: '/appliesTo', ref: bindingRef(a.appliesTo), reason: 'missing' });
-      } else if (r.state === 'suppressed') {
-        suppressedBy.push(r.cause ?? null);
-      } else if (r.state === 'needsAttention') {
-        problems.push({
-          error: kerr(
-            'UNRESOLVED_REFERENCE',
-            'The dimension this frame applies to needs attention',
-            {
-              hint: 'Fix that dimension first.',
-            },
-          ),
-          ...(r.cause ? { cause: r.cause } : {}),
-        });
-      }
+  }
+  // The dimension a frame or a datum applies to (its feature of size, ADR-094).
+  if ((a.kind === 'geometricTolerance' || a.kind === 'datumFeature') && a.appliesTo !== undefined) {
+    const what = a.kind === 'datumFeature' ? 'datum' : 'frame';
+    const target = byId.get(a.appliesTo);
+    const r = done.get(a.appliesTo);
+    if (!target || !DIMENSION_KINDS.has(target.kind) || !r) {
+      unresolved.push({ path: '/appliesTo', ref: bindingRef(a.appliesTo), reason: 'missing' });
+    } else if (r.state === 'suppressed') {
+      suppressedBy.push(r.cause ?? null);
+    } else if (r.state === 'needsAttention') {
+      problems.push({
+        error: kerr(
+          'UNRESOLVED_REFERENCE',
+          `The dimension this ${what} applies to needs attention`,
+          {
+            hint: 'Fix that dimension first.',
+          },
+        ),
+        ...(r.cause ? { cause: r.cause } : {}),
+      });
     }
   }
 

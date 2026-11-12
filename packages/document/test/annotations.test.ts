@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import type {
   Annotation,
+  DatumFeatureAnnotation,
   GeometricToleranceAnnotation,
   HoleCalloutAnnotation,
   WrenDoc,
@@ -192,6 +193,12 @@ describe('refs arity per kind', () => {
     const free = { ...(at(905) as GeometricToleranceAnnotation) };
     delete free.appliesTo;
     expect(annotationRefsProblem(free)).toMatch(/toleranced feature/);
+    // a datum on a feature of size (appliesTo, ADR-094) may have no refs either; a plain one needs one
+    const fos = { ...(at(903) as DatumFeatureAnnotation), refs: [], appliesTo: id(902) };
+    expect(annotationRefsProblem(fos)).toBeUndefined();
+    expect(
+      annotationRefsProblem({ ...fos, appliesTo: undefined } as unknown as Annotation),
+    ).toMatch(/a size dimension it applies to/);
     expect(
       annotationRefsProblem({ kind: 'holeCallout', refs: [] } as unknown as Annotation),
     ).toBeUndefined();
@@ -293,6 +300,43 @@ describe(`GD&T legality per standard (${PROVISIONAL})`, () => {
         /no longer exists/.test((i as { message?: string }).message ?? ''),
       ),
     ).toBe(true);
+  });
+});
+
+describe('a datum on a feature of size (appliesTo, ADR-094)', () => {
+  const datum = (appliesTo: string): DatumFeatureAnnotation => ({
+    ...(at(903) as DatumFeatureAnnotation),
+    id: id(950),
+    label: 'D',
+    refs: [],
+    appliesTo,
+  });
+  const messages = (a: Annotation) => {
+    const doc = sampleDoc();
+    return annotationIssues(doc, part(doc).id, a).map((i) => (i as { message?: string }).message);
+  };
+  it('a diameter is a size: no issue; the document validates', () => {
+    expect(messages(datum(id(902)))).toEqual([]);
+    const doc = sampleDoc();
+    part(doc).annotations = [...(part(doc).annotations ?? []), datum(id(902))].sort((x, y) =>
+      x.id < y.id ? -1 : 1,
+    );
+    expect(validateDoc(doc)).toEqual([]);
+  });
+  it('a missing dimension needs attention; an angle is not a feature of size', () => {
+    expect(messages(datum(id(999)))).toContainEqual(
+      'The dimension this datum applies to no longer exists',
+    );
+    expect(messages(datum(id(901))).join(' ')).toMatch(/feature of size.*not an angle dimension/);
+    // A linear dimension between two faces is a width: a size.
+    expect(messages(datum(id(900)))).toEqual([]);
+  });
+  it('an empty appliesTo is malformed', () => {
+    const doc = sampleDoc();
+    part(doc).annotations = [...(part(doc).annotations ?? []), datum('')].sort((x, y) =>
+      x.id < y.id ? -1 : 1,
+    );
+    expect(validateDoc(doc).join(' ')).toMatch(/appliesTo/);
   });
 });
 

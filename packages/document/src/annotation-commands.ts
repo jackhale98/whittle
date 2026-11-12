@@ -113,8 +113,8 @@ function compileUpdate(doc: WrenDoc, pi: number, cmd: Cmd<'updateAnnotation'>): 
  * Patch ops that remove annotations of a part together with everything that hangs on them:
  * placements in every drawing (except `skipDrawingId`, which is being removed whole), markup
  * anchors to those placements, and configuration overrides. Frames bound to a removed datum keep
- * its letter as `{ label }`; an `appliesTo` that pointed at a removed dimension stays. Both then
- * show as needs attention, never as a silent rebinding.
+ * its letter as `{ label }`; a frame's or a datum's `appliesTo` that pointed at a removed dimension
+ * stays (ADR-094). Both then show as needs attention, never as a silent rebinding.
  */
 export function annotationRemovalOps(
   doc: WrenDoc,

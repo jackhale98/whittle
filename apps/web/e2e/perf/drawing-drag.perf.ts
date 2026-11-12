@@ -237,6 +237,57 @@ async function scenarios(page: Page, touchMode: boolean, budget: number): Promis
     );
   }
 
+  // A datum's leader (ADR-094): a datum on the top view's left side line, then its triangle slid
+  // along the line onto the extension, its text, and a bend dragged out of the leader.
+  const topView = viewOf(await drawing(page).state(), 'projected', 'top');
+  const side = topView
+    ? (await drawing(page).edges(topView.id))
+        .filter(
+          (e) =>
+            e.kind === 'line' &&
+            e.a &&
+            e.b &&
+            Math.abs(e.a[0] - e.b[0]) < 0.01 &&
+            Math.abs(e.a[1] - e.b[1]) > 30,
+        )
+        .sort((p, q) => p.at[0] - q.at[0])[0]
+    : undefined;
+  if (side?.a && side.b) {
+    const count0 = (await drawing(page).placements()).length;
+    await page.locator('[data-tool="datum"]').click();
+    const at = await sheetToPage(page, [side.a[0], side.a[1] + (side.b[1] - side.a[1]) * 0.3]);
+    await page.mouse.click(at.x, at.y);
+    await expect.poll(async () => (await drawing(page).placements()).length).toBe(count0 + 1);
+    await page.locator('[data-tool="select"]').click();
+    await built(page);
+    const leaderOf = async () =>
+      (await drawing(page).placements()).find((p) => p.leader && p.leader.on !== null);
+    let lp = await leaderOf();
+    if (!lp?.leader?.on || !lp.text) throw new Error('no datum leader');
+    const o0 = await sheetToPage(page, lp.leader.on[0]);
+    const o1 = await sheetToPage(page, lp.leader.on[1]);
+    // From 30 % along to a line length further: past the end, onto the extension.
+    const along = { x: o1.x - o0.x, y: o1.y - o0.y };
+    await run(
+      'move leader attach (onto the extension)',
+      await sheetToPage(page, lp.leader.at),
+      along.x,
+      along.y,
+    );
+    lp = await leaderOf();
+    if (!lp?.text) throw new Error('no datum text');
+    await run('move leader text', await sheetToPage(page, lp.text), -40, 30);
+    lp = await leaderOf();
+    const bend = page.locator('[data-testid="leader-handle"][data-kind="addBend"] circle');
+    if (lp?.leader && (await bend.count()) > 0)
+      await run(
+        'add a leader bend',
+        await centreOf('[data-testid="leader-handle"][data-kind="addBend"] circle'),
+        25,
+        -20,
+      );
+  }
+
   const worst = Math.max(...Object.values(results).map((r) => p95(r.frames)));
   for (const [name, r] of Object.entries(results)) {
     expect(r.writesBeforeRelease, `${name}: store writes before release`).toBe(0);

@@ -57,6 +57,35 @@ describe('drag preview support', () => {
     ).toBeUndefined();
   });
 
+  it('a leader attached to a dragged placement follows it (the moved one passed in)', () => {
+    const p3 = build.relayout({
+      id: 'p3',
+      viewId: 'V2',
+      annotationId: 'A3',
+      layout: { kind: 'radial', angle: 200, distance: 7 },
+    });
+    if (!p3) throw new Error('no p3');
+    const stored = build.placed.find((p) => p.placementId === 'p5');
+    const frame = {
+      id: 'p5',
+      viewId: 'V2',
+      annotationId: 'A5',
+      layout: {
+        kind: 'leader' as const,
+        attach: { kind: 'placement' as const, placementId: 'p3' },
+        text: [0, 0] as [number, number],
+      },
+    };
+    const still = build.relayout(frame);
+    const follows = build.relayout(frame, new Map([['p3', p3]]));
+    const minX = (b: [number, number][] | undefined) => Math.min(...(b ?? []).map((q) => q[0]));
+    const minY = (b: [number, number][] | undefined) => Math.min(...(b ?? []).map((q) => q[1]));
+    // Without the moved target it stays where the build had it; with it, it sits under its text.
+    expect(minX(still?.textBox)).toBeCloseTo(minX(stored?.textBox), 9);
+    expect(minX(follows?.textBox)).toBeCloseTo(minX(p3.textBox), 6);
+    expect(Math.max(...(follows?.textBox ?? []).map((q) => q[1]))).toBeLessThan(minY(p3.textBox));
+  });
+
   it('every group that moves with a view says which view it is drawn in', () => {
     const model = svgModel(sheet.list, { lineGroup: 'iso-0.5' });
     const flip = model.children?.[0] as { children: { attrs: Record<string, string> }[] };

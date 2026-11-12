@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **Drawings: datums on widths, leaders on an edge's extension, smooth leader drags** (ADR-094 amendment).
+  - **A datum on any feature of size:** pick a width or a diameter dimension. The datum names that dimension (its median plane or axis) and follows it. The inspector says what it is bound to. Import places such datums in line with their dimension.
+  - **Extension lines:** a datum's triangle and a frame's arrow slide past the end of the surface's line onto its extension, which is drawn as an extension line.
+  - **Leader drags** (attach point, bends, text) are drawn at display rate and write nothing until you let go: about 8 ms per frame on the desktop and 11 ms on a throttled tablet. Leaders attached to a dimension follow it while it is dragged.
+  - **Fixes:** the sheet tabs show an add, rename, reorder or undo at once (they waited for the sheet to rebuild). Exact edges are no longer replaced by draft ones after a drawing undo.
+
 - **Drawing sheet: dragging is smooth, dimension text moves, a detail circle can be resized** (owner feedback after M4, ADR-094 amendment).
   - **Drags:** a drag is drawn at display rate and writes nothing until you let go: one undo step, Escape leaves nothing. Frame time on the bracket drawing fell from about 190 to 300 ms to under 10 ms (p95), on the tablet tier from about 290 ms to about 13 ms. Views, dimensions, tables, cut-line vertices and detail circles.
   - **Dimension text:** drag it along its line (past an extension line it goes outside), or across the line to snap above, inline or below, with a hint. Arrow keys move the selected dimension's text; the inspector has the same as Text position and a typed shift. Angle, radial and leader text drag freely. Touch: a 44 px target. SVG, PDF and DXF carry the side.

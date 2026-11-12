@@ -6,9 +6,10 @@ import type {
   PlacementLayout,
 } from '@wren-cad/contracts';
 import { solveViews } from '@wren-cad/drawing';
+import type { SheetPointer } from '@wren-cad/ui/drawing';
 import { describe, expect, it } from 'vitest';
 import type { DrawingController } from './controller';
-import { dragAttach, snapAlong } from './interact-leader';
+import { dragAttach, leaderHandleDrag, snapAlong } from './interact-leader';
 import { notASize } from './ops-gdt';
 import {
   addSheet,
@@ -235,15 +236,29 @@ describe('leader drags (ADR-094)', () => {
     [100, 0],
   ];
 
-  it('the triangle stays on its line: it slides along it, snapping to the ends and middle', () => {
+  it('the triangle stays on its line: along it and onto its extension, snapping to the ends and middle', () => {
     expect(dragAttach(surface, line, [70, 25], 2).attach).toEqual({
       kind: 'ref',
       index: 0,
       t: 0.7,
     });
-    // Past the end it stops at the end: a stored t is in [0, 1] (the extension needs the contract).
-    expect(dragAttach(surface, line, [120, -3], 2).attach).toEqual({ kind: 'ref', index: 0, t: 1 });
-    expect(dragAttach(surface, line, [-20, 0], 2).attach).toEqual({ kind: 'ref', index: 0, t: 0 });
+    // Past either end it sits on the line's extension (ADR-094), never off the line.
+    expect(dragAttach(surface, line, [120, -3], 2).attach).toEqual({
+      kind: 'ref',
+      index: 0,
+      t: 1.2,
+    });
+    expect(dragAttach(surface, line, [-20, 0], 2).attach).toEqual({
+      kind: 'ref',
+      index: 0,
+      t: -0.2,
+    });
+    // Bounded by what the document stores (ten edge lengths out).
+    expect(dragAttach(surface, line, [5000, 0], 2).attach).toEqual({
+      kind: 'ref',
+      index: 0,
+      t: 11,
+    });
     expect(dragAttach(surface, line, [99, 5], 2).attach).toEqual({ kind: 'ref', index: 0, t: 1 });
     expect(dragAttach(surface, line, [51, 0], 2).attach).toEqual({ kind: 'ref', index: 0 });
     expect(snapAlong(0.05, 100, 2)).toBe(0.05);
@@ -284,5 +299,120 @@ describe('features of size', () => {
     expect(notASize(dim({ at: ['self', 'self'] }))).toBeUndefined();
     expect(notASize(dim({ at: ['center', 'center'] }))).toMatch(/between centres/);
     expect(notASize(dim({ kind: 'angle' }))).toMatch(/feature of size/);
+  });
+});
+
+describe('leader handle drags are previews (ADR-094)', () => {
+  /** A build with one surface datum on V (its line from (0, 0) to (100, 0)), and a recorder. */
+  function harness() {
+    const log: string[] = [];
+    const pl = {
+      id: 'L',
+      viewId: 'V',
+      annotationId: 'A',
+      layout: { kind: 'leader', attach: { kind: 'ref', index: 0, t: 0.3 }, text: [0, -10] },
+    } as Drawing['placements'][number];
+    const leaderAt = (t: number) => ({
+      attach: 'ref' as const,
+      at: [100 * t, 0] as [number, number],
+      on: [
+        [0, 0],
+        [100, 0],
+      ] as [[number, number], [number, number]],
+      bends: [] as [number, number][],
+      text: [100 * t, -10] as [number, number],
+    });
+    const d = { ...drawingWith(VIEWS), placements: [pl] } as Drawing;
+    const built = {
+      drawing: d,
+      build: {
+        placed: [
+          {
+            placementId: 'L',
+            annotationId: 'A',
+            viewId: 'V',
+            items: [],
+            textBox: [],
+            leader: leaderAt(0.3),
+            attention: false,
+            suppressed: false,
+            issues: [],
+          },
+        ],
+        relayout: (next: Drawing['placements'][number]) => {
+          log.push('relayout');
+          const t =
+            next.layout.kind === 'leader' && next.layout.attach.kind === 'ref'
+              ? (next.layout.attach.t ?? 0.5)
+              : 0.5;
+          return {
+            placementId: 'L',
+            annotationId: 'A',
+            viewId: 'V',
+            items: [],
+            textBox: [],
+            leader: leaderAt(t),
+            attention: false,
+            suppressed: false,
+            issues: [],
+          };
+        },
+      },
+    } as unknown as Built;
+    const c = {
+      built: () => built,
+      drawing: () => d,
+      ui: { get: () => ({ ...initialDrawingUi, tool: 'select' }) },
+      hold: () => log.push('hold'),
+      resume: () => log.push('resume'),
+      transient: (spec: unknown) => {
+        log.push(`transient ${JSON.stringify(spec)}`);
+        return { update: () => log.push('update'), end: (how: string) => log.push(`end ${how}`) };
+      },
+      apply: (cmd: Command, label: string) => {
+        log.push(`apply ${label} ${JSON.stringify((cmd as { placements?: unknown }).placements)}`);
+        return true;
+      },
+      commit: () => log.push('commit'),
+    } as unknown as DrawingController;
+    return { c, log };
+  }
+  const ptr = (x: number, y: number) =>
+    ({
+      at: [x, y],
+      px: { x, y },
+      pointerType: 'mouse',
+      button: 0,
+      shift: false,
+      alt: false,
+      ctrl: false,
+      tol: 1,
+      mm: 0.1,
+    }) as SheetPointer;
+
+  it('stores nothing while the triangle slides; one edit on release; the handles and followers hidden', () => {
+    const { c, log } = harness();
+    const drag = leaderHandleDrag(c, 'L', ptr(30, 0));
+    if (!drag) throw new Error('no handle');
+    drag.move?.(ptr(60, 4));
+    drag.move?.(ptr(120, 2));
+    expect(log.some((x) => x.startsWith('apply'))).toBe(false);
+    expect(log).toContain('transient {"hide":["placement:L","overlay:leader:L"]}');
+    expect(log[0]).toBe('hold');
+    drag.up?.(ptr(120, 2), true);
+    const applies = log.filter((x) => x.startsWith('apply'));
+    expect(applies).toHaveLength(1);
+    expect(applies[0]).toContain('Move leader');
+    expect(applies[0]).toContain('"t":1.2');
+    expect(log.slice(-3)).toEqual(['commit', 'end hold', 'resume']);
+  });
+
+  it('Escape leaves nothing behind', () => {
+    const { c, log } = harness();
+    const drag = leaderHandleDrag(c, 'L', ptr(30, 0));
+    drag?.move?.(ptr(70, 0));
+    drag?.cancel?.();
+    expect(log.some((x) => x.startsWith('apply') || x === 'commit')).toBe(false);
+    expect(log.slice(-2)).toEqual(['end cancel', 'resume']);
   });
 });

@@ -47,12 +47,11 @@ export function lineParameter(line: readonly [Vec2, Vec2], p: Vec2): number {
 }
 
 /**
- * The range a stored `LeaderAttach.t` may take. The contract documents `t ∈ [0, 1]` and the
- * document validator enforces it, so a triangle or an arrow on the *extension* of a surface's line
- * (`t` outside [0, 1]) is drawn by the layout (tested) but cannot be stored yet: the route and the
- * import clamp to this range until the contract allows it (ADR-094 amendment, proposal).
+ * The range a stored `LeaderAttach.t` (kind `ref`) may take: [0, 1] is on the projected edge,
+ * outside it on the edge's extension line (ADR-094; the document validator allows -10 to 11, ten
+ * edge lengths out).
  */
-export const ATTACH_T_RANGE: readonly [number, number] = [0, 1];
+export const ATTACH_T_RANGE: readonly [number, number] = [-10, 11];
 
 /** `t` clamped to what a placement can store. */
 export function storableAttachT(t: number): number {

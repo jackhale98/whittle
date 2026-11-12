@@ -111,7 +111,9 @@ export class DrawingController {
     this.held = false;
     if (this.deferred) {
       this.deferred = false;
-      this.schedule(0);
+      // The build the drag held back is made again at the quality it was asked for: a refinement
+      // to exact edges must not fall back to the draft because a press came in meanwhile.
+      this.schedule(0, this.quality === 'exact');
     }
   }
 
@@ -287,7 +289,9 @@ export class DrawingController {
   async ensureExact(): Promise<void> {
     const have = () => {
       const b = this.ui.get().built;
-      return b?.quality === 'exact' && this.isCurrent();
+      // Exact, of the model as it is and of the drawing as it is (an undo of a drawing edit
+      // leaves the model's key alone but needs a build of its own).
+      return b?.quality === 'exact' && this.isCurrent() && b.drawing === this.drawing();
     };
     if (have()) return;
     this.exactRequested = true;

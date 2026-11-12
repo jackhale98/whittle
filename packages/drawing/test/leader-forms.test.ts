@@ -61,6 +61,15 @@ const EXTRA: Annotation[] = [
     at: ['axis'],
     label: 'B',
   },
+  {
+    // A datum on the width A1's feature of size: its median plane (appliesTo, ADR-094).
+    id: 'D3',
+    kind: 'datumFeature',
+    origin: { kind: 'drawing', drawingId: 'D1' },
+    refs: [],
+    label: 'C',
+    appliesTo: 'A1',
+  },
 ];
 const annotations = new Map([...ANNOTATIONS, ...EXTRA].map((a) => [a.id, a]));
 
@@ -78,6 +87,7 @@ function ctx(v: SolvedView): Omit<PlacementContext, 'placed'> {
     { ...g1, annotationId: 'G1' },
     { annotationId: 'G2', state: 'ok', anchors: [] },
     { annotationId: 'D2', state: 'ok', anchors: [] },
+    { annotationId: 'D3', state: 'ok' },
   ];
   return {
     view: v,
@@ -228,6 +238,59 @@ describe('datum on a feature of size (in line with the dimension line)', () => {
     close(apex, [end[0] + tri.height, end[1]]);
     expect(t.leader?.attach).toBe('dimensionLine');
     expect(t.attention).toBe(false);
+  });
+
+  it('golden: a datum bound to a width (appliesTo, no refs) sits in line with its line at t = 0', () => {
+    const dim = P('w', 'V1', 'A1', { kind: 'lane', side: 'bottom', lane: 0 });
+    const datum = P('t', 'V1', 'D3', {
+      kind: 'leader',
+      attach: { kind: 'dimensionLine', placementId: 'w', t: 0 },
+      text: [-10, 0],
+    });
+    const out = layoutView([datum, dim], ctx(front));
+    const w = out.find((x) => x.placementId === 'w') as PlacedAnnotation;
+    const t = out.find((x) => x.placementId === 't') as PlacedAnnotation;
+    const [L0, L1] = w.line as [Vec2, Vec2];
+    const [b0, b1, apex] = triangle(t) as [Vec2, Vec2, Vec2];
+    expect((b0[0] + b1[0]) / 2).toBeCloseTo(L0[0], 9);
+    expect((b0[1] + b1[1]) / 2).toBeCloseTo(L0[1], 9);
+    const u: Vec2 = [L0[0] - L1[0], L0[1] - L1[1]];
+    const l = Math.hypot(...u);
+    close(apex, [L0[0] + (u[0] / l) * tri.height, L0[1] + (u[1] / l) * tri.height]);
+    expect(texts(t.items).map((x) => x.text)).toEqual(['C']);
+    expect(t.attention).toBe(false);
+    // On its own ref attach (no dimension placed) it falls back to the dimension's geometry.
+    const alone = layoutView(
+      [P('t', 'V1', 'D3', { kind: 'leader', attach: { kind: 'ref', index: 0 }, text: [0, -10] })],
+      ctx(front),
+    )[0] as PlacedAnnotation;
+    expect(alone.issues).toEqual([]);
+    expect(fills(alone.items)).toHaveLength(1);
+  });
+
+  it('golden: far out on the extension (t = −0.5) and back at the end (t = 0)', () => {
+    const at = (t: number) =>
+      one(
+        front,
+        [
+          P('t', 'V1', 'A4', {
+            kind: 'leader',
+            attach: { kind: 'ref', index: 0, t },
+            text: [0, -12],
+          }),
+        ],
+        't',
+      );
+    const far = at(-0.5);
+    const [b0, b1] = triangle(far) as [Vec2, Vec2];
+    expect((b0[0] + b1[0]) / 2).toBeCloseTo(90, 9);
+    const style = drawing().style.dimension;
+    const ext = lines(far.items).find((l) => Math.abs(l.a[1] - BOTTOM) < 1e-9);
+    expect(ext?.a[0]).toBeCloseTo(140 - style.extensionGap, 9);
+    expect(ext?.b[0]).toBeCloseTo(90 - tri.base / 2 - style.extensionOvershoot, 9);
+    // At an end it is on the edge: no extension line.
+    const end = at(0);
+    expect(lines(end.items).filter((l) => Math.abs(l.a[1] - BOTTOM) < 1e-9)).toHaveLength(0);
   });
 
   it('golden: at the far end of a radial diameter (t = 0), along the diameter line', () => {

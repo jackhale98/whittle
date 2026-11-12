@@ -319,6 +319,7 @@ export function AnnotationPanelBody({
   const text = valueText(a, res);
   const src = sourceText(b.part, a);
   const leader = leaderInfo(b, placement.id);
+  const applies = appliesToInfo(b, a);
   return (
     <AnnotationInspector
       annotation={a}
@@ -341,9 +342,31 @@ export function AnnotationPanelBody({
       onDelete={() => deleteAnnotation(c, a.id)}
       onReattach={() => startReattach(c, a.id)}
       {...(leader ? { leader } : {})}
+      {...(applies ? { appliesTo: applies } : {})}
       size={size}
     />
   );
+}
+
+/** The size dimension a datum or a frame applies to, in words (ADR-094). */
+function appliesToInfo(
+  b: Built,
+  a: Annotation,
+): { dimension: string; feature?: string; missing?: boolean } | undefined {
+  if ((a.kind !== 'datumFeature' && a.kind !== 'geometricTolerance') || !a.appliesTo)
+    return undefined;
+  const dim = (b.part.annotations ?? []).find((x) => x.id === a.appliesTo);
+  if (!dim) return { dimension: '', missing: true };
+  const res = b.main.resolutions.get(dim.id);
+  const value = res?.state === 'ok' ? res.value : undefined;
+  const n = value !== undefined ? `${Math.round(value * 1000) / 1000} ` : '';
+  const what = dim.kind === 'diameter' ? `the Ø${n}diameter` : `the ${n}width`;
+  return {
+    dimension: what.replace(/ $/, ''),
+    ...(a.kind === 'datumFeature'
+      ? { feature: dim.kind === 'diameter' ? 'axis' : 'median plane' }
+      : {}),
+  };
 }
 
 /** What a leader placement is attached to, in words, and the length of its line (ADR-094). */

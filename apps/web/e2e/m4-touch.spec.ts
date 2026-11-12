@@ -419,6 +419,39 @@ test.describe('tablet', () => {
     await expect.poll(async () => (await of('datumFeature')).length).toBe(0);
     await page.getByTestId('drawing-redo').tap();
     await expect.poll(async () => (await of('datumFeature')).length).toBe(1);
+    // A finger slides the triangle past the line's end onto its extension: a preview, then one
+    // edit on release (ADR-094).
+    await page.locator('[data-tool="select"]').tap();
+    await drawing(page).exact();
+    await built(page);
+    const sd = (await of('datumFeature'))[0];
+    const sp = (await drawing(page).placements()).find((p) => p.annotationId === sd?.id);
+    if (!sp?.text || !sp.leader?.on) throw new Error('no datum placement');
+    await tapAt(sp.text);
+    await expect
+      .poll(async () => (await drawing(page).state()).selected)
+      .toMatchObject({
+        kind: 'placement',
+        id: sp.id,
+      });
+    const [q0, q1] = sp.leader.on;
+    const h0 = (await app(page).history()).past.length;
+    const fromP = await sheetToPage(page, sp.leader.at);
+    const toP = await sheetToPage(page, [
+      q0[0] + (q1[0] - q0[0]) * 1.2 + 2,
+      q0[1] + (q1[1] - q0[1]) * 1.2,
+    ]);
+    await t.drag(fromP, toP);
+    await expect
+      .poll(async () => {
+        const pl = ((await drawings(page))[0] as Drawing).placements.find((x) => x.id === sp.id);
+        return pl?.layout.kind === 'leader' && pl.layout.attach.kind === 'ref'
+          ? (pl.layout.attach.t ?? 0.5)
+          : null;
+      })
+      .toBeGreaterThan(1.05);
+    expect((await app(page).history()).past.length).toBe(h0 + 1);
+    await undo();
     await page.locator('[data-tool="gdt"]').tap();
     await tapAt(side.at);
     await expect.poll(async () => (await of('geometricTolerance')).length).toBe(1);
@@ -464,7 +497,9 @@ test.describe('tablet', () => {
     await page.locator('[data-tool="datum"]').tap();
     await tapAt(dp.text);
     await expect.poll(async () => (await of('datumFeature')).length).toBe(2);
-    const fos = (await of('datumFeature')).find((a) => a.at?.[0] === 'axis');
+    const fos = (await of('datumFeature')).find(
+      (a) => a.kind === 'datumFeature' && a.appliesTo === dia?.id,
+    );
     expect(fos).toBeTruthy();
     await built(page);
     const fp = (await drawing(page).placements()).find((p) => p.annotationId === fos?.id);

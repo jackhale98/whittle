@@ -663,7 +663,11 @@ function leaderGeometry(
   let below = false;
   if (l.attach.kind === 'ref') {
     let anchors = anchorsOf(res);
-    if (a.kind === 'geometricTolerance' && a.refs.length === 0 && a.appliesTo)
+    if (
+      (a.kind === 'geometricTolerance' || a.kind === 'datumFeature') &&
+      a.refs.length === 0 &&
+      a.appliesTo
+    )
       anchors = anchorsOf(ctx.resolutions.get(a.appliesTo));
     anchor = anchors[l.attach.index];
     if (anchor) {

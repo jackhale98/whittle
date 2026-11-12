@@ -68,9 +68,13 @@ export interface DrawingBuild {
   /**
    * Lays out one placement as the build did, with `placement` in place of its stored one (a drag's
    * preview: ADR-094). Cheap (one placement); touches nothing in the build. `undefined` when the
-   * placement's view or annotation is not in it.
+   * placement's view or annotation is not in it. `moved`: placements already laid out again (by
+   * id), so a leader attached to a dragged placement follows it.
    */
-  relayout(placement: AnnotationPlacement): PlacedAnnotation | undefined;
+  relayout(
+    placement: AnnotationPlacement,
+    moved?: ReadonlyMap<Id, PlacedAnnotation>,
+  ): PlacedAnnotation | undefined;
 }
 
 export function buildDrawing(input: DrawingBuildInput): DrawingBuild {
@@ -136,13 +140,17 @@ export function buildDrawing(input: DrawingBuildInput): DrawingBuild {
     if (!placedById) placedById = new Map(placed.map((x) => [x.placementId, x]));
     return placedById;
   };
-  const relayout = (placement: AnnotationPlacement): PlacedAnnotation | undefined => {
+  const relayout = (
+    placement: AnnotationPlacement,
+    moved?: ReadonlyMap<Id, PlacedAnnotation>,
+  ): PlacedAnnotation | undefined => {
     const ctx = contexts.get(placement.viewId);
     const a = annotations.get(placement.annotationId);
     if (!ctx || !a) return undefined;
+    const base = placedMap();
     return layoutPlacement(placement, a, {
       ...ctx,
-      placed: placedMap(),
+      placed: moved && moved.size > 0 ? new Map([...base, ...moved]) : base,
     });
   };
   return { views, placed, sheets, attention, relayout };

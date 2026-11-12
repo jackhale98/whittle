@@ -258,41 +258,10 @@ export async function addDatumOnSurface(c: DrawingController, pick: EdgePick): P
   );
 }
 
-/** The face a diameter dimension measures (its ref, or the cylinder of the circle it refs). */
-async function cylinderOf(
-  c: DrawingController,
-  dim: Annotation,
-): Promise<EntityRef | { message: string }> {
-  const ref = dim.refs[0];
-  if (!ref) return { message: 'That dimension has no geometry.' };
-  if (ref.kind === 'face') return ref;
-  const b = c.built();
-  const res = b?.main.resolutions.get(dim.id);
-  const circle = res?.anchors?.[0];
-  const names = ref.kind === 'edge' ? edgeFaceNames(ref.name) : [];
-  if (circle?.kind !== 'circle' || names.length === 0)
-    return { message: 'That diameter is not measured on a cylinder this tool can find.' };
-  const refs = await Promise.all(names.map((n) => refOf(c, n, 'face')));
-  const anchors = await faceAnchors(
-    c,
-    refs.map((r) => ({ ref: r, annotationKind: 'diameter' as const })),
-  );
-  if (!anchors) return { message: 'The model is still loading. Try again in a moment.' };
-  const n = circle.normal;
-  const hits = refs.filter((_, i) => {
-    const a = anchors[i];
-    if (a?.kind !== 'circle') return false;
-    const dot = Math.abs(a.normal[0] * n[0] + a.normal[1] * n[1] + a.normal[2] * n[2]);
-    return Math.abs(a.radius - circle.radius) < 1e-6 * Math.max(1, circle.radius) && dot > 1 - 1e-9;
-  });
-  if (hits.length !== 1)
-    return { message: 'That diameter is not measured on one cylinder, so its axis is not known.' };
-  return hits[0] as EntityRef;
-}
-
 /**
- * A datum on a feature of size: in line with the size dimension's line, at the end nearer the
- * pick. A diameter's datum is its cylinder's axis.
+ * A datum on a feature of size (ADR-094): it names the size dimension (`appliesTo`; no refs of
+ * its own), so it is that dimension's median plane (a width) or axis (a diameter), and follows
+ * it. It sits in line with the dimension line, at the end nearer the pick.
  */
 export async function addDatumOnSize(c: DrawingController, size: SizePick): Promise<boolean> {
   const b = c.built();
@@ -302,17 +271,15 @@ export async function addDatumOnSize(c: DrawingController, size: SizePick): Prom
     c.toast(why, 'error');
     return false;
   }
-  if (size.annotation.kind !== 'diameter') {
-    // A width's datum is its median plane: one datum ref cannot say that (contract gap).
+  const taken = (b.part.annotations ?? []).find(
+    (a) => a.kind === 'datumFeature' && a.appliesTo === size.annotation.id,
+  );
+  if (taken) {
+    const placed = b.drawing.placements.find((p) => p.annotationId === taken.id);
+    if (placed) c.select({ kind: 'placement', id: placed.id });
     c.toast(
-      'A datum on a width (its median plane) cannot be stored yet: a datum refers to one face. Put it on a diameter, or on one of the faces.',
-      'error',
+      `This feature of size is already datum ${taken.kind === 'datumFeature' ? taken.label : ''}.`,
     );
-    return false;
-  }
-  const face = await cylinderOf(c, size.annotation);
-  if ('message' in face) {
-    c.toast(face.message, 'error');
     return false;
   }
   const line = size.placed.line;
@@ -327,7 +294,11 @@ export async function addDatumOnSize(c: DrawingController, size: SizePick): Prom
   const h = b.drawing.style.text.dimension;
   const reach = datumTriangleSize(h).height + 2 * h;
   const text: Vec2 = [((to[0] - from[0]) / l) * reach, ((to[1] - from[1]) / l) * reach];
-  const annotation: DatumFeatureAnnotation = { ...datumBase(b), refs: [face], at: ['axis'] };
+  const annotation: DatumFeatureAnnotation = {
+    ...datumBase(b),
+    refs: [],
+    appliesTo: size.annotation.id,
+  };
   return place(
     c,
     annotation,
@@ -415,7 +386,11 @@ export function addFrameOnSize(c: DrawingController, size: SizePick): boolean {
       .map((p) => p.annotationId),
   );
   const datum = (b.part.annotations ?? []).find(
-    (a) => a.kind === 'datumFeature' && !onLine.has(a.id) && !a.refs.some((r) => own.has(r.name)),
+    (a) =>
+      a.kind === 'datumFeature' &&
+      a.appliesTo !== size.annotation.id &&
+      !onLine.has(a.id) &&
+      !a.refs.some((r) => own.has(r.name)),
   );
   const frame: GeometricToleranceAnnotation = {
     ...frameBase(b),

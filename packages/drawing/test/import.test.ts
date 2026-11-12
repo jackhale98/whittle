@@ -307,13 +307,9 @@ describe('import model annotations', () => {
     const l = c.placement.layout;
     if (l.kind !== 'leader') throw new Error('not a leader');
     // The section's cut line crosses the middle of the bottom face's line and the width
-    // dimension A1's text sits under it, so the datum moves along the line (never off it: a
-    // stored `t` is in [0, 1]).
-    expect(l.attach.kind).toBe('ref');
-    const t = l.attach.kind === 'ref' ? l.attach.t : undefined;
-    expect(t).toBeGreaterThanOrEqual(0);
-    expect(t).toBeLessThanOrEqual(1);
-    expect(t).not.toBe(0.5);
+    // dimension A1 takes the lane under it, so the datum goes on the line's extension, 8 mm past
+    // its left end (100 mm long), clear of both (ADR-094).
+    expect(l.attach).toEqual({ kind: 'ref', index: 0, t: -0.08 });
     // The bottom face (normal −z) is seen edge-on: the text goes straight out of it.
     const h = drawing().style.text.dimension;
     const n = v.frame;
@@ -383,6 +379,41 @@ describe('import model annotations', () => {
     const len = Math.hypot(l.text[0], l.text[1]);
     expect(l.text[0] / len).toBeCloseTo(u[0] as number, 9);
     expect(l.text[1] / len).toBeCloseTo(u[1] as number, 9);
+  });
+  it('places a datum bound to a width (appliesTo) in line with that width’s dimension line', () => {
+    const datum: Annotation = {
+      id: 'A7',
+      kind: 'datumFeature',
+      origin: { kind: 'model' },
+      refs: [],
+      label: 'B',
+      appliesTo: 'A1',
+    };
+    const res = [...resolutions(), { annotationId: 'A7', state: 'ok' as const }];
+    const plan = planImport(
+      input({
+        part: part([...ANNOTATIONS, datum]),
+        resolutions: new Map(res.map((r) => [r.annotationId, r])),
+      }),
+    );
+    const c = byKey(plan);
+    const width = c.get('annotation:A1')?.placement;
+    const placed = c.get('annotation:A7')?.placement;
+    expect(placed?.viewId).toBe(width?.viewId);
+    expect(placed?.layout).toMatchObject({
+      kind: 'leader',
+      attach: { kind: 'dimensionLine', placementId: width?.id, t: 0 },
+    });
+    // Without its dimension on the drawing it is not placed (never on a guessed face).
+    const alone = planImport(
+      input({
+        part: part([...ANNOTATIONS.filter((x) => x.id !== 'A1'), { ...datum, appliesTo: 'A9' }]),
+        resolutions: new Map(res.map((r) => [r.annotationId, r])),
+      }),
+    );
+    const a7 = byKey(alone).get('annotation:A7');
+    expect(a7?.placement).toBeUndefined();
+    expect(a7?.reason).toBeDefined();
   });
   it('is deterministic and the command only carries checked candidates', () => {
     const a = planImport(input());

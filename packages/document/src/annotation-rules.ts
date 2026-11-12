@@ -223,6 +223,10 @@ export function annotationIssues(
         );
         if (clash) issues.push({ kind: 'duplicateDatumLabel', label: annotation.label });
       }
+      if (annotation.appliesTo !== undefined) {
+        const problem = appliesToProblem(part, annotation.appliesTo, 'datum', true);
+        if (problem) issues.push({ kind: 'refsDoNotFit', message: problem });
+      }
       break;
     }
     case 'geometricTolerance':
@@ -251,6 +255,36 @@ export function annotationIssues(
     issues.push({ kind: 'standardMismatch', annotation: annotation.standard, drawing: standard });
   }
   return issues;
+}
+
+/**
+ * What is wrong with the dimension a frame or a datum applies to (ADR-094), if anything: it must
+ * exist and be a dimension; a datum's must be a size (a diameter, or a width between two features:
+ * a linear dimension between two refs measured from themselves). Provisional (D9).
+ */
+function appliesToProblem(
+  part: Part,
+  id: Id,
+  what: 'frame' | 'datum',
+  sizeOnly: boolean,
+): string | undefined {
+  const target = (part.annotations ?? []).find((o) => o.id === id);
+  const isDimension =
+    target !== undefined &&
+    target.kind !== 'datumFeature' &&
+    target.kind !== 'geometricTolerance' &&
+    target.kind !== 'note' &&
+    target.kind !== 'surfaceFinish';
+  if (!target || !isDimension) return `The dimension this ${what} applies to no longer exists`;
+  if (!sizeOnly) return undefined;
+  const size =
+    target.kind === 'diameter' ||
+    (target.kind === 'linear' &&
+      target.refs.length === 2 &&
+      (target.at ?? []).every((x) => x === 'self'));
+  return size
+    ? undefined
+    : `A datum applies to a feature of size: a diameter, or a width between two parallel faces, not ${/^[aeiou]/.test(target.kind) ? 'an' : 'a'} ${target.kind} dimension`;
 }
 
 function frameIssues(
@@ -292,19 +326,8 @@ function frameIssues(
     });
   }
   if (a.appliesTo !== undefined) {
-    const target = (part.annotations ?? []).find((o) => o.id === a.appliesTo);
-    const isDimension =
-      target !== undefined &&
-      target.kind !== 'datumFeature' &&
-      target.kind !== 'geometricTolerance' &&
-      target.kind !== 'note' &&
-      target.kind !== 'surfaceFinish';
-    if (!isDimension) {
-      out.push({
-        kind: 'refsDoNotFit',
-        message: 'The dimension this frame applies to no longer exists',
-      });
-    }
+    const problem = appliesToProblem(part, a.appliesTo, 'frame', false);
+    if (problem) out.push({ kind: 'refsDoNotFit', message: problem });
   }
   const datumLabels = new Map(
     (part.annotations ?? []).flatMap((o) =>

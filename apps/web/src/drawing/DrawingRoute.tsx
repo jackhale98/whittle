@@ -402,7 +402,9 @@ export default function DrawingRoute({ wb, id, tier, onClose }: DrawingRouteProp
       tier={tier}
       title={b?.drawing.name ?? 'Drawing'}
       onBack={onClose}
-      sheets={b ? b.drawing.sheets.map((s) => ({ id: s.id, name: s.name })) : []}
+      // The tabs follow the document, not the last build: an add, rename, reorder or undo shows
+      // at once, while the sheet itself rebuilds (a build can be held by a drag, or slow).
+      sheets={b ? (c.drawing() ?? b.drawing).sheets.map((s) => ({ id: s.id, name: s.name })) : []}
       sheetId={sheet?.id ?? null}
       onSheet={(sid) => switchSheet(c, sid)}
       {...(readOnly || !b
@@ -413,7 +415,7 @@ export default function DrawingRoute({ wb, id, tier, onClose }: DrawingRouteProp
               onRename: (id: string, name: string) => void renameSheet(c, id, name),
               onDelete: (id: string) => void deleteSheet(c, id),
               onMove: (id: string, to: number) => void moveSheet(c, id, to),
-              contents: (id: string) => sheetContents(b.drawing, id),
+              contents: (id: string) => sheetContents(c.drawing() ?? b.drawing, id),
             },
             dropSheet: ui.dropSheet,
           })}

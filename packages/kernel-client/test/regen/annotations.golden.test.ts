@@ -444,6 +444,40 @@ describe.skipIf(!m3)(`regen golden (M4): annotations after the walk${note}`, () 
     expect(f.cause).toBeUndefined();
   }, 120_000);
 
+  it('a datum on a feature of size (appliesTo, ADR-094): ok on its dimension; a missing one needs attention; it follows its dimension', async () => {
+    const doc = annotated(bracketDoc());
+    const anns = part(doc).annotations ?? [];
+    const width: Annotation = {
+      id: fid('ANB'),
+      kind: 'datumFeature',
+      origin: model,
+      refs: [],
+      label: 'B',
+      appliesTo: A.width,
+    };
+    const gone: Annotation = { ...width, id: fid('ANC'), label: 'C', appliesTo: fid('NOPE') };
+    part(doc).annotations = [...anns, width, gone].sort((a, b) => (a.id < b.id ? -1 : 1));
+    const r = await regen(doc);
+    const w = get(r, width.id);
+    expect(w.state, JSON.stringify(w)).toBe('ok');
+    expect(w.value).toBeUndefined();
+    // No refs of its own: the layout reads the width dimension's anchors.
+    expect(w.anchors).toBeUndefined();
+    const g = get(r, gone.id);
+    expect(g.state).toBe('needsAttention');
+    expect(g.unresolved?.map((u) => u.path)).toEqual(['/appliesTo']);
+    // The width dimension needs attention: so does its datum, with the reason.
+    const broken = structuredClone(doc);
+    const dim = part(broken).annotations?.find((a) => a.id === A.width);
+    if (!dim) throw new Error('width');
+    dim.refs = [face(plateLeft), face('F404:nowhere')];
+    const r2 = await regen(broken);
+    expect(get(r2, A.width).state).toBe('needsAttention');
+    const w2 = get(r2, width.id);
+    expect(w2.state).toBe('needsAttention');
+    expect(JSON.stringify(w2)).toContain('The dimension this datum applies to needs attention');
+  }, 120_000);
+
   it('annotations never touch feature cache keys, and run only when asked', async () => {
     const plain = bracketDoc();
     await regen(plain);

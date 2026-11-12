@@ -34,9 +34,6 @@ import {
   hitTest,
   type SheetDrag,
   type SheetPointer,
-  type SheetTransient,
-  type SheetTransientFrame,
-  type SheetTransientSpec,
 } from '@wren-cad/ui/drawing';
 import type { DrawingController } from './controller';
 import { moveVertex } from './cutline';
@@ -70,7 +67,16 @@ import {
   textSideHint,
 } from './overlay-nodes';
 import type { Built } from './pipeline';
+import {
+  type DragFrame,
+  followersOf,
+  PREVIEW_NODE,
+  placementPreview,
+  previewDrag,
+} from './preview-drag';
 import type { EdgePick } from './state';
+
+export { type DragFrame, previewDrag };
 
 const sub = (a: Vec2, b: Vec2): Vec2 => [a[0] - b[0], a[1] - b[1]];
 const dot = (a: Vec2, b: Vec2) => a[0] * b[0] + a[1] * b[1];
@@ -159,53 +165,6 @@ export function selectHit(c: DrawingController, hit: HitResult | null): void {
 // Moving views and annotations (ADR-094: a drag is a preview; one commit on release)
 // ---------------------------------------------------------------------------------------------
 
-/** What a drag frame is: the preview to show, and the one edit to make if it is released here. */
-export interface DragFrame {
-  frame: SheetTransientFrame;
-  /** The edit to commit on release; `null` when it would change nothing. */
-  commit: (() => void) | null;
-}
-
-/**
- * A drag that stores nothing until it is released. The preview (`spec`: groups moved or hidden,
- * `frame`: translation and extra nodes) is drawn straight onto the sheet, once per animation
- * frame; the build is held; release makes the one edit, which is one undo step. Escape or a cancel
- * leaves nothing behind: the document was never touched.
- */
-export function previewDrag(
-  c: DrawingController,
-  spec: SheetTransientSpec,
-  at: (p: SheetPointer) => DragFrame | null,
-): SheetDrag {
-  let tr: SheetTransient | null = null;
-  c.hold();
-  const show = (p: SheetPointer): DragFrame | null => {
-    const f = at(p);
-    if (!f) return null;
-    tr ??= c.transient(spec);
-    tr.update(f.frame);
-    return f;
-  };
-  return {
-    move(p) {
-      show(p);
-    },
-    up(p, moved) {
-      const f = moved ? show(p) : null;
-      if (f?.commit) {
-        f.commit();
-        c.commit();
-        tr?.end('hold');
-      } else tr?.end('cancel');
-      c.resume();
-    },
-    cancel() {
-      tr?.end('cancel');
-      c.resume();
-    },
-  };
-}
-
 /** The views that move with `id` when it moves: its aligned descendants, transitively. */
 export function dependentsOf(b: Built, id: Id): Id[] {
   const out: Id[] = [];
@@ -256,12 +215,6 @@ export function detailGripsOf(b: Built, viewId: Id): DetailGrip[] {
   if (view.center.kind === 'free') out.push({ kind: 'center', at: c });
   return out;
 }
-
-const PREVIEW_NODE = (children: SvgNode[]): SvgNode => ({
-  tag: 'g',
-  attrs: { 'data-selected': 'true' },
-  children,
-});
 
 /** Dragging one vertex of a section's cut line: the line follows live; the section re-cuts on release. */
 function dragCutVertex(c: DrawingController, viewId: Id, index: number, start: Vec2): SheetDrag {
@@ -613,12 +566,14 @@ function movePlacement(
   const text0 = pl.text;
 
   const preview = (next: AnnotationPlacement, hint: SvgNode[]): DragFrame | null => {
-    const r = b.build.relayout(next);
-    if (!r) return null;
+    // The leaders attached to it (a frame under its text, a datum on its line) follow it.
+    const pv = placementPreview(b, next);
+    if (!pv) return null;
+    const r = pv.placed;
     const same = JSON.stringify(next) === JSON.stringify(pl);
     return {
       frame: {
-        nodes: [PREVIEW_NODE(svgItems(r.items, b.drawing.style))],
+        nodes: [PREVIEW_NODE(svgItems(pv.items, b.drawing.style))],
         overlay: [textBoxOutline(r.textBox, start.mm), ...hint],
       },
       commit: same
@@ -634,7 +589,10 @@ function movePlacement(
     };
   };
 
-  return previewDrag(c, { hide: [`placement:${placementId}`] }, (p) => {
+  const hide = [placementId, ...followersOf(b, placementId).map((f) => f.id)].map(
+    (id) => `placement:${id}`,
+  );
+  return previewDrag(c, { hide }, (p) => {
     if (linearText && placed?.line && boxCentre) {
       const t = textDrag(
         { line: placed.line, shift: text0?.shift ?? 0, centre: boxCentre, h },

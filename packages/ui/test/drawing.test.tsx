@@ -946,6 +946,29 @@ describe('AnnotationInspector', () => {
     );
     expect(screen.getByLabelText('Datum letter')).toHaveAttribute('aria-invalid', 'true');
     expect(screen.getByText(/not used as datum letters/)).toBeVisible();
+    // A datum on a feature of size says which, and that it follows it (ADR-094).
+    rerender(
+      <AnnotationInspector
+        {...inspector({
+          annotation: { ...datum, refs: [], label: 'B', appliesTo: 'W' } as Annotation,
+          valueText: undefined,
+        })}
+        appliesTo={{ dimension: 'the 80 width', feature: 'median plane' }}
+      />,
+    );
+    expect(screen.getByTestId('applies-to')).toHaveTextContent(
+      'On the feature of size of the 80 width (its median plane). It follows that dimension.',
+    );
+    rerender(
+      <AnnotationInspector
+        {...inspector({
+          annotation: { ...datum, refs: [], appliesTo: 'W' } as Annotation,
+          valueText: undefined,
+        })}
+        appliesTo={{ dimension: '', missing: true }}
+      />,
+    );
+    expect(screen.getByTestId('applies-to')).toHaveTextContent('no longer exists');
     const finish: Annotation = {
       id: 'F1',
       kind: 'surfaceFinish',
