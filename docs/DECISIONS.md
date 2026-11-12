@@ -3428,3 +3428,16 @@ Follow-up round on the drawing workstream, after the lead accepted proposals 1 a
 ### ADR-095 amendment: one rule for round outlines (2026-11-12, lead)
 
 A curved outline that is not an arc (a fillet's torus, or a piece of a sphere's outline that HLR returns as a B-spline) used to give a radius on one pick, while an arc waited for a second pick. Under load the certification driver's first click on a sphere sometimes landed on a spline piece and made a radius where a diameter was meant, and the driver undid it and retried. That masked a product inconsistency, so it is fixed in the product and the retry is gone: a spline outline waits like a circle, and a second pick on the same entity *or on any piece of the same face's outline* (arc or spline) is the same round thing. With an arc among the picks it is the circle flow (diameter, Alt radius, Shift linear across); with spline pieces only it is a dimension on the face: diameter, Alt radius, and a torus always its radius. A spline followed by anything else is refused with the reason. Unit tests in `apps/web/src/drawing/m41-picks.test.ts`.
+
+## ADR-096: 3D mice (6-DoF controllers) via WebHID (2026-11-12)
+
+**Context.** Owner report: a 3D mouse in desktop Chrome/Edge zooms (its driver turns push/pull into wheel events) but does not pan or rotate. PLAN M4.5.
+
+**Decision.**
+
+1. **One motion event.** `MotionSample` (screen axes, rates in [-1, 1] after dead zone, sensitivity, inversion, dominant-axis filter) goes to `InteractiveViewport.motion()`, which drives the same navigation as the mouse: rotation about the mouse orbit's pivot rules and orbit mode, translation as pan, z as zoom toward the surface under the cursor. Motion is ignored while a pointer gesture is in flight. Rates are integrated over real elapsed time, capped.
+2. **WebHID adapter in Wren's own code** (packages/viewport, pure report parsing plus a thin `navigator.hid` layer). Device ids are plain data. Pairing is a one-time permission from Settings (a user gesture); granted devices reconnect on load. Both report layouts are parsed: separate translation (id 1) and rotation (id 2) reports, and the combined 12-byte report; buttons from report id 3.
+3. **Wheel double-counting.** A vendor driver that emulates the wheel would zoom twice while WebHID is live; while a 3D mouse is live, wheel events that arrive with motion within the same ~100 ms and no pointer movement are dropped, and the diagnostics panel says how to turn the driver's emulation off.
+4. **Buttons map in Wren** (`MotionButtonCommand`, keymap editor), not through vendor per-app profiles. Settings are per device, like other navigation settings.
+5. **Never silent.** `MotionInputState` drives a diagnostics panel: unsupported browser, not paired, disconnected, no reports (a driver may hold the device; how to fix), live with axis bars and buttons.
+6. The vendor's own JS/driver bridge and a spacenavd WebSocket bridge stay P2 (PLAN M4.5).

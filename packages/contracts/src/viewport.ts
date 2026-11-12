@@ -360,7 +360,93 @@ export interface TouchViewport extends InteractiveViewport {
   getNavigation(): NavigationOptions;
   /** M3.5: everything in a screen rectangle (box selection). Deduplicated, nearest-first order. */
   pickRect(rect: ScreenRect, options: RectPickOptions): PickHit[];
+  /**
+   * M4.5 (ADR-096): one 6-DoF motion sample from a 3D mouse, through the same navigation code as
+   * mouse, touch and Pencil. Rates are integrated over the time since the previous sample (capped,
+   * so a stalled tab does not jump). Rotation turns about the same pivot rules as a mouse orbit
+   * (`NavigationOptions.pivot`: the surface point under the last known cursor, else the visible
+   * bodies' centre), honouring `orbit` (turntable keeps +Z up); translation pans in the view plane;
+   * the z translation zooms toward the surface under the cursor like the wheel. While a pointer
+   * gesture is in flight, motion is ignored (never fights a drag). A zero sample ends the motion.
+   */
+  motion?(sample: MotionSample): void;
 }
+
+// ---- M4.5: 3D mice (6-DoF controllers) -------------------------------------------------------
+
+/**
+ * One device-independent 6-DoF sample, in screen axes: x right, y up, z toward the viewer.
+ * Each component is a rate in [-1, 1] after the adapter's dead zone, sensitivity, inversion and
+ * dominant-axis filter (`MotionSettings`), so the viewport only scales it by its own speeds.
+ * `t`: translation (push the cap right = +x pans the model right; pull up = +y; pull toward you
+ * = +z zooms out). `r`: rotation about the screen axes (right-handed; tilt the cap forward = +x).
+ */
+export interface MotionSample {
+  t: Vec3;
+  r: Vec3;
+  /** `performance.now()` of the device report. */
+  time: number;
+}
+
+/** Per-device user settings for a 3D mouse (stored per device, like other navigation settings). */
+export interface MotionSettings {
+  /** Overall gain, 0.25–4. Default 1. */
+  sensitivity: number;
+  /** Per-axis inversion. Default all false. */
+  invert: { tx: boolean; ty: boolean; tz: boolean; rx: boolean; ry: boolean; rz: boolean };
+  /** Only the strongest axis passes (precise moves). Default false. */
+  dominant: boolean;
+  /** Turn rotation or translation off entirely. Default both true. */
+  rotate: boolean;
+  translate: boolean;
+  /** Raw counts below this fraction of full scale are zero. Default 0.04. */
+  deadZone: number;
+}
+
+export const DEFAULT_MOTION_SETTINGS: MotionSettings = {
+  sensitivity: 1,
+  invert: { tx: false, ty: false, tz: false, rx: false, ry: false, rz: false },
+  dominant: false,
+  rotate: true,
+  translate: true,
+  deadZone: 0.04,
+};
+
+/**
+ * Commands a 3D mouse button can run (bound in the keymap editor; device buttons are numbered
+ * from 1 in report order). Default: button 1 = `radialMenu`, button 2 = `fit`.
+ */
+export type MotionButtonCommand =
+  | 'fit'
+  | 'radialMenu'
+  | 'repeatLast'
+  | 'viewFront'
+  | 'viewTop'
+  | 'viewRight'
+  | 'viewIso'
+  | 'toggleRotate'
+  | 'toggleDominant'
+  | 'none';
+
+/**
+ * What the diagnostics panel shows (ADR-096): which input path is live and why not, never silent.
+ * - `unsupported`: the browser has no WebHID (Safari, Firefox, iPad).
+ * - `notPaired`: WebHID exists, no 3D mouse has been granted yet (Settings → Pair a 3D mouse).
+ * - `disconnected`: a granted device is not plugged in.
+ * - `noReports`: opened, but no input for a while after the user moved it: a vendor driver may be
+ *   holding the device (the panel links the fix).
+ * - `live`: reports are arriving.
+ */
+export type MotionInputState =
+  | { path: 'none'; state: 'unsupported' | 'notPaired' | 'disconnected' }
+  | {
+      path: 'webhid';
+      state: 'noReports' | 'live';
+      device: { name: string; vendorId: number; productId: number };
+      /** The latest filtered sample and pressed buttons (1-based), for live axis bars. */
+      last?: MotionSample;
+      buttons: number[];
+    };
 
 /**
  * M2.5 geometric compare overlay (PLAN §8A.3, ADR-020): material version B adds (green) and
