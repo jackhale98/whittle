@@ -103,7 +103,7 @@ function dimensionMet(
   return onView && equal && showsValue(state.texts, Math.abs(d.value));
 }
 
-function describe(id: string, viewId: string, state: Built, placements: Placements): string {
+function explainMiss(id: string, viewId: string, state: Built, placements: Placements): string {
   const res = state.resolutions.find((r) => r.id === id);
   const onView = placements.some((p) => p.annotationId === id && p.viewId === viewId);
   return `resolved ${res?.state} ${res?.value} (measured ${res?.measured}), on view ${onView}`;
@@ -228,7 +228,7 @@ for (const part of PARTS) {
       } else {
         const id = bound.get(d.name);
         ok = id !== undefined && dimensionMet(d, v.id, id, state, placements);
-        why = notes.get(d.name) ?? (id ? describe(id, v.id, state, placements) : 'not placed');
+        why = notes.get(d.name) ?? (id ? explainMiss(id, v.id, state, placements) : 'not placed');
       }
       if (ok) met.push(d.name);
       if (gapNames.has(d.name)) {
