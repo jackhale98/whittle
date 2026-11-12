@@ -63,6 +63,8 @@ export interface MotionInput {
   onState(listener: (s: MotionInputState) => void): () => void;
   /** Must be called from a user gesture (`navigator.hid.requestDevice`). Resolves when granted or cancelled. */
   pair(): Promise<void>;
+  /** Every button edge (1-based), also short taps the 10 Hz state feed would miss. */
+  onButton(listener: (button: number, down: boolean) => void): () => void;
   setSettings(s: MotionSettings): void;
   dispose(): void;
 }
@@ -189,11 +191,14 @@ export function createMotionInput(opts: MotionInputOptions): MotionInput {
       console.error('motion sample handler failed', err);
     }
   };
+  const buttonListeners = new Set<(button: number, down: boolean) => void>();
   const button = (b: number, down: boolean) => {
-    try {
-      opts.onButton(b, down);
-    } catch (err) {
-      console.error('motion button handler failed', err);
+    for (const l of [opts.onButton, ...buttonListeners]) {
+      try {
+        l(b, down);
+      } catch (err) {
+        console.error('motion button handler failed', err);
+      }
     }
   };
 
@@ -329,6 +334,12 @@ export function createMotionInput(opts: MotionInputOptions): MotionInput {
         // cancelled, no user gesture, or blocked by policy: the state already says why
       }
     },
+    onButton(listener) {
+      buttonListeners.add(listener);
+      return () => {
+        buttonListeners.delete(listener);
+      };
+    },
     setSettings(s) {
       settings = s;
     },
@@ -349,6 +360,7 @@ export function createMotionInput(opts: MotionInputOptions): MotionInput {
       }
       tracks.clear();
       listeners.clear();
+      buttonListeners.clear();
     },
   };
 }

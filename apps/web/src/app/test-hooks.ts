@@ -2,7 +2,8 @@
  * Test hooks (`Workbench.testHooks()`, exposed as `__wrenApp` in E2E): document, regen summary, idle.
  */
 
-import type { Command, Id, WrenDoc } from '@wren-cad/contracts';
+import type { Command, Id, MotionInputState, WrenDoc } from '@wren-cad/contracts';
+import type { MotionInputLike } from '@wren-cad/ui';
 import { ensureDrawingSupport } from '../doc/drawing-support';
 import { hitKey, resolvePick } from '../selection/pick';
 import { configStatusOf, isMissingActive, keyOf } from './config-model';
@@ -75,10 +76,6 @@ export function testHooks(wb: Workbench) {
       await wb.viewport?.nextFrame();
     },
     flushSave: () => wb.flushSave(),
-    /** 3D mouse (M4.5): the adapter state the diagnostics panel shows. */
-    motion: {
-      state: () => wb.motion.state.get(),
-    },
     /**
      * What a mouse click at canvas px would pick in the current mode, as the click itself
      * resolves it (`pickAt` + `resolvePick`): the best hit and how many tie ("Which one?").
@@ -206,6 +203,11 @@ export function testHooks(wb: Workbench) {
     },
     /** The undo and redo stacks, oldest first (labels of the steps; read only). */
     history: () => wb.store.history(),
+    /**
+     * M4.5: a controllable fake MotionInput (E2E; the real one needs hardware). `attach` plugs it
+     * in; `emit` sets its state; `press` simulates a button press (a state edge, like the 10 Hz feed).
+     */
+    motion: () => import('./motion-fake').then((m) => m.motionHooks(wb)),
     /** Applies a command as one undo step (E2E edits that aren't about the UI path). */
     apply: (command: Command, label?: string) => {
       const ok = wb.apply(command, label);

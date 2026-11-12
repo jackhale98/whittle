@@ -52,6 +52,7 @@ import { M35Gallery } from './m35Gallery';
 import { M36Gallery } from './m36Gallery';
 import { M37Gallery } from './m37Gallery';
 import { M38Gallery } from './m38Gallery';
+import { MotionGallery } from './motionGallery';
 import { ParamsGallery } from './paramsGallery';
 import { SectionGallery } from './sectionGallery';
 import { SyncGallery } from './syncGallery';
@@ -592,6 +593,9 @@ export function Gallery({
         return <M3Gallery section={section} tier={tier} />;
       case 'params-link':
         return <ParamsGallery tier={tier} />;
+      case 'motion-states':
+      case 'motion-settings':
+        return <MotionGallery section={section} tier={tier} />;
       case 'section-chip':
       case 'section-panel':
         return <SectionGallery section={section} tier={tier} />;

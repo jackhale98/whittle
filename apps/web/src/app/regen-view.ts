@@ -196,6 +196,17 @@ export function remapSelection(wb: Workbench, result: RegenResult): void {
   wb.patchUi({ selection, hover: null });
 }
 
+/** Loads the 3D mouse device layer when idle, and only where WebHID exists (initial-route budget). */
+function startMotionDevice(wb: Workbench): void {
+  const w = globalThis as { __wrenHid?: unknown; navigator?: { hid?: unknown } };
+  if (!(w.__wrenHid ?? w.navigator?.hid)) return;
+  const run = () => void import('./motion-device').then((m) => m.startMotionDevice(wb));
+  const ric = (globalThis as { requestIdleCallback?: (cb: () => void, o?: object) => number })
+    .requestIdleCallback;
+  if (ric) ric(run, { timeout: 2000 });
+  else setTimeout(run, 500);
+}
+
 export function attachViewport(
   wb: Workbench,
   viewport: TouchViewport,
@@ -231,7 +242,7 @@ export function attachViewport(
     viewport.onCamera((c) => wb.onCamera(c)),
   );
   viewport.setNavigation(wb.input.get().navigation);
-  wb.motion.start(); // 3D mouse: the adapter loads when idle, only where WebHID exists
+  startMotionDevice(wb); // 3D mouse: loads when idle, only where WebHID exists
   // Touch tiers: the Pencil draws or selects and never orbits; fingers keep navigating, and
   // touch taps right after a pen contact are palm rejected.
   if (wb.tier !== 'desktop') viewport.setInputPolicy({ penDraws: true });

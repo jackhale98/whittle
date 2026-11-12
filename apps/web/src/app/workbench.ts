@@ -47,6 +47,7 @@ import {
   type ExportRequest,
   eventBindingId,
   type KeymapOverrides,
+  type MotionInputLike,
   type SheetSnap,
   type SheetTabId,
   type ToolId,
@@ -79,6 +80,7 @@ import type { BubbleActionId } from './gestures';
 import { commandFor, type InputSettings, loadInput } from './input';
 import * as keys from './keyboard';
 import { MeasureTool } from './measure-tool';
+import type { MotionPrefs } from './motion';
 import { type Observable, observable } from './observable';
 import * as pointer from './pointer';
 import { PointerDowns } from './pointers';
@@ -96,7 +98,6 @@ import {
   type SettingsTab,
   type UiState,
 } from './state';
-import { MotionService } from './motion';
 import * as hooks from './test-hooks';
 import { failBoot, mark, markOnce } from './timing';
 import * as tools from './tools';
@@ -121,8 +122,6 @@ export class Workbench {
   readonly libraryEntries = observable<import('@wren-cad/contracts').LibraryEntry[] | null>(null);
 
   viewport: TouchViewport | null = null;
-  /** 3D mouse (M4.5, ADR-096): lazily loaded WebHID adapter, state, pairing, buttons. See `motion.ts`. */
-  readonly motion = new MotionService(() => this.viewport);
   canvas: HTMLCanvasElement | null = null;
   modeling: Modeling | null = null;
   /** Device tier and what it means (PLAN §8.4): regen budget, mesh quality, kernel boot. */
@@ -310,7 +309,9 @@ export class Workbench {
   }
 
   dispose(): void {
-    this.motion.dispose();
+    this.setMotionInput(null);
+    this.deviceDispose?.();
+    this.deviceDispose = null;
     for (const fn of this.cleanup) fn();
     this.cleanup = [];
     this.loop?.dispose();
@@ -1255,6 +1256,29 @@ export class Workbench {
 
   setKeymapOverrides(overrides: KeymapOverrides): void {
     keys.setKeymapOverrides(this, overrides);
+  }
+
+  // ------------------------------------------------------------------ 3D mouse (M4.5, ADR-096)
+
+  /**
+   * Per-device 3D mouse settings and button mapping (`wren.motion`, `wren.motionButtons`). Null
+   * until the 3D mouse code loads (it is a lazy chunk: the initial route stays within budget).
+   */
+  readonly motionPrefs: Observable<MotionPrefs | null> = observable<MotionPrefs | null>(null);
+  /** The device layer, once the viewport side hands it in (`setMotionInput`). */
+  readonly motionInput: Observable<MotionInputLike | null> = observable<MotionInputLike | null>(
+    null,
+  );
+  motionUnwatch: (() => void) | null = null;
+  /** Disposes the WebHID device layer started by `motion-device.ts` (lazy). */
+  deviceDispose: (() => void) | null = null;
+
+  /**
+   * Plug the device layer in (the integration point for the viewport's MotionInput). Loads the
+   * 3D mouse chunk, pushes the stored settings to the device and starts listening to its buttons.
+   */
+  setMotionInput(input: MotionInputLike | null): void {
+    void import('./motion').then((m) => m.setMotionInput(this, input));
   }
 
   openSettings(tab: SettingsTab = 'navigation'): void {

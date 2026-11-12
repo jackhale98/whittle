@@ -1,5 +1,5 @@
 import { Ban, Plus, RotateCcw, Search, TriangleAlert, X } from 'lucide-react';
-import { type KeyboardEvent, useId, useMemo, useRef, useState } from 'react';
+import { type KeyboardEvent, type ReactNode, useId, useMemo, useRef, useState } from 'react';
 import { fieldClass } from '../components/controls';
 import { Button, cn, IconButton } from '../components/primitives';
 import {
@@ -26,6 +26,8 @@ export interface KeymapEditorProps {
   layout?: LayoutMap | null;
   size?: 'md' | 'touch';
   className?: string;
+  /** Extra sections after the commands (M4.5: the 3D mouse button mapping). */
+  footer?: ReactNode;
 }
 
 interface Pending {
@@ -49,6 +51,7 @@ export function KeymapEditor({
   layout,
   size = 'md',
   className,
+  footer,
 }: KeymapEditorProps) {
   const platform = platformProp ?? detectPlatform();
   const resolved = useMemo(() => resolveKeymap(commands, overrides), [commands, overrides]);
@@ -295,6 +298,7 @@ export function KeymapEditor({
           </ul>
         </section>
       ))}
+      {footer}
     </div>
   );
 }
