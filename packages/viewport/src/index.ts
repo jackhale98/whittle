@@ -13,6 +13,45 @@ export * as gestureConstants from './constants';
 export { edgesToSegments, meshBuffersToGeometry } from './geometry';
 export type { GestureOutput, PointerKind, PointerSample } from './gestures';
 export { GestureRecognizer } from './gestures';
+export {
+  DEFAULT_FULL_SCALE,
+  findMotionDevice,
+  MOTION_DEVICES,
+  MOTION_USAGE,
+  MOTION_USAGE_PAGE,
+  MOTION_VENDOR_IDS,
+  type MotionDeviceInfo,
+  motionDeviceFilters,
+} from './motion/devices';
+export {
+  createMotionInput,
+  type HIDDeviceLike,
+  type HIDInputReportEventLike,
+  type HIDLike,
+  hasWebHID,
+  isMotionDevice,
+  type MotionInput,
+  type MotionInputOptions,
+  NO_REPORTS_MS,
+  PAIRED_FLAG_KEY,
+  STATE_THROTTLE_MS,
+} from './motion/hid';
+export {
+  isWheelEcho,
+  MOTION_MAX_DT_S,
+  MOTION_WHEEL_ECHO_MS,
+  MotionIntegrator,
+} from './motion/integrate';
+export {
+  AxisAccumulator,
+  buttonChanges,
+  conditionAxes,
+  deviceToScreen,
+  normalizeCounts,
+  type ParsedReport,
+  parseReport,
+  pressedButtons,
+} from './motion/report';
 export { closestOnPolyline, defaultTolerance, distPointSegment2D } from './pick';
 export type { PlaneFrame } from './plane';
 export { lookAtPlanePose, rayToPlane } from './plane';
@@ -54,42 +93,3 @@ export {
   unionBounds,
   VIEW_DIRECTIONS,
 } from './views';
-export {
-  DEFAULT_FULL_SCALE,
-  findMotionDevice,
-  MOTION_DEVICES,
-  MOTION_USAGE,
-  MOTION_USAGE_PAGE,
-  MOTION_VENDOR_IDS,
-  type MotionDeviceInfo,
-  motionDeviceFilters,
-} from './motion/devices';
-export {
-  createMotionInput,
-  type HIDDeviceLike,
-  type HIDInputReportEventLike,
-  type HIDLike,
-  hasWebHID,
-  isMotionDevice,
-  type MotionInput,
-  type MotionInputOptions,
-  NO_REPORTS_MS,
-  PAIRED_FLAG_KEY,
-  STATE_THROTTLE_MS,
-} from './motion/hid';
-export {
-  isWheelEcho,
-  MOTION_MAX_DT_S,
-  MOTION_WHEEL_ECHO_MS,
-  MotionIntegrator,
-} from './motion/integrate';
-export {
-  AxisAccumulator,
-  buttonChanges,
-  conditionAxes,
-  deviceToScreen,
-  normalizeCounts,
-  type ParsedReport,
-  parseReport,
-  pressedButtons,
-} from './motion/report';

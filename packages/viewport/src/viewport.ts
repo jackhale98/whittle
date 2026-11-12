@@ -31,7 +31,6 @@ import type {
   ViewportStats,
 } from '@wren-cad/contracts';
 import { DEFAULT_NAVIGATION } from '@wren-cad/contracts';
-import { createMotionState, type MotionState, motionSample } from './motion/nav';
 import CameraControls from 'camera-controls';
 import {
   Box3,
@@ -104,6 +103,7 @@ import {
   type SketchEntry,
   type WheelState,
 } from './internal';
+import { createMotionState, type MotionState, motionSample } from './motion/nav';
 import { getNavigation, getNavigationState, setNavigation } from './navControl';
 import { NavigationMachine, type NavSample, type PivotSource } from './navigation';
 import { applyDepthBias, type Dot } from './overlays';

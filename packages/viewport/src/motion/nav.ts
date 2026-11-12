@@ -31,8 +31,8 @@ import {
   MOTION_ROTATE_RAD_PER_S,
   MOTION_TIMEOUT_MS,
   MOTION_ZOOM_PER_S,
-  MotionIntegrator,
   type MotionDelta,
+  MotionIntegrator,
 } from './integrate';
 
 export interface MotionState {
@@ -64,12 +64,7 @@ export function createMotionState(): MotionState {
 
 /** A pointer gesture (a press anywhere on the canvas, a navigation drag, touch controls) is in flight. */
 export function pointerGestureInFlight(vp: ViewportImpl): boolean {
-  return (
-    vp.nav !== null ||
-    vp.pointersDown.size > 0 ||
-    vp.navMachine.tracking() ||
-    vp.interacting
-  );
+  return vp.nav !== null || vp.pointersDown.size > 0 || vp.navMachine.tracking() || vp.interacting;
 }
 
 export function motionSample(vp: ViewportImpl, s: MotionSample): void {

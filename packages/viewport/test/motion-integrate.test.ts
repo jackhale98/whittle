@@ -7,7 +7,11 @@ import {
   MotionIntegrator,
 } from '../src/motion/integrate';
 
-const s = (time: number, t: [number, number, number] = [0, 0, 0], r: [number, number, number] = [0, 0, 0]): MotionSample => ({
+const s = (
+  time: number,
+  t: [number, number, number] = [0, 0, 0],
+  r: [number, number, number] = [0, 0, 0],
+): MotionSample => ({
   t,
   r,
   time,

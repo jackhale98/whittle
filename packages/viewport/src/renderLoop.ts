@@ -6,6 +6,7 @@ import { createBodyMaterial } from './bodies';
 import { emitCamera } from './camera';
 import { REST_WORK_DEBOUNCE_MS } from './constants';
 import { worldPerPixel } from './handles';
+import { stepMotion } from './motion/nav';
 import {
   disposeOverlay,
   makeDot,
@@ -18,7 +19,6 @@ import {
 import { idFresh, kickIdRefresh } from './picking';
 import type { ViewportImpl } from './viewport';
 import { clipPlanes } from './views';
-import { stepMotion } from './motion/nav';
 import { stepWheel } from './wheel';
 
 export function resize(vp: ViewportImpl): void {

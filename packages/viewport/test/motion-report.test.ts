@@ -38,8 +38,9 @@ const COMPACT = {
 };
 
 const S = DEFAULT_MOTION_SETTINGS;
-const approx = (a: readonly number[], b: readonly number[], eps = 1e-9) =>
-  a.forEach((v, i) => expect(v).toBeCloseTo(b[i] as number, -Math.log10(eps)));
+const approx = (a: readonly number[], b: readonly number[], eps = 1e-9) => {
+  for (let i = 0; i < a.length; i++) expect(a[i]).toBeCloseTo(b[i] as number, -Math.log10(eps));
+};
 
 describe('parseReport', () => {
   it('parses a separate translation report (id 1, 6 bytes)', () => {
@@ -168,7 +169,11 @@ describe('conditionAxes', () => {
   it('applies sensitivity and clamps', () => {
     const c = conditionAxes(screen([0.5, 0, 0], [0, 0, 0]), { ...S, deadZone: 0, sensitivity: 4 });
     expect(c.t[0]).toBe(1);
-    const h = conditionAxes(screen([0.5, 0, 0], [0, 0, 0]), { ...S, deadZone: 0, sensitivity: 0.5 });
+    const h = conditionAxes(screen([0.5, 0, 0], [0, 0, 0]), {
+      ...S,
+      deadZone: 0,
+      sensitivity: 0.5,
+    });
     expect(h.t[0]).toBeCloseTo(0.25);
   });
   it('inverts per axis', () => {

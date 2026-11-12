@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **3D mouse navigation** (M4.5, ADR-096 amendment; the device and viewport half).
+  - **A 3D mouse now orbits, pans and zooms in the viewport**, not just zooms. Pair it in Settings; it reconnects on later visits. Chrome and Edge only (WebHID); Safari and Firefox say so plainly.
+  - **Orbit** turns about the same pivot as a mouse orbit (the surface under the cursor, else the model's centre), with the pivot marker, and follows the turntable or trackball setting. **Pan** moves the model in the view plane at about one view width per second at full push, at any zoom. **Push and pull** zoom toward the surface under the cursor, like the wheel.
+  - **Never fights a drag:** while a mouse, pen or finger gesture is in progress the device is ignored. If the vendor driver also sends wheel events for push and pull, those echoes are dropped so the zoom does not double.
+  - Loaded only when the browser has WebHID, after the first paint.
+
 - **3D mouse settings, diagnostics and buttons** (M4.5, ADR-096 amendment; the UI half, the device layer is separate).
   - **Settings, Navigation, 3D mouse:** **Pair a 3D mouse** (one click, the browser asks once), the paired device's name, sensitivity 0.25 to 4, a dead zone, rotate and pan/zoom on or off, dominant axis, and an invert switch for each of the six axes. Values change in place and are remembered on this device.
   - **3D mouse diagnostics** (Settings, or the command palette): always says what is going on and the fix. A browser that cannot read a 3D mouse, a device not yet paired, one that is unplugged, one a vendor driver may be holding (close the driver's app or allow browser access in its settings), and a live device with six axis bars and the buttons pressed. It also explains doubled zoom: turn off the driver's wheel emulation for the browser.

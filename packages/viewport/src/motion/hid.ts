@@ -5,11 +5,7 @@
  * `navigator.hid` (Safari, Firefox, iPad) it reports `unsupported` and never throws.
  */
 
-import type {
-  MotionInputState,
-  MotionSample,
-  MotionSettings,
-} from '@wren-cad/contracts';
+import type { MotionInputState, MotionSample, MotionSettings } from '@wren-cad/contracts';
 import {
   DEFAULT_FULL_SCALE,
   findMotionDevice,
@@ -87,7 +83,9 @@ export const STATE_THROTTLE_MS = 100;
 export const PAIRED_FLAG_KEY = 'wren.motion.paired';
 
 export function hasWebHID(): boolean {
-  return typeof navigator !== 'undefined' && 'hid' in navigator && !!(navigator as { hid?: unknown }).hid;
+  return (
+    typeof navigator !== 'undefined' && 'hid' in navigator && !!(navigator as { hid?: unknown }).hid
+  );
 }
 
 function defaultHid(): HIDLike | undefined {

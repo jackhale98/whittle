@@ -19,16 +19,19 @@ async function drive(page: Page, t: V3, r: V3, ms: number, hz = 125): Promise<vo
       new Promise<void>((resolve) => {
         const v = window.__viewport!.viewport;
         const start = performance.now();
-        const id = setInterval(() => {
-          const now = performance.now();
-          if (now - start >= (dur as number)) {
-            clearInterval(id);
-            v.motion?.({ t: [0, 0, 0], r: [0, 0, 0], time: now });
-            resolve();
-            return;
-          }
-          v.motion?.({ t: tt as V3, r: rr as V3, time: now });
-        }, 1000 / (rate as number));
+        const id = setInterval(
+          () => {
+            const now = performance.now();
+            if (now - start >= (dur as number)) {
+              clearInterval(id);
+              v.motion?.({ t: [0, 0, 0], r: [0, 0, 0], time: now });
+              resolve();
+              return;
+            }
+            v.motion?.({ t: tt as V3, r: rr as V3, time: now });
+          },
+          1000 / (rate as number),
+        );
       }),
     [t, r, ms, hz] as const,
   );
@@ -185,7 +188,10 @@ test.describe('3D mouse motion', () => {
           const h = v.pick(x as number, y as number, { kinds: ['face'] })[0];
           const c = v.getCameraState().position;
           return h
-            ? { p: h.point as V3, d: Math.hypot(h.point[0] - c[0]!, h.point[1] - c[1]!, h.point[2] - c[2]!) }
+            ? {
+                p: h.point as V3,
+                d: Math.hypot(h.point[0] - c[0]!, h.point[1] - c[1]!, h.point[2] - c[2]!),
+              }
             : null;
         },
         [s.px, s.py],
@@ -196,7 +202,10 @@ test.describe('3D mouse motion', () => {
     const sc = await toScreen(page, before!.p);
     const mid = await surfaceAt();
     expect((mid?.d as number) < (before?.d as number) * 0.9, 'closer to the surface').toBe(true);
-    expect(Math.hypot(sc.x - s.px, sc.y - s.py), 'the surface point stays under the cursor').toBeLessThan(2);
+    expect(
+      Math.hypot(sc.x - s.px, sc.y - s.py),
+      'the surface point stays under the cursor',
+    ).toBeLessThan(2);
     await drive(page, [0, 0, 0.5], [0, 0, 0], 400); // pull = zoom out
     const out = await surfaceAt();
     expect((out?.d as number) > (mid?.d as number) * 1.1).toBe(true);
@@ -242,9 +251,10 @@ test.describe('3D mouse motion', () => {
     const atPress = await pose(page);
     await running;
     const atEnd = await pose(page);
-    expect(dist(atPress.position, atEnd.position), 'no movement while the button is down').toBeLessThan(
-      0.5,
-    ); // allow the last frame in flight
+    expect(
+      dist(atPress.position, atEnd.position),
+      'no movement while the button is down',
+    ).toBeLessThan(0.5); // allow the last frame in flight
     await page.mouse.up({ button: 'left' });
     expect((await nav(page)).motionActive).toBe(false);
   });
@@ -270,7 +280,11 @@ test.describe('3D mouse motion', () => {
     await frame(page);
     const base = (await pose(page)).distance;
     await page.evaluate(() => {
-      window.__viewport!.viewport.motion?.({ t: [0.1, 0, 0], r: [0, 0, 0], time: performance.now() });
+      window.__viewport!.viewport.motion?.({
+        t: [0.1, 0, 0],
+        r: [0, 0, 0],
+        time: performance.now(),
+      });
     });
     await page.mouse.wheel(0, -300);
     await page.waitForTimeout(300);

@@ -186,9 +186,9 @@ describe('createMotionInput states', () => {
     await flush();
     const req = hid.requested[0] as { filters: Array<Record<string, number>> };
     expect(req.filters).toContainEqual({ usagePage: 1, usage: 8 });
-    expect(req.filters.some((f) => f.vendorId === 0x046d && f.usagePage === 1 && f.usage === 8)).toBe(
-      true,
-    );
+    expect(
+      req.filters.some((f) => f.vendorId === 0x046d && f.usagePage === 1 && f.usage === 8),
+    ).toBe(true);
     expect(req.filters.some((f) => f.vendorId === 0x256f)).toBe(true);
     const s = input.state();
     expect(s.path === 'webhid' && s.device.name).toBe('3D mouse (entry)'); // table name, no product name
@@ -313,6 +313,25 @@ describe('createMotionInput states', () => {
     expect(hid.listenerCount('disconnect')).toBe(0);
     dev.report(1, [0x5e, 0x01, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
     expect(samples).toHaveLength(0);
+  });
+
+  it('onButton delivers every edge, including taps shorter than the state throttle', async () => {
+    const hid = new FakeHid();
+    const dev = new FakeDevice();
+    hid.granted = [dev];
+    const { input } = make(hid);
+    const got: Array<[number, boolean]> = [];
+    const off = input.onButton((b, d) => got.push([b, d]));
+    await flush();
+    dev.report(3, [1, 0, 0, 0]);
+    dev.report(3, [0, 0, 0, 0]);
+    expect(got).toEqual([
+      [1, true],
+      [1, false],
+    ]);
+    off();
+    dev.report(3, [1, 0, 0, 0]);
+    expect(got).toHaveLength(2);
   });
 
   it('survives a throwing consumer', async () => {

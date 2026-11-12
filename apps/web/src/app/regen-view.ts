@@ -196,15 +196,11 @@ export function remapSelection(wb: Workbench, result: RegenResult): void {
   wb.patchUi({ selection, hover: null });
 }
 
-/** Loads the 3D mouse device layer when idle, and only where WebHID exists (initial-route budget). */
+/** 3D mouse device layer: loaded after the first paint, only where WebHID exists (route budget). */
 function startMotionDevice(wb: Workbench): void {
-  const w = globalThis as { __wrenHid?: unknown; navigator?: { hid?: unknown } };
-  if (!(w.__wrenHid ?? w.navigator?.hid)) return;
-  const run = () => void import('./motion-device').then((m) => m.startMotionDevice(wb));
-  const ric = (globalThis as { requestIdleCallback?: (cb: () => void, o?: object) => number })
-    .requestIdleCallback;
-  if (ric) ric(run, { timeout: 2000 });
-  else setTimeout(run, 500);
+  if ('hid' in navigator) {
+    setTimeout(() => void import('./motion-device').then((m) => m.startMotionDevice(wb)), 1500);
+  }
 }
 
 export function attachViewport(

@@ -309,9 +309,7 @@ export class Workbench {
   }
 
   dispose(): void {
-    this.setMotionInput(null);
     this.deviceDispose?.();
-    this.deviceDispose = null;
     for (const fn of this.cleanup) fn();
     this.cleanup = [];
     this.loop?.dispose();
