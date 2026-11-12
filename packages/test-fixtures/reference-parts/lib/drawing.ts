@@ -9,12 +9,14 @@
 
 import type { DrawingDimKind, DrawingDimSpec, DrawingViewSpec, Unit } from './types';
 
-type Kind = 'visible' | 'hidden' | 'center';
+type Kind = 'visible' | 'hidden' | 'center' | 'tangent';
 
 const STYLE: Record<Kind, string> = {
   visible: 'stroke="#111" stroke-width="0.5" fill="none"',
   hidden: 'stroke="#555" stroke-width="0.3" stroke-dasharray="2 1.2" fill="none"',
   center: 'stroke="#2a5db0" stroke-width="0.25" stroke-dasharray="6 1.5 1 1.5" fill="none"',
+  /** A tangent (smooth) edge, drawn thin (the view's tangent display `thin`). */
+  tangent: 'stroke="#111" stroke-width="0.18" fill="none"',
 };
 
 const f = (n: number): string => String(Math.round(n * 1000) / 1000);
@@ -47,13 +49,18 @@ export class View {
   ) {}
 
   private record(l: DimLabel, kind: DrawingDimKind, rest: Partial<DrawingDimSpec>): void {
+    // Points to 1e-6 mm: no floating-point noise in the committed spec.
+    const r6 = (p: [number, number] | undefined): [number, number] | undefined =>
+      p && [Math.round(p[0] * 1e6) / 1e6, Math.round(p[1] * 1e6) / 1e6];
+    const out: Partial<DrawingDimSpec> = { ...rest };
+    for (const k of ['from', 'to', 'at'] as const) if (out[k]) out[k] = r6(out[k]);
     this.specs.push({
       name: l.name,
       kind,
       value: l.value,
       unit: l.unit,
       view: this.viewId,
-      ...rest,
+      ...out,
     });
   }
 
@@ -135,7 +142,15 @@ export class View {
    * Horizontal dimension between model points (x1, y1) and (x2, y2), with the dimension line
    * `offset` model millimetres above (positive) or below (negative) the higher or lower point.
    */
-  dimH(x1: number, y1: number, x2: number, y2: number, offset: number, l: DimLabel): this {
+  dimH(
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number,
+    offset: number,
+    l: DimLabel,
+    extra: Partial<DrawingDimSpec> = {},
+  ): this {
     const yl = (offset >= 0 ? Math.max(y1, y2) : Math.min(y1, y2)) + offset;
     const sy = this.Y(yl);
     const a = this.X(Math.min(x1, x2));
@@ -148,12 +163,20 @@ export class View {
     );
     this.out.push(this.arrow(a, sy, -1, 0), this.arrow(b, sy, 1, 0));
     this.label((a + b) / 2, sy + (offset >= 0 ? -1.2 : 4), l);
-    this.record(l, 'linear', { axis: 'h', from: [x1, y1], to: [x2, y2] });
+    this.record(l, 'linear', { axis: 'h', from: [x1, y1], to: [x2, y2], ...extra });
     return this;
   }
 
   /** Vertical dimension; the dimension line is `offset` model millimetres right (positive) or left of the points. */
-  dimV(x1: number, y1: number, x2: number, y2: number, offset: number, l: DimLabel): this {
+  dimV(
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number,
+    offset: number,
+    l: DimLabel,
+    extra: Partial<DrawingDimSpec> = {},
+  ): this {
     const xl = (offset >= 0 ? Math.max(x1, x2) : Math.min(x1, x2)) + offset;
     const sx = this.X(xl);
     const a = this.Y(Math.min(y1, y2));
@@ -172,7 +195,55 @@ export class View {
       offset >= 0 ? 'start' : 'end',
       false,
     );
-    this.record(l, 'linear', { axis: 'v', from: [x1, y1], to: [x2, y2] });
+    this.record(l, 'linear', { axis: 'v', from: [x1, y1], to: [x2, y2], ...extra });
+    return this;
+  }
+
+  /**
+   * A dimension between two points in the direction they lie in, with no horizontal or vertical
+   * direction (the spec has none: `axis` absent): the dimension line is `offset` model millimetres
+   * to the left of the way from the first point to the second. For a value measured normal to
+   * something, such as the thickness of a drafted wall.
+   */
+  dimN(
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number,
+    offset: number,
+    l: DimLabel,
+    extra: Partial<DrawingDimSpec> = {},
+  ): this {
+    const len = Math.hypot(x2 - x1, y2 - y1);
+    const ux = (x2 - x1) / len;
+    const uy = (y2 - y1) / len;
+    // Sheet space (y down): left of the direction in model space is (-uy, ux).
+    const nx = -uy;
+    const ny = ux;
+    const P = (x: number, y: number, k: number): [number, number] => [
+      this.X(x + nx * k),
+      this.Y(y + ny * k),
+    ];
+    const [ax, ay] = P(x1, y1, offset);
+    const [bx, by] = P(x2, y2, offset);
+    const [ex1x, ex1y] = P(x1, y1, 0);
+    const [ex2x, ex2y] = P(x2, y2, 0);
+    const sgn = offset >= 0 ? 1 : -1;
+    const tail = (x: number, y: number, k: number): [number, number] =>
+      P(x, y, k - (sgn * 1.2) / this.s);
+    const [t1x, t1y] = tail(x1, y1, offset);
+    const [t2x, t2y] = tail(x2, y2, offset);
+    this.out.push(
+      `<line x1="${f(ex1x)}" y1="${f(ex1y)}" x2="${f(t1x)}" y2="${f(t1y)}" stroke="#444" stroke-width="0.2"/>`,
+      `<line x1="${f(ex2x)}" y1="${f(ex2y)}" x2="${f(t2x)}" y2="${f(t2y)}" stroke="#444" stroke-width="0.2"/>`,
+      `<line x1="${f(ax)}" y1="${f(ay)}" x2="${f(bx)}" y2="${f(by)}" stroke="#111" stroke-width="0.25"/>`,
+    );
+    const dx = (bx - ax) / Math.hypot(bx - ax, by - ay);
+    const dy = (by - ay) / Math.hypot(bx - ax, by - ay);
+    this.out.push(this.arrow(ax, ay, -dx, -dy), this.arrow(bx, by, dx, dy));
+    // The label sits beyond the first point, away from the second.
+    this.label(ax - dx * 2.5, ay - dy * 2.5 + 1.1, l, dx <= 0 ? 'start' : 'end');
+    this.record(l, 'linear', { from: [x1, y1], to: [x2, y2], ...extra });
     return this;
   }
 
@@ -190,6 +261,7 @@ export class View {
     kind: 'diameter' | 'radius' | 'chamfer' = 'diameter',
     /** The feature's centre when the leader does not start at the circle (an arc seen edge-on). */
     centre: [number, number] = [cx, cy],
+    extra: Partial<DrawingDimSpec> = {},
   ): this {
     const a = (angle * Math.PI) / 180;
     const px = this.X(cx + r * Math.cos(a));
@@ -201,7 +273,7 @@ export class View {
     );
     this.out.push(this.arrow(px, py, -Math.cos(a), Math.sin(a)));
     this.label(ex + (Math.cos(a) >= 0 ? 1 : -1), ey, l, Math.cos(a) >= 0 ? 'start' : 'end');
-    this.record(l, kind, { at: centre, radius: r });
+    this.record(l, kind, { at: centre, radius: r, ...extra });
     return this;
   }
 
@@ -212,9 +284,10 @@ export class View {
     l: DimLabel,
     kind: 'angle' | 'count',
     anchor: 'start' | 'middle' | 'end' = 'start',
+    extra: Partial<DrawingDimSpec> = {},
   ): this {
     this.label(this.X(x), this.Y(y), l, anchor);
-    this.record(l, kind, { at: [x, y] });
+    this.record(l, kind, { at: [x, y], ...extra });
     return this;
   }
 

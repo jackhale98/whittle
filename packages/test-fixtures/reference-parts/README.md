@@ -93,6 +93,15 @@ the SVG's own `data-dim` / `data-value`.
   dimensions are unsigned), `unit`, optional `tolerance` (`{ plus, minus }`; none yet), the `view`, and
   the geometry it measures in the view's drawn coordinates (`axis`, `from`, `to` for a linear one; `at`
   and `radius` for the others).
+  M4.1 adds, on a dimension: `refs[]` (`name` with `{stepId}` placeholders, `kind`, `at`, and for an
+  angle's second ref `fromNormal`), the model entities it measures where the points alone cannot say
+  (construction geometry, extremes, section faces, draft angles); an absent `axis` on a linear
+  dimension means no direction (the natural separation, `wall`); and for an angle `from` / `to`, a
+  point on each face. `kind` says what annotation the suite requires (`linear` is a linear, aligned or
+  ordinate dimension, so a Ø120 does not satisfy `flange_d`). A view may carry
+  `display: { hidden?, tangent? }` (`thin` or `visible`), the view-inspector settings the drawing is
+  measured with. `reference-spec-refs.golden.test.ts` in kernel-client resolves every `refs` list on
+  the real kernel to the printed value.
 
 The E2E builds each part with `buildDoc` and the `load` hook (a UI build takes minutes: that is
 `m3-reference-parts.spec.ts`), then makes the views, the section cut, runs Import model annotations and
@@ -228,6 +237,42 @@ gap.
 - rp10 `slot_x0` (the first slot centre's x, −45) was drawn from the plate's left end, a 15 mm
   span; it is now drawn from the centre line. `slot_pitch` is drawn between like edges of the
   first two slots (their left walls) instead of their centre planes, which no view draws.
+
+## Spec changes (M4.1, ADR-095 item 8)
+
+The geometry, volumes and stages are unchanged; the specs gained the entities the 16 drawing gaps
+need, and some drawings were corrected.
+
+- **rp04 `boss_up`** is measured from a reference plane `boss_lvl` (step 11, offset
+  `plate_t + boss_h - boss_up` above the Top plane, 36 mm at baseline) to the boss top, `refs`
+  `F{boss_lvl}:plane` and `F{join}:face(F{boss}:end)`. The plane follows the parameters. The front
+  view draws it edge-on as a centre line. The plane is the last step so that no step id moves.
+- **rp10 `slot_x0`** is measured from `origin:Y` to a construction centre point `SC` in `slot_sk`,
+  at (`slot_x0`, 0): dimensioned `slot_x0` from the sketch origin, and level with it
+  (`horizontalPoints`; the new `align` option of the `point` sketch op). The top view draws the
+  centre line and the slot's centre mark.
+- **rp06**: the right view has `display.tangent = thin` and draws the two tangent circles of the
+  rod's bend (edge-on) thin, where `rod_h` and `rod_tail` end.
+- **rp05 `draft_a`** is refs [drafted wall `F{base}:side(S{base_sk}:e(L2))`, neutral face
+  `F{base}:start`] at `['self', 'axis']` with `fromNormal` on the second, 3 deg. **`wall`** has no
+  direction (`axis` absent): measured normal to the drafted walls, 3 mm (horizontally the same wall
+  reads 3 / cos 3 deg = 3.004).
+- **rp09 `flange_d`** is a linear dimension across the rim, refs [rim, rim] at `['min', 'max']`,
+  direction x, 120 (it was recorded at (-60, -60), which is not on the part). `pcd` is
+  `F{ring}:pitch`; `hub_h` the flange top and hub top faces.
+- **rp02 `fillet_r`, rp03 `flat_h`, rp08 `cs_x`, `cs_y`, `tap_depth`** have their refs (the
+  fillet's torus face; `origin:X` to the flat's rim; `origin:Y` / `origin:X` to the countersink
+  rim's centre; the plate top to the tapped hole's floor). rp08 `cs_y` is now drawn from the hole
+  centre rather than from the plate edge, and rp03 and rp08 draw their centre lines.
+- **rp07 `inset`: misdiagnosed as a hidden edge.** The M4 gate listed it as GAP-PICK-HIDDEN: "the
+  loft's base outline is hidden under the loft". It is not. The loft narrows going up (50 x 30 at
+  z = 10 to 30 x 14 at z = 50), so its sides face up and its base outline, where they meet the plate's
+  top face, is visible from +Z. The spec SVG drew it dashed, and the spec point was the plate edge's
+  midpoint at the wrong place, (-40, 30) to (-25, 30): 15 mm past the end of the inset edge, which
+  runs from (-25, -15) to (-25, 15). The SVG now draws the outline solid and the dimension runs from
+  (-40, 0) to (-25, 0), on the two edges. Nothing needs a hidden-line pick for it.
+- **Not given refs** (their entity names are not yet pinned by a golden): rp06 `rod_h`, `rod_tail`
+  (tangent edges), rp08 `tap_dx` (hole centres), rp07 `inset`.
 
 ## Adding a part
 

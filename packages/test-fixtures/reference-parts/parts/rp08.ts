@@ -5,7 +5,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import { face, frustumVolumeBeyond, origin, region, sum, term } from '../lib/geom';
+import { edgeName, face, frustumVolumeBeyond, origin, region, sum, term } from '../lib/geom';
 import type { PartDef } from '../lib/types';
 import { frontSection, TOP } from '../lib/views';
 
@@ -222,8 +222,23 @@ export const rp08: PartDef = {
     top.dimH(0, d('cb_y'), d('cb_x'), d('cb_y'), 16, dim('cb_x'));
     top.dimV(-L / 2, 0, -L / 2, d('cb_y'), -12, dim('cb_y'));
     top.leader(d('cb_x'), d('cb_y'), d('cb_d') / 2, 110, 14, dim('cb_d'));
-    top.dimH(0, d('cs_y'), d('cs_x'), d('cs_y'), 8, dim('cs_x'));
-    top.dimV(L / 2, 0, L / 2, d('cs_y'), 8, dim('cs_y'));
+    // Countersink position from the centre lines (the origin planes seen from above), to the rim of
+    // the countersink on the top face, at its centre.
+    top.line(0, -W / 2 - 3, 0, W / 2 + 3, 'center');
+    top.line(-L / 2 - 3, 0, L / 2 + 3, 0, 'center');
+    const csRim = edgeName('F{base}:end', 'F{h_cs}:hole(F{cs_pt}:point):csink');
+    top.dimH(0, d('cs_y'), d('cs_x'), d('cs_y'), 8, dim('cs_x'), {
+      refs: [
+        { name: 'origin:Y', kind: 'edge' },
+        { name: csRim, kind: 'edge', at: 'center' },
+      ],
+    });
+    top.dimV(d('cs_x'), 0, d('cs_x'), d('cs_y'), L / 2 - d('cs_x') + 8, dim('cs_y'), {
+      refs: [
+        { name: 'origin:X', kind: 'edge' },
+        { name: csRim, kind: 'edge', at: 'center' },
+      ],
+    });
     top.leader(d('cs_x'), d('cs_y'), d('cs_d') / 2, 70, 14, dim('cs_d'));
     top.dimH(0, d('tap_y'), d('tap_x0'), d('tap_y'), -10, dim('tap_x0'));
     // The spacing between two holes that exist (positions 2 and 3; position 1 is skipped), measured
@@ -268,6 +283,11 @@ export const rp08: PartDef = {
       -12,
       dim('cb_h'),
     );
-    front.dimV(d('tap_x0'), T - d('tap_depth'), d('tap_x0'), T, -12, dim('tap_depth'));
+    front.dimV(d('tap_x0'), T - d('tap_depth'), d('tap_x0'), T, -12, dim('tap_depth'), {
+      refs: [
+        { name: 'F{h_tap}:hole(S{pts_sk}:p(TP)):bottom', kind: 'face' },
+        { name: 'F{base}:end', kind: 'face' },
+      ],
+    });
   },
 };

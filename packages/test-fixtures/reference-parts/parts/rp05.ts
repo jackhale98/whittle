@@ -122,6 +122,7 @@ export const rp05: PartDef = {
     const tw = d('wall');
     const s = tw / Math.cos(d('draft_a') * DEG);
     const dim = (name: string, unit: 'mm' | 'deg' = 'mm') => ({ name, value: d(name), unit });
+    const wallRight = side('base', 'base_sk', 'L2');
     const top = dr.view(TOP, 118, 85, 1.6).caption(-L / 2, W / 2 + 8, 'Top');
     top.rect(-L / 2, -W / 2, L / 2, W / 2);
     top.rect(-L / 2 + H * t, -W / 2 + H * t, L / 2 - H * t, W / 2 - H * t, 'hidden');
@@ -157,7 +158,28 @@ export const rp05: PartDef = {
     front.line(lo - s - tw * t, tw, hi - s, H);
     front.line(-lo + s + tw * t, tw, -(hi - s), H);
     front.dimV(lo, 0, lo, H, 14, dim('height'));
-    front.dimH(-lo, 0, -lo + tw, 0, -8, dim('wall'));
-    front.note(hi + 2, H - 6, dim('draft_a', 'deg'), 'angle');
+    // The wall, measured normal to the drafted walls (no horizontal or vertical direction): from
+    // the outer wall of the right side, at a quarter of the height, to the inner wall along the
+    // normal. (Horizontally the same wall reads wall / cos(draft_a), 3.004.)
+    const c = Math.cos(d('draft_a') * DEG);
+    const z0 = H / 4;
+    const outer: [number, number] = [lo - z0 * t, z0];
+    front.dimN(outer[0], outer[1], outer[0] - tw * c, outer[1] - tw * t * c, -7, dim('wall'), {
+      refs: [
+        { name: wallRight, kind: 'face' },
+        { name: `F{sh}:shell(${wallRight})`, kind: 'face' },
+      ],
+    });
+    // The draft angle between the drafted wall and the vertical (the neutral bottom face's normal,
+    // in the section): refs [drafted wall, neutral face] at ['self', 'axis'], measured from the
+    // second face's normal.
+    front.note(hi + 2, H - 6, dim('draft_a', 'deg'), 'angle', 'start', {
+      from: [lo - (H / 2) * t, H / 2],
+      to: [0, 0],
+      refs: [
+        { name: wallRight, kind: 'face', at: 'self' },
+        { name: 'F{base}:start', kind: 'face', at: 'axis', fromNormal: true },
+      ],
+    });
   },
 };

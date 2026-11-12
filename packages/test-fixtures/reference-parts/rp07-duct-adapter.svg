@@ -5,7 +5,7 @@
 <g data-view="Top">
 <text x="46" y="29.2" font-size="3.6" font-family="sans-serif" font-weight="bold" fill="#111">Top</text>
 <rect x="46" y="42" width="128" height="96" stroke="#111" stroke-width="0.5" fill="none"/>
-<rect x="70" y="66" width="80" height="48" stroke="#555" stroke-width="0.3" stroke-dasharray="2 1.2" fill="none"/>
+<rect x="70" y="66" width="80" height="48" stroke="#111" stroke-width="0.5" fill="none"/>
 <rect x="86" y="78.8" width="48" height="22.4" stroke="#111" stroke-width="0.5" fill="none"/>
 <circle cx="110" cy="90" r="6.4" stroke="#111" stroke-width="0.5" fill="none"/>
 <line x1="101.68" y1="90" x2="118.32" y2="90" stroke="#2a5db0" stroke-width="0.25" stroke-dasharray="6 1.5 1 1.5" fill="none"/>
@@ -22,8 +22,8 @@
 <path d="M196.4 138 L195.6 135.6 L197.2 135.6 Z" fill="#111"/>
 <path d="M196.4 42 L197.2 44.4 L195.6 44.4 Z" fill="#111"/>
 <text data-dim="base_w" data-value="60" x="197.6" y="90" text-anchor="start" font-size="3.2" font-family="monospace" fill="#111">base_w = 60 mm</text>
-<line x1="46" y1="42" x2="46" y2="28" stroke="#444" stroke-width="0.2"/>
-<line x1="70" y1="42" x2="70" y2="28" stroke="#444" stroke-width="0.2"/>
+<line x1="46" y1="90" x2="46" y2="28" stroke="#444" stroke-width="0.2"/>
+<line x1="70" y1="90" x2="70" y2="28" stroke="#444" stroke-width="0.2"/>
 <line x1="46" y1="29.2" x2="70" y2="29.2" stroke="#111" stroke-width="0.25"/>
 <path d="M46 29.2 L48.4 28.4 L48.4 30 Z" fill="#111"/>
 <path d="M70 29.2 L67.6 30 L67.6 28.4 Z" fill="#111"/>

@@ -365,6 +365,16 @@
         "to": [
           31,
           18
+        ],
+        "refs": [
+          {
+            "name": "origin:X",
+            "kind": "edge"
+          },
+          {
+            "name": "edge(F{ball}:side(S{ball_sk}:e(A1))|F{flat}:start)",
+            "kind": "edge"
+          }
         ]
       },
       {

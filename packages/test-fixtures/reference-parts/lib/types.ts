@@ -67,6 +67,11 @@ export type SketchOp =
       y: Ex;
       dims?: 'xy' | 'x' | 'y' | 'none';
       construction?: boolean;
+      /**
+       * Keep the point level with the sketch origin (`horizontalPoints`) or above it
+       * (`verticalPoints`), instead of dimensioning that coordinate (use with `dims: 'x'` / `'y'`).
+       */
+      align?: 'h' | 'v';
     }
   | { op: 'line'; id: string; a: string; b: string; construction?: boolean }
   /** Counter-clockwise from point `a` to point `b` around point `c`. */
@@ -209,9 +214,41 @@ export interface DrawingViewSpec {
   axes: [WorldAxis, WorldAxis];
   section?: { letter: string; cut: [number, number][]; look: 'left' | 'right' };
   detail?: { letter: string; centre: [number, number]; radius: number; scale: string };
+  /**
+   * How the view draws (M4.1), as set in the view inspector: `hidden` shows the hidden lines;
+   * `tangent` draws the tangent (smooth) edges, `thin` as thin lines, `visible` as visible ones.
+   * Absent = the product defaults (no hidden lines, no tangent edges). The spec drawing needs the
+   * ones its dimensions are measured to.
+   */
+  display?: { hidden?: boolean; tangent?: 'thin' | 'visible' };
 }
 
+/**
+ * What kind of annotation a spec dimension is, and so what the certification suite requires the
+ * recreated annotation to be: `linear` is a linear, aligned or ordinate dimension (a diameter or
+ * a radius is not one, even when its value is the same), `diameter` a diameter, and so on.
+ */
 export type DrawingDimKind = 'linear' | 'diameter' | 'radius' | 'chamfer' | 'angle' | 'count';
+
+/** Where on an entity a dimension is measured (the contract's `RefPoint`). */
+export type DrawingRefPoint = 'self' | 'center' | 'axis' | 'start' | 'end' | 'mid' | 'min' | 'max';
+
+/**
+ * One reference of a dimension, as the document stores it (M4.1): the persistent name with
+ * `{stepId}` standing for the id of the step that made the entity (see `Pick`), the entity kind,
+ * and where on it the dimension is measured.
+ */
+export interface DrawingRefSpec {
+  name: string;
+  kind: 'face' | 'edge' | 'vertex';
+  /** Absent = `self`. */
+  at?: DrawingRefPoint;
+  /**
+   * Angles, the second ref only: the angle is measured from this planar face's normal (`at` is
+   * `axis`), so a draft angle is refs [drafted face, neutral face] at ['self', 'axis'].
+   */
+  fromNormal?: boolean;
+}
 
 /** A tolerance as printed: `+plus / -minus` in the dimension's unit. None of the drawings has one yet. */
 export interface DimTolerance {
@@ -232,10 +269,22 @@ export interface DrawingDimSpec {
   tolerance?: DimTolerance;
   /** The view it appears in (`DrawingViewSpec.id`). */
   view: string;
-  /** Linear: measured along the view's horizontal or vertical, between two points (view coordinates). */
+  /**
+   * Linear: measured along the view's horizontal or vertical (the annotation's `direction`), between
+   * two points (view coordinates). Absent = no direction: the natural separation of the two
+   * entities, for example the thickness of a drafted wall, normal to the walls (needs `refs`).
+   * Angle: `from` is on the first entity and `to` on the second (so a driver can pick them).
+   */
   axis?: 'h' | 'v';
   from?: [number, number];
   to?: [number, number];
+  /**
+   * The model entities the dimension measures, where the drawing tools cannot get them from the
+   * points alone (M4.1): construction geometry, extremes, section faces, draft angles. Present on
+   * every dimension that was a product gap. Kernel-client resolves them to the printed `value`
+   * (`reference-spec-refs.golden.test.ts`).
+   */
+  refs?: DrawingRefSpec[];
   /** Diameter, radius, chamfer, angle and count: the feature's centre or anchor point (view coordinates). */
   at?: [number, number];
   /** Diameter, radius and chamfer: the circle's radius, to tell concentric circles apart. */

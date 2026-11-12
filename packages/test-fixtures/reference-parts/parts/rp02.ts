@@ -214,6 +214,16 @@ export const rp02: PartDef = {
       14,
       dim('fillet_r'),
       'radius',
+      undefined,
+      {
+        // The fillet's torus face: its outline is a spline, so there is no arc to pick.
+        refs: [
+          {
+            name: `F{fil}:fillet(${edgeName(side('shaft', 'prof_sk', 'L3'), side('shaft', 'prof_sk', 'L4'))})`,
+            kind: 'face',
+          },
+        ],
+      },
     );
     v.leader(H - c, R3, c, 90, 12, dim('chamfer_c'), 'chamfer');
   },

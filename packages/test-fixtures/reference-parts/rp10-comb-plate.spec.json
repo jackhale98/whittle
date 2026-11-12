@@ -132,7 +132,7 @@
     {
       "tool": "sketch",
       "id": "slot_sk",
-      "say": "Sketch on Top: one slot, slot_l x slot_w, centred on y = 0 with its centre at slot_x0.",
+      "say": "Sketch on Top: one slot, slot_l x slot_w, centred on y = 0 with its centre at slot_x0, and a construction centre point SC at (slot_x0, 0): dimension it slot_x0 from the origin and keep it level with the origin.",
       "on": {
         "pick": "plane",
         "name": "origin:XY"
@@ -145,6 +145,15 @@
           "y": "-slot_w/2",
           "w": "slot_l",
           "h": "slot_w"
+        },
+        {
+          "op": "point",
+          "id": "SC",
+          "x": "slot_x0",
+          "y": "0",
+          "dims": "x",
+          "align": "h",
+          "construction": true
         }
       ]
     },
@@ -506,11 +515,21 @@
         "axis": "h",
         "from": [
           0,
-          20
+          0
         ],
         "to": [
           -45,
-          20
+          0
+        ],
+        "refs": [
+          {
+            "name": "origin:Y",
+            "kind": "edge"
+          },
+          {
+            "name": "S{slot_sk}:p(SC)",
+            "kind": "vertex"
+          }
         ]
       },
       {

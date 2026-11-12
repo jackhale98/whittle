@@ -19,6 +19,8 @@ const VIEW_KINDS = ['base', 'projected', 'section', 'detail'];
 const ORIENTATIONS = ['front', 'back', 'top', 'bottom', 'left', 'right'];
 const AXES = ['X', 'Y', 'Z', '-X', '-Y', '-Z'];
 const SIDES = ['above', 'below', 'left', 'right'];
+const REF_POINTS = ['self', 'center', 'axis', 'start', 'end', 'mid', 'min', 'max'];
+const REF_KINDS = ['face', 'edge', 'vertex'];
 
 const isObj = (x: unknown): x is Record<string, unknown> =>
   typeof x === 'object' && x !== null && !Array.isArray(x);
@@ -81,6 +83,18 @@ export function validateDrawingSpec(
       if (!isObj(t) || !isPt(t.centre) || !isNum(t.radius) || typeof t.scale !== 'string')
         out.push(`${at}: detail data`);
     } else if (v.detail !== undefined) out.push(`${at}: only a detail has detail data`);
+    if (v.display !== undefined) {
+      const p = v.display;
+      if (!isObj(p)) out.push(`${at}: display is { hidden?, tangent? }`);
+      else {
+        if (p.hidden !== undefined && typeof p.hidden !== 'boolean')
+          out.push(`${at}: display.hidden`);
+        if (p.tangent !== undefined && p.tangent !== 'thin' && p.tangent !== 'visible')
+          out.push(`${at}: display.tangent is thin or visible`);
+        for (const k of Object.keys(p))
+          if (k !== 'hidden' && k !== 'tangent') out.push(`${at}: display.${k} is not a setting`);
+      }
+    }
   }
   for (const v of d.views as Record<string, unknown>[]) {
     if (typeof v.parent === 'string' && !ids.has(v.parent))
@@ -111,10 +125,42 @@ export function validateDrawingSpec(
       if (!isObj(t) || !isNum(t.plus) || !isNum(t.minus) || t.plus < 0 || t.minus < 0)
         out.push(`${at}: tolerance is { plus, minus }, both >= 0`);
     }
+    const refs = m.refs;
+    if (refs !== undefined) {
+      if (!Array.isArray(refs) || refs.length === 0) out.push(`${at}: refs is a non-empty list`);
+      else
+        refs.forEach((r: unknown, i) => {
+          const ra = `${at}: ref ${i}`;
+          if (!isObj(r)) {
+            out.push(`${ra} is not an object`);
+            return;
+          }
+          if (typeof r.name !== 'string' || r.name === '') out.push(`${ra}: name`);
+          if (!REF_KINDS.includes(r.kind as string)) out.push(`${ra}: kind ${String(r.kind)}`);
+          if (r.at !== undefined && !REF_POINTS.includes(r.at as string))
+            out.push(`${ra}: at ${String(r.at)}`);
+          if (r.fromNormal !== undefined) {
+            if (m.kind !== 'angle' || i !== 1)
+              out.push(`${ra}: fromNormal is for the second ref of an angle`);
+            else if (r.at !== 'axis') out.push(`${ra}: fromNormal needs at axis`);
+          }
+          if ((r.at === 'min' || r.at === 'max') && (m.kind !== 'linear' || m.axis === undefined))
+            out.push(`${ra}: min and max need a linear dimension with an axis`);
+        });
+      if (m.kind === 'linear' && Array.isArray(refs) && refs.length !== 2)
+        out.push(`${at}: a linear dimension has two refs`);
+      if (m.kind === 'angle' && Array.isArray(refs) && refs.length !== 2)
+        out.push(`${at}: an angle has two refs`);
+    }
     if (m.kind === 'linear') {
-      if (m.axis !== 'h' && m.axis !== 'v') out.push(`${at}: linear needs axis h or v`);
+      if (m.axis === undefined) {
+        if (refs === undefined) out.push(`${at}: linear without axis needs refs`);
+      } else if (m.axis !== 'h' && m.axis !== 'v') out.push(`${at}: linear axis is h or v`);
       if (!isPt(m.from) || !isPt(m.to)) out.push(`${at}: linear needs from and to`);
     } else {
+      if (m.axis !== undefined) out.push(`${at}: only a linear dimension has an axis`);
+      if (m.kind === 'angle' && (m.from !== undefined || m.to !== undefined))
+        if (!isPt(m.from) || !isPt(m.to)) out.push(`${at}: angle from and to come as a pair`);
       if (!isPt(m.at)) out.push(`${at}: needs an anchor point (at)`);
       if (
         (m.kind === 'diameter' || m.kind === 'radius' || m.kind === 'chamfer') &&

@@ -9,6 +9,7 @@
 <line x1="54.482" y1="62.4" x2="165.518" y2="62.4" stroke="#111" stroke-width="0.5" fill="none"/>
 <path d="M84.4 195.793 L84.4 243.2 L89.2 248 L130.8 248 L135.6 243.2 L135.6 195.793" stroke="#111" stroke-width="0.5" fill="none"/>
 <line x1="110" y1="36.8" x2="110" y2="273.6" stroke="#2a5db0" stroke-width="0.25" stroke-dasharray="6 1.5 1 1.5" fill="none"/>
+<line x1="20.4" y1="120" x2="199.6" y2="120" stroke="#2a5db0" stroke-width="0.25" stroke-dasharray="6 1.5 1 1.5" fill="none"/>
 <line x1="209.2" y1="120" x2="252.8" y2="120" stroke="#444" stroke-width="0.2"/>
 <line x1="209.2" y1="62.4" x2="252.8" y2="62.4" stroke="#444" stroke-width="0.2"/>
 <line x1="254" y1="120" x2="254" y2="62.4" stroke="#111" stroke-width="0.25"/>

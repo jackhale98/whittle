@@ -5,7 +5,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import { face, origin, region, side, sum, term } from '../lib/geom';
+import { edgeName, face, origin, region, side, sum, term } from '../lib/geom';
 import type { PartDef } from '../lib/types';
 import { frontSection, TOP } from '../lib/views';
 
@@ -186,11 +186,28 @@ export const rp09: PartDef = {
       const y = (d('pcd') / 2) * Math.sin(a);
       top.circle(x, y, d('bolt_d') / 2, SKIP.includes(k) ? 'hidden' : 'visible');
     }
-    top.dimH(-R, -R, R, -R, -8, dim('flange_d'));
+    // The flange across, as a linear dimension between the tangent extremes of the rim along x
+    // (the rim's top edge: the circle is seen face-on, so its extremes are not edges).
+    top.dimH(-R, 0, R, 0, -(R + 8), dim('flange_d'), {
+      refs: [
+        {
+          name: edgeName(side('hub', 'prof_sk', 'L2'), side('hub', 'prof_sk', 'L3')),
+          kind: 'edge',
+          at: 'min',
+        },
+        {
+          name: edgeName(side('hub', 'prof_sk', 'L2'), side('hub', 'prof_sk', 'L3')),
+          kind: 'edge',
+          at: 'max',
+        },
+      ],
+    });
     top.leader(0, 0, rh, 235, 22, dim('hub_d'));
     top.leader(0, 0, rb, 200, 26, dim('bore_d'));
     top.leader(d('pcd') / 2, 0, d('bolt_d') / 2, 15, 18, dim('bolt_d'));
-    top.leader(0, 0, d('pcd') / 2, 120, 36, dim('pcd'));
+    top.leader(0, 0, d('pcd') / 2, 120, 36, dim('pcd'), 'diameter', undefined, {
+      refs: [{ name: 'F{ring}:pitch', kind: 'edge' }],
+    });
     top.note(R + 5, -R, dim('bolt_n'), 'count');
     const front = dr
       .view(
@@ -231,6 +248,11 @@ export const rp09: PartDef = {
     );
     front.line(0, -6, 0, t + hh + 6, 'center');
     front.dimV(-R, 0, -R, t, -8, dim('flange_t'));
-    front.dimV(rh, t, rh, t + hh, 14, dim('hub_h'));
+    front.dimV(rh, t, rh, t + hh, 14, dim('hub_h'), {
+      refs: [
+        { name: side('hub', 'prof_sk', 'L3'), kind: 'face' },
+        { name: side('hub', 'prof_sk', 'L5'), kind: 'face' },
+      ],
+    });
   },
 };

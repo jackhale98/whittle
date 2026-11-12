@@ -377,11 +377,23 @@
         "axis": "h",
         "from": [
           -60,
-          -60
+          0
         ],
         "to": [
           60,
-          -60
+          0
+        ],
+        "refs": [
+          {
+            "name": "edge(F{hub}:side(S{prof_sk}:e(L2))|F{hub}:side(S{prof_sk}:e(L3)))",
+            "kind": "edge",
+            "at": "min"
+          },
+          {
+            "name": "edge(F{hub}:side(S{prof_sk}:e(L2))|F{hub}:side(S{prof_sk}:e(L3)))",
+            "kind": "edge",
+            "at": "max"
+          }
         ]
       },
       {
@@ -430,7 +442,13 @@
           0,
           0
         ],
-        "radius": 45
+        "radius": 45,
+        "refs": [
+          {
+            "name": "F{ring}:pitch",
+            "kind": "edge"
+          }
+        ]
       },
       {
         "name": "bolt_n",
@@ -473,6 +491,16 @@
         "to": [
           28,
           42
+        ],
+        "refs": [
+          {
+            "name": "F{hub}:side(S{prof_sk}:e(L3))",
+            "kind": "face"
+          },
+          {
+            "name": "F{hub}:side(S{prof_sk}:e(L5))",
+            "kind": "face"
+          }
         ]
       }
     ]
