@@ -62,6 +62,8 @@ import {
   projectedSegment,
   spanNormal,
 } from '../placement/anchors';
+import { layoutPlacement } from '../placement/layout';
+import { datumTriangleSize, edgeFaceNames, outwardOffset } from '../placement/leader-forms';
 import type { TableData } from '../sheet/compose';
 import { partToSheet, type SolvedView, type ViewSolution, viewOutline } from '../view/solve';
 import { anchorQueryKey, sketchAnchor } from './anchors';
@@ -371,10 +373,21 @@ function defaultLayout(
       return { kind: 'radial', angle: radialAngle(anchors?.[0], v), distance: 2 * h };
     case 'angle':
       return { kind: 'arc', radius: 6 * h };
-    case 'datumFeature':
-      return { kind: 'leader', attach: { kind: 'ref', index: 0 }, text: [0, -4 * h] };
+    case 'datumFeature': {
+      // On a surface seen edge-on: out of the material, across the surface line (ADR-094).
+      const out = outwardOffset(v, anchors?.[0], 4 * h);
+      return { kind: 'leader', attach: { kind: 'ref', index: 0 }, text: out ?? [0, -4 * h] };
+    }
     case 'surfaceFinish':
       return { kind: 'leader', attach: { kind: 'ref', index: 0 }, text: [0, 0] };
+    case 'geometricTolerance': {
+      const out = outwardOffset(v, anchors?.[0], 4 * h);
+      return {
+        kind: 'leader',
+        attach: { kind: 'ref', index: 0 },
+        text: out ? [out[0] + (out[0] === 0 ? 2 * h : 0), out[1]] : [4 * h, 4 * h],
+      };
+    }
     default:
       return { kind: 'leader', attach: { kind: 'ref', index: 0 }, text: [4 * h, 4 * h] };
   }
@@ -763,6 +776,36 @@ function leaderRequest(
   if (layout.kind === 'leader' && layout.attach.kind === 'ref') {
     if (a.kind === 'surfaceFinish') return null;
     const [dx, dy] = layout.text;
+    // A datum on a surface keeps its leader across the surface line (ADR-094): at the middle,
+    // a quarter in from each end, then near the ends (clear of a dimension's text along the same
+    // side), each further out. Not on the line's extension: `t` is stored in [0, 1] (contract).
+    const seg =
+      a.kind === 'datumFeature' && outwardOffset(v, an, 1) ? projectedSegment(v, an) : null;
+    if (seg && layout.attach.kind === 'ref') {
+      const ts = [0.5, 0.25, 0.75, 0.1, 0.9];
+      const ks = [1, 1.5, 2, 3];
+      const opts = ts.flatMap((t) => ks.map((k) => ({ t, text: [dx * k, dy * k] as Vec2 })));
+      const attach = layout.attach;
+      return {
+        request: {
+          key,
+          viewId: v.view.id,
+          from: attachPoint(v, an, 0.5),
+          froms: opts.map((o) => attachPoint(v, an, o.t)),
+          options: opts.map((o) => o.text),
+          width: leaderWidth(a, undefined, style),
+          height: 2 * h,
+        },
+        apply: (i) => {
+          const o = opts[i] as (typeof opts)[number];
+          return {
+            ...layout,
+            attach: o.t === 0.5 ? { kind: 'ref', index: attach.index } : { ...attach, t: o.t },
+            text: o.text,
+          };
+        },
+      };
+    }
     const options: Vec2[] =
       dx === 0
         ? [
@@ -871,8 +914,10 @@ export function planImport(input: ImportInput): ImportPlan {
   // View choice.
   const chosen: { c: ImportCandidate; view: SolvedView; p: Pending }[] = [];
   // Frames bound to a size dimension go last, preferring that dimension's view.
+  const fos = sizeDimensionOf(part.annotations ?? [], pending);
   const bound = (p: Pending) =>
-    p.annotation.kind === 'geometricTolerance' && !!p.annotation.appliesTo;
+    (p.annotation.kind === 'geometricTolerance' && !!p.annotation.appliesTo) ||
+    fos.has(p.annotation.id);
   const viewOf = new Map<Id, Id>();
   for (const pl of drawing.placements) viewOf.set(pl.annotationId, pl.viewId);
   const ordered = [...pending.filter((p) => !bound(p)), ...pending.filter(bound)];
@@ -894,8 +939,8 @@ export function planImport(input: ImportInput): ImportPlan {
     }
     const suit = suitOf(p);
     const a = p.annotation;
-    const preferId =
-      a.kind === 'geometricTolerance' && a.appliesTo ? viewOf.get(a.appliesTo) : undefined;
+    const boundTo = a.kind === 'geometricTolerance' && a.appliesTo ? a.appliesTo : fos.get(a.id);
+    const preferId = boundTo ? viewOf.get(boundTo) : undefined;
     const preferred = preferId ? input.views.get(preferId) : undefined;
     const view = preferred?.ok && suit(preferred) !== null ? preferred : chooseView(a, suit, input);
     if (!view) {
@@ -1007,10 +1052,70 @@ export function planImport(input: ImportInput): ImportPlan {
         text: [0, 0],
       };
   }
+  // A datum on a feature of size sits in line with its size dimension's line, at one end of it
+  // (ISO 5459, ASME Y14.5 §6.3), when that dimension is placed in the same view.
+  const annotationsById = new Map<Id, Annotation>(
+    [...(part.annotations ?? []), ...chosen.map(({ c }) => c.annotation)].map((x) => [x.id, x]),
+  );
+  for (const { c, view } of chosen) {
+    const a = c.annotation;
+    const dimId = fos.get(a.id);
+    if (a.kind !== 'datumFeature' || !dimId || !c.placement) continue;
+    const target =
+      placementOf.get(dimId) ??
+      drawing.placements.find((x) => x.annotationId === dimId && x.viewId === c.placement?.viewId);
+    const dim = annotationsById.get(dimId);
+    if (!target || target.viewId !== c.placement.viewId || !dim) continue;
+    const laid = layoutPlacement(target, dim, {
+      view,
+      style,
+      standard: drawing.standard.gps,
+      evaluate: input.evaluate ?? (() => undefined),
+      annotations: annotationsById,
+      resolutions: input.resolutions,
+      placed: new Map(),
+    });
+    const line = laid.line;
+    if (!line || dist2(line[0], line[1]) < 1e-6) continue;
+    const u = norm2(sub2(line[0], line[1]));
+    const h = style.text.dimension;
+    const reach = datumTriangleSize(h).height + 2 * h;
+    c.placement.layout = {
+      kind: 'leader',
+      attach: { kind: 'dimensionLine', placementId: target.id, t: 0 },
+      text: [u[0] * reach, u[1] * reach],
+    };
+  }
   const viewMoves: ViewMove[] = [...lanePlan.moved]
     .sort(([x], [y]) => (x < y ? -1 : x > y ? 1 : 0))
     .map(([id, view]) => ({ view, for: [...(lanePlan.movedFor.get(id) ?? [])].sort() }));
   return { candidates, alreadyPlaced, notPromotable, viewMoves };
+}
+
+/**
+ * Datums on a feature of size: a datum on a cylinder's axis (`at: ['axis']`) whose face a
+ * diameter dimension of the part (or of this import) measures. Datum id → that dimension's id.
+ * The face is matched by name: the dimension's ref is the face, or an edge of it.
+ */
+function sizeDimensionOf(
+  existing: readonly Annotation[],
+  pending: readonly Pending[],
+): Map<Id, Id> {
+  const all = [...existing, ...pending.map((p) => p.annotation)];
+  const diameters = all.filter((x) => x.kind === 'diameter');
+  const out = new Map<Id, Id>();
+  for (const a of all) {
+    if (a.kind !== 'datumFeature' || a.at?.[0] !== 'axis') continue;
+    const face = a.refs[0]?.name;
+    if (!face) continue;
+    const dim = diameters.find((d) => {
+      const r = d.refs[0];
+      if (!r) return false;
+      return r.name === face || (r.kind === 'edge' && edgeFaceNames(r.name).includes(face));
+    });
+    if (dim) out.set(a.id, dim.id);
+  }
+  return out;
 }
 
 function defaultChecked(plan: ImportPlan): Set<string> {

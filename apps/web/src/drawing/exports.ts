@@ -1,6 +1,10 @@
 /**
  * Drawing export: PDF (vector, true scale), SVG and DXF (R12 and R2000), from the display lists
  * the sheet is drawn from. The renderers and the Osifont file load on the first export only.
+ *
+ * Sheets (ADR-094): the PDF is the whole drawing, every sheet one page in sheet order. SVG and
+ * DXF hold one sheet per file: the current sheet, or every sheet as one .zip (several downloads in
+ * a row are blocked by browsers).
  */
 
 import type { DrawingExportFormat } from '@wren-cad/ui/drawing';
@@ -42,7 +46,7 @@ export async function buildExport(
   format: DrawingExportFormat,
   scope: 'sheet' | 'all',
 ): Promise<ExportedFile[]> {
-  const { b, sheets } = await exactSheets(c, scope);
+  const { b, sheets } = await exactSheets(c, format === 'pdf' ? 'all' : scope);
   const base = slug(b.drawing.name);
   const nameOf = (id: string) => slug(b.drawing.sheets.find((s) => s.id === id)?.name ?? 'sheet');
   const suffix = (id: string) => (sheets.length > 1 ? `-${nameOf(id)}` : '');
@@ -63,23 +67,38 @@ export async function buildExport(
     }
     case 'svg': {
       const { renderSvg } = await import('@wren-cad/drawing/svg');
-      return sheets.map((s) => ({
-        name: `${base}${suffix(s.sheetId)}.svg`,
-        mime: 'image/svg+xml',
-        bytes: enc.encode(renderSvg(s.list, b.drawing.style, { paper: '#ffffff' })),
-      }));
+      return zipped(
+        base,
+        'svg',
+        sheets.map((s) => ({
+          name: `${base}${suffix(s.sheetId)}.svg`,
+          mime: 'image/svg+xml',
+          bytes: enc.encode(renderSvg(s.list, b.drawing.style, { paper: '#ffffff' })),
+        })),
+      );
     }
     case 'dxf-r12':
     case 'dxf-r2000': {
       const { renderDxf } = await import('@wren-cad/drawing/dxf');
       const profile = format === 'dxf-r12' ? 'r12' : 'r2000';
-      return sheets.map((s) => ({
-        name: `${base}${suffix(s.sheetId)}-${profile}.dxf`,
-        mime: 'application/dxf',
-        bytes: enc.encode(renderDxf(s.list, b.drawing.style, { profile })),
-      }));
+      return zipped(
+        base,
+        `${profile}-dxf`,
+        sheets.map((s) => ({
+          name: `${base}${suffix(s.sheetId)}-${profile}.dxf`,
+          mime: 'application/dxf',
+          bytes: enc.encode(renderDxf(s.list, b.drawing.style, { profile })),
+        })),
+      );
     }
   }
+}
+
+/** One file as it is; several sheets as one .zip of them (`<drawing>-<what>.zip`). */
+async function zipped(base: string, what: string, files: ExportedFile[]): Promise<ExportedFile[]> {
+  if (files.length < 2) return files;
+  const { zipFiles } = await import('@wren-cad/drawing/zip');
+  return [{ name: `${base}-${what}.zip`, mime: 'application/zip', bytes: zipFiles(files) }];
 }
 
 /** A plain download (several files in a row cannot each open a save dialog). */

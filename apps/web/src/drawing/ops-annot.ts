@@ -9,7 +9,6 @@ import type {
   Annotation,
   AnnotationPlacement,
   EntityRef,
-  GeometricToleranceAnnotation,
   Id,
   LinearDimension,
   PlacementLayout,
@@ -104,7 +103,8 @@ export function pickEdge(
   return { ...base, shape: 'other' };
 }
 
-async function refOf(
+/** The ref of a named edge or face, with its fingerprint from the regen when it has one. */
+export async function refOf(
   c: DrawingController,
   name: string,
   kind: 'edge' | 'face' = 'edge',
@@ -584,47 +584,7 @@ async function addCallout(
   return ok;
 }
 
-export const addDatum = (c: DrawingController, pick: EdgePick) =>
-  addCallout(
-    c,
-    pick,
-    (b, ref) => {
-      const used = (b.part.annotations ?? []).flatMap((a) =>
-        a.kind === 'datumFeature' ? [a.label] : [],
-      );
-      return {
-        id: host.ulid(),
-        kind: 'datumFeature',
-        origin: { kind: 'drawing', drawingId: b.drawing.id },
-        refs: [ref],
-        label: nextDatumLabel(used),
-        standard: b.drawing.standard.gps,
-      };
-    },
-    'Add datum',
-  );
-
-export const addFrame = (c: DrawingController, pick: EdgePick) =>
-  addCallout(
-    c,
-    pick,
-    (b, ref) => {
-      const round = pick.shape === 'circle';
-      const datum = (b.part.annotations ?? []).find((a) => a.kind === 'datumFeature');
-      const frame: GeometricToleranceAnnotation = {
-        id: host.ulid(),
-        kind: 'geometricTolerance',
-        origin: { kind: 'drawing', drawingId: b.drawing.id },
-        refs: [ref],
-        standard: b.drawing.standard.gps,
-        characteristic: round ? 'position' : 'flatness',
-        zone: { value: '0.1 mm', ...(round ? { shape: 'diameter' as const } : {}) },
-        ...(round && datum ? { datums: [{ datums: [{ datum: datum.id }] }] } : {}),
-      };
-      return frame;
-    },
-    'Add tolerance frame',
-  );
+// Datums and tolerance frames attach to surfaces and features of size: ops-gdt.ts (ADR-094).
 
 export const addFinish = (c: DrawingController, pick: EdgePick) =>
   addCallout(

@@ -18,7 +18,7 @@ const FORMATS: readonly {
       'Vector, true scale: print at 100% (actual size) and a 100 mm graduation measures 100 mm.',
     icon: FileText,
   },
-  { id: 'svg', label: 'SVG', detail: 'Vector, one file per sheet, in millimetres.', icon: Image },
+  { id: 'svg', label: 'SVG', detail: 'Vector, in millimetres.', icon: Image },
   {
     id: 'dxf-r12',
     label: 'DXF R12',
@@ -48,7 +48,10 @@ export interface DrawingExportPanelProps {
   size?: 'md' | 'touch';
 }
 
-/** Export of the drawing: PDF, SVG and DXF (R12 and R2000), the current sheet or all of them. */
+/**
+ * Export of the drawing (ADR-094): the PDF has every sheet, one page each; SVG, DXF and print
+ * take the current sheet, or every sheet (SVG and DXF as one .zip).
+ */
 export function DrawingExportPanel({
   sheetName,
   sheetCount,
@@ -64,16 +67,24 @@ export function DrawingExportPanel({
   return (
     <div className="flex flex-col gap-3 px-4 pb-4" data-testid="drawing-export">
       {sheetCount > 1 ? (
-        <Segmented
-          label="Sheets to export"
-          size={touch ? 'touch' : 'md'}
-          value={scope}
-          onChange={setScope}
-          options={[
-            { value: 'sheet', label: sheetName },
-            { value: 'all', label: `All ${sheetCount} sheets` },
-          ]}
-        />
+        <div className="flex flex-col gap-1">
+          <Segmented
+            label="Sheets for SVG, DXF and print"
+            size={touch ? 'touch' : 'md'}
+            value={scope}
+            onChange={setScope}
+            options={[
+              { value: 'sheet', label: sheetName },
+              { value: 'all', label: `All ${sheetCount} sheets` },
+            ]}
+          />
+          <span className="text-2xs text-fg-subtle" data-testid="export-scope-note">
+            {scope === 'all'
+              ? 'SVG and DXF download as one .zip with a file per sheet.'
+              : `SVG and DXF of ${sheetName}.`}{' '}
+            The PDF always has every sheet.
+          </span>
+        </div>
       ) : null}
       {attentionCount > 0 ? (
         <p className="rounded-control bg-warning-soft p-2.5 text-xs text-warning-text" role="note">
@@ -114,7 +125,11 @@ export function DrawingExportPanel({
               <Icon className="mt-1 size-5 shrink-0 text-fg-muted" aria-hidden />
               <div className="flex min-w-0 flex-1 flex-col gap-1.5">
                 <span className="text-ui font-semibold">{f.label}</span>
-                <span className="text-2xs text-fg-muted">{f.detail}</span>
+                <span className="text-2xs text-fg-muted">
+                  {f.id === 'pdf' && sheetCount > 1
+                    ? `${f.detail} All ${sheetCount} sheets, one page each.`
+                    : f.detail}
+                </span>
                 <Button
                   variant="secondary"
                   size={touch ? 'touch' : 'md'}
@@ -122,7 +137,7 @@ export function DrawingExportPanel({
                   disabled={unavailable !== undefined || busy !== null}
                   aria-busy={busy === f.id || undefined}
                   data-export={f.id}
-                  onClick={() => onExport(f.id, scope)}
+                  onClick={() => onExport(f.id, f.id === 'pdf' ? 'all' : scope)}
                   className="self-start"
                 >
                   {busy === f.id ? 'Writing…' : `Download ${f.label}`}

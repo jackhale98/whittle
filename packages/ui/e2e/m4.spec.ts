@@ -47,10 +47,17 @@ const STATES: Record<string, string[]> = {
   'm4-export': ['default', 'busy', 'sheets', 'attention', 'unavailable'],
   'm4-settings': ['default', 'asme', 'third', 'sheets', 'outdated', 'config', 'missing'],
   'm4-shell': ['default', 'attention', 'sheets'],
+  'm4-sheet-tabs': ['default', 'review', 'drop'],
 };
 
 /** What touch changes: the other tiers only render these. */
-const TOUCH_SECTIONS = new Set(['m4-choice', 'm4-viewer', 'm4-toolbar', 'm4-shell']);
+const TOUCH_SECTIONS = new Set([
+  'm4-choice',
+  'm4-viewer',
+  'm4-toolbar',
+  'm4-shell',
+  'm4-sheet-tabs',
+]);
 
 const root = (section: string) => `g-${section}`;
 

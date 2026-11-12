@@ -71,6 +71,8 @@ export interface AnnotationInspectorProps {
   onDelete(): void;
   /** Needs attention: pick the geometry again. */
   onReattach?(): void;
+  /** Leader placements: what the leader is attached to, as laid out (ADR-094). */
+  leader?: LeaderInfo;
   size?: 'md' | 'touch';
 }
 
@@ -100,11 +102,21 @@ const DIMENSION_KINDS: readonly Annotation['kind'][] = [
 ];
 const isDimension = (a: Annotation): a is DimensionAnnotation => DIMENSION_KINDS.includes(a.kind);
 
+/** A leader's attachment as the sheet shows it, for its inline fields. */
+export interface LeaderInfo {
+  /** `The surface's line`, `Ø6 (feature of size)`: what the leader is attached to. */
+  target?: string;
+  /** Length of the line the attach point sits on (sheet mm), for the along-the-line field. */
+  lineLength?: number;
+}
+
 function layoutFields(
   layout: PlacementLayout,
   set: (l: PlacementLayout) => void,
   sz: 'md' | 'touch',
   evaluate: (expr: Expr) => EvalResult,
+  leader?: LeaderInfo,
+  datum?: boolean,
 ) {
   // Each field commits once, on Enter or blur, so one edit is one undo step (SheetValueField).
   const num = (
@@ -187,9 +199,41 @@ function layoutFields(
           />
         </>
       );
-    case 'leader':
+    case 'leader': {
+      const at = layout.attach;
+      const L = leader?.lineLength;
       return (
         <>
+          {leader?.target ? (
+            <p className="text-xs text-fg-muted" data-testid="leader-target">
+              Attached to {leader.target}
+            </p>
+          ) : null}
+          {at.kind === 'ref' && L !== undefined && L > 1e-6
+            ? num(
+                datum ? 'Triangle along the line (mm)' : 'Arrow along the line (mm)',
+                (at.t ?? 0.5) * L,
+                // On the line: a stored `t` is in [0, 1].
+                (mm) =>
+                  set({
+                    ...layout,
+                    attach: { ...at, t: Math.round(Math.max(0, Math.min(1, mm / L)) * 1e6) / 1e6 },
+                  }),
+                0.5,
+              )
+            : null}
+          {at.kind === 'dimensionLine' ? (
+            <Segmented
+              label="End of the dimension line"
+              size={sz}
+              value={at.t < 0.5 ? 'start' : 'end'}
+              onChange={(v) => set({ ...layout, attach: { ...at, t: v === 'start' ? 0 : 1 } })}
+              options={[
+                { value: 'start', label: 'Start' },
+                { value: 'end', label: 'End' },
+              ]}
+            />
+          ) : null}
           {num(
             'Text offset X (mm)',
             layout.text[0],
@@ -202,8 +246,23 @@ function layoutFields(
             (y) => set({ ...layout, text: [layout.text[0], y] }),
             0.5,
           )}
+          {layout.bends && layout.bends.length > 0 ? (
+            <Button
+              variant="secondary"
+              size={sz}
+              data-testid="leader-straighten"
+              onClick={() => {
+                const { bends: _bends, ...rest } = layout;
+                set(rest);
+              }}
+            >
+              Straighten the leader ({layout.bends.length} bend
+              {layout.bends.length === 1 ? '' : 's'})
+            </Button>
+          ) : null}
         </>
       );
+    }
   }
 }
 
@@ -406,9 +465,13 @@ export function AnnotationInspector(p: AnnotationInspectorProps) {
             (layout) => p.onPlacement({ ...(p.placement as AnnotationPlacement), layout }),
             sz,
             p.evaluate,
+            p.leader,
+            a.kind === 'datumFeature',
           )}
           <p className="text-2xs text-fg-subtle">
-            Or drag it on the sheet. The placement keeps its lane or offset when the model changes.
+            {p.placement.layout.kind === 'leader'
+              ? 'Or drag it on the sheet: the text, the bends, and the attach point along its line.'
+              : 'Or drag it on the sheet. The placement keeps its lane or offset when the model changes.'}
           </p>
         </Section>
       ) : null}

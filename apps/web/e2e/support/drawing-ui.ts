@@ -84,11 +84,32 @@ export interface PlacementInfo {
   id: string;
   annotationId: string;
   viewId: string;
-  layout: { kind: string; side?: string; lane?: number; distance?: number };
+  layout: {
+    kind: string;
+    side?: string;
+    lane?: number;
+    distance?: number;
+    /** Leaders: the text offset, the attach and the bends. */
+    text?: [number, number];
+    attach?: { kind: string; index?: number; t?: number; placementId?: string };
+    bends?: [number, number][];
+  };
   text: [number, number] | null;
   /** The label's bounds on the sheet. */
   box: { min: [number, number]; max: [number, number] } | null;
   attention: boolean;
+  /** Leader layouts as drawn: attach point, the line it is held on, bends, text point. */
+  leader: {
+    attach: string;
+    at: [number, number];
+    on: [[number, number], [number, number]] | null;
+    bends: [number, number][];
+    text: [number, number];
+  } | null;
+  /** A dimension's line between its arrow tips. */
+  line: [[number, number], [number, number]] | null;
+  /** The kinds of display items drawn (a datum triangle or an arrowhead is a `fill`). */
+  items: string[];
 }
 
 /** A placed annotation's real extent from the display list (sheet mm). */

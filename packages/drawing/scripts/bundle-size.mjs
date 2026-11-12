@@ -16,6 +16,7 @@ const entries = {
   '@wren-cad/drawing/svg': 'src/svg/index.ts',
   '@wren-cad/drawing/pdf': 'src/pdf/index.ts',
   '@wren-cad/drawing/dxf': 'src/dxf/index.ts',
+  '@wren-cad/drawing/zip': 'src/zip/index.ts',
 };
 
 const rows = [];

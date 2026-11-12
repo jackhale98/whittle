@@ -121,3 +121,27 @@ describe('sheet composition (bracket, mocked kernel results)', () => {
     ).toBe('T / {nope}');
   });
 });
+
+describe('several sheets (ADR-094)', () => {
+  it('numbers each sheet n / m in its title block, in sheet order, with its own views', () => {
+    const format = { size: 'A3' as const, orientation: 'landscape' as const };
+    const build = bracketBuild({
+      sheets: [
+        { id: 'S1', name: 'Sheet 1', format, scale: '1/1' },
+        { id: 'S2', name: 'Details', format, scale: '1/1' },
+        { id: 'S3', name: 'Sheet 3', format, scale: '1/1' },
+      ],
+    });
+    expect(build.sheets.map((s) => s.sheetId)).toEqual(['S1', 'S2', 'S3']);
+    expect(build.sheets.map((s) => texts(s.list.items).filter((t) => / \/ \d/.test(t)))).toEqual([
+      ['1 / 3'],
+      ['2 / 3'],
+      ['3 / 3'],
+    ]);
+    // The views are all on the first sheet: the others carry only their frame and title block.
+    const viewItems = (i: number) =>
+      (build.sheets[i]?.list.items ?? []).filter((x) => x.source?.kind === 'view').length;
+    expect(viewItems(0)).toBeGreaterThan(0);
+    expect(viewItems(1)).toBe(0);
+  });
+});

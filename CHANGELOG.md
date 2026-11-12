@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- **Drawings: sheet tabs, and datums and frames on surfaces and features of size** (owner feedback after M4; ADR-094 amendment).
+  - **Sheet tabs** along the sheet's edge on every tier, each with its number and name. Desktop and tablet add a sheet, rename it inline, delete it with an inline confirmation, reorder by dragging a tab (or with the move buttons), and move a view to another sheet: from the view inspector's **On sheet** field, or by dragging the view onto a tab. A view takes the views aligned to it along. Ctrl/Cmd+PageUp/PageDown switch sheets, and the drawing reopens on the sheet shown last. The phone switches only. Every action is one undo step.
+  - **Export:** the PDF has every sheet, one page each. SVG and DXF export the current sheet, or every sheet as one .zip.
+  - **Datums and tolerance frames on a surface:** pick the line a face is seen as. The annotation refs that face. The datum triangle sits on the face's line, and a frame's arrow ends on it.
+  - **On a feature of size:** pick its diameter dimension. The datum (the hole's or shaft's axis) sits at the end of the dimension line, in line with it. A frame sits under the dimension's text and applies to it.
+  - **Leaders:** the attach point slides along its line, bends can be added and dragged, and the text drags. Each has an inline field.
+  - **Import** places the model's datums and frames in the same forms.
+  - **Not yet:** a datum on a width's median plane, and a triangle on an extension of the face's line. Both wait on contract changes, and the tool says so.
+
 - **Reference planes, axes and points are drawn in the model view** (owner report: a plane made in the model view was not shown). A plane is a translucent square with an outline and its name, an axis is a dash-dot line, a point a crosshair, in a teal reference colour in both themes, drawn after the bodies without ever hiding them. Click one to select it: a plane starts a sketch, an axis feeds a revolve or a pattern, a point is a point reference. Every plane, axis and point row in the feature tree has an eye (every shell, 44 px on touch); hiding is document data, survives a reload and makes the reference not pickable in the view. **Show origin planes** / **Hide origin planes** in the palette (per device) draws the XY, XZ, YZ planes and the X, Y, Z axes; they also appear while the sketch plane chooser is open. The palette's Plane command no longer starts a pick that hid the new plane. ADR-093.
 
 - M4 gate follow-ups (ADR-092 amendment):

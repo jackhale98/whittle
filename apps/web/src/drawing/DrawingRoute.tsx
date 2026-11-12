@@ -30,6 +30,16 @@ import { DrawingController } from './controller';
 import { beginInteraction, currentSheet, viewHit } from './interact';
 import { SheetOverlay } from './Overlay';
 import { openImport } from './ops-annot';
+import {
+  addSheet,
+  deleteSheet,
+  moveSheet,
+  rememberSheet,
+  renameSheet,
+  sheetContents,
+  stepSheet,
+  switchSheet,
+} from './ops-sheets';
 import { addPartPropertiesTable } from './ops-tables';
 import {
   AnnotationPanelBody,
@@ -44,6 +54,7 @@ import {
   ViewsPanelBody,
 } from './panels';
 import { printDrawing } from './print';
+import { withSheetDrop } from './sheet-drop';
 import type { DrawingPanel, DrawingTool } from './state';
 import { installDrawingHooks } from './test-hooks';
 
@@ -81,8 +92,8 @@ const PROMPTS: Partial<Record<DrawingTool, string>> = {
   angle: 'Pick the first of two edges that meet',
   ordinate: 'Pick the origin: an edge or a circle',
   chamfer: 'Pick an edge of the chamfer',
-  datum: 'Pick the edge the datum is on',
-  gdt: 'Pick the edge the tolerance applies to',
+  datum: 'Pick the line of a surface, or a size dimension for its feature of size',
+  gdt: 'Pick the line of a surface, or a size dimension for its feature of size',
   finish: 'Pick the edge the surface finish is on',
   note: 'Pick the edge the note points at',
   reattach: 'Pick the geometry again',
@@ -114,6 +125,25 @@ export default function DrawingRoute({ wb, id, tier, onClose }: DrawingRouteProp
     void (id ? c.open(id) : c.openNew());
     return () => c.dispose();
   }, [c, id]);
+
+  // The sheet shown is remembered per drawing (reopening the drawing returns to it).
+  useEffect(() => {
+    if (ui.drawingId && ui.sheetId) rememberSheet(ui.drawingId, ui.sheetId);
+  }, [ui.drawingId, ui.sheetId]);
+
+  // Ctrl/Cmd+PageUp and PageDown: the previous and next sheet, on every tier.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return;
+      if (e.key !== 'PageUp' && e.key !== 'PageDown') return;
+      const t = e.target as HTMLElement | null;
+      if (t?.closest('input, textarea, select, [contenteditable="true"]')) return;
+      e.preventDefault();
+      stepSheet(c, e.key === 'PageUp' ? -1 : 1);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [c]);
 
   const b = ui.built;
   const sheet = c.sheet();
@@ -347,7 +377,19 @@ export default function DrawingRoute({ wb, id, tier, onClose }: DrawingRouteProp
       onBack={onClose}
       sheets={b ? b.drawing.sheets.map((s) => ({ id: s.id, name: s.name })) : []}
       sheetId={sheet?.id ?? null}
-      onSheet={(sid) => c.patch({ sheetId: sid, selected: null })}
+      onSheet={(sid) => switchSheet(c, sid)}
+      {...(readOnly || !b
+        ? {}
+        : {
+            sheetEdit: {
+              onAdd: () => void addSheet(c),
+              onRename: (id: string, name: string) => void renameSheet(c, id, name),
+              onDelete: (id: string) => void deleteSheet(c, id),
+              onMove: (id: string, to: number) => void moveSheet(c, id, to),
+              contents: (id: string) => sheetContents(b.drawing, id),
+            },
+            dropSheet: ui.dropSheet,
+          })}
       {...(wb.store.canUndo() && !readOnly ? { onUndo: () => wb.undo() } : {})}
       {...(wb.store.canRedo() && !readOnly ? { onRedo: () => wb.redo() } : {})}
       actions={
@@ -398,7 +440,7 @@ export default function DrawingRoute({ wb, id, tier, onClose }: DrawingRouteProp
           hover={ui.hover}
           pending={ui.pending}
           cursor={ui.tool === 'select' ? 'default' : 'crosshair'}
-          begin={readOnly ? () => null : (p) => beginInteraction(c, p)}
+          begin={readOnly ? () => null : (p) => withSheetDrop(c, p, beginInteraction(c, p))}
           onHover={(p) => {
             if (hoverRef.current) cancelAnimationFrame(hoverRef.current);
             hoverRef.current = requestAnimationFrame(() => {

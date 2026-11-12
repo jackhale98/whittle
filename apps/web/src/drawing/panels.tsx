@@ -20,6 +20,7 @@ import {
   AttentionPanel,
   DrawingExportPanel,
   ImportPanel,
+  type LeaderInfo,
   SheetSettings,
   TableInspector,
   TitleBlockEditor,
@@ -61,6 +62,7 @@ import {
   updateAnnotation,
   updatePlacement,
 } from './ops-annot';
+import { addSheet, deleteSheet, moveViewToSheet, planViewMove } from './ops-sheets';
 import { removeTable, updateTable } from './ops-tables';
 import {
   addBaseView,
@@ -116,12 +118,19 @@ export function ViewPanelBody({ c, b, size }: { c: DrawingController; b: Built; 
   const sectionView = view.kind === 'section' ? (view as SectionView) : null;
   const children = childrenOf(b, view.id).length;
   const half = sectionView ? toHalfSection(sectionView.cut, sectionView.look) : null;
+  const move = planViewMove(b.drawing, view.id);
   const offset = sectionView ? toOffsetSection(sectionView.cut, sectionView.look) : null;
   return (
     <ViewInspector
       kind={view.kind}
       title={viewName(view)}
       {...(parent ? { parentName: viewName(parent) } : {})}
+      sheet={{
+        value: view.sheetId,
+        options: b.drawing.sheets.map((s) => ({ id: s.id, name: s.name })),
+        onChange: (id: Id) => void moveViewToSheet(c, view.id, id),
+        ...(move.ok ? (move.note ? { note: move.note } : {}) : { blocked: move.message }),
+      }}
       scale={view.scale ?? ''}
       inheritedScale={sv?.ok ? scaleLabel(sv.scale) : '1:1'}
       evaluateScale={(t) => evalRatio(b, t)}
@@ -302,6 +311,7 @@ export function AnnotationPanelBody({
       : undefined;
   const text = valueText(a, res);
   const src = sourceText(b.part, a);
+  const leader = leaderInfo(b, placement.id);
   return (
     <AnnotationInspector
       annotation={a}
@@ -323,9 +333,34 @@ export function AnnotationPanelBody({
       onRemoveFromView={() => removePlacement(c, placement.id)}
       onDelete={() => deleteAnnotation(c, a.id)}
       onReattach={() => startReattach(c, a.id)}
+      {...(leader ? { leader } : {})}
       size={size}
     />
   );
+}
+
+/** What a leader placement is attached to, in words, and the length of its line (ADR-094). */
+function leaderInfo(b: Built, placementId: Id): LeaderInfo | undefined {
+  const pl = b.drawing.placements.find((p) => p.id === placementId);
+  const g = b.build.placed.find((p) => p.placementId === placementId)?.leader;
+  if (pl?.layout.kind !== 'leader' || !g) return undefined;
+  const at = pl.layout.attach;
+  const lineLength = g.on
+    ? Math.hypot(g.on[1][0] - g.on[0][0], g.on[1][1] - g.on[0][1])
+    : undefined;
+  const len = lineLength !== undefined ? { lineLength } : {};
+  if (at.kind === 'ref') {
+    const off = at.t !== undefined && (at.t < 0 || at.t > 1);
+    return g.on
+      ? { target: off ? 'an extension of its line' : 'its line on this view', ...len }
+      : len;
+  }
+  const other = b.drawing.placements.find((p) => p.id === at.placementId);
+  const dim = (b.part.annotations ?? []).find((a) => a.id === other?.annotationId);
+  const what = dim ? `the ${dim.kind} dimension` : 'a dimension';
+  return at.kind === 'dimensionLine'
+    ? { target: `${what}’s line (feature of size)`, ...len }
+    : { target: `${what}’s text (feature of size)` };
 }
 
 export function TablePanelBody({ c, b, size }: { c: DrawingController; b: Built; size: Touch }) {
@@ -589,30 +624,8 @@ export function SheetPanelBody({ c, b, size }: { c: DrawingController; b: Built;
         )
       }
       evaluateScale={(t) => evalRatio(b, t)}
-      onAddSheet={() => {
-        const id = host.ulid();
-        const ok = c.apply(
-          {
-            kind: 'addSheet',
-            drawingId: d.id,
-            sheet: {
-              id,
-              name: `Sheet ${d.sheets.length + 1}`,
-              format: sheet.format,
-              scale: sheet.scale,
-            },
-          },
-          'Add sheet',
-        );
-        if (ok) c.patch({ sheetId: id });
-      }}
-      onRemoveSheet={(id) => {
-        if (
-          c.apply({ kind: 'removeSheet', drawingId: d.id, sheetId: id }, 'Delete sheet') &&
-          c.ui.get().sheetId === id
-        )
-          c.patch({ sheetId: d.sheets.find((s) => s.id !== id)?.id ?? null });
-      }}
+      onAddSheet={() => void addSheet(c)}
+      onRemoveSheet={(id) => void deleteSheet(c, id)}
       template={{ id: tpl.id, version: tpl.version, latest: LATEST_TEMPLATE_VERSION[tpl.id] }}
       onReapplyTemplate={() =>
         c.apply(

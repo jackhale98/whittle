@@ -1550,3 +1550,446 @@ test.describe('rotate a base view (P1)', () => {
     expect(await historyLen(page)).toBe(before + 1);
   });
 });
+
+// ---------------------------------------------------------------------------------------------
+// ADR-094: sheet tabs, and datums and frames on surfaces and features of size
+// ---------------------------------------------------------------------------------------------
+
+const tabs = (page: Page) => page.getByTestId('sheet-tabs');
+/** The sheet tab whose visible number is `n` (named "n <sheet name>, sheet n of m"). */
+const tab = (page: Page, n: number) =>
+  tabs(page).getByRole('button', { name: new RegExp(`^${n} .*, sheet ${n} of \\d+$`) });
+const sheetIds = async (page: Page) =>
+  ((await drawings(page))[0] as Drawing).sheets.map((s) => s.id);
+const lastLabel = async (page: Page) => (await app(page).history()).past.at(-1)?.label;
+const viewsOn = async (page: Page, sheetId: string) =>
+  ((await drawings(page))[0] as Drawing).views.filter((v) => v.sheetId === sheetId).length;
+test.describe('sheet tabs (ADR-094)', () => {
+  test('add, switch, rename, move a view, reorder, delete: one undo step each; the PDF has a page per sheet', async ({
+    page,
+  }) => {
+    await openDemo(page);
+    await newDrawing(page);
+    await addStandardViews(page);
+    await expect(tabs(page)).toBeVisible();
+    await expect(tab(page, 1)).toHaveAttribute('aria-current', 'page');
+    await expect(tab(page, 1)).toContainText('Sheet 1');
+
+    // Add: the drawing's format and scale, shown at once. One undo step.
+    let before = await historyLen(page);
+    await tabs(page).getByTestId('sheet-add').click();
+    await expect.poll(async () => (await sheetIds(page)).length).toBe(2);
+    const [s1, s2] = (await sheetIds(page)) as [string, string];
+    expect(await historyLen(page)).toBe(before + 1);
+    expect(await lastLabel(page)).toBe('Add Sheet 2');
+    await expect(tab(page, 2)).toHaveAttribute('aria-current', 'page');
+    const d0 = (await drawings(page))[0] as Drawing;
+    expect(d0.sheets[1]?.format).toEqual(d0.sheets[0]?.format);
+    // The title block counts the sheets: n / m.
+    expect((await built(page)).texts).toContain('2 / 2');
+    await page.getByTestId('drawing-undo').click();
+    await expect.poll(async () => (await sheetIds(page)).length).toBe(1);
+    await page.getByTestId('drawing-redo').click();
+    await expect.poll(async () => (await sheetIds(page)).length).toBe(2);
+
+    // Switch: by tab, and with Ctrl+PageUp / PageDown.
+    await tab(page, 1).click();
+    await expect.poll(async () => (await drawing(page).state()).sheetId).toBe(s1);
+    expect((await built(page)).texts).toContain('1 / 2');
+    await page.getByTestId('sheet-viewer').focus();
+    await page.keyboard.press('Control+PageDown');
+    await expect.poll(async () => (await drawing(page).state()).sheetId).toBe(s2);
+    await page.keyboard.press('Control+PageUp');
+    await expect.poll(async () => (await drawing(page).state()).sheetId).toBe(s1);
+    await tab(page, 2).click();
+
+    // Rename inline (no dialog): one undo step.
+    before = await historyLen(page);
+    await tabs(page).getByTestId('sheet-rename-start').click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    const name = tabs(page).getByRole('textbox', { name: 'Name of sheet 2' });
+    await name.fill('Details');
+    await name.press('Enter');
+    const nameOf2 = async () => ((await drawings(page))[0] as Drawing).sheets[1]?.name;
+    await expect.poll(nameOf2).toBe('Details');
+    expect(await historyLen(page)).toBe(before + 1);
+    await expect(tab(page, 2)).toContainText('Details');
+    await page.getByTestId('drawing-undo').click();
+    await expect.poll(nameOf2).toBe('Sheet 2');
+    await page.getByTestId('drawing-redo').click();
+    await expect.poll(nameOf2).toBe('Details');
+
+    // Move a view to another sheet from the view inspector: the front view takes the views
+    // aligned to it along. One undo step.
+    await tab(page, 1).click();
+    const s = await built(page);
+    const front = viewOf(s, 'base');
+    const top = viewOf(s, 'projected', 'top');
+    if (!front?.outline || !top?.outline) throw new Error('no views');
+    // An aligned view cannot go alone: the field says why.
+    const topEdge = (await drawing(page).edges(top.id)).find((e) => e.kind === 'line');
+    const frontEdge = (await drawing(page).edges(front.id)).find((e) => e.kind === 'line');
+    if (!topEdge || !frontEdge) throw new Error('no edges');
+    await click(page, topEdge.at);
+    await expect
+      .poll(async () => (await drawing(page).state()).selected)
+      .toEqual({ kind: 'view', id: top.id });
+    await panelTab(page, 'Inspector').click();
+    await expect(page.getByRole('combobox', { name: 'On sheet' })).toBeDisabled();
+    await expect(page.getByTestId('view-inspector')).toContainText('is aligned with');
+    await a11y(page);
+    await click(page, frontEdge.at);
+    await expect
+      .poll(async () => (await drawing(page).state()).selected)
+      .toEqual({ kind: 'view', id: front.id });
+    before = await historyLen(page);
+    await page.getByRole('combobox', { name: 'On sheet' }).selectOption(s2);
+    await expect.poll(() => viewsOn(page, s2)).toBe(3);
+    expect(await historyLen(page)).toBe(before + 1);
+    expect(await lastLabel(page)).toBe('Move Front view to Details');
+    // The route follows the view to its sheet.
+    await expect.poll(async () => (await drawing(page).state()).sheetId).toBe(s2);
+    await page.getByTestId('drawing-undo').click();
+    await expect.poll(() => viewsOn(page, s1)).toBe(3);
+
+    // Or drag it onto a tab: the same move, one undo step, and the view keeps its place.
+    await tab(page, 1).click();
+    await built(page);
+    await click(page, frontEdge.at);
+    await expect
+      .poll(async () => (await drawing(page).state()).selected)
+      .toEqual({ kind: 'view', id: front.id });
+    const from = await sheetToPage(page, frontEdge.at);
+    const tb = await tab(page, 2).boundingBox();
+    if (!tb) throw new Error('no tab');
+    before = await historyLen(page);
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    for (let i = 1; i <= 12; i++)
+      await page.mouse.move(
+        from.x + ((tb.x + tb.width / 2 - from.x) * i) / 12,
+        from.y + ((tb.y + tb.height / 2 - from.y) * i) / 12,
+      );
+    await expect(tab(page, 2)).toHaveAttribute('data-drop', 'true');
+    await page.mouse.up();
+    await expect.poll(() => viewsOn(page, s2)).toBe(3);
+    expect(await historyLen(page)).toBe(before + 1);
+    const was = d0.views.find((v) => v.id === front.id);
+    const now = ((await drawings(page))[0] as Drawing).views.find((v) => v.id === front.id);
+    expect(now?.layout).toEqual(was?.layout);
+
+    // Reorder by dragging a tab, and with the move buttons: one undo step each.
+    const b1 = await tab(page, 1).boundingBox();
+    const b2 = await tab(page, 2).boundingBox();
+    if (!b1 || !b2) throw new Error('no tabs');
+    before = await historyLen(page);
+    await drag(
+      page,
+      { x: b2.x + b2.width / 2, y: b2.y + b2.height / 2 },
+      { x: b1.x + 4, y: b1.y + b1.height / 2 },
+    );
+    await expect.poll(() => sheetIds(page)).toEqual([s2, s1]);
+    expect(await historyLen(page)).toBe(before + 1);
+    expect(await lastLabel(page)).toBe('Reorder sheets');
+    await expect(tab(page, 1)).toContainText('Details');
+    await page.getByTestId('drawing-undo').click();
+    await expect.poll(() => sheetIds(page)).toEqual([s1, s2]);
+    await tab(page, 2).click();
+    await tabs(page).getByTestId('sheet-move-left').click();
+    await expect.poll(() => sheetIds(page)).toEqual([s2, s1]);
+    await page.getByTestId('drawing-undo').click();
+    await expect.poll(() => sheetIds(page)).toEqual([s1, s2]);
+
+    // The PDF is the whole drawing: one page per sheet. SVG of every sheet is one .zip.
+    await panelTab(page, 'Export').click();
+    await expect(page.getByTestId('drawing-export')).toContainText('All 2 sheets, one page each');
+    await a11y(page);
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      page.locator('[data-export="pdf"]').click(),
+    ]);
+    const pdf = readFileSync(await download.path()).toString('latin1');
+    expect(pdf.match(/\/Type\s*\/Page(?!s)/g)?.length).toBe(2);
+    expect(pdf).toMatch(/\/Count 2\b/);
+    expect(pdf.match(/\/MediaBox/g)?.length).toBe(2);
+    await page.getByRole('radio', { name: 'All 2 sheets' }).click();
+    const [zip] = await Promise.all([
+      page.waitForEvent('download'),
+      page.locator('[data-export="svg"]').click(),
+    ]);
+    expect(zip.suggestedFilename()).toMatch(/-svg\.zip$/);
+    expect(
+      readFileSync(await zip.path())
+        .subarray(0, 2)
+        .toString('latin1'),
+    ).toBe('PK');
+
+    // The sheet shown is remembered: leave the drawing and come back to it.
+    await tab(page, 2).click();
+    await expect.poll(async () => (await drawing(page).state()).sheetId).toBe(s2);
+    await page.getByTestId('drawing-back').click();
+    await page.getByTestId('drawings-section').getByTestId('drawing-open').click();
+    await expect(page.getByTestId('sheet-viewer')).toBeVisible();
+    await expect.poll(async () => (await drawing(page).state()).sheetId).toBe(s2);
+    await expect(tab(page, 2)).toHaveAttribute('aria-current', 'page');
+
+    // Delete with an inline confirmation that says what goes with it; one undo step restores all.
+    before = await historyLen(page);
+    await tabs(page).getByTestId('sheet-delete').click();
+    await expect(tabs(page).getByRole('group', { name: 'Delete Details?' })).toContainText(
+      'Delete Details and its 3 views?',
+    );
+    await a11y(page);
+    await tabs(page).getByTestId('sheet-delete-confirm').click();
+    await expect.poll(async () => (await sheetIds(page)).length).toBe(1);
+    expect(((await drawings(page))[0] as Drawing).views).toHaveLength(0);
+    expect(await historyLen(page)).toBe(before + 1);
+    await expect.poll(async () => (await drawing(page).state()).sheetId).toBe(s1);
+    await page.getByTestId('drawing-undo').click();
+    await expect.poll(async () => (await sheetIds(page)).length).toBe(2);
+    expect(((await drawings(page))[0] as Drawing).views).toHaveLength(3);
+    // The last sheet cannot go.
+    await tab(page, 1).click();
+    await tabs(page).getByTestId('sheet-delete').click();
+    await tabs(page).getByTestId('sheet-delete-confirm').click();
+    await expect.poll(async () => (await sheetIds(page)).length).toBe(1);
+    await expect(tabs(page).getByTestId('sheet-delete')).toHaveAttribute('aria-disabled', 'true');
+  });
+});
+
+test.describe('datums and frames on surfaces and features of size (ADR-094)', () => {
+  type Line = Edge & { a: [number, number]; b: [number, number] };
+  /** The top view's plate sides (vertical lines) and its smallest whole circle (a Ø6 hole). */
+  async function setup(page: Page) {
+    await openDemo(page);
+    await newDrawing(page);
+    await addStandardViews(page);
+    // The exact edges: circles are arcs there (the draft has polylines).
+    await drawing(page).exact();
+    const s = await built(page);
+    const top = viewOf(s, 'projected', 'top');
+    if (!top) throw new Error('no top view');
+    const edges = await drawing(page).edges(top.id);
+    const vertical = edges
+      .filter(
+        (e): e is Line =>
+          e.kind === 'line' &&
+          !!e.a &&
+          !!e.b &&
+          Math.abs(e.a[0] - e.b[0]) < 0.01 &&
+          Math.abs(e.a[1] - e.b[1]) > 30,
+      )
+      .sort((p, q) => p.at[0] - q.at[0]);
+    const whole = (e: Edge) =>
+      e.kind === 'arc' &&
+      e.start !== undefined &&
+      e.end !== undefined &&
+      Math.abs(e.end - e.start - 2 * Math.PI) < 1e-6;
+    const hole = edges.filter(whole).sort((p, q) => (p.radius ?? 0) - (q.radius ?? 0))[0];
+    const left = vertical[0];
+    const right = vertical.at(-1);
+    if (!left || !right || !hole) throw new Error('no geometry');
+    return { top, left, right, hole };
+  }
+  const count = (page: Page, kind: Annotation['kind']) => async () =>
+    (await annotations(page)).filter((a) => a.kind === kind).length;
+  /** Undo takes the last step back, redo puts it again. */
+  const undoRedo = async (page: Page, n: () => Promise<number>, after: number) => {
+    await page.getByTestId('drawing-undo').click();
+    await expect.poll(n).toBe(after - 1);
+    await page.getByTestId('drawing-redo').click();
+    await expect.poll(n).toBe(after);
+  };
+  const attachT = (p: AnnotationPlacementLike | undefined) =>
+    p?.layout.kind === 'leader' && p.layout.attach.kind === 'ref'
+      ? (p.layout.attach.t ?? 0.5)
+      : null;
+  type AnnotationPlacementLike = Drawing['placements'][number];
+
+  test('on a surface: on the face’s line, refs the face; the leader drags along its line; undo for each', async ({
+    page,
+  }) => {
+    const { left, right, hole } = await setup(page);
+    const datums = count(page, 'datumFeature');
+    const frames = count(page, 'geometricTolerance');
+
+    // The datum: pick the line the plate's side face is seen as.
+    await page.locator('[data-tool="datum"]').click();
+    await expect(page.getByTestId('prompt-chip')).toContainText('size dimension');
+    let before = await historyLen(page);
+    await click(page, [left.a[0], left.a[1] + (left.b[1] - left.a[1]) * 0.3]);
+    await expect.poll(datums).toBe(1);
+    expect(await historyLen(page)).toBe(before + 1);
+    const datum = (await annotations(page)).find((a) => a.kind === 'datumFeature') as Annotation;
+    // It refs the face, never the edge it was picked by.
+    expect(datum.refs).toHaveLength(1);
+    expect(datum.refs[0]?.kind).toBe('face');
+    expect(datum.refs[0]?.name).not.toMatch(/^edge\(/);
+    await built(page);
+    expect((await drawing(page).state()).resolutions.find((r) => r.id === datum.id)?.state).toBe(
+      'ok',
+    );
+    let placed = (await drawing(page).placements()).find((p) => p.annotationId === datum.id);
+    expect(placed?.layout).toMatchObject({ kind: 'leader', attach: { kind: 'ref', index: 0 } });
+    // The triangle (a fill) sits on the face's line, the leader leaves out of the part.
+    expect(placed?.items).toContain('fill');
+    expect(placed?.leader?.on).not.toBeNull();
+    expect(Math.abs((placed?.leader?.at[0] ?? 0) - left.a[0])).toBeLessThan(0.05);
+    expect(placed?.leader?.text[0] ?? 0).toBeLessThan(left.a[0]);
+    await undoRedo(page, datums, 1);
+
+    // Drag the triangle along its line, and past its end and off to the side: it stays on the
+    // line (at its end). One undo step.
+    await page.locator('[data-tool="select"]').click();
+    await built(page);
+    placed = (await drawing(page).placements()).find((p) => p.annotationId === datum.id);
+    if (!placed?.text || !placed.leader?.on) throw new Error('no datum placement');
+    const id = placed.id;
+    await click(page, placed.text);
+    await expect
+      .poll(async () => (await drawing(page).state()).selected)
+      .toMatchObject({ kind: 'placement', id });
+    await expect(page.locator('[data-testid="leader-handle"][data-kind="attach"]')).toHaveCount(1);
+    const [p0, p1] = placed.leader.on;
+    const t0 = attachT(await placementOf(page, id));
+    before = await historyLen(page);
+    await drag(
+      page,
+      await sheetToPage(page, placed.leader.at),
+      await sheetToPage(page, [p0[0] + (p1[0] - p0[0]) * 1.15 + 3, p0[1] + (p1[1] - p0[1]) * 1.15]),
+    );
+    await expect.poll(async () => attachT(await placementOf(page, id))).toBe(1);
+    expect(await historyLen(page)).toBe(before + 1);
+    expect(await lastLabel(page)).toBe('Move leader');
+    await built(page);
+    const ext = (await drawing(page).placements()).find((p) => p.id === id);
+    expect(Math.abs((ext?.leader?.at[0] ?? 0) - left.a[0])).toBeLessThan(0.05);
+    expect(
+      Math.hypot((ext?.leader?.at[0] ?? 0) - p1[0], (ext?.leader?.at[1] ?? 0) - p1[1]),
+    ).toBeLessThan(0.05);
+    await page.getByTestId('drawing-undo').click();
+    await expect.poll(async () => attachT(await placementOf(page, id))).toBeCloseTo(t0 ?? 0.5, 6);
+    // The text drags too (one step), and the inspector has the inline alternatives.
+    await built(page);
+    const again = (await drawing(page).placements()).find((p) => p.id === id);
+    if (!again?.text) throw new Error('no text');
+    before = await historyLen(page);
+    await drag(
+      page,
+      await sheetToPage(page, again.text),
+      await sheetToPage(page, [again.text[0] - 6, again.text[1] + 4]),
+    );
+    await expect
+      .poll(async () => {
+        const p = await placementOf(page, id);
+        return p?.layout.kind === 'leader' ? p.layout.text[1] : null;
+      })
+      .not.toBe(again.layout.text?.[1] ?? null);
+    expect(await historyLen(page)).toBe(before + 1);
+    await panelTab(page, 'Inspector').click();
+    await expect(page.getByLabel('Triangle along the line (mm)')).toBeVisible();
+    await expect(page.getByTestId('leader-target')).toContainText('its line');
+    await a11y(page);
+
+    // The frame: the same kind of pick, a leader ending in an arrow on the face's line.
+    await page.locator('[data-tool="gdt"]').click();
+    before = await historyLen(page);
+    await click(page, right.at);
+    await expect.poll(frames).toBe(1);
+    expect(await historyLen(page)).toBe(before + 1);
+    const frame = (await annotations(page)).find(
+      (a) => a.kind === 'geometricTolerance',
+    ) as Annotation;
+    expect(frame.refs[0]?.kind).toBe('face');
+    await built(page);
+    const fp = (await drawing(page).placements()).find((p) => p.annotationId === frame.id);
+    expect(fp?.layout).toMatchObject({ kind: 'leader', attach: { kind: 'ref', index: 0 } });
+    expect(fp?.items).toContain('fill');
+    expect(Math.abs((fp?.leader?.at[0] ?? 0) - right.at[0])).toBeLessThan(0.05);
+    await undoRedo(page, frames, 1);
+
+    // A circle is not a surface's line: refused with the way to do it, nothing added.
+    await page.locator('[data-tool="datum"]').click();
+    before = await historyLen(page);
+    await click(page, hole.at);
+    await expect(page.getByTestId('drawing-toast')).toContainText('diameter dimension');
+    expect(await historyLen(page)).toBe(before);
+    await a11y(page);
+  });
+
+  test('on a feature of size: in line with the diameter’s line, and with its text; undo for each', async ({
+    page,
+  }) => {
+    const { hole } = await setup(page);
+    // A Ø6 diameter on the hole.
+    await page.locator('[data-tool="dimension"]').click();
+    await click(page, hole.at);
+    await expect.poll(count(page, 'diameter')).toBe(1);
+    const dia = (await annotations(page)).find((a) => a.kind === 'diameter') as Annotation;
+    await built(page);
+    const dp = (await drawing(page).placements()).find((p) => p.annotationId === dia.id);
+    if (!dp?.text || !dp.line) throw new Error('no diameter placement');
+
+    // The datum: pick the size dimension. It sits at an end of the dimension line, in line with
+    // it, and is the hole's axis.
+    await page.locator('[data-tool="datum"]').click();
+    let before = await historyLen(page);
+    await click(page, dp.text);
+    await expect.poll(count(page, 'datumFeature')).toBe(1);
+    expect(await historyLen(page)).toBe(before + 1);
+    expect(await lastLabel(page)).toBe('Add datum on a feature of size');
+    const datum = (await annotations(page)).find((a) => a.kind === 'datumFeature') as Annotation;
+    expect(datum.at).toEqual(['axis']);
+    expect(datum.refs[0]?.kind).toBe('face');
+    await built(page);
+    expect((await drawing(page).state()).resolutions.find((r) => r.id === datum.id)?.state).toBe(
+      'ok',
+    );
+    const tp = (await drawing(page).placements()).find((p) => p.annotationId === datum.id);
+    expect(tp?.layout).toMatchObject({
+      kind: 'leader',
+      attach: { kind: 'dimensionLine', placementId: dp.id },
+    });
+    const end = tp?.layout.attach?.t as 0 | 1;
+    expect([0, 1]).toContain(end);
+    const tip = dp.line[end];
+    expect(
+      Math.hypot((tp?.leader?.at[0] ?? 0) - tip[0], (tp?.leader?.at[1] ?? 0) - tip[1]),
+    ).toBeLessThan(1e-6);
+    expect(tp?.items).toContain('fill');
+    await undoRedo(page, count(page, 'datumFeature'), 1);
+    await page.locator('[data-tool="select"]').click();
+    if (!tp?.text) throw new Error('no datum text');
+    await click(page, tp.text);
+    await panelTab(page, 'Inspector').click();
+    await expect(page.getByRole('radiogroup', { name: 'End of the dimension line' })).toBeVisible();
+    await a11y(page);
+
+    // The frame: pick the same dimension. It sits under the dimension's text and applies to it.
+    await page.locator('[data-tool="gdt"]').click();
+    before = await historyLen(page);
+    await click(page, dp.text);
+    await expect.poll(count(page, 'geometricTolerance')).toBe(1);
+    expect(await historyLen(page)).toBe(before + 1);
+    const frame = (await annotations(page)).find((a) => a.kind === 'geometricTolerance') as Extract<
+      Annotation,
+      { kind: 'geometricTolerance' }
+    >;
+    expect(frame.appliesTo).toBe(dia.id);
+    expect(frame.refs).toEqual([]);
+    // The only datum is on this hole itself: the frame controls the axis's form (no datum).
+    expect(frame.characteristic).toBe('straightness');
+    expect(frame.zone.shape).toBe('diameter');
+    await built(page);
+    const fp = (await drawing(page).placements()).find((p) => p.annotationId === frame.id);
+    expect(fp?.layout).toEqual({
+      kind: 'leader',
+      attach: { kind: 'placement', placementId: dp.id },
+      text: [0, 0],
+    });
+    const dimBox = (await drawing(page).placements()).find((p) => p.id === dp.id)?.box;
+    expect(fp?.box?.max[1] ?? 0).toBeLessThan(dimBox?.min[1] ?? 0);
+    await undoRedo(page, count(page, 'geometricTolerance'), 1);
+    await a11y(page);
+  });
+});

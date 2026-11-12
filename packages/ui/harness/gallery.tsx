@@ -626,6 +626,7 @@ export function Gallery({
       case 'm4-export':
       case 'm4-settings':
       case 'm4-shell':
+      case 'm4-sheet-tabs':
         return <M4Gallery section={section} />;
       case 'm35-radial':
       case 'm35-radial-live':

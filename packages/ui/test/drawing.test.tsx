@@ -14,6 +14,7 @@ import {
   ImportPanel,
   InlineCellEditor,
   SheetSettings,
+  SheetTabs,
   SheetViewer,
   StandardChoice,
   TableInspector,
@@ -348,6 +349,54 @@ const display: ViewDisplay = {
   centerLines: true,
   threads: true,
 };
+
+describe('ViewInspector: on sheet (ADR-094)', () => {
+  it('moves the view to another sheet, says what goes along, or why it cannot', async () => {
+    const onChange = vi.fn();
+    const sheets = [
+      { id: 's1', name: 'Sheet 1' },
+      { id: 's2', name: 'Details' },
+    ];
+    const props = {
+      kind: 'base' as const,
+      title: 'Front view',
+      scale: '',
+      inheritedScale: '1:1',
+      evaluateScale: evalOk,
+      onScale: () => {},
+      label: '',
+      derivedLabel: '',
+      showLabel: false,
+      onLabel: () => {},
+      onShowLabel: () => {},
+      display,
+      onDisplay: () => {},
+      configuration: { value: undefined, options: [], drawingName: 'Default' },
+      onConfiguration: () => {},
+      dependents: 2,
+      onDelete: () => {},
+      evaluate: evalOk,
+    };
+    const { rerender } = renderUI(
+      <ViewInspector
+        {...props}
+        sheet={{ value: 's1', options: sheets, onChange, note: 'Its 2 aligned views go with it.' }}
+      />,
+    );
+    const field = screen.getByRole('combobox', { name: 'On sheet' });
+    expect(screen.getByText('Its 2 aligned views go with it.')).toBeVisible();
+    await userEvent.selectOptions(field, 's2');
+    expect(onChange).toHaveBeenCalledWith('s2');
+    rerender(
+      <ViewInspector
+        {...props}
+        sheet={{ value: 's1', options: sheets, onChange, blocked: 'Aligned with Front view.' }}
+      />,
+    );
+    expect(screen.getByRole('combobox', { name: 'On sheet' })).toBeDisabled();
+    expect(screen.getByText('Aligned with Front view.')).toBeVisible();
+  });
+});
 
 describe('ViewInspector', () => {
   const base = (over: Partial<React.ComponentProps<typeof ViewInspector>> = {}) => (
@@ -1029,6 +1078,13 @@ describe('DrawingExportPanel', () => {
     await userEvent.click(screen.getByRole('radio', { name: 'All 2 sheets' }));
     await userEvent.click(document.querySelector('[data-export="dxf-r12"]') as HTMLElement);
     expect(onExport).toHaveBeenCalledWith('dxf-r12', 'all');
+    expect(screen.getByTestId('export-scope-note')).toHaveTextContent('one .zip');
+    // The PDF is every sheet, one page each, whatever the scope.
+    await userEvent.click(screen.getByRole('radio', { name: 'Sheet 1' }));
+    await userEvent.click(document.querySelector('[data-export="pdf"]') as HTMLElement);
+    expect(onExport).toHaveBeenLastCalledWith('pdf', 'all');
+    await userEvent.click(document.querySelector('[data-export="svg"]') as HTMLElement);
+    expect(onExport).toHaveBeenLastCalledWith('svg', 'sheet');
     rerender(
       <DrawingExportPanel
         sheetName="Sheet 1"
@@ -1115,7 +1171,7 @@ describe('DrawingShell', () => {
     onPanel: () => {},
   };
 
-  it('desktop: tools, sheet and a tabbed side panel; sheet tabs only when there are several', async () => {
+  it('desktop: tools, sheet and a tabbed side panel; numbered sheet tabs along the sheet', async () => {
     const onSheet = vi.fn();
     const onPanel = vi.fn();
     renderUI(
@@ -1132,9 +1188,15 @@ describe('DrawingShell', () => {
     expect(screen.getByRole('tab', { name: /Attention/ })).toHaveTextContent('2');
     await userEvent.click(screen.getByRole('tab', { name: /Attention/ }));
     expect(onPanel).toHaveBeenCalledWith('b');
-    expect(screen.getByRole('button', { name: 'Sheet 1' })).toHaveAttribute('aria-current', 'page');
-    await userEvent.click(screen.getByRole('button', { name: 'Sheet 2' }));
+    const tabs = within(screen.getByRole('navigation', { name: 'Sheets' }));
+    expect(tabs.getByRole('button', { name: '1 Sheet 1, sheet 1 of 2' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+    await userEvent.click(tabs.getByRole('button', { name: '2 Sheet 2, sheet 2 of 2' }));
     expect(onSheet).toHaveBeenCalledWith('s2');
+    // Without editing (the phone reviews) there is nothing but switching.
+    expect(tabs.queryByRole('button', { name: 'Add sheet' })).toBeNull();
   });
 
   it('tablet and phone: a collapsible bottom panel with an expanded state', async () => {
@@ -1148,5 +1210,110 @@ describe('DrawingShell', () => {
     expect(screen.getByText('inspector body')).toBeVisible();
     // 44 px targets on touch.
     expect(screen.getByTestId('drawing-back').className).toMatch(/size-11/);
+  });
+});
+
+describe('SheetTabs (ADR-094)', () => {
+  const sheets = [
+    { id: 's1', name: 'Sheet 1' },
+    { id: 's2', name: 'Details' },
+    { id: 's3', name: 'Sheet 3' },
+  ];
+  const edit = () => ({
+    onAdd: vi.fn(),
+    onRename: vi.fn(),
+    onDelete: vi.fn(),
+    onMove: vi.fn(),
+    contents: (id: string) => (id === 's2' ? '2 views' : ''),
+  });
+
+  it('shows each sheet’s number and name; switching only without editing', async () => {
+    const onSelect = vi.fn();
+    renderUI(<SheetTabs sheets={sheets} current="s2" onSelect={onSelect} />);
+    const tab = screen.getByRole('button', { name: '2 Details, sheet 2 of 3' });
+    expect(tab).toHaveAttribute('aria-current', 'page');
+    expect(tab).toHaveTextContent('2 Details');
+    await userEvent.click(screen.getByRole('button', { name: '3 Sheet 3, sheet 3 of 3' }));
+    expect(onSelect).toHaveBeenCalledWith('s3');
+    expect(screen.queryByTestId('sheet-actions')).toBeNull();
+    expect(screen.queryByTestId('sheet-add')).toBeNull();
+  });
+
+  it('adds, renames inline (Enter commits, Escape keeps), and moves with buttons', async () => {
+    const e = edit();
+    renderUI(<SheetTabs sheets={sheets} current="s2" onSelect={() => {}} edit={e} />);
+    await userEvent.click(screen.getByTestId('sheet-add'));
+    expect(e.onAdd).toHaveBeenCalledOnce();
+    await userEvent.click(screen.getByRole('button', { name: 'Rename Details' }));
+    const input = screen.getByRole('textbox', { name: 'Name of sheet 2' });
+    expect(screen.queryByRole('dialog')).toBeNull();
+    await userEvent.clear(input);
+    await userEvent.type(input, 'Sections{Enter}');
+    expect(e.onRename).toHaveBeenCalledWith('s2', 'Sections');
+    await userEvent.dblClick(screen.getByRole('button', { name: '2 Details, sheet 2 of 3' }));
+    await userEvent.type(screen.getByRole('textbox', { name: 'Name of sheet 2' }), 'x{Escape}');
+    expect(e.onRename).toHaveBeenCalledTimes(1);
+    await userEvent.click(screen.getByRole('button', { name: 'Move Details left' }));
+    expect(e.onMove).toHaveBeenCalledWith('s2', 0);
+    await userEvent.click(screen.getByRole('button', { name: 'Move Details right' }));
+    expect(e.onMove).toHaveBeenCalledWith('s2', 2);
+  });
+
+  it('deletes after an inline confirmation that says what goes with the sheet', async () => {
+    const e = edit();
+    renderUI(<SheetTabs sheets={sheets} current="s2" onSelect={() => {}} edit={e} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Delete Details' }));
+    const group = screen.getByRole('group', { name: 'Delete Details?' });
+    expect(group).toHaveTextContent('Delete Details and its 2 views?');
+    await userEvent.click(within(group).getByRole('button', { name: 'Keep' }));
+    expect(e.onDelete).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole('button', { name: 'Delete Details' }));
+    await userEvent.click(screen.getByTestId('sheet-delete-confirm'));
+    expect(e.onDelete).toHaveBeenCalledWith('s2');
+  });
+
+  it('the last sheet cannot be deleted, and the ends cannot move further', () => {
+    renderUI(
+      <SheetTabs sheets={sheets.slice(0, 1)} current="s1" onSelect={() => {}} edit={edit()} />,
+    );
+    expect(screen.getByRole('button', { name: 'Delete Sheet 1' })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+    expect(screen.getByRole('button', { name: 'Move Sheet 1 left' })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+  });
+
+  it('reorders by dragging a tab past its neighbour', () => {
+    const e = edit();
+    renderUI(<SheetTabs sheets={sheets} current="s1" onSelect={() => {}} edit={e} />);
+    const tabs = screen.getAllByTestId('sheet-tab');
+    tabs.forEach((t, i) => {
+      t.getBoundingClientRect = () =>
+        ({
+          left: i * 100,
+          width: 100,
+          top: 0,
+          height: 30,
+          right: i * 100 + 100,
+          bottom: 30,
+        }) as DOMRect;
+    });
+    const first = tabs[0] as HTMLElement;
+    fireEvent.pointerDown(first, { pointerId: 1, button: 0, clientX: 50 });
+    fireEvent.pointerMove(first, { pointerId: 1, clientX: 180 });
+    fireEvent.pointerMove(first, { pointerId: 1, clientX: 260 });
+    fireEvent.pointerUp(first, { pointerId: 1, clientX: 260 });
+    expect(e.onMove).toHaveBeenCalledWith('s1', 2);
+  });
+
+  it('marks the tab a dragged view would move to', () => {
+    renderUI(<SheetTabs sheets={sheets} current="s1" onSelect={() => {}} dropTarget="s3" />);
+    expect(screen.getByRole('button', { name: '3 Sheet 3, sheet 3 of 3' })).toHaveAttribute(
+      'data-drop',
+      'true',
+    );
   });
 });
