@@ -34,18 +34,34 @@ export type RoutePhase = 'choose' | 'drawing' | 'missing';
 /** A dimension tool pick: an edge on a view, with what the kernel's curve says it is. */
 export interface EdgePick {
   viewId: Id;
-  /** The model edge's name, or the outlined face's when `ref` is `face`. */
+  /**
+   * The model edge's name; the outlined face's when `ref` is `face`; the model face a section's
+   * cut edge lies on (`cut`); or the exact construction name (`construction`).
+   */
   name: string;
-  /** What `name` names: a model edge (default), or the face an outline outlines. */
-  ref?: 'edge' | 'face';
+  /**
+   * What `name` names: a model edge (default), a face (an outline, or a cut edge's face), or a
+   * vertex (a construction point).
+   */
+  ref?: 'edge' | 'face' | 'vertex';
   /** The face the picked curve outlines (`ProjectedCurve.face`): outlines and silhouette seams. */
   face?: string;
-  shape: 'line' | 'circle' | 'other';
+  /** M4.1: a section's cut-face edge (`ProjectedCurve.cutFace`): `name` is that model face. */
+  cut?: true;
+  /** M4.1: construction geometry (ADR-095), `name` is its construction ref name. */
+  construction?: true;
+  /** How the picked run is drawn: visible, a tangent (smooth) edge or a hidden one (M4.1). */
+  role?: 'visible' | 'tangent' | 'hidden';
+  /** `point`: a construction point (M4.1). `other`: a curve that is neither a line nor an arc. */
+  shape: 'line' | 'circle' | 'point' | 'other';
   /** Sheet position of the pick. */
   at: Vec2;
   /** Arcs: the angle they span (radians). */
   sweep?: number;
-  /** The curve in the view plane (part mm): a line's ends, or a circle's centre and radius. */
+  /**
+   * The curve in the view plane (part mm): a line's ends, a circle's centre and radius, or a
+   * point (`centre`, radius 0).
+   */
   geom?: { a: Vec2; b: Vec2 } | { centre: Vec2; radius: number; full: boolean };
 }
 

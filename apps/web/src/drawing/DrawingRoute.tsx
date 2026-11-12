@@ -26,6 +26,7 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'reac
 import { useObservable } from '../app/observable';
 import type { Workbench } from '../app/workbench';
 import { titleRows } from './adapters';
+import { CONSTRUCTION_TOOLS } from './construction';
 import { DrawingController } from './controller';
 import { beginInteraction, currentSheet, nudgeText, viewHit } from './interact';
 import { SheetOverlay } from './Overlay';
@@ -477,9 +478,10 @@ export default function DrawingRoute({ wb, id, tier, onClose }: DrawingRouteProp
                 if (ui.hover !== null) c.patch({ hover: null });
                 return;
               }
-              const hit = viewHit(c, p);
+              const hit = viewHit(c, p, CONSTRUCTION_TOOLS.has(ui.tool));
               const key =
-                hit?.source.kind === 'view' && (hit.source.edge || hit.source.face)
+                hit?.source.kind === 'view' &&
+                (hit.source.edge || hit.source.face || hit.source.cut || hit.source.construction)
                   ? sourceKey(hit.source)
                   : null;
               if (key !== ui.hover) c.patch({ hover: key });

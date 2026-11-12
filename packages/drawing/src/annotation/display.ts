@@ -49,8 +49,20 @@ export type ItemSource =
    * view whose sheet space the item is drawn in when that is not `viewId` itself (a section's
    * cutting plane and a detail's circle are drawn on their parent): moving that view moves them.
    * A placement's `viewId` is the view it is dimensioning, for the same reason (ADR-094).
+   * `cut` (M4.1, ADR-095): a section's cut-face edge, the persistent name of the model face the cut
+   * passes through along it (`ProjectedCurve.cutFace`); a pick on it refs that face.
+   * `construction` (M4.1): a construction ref drawn as a thin chain line (`origin:Y`,
+   * `S<id>:e(@x)`, `F<id>:pitch`...), the exact name a pick on it stores.
    */
-  | { kind: 'view'; viewId: Id; edge?: string; face?: string; on?: Id }
+  | {
+      kind: 'view';
+      viewId: Id;
+      edge?: string;
+      face?: string;
+      cut?: string;
+      construction?: string;
+      on?: Id;
+    }
   | { kind: 'placement'; placementId: Id; annotationId: Id; viewId?: Id }
   | { kind: 'centerMark'; viewId: Id; markId?: Id }
   | { kind: 'note'; noteId: Id }

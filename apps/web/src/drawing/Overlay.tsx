@@ -2,6 +2,7 @@
 
 import { viewOutline } from '@wren-cad/drawing';
 import type { Size } from '@wren-cad/ui/drawing';
+import { CONSTRUCTION_TOOLS, constructionTargets } from './construction';
 import { cutHandlesOf, detailGripsOf, handlesOf } from './interact';
 import { leaderHandlesOf } from './interact-leader';
 import type { Built } from './pipeline';
@@ -238,6 +239,52 @@ export function SheetOverlay({
         strokeDasharray={`${6 * mm} ${4 * mm}`}
       />,
     );
+  // Construction geometry while a measuring tool is active (M4.1): transient thin chain lines,
+  // pickable by the exact name each one is drawn for. Nothing here is stored or exported.
+  const sheetId = (b.drawing.sheets.find((s) => s.id === ui.sheetId) ?? b.drawing.sheets[0])?.id;
+  if (CONSTRUCTION_TOOLS.has(ui.tool) && sheetId) {
+    const targets = constructionTargets(b, sheetId);
+    if (targets.length > 0)
+      out.push(
+        <g
+          key="construction"
+          data-testid="construction-candidates"
+          fill="none"
+          stroke={ACCENT}
+          strokeOpacity={0.55}
+          strokeWidth={1 * mm}
+          strokeDasharray={`${8 * mm} ${2.5 * mm} ${1.5 * mm} ${2.5 * mm}`}
+          pointerEvents="none"
+        >
+          {targets.map((t, i) => {
+            const name = t.source?.kind === 'view' ? t.source.construction : undefined;
+            const key = `${name}:${i}`;
+            if (t.kind === 'line')
+              return (
+                <line
+                  key={key}
+                  data-construction={name}
+                  x1={t.a[0]}
+                  y1={t.a[1]}
+                  x2={t.b[0]}
+                  y2={t.b[1]}
+                />
+              );
+            if (t.kind === 'arc')
+              return (
+                <circle
+                  key={key}
+                  data-construction={name}
+                  cx={t.center[0]}
+                  cy={t.center[1]}
+                  r={t.radius}
+                />
+              );
+            return null;
+          })}
+        </g>,
+      );
+  }
   for (const p of ui.hint?.picks ?? [])
     out.push(
       <circle

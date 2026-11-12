@@ -151,6 +151,57 @@ describe('picking on a sheet', () => {
     expect(hitTest(list, [100, 50], 1)).toBeNull();
   });
 
+  it('M4.1 tie-breaks: a cut edge over a coincident model edge, visible over hidden; model edges outrank construction', () => {
+    const on = (
+      role: 'visible' | 'hidden' | 'tangent' | 'center',
+      source: Record<string, string>,
+      y = 0,
+    ) => ({
+      kind: 'line' as const,
+      a: [0, y] as [number, number],
+      b: [40, y] as [number, number],
+      role,
+      source: { kind: 'view' as const, viewId: 'V', ...source },
+    });
+    const pick = (items: DisplayList['items'], at: [number, number] = [20, 0.5]) =>
+      hitTest({ width: 100, height: 100, items }, at, 2)?.source;
+    // A far corner behind the cut, drawn first, and the cut edge on it: the cut wins.
+    expect(pick([on('visible', { edge: 'far' }), on('visible', { cut: 'F1:side' })])).toMatchObject(
+      {
+        cut: 'F1:side',
+      },
+    );
+    expect(pick([on('visible', { cut: 'F1:side' }), on('visible', { edge: 'far' })])).toMatchObject(
+      {
+        cut: 'F1:side',
+      },
+    );
+    // A hidden edge behind a visible one: the visible one, whichever is listed first.
+    expect(pick([on('visible', { edge: 'v' }), on('hidden', { edge: 'h' })])).toMatchObject({
+      edge: 'v',
+    });
+    expect(pick([on('hidden', { edge: 'h' }), on('visible', { edge: 'v' })])).toMatchObject({
+      edge: 'v',
+    });
+    expect(pick([on('hidden', { edge: 'h' }), on('tangent', { edge: 't' })])).toMatchObject({
+      edge: 't',
+    });
+    // Not coincident: the nearer one, hidden or not.
+    expect(
+      pick([on('visible', { edge: 'v' }, 1.5), on('hidden', { edge: 'h' })], [20, 0.2]),
+    ).toMatchObject({ edge: 'h' });
+    // A construction line nearer than a model edge still loses to it.
+    expect(
+      pick(
+        [on('center', { construction: 'origin:X' }), on('visible', { edge: 'e' }, 1.5)],
+        [20, 0.1],
+      ),
+    ).toMatchObject({ edge: 'e' });
+    expect(pick([on('center', { construction: 'origin:X' })])).toMatchObject({
+      construction: 'origin:X',
+    });
+  });
+
   it('falls back to the smallest region under the point', () => {
     const regions = [
       {

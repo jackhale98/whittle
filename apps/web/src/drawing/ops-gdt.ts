@@ -53,7 +53,7 @@ const r2 = (v: Vec2): Vec2 => [round3(v[0]), round3(v[1])];
 // ---------------------------------------------------------------------------------------------
 
 /** Anchors of face refs in the drawing configuration's regen (one modelling-worker query). */
-async function faceAnchors(
+export async function faceAnchors(
   c: DrawingController,
   refs: readonly { ref: EntityRef; annotationKind?: Annotation['kind'] }[],
 ): Promise<(AnnotationAnchor | null)[] | null> {
@@ -90,10 +90,16 @@ export async function surfaceOfPick(c: DrawingController, pick: EdgePick): Promi
   const b = c.built();
   const sv = b?.build.views.get(pick.viewId);
   if (!b || !sv?.ok) return { ok: false, message: 'That view is not available.' };
-  if (pick.ref === 'face' || pick.shape !== 'line' || !pick.geom || !('a' in pick.geom))
+  // A section's cut edge (M4.1) is its face seen edge-on: that face is the candidate.
+  if (
+    (pick.ref === 'face' && !pick.cut) ||
+    pick.shape !== 'line' ||
+    !pick.geom ||
+    !('a' in pick.geom)
+  )
     return { ok: false, message: NOT_A_LINE };
   const line: [Vec2, Vec2] = [viewToSheet(sv, pick.geom.a), viewToSheet(sv, pick.geom.b)];
-  const names = edgeFaceNames(pick.name);
+  const names = pick.cut ? [pick.name] : edgeFaceNames(pick.name);
   if (names.length === 0)
     return {
       ok: false,

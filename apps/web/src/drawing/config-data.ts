@@ -9,6 +9,7 @@
  */
 
 import type {
+  AnchorAnswer,
   AnnotationResolution,
   Id,
   RegenResult,
@@ -17,6 +18,11 @@ import type {
   ShapeForDrawing,
   WrenDoc,
 } from '@wren-cad/contracts';
+import {
+  type ConstructionCandidate,
+  constructionCandidates,
+  constructionQueries,
+} from '@wren-cad/drawing';
 import type { Workbench } from '../app/workbench';
 import { host } from './host';
 
@@ -29,6 +35,12 @@ export interface ConfigData {
   shape: ShapeForDrawing;
   /** Part mass in kg, or `'building'` while it is computed, or undefined without a material. */
   mass?: number | 'building';
+  /**
+   * Construction geometry the views offer as pick targets (M4.1, ADR-095): the part's
+   * `constructionQueries` answered by one `annotationAnchors` call in this regen's slot. Empty
+   * when the worker cannot answer (nothing is offered then, never a guess).
+   */
+  construction: readonly ConstructionCandidate[];
 }
 
 export type ConfigLookup =
@@ -131,14 +143,40 @@ export class ConfigDataSource {
   ): Promise<ConfigData> {
     const shape = await this.shapeFor(partId, slot);
     if (!shape.ok) throw new Error(shape.error.message);
+    // Asked here, while the slot is still open (the other configurations' slots close after).
+    const construction = await this.constructionOf(partId, slot, doc);
     return {
       configId,
       doc,
       result,
       resolutions: new Map((result.annotations ?? []).map((r) => [r.annotationId, r])),
       shape: shape.value,
+      construction,
       ...withMass(massOf(result, doc)),
     };
+  }
+
+  /** One `annotationAnchors` call for the part's construction refs in `slot`. */
+  private async constructionOf(
+    partId: Id,
+    slot: RegenSlot,
+    doc: WrenDoc,
+  ): Promise<ConstructionCandidate[]> {
+    const part = doc.parts.find((p) => p.id === partId);
+    const port = this.wb.modeling?.port;
+    if (!part || !port?.annotationAnchors) return [];
+    const queries = constructionQueries(part);
+    try {
+      const r = await port.annotationAnchors(
+        partId,
+        queries.map((q) => ({ ref: q.ref })),
+        slot,
+      );
+      const answers: readonly (AnchorAnswer | undefined)[] = r.ok ? r.value : [];
+      return constructionCandidates(queries, answers);
+    } catch {
+      return [];
+    }
   }
 }
 

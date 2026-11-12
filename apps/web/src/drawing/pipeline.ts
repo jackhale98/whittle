@@ -21,7 +21,9 @@ import type {
 } from '@wren-cad/contracts';
 import {
   buildDrawing,
+  constructionNames,
   type DrawingBuild,
+  defaultIsConstruction,
   type FeatureCalloutData,
   projectionRequest,
   solveViews,
@@ -210,7 +212,12 @@ export async function runPipeline(
     }),
   );
 
-  const annotations: Annotation[] = main.doc.parts.find((p) => p.id === part.id)?.annotations ?? [];
+  const mainPart = main.doc.parts.find((p) => p.id === part.id);
+  const annotations: Annotation[] = mainPart?.annotations ?? [];
+  // Construction refs a placement uses are drawn (ADR-095): the origin, sketch origins and axes,
+  // reference features and pitch circles by name, and the sketch points the views offer.
+  const standalone = mainPart ? constructionNames(mainPart) : new Set<string>();
+  const isConstruction = (n: string) => defaultIsConstruction(n) || standalone.has(n);
   const resolutionsFor = (c: Id | null) => data.get(host.keyOf(c))?.resolutions;
   const holeFor: FeatureCalloutData['hole'] = (a) =>
     holeCalloutData(main.doc, a, main.resolutions.get(a.id)?.instances?.length ?? 1);
@@ -272,6 +279,7 @@ export async function runPipeline(
     fitDeviations: drawingDocument().fitToleranceDeviations,
     features: { hole: holeFor, chamfer: (a) => chamferCalloutData(main.doc, a) },
     tables: tableData,
+    isConstruction,
   });
   return {
     kind: 'ok',

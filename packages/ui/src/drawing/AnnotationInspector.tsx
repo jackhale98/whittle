@@ -78,8 +78,22 @@ export interface AnnotationInspectorProps {
    * (`Ø6 diameter`, `80 width`), and what it makes the datum (`median plane`, `axis`).
    */
   appliesTo?: { dimension: string; feature?: string; missing?: boolean };
+  /**
+   * M4.1 (ADR-095): a diameter of a circle, or that circle's size in linear form (refs [c, c] at
+   * ['min', 'max'] along the view's x or y). The app rewrites the annotation and its placement in
+   * one undo step.
+   */
+  diameterForm?: { value: DiameterForm; onChange(form: DiameterForm): void };
+  /**
+   * M4.1: an angle whose second ref is a face: measured from that face's normal (a draft angle,
+   * at ['self', 'axis']) or between the faces themselves.
+   */
+  fromNormal?: { checked: boolean; onChange(on: boolean): void };
   size?: 'md' | 'touch';
 }
+
+/** `diameter`: Ø; `x` / `y`: a linear dimension across the circle along the view's x or y. */
+export type DiameterForm = 'diameter' | 'x' | 'y';
 
 const KIND_TITLE: Record<Annotation['kind'], string> = {
   linear: 'Linear dimension',
@@ -417,6 +431,36 @@ export function AnnotationInspector(p: AnnotationInspectorProps) {
           </p>
         ) : null}
       </Section>
+
+      {p.diameterForm || p.fromNormal ? (
+        <Section title="Form">
+          {p.diameterForm ? (
+            <Segmented
+              label="Dimension form"
+              size={sz}
+              value={p.diameterForm.value}
+              onChange={p.diameterForm.onChange}
+              options={[
+                { value: 'diameter', label: 'Ø', title: 'Diameter' },
+                { value: 'x', label: '↔ linear across', title: 'Linear across, horizontal' },
+                { value: 'y', label: '↕ linear across', title: 'Linear across, vertical' },
+              ]}
+            />
+          ) : null}
+          {p.fromNormal ? (
+            <Switch
+              checked={p.fromNormal.checked}
+              onChange={p.fromNormal.onChange}
+              label="From the normal of the second face"
+            />
+          ) : null}
+          <p className="text-2xs text-fg-subtle">
+            {p.diameterForm
+              ? 'Linear across measures between the circle’s extremes along the view, with the extension lines at its sides.'
+              : 'A draft angle: from the second face’s normal, not from the face itself. Shift on the second pick does the same.'}
+          </p>
+        </Section>
+      ) : null}
 
       {isDimension(a) ? (
         <Section title="Value and tolerance">

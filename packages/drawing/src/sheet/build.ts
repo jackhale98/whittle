@@ -22,6 +22,7 @@ import type {
   Vec3,
   ViewProjection,
 } from '@wren-cad/contracts';
+import type { DisplayItem } from '../annotation/display';
 import type { FitDeviationLookup } from '../annotation/tolerance';
 import { type AttentionEntry, aggregateAttention, viewConfiguration } from '../attention/aggregate';
 import {
@@ -35,6 +36,7 @@ import type { TitleBlockData } from '../template/title-block';
 import type { TemplateLayout } from '../template/types';
 import { type ExprEvaluator, type RefResolver, solveViews, type ViewSolution } from '../view/solve';
 import { type ComposedSheet, composeSheet, type SheetInput, type TableData } from './compose';
+import { constructionItems, constructionShapes, usedConstruction } from './construction';
 
 export interface DrawingBuildInput {
   drawing: Drawing;
@@ -58,6 +60,12 @@ export interface DrawingBuildInput {
   features?: FeatureCalloutData;
   tables?: (table: DrawingTable) => TableData | undefined;
   centerMarkAnchors?: SheetInput['centerMarkAnchors'];
+  /**
+   * Which ref names are construction geometry drawn when a placement uses them (ADR-095). Default
+   * `defaultIsConstruction`: every construction name except a non-origin sketch point (the app
+   * passes the part's standalone points too: `constructionNames`).
+   */
+  isConstruction?: (name: string) => boolean;
 }
 
 export interface DrawingBuild {
@@ -88,6 +96,7 @@ export function buildDrawing(input: DrawingBuildInput): DrawingBuild {
   const annotations = new Map((input.annotations ?? []).map((a) => [a.id, a]));
   const placed: PlacedAnnotation[] = [];
   const contexts = new Map<Id, Omit<PlacementContext, 'placed'>>();
+  const construction = new Map<Id, DisplayItem[]>();
   for (const v of drawing.views) {
     const sol = views.get(v.id);
     if (!sol?.ok || !input.annotations) continue;
@@ -103,12 +112,11 @@ export function buildDrawing(input: DrawingBuildInput): DrawingBuild {
       ...(input.features ? { features: input.features } : {}),
     };
     contexts.set(v.id, ctx);
-    placed.push(
-      ...layoutView(
-        drawing.placements.filter((p) => p.viewId === v.id),
-        ctx,
-      ),
-    );
+    const own = drawing.placements.filter((p) => p.viewId === v.id);
+    placed.push(...layoutView(own, ctx));
+    const used = usedConstruction(own, annotations, res, input.isConstruction);
+    if (used.length > 0)
+      construction.set(v.id, constructionItems(sol, constructionShapes(sol, used)));
   }
   const count = drawing.sheets.length;
   const sheets = drawing.sheets.map((s, i) =>
@@ -122,6 +130,7 @@ export function buildDrawing(input: DrawingBuildInput): DrawingBuild {
       ...(input.projectFields ? { projectFields: input.projectFields } : {}),
       ...(input.tables ? { tables: input.tables } : {}),
       ...(input.centerMarkAnchors ? { centerMarkAnchors: input.centerMarkAnchors } : {}),
+      construction,
     }),
   );
   const templates = new Map<Id, TemplateLayout>(sheets.map((s) => [s.sheetId, s.template]));

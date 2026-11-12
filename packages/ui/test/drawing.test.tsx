@@ -782,6 +782,38 @@ describe('TableInspector', () => {
 });
 
 describe('AnnotationInspector', () => {
+  it('M4.1: a diameter’s form is Ø, or linear across the view’s x or y (one change each)', async () => {
+    const onChange = vi.fn();
+    const { rerender } = renderUI(
+      <AnnotationInspector {...inspector({ diameterForm: { value: 'diameter', onChange } })} />,
+    );
+    const group = screen.getByRole('radiogroup', { name: 'Dimension form' });
+    expect(within(group).getByRole('radio', { name: 'Diameter' })).toBeChecked();
+    await userEvent.click(within(group).getByRole('radio', { name: 'Linear across, horizontal' }));
+    expect(onChange).toHaveBeenLastCalledWith('x');
+    await userEvent.click(within(group).getByRole('radio', { name: 'Linear across, vertical' }));
+    expect(onChange).toHaveBeenLastCalledWith('y');
+    expect(onChange).toHaveBeenCalledTimes(2);
+    rerender(<AnnotationInspector {...inspector({ diameterForm: { value: 'y', onChange } })} />);
+    expect(
+      within(screen.getByRole('radiogroup', { name: 'Dimension form' })).getByRole('radio', {
+        name: 'Linear across, vertical',
+      }),
+    ).toBeChecked();
+    // Without the prop (any other dimension) there is no form to choose.
+    rerender(<AnnotationInspector {...inspector()} />);
+    expect(screen.queryByRole('radiogroup', { name: 'Dimension form' })).toBeNull();
+  });
+
+  it('M4.1: an angle between faces can be measured from the second face’s normal (a draft)', async () => {
+    const onChange = vi.fn();
+    renderUI(<AnnotationInspector {...inspector({ fromNormal: { checked: false, onChange } })} />);
+    const sw = screen.getByRole('switch', { name: 'From the normal of the second face' });
+    expect(sw).toHaveAttribute('aria-checked', 'false');
+    await userEvent.click(sw);
+    expect(onChange).toHaveBeenCalledWith(true);
+  });
+
   it('places a dimension text above, inline or below its line, and shifts it, as typed alternatives to dragging (ADR-094)', async () => {
     const onPlacement = vi.fn();
     renderUI(<AnnotationInspector {...inspector({ onPlacement })} />);

@@ -67,6 +67,11 @@ export interface SheetInput {
   tables?: (table: DrawingTable) => TableData | undefined;
   /** Geometry of manual centre marks' refs, in the view's configuration. */
   centerMarkAnchors?: (mark: CenterMark) => (AnnotationAnchor | null)[];
+  /**
+   * Construction refs the view's placements use, as thin chain lines (M4.1, ADR-095:
+   * `usedConstruction` → `constructionShapes` → `constructionItems`), by view id.
+   */
+  construction?: ReadonlyMap<Id, readonly DisplayItem[]>;
 }
 
 export interface ComposedSheet {
@@ -224,6 +229,7 @@ export function viewItems(
       viewId: vid,
       ...(c.name ? { edge: c.name } : {}),
       ...(c.face ? { face: c.face } : {}),
+      ...(c.cutFace ? { cut: c.cutFace } : {}),
     };
     byRole[role] ??= [];
     byRole[role].push({ ...curveToSheet(c.curve, v), role, source });
@@ -586,6 +592,7 @@ export function composeSheet(input: SheetInput): ComposedSheet {
     .map((v) => input.views.get(v.id))
     .filter((s): s is SolvedView => !!s && s.ok);
   for (const v of solved) items.push(...viewItems(v, input.projections.get(v.view.id), drawing));
+  for (const v of solved) items.push(...(input.construction?.get(v.view.id) ?? []));
   for (const v of solved) {
     items.push(
       ...manualCenterMarks(

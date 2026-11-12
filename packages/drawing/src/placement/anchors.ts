@@ -18,6 +18,7 @@ import {
   norm3,
   scale3,
   sub2,
+  sub3,
 } from '../annotation/geom';
 import { partToSheet, type SolvedView } from '../view/solve';
 
@@ -189,6 +190,51 @@ export function anchorDirection(a: AnnotationAnchor): Vec3 | null {
 export function spanNormal(a: Vec3, b: Vec3): Vec3 | null {
   const n = cross3(a, b);
   return len3(n) < 1e-9 ? null : norm3(n);
+}
+
+/**
+ * The extreme point of an anchor along a direction (M4.1, ADR-095: `RefPoint` `min` / `max`): a
+ * circle's tangent point (when the direction is along its axis the whole rim is extreme, and its
+ * centre has the same coordinate), else the anchor's point lowest (`min`) or highest (`max`).
+ */
+export function extremePoint(a: AnnotationAnchor, at: 'min' | 'max', direction: Vec3): Vec3 {
+  const d = norm3(direction);
+  const sgn = at === 'max' ? 1 : -1;
+  if (a.kind === 'circle') {
+    const n = norm3(a.normal);
+    const inPlane = sub3(d, scale3(n, dot3(d, n)));
+    const l = len3(inPlane);
+    if (l < 1e-9) return a.center;
+    return add3(a.center, scale3(inPlane, (sgn * a.radius) / l));
+  }
+  const pts = anchorPoints(a, 'self');
+  let best = pts[0] as Vec3;
+  for (const p of pts) if (sgn * dot3(p, d) > sgn * dot3(best, d)) best = p;
+  return best;
+}
+
+/**
+ * The meridian circle of a torus a radius is drawn on (M4.1, ADR-095), on the sheet. The torus's
+ * axis must lie in the view plane, where its two meridians are seen as circles at centre ± major
+ * across the axis: the one on the side `angle` (degrees, the stored leader angle) points to. Null
+ * when the axis is not in the view plane (no meridian is seen true).
+ */
+export function torusMeridian(
+  v: SolvedView,
+  a: Extract<AnnotationAnchor, { kind: 'torus' }>,
+  angle: number,
+): { center: Vec2; radius: number } | null {
+  const axis = norm3(a.axis);
+  if (Math.abs(dot3(axis, v.frame.n)) > 1e-6) return null;
+  const across = norm3(cross3(axis, v.frame.n));
+  const c = partToSheet(v, a.center);
+  const plus = partToSheet(v, add3(a.center, scale3(across, a.major)));
+  const u: Vec2 = [Math.cos((angle * Math.PI) / 180), Math.sin((angle * Math.PI) / 180)];
+  const side = dot2(sub2(plus, c), u) >= 0 ? 1 : -1;
+  return {
+    center: partToSheet(v, add3(a.center, scale3(across, side * a.major))),
+    radius: a.minor * v.scale,
+  };
 }
 
 /** Signed coordinate of a point along a unit direction. */

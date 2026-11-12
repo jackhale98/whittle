@@ -2516,8 +2516,11 @@ test.describe('datums and frames on surfaces and features of size (ADR-094)', ()
     page,
   }) => {
     const { hole } = await setup(page);
-    // A Ø6 diameter on the hole.
+    // A Ø6 diameter on the hole: the tool waits after a circle (M4.1); the same circle again is
+    // its diameter.
     await page.locator('[data-tool="dimension"]').click();
+    await click(page, hole.at);
+    await expect(page.getByTestId('prompt-chip')).toContainText('same circle again');
     await click(page, hole.at);
     await expect.poll(count(page, 'diameter')).toBe(1);
     const dia = (await annotations(page)).find((a) => a.kind === 'diameter') as Annotation;

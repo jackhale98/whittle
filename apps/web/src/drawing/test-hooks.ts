@@ -4,10 +4,18 @@
  * extension API.
  */
 
-import { curveToSheet, primitiveBox, textBox, viewOutline } from '@wren-cad/drawing';
+import {
+  curveRole,
+  curveToSheet,
+  primitiveBox,
+  textBox,
+  viewOutline,
+  viewToSheet,
+} from '@wren-cad/drawing';
+import { flattenPrimitive } from '@wren-cad/drawing/annotation';
+import { constructionOf } from './construction';
 import type { DrawingController } from './controller';
-import { viewHit } from './interact';
-import { pickEdge } from './ops-annot';
+import { edgeAt, viewHit } from './interact-pick';
 
 export interface DrawingHooks {
   settled(): Promise<void>;
@@ -24,6 +32,8 @@ export interface DrawingHooks {
       name?: string;
       /** The outlined face (`ProjectedCurve.face`). */
       face?: string;
+      /** M4.1: a section cut edge's model face (`ProjectedCurve.cutFace`). */
+      cutFace?: string;
       kind: string;
       radius?: number;
       center?: [number, number];
@@ -36,21 +46,17 @@ export interface DrawingHooks {
     ms: number;
   } | null;
   /**
-   * Named visible edges of a view on the sheet (sheet mm): where a test can click. Outlines
-   * without an edge name are listed by the face they outline (`name` empty, `face` set).
+   * The pickable curves a view draws (sheet mm): where a test can click. Outlines without an edge
+   * name are listed by the face they outline (`name` empty, `face` set). M4.1: section cut edges
+   * carry `cut` (the model face; `name` empty unless the curve has an edge name too); tangent and
+   * hidden curves are listed when the view draws them, with their `role`; curves that are neither
+   * lines nor arcs (a fillet's B-spline outline) are listed with `kind` `spline`, `ellipse` or
+   * `polyline` and a point on them as `at`. Order: visible named curves first (as before), then
+   * visible cut-only curves, then tangent, then hidden. With `{ construction: true }` the view's
+   * construction candidates follow (`construction` set, `name` empty, `role` `construction`,
+   * `kind` `line`, `arc` or `point`).
    */
-  edges(viewId: string): {
-    name: string;
-    face?: string;
-    kind: string;
-    at: [number, number];
-    a?: [number, number];
-    b?: [number, number];
-    radius?: number;
-    /** Arcs: start and end angle on the sheet (radians, counter-clockwise). */
-    start?: number;
-    end?: number;
-  }[];
+  edges(viewId: string, opts?: { construction?: boolean }): HookEdge[];
   /** Laid-out placements: where their text sits (sheet mm) and what they say. */
   placements(): {
     id: string;
@@ -97,7 +103,22 @@ export interface DrawingHooks {
   hit(
     at: [number, number],
     tol: number,
-  ): { source: unknown; pick: { name: string; ref: string; shape: string; face?: string } | null };
+  ): {
+    source: unknown;
+    pick: {
+      name: string;
+      /** `edge`, `face` (outline or cut edge) or `vertex` (a construction point). */
+      ref: string;
+      shape: string;
+      face?: string;
+      /** M4.1: a section cut edge (`name` is the model face). */
+      cut?: boolean;
+      /** M4.1: construction geometry (`name` is the construction ref). */
+      construction?: boolean;
+      /** M4.1: how the picked run is drawn. */
+      role?: string;
+    } | null;
+  };
   /** The open import plan (Import panel), one row per candidate; null when the panel is closed. */
   importPlan():
     | {
@@ -144,6 +165,8 @@ export interface DrawingHooks {
     placements: number;
     attention: { key: string; severity: string; message: string }[];
     texts: string[];
+    /** M4.1: construction refs the sheet draws because a placement uses them (exact names). */
+    construction: string[];
     resolutions: {
       id: string;
       state: string;
@@ -153,6 +176,28 @@ export interface DrawingHooks {
       count: number | null;
     }[];
   };
+}
+
+/** One entry of `edges()`. */
+export interface HookEdge {
+  name: string;
+  face?: string;
+  /** M4.1: the model face a section's cut edge lies on (`ProjectedCurve.cutFace`). */
+  cut?: string;
+  /** M4.1: a construction candidate's exact ref name. */
+  construction?: string;
+  /** M4.1: `visible`, `tangent`, `hidden` (as drawn), or `construction`. */
+  role: string;
+  /** The kernel's edge kind (`sharp`, `smooth`, `outline`, ...); absent for construction. */
+  edge?: string;
+  kind: string;
+  at: [number, number];
+  a?: [number, number];
+  b?: [number, number];
+  radius?: number;
+  /** Arcs: start and end angle on the sheet (radians, counter-clockwise). */
+  start?: number;
+  end?: number;
 }
 
 declare global {
@@ -188,6 +233,7 @@ export function installDrawingHooks(c: DrawingController): void {
           edge: k.edge,
           ...(k.name ? { name: k.name } : {}),
           ...(k.face ? { face: k.face } : {}),
+          ...(k.cutFace ? { cutFace: k.cutFace } : {}),
           kind: k.curve.kind,
           ...(k.curve.kind === 'line'
             ? { a: k.curve.a as [number, number], b: k.curve.b as [number, number] }
@@ -287,21 +333,20 @@ export function installDrawingHooks(c: DrawingController): void {
       });
     },
     hit(at, tol) {
-      const h = viewHit(c, { at, tol });
-      const s = h?.source;
-      let pick: ReturnType<DrawingHooks['hit']>['pick'] = null;
-      if (s?.kind === 'view' && (s.edge || s.face)) {
-        const e = s.edge
-          ? pickEdge(c, s.viewId, s.edge, at)
-          : pickEdge(c, s.viewId, s.face as string, at, 'face');
-        if (e)
-          pick = {
+      // As a measuring tool picks: construction candidates included, ranked below model edges.
+      const s = viewHit(c, { at, tol }, true)?.source;
+      const e = edgeAt(c, { at, tol }, true);
+      const pick: ReturnType<DrawingHooks['hit']>['pick'] = e
+        ? {
             name: e.name,
             ref: e.ref ?? 'edge',
             shape: e.shape,
             ...(e.face ? { face: e.face } : {}),
-          };
-      }
+            ...(e.cut ? { cut: true } : {}),
+            ...(e.construction ? { construction: true } : {}),
+            ...(e.role ? { role: e.role } : {}),
+          }
+        : null;
       return { source: s ?? null, pick };
     },
     importPlan() {
@@ -324,34 +369,76 @@ export function installDrawingHooks(c: DrawingController): void {
         };
       });
     },
-    edges(viewId) {
+    edges(viewId, opts) {
       const b = c.ui.get().built;
       const sv = b?.build.views.get(viewId);
       if (!b || !sv?.ok) return [];
-      const out: ReturnType<DrawingHooks['edges']> = [];
+      const ranked: { rank: number; e: HookEdge }[] = [];
       for (const k of b.projections.get(viewId)?.curves ?? []) {
-        if (k.role !== 'visible' || (!k.name && !k.face)) continue;
+        const role = curveRole(k, sv);
+        if (!role || (!k.name && !k.face && !k.cutFace)) continue;
         const p = curveToSheet(k.curve, sv);
-        const named = { name: k.name ?? '', ...(k.face ? { face: k.face } : {}) };
+        const named = {
+          name: k.name ?? '',
+          ...(k.face ? { face: k.face } : {}),
+          ...(k.cutFace ? { cut: k.cutFace } : {}),
+          role,
+          edge: k.edge,
+        };
+        // Visible named curves keep the order they always had; the rest follow.
+        const rank = role === 'hidden' ? 3 : role === 'tangent' ? 2 : k.name || k.face ? 0 : 1;
+        let e: HookEdge;
         if (p.kind === 'line')
-          out.push({
+          e = {
             ...named,
             kind: 'line',
             at: [(p.a[0] + p.b[0]) / 2, (p.a[1] + p.b[1]) / 2],
             a: p.a,
             b: p.b,
-          });
+          };
         else if (p.kind === 'arc') {
           const a = (p.start + p.end) / 2;
-          out.push({
+          e = {
             ...named,
             kind: 'arc',
             at: [p.center[0] + p.radius * Math.cos(a), p.center[1] + p.radius * Math.sin(a)],
             radius: p.radius,
             start: p.start,
             end: p.end,
-          });
+          };
+        } else {
+          // A point on the curve near the middle of its flattened run (a spline outline).
+          const pts = flattenPrimitive(p, 0.02).flat();
+          const mid = pts[Math.floor(pts.length / 2)];
+          if (!mid) continue;
+          e = {
+            ...named,
+            kind: p.kind === 'spline' ? 'spline' : p.kind,
+            at: [mid[0], mid[1]],
+          };
         }
+        ranked.push({ rank, e });
+      }
+      const out = ranked.sort((x, y) => x.rank - y.rank).map((x) => x.e);
+      if (!opts?.construction) return out;
+      for (const s of constructionOf(b, viewId)) {
+        const base = { name: '', construction: s.name, role: 'construction' };
+        if (s.kind === 'line') {
+          const a = viewToSheet(sv, s.a);
+          const q = viewToSheet(sv, s.b);
+          out.push({ ...base, kind: 'line', at: [(a[0] + q[0]) / 2, (a[1] + q[1]) / 2], a, b: q });
+        } else if (s.kind === 'circle') {
+          const ctr = viewToSheet(sv, s.center);
+          const r = s.radius * sv.scale;
+          out.push({
+            ...base,
+            kind: 'arc',
+            at: [ctr[0] + r, ctr[1]],
+            radius: r,
+            start: 0,
+            end: 2 * Math.PI,
+          });
+        } else out.push({ ...base, kind: 'point', at: viewToSheet(sv, s.at) });
       }
       return out;
     },
@@ -398,6 +485,13 @@ export function installDrawingHooks(c: DrawingController): void {
           message: e.message,
         })),
         texts: (composed?.list.items ?? []).flatMap((i) => (i.kind === 'text' ? [i.text] : [])),
+        construction: [
+          ...new Set(
+            (composed?.list.items ?? []).flatMap((i) =>
+              i.source?.kind === 'view' && i.source.construction ? [i.source.construction] : [],
+            ),
+          ),
+        ],
         resolutions: [...(b?.main.resolutions.values() ?? [])].map((r) => ({
           id: r.annotationId,
           state: r.state,
