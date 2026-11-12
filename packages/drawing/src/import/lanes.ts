@@ -52,6 +52,8 @@ export interface LeaderRequest {
   from: Vec2;
   /** Leaders: text offsets from `from`. Radial: leader angles in degrees. */
   options: readonly (Vec2 | number)[];
+  /** Leaders whose options also move the attach point: the start of each option (else `from`). */
+  froms?: readonly Vec2[];
   /** Radial: the circle's radius on the sheet; the text sits `distance` beyond it. */
   radius?: number;
   distance?: number;
@@ -629,7 +631,11 @@ export function planLanes(input: LanePlanInput): LanePlan {
       }
       let chosen: number | null = null;
       for (let i = 0; i < r.options.length && chosen === null; i++) {
-        const { line, box } = leaderShapes(r, from, r.options[i] as Vec2 | number, h);
+        const own = r.froms?.[i];
+        const start: Vec2 = own
+          ? [own[0] + at.position[0] - was.position[0], own[1] + at.position[1] - was.position[1]]
+          : from;
+        const { line, box } = leaderShapes(r, start, r.options[i] as Vec2 | number, h);
         const test = inflate(box, CLEAR);
         if (!inside(test, sheet.frame)) continue;
         const seg: Shape = { kind: 'segment', a: line[0], b: line[1] };

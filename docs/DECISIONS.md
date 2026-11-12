@@ -3247,3 +3247,81 @@ Builds during a drag: 71 (view) and 69 (cut vertex) before, 0 after. A drag's si
 **Tests.** drawing: side in the layout (above, below, inline, ASME, vertical, outside) and through SVG, PDF and DXF; `relayout`, `data-host`, `svgItems`. web: drag arithmetic, the drag life cycle (hold, one commit, cancel, no-op), the views that follow a view, the detail grips; the existing drag tests now assert the preview and an untouched store. ui: the viewer's transient layer, per-frame hand-off, text hit reach, the text position fields. E2E (m4-drawings, m4-touch): a drag writes nothing and rebuilds nothing until release and is one undo step (views, dimension lines, tables, the cut line); text along, across and outside, with the hint; arrow keys; inspector; radial, leader and angle text; the detail handles, live preview, Escape, typed fields; finger drags of a text and of the detail radius. Component baselines: the viewer mid-drag (view, dimension, detail) and the inspector's detail centre fields and text position.
 
 **Known limits.** A leader attached to another placement does not follow while that placement is dragged (it does after release). The detail preview draws the parent's projection, which for a detail of a section has no hatching until the kernel's own projection arrives. Lanes planned around other views are not re-planned when a view is moved (as before).
+
+### ADR-094 amendment: sheet tabs, and datums and frames on surfaces and features of size (2026-11-12)
+
+Drawing workstream (packages/drawing, packages/ui/src/drawing, apps/web/src/drawing). Owner problems 1 and 4.
+
+**Sheet tabs** (`SheetTabs`, `ops-sheets.ts`)
+- **Where.** A strip along the bottom edge of the sheet on every tier (desktop under the canvas, tablet and phone between the sheet and the bottom panel). It replaces the top bar's sheet switcher, which only appeared with two sheets. Each tab shows the sheet's number and name. The accessible name starts with what it shows, "2 Details, sheet 2 of 3" (WCAG 2.5.3; axe flagged "Sheet 2 of 3: Details" as a label-content mismatch).
+- **Desktop and tablet** edit on the strip, with nothing modal. Every action is one document command, so one undo step:
+  - **Add** puts `Sheet N` (the first free number) after the last sheet and shows it. The template is per drawing, so the new sheet gets it; its format and scale are the first sheet's, so the frame, title block and size continue the drawing.
+  - **Rename** is an input in the tab (the pencil, or a double-click). Enter or blur commits; Esc keeps the old name.
+  - **Delete** asks inline: "Delete Details and its 3 views and a table?" with Delete and Keep. `removeSheet` cascades, and the neighbouring sheet is shown. The last sheet's delete is disabled, and its tooltip says why.
+  - **Reorder** by dragging a tab (an insertion mark shows where it goes), or with the move-left and move-right buttons, which are the inline alternative to the drag.
+  - The Sheet panel's add and delete now call the same functions.
+- **Phone.** The same tabs, 44 px, for switching only.
+- **Remembering the sheet.** Per drawing, in the route's memory and in the tab's `sessionStorage` (`wren:drawing-sheet:<id>`). Reopening the drawing or reloading the tab returns to the sheet shown last. The app's URL is not used: the drawing route has no URL state, and `ui.drawing` is outside this workstream.
+- **Keyboard.** Ctrl/Cmd+PageUp and PageDown switch sheets on every tier, but not while a text field has focus.
+- **Moving a view to another sheet.** Two ways: the view inspector's **On sheet** field, or dragging the view onto a tab (the tab lights up while the view is over it).
+  - The view takes along every view aligned to it, transitively: they sit on its projection axis. The field names them.
+  - A view that is itself aligned to its parent cannot move alone. The field is disabled and says to move the parent, or to make the view free first.
+  - Free children stay where they are: iso, detail and free sections can live on another sheet. A section's cut line and a detail's circle are still drawn on the parent's sheet.
+  - The group keeps its position when it fits clear of the target sheet's views; otherwise it takes the first free spot. The route then follows it to that sheet, with the view still selected.
+  - It is one undo step: the `updateView`s share one coalescing key and are committed once.
+  - The tab drop wraps whatever drag the press started (`sheet-drop.ts`) without changing interact.ts's drags. Released over a tab, it cancels the move (`cancelEdit`, so no history entry) and then moves the view to that sheet.
+- **Title block.** It already showed `n / m`; a three-sheet golden now pins `1 / 3`, `2 / 3`, `3 / 3`.
+- **Found while testing: a race in `controller.refresh`.** A build that started before a sheet was added came back without that sheet and reset the route to sheet 1. This happened on the tablet E2E. The route now keeps its sheet while the document still has it.
+
+**Export across sheets** (`exports.ts`, `ExportPanel`, the new `@wren-cad/drawing/zip`)
+- The PDF is the whole drawing: every sheet is one page, in sheet order, whatever the scope. A PDF is a multi-page document, and a single-sheet PDF was a surprise.
+- SVG and DXF are one file per sheet. Scope "This sheet" gives that sheet's file. "All N sheets" gives one `.zip` (`<drawing>-svg.zip`, `-r12-dxf.zip`, `-r2000-dxf.zip`), because browsers block several downloads in a row.
+- Print follows the scope.
+- The zip uses fflate's `zipSync`. fflate is already a pinned dependency (the PDF's deflate), so there is no new dependency. The archive has fixed timestamps, so it is reproducible. The entry is lazy and loads on the first multi-sheet SVG or DXF export.
+
+**Datums and frames: two leader forms each** (`placement/leader-forms.ts`, `ops-gdt.ts`)
+- **On a surface.** The datum tool (and the frame tool) picks an edge line in a view.
+  - **Picked edge to face.** The edge's name lists the faces that meet there: `edge(A|B)`, `#k`, the primitive `F…:edge(r|r)`, seams and free edges (`edgeFaceNames`). One `annotationAnchors` query, in the drawing configuration's slot, says which of those faces is a plane seen edge-on along the picked line in this view (`faceAlongLine`). The annotation refs that face. If no face qualifies, or two do, the pick is refused with the reason. A circle or a cylinder outline is also refused, with a pointer to its diameter dimension. Nothing is attached to a guessed entity, and an edge ref is never stored for a surface datum.
+  - **Datum layout.** The triangle's base lies on the face's line, at `t` (where it was picked). Its axis runs across the line, towards the side the leader leaves on (ISO 5459, ASME Y14.5 §6.3). The leader runs from the apex through the bends to the letter box.
+  - **Frame layout.** The leader ends in an arrow on the line (a dot on a surface seen face-on, as before).
+  - **Default text offset.** Out of the material, along the face's outward normal as seen in the view.
+- **On a feature of size.** The tool picks a size dimension on the sheet. The datum and frame tools hit placements first, then edges.
+  - **What counts as a size.** A diameter, or a linear dimension between two straight refs (`at: self/self`). Centre distances, angles and the rest are refused with the reason.
+  - **Datum.** It attaches to the dimension line (`dimensionLine`, `t` 0 or 1, the end nearer the pick). The triangle sits on the extension line at that end, pointing out along the dimension line; the leader carries on in line with it.
+  - **What a diameter datum refs.** The cylinder, with `at: ['axis']`. If the diameter refs a circular edge, its cylinder is the edge's face whose `diameter` anchor is a rim of the same radius and normal. Exactly one must match.
+  - **Frame.** It sits under the dimension's text (`placement`, `text [0, 0]`; dragging puts it beside), with `appliesTo` set to the dimension and empty `refs`, as `GeometricToleranceAnnotation` documents.
+  - **Default frame characteristic.** Position, with the part's first datum that is not on this feature (not its own refs, nor a datum on this dimension's line). Otherwise the form of the axis or median plane, which takes no datum: straightness (Ø) for a diameter, flatness for a width.
+- **A datum on a width is refused** (contract gap, proposal 2 below): "A datum on a width (its median plane) cannot be stored yet". `DatumFeatureAnnotation` takes exactly one ref (document validator), and no `RefPoint` names a median plane. Storing one face would declare a surface datum while the drawing shows a feature-of-size datum. Frames on widths work, through `appliesTo`.
+- **Triangle fill.** `datumTriangleFilled(standard)` is the rule. ISO 5459:2011 and ASME Y14.5-2009/2018 both allow filled or open, and both show the filled triangle first, so Wren draws it filled for every supported standard. The open glyph exists and renders as a closed outline. A per-drawing choice would need a `DrawingStyle` field (proposal 4). Provisional (secondary sources, D9).
+- **Renderers.**
+  - SVG and PDF fill the triangle (`f*`); R2000 writes `SOLID`.
+  - The R12 CNC-safe profile writes fills as closed polylines (ADR-091), so the triangle reads as an outline there. That profile is kept deliberately: it is for CAM.
+  - Goldens for every form: on the line, on the extension, turning to the leader's side, at either end of a lane and a radial dimension line, the attach-target check, a frame's arrow and extension, a frame under and beside a size dimension. DXF tests check the triangle's vertices in `SOLID` and R12 `POLYLINE`. PDF tests check the filled path and one page per sheet.
+
+**Interaction** (`interact-leader.ts`, the overlay)
+- **Handles.** A selected leader shows three: its attach point (only when it sits on a line), each bend, and an "add a bend" handle in the middle of the last leg. The text drags as before. They are hit before what is under the pointer and use the viewer's `SheetDrag` API like every other drag: one coalescing key, committed on release, and Esc or a cancel restores. A leader drag is one undo step: "Move leader", or "Bend leader" when a bend is added.
+- **Snapping.** The triangle or arrow stays on the line it was attached to, and its text keeps its offset.
+  - On a surface's line, the attach point is projected onto the line and snaps to the ends and the middle within 6 px.
+  - On a dimension line, it takes the nearer end. Flipping ends mirrors the text and bends along the line, so the datum keeps pointing out of the dimension.
+- **Inline alternatives** (WCAG 2.5.7), in the inspector: "Triangle (Arrow) along the line (mm)", "End of the dimension line" (Start or End), the text offset X and Y, "Straighten the leader", and "Attached to …".
+- **Extension lines are drawn but cannot be stored yet.** The layout draws a triangle or arrow on the extension of a surface's line (`t` outside [0, 1], with a thin extension line from the outline, tested). But the contract documents `t ∈ [0, 1]` and the document validator refuses anything else. The drag, the inspector field and the import therefore keep `t` in [0, 1] (`storableAttachT`) until proposal 1 lands.
+
+**Import** (planner)
+- **A datum on a surface seen edge-on.** It is placed across its line, out of the material. Its clearance options keep the leader across the line: the middle, then 0.25, 0.75, 0.1 and 0.9 along it, each further out. A frame starts along the outward normal too.
+- **A datum on a cylinder's axis.** If the part (or the import) has a diameter on the same face, or on an edge of it, the datum is placed after it, in that dimension's view, at the end of its dimension line (`dimensionLine`, `t` 0), in line with it. Frames bound by `appliesTo` still go under their dimension.
+- **Option attach points.** `LeaderRequest.froms` (optional) gives each clearance option its own attach point.
+
+**Coordination with the drag-performance work.**
+- interact.ts has three small hooks: the datum and frame tools ask `dimensionAt` before the edge pick, `onPick` calls the surface functions, and the selected-leader handles are checked first. Its drags were not restructured.
+- The new leader drags write through `updatePlacement` per pointer event, like the existing drags. When those move to the transient overlay (ADR-094 "Dragging"), these should move with them.
+- The overlay draws the handles from `leaderHandlesOf`.
+- `PlacedAnnotation.leader` (attach kind, attach point, its line, bends, text point) is new in the layout output, for the handles and the hooks.
+- dimension-layout.ts is untouched. In layout.ts only `leaderGeometry` and the output types changed.
+
+**Contract proposals for the lead** (not applied: contracts and document are lead-owned)
+1. Let `LeaderAttach.ref.t` go outside [0, 1]. Below 0 or above 1 would put the triangle or arrow on the line's extension (ISO 5459 and ISO 1101 both draw it there). Widen the validator to, say, [-1, 2]. The layout and renderers already handle it.
+2. A datum on a width's median plane: either `DatumFeatureAnnotation.appliesTo?: Id` (as frames have; refs may be empty), or a `'median'` `RefPoint` over two face refs. The kernel-client resolution needs it too.
+3. Anchors of a curved face's outline in a view. A frame or a datum on a cylinder's surface (cylindricity, runout) would then attach to its silhouette; today a cylinder face anchors as its axis.
+4. Optionally, `DrawingStyle.datumTriangle?: 'filled' | 'open'`.
+
+**Bundle.** Initial route 236.67 kB gzip, unchanged (limit 250). Everything here is in the lazy drawing chunk.

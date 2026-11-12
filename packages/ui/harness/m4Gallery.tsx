@@ -32,6 +32,7 @@ import {
   ImportPanel,
   InlineCellEditor,
   SheetSettings,
+  SheetTabs,
   SheetViewer,
   type SheetViewerApi,
   StandardChoice,
@@ -947,7 +948,18 @@ function Shell() {
         }
         sheetId="s1"
         onSheet={() => {}}
-        {...(tier === 'phone' ? {} : { onUndo: () => {}, onRedo: () => {} })}
+        {...(tier === 'phone'
+          ? {}
+          : {
+              onUndo: () => {},
+              onRedo: () => {},
+              sheetEdit: {
+                onAdd: () => {},
+                onRename: () => {},
+                onDelete: () => {},
+                onMove: () => {},
+              },
+            })}
         actions={
           <span className="rounded-full bg-warning-soft px-2 py-0.5 text-2xs font-medium text-warning-text">
             Approximate edges
@@ -1033,6 +1045,40 @@ function Shell() {
   );
 }
 
+/** Sheet tabs along the sheet's edge (ADR-094): editing, review (phone), a delete to confirm. */
+function Tabs() {
+  const s = state();
+  const sheets = [
+    { id: 's1', name: 'Sheet 1' },
+    { id: 's2', name: 'Details' },
+    { id: 's3', name: 'Sections A–A and B–B' },
+  ];
+  return (
+    <Frame id="g-m4-sheet-tabs">
+      <div className="w-[44rem] max-w-full">
+        <SheetTabs
+          sheets={sheets}
+          current="s2"
+          onSelect={() => {}}
+          size={size()}
+          {...(s === 'drop' ? { dropTarget: 's3' } : {})}
+          {...(s === 'review'
+            ? {}
+            : {
+                edit: {
+                  onAdd: () => {},
+                  onRename: () => {},
+                  onDelete: () => {},
+                  onMove: () => {},
+                  contents: () => '3 views and a table',
+                },
+              })}
+        />
+      </div>
+    </Frame>
+  );
+}
+
 export function M4Gallery({ section }: { section: string }) {
   switch (section) {
     case 'm4-choice':
@@ -1075,6 +1121,8 @@ export function M4Gallery({ section }: { section: string }) {
       return <Settings />;
     case 'm4-shell':
       return <Shell />;
+    case 'm4-sheet-tabs':
+      return <Tabs />;
     default:
       return null;
   }

@@ -21,6 +21,7 @@ import { host } from './host';
 import { createDrawingKernel, type DrawingKernel } from './kernel';
 import { newDrawing, ratioExpr, suggestScale, usableArea } from './model';
 import { removePlacement } from './ops-annot';
+import { recallSheet } from './ops-sheets';
 import { removeTable } from './ops-tables';
 import { removeView } from './ops-views';
 import { type Built, runPipeline } from './pipeline';
@@ -164,7 +165,7 @@ export class DrawingController {
     this.patch({
       phase: 'drawing',
       drawingId: d.id,
-      sheetId: d.sheets[0]?.id ?? null,
+      sheetId: recallSheet(d) ?? d.sheets[0]?.id ?? null,
       selected: null,
       tool: 'select',
       built: null,
@@ -349,8 +350,12 @@ export class DrawingController {
           pending: false,
           error: null,
           phase: 'drawing',
+          // Kept while the document still has it: a build that started before a sheet was added
+          // (or the route switched to it) must not send the route back to the first sheet.
           sheetId:
-            s.sheetId && r.built.drawing.sheets.some((x) => x.id === s.sheetId)
+            s.sheetId &&
+            (r.built.drawing.sheets.some((x) => x.id === s.sheetId) ||
+              this.drawing()?.sheets.some((x) => x.id === s.sheetId))
               ? s.sheetId
               : (r.built.drawing.sheets[0]?.id ?? null),
         }));

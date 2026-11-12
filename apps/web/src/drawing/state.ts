@@ -96,6 +96,8 @@ export interface DrawingUiState {
   editingCell: string | null;
   /** The shown edges are the draft; the exact ones are on their way (idle). */
   refining: boolean;
+  /** A view is being dragged over this sheet's tab: releasing moves it there (ADR-094). */
+  dropSheet: Id | null;
 }
 
 export const initialDrawingUi: DrawingUiState = {
@@ -119,4 +121,5 @@ export const initialDrawingUi: DrawingUiState = {
   exporting: null,
   editingCell: null,
   refining: false,
+  dropSheet: null,
 };

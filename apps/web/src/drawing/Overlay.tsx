@@ -3,6 +3,7 @@
 import { viewOutline } from '@wren-cad/drawing';
 import type { Size } from '@wren-cad/ui/drawing';
 import { cutHandlesOf, detailGripsOf, handlesOf } from './interact';
+import { leaderHandlesOf } from './interact-leader';
 import type { Built } from './pipeline';
 import type { DrawingUiState } from './state';
 
@@ -167,6 +168,26 @@ export function SheetOverlay({
           strokeDasharray={`${3 * mm} ${2 * mm}`}
         />,
       );
+  }
+  // A selected leader's handles: its attach point (held on its line), bends, and "add a bend".
+  if (sel?.kind === 'placement' && ui.tool === 'select') {
+    for (const h of leaderHandlesOf(b, sel.id)) {
+      const k = h.kind === 'bend' ? `lb${h.index}` : `l${h.kind}`;
+      out.push(
+        <g key={k} data-testid="leader-handle" data-kind={h.kind}>
+          <circle
+            cx={h.at[0]}
+            cy={h.at[1]}
+            r={(h.kind === 'addBend' ? 3.5 : 4.5) * mm}
+            fill={h.kind === 'attach' ? ACCENT : 'var(--color-surface)'}
+            fillOpacity={h.kind === 'attach' ? 0.35 : 1}
+            stroke={ACCENT}
+            strokeWidth={1.3 * mm}
+            strokeDasharray={h.kind === 'addBend' ? `${2 * mm} ${1.5 * mm}` : undefined}
+          />
+        </g>,
+      );
+    }
   }
   const g = ui.ghost;
   if (g?.kind === 'line')

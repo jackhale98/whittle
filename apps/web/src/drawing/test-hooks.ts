@@ -60,8 +60,18 @@ export interface DrawingHooks {
     text: [number, number] | null;
     box: { min: [number, number]; max: [number, number] } | null;
     attention: boolean;
-    /** The dimension line between the arrow tips (linear dimensions). */
+    /** Leader layouts as drawn (sheet mm): attach point, the line it is held on, bends, text. */
+    leader: {
+      attach: string;
+      at: [number, number];
+      on: [[number, number], [number, number]] | null;
+      bends: [number, number][];
+      text: [number, number];
+    } | null;
+    /** A dimension's line between its arrow tips. */
     line: [[number, number], [number, number]] | null;
+    /** The kinds of display items it drew (a datum triangle is a `fill`). */
+    items: string[];
     /** The stored text placement (`shift`, `side`). */
     textPlacement: { shift?: number; side?: string } | null;
   }[];
@@ -217,7 +227,17 @@ export function installDrawingHooks(c: DrawingController): void {
               }
             : null,
           attention: placed?.attention ?? false,
+          leader: placed?.leader
+            ? {
+                attach: placed.leader.attach,
+                at: placed.leader.at,
+                on: placed.leader.on ?? null,
+                bends: placed.leader.bends,
+                text: placed.leader.text,
+              }
+            : null,
           line: placed?.line ?? null,
+          items: (placed?.items ?? []).map((i) => i.kind),
           textPlacement: p.text ?? null,
         };
       });

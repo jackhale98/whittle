@@ -299,6 +299,91 @@ describe('import model annotations', () => {
       text: [0, 0],
     });
   });
+  it('places a datum on a surface across its line, out of the material (ADR-094)', () => {
+    const plan = planImport(input());
+    const c = byKey(plan).get('annotation:A4');
+    const v = c?.viewId ? input().views.get(c.viewId) : undefined;
+    if (!c?.placement || !v?.ok) throw new Error('A4 not placed');
+    const l = c.placement.layout;
+    if (l.kind !== 'leader') throw new Error('not a leader');
+    // The section's cut line crosses the middle of the bottom face's line and the width
+    // dimension A1's text sits under it, so the datum moves along the line (never off it: a
+    // stored `t` is in [0, 1]).
+    expect(l.attach.kind).toBe('ref');
+    const t = l.attach.kind === 'ref' ? l.attach.t : undefined;
+    expect(t).toBeGreaterThanOrEqual(0);
+    expect(t).toBeLessThanOrEqual(1);
+    expect(t).not.toBe(0.5);
+    // The bottom face (normal −z) is seen edge-on: the text goes straight out of it.
+    const h = drawing().style.text.dimension;
+    const n = v.frame;
+    const down: [number, number] = [-n.x[2], -n.y[2]];
+    const k = (l.text[0] * down[0] + l.text[1] * down[1]) / (4 * h);
+    expect([1, 1.5, 2, 3]).toContain(Math.round(k * 1e9) / 1e9);
+    expect(l.text[0] * down[1] - l.text[1] * down[0]).toBeCloseTo(0, 9);
+    // Without the section's cut line (it crosses the middle of the line) and the dimension, it
+    // sits in the middle.
+    const d = drawing(
+      {},
+      drawing().views.filter((x) => x.id !== 'V4'),
+    );
+    const alone = planImport(
+      input(
+        {
+          part: part(ANNOTATIONS.filter((x) => x.id !== 'A1')),
+          views: solveViews({ drawing: d, bounds: PART_BOUNDS, evaluate }),
+        },
+        d,
+      ),
+    );
+    const la = byKey(alone).get('annotation:A4')?.placement?.layout;
+    expect(la?.kind === 'leader' && la.attach).toEqual({ kind: 'ref', index: 0 });
+  });
+  it('places a datum on a feature of size in line with its diameter’s dimension line', () => {
+    const datum: Annotation = {
+      id: 'A7',
+      kind: 'datumFeature',
+      origin: { kind: 'model' },
+      refs: [{ name: 'F2:bore', kind: 'face' }],
+      at: ['axis'],
+      label: 'B',
+    };
+    const res = [
+      ...resolutions(),
+      {
+        annotationId: 'A7',
+        state: 'ok' as const,
+        anchors: [
+          {
+            kind: 'axis' as const,
+            origin: [50, 30, 0] as Vec3,
+            direction: [0, 0, 1] as Vec3,
+            extent: [0, 40] as [number, number],
+          },
+        ],
+      },
+    ];
+    const plan = planImport(
+      input({
+        part: part([...ANNOTATIONS, datum]),
+        resolutions: new Map(res.map((r) => [r.annotationId, r])),
+      }),
+    );
+    const c = byKey(plan);
+    const dia = c.get('annotation:A3')?.placement;
+    const placed = c.get('annotation:A7')?.placement;
+    expect(placed?.viewId).toBe(dia?.viewId);
+    const l = placed?.layout;
+    if (l?.kind !== 'leader') throw new Error('not a leader');
+    expect(l.attach).toEqual({ kind: 'dimensionLine', placementId: dia?.id, t: 0 });
+    // Out of the dimension line's start, along it.
+    const dl = dia?.layout;
+    if (dl?.kind !== 'radial') throw new Error('not radial');
+    const u = [-Math.cos((dl.angle * Math.PI) / 180), -Math.sin((dl.angle * Math.PI) / 180)];
+    const len = Math.hypot(l.text[0], l.text[1]);
+    expect(l.text[0] / len).toBeCloseTo(u[0] as number, 9);
+    expect(l.text[1] / len).toBeCloseTo(u[1] as number, 9);
+  });
   it('is deterministic and the command only carries checked candidates', () => {
     const a = planImport(input());
     const b = planImport(input());

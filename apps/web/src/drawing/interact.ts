@@ -41,12 +41,11 @@ import {
 import type { DrawingController } from './controller';
 import { moveVertex } from './cutline';
 import { arcDrag, detailRadius, textDrag } from './drag-math';
+import { leaderHandleDrag } from './interact-leader';
 import { dominantAxis, sideForDirection } from './model';
 import {
   addChamfer,
-  addDatum,
   addFinish,
-  addFrame,
   addNote,
   createDimension,
   createOrdinate,
@@ -54,6 +53,13 @@ import {
   reattachPick,
   updatePlacement,
 } from './ops-annot';
+import {
+  addDatumOnSize,
+  addDatumOnSurface,
+  addFrameOnSize,
+  addFrameOnSurface,
+  dimensionAt,
+} from './ops-gdt';
 import { updateTable } from './ops-tables';
 import { addDetail, addProjectedView, addSection, updateView } from './ops-views';
 import {
@@ -896,6 +902,15 @@ function pickTool(c: DrawingController, _p: SheetPointer): SheetDrag {
   return {
     up(q, moved) {
       if (moved) return;
+      // Datums and frames: a size dimension under the pointer means its feature of size.
+      if (tool === 'datum' || tool === 'gdt') {
+        const size = dimensionAt(c, q);
+        if (size) {
+          if (tool === 'datum') void addDatumOnSize(c, size);
+          else addFrameOnSize(c, size);
+          return;
+        }
+      }
       const pick = edgeAt(c, q);
       if (!pick) {
         c.patch({
@@ -1005,10 +1020,10 @@ async function onPick(
       await addChamfer(c, pick);
       return;
     case 'datum':
-      await addDatum(c, pick);
+      await addDatumOnSurface(c, pick);
       return;
     case 'gdt':
-      await addFrame(c, pick);
+      await addFrameOnSurface(c, pick);
       return;
     case 'finish':
       await addFinish(c, pick);
@@ -1047,8 +1062,12 @@ export function beginInteraction(c: DrawingController, p: SheetPointer): SheetDr
       break;
   }
 
-  // Select: the handles of the selected view first, then what is under the pointer.
+  // Select: the handles of the selected view or leader first, then what is under the pointer.
   const sel = c.ui.get().selected;
+  if (sel?.kind === 'placement') {
+    const lh = leaderHandleDrag(c, sel.id, p);
+    if (lh) return lh;
+  }
   if (sel?.kind === 'view') {
     const bb = c.built();
     const cutHandle = bb

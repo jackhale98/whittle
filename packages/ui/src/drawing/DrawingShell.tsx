@@ -2,6 +2,7 @@ import * as RTabs from '@radix-ui/react-tabs';
 import { ArrowLeft, ChevronDown, ChevronUp, Redo2, Undo2 } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { cn, IconButton } from '../components/primitives';
+import { SheetTabs, type SheetTabsProps } from './SheetTabs';
 
 export interface DrawingPanelDef {
   id: string;
@@ -22,6 +23,10 @@ export interface DrawingShellProps {
   sheets: readonly { id: string; name: string }[];
   sheetId: string | null;
   onSheet(id: string): void;
+  /** Sheet editing on the tabs (desktop, tablet); absent on the phone, which only switches. */
+  sheetEdit?: SheetTabsProps['edit'];
+  /** The tab a dragged view would move to. */
+  dropSheet?: string | null;
   onUndo?(): void;
   onRedo?(): void;
   /** Right of the title: configuration badge, kernel notice, export. */
@@ -114,26 +119,6 @@ export function DrawingShell(p: DrawingShellProps) {
       >
         {p.title}
       </h1>
-      {p.sheets.length > 1 ? (
-        <nav aria-label="Sheets" className="ml-1 flex gap-0.5 rounded-[10px] bg-surface-2 p-0.5">
-          {p.sheets.map((s) => (
-            <button
-              key={s.id}
-              type="button"
-              aria-current={s.id === p.sheetId ? 'page' : undefined}
-              onClick={() => p.onSheet(s.id)}
-              className={cn(
-                'h-8 rounded-[8px] px-2.5 text-xs font-medium',
-                s.id === p.sheetId
-                  ? 'bg-surface text-fg shadow-[0_1px_2px_rgb(15_23_42/0.14)]'
-                  : 'text-fg-muted',
-              )}
-            >
-              {s.name}
-            </button>
-          ))}
-        </nav>
-      ) : null}
       <div className="flex-1" />
       {p.onUndo ? (
         <IconButton
@@ -157,6 +142,19 @@ export function DrawingShell(p: DrawingShellProps) {
     </header>
   );
 
+  // The sheet tabs run along the sheet's bottom edge on every tier (ADR-094).
+  const tabs =
+    p.sheets.length > 0 ? (
+      <SheetTabs
+        sheets={p.sheets}
+        current={p.sheetId}
+        onSelect={p.onSheet}
+        {...(p.sheetEdit ? { edit: p.sheetEdit } : {})}
+        {...(p.dropSheet !== undefined ? { dropTarget: p.dropSheet } : {})}
+        size={touch ? 'touch' : 'md'}
+      />
+    ) : null;
+
   if (p.tier === 'desktop') {
     return (
       <div
@@ -170,10 +168,13 @@ export function DrawingShell(p: DrawingShellProps) {
           {p.tools ? (
             <div className="w-14 shrink-0 border-r border-border bg-surface">{p.tools}</div>
           ) : null}
-          <main className="relative min-w-0 flex-1" data-testid="drawing-canvas">
-            {p.canvas}
-            {p.overlay}
-          </main>
+          <div className="flex min-w-0 flex-1 flex-col">
+            <main className="relative min-h-0 min-w-0 flex-1" data-testid="drawing-canvas">
+              {p.canvas}
+              {p.overlay}
+            </main>
+            {tabs}
+          </div>
           <aside
             aria-label="Drawing panels"
             className="flex w-[22rem] shrink-0 flex-col border-l border-border bg-surface"
@@ -204,6 +205,7 @@ export function DrawingShell(p: DrawingShellProps) {
           ) : null}
           {p.overlay}
         </main>
+        {tabs}
         <section
           aria-label="Drawing panels"
           data-testid="drawing-sheet-panel"

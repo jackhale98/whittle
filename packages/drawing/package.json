@@ -12,7 +12,8 @@
     "./svg": "./src/svg/index.ts",
     "./pdf": "./src/pdf/index.ts",
     "./dxf": "./src/dxf/index.ts",
-    "./font": "./src/font/index.ts"
+    "./font": "./src/font/index.ts",
+    "./zip": "./src/zip/index.ts"
   },
   "scripts": {
     "typecheck": "tsc -p .",

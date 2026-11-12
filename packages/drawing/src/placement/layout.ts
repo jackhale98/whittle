@@ -25,6 +25,7 @@ import type {
   GpsStandard,
   HoleCalloutAnnotation,
   Id,
+  LeaderAttach,
   Vec2,
   Vec3,
 } from '@wren-cad/contracts';
@@ -78,6 +79,7 @@ import {
   spanNormal,
   viewDirection,
 } from './anchors';
+import { datumTriangleFilled, datumTriangleSize } from './leader-forms';
 
 /** Placement-level problems (the drawing's needs-attention panel lists them). */
 export type PlacementIssue =
@@ -100,11 +102,25 @@ export interface PlacedAnnotation {
   textBox: Vec2[];
   /** Dimension line between the arrow tips (attach `dimensionLine`). */
   line?: [Vec2, Vec2];
+  /** Leader layouts: where the leader is attached and runs, sheet mm (drag handles, ADR-094). */
+  leader?: LeaderGeometry;
   /** Needs attention: drawn in the attention role, no value. */
   attention: boolean;
   /** Not in this configuration: nothing drawn (listed quietly). */
   suppressed: boolean;
   issues: PlacementIssue[];
+}
+
+/** A leader as laid out (sheet mm): what the route's handles drag. */
+export interface LeaderGeometry {
+  attach: LeaderAttach['kind'];
+  /** The attach point: the triangle's base centre or the arrow's tip. */
+  at: Vec2;
+  /** The line the attach point sits on (the surface's line, the dimension line), when it has one. */
+  on?: [Vec2, Vec2];
+  bends: Vec2[];
+  /** The text point (`attach + layout.text`). */
+  text: Vec2;
 }
 
 /** Model data for callouts whose numbers come from a feature (hole, thread, chamfer). */
@@ -169,6 +185,7 @@ interface Builder {
   items: DisplayItem[];
   issues: PlacementIssue[];
   attention: boolean;
+  leader?: LeaderGeometry;
 }
 
 function datumLabelFor(annotations: ReadonlyMap<Id, Annotation>) {
@@ -229,6 +246,7 @@ export function layoutPlacement(
     items,
     textBox: out?.textBox ?? [],
     ...(out?.line ? { line: out.line } : {}),
+    ...(b.leader ? { leader: b.leader } : {}),
     attention: b.attention,
     issues: b.issues,
   };
@@ -638,16 +656,21 @@ function leaderGeometry(
   const h = a.kind === 'note' ? ctx.style.text.note : ctx.style.text.dimension;
   const style = ctx.style.dimension;
 
-  // Attach point.
+  // Attach point, and the line it sits on (a surface seen edge-on, an edge, a dimension line).
   let attach: Vec2 | undefined;
   let anchor: AnnotationAnchor | null | undefined;
+  let on: [Vec2, Vec2] | undefined;
   let below = false;
   if (l.attach.kind === 'ref') {
     let anchors = anchorsOf(res);
     if (a.kind === 'geometricTolerance' && a.refs.length === 0 && a.appliesTo)
       anchors = anchorsOf(ctx.resolutions.get(a.appliesTo));
     anchor = anchors[l.attach.index];
-    if (anchor) attach = attachPoint(v, anchor, l.attach.t);
+    if (anchor) {
+      attach = attachPoint(v, anchor, l.attach.t);
+      const seg = projectedSegment(v, anchor);
+      if (seg && dist2(seg[0], seg[1]) > 1e-9) on = seg;
+    }
   } else {
     const other = ctx.placed.get(l.attach.placementId);
     if (!other || other.textBox.length === 0) {
@@ -658,12 +681,21 @@ function leaderGeometry(
       const ys = other.textBox.map((p) => p[1]);
       attach = [Math.min(...xs), Math.min(...ys)];
       below = true;
-    } else if (other.line) attach = lerp2(other.line[0], other.line[1], l.attach.t);
+    } else if (other.line && dist2(other.line[0], other.line[1]) > 1e-9) {
+      on = other.line;
+      attach = lerp2(other.line[0], other.line[1], l.attach.t);
+    } else {
+      // Not a dimension (a leader's own `line` is one point): nothing to sit in line with.
+      b.issues.push({ kind: 'attachTargetMissing', placementId: l.attach.placementId });
+      b.attention = true;
+    }
   }
   if (!attach) {
     if (l.attach.kind === 'ref') b.issues.push({ kind: 'anchorsMissing' });
     return null;
   }
+  const at0 = attach;
+  const bendPts = (l.bends ?? []).map((p) => add2(at0, p));
 
   // Content block in a local frame.
   const content = leaderContent(a, res, ctx, h, b);
@@ -671,23 +703,60 @@ function leaderGeometry(
   const prims: Primitive[] = [];
   let placeAt: Vec2;
   let side: 'left' | 'right' = 'right';
+  b.leader = {
+    attach: l.attach.kind,
+    at: attach,
+    ...(on ? { on } : {}),
+    bends: bendPts,
+    text: textAt,
+  };
 
   if (below) {
-    // A frame (or note) directly under another placement's text: no leader.
+    // A frame (or note) with another placement's text (under or beside it): no leader.
     placeAt = add2(attach, [l.text[0], l.text[1] - 0.5 * h - content.box.max[1]]);
     prims.push(...shift(content.prims, placeAt));
     return finish(prims, content.box, placeAt);
   }
 
+  // A ref attach off the ends of its line sits on the line's extension (a thin line out to it).
+  const t = l.attach.kind === 'ref' ? l.attach.t : undefined;
+  const extension = (reach: number) => {
+    if (!on || t === undefined || (t >= 0 && t <= 1)) return;
+    const end = t < 0 ? on[0] : on[1];
+    if (dist2(end, at0) <= style.extensionGap) return;
+    const out = norm2(sub2(at0, end));
+    prims.push({
+      kind: 'line',
+      a: add2(end, scale2(out, style.extensionGap)),
+      b: add2(at0, scale2(out, reach + style.extensionOvershoot)),
+    });
+  };
+
   if (a.kind === 'datumFeature') {
-    // Triangle on the surface, a leader to the letter box (no landing).
-    const pts = [attach, ...(l.bends ?? []).map((p) => add2(attach as Vec2, p)), textAt];
-    const first = pts[1] ?? textAt;
-    const dir = norm2(sub2(first, attach));
-    const ang = angle2(dir) - Math.PI / 2;
-    prims.push(...placeSymbol('datumTriangle', attach, 2 * h * 0.5 * 1.15, ang));
-    prims.push({ kind: 'polyline', points: pts });
-    const prev = pts[pts.length - 2] ?? attach;
+    const tri = datumTriangleSize(h);
+    const glyph = datumTriangleFilled(ctx.standard) ? 'datumTriangle' : 'datumTriangleOpen';
+    const toward = bendPts[0] ?? textAt;
+    // The triangle's axis: across the surface line, to the side the leader leaves on (ISO 5459,
+    // ASME Y14.5 §6.3); in line with a dimension line, pointing out of its end; else along the
+    // leader.
+    let axis: Vec2;
+    if (on && l.attach.kind === 'dimensionLine') {
+      const u = norm2(sub2(on[1], on[0]));
+      axis = l.attach.t < 0.5 ? scale2(u, -1) : u;
+    } else if (on) {
+      const n = perp2(norm2(sub2(on[1], on[0])));
+      axis = dot2(sub2(toward, attach), n) < 0 ? scale2(n, -1) : n;
+      extension(tri.base / 2);
+    } else {
+      const d = sub2(toward, attach);
+      axis = Math.hypot(d[0], d[1]) < 1e-9 ? [0, 1] : norm2(d);
+    }
+    prims.push(...placeSymbol(glyph, attach, tri.base, angle2(axis) - Math.PI / 2));
+    const apex = add2(attach, scale2(axis, tri.height));
+    const pts = [apex, ...bendPts, textAt];
+    if (dist2(apex, textAt) > 1e-9 || bendPts.length > 0)
+      prims.push({ kind: 'polyline', points: pts });
+    const prev = pts[pts.length - 2] ?? apex;
     const d = sub2(textAt, prev);
     const box = content.box;
     if (Math.abs(d[1]) >= Math.abs(d[0])) {
@@ -704,7 +773,7 @@ function leaderGeometry(
     // Symbol apex on the surface, or at the end of a leader with an arrow.
     if (dist2(textAt, attach) < 1e-9) placeAt = attach;
     else {
-      const pts = [attach, ...(l.bends ?? []).map((p) => add2(attach as Vec2, p)), textAt];
+      const pts = [attach, ...bendPts, textAt];
       prims.push({ kind: 'polyline', points: pts });
       const lg = leaderLayout({
         attach,
@@ -723,9 +792,10 @@ function leaderGeometry(
   }
 
   const terminator = anchor && isSurfaceFaceOn(v, anchor) ? 'dot' : 'arrow';
+  extension(0);
   const lg = leaderLayout({
     attach,
-    bends: (l.bends ?? []).map((p) => add2(attach as Vec2, p)),
+    bends: bendPts,
     text: textAt,
     ...(l.landing ? { landing: l.landing } : {}),
     contentWidth: content.width,

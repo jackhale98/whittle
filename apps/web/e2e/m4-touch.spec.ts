@@ -284,6 +284,203 @@ test.describe('tablet', () => {
     await a11y(page);
   });
 
+  test('sheet tabs with fingers: add, switch, rename, reorder, move a view, delete; undo each (ADR-094)', async ({
+    page,
+  }) => {
+    await openDemo(page);
+    await newDrawing(page);
+    await page.getByTestId('drawing-panel-toggle').tap();
+    await panelTab(page, 'Views').tap();
+    await page.getByTestId('add-standard-views').tap();
+    await expect.poll(async () => (await drawing(page).state()).views.length).toBe(3);
+    await built(page);
+    await page.getByTestId('drawing-panel-toggle').tap();
+    const tabs = page.getByTestId('sheet-tabs');
+    const tab = (n: number) =>
+      tabs.getByRole('button', { name: new RegExp(`^${n} .*, sheet ${n} of \\d+$`) });
+    const sheets = async () => ((await drawings(page))[0] as Drawing).sheets;
+    const undo = () => page.getByTestId('drawing-undo').tap();
+    // 44 px targets along the sheet's edge.
+    const tb = await tab(1).boundingBox();
+    expect(tb?.height ?? 0).toBeGreaterThanOrEqual(44);
+    const add = tabs.getByTestId('sheet-add');
+    expect((await add.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44);
+
+    await add.tap();
+    await expect.poll(async () => (await sheets()).length).toBe(2);
+    await expect(tab(2)).toHaveAttribute('aria-current', 'page');
+    await undo();
+    await expect.poll(async () => (await sheets()).length).toBe(1);
+    await add.tap();
+    await expect.poll(async () => (await sheets()).length).toBe(2);
+    const [s1, s2] = (await sheets()).map((s) => s.id) as [string, string];
+    await tab(1).tap();
+    await expect.poll(async () => (await drawing(page).state()).sheetId).toBe(s1);
+
+    // Rename on the tab, with the on-screen keyboard's Enter.
+    await tab(2).tap();
+    await tabs.getByTestId('sheet-rename-start').tap();
+    const name = tabs.getByRole('textbox', { name: 'Name of sheet 2' });
+    await name.fill('Sections');
+    await name.press('Enter');
+    await expect.poll(async () => (await sheets())[1]?.name).toBe('Sections');
+    await undo();
+    await expect.poll(async () => (await sheets())[1]?.name).not.toBe('Sections');
+    // Reorder with the move buttons (the alternative to dragging a tab).
+    await tabs.getByTestId('sheet-move-left').tap();
+    await expect.poll(async () => (await sheets()).map((s) => s.id)).toEqual([s2, s1]);
+    await undo();
+    await expect.poll(async () => (await sheets()).map((s) => s.id)).toEqual([s1, s2]);
+
+    // Move the front view (and its aligned views) to sheet 2 from the inspector. Selected from
+    // the Views list (the tap-on-the-sheet selection is covered by the first tablet test).
+    await tab(1).tap();
+    const s = await built(page);
+    const front = viewOf(s, 'base');
+    if (!front) throw new Error('no front view');
+    await page.getByTestId('drawing-panel-toggle').tap();
+    await panelTab(page, 'Views').tap();
+    await page.locator(`[data-view-row="${front.id}"]`).tap();
+    await expect.poll(async () => (await drawing(page).state()).selected?.kind).toBe('view');
+    await panelTab(page, 'Inspector').tap();
+    await page.getByRole('combobox', { name: 'On sheet' }).selectOption(s2);
+    await expect
+      .poll(
+        async () =>
+          ((await drawings(page))[0] as Drawing).views.filter((v) => v.sheetId === s2).length,
+      )
+      .toBe(3);
+    await undo();
+    await expect
+      .poll(
+        async () =>
+          ((await drawings(page))[0] as Drawing).views.filter((v) => v.sheetId === s1).length,
+      )
+      .toBe(3);
+
+    // Delete with the inline confirmation.
+    await tab(2).tap();
+    await tabs.getByTestId('sheet-delete').tap();
+    await a11y(page);
+    await tabs.getByTestId('sheet-delete-confirm').tap();
+    await expect.poll(async () => (await sheets()).length).toBe(1);
+    await undo();
+    await expect.poll(async () => (await sheets()).length).toBe(2);
+    await a11y(page);
+  });
+
+  test('datums and frames with fingers: on a surface and on a feature of size; undo each (ADR-094)', async ({
+    page,
+  }) => {
+    await openDemo(page);
+    await newDrawing(page);
+    await page.getByTestId('drawing-panel-toggle').tap();
+    await panelTab(page, 'Views').tap();
+    await page.getByTestId('add-standard-views').tap();
+    await expect.poll(async () => (await drawing(page).state()).views.length).toBe(3);
+    await page.getByTestId('drawing-panel-toggle').tap();
+    await drawing(page).exact();
+    const s = await built(page);
+    const top = viewOf(s, 'projected', 'top');
+    if (!top) throw new Error('no top view');
+    const edges = await drawing(page).edges(top.id);
+    const side = edges
+      .filter(
+        (e) =>
+          e.kind === 'line' &&
+          e.a &&
+          e.b &&
+          Math.abs(e.a[0] - e.b[0]) < 0.01 &&
+          Math.abs(e.a[1] - e.b[1]) > 30,
+      )
+      .sort((p, q) => p.at[0] - q.at[0])[0];
+    const hole = edges
+      .filter(
+        (e) =>
+          e.kind === 'arc' &&
+          e.start !== undefined &&
+          e.end !== undefined &&
+          Math.abs(e.end - e.start - 2 * Math.PI) < 1e-6,
+      )
+      .sort((p, q) => (p.radius ?? 0) - (q.radius ?? 0))[0];
+    if (!side || !hole) throw new Error('no geometry');
+    const t = await touch(page);
+    const tapAt = async (p: [number, number]) => t.tap([await sheetToPage(page, p)]);
+    const of = async (kind: string) =>
+      ((await app(page).doc()).parts[0]?.annotations ?? []).filter((a) => a.kind === kind);
+    const undo = () => page.getByTestId('drawing-undo').tap();
+
+    // On a surface: the datum refs the face of the line tapped; the frame too.
+    await page.locator('[data-tool="datum"]').tap();
+    await tapAt(side.at);
+    await expect.poll(async () => (await of('datumFeature')).length).toBe(1);
+    expect((await of('datumFeature'))[0]?.refs[0]?.kind).toBe('face');
+    await undo();
+    await expect.poll(async () => (await of('datumFeature')).length).toBe(0);
+    await page.getByTestId('drawing-redo').tap();
+    await expect.poll(async () => (await of('datumFeature')).length).toBe(1);
+    await page.locator('[data-tool="gdt"]').tap();
+    await tapAt(side.at);
+    await expect.poll(async () => (await of('geometricTolerance')).length).toBe(1);
+    await undo();
+    await expect.poll(async () => (await of('geometricTolerance')).length).toBe(0);
+
+    // On a feature of size: a diameter first, then the datum and the frame on it. A finger's pick
+    // is wider: tap the circle where only it is within reach.
+    const c0 = await sheetToPage(page, [0, 0]);
+    const c10 = await sheetToPage(page, [10, 0]);
+    const reach = (14 * 10) / Math.abs(c10.x - c0.x);
+    let onCircle: [number, number] | null = null;
+    const r = hole.radius ?? 0;
+    const centre: [number, number] = [
+      hole.at[0] - r * Math.cos(((hole.start ?? 0) + (hole.end ?? 0)) / 2),
+      hole.at[1] - r * Math.sin(((hole.start ?? 0) + (hole.end ?? 0)) / 2),
+    ];
+    for (let k = 0; k < 16 && !onCircle; k++) {
+      const a = (k * Math.PI) / 8;
+      const p: [number, number] = [centre[0] + r * Math.cos(a), centre[1] + r * Math.sin(a)];
+      const h = (await drawing(page).hit(p, reach)) as { pick: { name: string } | null };
+      // Not under the prompt chip or a toast floating over the sheet.
+      const q = await sheetToPage(page, p);
+      const free = await page.evaluate(
+        ([x, y]) =>
+          !!document
+            .elementFromPoint(x as number, y as number)
+            ?.closest('[data-testid="sheet-svg"]'),
+        [q.x, q.y] as const,
+      );
+      if (h.pick?.name === hole.name && free) onCircle = p;
+    }
+    if (!onCircle) throw new Error('no clear spot on the circle');
+    // The undo above rebuilt the draft (polylines): circles are picked on the exact edges.
+    await drawing(page).exact();
+    await page.locator('[data-tool="dimension"]').tap();
+    await tapAt(onCircle);
+    await expect.poll(async () => (await of('diameter')).length).toBe(1);
+    await built(page);
+    const dia = (await of('diameter'))[0];
+    const dp = (await drawing(page).placements()).find((p) => p.annotationId === dia?.id);
+    if (!dp?.text) throw new Error('no diameter text');
+    await page.locator('[data-tool="datum"]').tap();
+    await tapAt(dp.text);
+    await expect.poll(async () => (await of('datumFeature')).length).toBe(2);
+    const fos = (await of('datumFeature')).find((a) => a.at?.[0] === 'axis');
+    expect(fos).toBeTruthy();
+    await built(page);
+    const fp = (await drawing(page).placements()).find((p) => p.annotationId === fos?.id);
+    expect(fp?.layout.attach?.kind).toBe('dimensionLine');
+    await undo();
+    await expect.poll(async () => (await of('datumFeature')).length).toBe(1);
+    await page.locator('[data-tool="gdt"]').tap();
+    await tapAt(dp.text);
+    await expect.poll(async () => (await of('geometricTolerance')).length).toBe(1);
+    const frame = (await of('geometricTolerance'))[0] as { appliesTo?: string };
+    expect(frame.appliesTo).toBe(dia?.id);
+    await undo();
+    await expect.poll(async () => (await of('geometricTolerance')).length).toBe(0);
+    await a11y(page);
+  });
+
   test('every panel is reachable and accessible on the tablet', async ({ page }) => {
     await openDemo(page);
     await newDrawing(page);
@@ -414,6 +611,54 @@ test.describe('phone: review only', () => {
     await page.getByTestId('drawing-back').tap();
     await expect(page.getByTestId('drawing-route')).toHaveCount(0);
     expect((await drawings(page)).length).toBe(1);
+  });
+
+  test('sheet tabs on the phone switch sheets only (review); Ctrl+PageDown too (ADR-094)', async ({
+    page,
+  }) => {
+    await openDemo(page);
+    const a = app(page);
+    await page.evaluate(() =>
+      (
+        window as unknown as { __wrenApp: { drawingSupport(): Promise<void> } }
+      ).__wrenApp.drawingSupport(),
+    );
+    const partId = (await a.doc()).parts[0]?.id as string;
+    const d = fixtureDrawing(partId);
+    const second = {
+      ...(d.sheets[0] as Drawing['sheets'][number]),
+      id: 'S2PHONE',
+      name: 'Details',
+    };
+    expect(
+      await a.apply({ kind: 'addDrawing', drawing: { ...d, sheets: [...d.sheets, second] } }),
+    ).toBe(true);
+    await page
+      .getByRole('group', { name: 'Viewer tools' })
+      .getByRole('button', { name: 'Parts' })
+      .tap();
+    await page.getByTestId('drawings-section').getByTestId('drawing-open').tap();
+    await expect(page.getByTestId('sheet-viewer')).toBeVisible();
+    await built(page);
+    const tabs = page.getByTestId('sheet-tabs');
+    await expect(tabs).toBeVisible();
+    await expect(tabs.getByTestId('sheet-tab')).toHaveCount(2);
+    // Review only: no add, rename, reorder or delete.
+    await expect(tabs.getByTestId('sheet-add')).toHaveCount(0);
+    await expect(tabs.getByTestId('sheet-actions')).toHaveCount(0);
+    const tab2 = tabs.getByRole('button', { name: /^2 Details, sheet 2 of 2$/ });
+    expect((await tab2.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44);
+    await tab2.tap();
+    await expect.poll(async () => (await drawing(page).state()).sheetId).toBe('S2PHONE');
+    expect((await built(page)).texts).toContain('2 / 2');
+    await page.keyboard.press('Control+PageUp');
+    await expect.poll(async () => (await drawing(page).state()).sheetId).not.toBe('S2PHONE');
+    await a11y(page);
+    // Nothing was edited.
+    expect((await drawings(page))[0]?.sheets.map((s) => s.name)).toEqual([
+      d.sheets[0]?.name,
+      'Details',
+    ]);
   });
 
   test('an annotation that needs attention is listed on the phone, with no value', async ({

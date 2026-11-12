@@ -9,6 +9,7 @@ export {
   type AnnotationInspectorProps,
   CHARACTERISTIC_LABELS,
   type CharacteristicChoice,
+  type LeaderInfo,
 } from './AnnotationInspector';
 export { AttentionPanel, type AttentionPanelProps, type AttentionRow } from './AttentionPanel';
 export { DrawingList, type DrawingListItem, type DrawingListProps } from './DrawingList';
@@ -27,6 +28,7 @@ export {
 export { type HitRegion, type HitResult, hitTest, itemDistance, sourceKey } from './hit';
 export { ImportPanel, type ImportPanelProps, type ImportRow } from './ImportPanel';
 export { SHEET_SIZE_LABELS, SheetSettings, type SheetSettingsProps } from './SheetSettings';
+export { type SheetTab, SheetTabs, type SheetTabsProps } from './SheetTabs';
 export { SheetValueField, type SheetValueFieldProps } from './SheetValueField';
 export {
   type SheetDrag,

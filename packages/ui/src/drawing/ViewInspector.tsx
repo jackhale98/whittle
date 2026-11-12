@@ -75,6 +75,18 @@ export interface ViewInspectorProps {
     missing?: boolean;
   };
   onConfiguration(value: Id | null | undefined): void;
+  /**
+   * The sheet the view is on. Moving it takes the views aligned to it along (ADR-094); `note`
+   * says what moves with it, or why it cannot move on its own.
+   */
+  sheet?: {
+    value: Id;
+    options: readonly { id: Id; name: string }[];
+    onChange(id: Id): void;
+    note?: string;
+    /** Set when the view cannot move by itself (an aligned view follows its parent). */
+    blocked?: string;
+  };
   /** Free views: the position of the view's centre (sheet mm). */
   position?: { x: number; y: number };
   onPosition?(x: number, y: number): void;
@@ -137,6 +149,33 @@ export function ViewInspector(p: ViewInspectorProps) {
     <div data-testid="view-inspector" className="flex flex-col">
       <Section title={p.title}>
         {p.parentName ? <p className="text-xs text-fg-muted">From {p.parentName}</p> : null}
+        {p.sheet ? (
+          <Field
+            label="On sheet"
+            hint={
+              p.sheet.blocked ??
+              (p.sheet.options.length < 2 ? 'Add a sheet to move views to it.' : p.sheet.note)
+            }
+          >
+            <select
+              aria-label="On sheet"
+              data-testid="view-sheet"
+              value={p.sheet.value}
+              disabled={p.sheet.blocked !== undefined || p.sheet.options.length < 2}
+              onChange={(e) => p.sheet?.onChange(e.target.value)}
+              className={cn(
+                'rounded-control bg-surface-2 px-2 text-ui outline-none focus-visible:shadow-[inset_0_0_0_2px_var(--color-accent)] disabled:opacity-60',
+                touch ? 'h-11 text-sm' : 'h-8',
+              )}
+            >
+              {p.sheet.options.map((o, i) => (
+                <option key={o.id} value={o.id}>
+                  {i + 1} {o.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+        ) : null}
         <Field
           label="Scale"
           hint={p.scale === '' ? `Inherited: ${p.inheritedScale}` : undefined}
