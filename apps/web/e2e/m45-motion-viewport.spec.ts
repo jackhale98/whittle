@@ -54,13 +54,18 @@ const FAKE_HID = () => {
     combined,
     hold: (v: number[], ms: number) =>
       new Promise<void>((resolve) => {
+        // At least a few reports per hold: on a loaded runner with software GL the main thread can
+        // stall for hundreds of ms, and an 8 ms timer may then fire only once in `ms`. The first
+        // report of a session only starts the clock, so one report alone would move nothing.
         const t0 = performance.now();
+        let sent = 0;
         const id = setInterval(() => {
-          if (performance.now() - t0 >= ms) {
+          if (performance.now() - t0 >= ms && sent >= 4) {
             clearInterval(id);
             combined(0, 0, 0, 0, 0, 0);
             resolve();
-          } else
+          } else {
+            sent++;
             combined(
               v[0] as number,
               v[1] as number,
@@ -69,6 +74,7 @@ const FAKE_HID = () => {
               v[4] as number,
               v[5] as number,
             );
+          }
         }, 8);
       }),
   };
@@ -187,15 +193,23 @@ test('push and pull zoom toward the surface under the cursor', async ({ page }) 
   const d0 = (await cameraState(page)).distance;
   // Device y toward the user is +: push away = zoom in. Long enough for slow software-GL frames
   // (samples are capped at 50 ms each, so a busy main thread only shortens the move).
-  await hold(page, [0, -0.5, 0, 0, 0, 0], 2000);
-  await frame(page);
-  const d1 = (await cameraState(page)).distance;
+  // Under load each hold may integrate much less than its wall-clock length (stalls are capped
+  // at 50 ms per sample), so hold again until the zoom has gone far enough, a few times at most.
+  const holdUntil = async (v: number[], done: (d: number) => boolean) => {
+    for (let i = 0; i < 4; i++) {
+      await hold(page, v, 2000);
+      await frame(page);
+      const d = (await cameraState(page)).distance;
+      if (done(d)) return d;
+    }
+    return (await cameraState(page)).distance;
+  };
+  const d1 = await holdUntil([0, -0.5, 0, 0, 0, 0], (d) => d < d0 * 0.9);
   expect(d1).toBeLessThan(d0 * 0.9);
   const sc = await toPage(page, s.top);
   expect(Math.hypot(sc.x - s.at.x, sc.y - s.at.y)).toBeLessThan(2);
-  await hold(page, [0, 0.5, 0, 0, 0, 0], 2000);
-  await frame(page);
-  expect((await cameraState(page)).distance).toBeGreaterThan(d1 * 1.1);
+  const d2 = await holdUntil([0, 0.5, 0, 0, 0, 0], (d) => d > d1 * 1.1);
+  expect(d2).toBeGreaterThan(d1 * 1.1);
 });
 
 test('a mouse drag in flight is never fought; the device works again after it', async ({
