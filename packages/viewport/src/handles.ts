@@ -109,7 +109,16 @@ export class ArrowHandle {
   }
 }
 
-/** World units covered by one CSS px at `depth` for a vertical-FOV perspective camera. */
-export function worldPerPixel(depth: number, p11: number, heightCss: number): number {
-  return (2 * Math.max(depth, 1e-6)) / (Math.max(p11, 1e-6) * Math.max(heightCss, 1));
+/**
+ * World units covered by one CSS px: at `depth` for a vertical-FOV perspective camera, anywhere for
+ * an orthographic one (`p11` = 1 / half view height, ADR-098; `depth` is ignored).
+ */
+export function worldPerPixel(
+  depth: number,
+  p11: number,
+  heightCss: number,
+  orthographic = false,
+): number {
+  const d = orthographic ? 1 : Math.max(depth, 1e-6);
+  return (2 * d) / (Math.max(p11, 1e-6) * Math.max(heightCss, 1));
 }

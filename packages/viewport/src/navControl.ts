@@ -9,7 +9,6 @@ import {
   ROTATE_SPEED_MAX,
   ROTATE_SPEED_MIN,
 } from './constants';
-import { worldPerPixel } from './handles';
 import { emitGesture } from './input';
 import { cross3, NAV_SYNC_BVH_TRIANGLES } from './internal';
 import {
@@ -23,6 +22,7 @@ import {
 } from './navigation';
 import { type Dot, disposeOverlay, makeDot } from './overlays';
 import { enablePicking, idFresh, pickFace, rayAt, syncCameraMatrices } from './picking';
+import { cameraWorldPerPixel, setProjection } from './projection';
 import { requestRender } from './renderLoop';
 import type { NavigationState } from './types';
 import type { ViewportImpl } from './viewport';
@@ -38,6 +38,11 @@ export function setNavigation(vp: ViewportImpl, options: Partial<NavigationOptio
   vp.navMachine.setPreset(next.preset);
   vp.controls.dollySpeed = next.invertZoom ? -1 : 1;
   if (next.preset !== prev.preset) vp.pivotOverride = null;
+  if (next.projection !== prev.projection) {
+    // ADR-098: same pose and target, so the view keeps its size at the target.
+    setProjection(vp, next.projection !== 'perspective');
+    requestRender(vp);
+  }
   if (!next.showPivot) hidePivotMarker(vp);
   if (next.orbit === 'turntable' && prev.orbit !== 'turntable') {
     // Back to a level camera. Keep the view (position and target) and only change "up".
@@ -137,13 +142,17 @@ export function resolveNavPivot(
 ): { point: Vec3; source: PivotSource } {
   syncCameraMatrices(vp);
   const { pose, dist } = readPose(vp);
+  const ortho = vp.camera.orthographic;
   const v = new Vector3();
   const project = (p: Vec3) => {
     v.set(p[0], p[1], p[2]).applyMatrix4(vp.camera.matrixWorldInverse);
     const depth = -v.z;
-    if (depth <= 0) return { nx: 0, ny: 0, depth };
+    // Orthographic: a point behind the camera plane is still drawn (the near plane is behind the
+    // camera), so only depth outside the clip range is "not in front".
+    const front = ortho ? depth >= vp.camera.near && depth <= vp.camera.far : depth > 0;
+    if (!front) return { nx: 0, ny: 0, depth, front };
     v.applyMatrix4(vp.camera.projectionMatrix);
-    return { nx: v.x, ny: v.y, depth };
+    return { nx: v.x, ny: v.y, depth, front };
   };
   const anyVisible = bodyBoundsList(vp).length > 0;
   const center = anyVisible ? boundsCenter(vp.sceneBounds) : null;
@@ -184,11 +193,7 @@ export function beginNav(vp: ViewportImpl, o: Extract<NavOutput, { type: 'begin'
       (r.point[0] - pose.pos[0]) * pose.fwd[0] +
       (r.point[1] - pose.pos[1]) * pose.fwd[1] +
       (r.point[2] - pose.pos[2]) * pose.fwd[2];
-    wpp = worldPerPixel(
-      d,
-      vp.camera.projectionMatrix.elements[5] as number,
-      vp.canvas.clientHeight || 1,
-    );
+    wpp = cameraWorldPerPixel(vp, d);
   }
   vp.nav = { mode: o.mode, pivot: r.point, source: r.source, dist, wpp };
   vp.lastPivot = r;

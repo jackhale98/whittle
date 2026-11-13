@@ -39,6 +39,7 @@ import {
   raycastTriangles,
   sortByDistance,
 } from './pick';
+import { depthFromEye, eyeFor, syncProjection } from './projection';
 import { requestRender, scheduleRestWork } from './renderLoop';
 import { isClipped, keptRayRange } from './section';
 import type { ViewportImpl } from './viewport';
@@ -200,10 +201,7 @@ export function pick(vp: ViewportImpl, x: number, y: number, options: PickOption
 
 /** Stamp hits with their distance from the camera (mm), the chooser's stable tie-break. */
 export function withDepth(vp: ViewportImpl, hits: PickHit[]): PickHit[] {
-  const o = vp.camera.position;
-  for (const h of hits) {
-    h.depth = Math.hypot(h.point[0] - o.x, h.point[1] - o.y, h.point[2] - o.z);
-  }
+  for (const h of hits) h.depth = depthFromEye(vp, h.point);
   return hits;
 }
 
@@ -231,6 +229,7 @@ export function idFresh(vp: ViewportImpl): boolean {
 
 export function syncCameraMatrices(vp: ViewportImpl): void {
   vp.camera.updateMatrixWorld();
+  syncProjection(vp);
   vp.camera.matrixWorldInverse.copy(vp.camera.matrixWorld).invert();
 }
 
@@ -238,7 +237,29 @@ export function rayAt(vp: ViewportImpl, x: number, y: number): { origin: Vec3; d
   syncCameraMatrices(vp);
   const w = vp.canvas.clientWidth || 1;
   const h = vp.canvas.clientHeight || 1;
-  const p = new Vector3((x / w) * 2 - 1, -(y / h) * 2 + 1, 0.5).unproject(vp.camera);
+  const nx = (x / w) * 2 - 1;
+  const ny = -(y / h) * 2 + 1;
+  if (vp.camera.orthographic) {
+    // Parallel rays along the view direction, starting on the near plane (ADR-098): the origin is
+    // the cursor's point there, so everything in the depth range is in front of it.
+    const m = vp.camera.matrixWorld.elements;
+    const pm = vp.camera.projectionMatrix.elements;
+    const sx = nx / (pm[0] as number);
+    const sy = ny / (pm[5] as number);
+    const near = vp.camera.near;
+    return {
+      origin: [
+        (m[12] as number) + (m[0] as number) * sx + (m[4] as number) * sy - (m[8] as number) * near,
+        (m[13] as number) + (m[1] as number) * sx + (m[5] as number) * sy - (m[9] as number) * near,
+        (m[14] as number) +
+          (m[2] as number) * sx +
+          (m[6] as number) * sy -
+          (m[10] as number) * near,
+      ],
+      dir: [-(m[8] as number), -(m[9] as number), -(m[10] as number)],
+    };
+  }
+  const p = new Vector3(nx, ny, 0.5).unproject(vp.camera);
   const o = vp.camera.position;
   const d = p.sub(o).normalize();
   return { origin: [o.x, o.y, o.z], dir: [d.x, d.y, d.z] };
@@ -310,7 +331,9 @@ export function triFaceFor(_vp: ViewportImpl, e: BodyEntry): Uint32Array {
 }
 
 /** True when no visible body lies between the camera and `point`. */
-export function isVisiblePoint(vp: ViewportImpl, origin: Vec3, point: Vec3): boolean {
+export function isVisiblePoint(vp: ViewportImpl, originIn: Vec3, point: Vec3): boolean {
+  // Orthographic sight lines run parallel to the view direction, whatever `origin` the caller has.
+  const origin = vp.camera.orthographic ? eyeFor(vp, point) : originIn;
   const dx = point[0] - origin[0];
   const dy = point[1] - origin[1];
   const dz = point[2] - origin[2];

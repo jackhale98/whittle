@@ -18,7 +18,7 @@ import {
   SRGBColorSpace,
 } from 'three/webgpu';
 import { REFERENCE_ENTITY } from './ids';
-import { type Dot, disposeOverlay, makeFill, makeLines } from './overlays';
+import { constantPixelScale, type Dot, disposeOverlay, makeFill, makeLines } from './overlays';
 import { closestOnPolyline, type ProjectFn } from './pick';
 import {
   axisEnds,
@@ -180,6 +180,7 @@ export class ReferenceLayer {
     let material = this.cross.get(colorHex);
     if (!material) {
       material = new SpriteNodeMaterial({ sizeAttenuation: false, transparent: true });
+      material.scaleNode = constantPixelScale();
       const p = uv().sub(0.5);
       const bar = (a: typeof p.x, b: typeof p.x) =>
         float(1)
@@ -232,6 +233,7 @@ export class ReferenceLayer {
       sizeAttenuation: false,
       transparent: true,
     });
+    material.scaleNode = constantPixelScale();
     material.depthTest = false;
     material.depthWrite = false;
     const sprite = new Sprite(material);

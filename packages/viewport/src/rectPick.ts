@@ -22,6 +22,7 @@ import {
   syncCameraMatrices,
   vertexPositions,
 } from './picking';
+import { depthFromEye } from './projection';
 import { isClipped } from './section';
 import type { ViewportImpl } from './viewport';
 import { boundsCenter } from './views';
@@ -49,7 +50,7 @@ export function pickRect(
   syncCameraMatrices(vp);
   const project = projector(vp);
   const o = vp.camera.position;
-  const origin: Vec3 = [o.x, o.y, o.z];
+  const origin: Vec3 = [o.x, o.y, o.z]; // perspective sight lines; orthographic ones are rebuilt per point
   const sectionEq = vp.section?.eq ?? null;
   const cx = (rect.x0 + rect.x1) / 2;
   const cy = (rect.y0 + rect.y1) / 2;
@@ -262,8 +263,7 @@ export function pickRect(
   }
 
   // Nearest to the camera first (kind priority breaks ties).
-  const depth = (h: PickHit) =>
-    Math.hypot(h.point[0] - origin[0], h.point[1] - origin[1], h.point[2] - origin[2]);
+  const depth = (h: PickHit) => depthFromEye(vp, h.point);
   return found
     .map((h) => ({ h, d: depth(h) }))
     .sort((a, b) => a.d - b.d || KIND_PRIORITY[a.h.kind] - KIND_PRIORITY[b.h.kind])

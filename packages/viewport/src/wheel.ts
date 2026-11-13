@@ -89,7 +89,7 @@ export function beginWheel(vp: ViewportImpl, x: number, y: number, now: number):
   const point: Vec3 = hit
     ? [hit.point[0], hit.point[1], hit.point[2]]
     : missAnchor(ray.origin, ray.dir, f, centre, dist);
-  const frame = zoomFrame(cam, f, point);
+  const frame = zoomFrame(cam, f, point, vp.camera.orthographic ? dist : undefined);
   if (!frame) return null;
   const d0 = Math.hypot(cam[0] - point[0], cam[1] - point[1], cam[2] - point[2]);
   const r = Math.max(vp.sceneRadius, 1e-3);

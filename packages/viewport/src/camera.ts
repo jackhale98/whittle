@@ -66,7 +66,11 @@ export function worldToScreen(
   return {
     x: (v.x * 0.5 + 0.5) * w,
     y: (1 - (v.y * 0.5 + 0.5)) * h,
-    visible: eye.z < 0 && Math.abs(v.x) <= 1 && Math.abs(v.y) <= 1,
+    // Orthographic: in front of the near plane (which may be behind the camera) and inside far.
+    visible:
+      (vp.camera.orthographic ? -eye.z >= vp.camera.near && -eye.z <= vp.camera.far : eye.z < 0) &&
+      Math.abs(v.x) <= 1 &&
+      Math.abs(v.y) <= 1,
   };
 }
 
@@ -133,7 +137,13 @@ export function configureControls(vp: ViewportImpl): void {
 }
 
 export function zoomTo(vp: ViewportImpl, point: Vec3, radius: number, animate = true): void {
-  const distance = fitDistance(Math.max(radius, 1e-6) * 2, vp.camera.fov, vp.camera.aspect || 1, 1);
+  const distance = fitDistance(
+    Math.max(radius, 1e-6) * 2,
+    vp.camera.fov,
+    vp.camera.aspect || 1,
+    1,
+    vp.camera.orthographic,
+  );
   const pos = cameraPositionFor(point, currentDirection(vp), distance);
   const transition = animate && !vp.reducedMotion;
   vp.cameraAwake = true;
@@ -212,7 +222,7 @@ export function fitTo(
   const h = vp.canvas.clientHeight;
   let distance: number;
   if (w > 0 && h > 0 && (ins.top || ins.right || ins.bottom || ins.left)) {
-    const f = fitInsetFrame(radius, vp.camera.fov, w, h, ins);
+    const f = fitInsetFrame(radius, vp.camera.fov, w, h, ins, 1.2, vp.camera.orthographic);
     distance = f.distance;
     // Camera axes for this direction (and the current roll): right = f x up, up = right x f.
     const len = Math.hypot(direction[0], direction[1], direction[2]) || 1;
@@ -227,7 +237,13 @@ export function fitTo(
       target[2] + right.z * f.shiftRight + up.z * f.shiftUp,
     ];
   } else {
-    distance = fitDistance(radius, vp.camera.fov, vp.camera.aspect || 1);
+    distance = fitDistance(
+      radius,
+      vp.camera.fov,
+      vp.camera.aspect || 1,
+      1.2,
+      vp.camera.orthographic,
+    );
   }
   const pos = cameraPositionFor(target, direction, distance);
   // Standard views are level: undo any twist-roll (cut, since a tween would swing through it).

@@ -12,7 +12,6 @@
 import type { MotionSample, Vec3 } from '@wren-cad/contracts';
 import { Vector3 } from 'three/webgpu';
 import { WHEEL_MAX_DISTANCE_RADII, WHEEL_MIN_DISTANCE_RADII } from '../constants';
-import { worldPerPixel } from '../handles';
 import {
   hidePivotMarker,
   readPose,
@@ -21,6 +20,7 @@ import {
   writePose,
 } from '../navControl';
 import { orbitTrackball, orbitTurntable, type Pose, rotatePose } from '../navigation';
+import { cameraWorldPerPixel } from '../projection';
 import { requestRender } from '../renderLoop';
 import type { ViewportImpl } from '../viewport';
 import { stepWheel } from '../wheel';
@@ -211,8 +211,7 @@ export function applyMotion(vp: ViewportImpl, d: MotionDelta): void {
   const ty = d.t[1];
   if (tx !== 0 || ty !== 0) {
     const depth = dot([pivot[0] - p.pos[0], pivot[1] - p.pos[1], pivot[2] - p.pos[2]], p.fwd);
-    const h = vp.canvas.clientHeight || 1;
-    const wpp = worldPerPixel(depth, vp.camera.projectionMatrix.elements[5] as number, h);
+    const wpp = cameraWorldPerPixel(vp, depth);
     const viewWidth = wpp * (vp.canvas.clientWidth || 1);
     const s = MOTION_PAN_VIEWS_PER_S * viewWidth;
     const right = crossV(p.fwd, p.up);

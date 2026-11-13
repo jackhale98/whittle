@@ -99,6 +99,17 @@ describe('NavigationSettings', () => {
     expect(spy.mock.lastCall?.[0].invertZoom).toBe(true);
   });
 
+  it('projection: orthographic by default, perspective on request, one control in Settings (ADR-098)', async () => {
+    const spy = vi.fn();
+    renderUI(<Nav spy={spy} />);
+    expect(screen.getByRole('radio', { name: 'Orthographic' })).toBeChecked();
+    await userEvent.click(screen.getByRole('radio', { name: 'Perspective' }));
+    expect(spy).toHaveBeenLastCalledWith({ ...DEFAULT_NAVIGATION, projection: 'perspective' });
+    expect(screen.getByRole('radio', { name: 'Perspective' })).toBeChecked();
+    await userEvent.click(screen.getByRole('radio', { name: 'Orthographic' }));
+    expect(spy.mock.lastCall?.[0].projection).toBe('orthographic');
+  });
+
   it('orbit speed is a log slider: 1x in the middle, 0.25x to 4x at the ends', () => {
     const spy = vi.fn();
     renderUI(<Nav spy={spy} />);

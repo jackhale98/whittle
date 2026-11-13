@@ -5,20 +5,22 @@ import { depthOf } from './adornments';
 import { createBodyMaterial } from './bodies';
 import { emitCamera } from './camera';
 import { REST_WORK_DEBOUNCE_MS } from './constants';
-import { worldPerPixel } from './handles';
 import { stepMotion } from './motion/nav';
 import {
   disposeOverlay,
   makeDot,
   makeFill,
   makeLines,
+  orthoOverlayDelta,
   overlayBiasFor,
   overlayDepthBias,
+  overlayDepthDelta,
   sizeDots,
 } from './overlays';
 import { idFresh, kickIdRefresh } from './picking';
+import { cameraWorldPerPixel, syncProjection } from './projection';
 import type { ViewportImpl } from './viewport';
-import { clipPlanes } from './views';
+import { viewUniforms } from './viewUniforms';
 import { stepWheel } from './wheel';
 
 export function resize(vp: ViewportImpl): void {
@@ -197,13 +199,21 @@ export function scheduleRestWork(vp: ViewportImpl): void {
 }
 
 export function renderOnce(vp: ViewportImpl): void {
-  const { near, far } = clipPlanes(vp.controls.distance, vp.sceneRadius);
-  if (near !== vp.camera.near || far !== vp.camera.far) {
-    vp.camera.near = near;
-    vp.camera.far = far;
-    vp.camera.updateProjectionMatrix();
+  syncProjection(vp);
+  if (vp.camera.orthographic) {
+    // Orthographic (ADR-098): the pull is a view-space depth shift, `clip.z += P22 * delta`.
+    overlayDepthBias.value = 0;
+    overlayDepthDelta.value = orthoOverlayDelta(
+      vp.camera.focusDistance,
+      vp.camera.far - vp.camera.near,
+    );
+  } else {
+    overlayDepthBias.value = overlayBiasFor();
+    overlayDepthDelta.value = 0;
   }
-  overlayDepthBias.value = overlayBiasFor();
+  viewUniforms.ortho.value = vp.camera.orthographic ? 1 : 0;
+  const mw = vp.camera.matrixWorld.elements;
+  viewUniforms.back.value.set(mw[8] as number, mw[9] as number, mw[10] as number);
   const p11 = vp.camera.projectionMatrix.elements[5] as number;
   const heightCss = vp.canvas.clientHeight;
   sizeDots(
@@ -218,7 +228,7 @@ export function renderOnce(vp: ViewportImpl): void {
   );
   vp.references.size(p11, heightCss);
   for (const h of vp.handles.values()) {
-    h.place(worldPerPixel(depthOf(vp, h.origin), p11, heightCss));
+    h.place(cameraWorldPerPixel(vp, depthOf(vp, h.origin)));
   }
   const t0 = performance.now();
   vp.renderer.render(vp.scene, vp.camera);
@@ -234,6 +244,7 @@ export function renderOnce(vp: ViewportImpl): void {
     ...m,
     vp.camera.projectionMatrix.elements[0] as number,
     vp.camera.projectionMatrix.elements[5] as number,
+    vp.camera.projectionMatrix.elements[11] as number,
   ];
   if (key.length !== vp.cameraKey.length || key.some((v, i) => v !== vp.cameraKey[i])) {
     vp.cameraKey = key;

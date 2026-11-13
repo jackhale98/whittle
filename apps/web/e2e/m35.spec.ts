@@ -30,7 +30,7 @@ type Btn = 'left' | 'middle' | 'right';
 interface Probe {
   pick(x: number, y: number, o: { kinds: string[]; all?: boolean }): { point: V3; kind: string }[];
   worldToScreen(p: V3): { x: number; y: number; visible: boolean };
-  getNavigation(): { preset: string };
+  getNavigation(): { preset: string; projection: string };
   getNavigationState(): {
     dragging: string | null;
     pivot: V3 | null;
@@ -290,6 +290,41 @@ test.describe('presets', () => {
     await drag(page, 'middle', [cx, cy], [cx + 150, cy + 60], { mods: ['Shift'] });
     expect(classify(p1, await pose(page))).toBe('orbit');
     void a;
+  });
+
+  test('projection (ADR-098): orthographic by default; Settings and the palette switch it, and it persists', async ({
+    page,
+  }) => {
+    await boxSetup(page);
+    expect((await probe(page).navigation()).projection).toBe('orthographic');
+    // Seen from the top, a vertical edge of the 40 x 30 x 20 box is a point: no perspective.
+    await page.keyboard.press('5');
+    await cameraStill(page);
+    const lean = async () => {
+      const a = await probe(page).toScreen([0, 0, 0]);
+      const b = await probe(page).toScreen([0, 0, 20]);
+      return Math.hypot(a.x - b.x, a.y - b.y);
+    };
+    expect(await lean()).toBeLessThan(0.5);
+
+    // The palette.
+    await palette(page, 'Perspective view');
+    expect((await probe(page).navigation()).projection).toBe('perspective');
+    expect(await lean(), 'the corner edge leans away from the view axis').toBeGreaterThan(4);
+    expect(await page.evaluate(() => localStorage.getItem('wren.navigation'))).toContain(
+      '"projection":"perspective"',
+    );
+    await palette(page, 'Orthographic view');
+    expect((await probe(page).navigation()).projection).toBe('orthographic');
+    expect(await lean()).toBeLessThan(0.5);
+
+    // Settings -> Navigation -> Projection, persisted per device across a reload.
+    const panel = await openSettings(page);
+    await panel.getByRole('radio', { name: 'Perspective' }).check();
+    expect((await probe(page).navigation()).projection).toBe('perspective');
+    await page.getByTestId('settings-close').click();
+    await boot(page);
+    expect((await probe(page).navigation()).projection).toBe('perspective');
   });
 
   test('right click repeats the last command under "Right click repeats"; hold opens the menu', async ({

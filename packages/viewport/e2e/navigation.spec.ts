@@ -636,7 +636,15 @@ test.describe('pickRect', () => {
     const keys = hits.map((h) => `${h.kind}|${h.bodyId}|${h.index}`);
     expect(new Set(keys).size).toBe(keys.length);
     const cam = await pose(page);
-    const d = hits.map((h) => dist(h.point as V3, cam.position));
+    // ADR-098: orthographic (the default) orders by depth along the view direction, and `depth` is
+    // measured from the near plane; perspective by the distance from the camera.
+    const ortho = (await page.evaluate(() => window.__viewport!.projectionInfo())).orthographic;
+    const near = (await page.evaluate(() => window.__viewport!.projectionInfo())).near;
+    const d = hits.map((h) =>
+      ortho
+        ? (h.point as V3).reduce((s, v, i) => s + (v - cam.position[i]!) * cam.fwd[i]!, 0) - near
+        : dist(h.point as V3, cam.position),
+    );
     for (let i = 1; i < d.length; i++) expect(d[i]!).toBeGreaterThanOrEqual(d[i - 1]! - 1e-6);
     // Every hit carries its camera distance (the chooser's tie-break).
     for (let i = 0; i < d.length; i++) expect(hits[i]!.depth).toBeCloseTo(d[i]!, 3);

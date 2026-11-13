@@ -62,8 +62,14 @@ export function fitDistance(
   vfovDeg: number,
   aspect: number,
   padding = 1.2,
+  orthographic = false,
 ): number {
   const halfV = (vfovDeg * Math.PI) / 360;
+  if (orthographic) {
+    // Parallel projection (ADR-098): the view height is 2 * distance * tan(halfV) at any depth, so
+    // the sphere fits when its radius is within the smaller half extent.
+    return (Math.max(radius, 1e-6) * padding) / (Math.tan(halfV) * Math.min(1, aspect));
+  }
   const halfH = Math.atan(Math.tan(halfV) * aspect);
   const half = Math.min(halfV, halfH);
   return (Math.max(radius, 1e-6) * padding) / Math.sin(half);
@@ -85,6 +91,25 @@ export function clipPlanes(distance: number, sceneRadius: number): { near: numbe
   const near = Math.max(r * 0.002, (distance - r * 2) * 0.5);
   const far = distance + r * 25;
   return { near, far };
+}
+
+/** Orthographic depth range covers this many scene radii on each side of the scene centre. */
+export const ORTHO_DEPTH_REACH_RADII = 10;
+
+/**
+ * Near/far for an orthographic view (ADR-098). Depth is linear and the camera can sit anywhere on
+ * the view axis (zoom slides it toward the cursor), so the planes come from the scene, not from
+ * the camera distance: `centreDepth` is the scene centre's distance in front of the camera along
+ * the view direction (negative when it is behind). The reach is 10 radii, enough for the ground
+ * grid (9 radii) and anything the user can place around the part; nothing is cut at any zoom or
+ * orbit angle. `near` may be negative.
+ */
+export function orthoClipPlanes(
+  centreDepth: number,
+  sceneRadius: number,
+): { near: number; far: number } {
+  const reach = Math.max(sceneRadius, 1e-3) * ORTHO_DEPTH_REACH_RADII;
+  return { near: centreDepth - reach, far: centreDepth + reach };
 }
 
 /** Grid cell size (a power of ten) suited to a scene of this radius. */
@@ -115,13 +140,14 @@ export function fitInsetFrame(
   h: number,
   insets: FrameInsets,
   padding = 1.2,
+  orthographic = false,
 ): { distance: number; shiftRight: number; shiftUp: number } {
   const fw = Math.max(w - insets.left - insets.right, 1);
   const fh = Math.max(h - insets.top - insets.bottom, 1);
   const tanHalf = Math.tan((vfovDeg * Math.PI) / 360);
   // The free area is the fraction fh/h of the full vertical field at any distance.
   const effV = (2 * Math.atan(tanHalf * (fh / h)) * 180) / Math.PI;
-  const distance = fitDistance(radius, effV, fw / fh, padding);
+  const distance = fitDistance(radius, effV, fw / fh, padding, orthographic);
   const perPx = (2 * distance * tanHalf) / h;
   const dx = (insets.left - insets.right) / 2;
   const dy = (insets.top - insets.bottom) / 2;
