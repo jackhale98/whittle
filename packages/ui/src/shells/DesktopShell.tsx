@@ -242,7 +242,13 @@ export function DesktopShell(props: DesktopShellProps) {
         <>
           {/* biome-ignore lint/a11y/noStaticElementInteractions: Escape closes an overlaid panel from the buttons that opened it */}
           <header
-            className={cn('flex shrink-0 items-center gap-1 px-3 pb-px', touch ? 'h-14' : 'h-12')}
+            // Narrow (iPad mini portrait, 744): tighter gaps and padding keep the last button on
+            // screen with any system font metrics.
+            className={cn(
+              'flex shrink-0 items-center pb-px',
+              overlay ? 'gap-0.5 px-2' : 'gap-1 px-3',
+              touch ? 'h-14' : 'h-12',
+            )}
             data-testid="top-bar"
             // Narrow (panels overlay): the bar's labels give way to icons (`in-data-[narrow]`).
             data-narrow={overlay || undefined}

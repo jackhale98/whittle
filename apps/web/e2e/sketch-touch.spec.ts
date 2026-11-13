@@ -184,7 +184,9 @@ test('a pinch during a finger drag of a sketch point ends the drag (M2 re-gate N
   await cameraStill(page);
   const box = await page.getByTestId('viewport-canvas').boundingBox();
   if (!box) throw new Error('no canvas');
-  const from = { x: box.x + 200, y: box.y + box.height - 220 };
+  // Clear of the sketch toolbar, which the desktop layout (the tablet's too, ADR-099) puts at the
+  // bottom left of the view.
+  const from = { x: box.x + box.width / 2 - 100, y: box.y + box.height - 300 };
   await t.drag(from, { x: from.x + 60, y: from.y - 40 });
   await a.idle();
   expect(await points()).toEqual(afterPinch);
@@ -206,7 +208,9 @@ test('sketch mode: a one-finger drag on empty space orbits; presses the sketch k
   await cameraStill(page);
   const box = await page.getByTestId('viewport-canvas').boundingBox();
   if (!box) throw new Error('no canvas');
-  const from = { x: box.x + 200, y: box.y + box.height - 220 };
+  // Clear of the sketch toolbar, which the desktop layout (the tablet's too, ADR-099) puts at the
+  // bottom left of the view.
+  const from = { x: box.x + box.width / 2 - 100, y: box.y + box.height - 300 };
   const to = { x: from.x + 90, y: from.y - 60 };
   const moved = async (run: () => Promise<void>): Promise<number> => {
     await cameraStill(page);
