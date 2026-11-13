@@ -429,15 +429,13 @@ export {
 } from './params/ParamsTable';
 export { AppShell, type AppShellProps, preloadShell } from './shells/AppShell';
 export { BottomSheet, type BottomSheetProps } from './shells/BottomSheet';
-export { DesktopShell } from './shells/DesktopShell';
+export { DesktopShell, type DesktopShellProps } from './shells/DesktopShell';
 export { PhoneShell } from './shells/PhoneShell';
-export { TabletShell } from './shells/TabletShell';
 export type {
   KernelMemory,
   PhoneSheetTab,
   SheetTabId,
   ShellProps,
-  TabletSheetTab,
 } from './shells/types';
 export { ConflictPanel, type ConflictPanelProps } from './sketch/ConflictPanelLazy';
 export {

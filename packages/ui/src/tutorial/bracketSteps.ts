@@ -56,9 +56,9 @@ export const bracketTutorial: readonly TutorialStep[] = [
   {
     id: 'params',
     title: 'Make it adjustable',
-    body: 'Open Params in the sheet and add a parameter. Use it in the plate’s extrude depth (the keypad lists parameter names), then change its value and watch the bracket update.',
+    body: 'Open Params in the feature panel (the sheet on a phone) and add a parameter. Use it in the plate’s extrude depth (the keypad lists parameter names), then change its value and watch the bracket update.',
     target:
-      '[data-testid="history-sheet"], [data-testid="tools-sheet"], [data-testid="left-panel"]',
+      '[data-testid="tools-sheet"], [data-testid="left-toggle"][aria-pressed="false"], [data-testid="left-panel"]:not([inert]) [role="tablist"]',
     hint: 'Waiting for a parameter used by a feature',
   },
   {

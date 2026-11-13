@@ -41,7 +41,8 @@ export function ExportMenu({
         onClick={() => setOpen((o) => !o)}
         className={className}
       >
-        Export
+        {/* A narrow top bar (the tablet's overlay mode) keeps the icon; the name stays for assistive tech. */}
+        <span className="in-data-[narrow]:sr-only">Export</span>
       </Button>
       {open && anchor ? (
         <FloatingLayer

@@ -109,7 +109,7 @@ describe('shells with data', () => {
     expect(onExport).toHaveBeenCalled();
   });
 
-  it('tablet: history sheet shows the feature count and the tree', async () => {
+  it('tablet: the desktop panels at touch density; the tree and params open from the top bar', async () => {
     const user = userEvent.setup();
     render(
       <AppShell
@@ -119,11 +119,60 @@ describe('shells with data', () => {
         paramsTable={{ params: sampleParams, evaluate: (e) => evaluate(e) }}
       />,
     );
-    expect(screen.getByText('· 6 features')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: /History, expand/ }));
-    expect(screen.getByRole('tree', { name: 'Features' })).toBeInTheDocument();
-    await user.click(screen.getByRole('radio', { name: 'Params' }));
+    expect(screen.getByTestId('app-shell')).toHaveAttribute('data-tier', 'tablet');
+    // jsdom is 0 px wide: the panels overlay, closed until asked for.
+    expect(screen.getByTestId('shell-body')).toHaveAttribute('data-panels', 'overlay');
+    expect(screen.queryByTestId('panel-scrim')).toBeNull();
+    const toggle = screen.getByRole('button', { name: 'Feature panel' });
+    expect(toggle.className).toMatch(/size-11/);
+    await user.click(toggle);
+    expect(await screen.findByRole('tree', { name: 'Features' })).toBeInTheDocument();
+    await user.click(screen.getByRole('tab', { name: 'Params' }));
     expect(await screen.findByRole('list', { name: 'Parameters' })).toBeInTheDocument();
+  });
+
+  it('tablet overlay: one panel at a time; a tap outside, Escape or the button closes it', async () => {
+    const user = userEvent.setup();
+    const onOverlayInsets = vi.fn();
+    render(<AppShell tier="tablet" {...base} onOverlayInsets={onOverlayInsets} />);
+    const left = screen.getByRole('button', { name: 'Feature panel' });
+    const right = screen.getByRole('button', { name: 'Inspector' });
+    expect(left).toHaveAttribute('aria-pressed', 'false');
+    await user.click(left);
+    expect(left).toHaveAttribute('aria-pressed', 'true');
+    // Opening the inspector hands the overlay over to it.
+    await user.click(right);
+    expect(right).toHaveAttribute('aria-pressed', 'true');
+    expect(left).toHaveAttribute('aria-pressed', 'false');
+    // A tap outside closes it.
+    await user.pointer({ keys: '[MouseLeft]', target: screen.getByTestId('panel-scrim') });
+    expect(right).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.queryByTestId('panel-scrim')).toBeNull();
+    // Escape closes it and returns focus to its button.
+    await user.click(left);
+    await user.keyboard('{Escape}');
+    expect(left).toHaveAttribute('aria-pressed', 'false');
+    expect(left).toHaveFocus();
+    // The button closes it.
+    await user.click(right);
+    await user.click(right);
+    expect(right).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('tablet: the app controls the inspector panel', async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    const { rerender } = render(
+      <AppShell tier="tablet" {...base} inspectorOpen={false} onInspectorOpenChange={onChange} />,
+    );
+    const right = screen.getByRole('button', { name: 'Inspector' });
+    expect(right).toHaveAttribute('aria-pressed', 'false');
+    await user.click(right);
+    expect(onChange).toHaveBeenCalledWith(true);
+    rerender(
+      <AppShell tier="tablet" {...base} inspectorOpen={true} onInspectorOpenChange={onChange} />,
+    );
+    expect(right).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('phone: params and export tabs render the real components', async () => {

@@ -1,6 +1,6 @@
 import { devices, expect, type Page, test } from '@playwright/test';
 import type { SketchFeature, WrenDoc } from '@wren-cad/contracts';
-import { app, boot, palette } from './helpers';
+import { app, boot, openPanel, palette } from './helpers';
 
 /**
  * M3.6 acceptance, sketch visibility: a consumed sketch is hidden by default; its eye toggle in
@@ -180,17 +180,12 @@ test.describe('tablet', () => {
     hasTouch: true,
   });
 
-  test('the eye works by touch in the tablet sheet', async ({ page }) => {
+  test('the eye works by touch in the tablet feature panel', async ({ page }) => {
     test.slow();
     await openDemo(page, 'tap');
     const a = app(page);
     const plate = await sketchId(page, 'Plate sketch');
-    const sheet = page.getByTestId('history-sheet');
-    await sheet
-      .getByRole('button', { name: /History/ })
-      .first()
-      .tap();
-    await expect(sheet).toHaveAttribute('data-snap', 'half');
+    await openPanel(page, 'left'); // docked at 1180 wide; a tap on its button otherwise
     const e = await eye(page, 'Plate sketch', 'tap');
     await e.tap();
     await expect.poll(() => shown(page)).toEqual([plate]);

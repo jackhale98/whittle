@@ -193,7 +193,8 @@ export function bubbleAction(wb: Workbench, id: BubbleActionId): void {
     case 'section': {
       const face = hits.find((h) => h.kind === 'face');
       if (face) wb.sectionFromFace(face);
-      wb.openSheet(wb.tier === 'phone' ? 'section' : 'inspector');
+      if (wb.tier === 'phone') wb.openSheet('section');
+      else wb.revealInspector();
       break;
     }
     case 'fit':

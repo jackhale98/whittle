@@ -1,7 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { devices, expect, type Page, test } from '@playwright/test';
 import type { PlaneFeature, WrenDoc } from '@wren-cad/contracts';
-import { addBox, app, boot, cameraStill, palette, toPage } from './helpers';
+import { addBox, app, boot, cameraStill, openPanel, palette, toPage } from './helpers';
 
 /**
  * ADR-093 acceptance: a reference plane, axis or point made in the model view is drawn, picked
@@ -419,7 +419,7 @@ test.describe('tablet', () => {
     hasTouch: true,
   });
 
-  test('the eye of a plane, axis and point works by touch in the tablet sheet', async ({
+  test('the eye of a plane, axis and point works by touch in the tablet feature panel', async ({
     page,
   }) => {
     test.slow();
@@ -444,12 +444,7 @@ test.describe('tablet', () => {
     await addAxis(page);
     await a.idle();
     expect(await stats(page)).toMatchObject({ planes: 1, axes: 1, points: 2 });
-    const sheet = page.getByTestId('history-sheet');
-    await sheet
-      .getByRole('button', { name: /History/ })
-      .first()
-      .tap();
-    await expect(sheet).toHaveAttribute('data-snap', 'half');
+    await openPanel(page, 'left'); // docked at 1180 wide; a tap on its button otherwise
     for (const [label, key] of [
       ['Plane 1', 'planes'],
       ['Axis 1', 'axes'],

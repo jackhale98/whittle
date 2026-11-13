@@ -230,7 +230,9 @@ export interface UiState {
   pushPull: PushPullUi | null;
   measure: MeasureUi | null;
   section: SectionUi;
-  /** Tablet / phone bottom sheet (controlled). */
+  /** The right inspector panel on desktop and tablet (controlled; ADR-099). Desktop starts open, tablet closed. */
+  inspectorOpen: boolean;
+  /** Phone bottom sheet (controlled). */
   sheetSnap: SheetSnap;
   sheetTab: SheetTabId | null;
   bubble: BubbleRequest | null;
@@ -275,6 +277,7 @@ export const initialUi: UiState = {
   pushPull: null,
   measure: null,
   section: initialSection,
+  inspectorOpen: false,
   sheetSnap: 'peek',
   sheetTab: null,
   bubble: null,

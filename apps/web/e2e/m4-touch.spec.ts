@@ -31,6 +31,17 @@ const a11y = async (page: Page) =>
     serious(await new AxeBuilder({ page }).include('[data-testid="drawing-route"]').analyze()),
   ).toEqual([]);
 
+/**
+ * The drawing's side panels. On the tablet (desktop layout at touch density, ADR-099) they are
+ * docked beside the sheet from 888 px wide, so there is nothing to open; a narrow tablet opens
+ * them from the top bar. Opening is idempotent.
+ */
+async function panelsOpen(page: Page) {
+  const toggle = page.getByTestId('drawing-side-toggle');
+  if ((await toggle.count()) > 0 && (await toggle.getAttribute('aria-pressed')) !== 'true')
+    await toggle.tap();
+}
+
 const drawings = async (page: Page): Promise<Drawing[]> => (await app(page).doc()).drawings;
 
 test.describe('tablet', () => {
@@ -69,14 +80,14 @@ test.describe('tablet', () => {
     expect(tb?.height ?? 0).toBeGreaterThanOrEqual(44);
 
     // The bottom panel opens from its handle and lists the views.
-    await page.getByTestId('drawing-panel-toggle').tap();
+    await panelsOpen(page);
     await panelTab(page, 'Views').tap();
     await page.getByTestId('add-standard-views').tap();
     await expect.poll(async () => (await drawing(page).state()).views.length).toBe(3);
     await built(page);
     await a11y(page);
     // Collapse it for the sheet.
-    await page.getByTestId('drawing-panel-toggle').tap();
+    await panelsOpen(page);
 
     // Select the top view with a tap and drag an arrow out of it with one finger: a view derived
     // from a projected view aligns to it, and follows the projection method too.
@@ -150,12 +161,12 @@ test.describe('tablet', () => {
     await openDemo(page);
     await newDrawing(page);
     const t = await touch(page);
-    await page.getByTestId('drawing-panel-toggle').tap();
+    await panelsOpen(page);
     await panelTab(page, 'Views').tap();
     await page.getByTestId('add-standard-views').tap();
     await expect.poll(async () => (await drawing(page).state()).views.length).toBe(3);
     const s = await built(page);
-    await page.getByTestId('drawing-panel-toggle').tap();
+    await panelsOpen(page);
 
     const front = viewOf(s, 'base');
     if (!front) throw new Error('no front view');
@@ -169,7 +180,7 @@ test.describe('tablet', () => {
       .poll(async () => (await drawing(page).state()).views.some((v) => v.kind === 'section'))
       .toBe(true);
     await built(page);
-    await page.getByTestId('drawing-panel-toggle').tap();
+    await panelsOpen(page);
     await page.getByTestId('cut-half').tap();
     await expect
       .poll(async () => {
@@ -178,7 +189,7 @@ test.describe('tablet', () => {
       })
       .toBe(3);
     await a11y(page);
-    await page.getByTestId('drawing-panel-toggle').tap();
+    await panelsOpen(page);
 
     // Angle: two taps on edges that meet at a corner of the front view.
     const [horiz, vert] = await cornerEdges(page, front.id);
@@ -193,7 +204,7 @@ test.describe('tablet', () => {
       .poll(async () => ((await app(page).doc()).parts[0]?.annotations ?? []).map((a) => a.kind))
       .toEqual(['angle']);
     // The arc radius is a keypad field on touch: AC, 1, 8, Enter.
-    await page.getByTestId('drawing-panel-toggle').tap();
+    await panelsOpen(page);
     await panelTab(page, 'Inspector').tap();
     await page.getByRole('textbox', { name: 'Arc radius (mm)' }).tap();
     const keypad = page.getByTestId('keypad');
@@ -209,14 +220,14 @@ test.describe('tablet', () => {
       })
       .toBe(18);
     await a11y(page);
-    await page.getByTestId('drawing-panel-toggle').tap();
+    await panelsOpen(page);
 
     // The part properties table is one tap on the rail.
     await page.locator('[data-tool="table"]').tap();
     await expect.poll(async () => ((await drawings(page))[0] as Drawing).tables.length).toBe(1);
     await built(page);
     expect((await drawing(page).state()).texts).toContain('PART NO.');
-    await page.getByTestId('drawing-panel-toggle').tap();
+    await panelsOpen(page);
     await expect(page.getByTestId('table-inspector')).toBeVisible();
     await page.getByRole('switch', { name: 'Configuration' }).tap();
     await expect
@@ -235,19 +246,19 @@ test.describe('tablet', () => {
       .toBe(1);
     await expect(page.locator('#wren-print svg')).toHaveAttribute('width', '420mm');
     await page.evaluate(() => window.dispatchEvent(new Event('afterprint')));
-    await page.getByTestId('drawing-panel-toggle').tap();
+    await panelsOpen(page);
   });
 
   test('ordinate and chamfer tools work with fingers', async ({ page }) => {
     await openDemo(page);
     await newDrawing(page);
     const t = await touch(page);
-    await page.getByTestId('drawing-panel-toggle').tap();
+    await panelsOpen(page);
     await panelTab(page, 'Views').tap();
     await page.getByTestId('add-standard-views').tap();
     await expect.poll(async () => (await drawing(page).state()).views.length).toBe(3);
     const s = await built(page);
-    await page.getByTestId('drawing-panel-toggle').tap();
+    await panelsOpen(page);
     const annotationKinds = async () =>
       ((await app(page).doc()).parts[0]?.annotations ?? []).map((a) => a.kind);
 
@@ -280,7 +291,7 @@ test.describe('tablet', () => {
       await expect.poll(annotationKinds).toEqual(['ordinate', 'chamfer']);
       break;
     }
-    await page.getByTestId('drawing-panel-toggle').tap();
+    await panelsOpen(page);
     await a11y(page);
   });
 
@@ -289,12 +300,12 @@ test.describe('tablet', () => {
   }) => {
     await openDemo(page);
     await newDrawing(page);
-    await page.getByTestId('drawing-panel-toggle').tap();
+    await panelsOpen(page);
     await panelTab(page, 'Views').tap();
     await page.getByTestId('add-standard-views').tap();
     await expect.poll(async () => (await drawing(page).state()).views.length).toBe(3);
     await built(page);
-    await page.getByTestId('drawing-panel-toggle').tap();
+    await panelsOpen(page);
     const tabs = page.getByTestId('sheet-tabs');
     const tab = (n: number) =>
       tabs.getByRole('button', { name: new RegExp(`^${n} .*, sheet ${n} of \\d+$`) });
@@ -338,7 +349,7 @@ test.describe('tablet', () => {
     const s = await built(page);
     const front = viewOf(s, 'base');
     if (!front) throw new Error('no front view');
-    await page.getByTestId('drawing-panel-toggle').tap();
+    await panelsOpen(page);
     await panelTab(page, 'Views').tap();
     await page.locator(`[data-view-row="${front.id}"]`).tap();
     await expect.poll(async () => (await drawing(page).state()).selected?.kind).toBe('view');
@@ -374,11 +385,11 @@ test.describe('tablet', () => {
   }) => {
     await openDemo(page);
     await newDrawing(page);
-    await page.getByTestId('drawing-panel-toggle').tap();
+    await panelsOpen(page);
     await panelTab(page, 'Views').tap();
     await page.getByTestId('add-standard-views').tap();
     await expect.poll(async () => (await drawing(page).state()).views.length).toBe(3);
-    await page.getByTestId('drawing-panel-toggle').tap();
+    await panelsOpen(page);
     await drawing(page).exact();
     const s = await built(page);
     const top = viewOf(s, 'projected', 'top');
@@ -525,11 +536,11 @@ test.describe('tablet', () => {
   }) => {
     await openDemo(page);
     await newDrawing(page);
-    await page.getByTestId('drawing-panel-toggle').tap();
+    await panelsOpen(page);
     await panelTab(page, 'Views').tap();
     await page.getByTestId('add-standard-views').tap();
     await expect.poll(async () => (await drawing(page).state()).views.length).toBe(3);
-    await page.getByTestId('drawing-panel-toggle').tap();
+    await panelsOpen(page);
     await drawing(page).exact();
     const s = await built(page);
     const top = viewOf(s, 'projected', 'top');
@@ -569,7 +580,7 @@ test.describe('tablet', () => {
     const dia = (await anns())[1];
     expect(dia?.kind).toBe('diameter');
     await built(page);
-    await page.getByTestId('drawing-panel-toggle').tap();
+    await panelsOpen(page);
     const across = page
       .getByRole('radiogroup', { name: 'Dimension form' })
       .getByRole('radio', { name: 'Linear across, horizontal' });
@@ -585,7 +596,7 @@ test.describe('tablet', () => {
   test('every panel is reachable and accessible on the tablet', async ({ page }) => {
     await openDemo(page);
     await newDrawing(page);
-    await page.getByTestId('drawing-panel-toggle').tap();
+    await panelsOpen(page);
     for (const name of [
       'Inspector',
       'Views',
@@ -830,7 +841,7 @@ test.describe('tablet drags (ADR-094)', () => {
   async function viewsOnTablet(page: Page) {
     await openDemo(page);
     await newDrawing(page, { projection: 'First angle' });
-    await page.getByTestId('drawing-panel-toggle').tap();
+    await panelsOpen(page);
     await panelTab(page, 'Views').tap();
     await page.getByTestId('add-standard-views').tap();
     await expect.poll(async () => (await drawing(page).state()).views.length).toBe(3);
@@ -847,7 +858,7 @@ test.describe('tablet drags (ADR-094)', () => {
     await page.getByTestId('import-place').tap();
     await expect(page.getByTestId('drawing-toast')).toContainText('Placed');
     await built(page);
-    await page.getByTestId('drawing-panel-toggle').tap();
+    await panelsOpen(page);
     const pl = (await drawing(page).placements()).find(
       (p) => p.layout.kind === 'lane' && p.line && p.box,
     );
@@ -891,7 +902,7 @@ test.describe('tablet drags (ADR-094)', () => {
     page,
   }) => {
     const s = await viewsOnTablet(page);
-    await page.getByTestId('drawing-panel-toggle').tap();
+    await panelsOpen(page);
     const tv = viewOf(s, 'projected', 'top');
     if (!tv?.outline) throw new Error('no top view');
     const t = await touch(page);
@@ -905,11 +916,11 @@ test.describe('tablet drags (ADR-094)', () => {
     const s2 = await built(page);
     const detail = viewOf(s2, 'detail');
     if (!detail) throw new Error('no detail');
-    await page.getByTestId('drawing-panel-toggle').tap();
+    await panelsOpen(page);
     await panelTab(page, 'Views').tap();
     await page.locator(`[data-view-row="${detail.id}"]`).tap();
     await expect.poll(async () => (await drawing(page).state()).selected?.id).toBe(detail.id);
-    await page.getByTestId('drawing-panel-toggle').tap();
+    await panelsOpen(page);
     const radius = page.locator('[data-testid="detail-handle"][data-kind="radius"] circle').first();
     const hb = await radius.boundingBox();
     if (!hb) throw new Error('no handle');

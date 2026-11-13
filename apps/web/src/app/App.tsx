@@ -35,7 +35,7 @@ import {
 } from '../ui/touch-props';
 import { useTreeProps } from '../ui/tree-props';
 import { ViewportOverlays } from '../ui/ViewportOverlays';
-import { onSheetHeight, reframeSoon, syncFrameInsets } from './framing';
+import { onOverlayInsets, onSheetHeight, reframeSoon, syncFrameInsets } from './framing';
 import { installKernelMemoryHook, readKernelMemory } from './kernel-memory';
 import { useObservable } from './observable';
 import type { EngineState } from './state';
@@ -407,6 +407,9 @@ export function App({ wb }: { wb: Workbench }) {
           inspector={<Inspector wb={wb} density={density} measure={measure} section={section} />}
           {...(contextBubble ? { contextBubble } : {})}
           {...(valueChip ? { valueChip } : {})}
+          inspectorOpen={ui.inspectorOpen}
+          onInspectorOpenChange={(open) => wb.setInspectorOpen(open)}
+          onOverlayInsets={(i) => onOverlayInsets(wb, i)}
           sheetSnap={ui.sheetSnap}
           onSheetHeight={(px) => onSheetHeight(wb, px)}
           onSheetSnapChange={(snap) => wb.setSheet({ snap })}

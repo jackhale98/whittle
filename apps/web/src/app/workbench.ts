@@ -201,6 +201,8 @@ export class Workbench {
   constructor() {
     this.tier = getDiagnostics().tier;
     this.policy = policyFor(this.tier);
+    // The inspector panel starts open beside the view on desktop, closed on a tablet until editing opens it.
+    this.ui.set((u) => ({ ...u, inspectorOpen: this.tier === 'desktop' }));
     this.pushPull = new PushPullTool(this);
     this.sectionTool = new SectionTool(this);
     this.measure = new MeasureTool(this);
@@ -975,13 +977,13 @@ export class Workbench {
     tools.bubbleAction(this, id);
   }
 
-  // ------------------------------------------------------------------ sheet (tablet, phone)
+  // ------------------------------------------------------------------ sheet (phone) and inspector panel (desktop, tablet)
 
   setSheet(patch: { snap?: SheetSnap; tab?: SheetTabId }): void {
     view.setSheet(this, patch);
   }
 
-  /** Shows a sheet section at least half open (touch tiers). */
+  /** Shows a phone sheet section at least half open. */
   openSheet(tab: SheetTabId, auto = false): void {
     view.openSheet(this, tab, auto);
   }
@@ -991,6 +993,22 @@ export class Workbench {
   /** Collapses a sheet the app opened by itself (Done in the inspector, Measure off). */
   restoreSheet(): void {
     view.restoreSheet(this);
+    view.restoreInspector(this);
+  }
+
+  inspectorOpenedForUser = false;
+
+  /**
+   * Shows the inspector panel (desktop and tablet; the phone's sheet tabs open through `openSheet`).
+   * `auto`: the app opened it for an edit, so `restoreSheet` closes it again when that is done.
+   */
+  revealInspector(auto = false): void {
+    view.revealInspector(this, auto);
+  }
+
+  /** The user opened or closed the inspector panel: it is theirs now. */
+  setInspectorOpen(open: boolean): void {
+    view.setInspectorOpen(this, open);
   }
 
   // ------------------------------------------------------------------ section view

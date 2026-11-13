@@ -1,5 +1,5 @@
 import { devices, expect, type Page, test } from '@playwright/test';
-import { app, boot, cameraStill, toPage, touch } from './helpers';
+import { app, boot, cameraStill, openPanel, toPage, touch } from './helpers';
 import { PERF_FACTOR } from './perf/budgets';
 
 const BUDGET_S = Math.min(300 * PERF_FACTOR, 480);
@@ -81,9 +81,9 @@ test('the bracket tutorial, touch only, on an iPad', async ({ page }) => {
   const bubbleAction = (id: string) =>
     page.getByTestId('context-bubble').locator(`[data-action="${id}"]`);
   const inspector = page.getByTestId('feature-inspector');
-  const sheet = page.getByTestId('history-sheet');
-  const sheetTab = (name: string) =>
-    sheet.getByRole('radiogroup', { name: 'Sheet section' }).getByRole('radio', { name });
+  const left = page.getByTestId('left-panel');
+  const right = page.getByTestId('right-panel');
+  const leftTab = (name: string) => left.getByRole('tab', { name });
 
   // Offered from the welcome card.
   const started = Date.now();
@@ -151,7 +151,7 @@ test('the bracket tutorial, touch only, on an iPad', async ({ page }) => {
   await a.idle();
   await step('holes');
   await inspector.getByRole('button', { name: 'Done' }).tap();
-  await expect(sheet).toHaveAttribute('data-snap', 'peek');
+  await expect(right).toHaveAttribute('inert', ''); // Done put the inspector away
 
   // 5. Holes: sketch on the top face, two circles, finish; tap one, Cut, tap the other.
   await tapWorld([30, 10, 6]);
@@ -198,22 +198,18 @@ test('the bracket tutorial, touch only, on an iPad', async ({ page }) => {
   await inspector.getByRole('button', { name: 'Done' }).tap();
 
   // 7. A parameter, used in the plate's depth (a keypad key), then changed.
-  await sheet
-    .getByRole('button', { name: /History/ })
-    .first()
-    .tap();
-  await expect(sheet).toHaveAttribute('data-snap', 'half');
-  await sheetTab('Params').tap();
-  await sheet.getByRole('button', { name: 'Add parameter' }).tap();
-  await expect(sheet.getByRole('textbox', { name: 'Expression for param1' })).toBeVisible();
-  await sheetTab('History').tap();
-  await sheet.getByRole('treeitem', { name: /Extrude 1/ }).tap();
-  await sheetTab('Inspector').tap();
+  await openPanel(page, 'left');
+  await leftTab('Params').tap();
+  await left.getByRole('button', { name: 'Add parameter' }).tap();
+  await expect(left.getByRole('textbox', { name: 'Expression for param1' })).toBeVisible();
+  await leftTab('Features').tap();
+  await left.getByRole('treeitem', { name: /Extrude 1/ }).tap();
+  await expect(right).not.toHaveAttribute('inert', ''); // selecting a feature shows its values
   await inspector.getByRole('textbox', { name: /Depth/ }).tap();
   await keypad(page, ['parameter param1']);
   await a.idle();
-  await sheetTab('Params').tap();
-  await sheet.getByRole('textbox', { name: 'Expression for param1' }).tap();
+  await leftTab('Params').tap();
+  await left.getByRole('textbox', { name: 'Expression for param1' }).tap();
   await keypad(page, ['8', 'mm (millimetres)']);
   await a.idle();
   await step('export');

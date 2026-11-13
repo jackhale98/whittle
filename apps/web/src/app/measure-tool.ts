@@ -53,11 +53,11 @@ export class MeasureTool {
       selection: [],
       bubble: null,
     });
-    // Results show in the phone's Measure tab, in the tablet sheet's inspector.
+    // Results show in the phone's Measure tab, in the inspector panel elsewhere.
     const snap = this.wb.ui.get().sheetSnap;
     if (this.wb.tier === 'phone')
       this.wb.patchUi({ sheetTab: 'measure', sheetSnap: snap === 'peek' ? 'half' : snap });
-    else if (this.wb.tier === 'tablet') this.wb.openSheet('inspector', true);
+    else this.wb.revealInspector(true);
     this.wb.pushHighlights();
     const usable = hits.filter(
       (h) => h.kind === 'face' || h.kind === 'edge' || h.kind === 'vertex',
@@ -74,7 +74,7 @@ export class MeasureTool {
     this.wb.viewport?.setMarkers(MARKERS, null);
     if (!this.state()) return;
     this.wb.patchUi({ measure: null });
-    if (this.wb.tier === 'tablet') this.wb.restoreSheet();
+    this.wb.restoreSheet();
   }
 
   private toPick(hit: PickHit): MeasurePick {

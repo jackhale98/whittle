@@ -38,7 +38,9 @@ export function ProjectBar({ wb, tier }: { wb: Workbench; tier: DeviceTier }) {
           data-testid="versions-button"
           onClick={toggle}
         >
-          <span className="max-w-[16ch] truncate">{bar.branch ?? 'Versions'}</span>
+          <span className="max-w-[16ch] truncate in-data-[narrow]:sr-only">
+            {bar.branch ?? 'Versions'}
+          </span>
         </Button>
       )}
       {/* Phones reach Settings from the command palette (More); the bar has no room. */}

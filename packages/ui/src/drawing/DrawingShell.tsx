@@ -1,7 +1,8 @@
 import * as RTabs from '@radix-ui/react-tabs';
-import { ArrowLeft, ChevronDown, ChevronUp, Redo2, Undo2 } from 'lucide-react';
-import { type ReactNode, useState } from 'react';
+import { ArrowLeft, ChevronDown, ChevronUp, PanelRight, Redo2, Undo2 } from 'lucide-react';
+import { type ReactNode, useEffect, useState } from 'react';
 import { cn, IconButton } from '../components/primitives';
+import { DRAWING_DOCK_MIN_WIDTH } from '../logic/dock';
 import { SheetTabs, type SheetTabsProps } from './SheetTabs';
 
 export interface DrawingPanelDef {
@@ -93,14 +94,29 @@ function Tabs({
   );
 }
 
+/** True while the window is too narrow to dock the drawing's side panel beside the sheet. */
+function useNarrow(active: boolean): boolean {
+  const [narrow, setNarrow] = useState(() => globalThis.innerWidth < DRAWING_DOCK_MIN_WIDTH);
+  useEffect(() => {
+    if (!active) return;
+    const on = () => setNarrow(window.innerWidth < DRAWING_DOCK_MIN_WIDTH);
+    on();
+    window.addEventListener('resize', on);
+    return () => window.removeEventListener('resize', on);
+  }, [active]);
+  return active && narrow;
+}
+
 /**
- * The drawing route's chrome. Desktop: tool rail, sheet, side panel. Tablet: a full-bleed sheet
- * with a floating tool rail and a bottom panel. Phone: the sheet to review, with a bottom panel
- * and no editing tools. Nothing here is modal: panels dock beside or under the sheet.
+ * The drawing route's chrome. Desktop and tablet (touch density, ADR-099): tool rail, sheet, side
+ * panel; on a narrow tablet the side panel overlays the sheet, one tap away. Phone: the sheet to
+ * review, with a bottom panel and no editing tools. Nothing here is modal.
  */
 export function DrawingShell(p: DrawingShellProps) {
-  const [open, setOpen] = useState(p.tier === 'desktop');
+  const [open, setOpen] = useState(false);
   const touch = p.tier !== 'desktop';
+  const sideOverlay = useNarrow(p.tier === 'tablet');
+  const [sideOpen, setSideOpen] = useState(false);
   const topBar = (
     <header
       data-testid="drawing-top-bar"
@@ -139,6 +155,16 @@ export function DrawingShell(p: DrawingShellProps) {
         />
       ) : null}
       {p.actions}
+      {sideOverlay ? (
+        <IconButton
+          label="Drawing panels"
+          icon={<PanelRight className="size-5" />}
+          size="touch"
+          pressed={sideOpen}
+          onClick={() => setSideOpen((o) => !o)}
+          data-testid="drawing-side-toggle"
+        />
+      ) : null}
     </header>
   );
 
@@ -155,16 +181,16 @@ export function DrawingShell(p: DrawingShellProps) {
       />
     ) : null;
 
-  if (p.tier === 'desktop') {
+  if (p.tier !== 'phone') {
     return (
       <div
         className="flex h-full min-h-0 flex-col bg-bg text-fg"
         data-testid="drawing-shell"
-        data-tier="desktop"
+        data-tier={p.tier}
       >
         {topBar}
         {p.notice}
-        <div className="flex min-h-0 flex-1">
+        <div className="relative flex min-h-0 flex-1">
           {p.tools ? (
             <div className="w-14 shrink-0 border-r border-border bg-surface">{p.tools}</div>
           ) : null}
@@ -175,12 +201,30 @@ export function DrawingShell(p: DrawingShellProps) {
             </main>
             {tabs}
           </div>
+          {sideOverlay && sideOpen ? (
+            <div
+              data-testid="drawing-side-scrim"
+              aria-hidden="true"
+              onPointerDown={(e) => {
+                e.preventDefault();
+                setSideOpen(false);
+              }}
+              className="absolute inset-0 z-[calc(var(--z-panel)-1)]"
+            />
+          ) : null}
           <aside
             aria-label="Drawing panels"
-            className="flex w-[22rem] shrink-0 flex-col border-l border-border bg-surface"
+            inert={sideOverlay && !sideOpen}
+            className={cn(
+              'flex w-[22rem] shrink-0 flex-col border-l border-border bg-surface',
+              sideOverlay &&
+                'absolute top-0 right-0 bottom-0 z-[var(--z-panel)] max-w-[calc(100%-1rem)] shadow-float',
+              sideOverlay && !sideOpen && 'hidden',
+            )}
             data-testid="drawing-side"
+            data-overlay={sideOverlay || undefined}
           >
-            <Tabs panels={p.panels} panel={p.panel} onPanel={p.onPanel} />
+            <Tabs panels={p.panels} panel={p.panel} onPanel={p.onPanel} touch={touch} />
           </aside>
         </div>
       </div>
@@ -212,7 +256,7 @@ export function DrawingShell(p: DrawingShellProps) {
           data-open={open}
           className={cn(
             'flex shrink-0 flex-col border-t border-border bg-surface transition-[height] duration-fast',
-            open ? (p.tier === 'phone' ? 'h-[55%]' : 'h-[45%]') : 'h-12',
+            open ? 'h-[55%]' : 'h-12',
           )}
         >
           <button

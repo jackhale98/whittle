@@ -35,6 +35,24 @@ export function openSheet(wb: Workbench, tab: SheetTabId, auto = false): void {
   wb.setSheet({ tab, snap: snap === 'peek' ? 'half' : snap });
 }
 
+/** Opens the inspector panel (desktop, tablet). `auto`: opened for an edit, so Done puts it back. */
+export function revealInspector(wb: Workbench, auto = false): void {
+  if (wb.tier === 'phone' || wb.ui.get().inspectorOpen) return;
+  if (auto) wb.inspectorOpenedForUser = true;
+  wb.patchUi({ inspectorOpen: true });
+}
+
+export function setInspectorOpen(wb: Workbench, open: boolean): void {
+  wb.inspectorOpenedForUser = false; // the user moved it: it is theirs now
+  if (wb.ui.get().inspectorOpen !== open) wb.patchUi({ inspectorOpen: open });
+}
+
+export function restoreInspector(wb: Workbench): void {
+  if (!wb.inspectorOpenedForUser) return;
+  wb.inspectorOpenedForUser = false;
+  if (wb.ui.get().inspectorOpen) wb.patchUi({ inspectorOpen: false });
+}
+
 export function restoreSheet(wb: Workbench): void {
   if (!wb.sheetOpenedForUser) return;
   wb.sheetOpenedForUser = false;
@@ -69,8 +87,9 @@ export function setSection(wb: Workbench, patch: Partial<SectionUi>): void {
 
 export function openSection(wb: Workbench): void {
   wb.patchUi({ section: { ...wb.ui.get().section, open: true }, featureId: null });
-  // auto: closing the panel (Edit, Esc, Exit) puts the sheet back, so it no longer covers the view.
-  if (wb.tier !== 'desktop') wb.openSheet(wb.tier === 'phone' ? 'section' : 'inspector', true);
+  // auto: closing the panel (Edit, Esc, Exit) puts the sheet or inspector back, so it no longer covers the view.
+  if (wb.tier === 'phone') wb.openSheet('section', true);
+  else wb.revealInspector(true);
 }
 
 /** Closes the panel only; a running cut stays on, with its chip in the viewport. */
@@ -162,8 +181,8 @@ export function addFeature(wb: Workbench, feature: Feature, pickPath?: string): 
     selection: [],
     prompt: null,
   });
-  // Tablet: the new feature's values are in the sheet's inspector (PLAN §9.1).
-  if (wb.tier === 'tablet') wb.openSheet('inspector', true);
+  // The new feature's values are in the inspector panel (PLAN §9.1); a phone shows them in the viewport.
+  wb.revealInspector(true);
   wb.refreshSketchVisibility();
   wb.pushHighlights();
 }

@@ -314,7 +314,15 @@ test.describe('tablet', () => {
     await expect(panel(page)).toHaveCount(0);
     await expect(chip(page)).toBeVisible();
 
-    // A finger on the arc rotates the plane.
+    // A finger on the arc rotates the plane. Closing the panel resizes the view (docked): wait
+    // for the manipulator to stop moving first.
+    await expect
+      .poll(async () => {
+        const g = JSON.stringify(await a.sectionGrips());
+        await page.waitForTimeout(200);
+        return g === JSON.stringify(await a.sectionGrips());
+      })
+      .toBe(true);
     const arc = (await a.sectionGrips())?.['sec:arc-v'];
     if (!arc) throw new Error('no manipulator');
     const from = await pagePoint(page, arc);

@@ -448,7 +448,6 @@ export default function DrawingRoute({ wb, id, tier, onClose }: DrawingRouteProp
                 active={activeTool}
                 disabled={disabledTools}
                 onTool={onTool}
-                orientation={tier === 'desktop' ? 'vertical' : 'horizontal'}
                 size={size}
               />
             ),

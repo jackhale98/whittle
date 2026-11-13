@@ -366,13 +366,13 @@ test.describe('data-driven shells', () => {
     await expect(page).toHaveScreenshot('s-desktop-dark-part.png');
   });
 
-  test('tablet: history sheet shows the tree', async ({ page }, info) => {
+  test('tablet: the feature panel shows the tree', async ({ page }, info) => {
     test.skip(info.project.name !== 'tablet');
     await page.goto('/?shell=tablet&theme=light&data=1');
     await page.getByTestId('app-shell').waitFor();
-    await page.getByRole('button', { name: /History, expand/ }).click();
     await page.waitForTimeout(400);
-    await expect(page).toHaveScreenshot('s-tablet-light-history.png');
+    await expect(page.getByRole('tree', { name: 'Features' })).toBeVisible();
+    await expect(page).toHaveScreenshot('s-tablet-light-tree.png');
     await noSeriousViolations(page);
   });
 
