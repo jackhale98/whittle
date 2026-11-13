@@ -3488,3 +3488,17 @@ A curved outline that is not an arc (a fillet's torus, or a piece of a sphere's 
 **Decision.** `NavigationOptions.projection: 'orthographic' | 'perspective'`, default `orthographic`, per device like the other navigation settings, in Settings → Navigation and the command palette ("Orthographic view" / "Perspective view"). Every input behaves the same in both: wheel and pinch zoom toward the surface under the cursor (orthographic zoom changes the view height, anchored at the cursor), cursor-pivot orbit, pan with the cursor point staying under the cursor, fit with frame insets, standard views, the view cube, touch, Pencil and 3D-mouse motion. Picking (ID buffer and BVH rays), edge and silhouette rendering, the overlay depth pull (orthographic form: `clip.z += P[2][2] * delta`), section planes, markers and handle sizes (world-per-pixel) handle both. Switching keeps the same target and apparent size. Orthographic clipping planes are set from the scene bounds so nothing is cut when zoomed in.
 
 **Consequences.** Visual baselines of the 3D viewport change once. Perf budgets unchanged.
+
+## ADR-099: the tablet uses the desktop layout at touch size; the bottom sheet is for the phone only (owner, 2026-11-13)
+
+**Context.** Owner: on iPad the slide-up sheet (shared with the phone) "always blocks the actual view when used, which is difficult for editing", and fewer layout variants should make future changes easier. The tablet shell (PLAN 9.1, Shapr3D-class) was a third layout: a tool rail, a floating bar and a peek/half/full bottom sheet for history, params and the inspector. About 13 app code paths and ~29 E2E files special-cased it, and it produced tier-only bugs (e.g. the lazy-shell remount in M4).
+
+**Decision.**
+
+1. Tablet renders the desktop shell structure with a `touch` density: top bar, collapsible left panel (feature tree, params), right context inspector shown while editing, floating command bar (`toolGroups`, as on desktop). 44 px targets and touch spacing come from the density, not a separate layout.
+2. Where both docked panels would leave the view too narrow (portrait iPad, ~< 1024 CSS px), a side panel opens as an overlay over the view, one at a time, closed by a tap outside or its button; the viewport's frame insets follow what is actually covered (ADR-086) so fits stay framed.
+3. Input stays touch-first on the tablet: gestures, Pencil, long-press, radial menu, context bubble, inline numeric keypad.
+4. The phone keeps its bottom-sheet shell (review-first, too narrow for side panels).
+5. App code stops branching on `tablet` for layout; remaining tier checks are about input or capability (tier-policy), not structure.
+
+**Consequences.** Two layouts instead of three. Tablet E2E flows that drove the sheet are rewritten to the panels; tablet visual baselines are regenerated once. `DeviceTier` stays (input and capability policy still differ).

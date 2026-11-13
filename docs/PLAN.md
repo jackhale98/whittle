@@ -542,13 +542,12 @@ Wren can do better because its source format is text-based parametric data (§8A
 
   Keyboard shortcuts still launch tools directly.
 
-**Tablet (Shapr3D-class):**
+**Tablet (owner, 2026-11-13, ADR-099): the desktop structure at touch size.** The bottom sheet covered the part while editing, so the tablet now uses the desktop layout with touch sizing (44 px targets) instead of its own:
 
-- Full-bleed viewport.
-- A slim left rail with tool groups.
-- A context bubble near the selection showing 3–4 actions.
-- A bottom sheet for the feature history.
-- An inline numeric keypad that appears whenever a value is being edited.
+- Top bar, left panel (feature tree, params), right context inspector and the floating command bar, as on desktop. Each side panel collapses with one tap, and the inspector appears only while something is being edited.
+- Portrait (or any width where both docked panels would squeeze the view): a side panel slides over the view, one at a time, and closes with a tap outside, so the model never jumps.
+- Kept from the touch work: gestures, Pencil, long-press menus, the radial menu, the context bubble near the selection and the inline numeric keypad.
+- Layouts are now two (large screen, phone); the tablet differs from desktop by density and input, not by structure.
 
 **Phone:**
 
