@@ -117,7 +117,9 @@ test('sketch mode: pinch zooms, two/three-finger taps undo/redo, single taps sti
 test('model mode: a pen tap with a finger resting on the screen still selects (D9)', async ({
   page,
 }) => {
-  test.slow();
+  // Four phases (finger orbit, tool presses, Pencil line, Pencil stroke): about 58 s alone on a
+  // fast machine in either projection, so the default slow budget (90 s) was too close on CI.
+  test.setTimeout(180_000);
   await boot(page);
   await page.getByRole('button', { name: 'Close welcome' }).tap();
   await addBox(page);

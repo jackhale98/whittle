@@ -5,20 +5,17 @@ import { depthOf } from './adornments';
 import { createBodyMaterial } from './bodies';
 import { emitCamera } from './camera';
 import { REST_WORK_DEBOUNCE_MS } from './constants';
-import { worldPerPixel } from './handles';
 import { stepMotion } from './motion/nav';
-import {
-  disposeOverlay,
-  makeDot,
-  makeFill,
-  makeLines,
-  overlayBiasFor,
-  overlayDepthBias,
-  sizeDots,
-} from './overlays';
+import { disposeOverlay, makeDot, makeFill, makeLines, sizeDots } from './overlays';
 import { idFresh, kickIdRefresh } from './picking';
+import {
+  applyProjectionUniforms,
+  cameraWorldPerPixel,
+  pixelScaleP11,
+  projectionKey,
+  syncProjection,
+} from './projection';
 import type { ViewportImpl } from './viewport';
-import { clipPlanes } from './views';
 import { stepWheel } from './wheel';
 
 export function resize(vp: ViewportImpl): void {
@@ -197,14 +194,9 @@ export function scheduleRestWork(vp: ViewportImpl): void {
 }
 
 export function renderOnce(vp: ViewportImpl): void {
-  const { near, far } = clipPlanes(vp.controls.distance, vp.sceneRadius);
-  if (near !== vp.camera.near || far !== vp.camera.far) {
-    vp.camera.near = near;
-    vp.camera.far = far;
-    vp.camera.updateProjectionMatrix();
-  }
-  overlayDepthBias.value = overlayBiasFor();
-  const p11 = vp.camera.projectionMatrix.elements[5] as number;
+  syncProjection(vp);
+  applyProjectionUniforms(vp);
+  const p11 = pixelScaleP11(vp);
   const heightCss = vp.canvas.clientHeight;
   sizeDots(
     [
@@ -218,7 +210,7 @@ export function renderOnce(vp: ViewportImpl): void {
   );
   vp.references.size(p11, heightCss);
   for (const h of vp.handles.values()) {
-    h.place(worldPerPixel(depthOf(vp, h.origin), p11, heightCss));
+    h.place(cameraWorldPerPixel(vp, depthOf(vp, h.origin)));
   }
   const t0 = performance.now();
   vp.renderer.render(vp.scene, vp.camera);
@@ -230,11 +222,7 @@ export function renderOnce(vp: ViewportImpl): void {
 
   // Camera changes invalidate the ID image; the view cube follows the camera orientation.
   const m = vp.camera.matrixWorld.elements;
-  const key = [
-    ...m,
-    vp.camera.projectionMatrix.elements[0] as number,
-    vp.camera.projectionMatrix.elements[5] as number,
-  ];
+  const key = [...m, ...projectionKey(vp)];
   if (key.length !== vp.cameraKey.length || key.some((v, i) => v !== vp.cameraKey[i])) {
     vp.cameraKey = key;
     vp.cameraChangedSinceEmit = true;

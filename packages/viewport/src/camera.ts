@@ -5,6 +5,7 @@ import { bodyBoundsList } from './bodies';
 import { compareBounds } from './compare';
 import { rayAt, syncCameraMatrices } from './picking';
 import { lookAtPlanePose, type PlaneFrame, rayToPlane } from './plane';
+import { fitDistanceFor, fitInsetFrameFor, inFrontOfEye, insetPanFor } from './projection';
 import { requestRender } from './renderLoop';
 import type { FitOptions } from './types';
 import { type CubeHit, ViewCube } from './viewcube';
@@ -15,9 +16,6 @@ import {
   boundsRadius,
   cameraPositionFor,
   type FrameInsets,
-  fitDistance,
-  fitInsetFrame,
-  insetPan,
   unionBounds,
   VIEW_DIRECTIONS,
 } from './views';
@@ -66,7 +64,8 @@ export function worldToScreen(
   return {
     x: (v.x * 0.5 + 0.5) * w,
     y: (1 - (v.y * 0.5 + 0.5)) * h,
-    visible: eye.z < 0 && Math.abs(v.x) <= 1 && Math.abs(v.y) <= 1,
+    // Orthographic: in front of the near plane (which may be behind the camera) and inside far.
+    visible: inFrontOfEye(vp, eye.z) && Math.abs(v.x) <= 1 && Math.abs(v.y) <= 1,
   };
 }
 
@@ -133,7 +132,7 @@ export function configureControls(vp: ViewportImpl): void {
 }
 
 export function zoomTo(vp: ViewportImpl, point: Vec3, radius: number, animate = true): void {
-  const distance = fitDistance(Math.max(radius, 1e-6) * 2, vp.camera.fov, vp.camera.aspect || 1, 1);
+  const distance = fitDistanceFor(vp, Math.max(radius, 1e-6) * 2, 1);
   const pos = cameraPositionFor(point, currentDirection(vp), distance);
   const transition = animate && !vp.reducedMotion;
   vp.cameraAwake = true;
@@ -212,7 +211,7 @@ export function fitTo(
   const h = vp.canvas.clientHeight;
   let distance: number;
   if (w > 0 && h > 0 && (ins.top || ins.right || ins.bottom || ins.left)) {
-    const f = fitInsetFrame(radius, vp.camera.fov, w, h, ins);
+    const f = fitInsetFrameFor(vp, radius, w, h, ins);
     distance = f.distance;
     // Camera axes for this direction (and the current roll): right = f x up, up = right x f.
     const len = Math.hypot(direction[0], direction[1], direction[2]) || 1;
@@ -227,7 +226,7 @@ export function fitTo(
       target[2] + right.z * f.shiftRight + up.z * f.shiftUp,
     ];
   } else {
-    distance = fitDistance(radius, vp.camera.fov, vp.camera.aspect || 1);
+    distance = fitDistanceFor(vp, radius);
   }
   const pos = cameraPositionFor(target, direction, distance);
   // Standard views are level: undo any twist-roll (cut, since a tween would swing through it).
@@ -266,7 +265,7 @@ export function keepInView(vp: ViewportImpl, prev: FrameInsets, next: FrameInset
   if (right.lengthSq() < 1e-12) return;
   right.normalize();
   const up = new Vector3().crossVectors(right, fwd).normalize();
-  const pan = insetPan(prev, next, vp.camera.fov, h, distance);
+  const pan = insetPanFor(vp, prev, next, h, distance);
   const d = right.multiplyScalar(pan.right).addScaledVector(up, pan.up);
   vp.cameraAwake = true;
   void vp.controls.setLookAt(

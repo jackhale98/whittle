@@ -39,6 +39,7 @@ import {
   raycastTriangles,
   sortByDistance,
 } from './pick';
+import { depthFromEye, eyeFor, screenRay, syncProjection } from './projection';
 import { requestRender, scheduleRestWork } from './renderLoop';
 import { isClipped, keptRayRange } from './section';
 import type { ViewportImpl } from './viewport';
@@ -167,6 +168,22 @@ export function pick(vp: ViewportImpl, x: number, y: number, options: PickOption
     faceHit = pickFace(vp, x, y, ray);
     if (faceHit) out.push(faceHit);
   }
+  // A sketch shown but not being edited (beside a feature being edited, say) is behind the body:
+  // its regions only win where no body face is nearer along the pick ray. Regions outrank faces,
+  // so without this a region hidden under a face won the click (seen once the orthographic view
+  // sent the ray straight through to the sketch plane, ADR-098).
+  if (faceHit && !anySketchActive) {
+    const along = (p: Vec3) =>
+      (p[0] - ray.origin[0]) * ray.dir[0] +
+      (p[1] - ray.origin[1]) * ray.dir[1] +
+      (p[2] - ray.origin[2]) * ray.dir[2];
+    const faceT = along(faceHit.point);
+    const eps = 1e-6 * Math.max(1, vp.sceneRadius);
+    for (let i = out.length - 1; i >= 0; i--) {
+      const h = out[i] as PickHit;
+      if (h.kind === 'region' && along(h.point) > faceT + eps) out.splice(i, 1);
+    }
+  }
 
   // Reference geometry (ADR-093). A body face under the pointer always wins over a plane, so a
   // plane never blocks the faces behind it (a plane through a part is picked where it is in the
@@ -200,10 +217,7 @@ export function pick(vp: ViewportImpl, x: number, y: number, options: PickOption
 
 /** Stamp hits with their distance from the camera (mm), the chooser's stable tie-break. */
 export function withDepth(vp: ViewportImpl, hits: PickHit[]): PickHit[] {
-  const o = vp.camera.position;
-  for (const h of hits) {
-    h.depth = Math.hypot(h.point[0] - o.x, h.point[1] - o.y, h.point[2] - o.z);
-  }
+  for (const h of hits) h.depth = depthFromEye(vp, h.point);
   return hits;
 }
 
@@ -231,17 +245,13 @@ export function idFresh(vp: ViewportImpl): boolean {
 
 export function syncCameraMatrices(vp: ViewportImpl): void {
   vp.camera.updateMatrixWorld();
+  syncProjection(vp);
   vp.camera.matrixWorldInverse.copy(vp.camera.matrixWorld).invert();
 }
 
 export function rayAt(vp: ViewportImpl, x: number, y: number): { origin: Vec3; dir: Vec3 } {
   syncCameraMatrices(vp);
-  const w = vp.canvas.clientWidth || 1;
-  const h = vp.canvas.clientHeight || 1;
-  const p = new Vector3((x / w) * 2 - 1, -(y / h) * 2 + 1, 0.5).unproject(vp.camera);
-  const o = vp.camera.position;
-  const d = p.sub(o).normalize();
-  return { origin: [o.x, o.y, o.z], dir: [d.x, d.y, d.z] };
+  return screenRay(vp, x, y);
 }
 
 /** World -> CSS px projector for the current camera (allocation-free per call). */
@@ -310,7 +320,9 @@ export function triFaceFor(_vp: ViewportImpl, e: BodyEntry): Uint32Array {
 }
 
 /** True when no visible body lies between the camera and `point`. */
-export function isVisiblePoint(vp: ViewportImpl, origin: Vec3, point: Vec3): boolean {
+export function isVisiblePoint(vp: ViewportImpl, _origin: Vec3, point: Vec3): boolean {
+  // The sight line to a point starts where the projection says (the camera, or straight back).
+  const origin = eyeFor(vp, point);
   const dx = point[0] - origin[0];
   const dy = point[1] - origin[1];
   const dz = point[2] - origin[2];

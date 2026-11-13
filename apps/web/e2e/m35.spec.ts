@@ -30,7 +30,7 @@ type Btn = 'left' | 'middle' | 'right';
 interface Probe {
   pick(x: number, y: number, o: { kinds: string[]; all?: boolean }): { point: V3; kind: string }[];
   worldToScreen(p: V3): { x: number; y: number; visible: boolean };
-  getNavigation(): { preset: string };
+  getNavigation(): { preset: string; projection: string };
   getNavigationState(): {
     dragging: string | null;
     pivot: V3 | null;
@@ -112,12 +112,20 @@ function classify(a: Awaited<ReturnType<typeof pose>>, b: Awaited<ReturnType<typ
 }
 
 /** A box on screen, centred, with the bounding box of its projected corners. */
-async function boxSetup(page: Page) {
+async function boxSetup(page: Page, opts: { zoomOut?: number } = {}) {
   await boot(page);
   await page.getByRole('button', { name: 'Close welcome' }).click();
   await addBox(page);
   await page.keyboard.press('0'); // isometric
   await cameraStill(page);
+  if (opts.zoomOut) {
+    // The orthographic fit (ADR-098) fills more of the canvas than the perspective one did: a
+    // notch out keeps tests that start a drag just outside the part clear of the canvas chips.
+    const c = await page.getByTestId('viewport-canvas').boundingBox();
+    if (c) await page.mouse.move(c.x + c.width / 2, c.y + c.height / 2);
+    for (let i = 0; i < opts.zoomOut; i++) await page.mouse.wheel(0, 100);
+    await cameraStill(page);
+  }
   const b = (await app(page).regen())?.bodies[0]?.bbox;
   if (!b) throw new Error('no body');
   const corners: V3[] = [];
@@ -292,6 +300,45 @@ test.describe('presets', () => {
     void a;
   });
 
+  test('projection (ADR-098): orthographic by default; Settings and the palette switch it, and it persists', async ({
+    page,
+  }) => {
+    await boxSetup(page);
+    expect((await probe(page).navigation()).projection).toBe('orthographic');
+    // Seen from the top, a vertical edge of the 40 x 30 x 20 box is a point: no perspective.
+    await page.evaluate(() =>
+      (
+        window as unknown as { __wrenViewport: { setView(v: string, animate: boolean): void } }
+      ).__wrenViewport.setView('top', false),
+    );
+    await cameraStill(page);
+    const lean = async () => {
+      const a = await probe(page).toScreen([0, 0, 0]);
+      const b = await probe(page).toScreen([0, 0, 20]);
+      return Math.hypot(a.x - b.x, a.y - b.y);
+    };
+    expect(await lean()).toBeLessThan(0.5);
+
+    // The palette.
+    await palette(page, 'Perspective view');
+    expect((await probe(page).navigation()).projection).toBe('perspective');
+    expect(await lean(), 'the corner edge leans away from the view axis').toBeGreaterThan(4);
+    expect(await page.evaluate(() => localStorage.getItem('wren.navigation'))).toContain(
+      '"projection":"perspective"',
+    );
+    await palette(page, 'Orthographic view');
+    expect((await probe(page).navigation()).projection).toBe('orthographic');
+    expect(await lean()).toBeLessThan(0.5);
+
+    // Settings -> Navigation -> Projection, persisted per device across a reload.
+    const panel = await openSettings(page);
+    await panel.getByRole('radio', { name: 'Perspective' }).check();
+    expect((await probe(page).navigation()).projection).toBe('perspective');
+    await page.getByTestId('settings-close').click();
+    await boot(page);
+    expect((await probe(page).navigation()).projection).toBe('perspective');
+  });
+
   test('right click repeats the last command under "Right click repeats"; hold opens the menu', async ({
     page,
   }) => {
@@ -327,7 +374,7 @@ test.describe('presets', () => {
   test('left drag box-selects: left to right = window, right to left = crossing', async ({
     page,
   }) => {
-    const s = await boxSetup(page);
+    const s = await boxSetup(page, { zoomOut: 2 });
     const a = app(page);
     const p0 = await pose(page);
     const cx = (s.min.x + s.max.x) / 2;
@@ -906,8 +953,12 @@ test.describe('lineage', () => {
     // Edit on the feature opens it in the inspector.
     await lineage.locator('[data-lineage="feature"]').getByRole('button', { name: /Edit/ }).click();
     await expect.poll(async () => (await a.ui()).featureId).toBe(E1);
-    // Edit on the sketch enters it.
-    await page.mouse.click(top.x, top.y);
+    // Edit on the sketch enters it. The inspector opened: the view reframes for the covered area
+    // (ADR-086), so find the top face on screen again.
+    await cameraStill(page);
+    await probe(page).pickReady();
+    const top2 = await toPage(page, [10, 10, 10]);
+    await page.mouse.click(top2.x, top2.y);
     await a.idle();
     await page
       .getByTestId('selection-lineage')

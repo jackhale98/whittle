@@ -10,6 +10,19 @@ import { boxMesh, denseMesh, sketchFixture } from '@wren-cad/test-fixtures';
 import type { ViewportEngine } from '../src/index';
 import { createViewport, defaultTolerance } from '../src/index';
 import { sharedOverlayMaterialCount } from '../src/overlays';
+import type { ViewportImpl } from '../src/viewport';
+import { HOLE_FACES, HOLE_FLOOR, holeBlock } from './holeBlock';
+
+export interface ProjectionInfo {
+  orthographic: boolean;
+  near: number;
+  far: number;
+  /** Half the view height in world units at the target: 1 / P[1][1] in orthographic. */
+  halfHeight: number;
+  /** projectionMatrix.elements[11]: -1 perspective, 0 orthographic. */
+  p32: number;
+  fov: number;
+}
 
 export interface HarnessApi {
   viewport: ViewportEngine;
@@ -17,6 +30,15 @@ export interface HarnessApi {
   /** Replace the scene with a dense sphere of ~n triangles (perf probe). */
   loadDense(triangles: number): void;
   loadBox(): void;
+  /**
+   * ADR-098's case: a 60 x 40 x 30 block with a 14 x 14 blind hole (depth 18) off the centre of
+   * its top face, id `hole`. Replaces the box.
+   */
+  loadHoleBlock(): void;
+  /** Face names of the hole block by index (walls and floor are named `hole.*`). */
+  holeFaceNames(): string[];
+  /** The camera's projection, as the viewport built it (tests of ADR-098). */
+  projectionInfo(): ProjectionInfo;
   /** Add (or replace) another box body, e.g. to test several bodies at once. */
   addBox(id: string, size: [number, number, number], origin: [number, number, number]): void;
   /** Replace the box body with another size (same buffer sizes: the cheap refill path). */
@@ -64,6 +86,7 @@ const precompile = params.get('warm') !== '0';
 const maxPixelRatio = Number(params.get('maxDpr') ?? '2');
 const hover = params.get('hover') !== '0';
 const empty = params.get('empty') === '1';
+const projectionParam = params.get('projection');
 
 const canvas = document.getElementById('c') as HTMLCanvasElement;
 const hud = document.getElementById('hud') as HTMLDivElement;
@@ -84,7 +107,11 @@ async function main() {
     precompile,
     ...(reducedMotion === undefined ? {} : { reducedMotion }),
   });
+  if (projectionParam === 'perspective' || projectionParam === 'orthographic') {
+    viewport.setNavigation({ projection: projectionParam });
+  }
   const loadBox = () => {
+    viewport.removeBody('hole');
     viewport.removeBody('dense');
     viewport.setBody('box', boxMesh(40, 30, 20));
   };
@@ -92,6 +119,34 @@ async function main() {
     viewport,
     backend: viewport.backend,
     loadBox,
+    loadHoleBlock() {
+      viewport.removeBody('box');
+      viewport.removeBody('dense');
+      viewport.setBody('hole', holeBlock(60, 40, 30, { hole: [34, 13, 48, 27], depth: 18 }));
+      viewport.fitAll(false);
+    },
+    holeFaceNames: () => [
+      'face.xmin',
+      'face.xmax',
+      'face.ymin',
+      'face.ymax',
+      'face.zmin',
+      'face.zmax',
+      ...HOLE_FACES,
+      HOLE_FLOOR,
+    ],
+    projectionInfo() {
+      const cam = (viewport as unknown as ViewportImpl).camera;
+      const e = cam.projectionMatrix.elements;
+      return {
+        orthographic: cam.orthographic,
+        near: cam.near,
+        far: cam.far,
+        halfHeight: 1 / (e[5] as number),
+        p32: e[11] as number,
+        fov: cam.fov,
+      };
+    },
     addBox(id, size, origin) {
       viewport.setBody(id, boxMesh(size[0], size[1], size[2], { origin }));
     },

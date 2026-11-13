@@ -253,7 +253,16 @@ export class NavigationMachine {
 // ---- pivot -----------------------------------------------------------------------------------
 
 /** NDC x, y (on screen when both in [-1, 1]) and the distance along the view direction (<= 0: behind). */
-export type PivotProjection = (p: Vec3) => { nx: number; ny: number; depth: number };
+export type PivotProjection = (p: Vec3) => {
+  nx: number;
+  ny: number;
+  depth: number;
+  /**
+   * Whether the point is in front of the eye. Defaults to `depth > 0`; an orthographic camera sets
+   * it itself, since there points behind the camera plane are still drawn (ADR-098).
+   */
+  front?: boolean;
+};
 
 export interface PivotInput {
   mode: 'cursor' | 'center';
@@ -293,12 +302,13 @@ const finite = (p: Vec3 | null): p is Vec3 =>
  * Centre mode always uses the bodies' centre (unless it is behind the camera).
  */
 export function resolvePivot(i: PivotInput): PivotResult {
+  const front = (q: ReturnType<PivotProjection>) => q.front ?? q.depth > EYE;
   const inView = (p: Vec3 | null): p is Vec3 => {
     if (!finite(p)) return false;
     const q = i.project(p);
-    return q.depth > EYE && Math.abs(q.nx) <= 1 && Math.abs(q.ny) <= 1;
+    return front(q) && Math.abs(q.nx) <= 1 && Math.abs(q.ny) <= 1;
   };
-  const inFront = (p: Vec3 | null): p is Vec3 => finite(p) && i.project(p).depth > EYE;
+  const inFront = (p: Vec3 | null): p is Vec3 => finite(p) && front(i.project(p));
   if (i.mode === 'center') {
     if (inFront(i.center)) return { point: i.center, source: 'center' };
   } else {
@@ -310,8 +320,8 @@ export function resolvePivot(i: PivotInput): PivotResult {
   }
   let depth = i.fallbackDistance > EYE ? i.fallbackDistance : 1;
   if (finite(i.center)) {
-    const d = i.project(i.center).depth;
-    if (d > EYE) depth = d;
+    const q = i.project(i.center);
+    if (front(q)) depth = q.depth;
   }
   const c = i.cameraPosition;
   const f = i.forward;

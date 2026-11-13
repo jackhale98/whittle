@@ -37,6 +37,22 @@ describe('picking', () => {
     expect(toleranceFor('touch')).toBe(22);
   });
 
+  it('a thin hit clearly behind another at the same spot is hidden, not a "Which one?" (ADR-098)', () => {
+    // Orthographic top view: the plate's top and bottom front edges lie on one screen line.
+    const top = hit({ kind: 'edge', index: 9, distancePx: 0, depth: 132.5 });
+    const bottom = hit({ kind: 'edge', index: 8, distancePx: 0.1, depth: 138.5 });
+    const r = resolvePick([top, bottom]);
+    expect(r.best).toBe(top);
+    expect(r.ties).toEqual([]);
+    // Listed the other way round, the nearer still wins.
+    expect(resolvePick([bottom, top]).best).toBe(top);
+    const flat = hit({ kind: 'edge', index: 7, distancePx: 0, depth: 138.5 });
+    expect(resolvePick([flat, top]).best).toBe(top);
+    // Truly coincident (same depth) still asks.
+    const twin = hit({ kind: 'edge', index: 10, distancePx: 0.5, depth: 132.5 });
+    expect(resolvePick([top, twin]).ties).toHaveLength(2);
+  });
+
   it('thin things beat faces; near-ties among thin hits ask "Which one?"', () => {
     const face = hit({ kind: 'face', distancePx: 0 });
     const edge = hit({ kind: 'edge', index: 3, distancePx: 3 });

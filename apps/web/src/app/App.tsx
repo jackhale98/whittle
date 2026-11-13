@@ -117,6 +117,7 @@ export function App({ wb }: { wb: Workbench }) {
   }, []);
 
   const originPlanes = useObservable(wb.originPlanes);
+  const projection = useObservable(wb.input).navigation.projection;
   const commands = useMemo<PaletteCommand[]>(
     () => [
       {
@@ -210,6 +211,18 @@ export function App({ wb }: { wb: Workbench }) {
         label: originPlanes ? 'Hide origin planes' : 'Show origin planes',
         run: () => wb.setOriginPlanes(!originPlanes),
       },
+      {
+        id: 'view-orthographic',
+        label: 'Orthographic view',
+        hint: projection === 'orthographic' ? 'Current' : 'Parallel projection (default)',
+        run: () => wb.setProjection('orthographic'),
+      },
+      {
+        id: 'view-perspective',
+        label: 'Perspective view',
+        hint: projection === 'perspective' ? 'Current' : 'Things further away look smaller',
+        run: () => wb.setProjection('perspective'),
+      },
       { id: 'undo', label: 'Undo', run: () => wb.undo() },
       { id: 'redo', label: 'Redo', run: () => wb.redo() },
       {
@@ -234,7 +247,7 @@ export function App({ wb }: { wb: Workbench }) {
       },
       { id: 'about', label: `About Wren · ${diagnostics.appVersion}`, hint: 'Version' },
     ],
-    [diagnostics.appVersion, wb, nestSketches, setNestSketches, originPlanes],
+    [diagnostics.appVersion, wb, nestSketches, setNestSketches, originPlanes, projection],
   );
 
   const beforeViewport = useMemo(() => wb.initialDocumentRead(), [wb]);

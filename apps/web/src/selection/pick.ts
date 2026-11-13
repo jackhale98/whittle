@@ -89,17 +89,33 @@ export function resolvePick(
   });
   // A visible sketch region drawn over a face is what the user sees there: it wins the tie
   // (holes sketched on a face are tapped to cut them; the face around them stays pickable).
+  // Equally near on screen (within half a pixel; an orthographic view stacks edges exactly), the
+  // one nearer the eye is the one seen (ADR-098).
+  const nearer = (h: PickHit, b: PickHit) =>
+    h.depth !== undefined &&
+    b.depth !== undefined &&
+    h.depth < b.depth - 1e-3 * Math.max(1, Math.abs(b.depth));
   const wins = (h: PickHit, b: PickHit) =>
     PRIORITY[h.kind] < PRIORITY[b.kind] ||
     (PRIORITY[h.kind] === PRIORITY[b.kind] &&
-      (h.distancePx < b.distancePx ||
-        (h.distancePx === b.distancePx && h.kind === 'region' && b.kind === 'face')));
+      (Math.abs(h.distancePx - b.distancePx) <= 0.5 && h.kind !== 'region' && b.kind !== 'region'
+        ? nearer(h, b) || (!nearer(b, h) && h.distancePx < b.distancePx)
+        : h.distancePx < b.distancePx ||
+          (h.distancePx === b.distancePx && h.kind === 'region' && b.kind === 'face')));
   let best: PickHit | null = null;
   for (const h of unique) if (!best || wins(h, best)) best = h;
   if (!best) return { best: null, ties: [] };
   const b = best;
+  // A tie is a real choice only at the same depth: of two things at one screen spot, the one
+  // clearly behind the other is hidden by it (an orthographic top view stacks a plate's top and
+  // bottom front edges on one line; ADR-098). Truly coincident hits (an edge and its vertex, a
+  // seam on a silhouette) are at the same depth and still offer the chooser.
+  const sameDepth = (h: PickHit) =>
+    h.depth === undefined ||
+    b.depth === undefined ||
+    Math.abs(h.depth - b.depth) <= 1e-3 * Math.max(1, Math.abs(b.depth));
   const ties = unique.filter(
-    (h) => PRIORITY[h.kind] < 2 && Math.abs(h.distancePx - b.distancePx) <= tie,
+    (h) => PRIORITY[h.kind] < 2 && Math.abs(h.distancePx - b.distancePx) <= tie && sameDepth(h),
   );
   return { best, ties: ties.length > 1 ? ties : [] };
 }

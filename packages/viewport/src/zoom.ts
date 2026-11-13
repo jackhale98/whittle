@@ -115,9 +115,25 @@ export interface ZoomFrame {
   forward: Vec3;
   /** Depth of the anchor along `forward` divided by its distance: how far off-axis it is. */
   cos: number;
+  /**
+   * The view-axis target's distance from the camera per unit of camera-to-anchor distance. In
+   * perspective this is `cos` (the target moves to the anchor's depth, which changes nothing on
+   * screen). In orthographic the view height is tied to the target distance (ADR-098), so the target
+   * distance must scale by exactly the zoom ratio: `targetDistance / anchor distance`.
+   */
+  depthRatio: number;
 }
 
-export function zoomFrame(camera: Vec3, forward: Vec3, anchor: Vec3): ZoomFrame | null {
+/**
+ * `targetDistance`: the current camera-to-target distance, for a projection whose scale follows it
+ * (orthographic). Omit it in perspective.
+ */
+export function zoomFrame(
+  camera: Vec3,
+  forward: Vec3,
+  anchor: Vec3,
+  targetDistance?: number,
+): ZoomFrame | null {
   const ax = camera[0] - anchor[0];
   const ay = camera[1] - anchor[1];
   const az = camera[2] - anchor[2];
@@ -125,7 +141,14 @@ export function zoomFrame(camera: Vec3, forward: Vec3, anchor: Vec3): ZoomFrame 
   if (d < 1e-9) return null;
   const away: Vec3 = [ax / d, ay / d, az / d];
   const cos = -(away[0] * forward[0] + away[1] * forward[1] + away[2] * forward[2]);
-  return { anchor, away, forward, cos: Math.max(cos, 0.05) };
+  const c = Math.max(cos, 0.05);
+  return {
+    anchor,
+    away,
+    forward,
+    cos: c,
+    depthRatio: targetDistance !== undefined ? targetDistance / d : c,
+  };
 }
 
 /** Camera position, and the view-axis target at the anchor's depth, when `distance` from the anchor. */
@@ -135,7 +158,7 @@ export function zoomPose(f: ZoomFrame, distance: number): { position: Vec3; targ
     f.anchor[1] + f.away[1] * distance,
     f.anchor[2] + f.away[2] * distance,
   ];
-  const depth = distance * f.cos;
+  const depth = distance * f.depthRatio;
   return {
     position,
     target: [
