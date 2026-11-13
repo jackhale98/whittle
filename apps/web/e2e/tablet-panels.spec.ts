@@ -130,10 +130,13 @@ test('portrait: opening the tree and the inspector never covers the selected geo
     // Close by the same button: the view comes back where it was.
     await page.getByTestId(`${side}-toggle`).tap();
     await expect(panel(page, side)).toHaveAttribute('inert', '');
-    await cameraStill(page);
-    const back = await partPoints(page);
-    expect(Math.abs(back.centre.x - rest.centre.x)).toBeLessThan(1.5);
-    expect(Math.abs(back.centre.y - rest.centre.y)).toBeLessThan(1.5);
+    // The panel slides away over ~260 ms and the camera follows it frame by frame.
+    await expect
+      .poll(async () => {
+        const back = (await partPoints(page)).centre;
+        return Math.max(Math.abs(back.x - rest.centre.x), Math.abs(back.y - rest.centre.y));
+      })
+      .toBeLessThan(1.5);
   }
 });
 
