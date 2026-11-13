@@ -1,0 +1,4 @@
+const e=typeof process<`u`&&typeof process.versions?.node==`string`,t={},n={},r={name:`single`,requires:[]},i=()=>r.requires.filter(e=>!(t[e]?.()??!1)),a=()=>new URL(`/assets/wren-drawing-st-EgTt6Iam.js`,``+import.meta.url).href,o=()=>import(
+/* webpackIgnore: true */
+/* @vite-ignore */
+a()),s=()=>{let t=a();if(!e||!t.startsWith(`file:`))return t;let n=decodeURIComponent(new URL(t).pathname);return process.platform===`win32`?n.replace(/^\/([A-Za-z]:)/,`$1`):n},c=async(e={})=>{if(Object.hasOwn(e,`variant`))throw Error(`The "single" variant is fixed by the "./single/init" import; remove the variant option.`);let t=i();if(t.length>0)throw Error(`The "single" variant requires `+t.join(`, `)+`, which this host does not provide. `+t.map(e=>n[e]).join(` `));let{threadCount:r,...a}=e,{default:c}=await o();return await c({mainScriptUrlOrBlob:s(),...a})};export{c as createInstance,c as default};

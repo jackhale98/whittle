@@ -1,0 +1,4850 @@
+{
+  "$id": "https://jackhale98.github.io/wren-cad/schema/wren-part.schema.json",
+  "$ref": "#/definitions/Part",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "AlignedDimension": {
+      "additionalProperties": false,
+      "description": "True (minimum) distance between two points, drawn parallel to the line joining them. refs: [a, b].",
+      "properties": {
+        "at": {
+          "description": "Point qualifiers parallel to `refs`; absent or shorter = `'self'` for the rest.",
+          "items": {
+            "$ref": "#/definitions/RefPoint"
+          },
+          "type": "array"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "kind": {
+          "const": "aligned",
+          "type": "string"
+        },
+        "modelPlacement": {
+          "additionalProperties": false,
+          "description": "M5 reserve: the v3 `PmiAnnotation.placement` (3D annotation plane and text position), carried over verbatim by the migration so nothing is lost. M5 replaces it with annotation planes.",
+          "properties": {
+            "plane": {
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 6,
+              "minItems": 6,
+              "type": "array"
+            },
+            "textPos": {
+              "$ref": "#/definitions/Vec3"
+            }
+          },
+          "required": [
+            "plane",
+            "textPos"
+          ],
+          "type": "object"
+        },
+        "nominal": {
+          "$ref": "#/definitions/Expr"
+        },
+        "origin": {
+          "$ref": "#/definitions/AnnotationOrigin"
+        },
+        "refs": {
+          "description": "Model geometry the annotation is attached to, by persistent name (PLAN §7.3). Arity and role per kind are in the .md table (\"refs per kind\"). Resolved against the part's final state in the view's configuration. Unresolved = needs attention: never re-attached to a guessed entity, and the old value is never displayed (trap T1). Reattach replaces the list (every kind, trap T2). May be empty only where the kind says so (a hole callout bound by `source`, a frame or a datum bound by `appliesTo`).\n\nConstruction refs (M4.1, ADR-095), drawn on a view as thin chain lines once a placement there uses them, and offered as pick targets while a picking tool is active: `origin:O`, `origin:X|Y|Z`, `S<id>:p(@origin)`, `S<id>:e(@x|@y)`, `S<id>:p(<point>)`, `F<id>:plane|axis|point`, and `F<pattern>:pitch` (the pitch circle of a circular pattern of holes: about the pattern axis, through the instances' axes; unresolved if they are not holes or not all at one radius, never guessed).",
+          "items": {
+            "$ref": "#/definitions/EntityRef"
+          },
+          "type": "array"
+        },
+        "source": {
+          "$ref": "#/definitions/AnnotationSource"
+        },
+        "suppressed": {
+          "description": "Suppressed annotations are not shown or exported. Per configuration via `AnnotationOverride`.",
+          "type": "boolean"
+        },
+        "text": {
+          "$ref": "#/definitions/DimensionText"
+        },
+        "tolerance": {
+          "$ref": "#/definitions/Tolerance"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "origin",
+        "refs"
+      ],
+      "type": "object"
+    },
+    "AngleDimension": {
+      "additionalProperties": false,
+      "description": "Angle dimension. refs: two edges or faces seen edge-on. A draft angle is refs [drafted face, neutral face] at ['self', 'axis']: from the neutral face's normal (M4.1).",
+      "properties": {
+        "at": {
+          "description": "Point qualifiers parallel to `refs`; absent or shorter = `'self'` for the rest.",
+          "items": {
+            "$ref": "#/definitions/RefPoint"
+          },
+          "type": "array"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "kind": {
+          "const": "angle",
+          "type": "string"
+        },
+        "measure": {
+          "enum": [
+            "between",
+            "supplement"
+          ],
+          "type": "string"
+        },
+        "modelPlacement": {
+          "additionalProperties": false,
+          "description": "M5 reserve: the v3 `PmiAnnotation.placement` (3D annotation plane and text position), carried over verbatim by the migration so nothing is lost. M5 replaces it with annotation planes.",
+          "properties": {
+            "plane": {
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 6,
+              "minItems": 6,
+              "type": "array"
+            },
+            "textPos": {
+              "$ref": "#/definitions/Vec3"
+            }
+          },
+          "required": [
+            "plane",
+            "textPos"
+          ],
+          "type": "object"
+        },
+        "nominal": {
+          "$ref": "#/definitions/Expr"
+        },
+        "origin": {
+          "$ref": "#/definitions/AnnotationOrigin"
+        },
+        "refs": {
+          "description": "Model geometry the annotation is attached to, by persistent name (PLAN §7.3). Arity and role per kind are in the .md table (\"refs per kind\"). Resolved against the part's final state in the view's configuration. Unresolved = needs attention: never re-attached to a guessed entity, and the old value is never displayed (trap T1). Reattach replaces the list (every kind, trap T2). May be empty only where the kind says so (a hole callout bound by `source`, a frame or a datum bound by `appliesTo`).\n\nConstruction refs (M4.1, ADR-095), drawn on a view as thin chain lines once a placement there uses them, and offered as pick targets while a picking tool is active: `origin:O`, `origin:X|Y|Z`, `S<id>:p(@origin)`, `S<id>:e(@x|@y)`, `S<id>:p(<point>)`, `F<id>:plane|axis|point`, and `F<pattern>:pitch` (the pitch circle of a circular pattern of holes: about the pattern axis, through the instances' axes; unresolved if they are not holes or not all at one radius, never guessed).",
+          "items": {
+            "$ref": "#/definitions/EntityRef"
+          },
+          "type": "array"
+        },
+        "source": {
+          "$ref": "#/definitions/AnnotationSource"
+        },
+        "suppressed": {
+          "description": "Suppressed annotations are not shown or exported. Per configuration via `AnnotationOverride`.",
+          "type": "boolean"
+        },
+        "text": {
+          "$ref": "#/definitions/DimensionText"
+        },
+        "tolerance": {
+          "$ref": "#/definitions/Tolerance"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "origin",
+        "refs"
+      ],
+      "type": "object"
+    },
+    "Annotation": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/DimensionAnnotation"
+        },
+        {
+          "$ref": "#/definitions/DatumFeatureAnnotation"
+        },
+        {
+          "$ref": "#/definitions/GeometricToleranceAnnotation"
+        },
+        {
+          "$ref": "#/definitions/NoteAnnotation"
+        },
+        {
+          "$ref": "#/definitions/SurfaceFinishAnnotation"
+        },
+        {
+          "$ref": "#/definitions/HoleCalloutAnnotation"
+        }
+      ],
+      "description": "A part-level semantic annotation (replaces v3 `PmiAnnotation`)."
+    },
+    "AnnotationOrigin": {
+      "anyOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "model",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "drawingId": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "const": "drawing",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "drawingId"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "file": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "import",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "file"
+          ],
+          "type": "object"
+        }
+      ],
+      "description": "Where an annotation was authored. Every kind is a full part annotation; this is provenance."
+    },
+    "AnnotationOverride": {
+      "additionalProperties": false,
+      "description": "Configuration overrides of one annotation (keyed by annotation id in `Configuration.annotations`, never by list position: closes the M3.7 gate finding). `fields`: JSON pointer **inside the annotation** → value; allowed are its `Expr` fields (`/nominal`, `/tolerance/value`, `/tolerance/upper`, `/tolerance/lower`, `/zone/value` …) and the option fields the document package lists in `ANNOTATION_CONFIGURABLE_OPTIONS` (`/tolerance/hole`, `/tolerance/shaft`).",
+      "properties": {
+        "fields": {
+          "additionalProperties": {
+            "$ref": "#/definitions/ConfiguredValue"
+          },
+          "type": "object"
+        },
+        "suppressed": {
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "AnnotationSource": {
+      "anyOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "constraintId": {
+              "$ref": "#/definitions/Id"
+            },
+            "featureId": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "const": "sketchDimension",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "featureId",
+            "constraintId"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "featureId": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "const": "featureField",
+              "type": "string"
+            },
+            "path": {
+              "$ref": "#/definitions/JsonPointer"
+            }
+          },
+          "required": [
+            "kind",
+            "featureId",
+            "path"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "featureId": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "const": "feature",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "featureId"
+          ],
+          "type": "object"
+        }
+      ],
+      "description": "Binding to the model data that drives the value (owner D6, recommended: read-only in drawings). The value shown is the source's evaluated value in the view's configuration. A source that no longer exists (feature, constraint or field gone) makes the annotation needs attention; the old value is never shown."
+    },
+    "AxisFeature": {
+      "additionalProperties": false,
+      "description": "A construction axis, usable wherever an axis or direction is picked (revolve, patterns…).",
+      "properties": {
+        "definition": {
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "a": {
+                  "$ref": "#/definitions/EntityRef"
+                },
+                "b": {
+                  "$ref": "#/definitions/EntityRef"
+                },
+                "kind": {
+                  "const": "twoPoints",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "a",
+                "b"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "edge": {
+                  "$ref": "#/definitions/EntityRef"
+                },
+                "kind": {
+                  "const": "edge",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "edge"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "face": {
+                  "$ref": "#/definitions/EntityRef"
+                },
+                "kind": {
+                  "const": "cylinder",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "face"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "a": {
+                  "$ref": "#/definitions/EntityRef"
+                },
+                "b": {
+                  "$ref": "#/definitions/EntityRef"
+                },
+                "kind": {
+                  "const": "twoPlanes",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "a",
+                "b"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "pointNormal",
+                  "type": "string"
+                },
+                "plane": {
+                  "$ref": "#/definitions/EntityRef"
+                },
+                "point": {
+                  "$ref": "#/definitions/EntityRef"
+                }
+              },
+              "required": [
+                "kind",
+                "point",
+                "plane"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "name": {
+          "type": "string"
+        },
+        "suppressed": {
+          "type": "boolean"
+        },
+        "type": {
+          "const": "axis",
+          "type": "string"
+        },
+        "visibility": {
+          "$ref": "#/definitions/SketchVisibility",
+          "description": "Viewport visibility of reference geometry (ADR-093). Absent or `'auto'` = shown (reference geometry is not consumed away like a sketch); `'hidden'` hides it on every shell, persisted."
+        }
+      },
+      "required": [
+        "definition",
+        "id",
+        "name",
+        "suppressed",
+        "type"
+      ],
+      "type": "object"
+    },
+    "BodyOp": {
+      "description": "Body operation shared by solid-producing features.",
+      "enum": [
+        "new",
+        "add",
+        "cut",
+        "intersect"
+      ],
+      "type": "string"
+    },
+    "BodyScope": {
+      "anyOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "all",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "bodies": {
+              "items": {
+                "$ref": "#/definitions/EntityRef"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "const": "bodies",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "bodies"
+          ],
+          "type": "object"
+        }
+      ],
+      "description": "Which existing bodies a solid feature with op add/cut/intersect acts on. Default (`undefined`) = every body the new tool solid touches (Onshape-style \"merge scope: all\")."
+    },
+    "BooleanFeature": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "keepTools": {
+          "type": "boolean"
+        },
+        "name": {
+          "type": "string"
+        },
+        "op": {
+          "enum": [
+            "add",
+            "cut",
+            "intersect"
+          ],
+          "type": "string"
+        },
+        "suppressed": {
+          "type": "boolean"
+        },
+        "target": {
+          "$ref": "#/definitions/EntityRef"
+        },
+        "tools": {
+          "items": {
+            "$ref": "#/definitions/EntityRef"
+          },
+          "type": "array"
+        },
+        "type": {
+          "const": "boolean",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "keepTools",
+        "name",
+        "op",
+        "suppressed",
+        "target",
+        "tools",
+        "type"
+      ],
+      "type": "object"
+    },
+    "ChamferDimension": {
+      "additionalProperties": false,
+      "description": "Chamfer callout. refs: [the chamfer face] (or [edge] on a chamfer the model doesn't own). Usually `source: { kind: 'feature' }` of a `ChamferFeature`. `form`: `2 × 45°` or `2 × 2`.",
+      "properties": {
+        "at": {
+          "description": "Point qualifiers parallel to `refs`; absent or shorter = `'self'` for the rest.",
+          "items": {
+            "$ref": "#/definitions/RefPoint"
+          },
+          "type": "array"
+        },
+        "form": {
+          "enum": [
+            "distanceAngle",
+            "twoDistances"
+          ],
+          "type": "string"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "kind": {
+          "const": "chamfer",
+          "type": "string"
+        },
+        "modelPlacement": {
+          "additionalProperties": false,
+          "description": "M5 reserve: the v3 `PmiAnnotation.placement` (3D annotation plane and text position), carried over verbatim by the migration so nothing is lost. M5 replaces it with annotation planes.",
+          "properties": {
+            "plane": {
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 6,
+              "minItems": 6,
+              "type": "array"
+            },
+            "textPos": {
+              "$ref": "#/definitions/Vec3"
+            }
+          },
+          "required": [
+            "plane",
+            "textPos"
+          ],
+          "type": "object"
+        },
+        "nominal": {
+          "$ref": "#/definitions/Expr"
+        },
+        "origin": {
+          "$ref": "#/definitions/AnnotationOrigin"
+        },
+        "refs": {
+          "description": "Model geometry the annotation is attached to, by persistent name (PLAN §7.3). Arity and role per kind are in the .md table (\"refs per kind\"). Resolved against the part's final state in the view's configuration. Unresolved = needs attention: never re-attached to a guessed entity, and the old value is never displayed (trap T1). Reattach replaces the list (every kind, trap T2). May be empty only where the kind says so (a hole callout bound by `source`, a frame or a datum bound by `appliesTo`).\n\nConstruction refs (M4.1, ADR-095), drawn on a view as thin chain lines once a placement there uses them, and offered as pick targets while a picking tool is active: `origin:O`, `origin:X|Y|Z`, `S<id>:p(@origin)`, `S<id>:e(@x|@y)`, `S<id>:p(<point>)`, `F<id>:plane|axis|point`, and `F<pattern>:pitch` (the pitch circle of a circular pattern of holes: about the pattern axis, through the instances' axes; unresolved if they are not holes or not all at one radius, never guessed).",
+          "items": {
+            "$ref": "#/definitions/EntityRef"
+          },
+          "type": "array"
+        },
+        "source": {
+          "$ref": "#/definitions/AnnotationSource"
+        },
+        "suppressed": {
+          "description": "Suppressed annotations are not shown or exported. Per configuration via `AnnotationOverride`.",
+          "type": "boolean"
+        },
+        "text": {
+          "$ref": "#/definitions/DimensionText"
+        },
+        "tolerance": {
+          "$ref": "#/definitions/Tolerance"
+        }
+      },
+      "required": [
+        "form",
+        "id",
+        "kind",
+        "origin",
+        "refs"
+      ],
+      "type": "object"
+    },
+    "ChamferFeature": {
+      "additionalProperties": false,
+      "properties": {
+        "edges": {
+          "items": {
+            "$ref": "#/definitions/EntityRef"
+          },
+          "type": "array"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "mode": {
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "distance": {
+                  "$ref": "#/definitions/Expr"
+                },
+                "kind": {
+                  "const": "distance",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "distance"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "angle": {
+                  "$ref": "#/definitions/Expr"
+                },
+                "distance": {
+                  "$ref": "#/definitions/Expr"
+                },
+                "face": {
+                  "$ref": "#/definitions/EntityRef"
+                },
+                "kind": {
+                  "const": "distanceAngle",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "distance",
+                "angle"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "propagate": {
+          "description": "M3: extend along tangent-continuous edges. Default true.",
+          "type": "boolean"
+        },
+        "suppressed": {
+          "type": "boolean"
+        },
+        "type": {
+          "const": "chamfer",
+          "type": "string"
+        }
+      },
+      "required": [
+        "edges",
+        "id",
+        "mode",
+        "name",
+        "suppressed",
+        "type"
+      ],
+      "type": "object"
+    },
+    "CircularPatternFeature": {
+      "additionalProperties": false,
+      "properties": {
+        "angle": {
+          "$ref": "#/definitions/Expr",
+          "description": "Total angle spanned. With `equalSpacing` the instances fill it (360° = a full ring)."
+        },
+        "axis": {
+          "$ref": "#/definitions/EntityRef"
+        },
+        "count": {
+          "$ref": "#/definitions/Expr"
+        },
+        "equalSpacing": {
+          "type": "boolean"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "name": {
+          "type": "string"
+        },
+        "skip": {
+          "items": {
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "source": {
+          "$ref": "#/definitions/CopySource"
+        },
+        "suppressed": {
+          "type": "boolean"
+        },
+        "type": {
+          "const": "circularPattern",
+          "type": "string"
+        }
+      },
+      "required": [
+        "angle",
+        "axis",
+        "count",
+        "equalSpacing",
+        "id",
+        "name",
+        "source",
+        "suppressed",
+        "type"
+      ],
+      "type": "object"
+    },
+    "Configuration": {
+      "additionalProperties": false,
+      "description": "One configuration of a part: only what differs from Default is stored. Resolution (document package `resolveConfiguration`) applies the overrides to a copy of the document before regen.",
+      "properties": {
+        "annotations": {
+          "additionalProperties": {
+            "$ref": "#/definitions/AnnotationOverride"
+          },
+          "description": "M4: per-annotation overrides keyed by annotation id (never by list position, ADR-090).",
+          "propertyNames": {
+            "description": "ULID (26-char Crockford base32)."
+          },
+          "type": "object"
+        },
+        "color": {
+          "description": "Replaces the part's colour; absent = inherited.",
+          "type": "string"
+        },
+        "features": {
+          "additionalProperties": {
+            "$ref": "#/definitions/FeatureOverride"
+          },
+          "description": "Per-feature overrides keyed by feature id.",
+          "propertyNames": {
+            "description": "ULID (26-char Crockford base32)."
+          },
+          "type": "object"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "material": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Material"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Replaces the part's material in this configuration; `null` = no material; absent = inherited."
+        },
+        "name": {
+          "type": "string"
+        },
+        "params": {
+          "additionalProperties": {
+            "$ref": "#/definitions/Expr"
+          },
+          "description": "Overrides of document parameters (paramId → Expr) while **this part** regenerates (owner D1: other parts keep the parameter's own value).",
+          "propertyNames": {
+            "description": "ULID (26-char Crockford base32)."
+          },
+          "type": "object"
+        },
+        "properties": {
+          "$ref": "#/definitions/PartProperties",
+          "description": "Overrides of the part properties. A missing part number resolves to \"<document name>-<configuration name>\" (owner D4); collisions are reported, never silently overwritten."
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "type": "object"
+    },
+    "ConfiguredValue": {
+      "description": "An `Expr` (string) or an option value.",
+      "type": [
+        "string",
+        "number",
+        "boolean"
+      ]
+    },
+    "CopySource": {
+      "anyOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "features": {
+              "items": {
+                "$ref": "#/definitions/Id"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "const": "features",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "features"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "bodies": {
+              "items": {
+                "$ref": "#/definitions/EntityRef"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "const": "bodies",
+              "type": "string"
+            },
+            "merge": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "kind",
+            "bodies",
+            "merge"
+          ],
+          "type": "object"
+        }
+      ],
+      "description": "What a mirror or pattern copies. `features`: the listed features' **tool shapes** are copied and applied with each feature's own op (a pattern of holes cuts every copy); `bodies`: whole bodies are copied (and merged when `merge`)."
+    },
+    "DatumCompartment": {
+      "additionalProperties": false,
+      "description": "One compartment of the datum section; several refs = a common datum (`A–B`).",
+      "properties": {
+        "datums": {
+          "items": {
+            "$ref": "#/definitions/DatumRef"
+          },
+          "type": "array"
+        },
+        "material": {
+          "$ref": "#/definitions/MaterialCondition"
+        }
+      },
+      "required": [
+        "datums"
+      ],
+      "type": "object"
+    },
+    "DatumFeatureAnnotation": {
+      "additionalProperties": false,
+      "description": "Datum feature symbol. refs: [face | edge | axis via `at: ['axis']`]. Letters unique per part (checked).",
+      "properties": {
+        "appliesTo": {
+          "$ref": "#/definitions/Id",
+          "description": "The size dimension whose feature of size this datum is (ADR-094): the median plane of a width, the axis of a diameter. Its refs are used and `refs` may be empty, as for a frame's `appliesTo`; the triangle sits in line with that dimension's line. A missing dimension id is needs attention."
+        },
+        "at": {
+          "description": "Point qualifiers parallel to `refs`; absent or shorter = `'self'` for the rest.",
+          "items": {
+            "$ref": "#/definitions/RefPoint"
+          },
+          "type": "array"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "kind": {
+          "const": "datumFeature",
+          "type": "string"
+        },
+        "label": {
+          "description": "`A`, `B`… (ISO and ASME exclude I, O, Q; checked against the standard).",
+          "type": "string"
+        },
+        "modelPlacement": {
+          "additionalProperties": false,
+          "description": "M5 reserve: the v3 `PmiAnnotation.placement` (3D annotation plane and text position), carried over verbatim by the migration so nothing is lost. M5 replaces it with annotation planes.",
+          "properties": {
+            "plane": {
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 6,
+              "minItems": 6,
+              "type": "array"
+            },
+            "textPos": {
+              "$ref": "#/definitions/Vec3"
+            }
+          },
+          "required": [
+            "plane",
+            "textPos"
+          ],
+          "type": "object"
+        },
+        "origin": {
+          "$ref": "#/definitions/AnnotationOrigin"
+        },
+        "refs": {
+          "description": "Model geometry the annotation is attached to, by persistent name (PLAN §7.3). Arity and role per kind are in the .md table (\"refs per kind\"). Resolved against the part's final state in the view's configuration. Unresolved = needs attention: never re-attached to a guessed entity, and the old value is never displayed (trap T1). Reattach replaces the list (every kind, trap T2). May be empty only where the kind says so (a hole callout bound by `source`, a frame or a datum bound by `appliesTo`).\n\nConstruction refs (M4.1, ADR-095), drawn on a view as thin chain lines once a placement there uses them, and offered as pick targets while a picking tool is active: `origin:O`, `origin:X|Y|Z`, `S<id>:p(@origin)`, `S<id>:e(@x|@y)`, `S<id>:p(<point>)`, `F<id>:plane|axis|point`, and `F<pattern>:pitch` (the pitch circle of a circular pattern of holes: about the pattern axis, through the instances' axes; unresolved if they are not holes or not all at one radius, never guessed).",
+          "items": {
+            "$ref": "#/definitions/EntityRef"
+          },
+          "type": "array"
+        },
+        "standard": {
+          "$ref": "#/definitions/GpsStandard"
+        },
+        "suppressed": {
+          "description": "Suppressed annotations are not shown or exported. Per configuration via `AnnotationOverride`.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "label",
+        "origin",
+        "refs"
+      ],
+      "type": "object"
+    },
+    "DatumRef": {
+      "anyOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "datum": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "required": [
+            "datum"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "label": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "label"
+          ],
+          "type": "object"
+        }
+      ],
+      "description": "A datum in a frame: bound to a datum feature annotation by id (renaming the letter updates every frame), or an unbound letter (M5 import, or a migrated v3 frame whose letter no datum defines), which is needs attention until bound."
+    },
+    "DiameterDimension": {
+      "additionalProperties": false,
+      "properties": {
+        "at": {
+          "description": "Point qualifiers parallel to `refs`; absent or shorter = `'self'` for the rest.",
+          "items": {
+            "$ref": "#/definitions/RefPoint"
+          },
+          "type": "array"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "kind": {
+          "const": "diameter",
+          "type": "string"
+        },
+        "modelPlacement": {
+          "additionalProperties": false,
+          "description": "M5 reserve: the v3 `PmiAnnotation.placement` (3D annotation plane and text position), carried over verbatim by the migration so nothing is lost. M5 replaces it with annotation planes.",
+          "properties": {
+            "plane": {
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 6,
+              "minItems": 6,
+              "type": "array"
+            },
+            "textPos": {
+              "$ref": "#/definitions/Vec3"
+            }
+          },
+          "required": [
+            "plane",
+            "textPos"
+          ],
+          "type": "object"
+        },
+        "nominal": {
+          "$ref": "#/definitions/Expr"
+        },
+        "origin": {
+          "$ref": "#/definitions/AnnotationOrigin"
+        },
+        "refs": {
+          "description": "Model geometry the annotation is attached to, by persistent name (PLAN §7.3). Arity and role per kind are in the .md table (\"refs per kind\"). Resolved against the part's final state in the view's configuration. Unresolved = needs attention: never re-attached to a guessed entity, and the old value is never displayed (trap T1). Reattach replaces the list (every kind, trap T2). May be empty only where the kind says so (a hole callout bound by `source`, a frame or a datum bound by `appliesTo`).\n\nConstruction refs (M4.1, ADR-095), drawn on a view as thin chain lines once a placement there uses them, and offered as pick targets while a picking tool is active: `origin:O`, `origin:X|Y|Z`, `S<id>:p(@origin)`, `S<id>:e(@x|@y)`, `S<id>:p(<point>)`, `F<id>:plane|axis|point`, and `F<pattern>:pitch` (the pitch circle of a circular pattern of holes: about the pattern axis, through the instances' axes; unresolved if they are not holes or not all at one radius, never guessed).",
+          "items": {
+            "$ref": "#/definitions/EntityRef"
+          },
+          "type": "array"
+        },
+        "source": {
+          "$ref": "#/definitions/AnnotationSource"
+        },
+        "suppressed": {
+          "description": "Suppressed annotations are not shown or exported. Per configuration via `AnnotationOverride`.",
+          "type": "boolean"
+        },
+        "text": {
+          "$ref": "#/definitions/DimensionText"
+        },
+        "tolerance": {
+          "$ref": "#/definitions/Tolerance"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "origin",
+        "refs"
+      ],
+      "type": "object"
+    },
+    "DimensionAnnotation": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/LinearDimension"
+        },
+        {
+          "$ref": "#/definitions/AlignedDimension"
+        },
+        {
+          "$ref": "#/definitions/OrdinateDimension"
+        },
+        {
+          "$ref": "#/definitions/RadiusDimension"
+        },
+        {
+          "$ref": "#/definitions/DiameterDimension"
+        },
+        {
+          "$ref": "#/definitions/AngleDimension"
+        },
+        {
+          "$ref": "#/definitions/ChamferDimension"
+        }
+      ]
+    },
+    "DimensionConstraint": {
+      "anyOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "a": {
+              "$ref": "#/definitions/Id"
+            },
+            "b": {
+              "$ref": "#/definitions/Id"
+            },
+            "driving": {
+              "type": "boolean"
+            },
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "const": "distance",
+              "type": "string"
+            },
+            "label": {
+              "$ref": "#/definitions/Vec2"
+            },
+            "value": {
+              "$ref": "#/definitions/Expr"
+            }
+          },
+          "required": [
+            "a",
+            "b",
+            "driving",
+            "id",
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "a": {
+              "$ref": "#/definitions/Id"
+            },
+            "b": {
+              "$ref": "#/definitions/Id"
+            },
+            "driving": {
+              "type": "boolean"
+            },
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "const": "hDistance",
+              "type": "string"
+            },
+            "label": {
+              "$ref": "#/definitions/Vec2"
+            },
+            "value": {
+              "$ref": "#/definitions/Expr"
+            }
+          },
+          "required": [
+            "a",
+            "b",
+            "driving",
+            "id",
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "a": {
+              "$ref": "#/definitions/Id"
+            },
+            "b": {
+              "$ref": "#/definitions/Id"
+            },
+            "driving": {
+              "type": "boolean"
+            },
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "const": "vDistance",
+              "type": "string"
+            },
+            "label": {
+              "$ref": "#/definitions/Vec2"
+            },
+            "value": {
+              "$ref": "#/definitions/Expr"
+            }
+          },
+          "required": [
+            "a",
+            "b",
+            "driving",
+            "id",
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "driving": {
+              "type": "boolean"
+            },
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "const": "length",
+              "type": "string"
+            },
+            "label": {
+              "$ref": "#/definitions/Vec2"
+            },
+            "line": {
+              "$ref": "#/definitions/Id"
+            },
+            "value": {
+              "$ref": "#/definitions/Expr"
+            }
+          },
+          "required": [
+            "driving",
+            "id",
+            "kind",
+            "line",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "axis": {
+              "enum": [
+                "major",
+                "minor"
+              ],
+              "type": "string"
+            },
+            "curve": {
+              "$ref": "#/definitions/Id"
+            },
+            "driving": {
+              "type": "boolean"
+            },
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "const": "radius",
+              "type": "string"
+            },
+            "label": {
+              "$ref": "#/definitions/Vec2"
+            },
+            "value": {
+              "$ref": "#/definitions/Expr"
+            }
+          },
+          "required": [
+            "curve",
+            "driving",
+            "id",
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "axis": {
+              "enum": [
+                "major",
+                "minor"
+              ],
+              "type": "string"
+            },
+            "curve": {
+              "$ref": "#/definitions/Id"
+            },
+            "driving": {
+              "type": "boolean"
+            },
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "const": "diameter",
+              "type": "string"
+            },
+            "label": {
+              "$ref": "#/definitions/Vec2"
+            },
+            "value": {
+              "$ref": "#/definitions/Expr"
+            }
+          },
+          "required": [
+            "curve",
+            "driving",
+            "id",
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "a": {
+              "$ref": "#/definitions/Id"
+            },
+            "b": {
+              "$ref": "#/definitions/Id"
+            },
+            "driving": {
+              "type": "boolean"
+            },
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "const": "angle",
+              "type": "string"
+            },
+            "label": {
+              "$ref": "#/definitions/Vec2"
+            },
+            "value": {
+              "$ref": "#/definitions/Expr"
+            }
+          },
+          "required": [
+            "a",
+            "b",
+            "driving",
+            "id",
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "driving": {
+              "type": "boolean"
+            },
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "const": "offset",
+              "type": "string"
+            },
+            "label": {
+              "$ref": "#/definitions/Vec2"
+            },
+            "sources": {
+              "items": {
+                "$ref": "#/definitions/Id"
+              },
+              "type": "array"
+            },
+            "targets": {
+              "items": {
+                "$ref": "#/definitions/Id"
+              },
+              "type": "array"
+            },
+            "value": {
+              "$ref": "#/definitions/Expr"
+            }
+          },
+          "required": [
+            "driving",
+            "id",
+            "kind",
+            "sources",
+            "targets",
+            "value"
+          ],
+          "type": "object"
+        }
+      ],
+      "description": "Conventions (normative): angles are CCW from `a` to `b`, reference values reported in [0, 2π); `hDistance`/`vDistance` are signed b − a (with `a === b` = a line: end − start); distances to circles/arcs measure to the curve; `diameter` solves as radius = value / 2.\n\nDimensions. `driving: true` constrains the solver with `value`; `driving: false` is a reference (driven) dimension whose value is **measured** after solving (planegcs non-driving constraints are unreliable — PLAN §3). `label` positions the text in sketch space for display."
+    },
+    "DimensionText": {
+      "additionalProperties": false,
+      "description": "Text around a dimension's value. The value itself is never replaceable by text (T1).",
+      "properties": {
+        "below": {
+          "description": "Lines under the value: `TYP`, `THRU`.",
+          "type": "string"
+        },
+        "count": {
+          "description": "Prefix `N×` with the number of instances (pattern and mirror copies included) of the feature that made `refs[0]`, from `AnnotationResolution.count`; never typed by hand (M4 gate).",
+          "type": "boolean"
+        },
+        "precision": {
+          "description": "Decimals; absent = the drawing style's precision. Propagates to every placement.",
+          "type": "number"
+        },
+        "prefix": {
+          "description": "E.g. `4×`. A hole callout's count is automatic (`HoleCalloutAnnotation.show.count`).",
+          "type": "string"
+        },
+        "suffix": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "DraftFeature": {
+      "additionalProperties": false,
+      "description": "Taper `faces` by `angle` about the `neutral` plane. Each face keeps its line on the neutral plane and turns about it. The pull direction is the neutral plane's normal on the side the drafted faces are; a positive angle makes the body narrower along it (faces lean inward moving away from the neutral plane, as a moulded part needs). Faces centred on the plane use the plane's own normal (a face's outward normal, a plane's +z). `reverse` flips the pull direction.",
+      "properties": {
+        "angle": {
+          "$ref": "#/definitions/Expr"
+        },
+        "faces": {
+          "items": {
+            "$ref": "#/definitions/EntityRef"
+          },
+          "type": "array"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "name": {
+          "type": "string"
+        },
+        "neutral": {
+          "$ref": "#/definitions/EntityRef"
+        },
+        "reverse": {
+          "type": "boolean"
+        },
+        "suppressed": {
+          "type": "boolean"
+        },
+        "type": {
+          "const": "draft",
+          "type": "string"
+        }
+      },
+      "required": [
+        "angle",
+        "faces",
+        "id",
+        "name",
+        "neutral",
+        "reverse",
+        "suppressed",
+        "type"
+      ],
+      "type": "object"
+    },
+    "EntityKind": {
+      "enum": [
+        "face",
+        "edge",
+        "vertex",
+        "region",
+        "body"
+      ],
+      "type": "string"
+    },
+    "EntityRef": {
+      "additionalProperties": false,
+      "description": "Persistent reference to topology.",
+      "properties": {
+        "fingerprint": {
+          "$ref": "#/definitions/Fingerprint"
+        },
+        "kind": {
+          "$ref": "#/definitions/EntityKind"
+        },
+        "name": {
+          "description": "Persistent name, e.g. `\"F3:side(S1:e7)\"`. See `naming.ts`.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "kind"
+      ],
+      "type": "object"
+    },
+    "Expr": {
+      "description": "Expression with optional units, e.g. `\"width/2 + 3mm\"`, `\"25mm + 1/8in\"`, `\"30deg\"`.",
+      "type": "string"
+    },
+    "ExtrudeFeature": {
+      "additionalProperties": false,
+      "properties": {
+        "direction": {
+          "enum": [
+            "normal",
+            "reverse",
+            "symmetric"
+          ],
+          "type": "string"
+        },
+        "draft": {
+          "$ref": "#/definitions/Expr"
+        },
+        "end": {
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "depth": {
+                  "$ref": "#/definitions/Expr"
+                },
+                "kind": {
+                  "const": "blind",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "depth"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "upTo",
+                  "type": "string"
+                },
+                "target": {
+                  "$ref": "#/definitions/EntityRef"
+                }
+              },
+              "required": [
+                "kind",
+                "target"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "throughAll",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "name": {
+          "type": "string"
+        },
+        "op": {
+          "$ref": "#/definitions/BodyOp"
+        },
+        "profile": {
+          "description": "Sketch regions.",
+          "items": {
+            "$ref": "#/definitions/EntityRef"
+          },
+          "type": "array"
+        },
+        "scope": {
+          "$ref": "#/definitions/BodyScope"
+        },
+        "suppressed": {
+          "type": "boolean"
+        },
+        "type": {
+          "const": "extrude",
+          "type": "string"
+        }
+      },
+      "required": [
+        "direction",
+        "end",
+        "id",
+        "name",
+        "op",
+        "profile",
+        "suppressed",
+        "type"
+      ],
+      "type": "object"
+    },
+    "Feature": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/PrimitiveFeature"
+        },
+        {
+          "$ref": "#/definitions/SketchFeature"
+        },
+        {
+          "$ref": "#/definitions/ExtrudeFeature"
+        },
+        {
+          "$ref": "#/definitions/RevolveFeature"
+        },
+        {
+          "$ref": "#/definitions/FilletFeature"
+        },
+        {
+          "$ref": "#/definitions/ChamferFeature"
+        },
+        {
+          "$ref": "#/definitions/BooleanFeature"
+        },
+        {
+          "$ref": "#/definitions/PushPullFeature"
+        },
+        {
+          "$ref": "#/definitions/PlaneFeature"
+        },
+        {
+          "$ref": "#/definitions/ImportFeature"
+        },
+        {
+          "$ref": "#/definitions/ShellFeature"
+        },
+        {
+          "$ref": "#/definitions/DraftFeature"
+        },
+        {
+          "$ref": "#/definitions/SweepFeature"
+        },
+        {
+          "$ref": "#/definitions/LoftFeature"
+        },
+        {
+          "$ref": "#/definitions/MirrorFeature"
+        },
+        {
+          "$ref": "#/definitions/LinearPatternFeature"
+        },
+        {
+          "$ref": "#/definitions/CircularPatternFeature"
+        },
+        {
+          "$ref": "#/definitions/HoleFeature"
+        },
+        {
+          "$ref": "#/definitions/ThreadFeature"
+        },
+        {
+          "$ref": "#/definitions/AxisFeature"
+        },
+        {
+          "$ref": "#/definitions/PointFeature"
+        }
+      ]
+    },
+    "FeatureFolder": {
+      "additionalProperties": false,
+      "description": "A named group of consecutive features in a part's tree (M3.6). UI state such as collapsed is not stored.",
+      "properties": {
+        "features": {
+          "description": "Member feature ids in history order: a contiguous run of `Part.features`. Never empty.",
+          "items": {
+            "$ref": "#/definitions/Id"
+          },
+          "type": "array"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "features"
+      ],
+      "type": "object"
+    },
+    "FeatureOverride": {
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "additionalProperties": {
+            "$ref": "#/definitions/ConfiguredValue"
+          },
+          "description": "Field overrides: JSON pointer inside the feature (e.g. `/end/depth`, `/radius`, `/size`) → value. Only configurable fields are allowed (owner D2: every `Expr` field plus the option fields the document package lists in `CONFIGURABLE_OPTIONS`, e.g. hole size/kind/fit, extrude end kind). An override whose path no longer applies makes that configuration's feature \"needs attention\", never a silent drop.",
+          "type": "object"
+        },
+        "suppressed": {
+          "description": "Suppression in this configuration; absent = inherited from `Feature.suppressed`.",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "FilletFeature": {
+      "additionalProperties": false,
+      "properties": {
+        "edges": {
+          "items": {
+            "$ref": "#/definitions/EntityRef"
+          },
+          "type": "array"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "name": {
+          "type": "string"
+        },
+        "propagate": {
+          "description": "M3: extend along tangent-continuous edges (OCCT's behaviour). Default true.",
+          "type": "boolean"
+        },
+        "radius": {
+          "$ref": "#/definitions/Expr"
+        },
+        "suppressed": {
+          "type": "boolean"
+        },
+        "type": {
+          "const": "fillet",
+          "type": "string"
+        }
+      },
+      "required": [
+        "edges",
+        "id",
+        "name",
+        "radius",
+        "suppressed",
+        "type"
+      ],
+      "type": "object"
+    },
+    "Fingerprint": {
+      "additionalProperties": false,
+      "properties": {
+        "area": {
+          "type": "number"
+        },
+        "centroid": {
+          "$ref": "#/definitions/Vec3"
+        },
+        "length": {
+          "type": "number"
+        },
+        "normal": {
+          "$ref": "#/definitions/Vec3"
+        }
+      },
+      "required": [
+        "centroid"
+      ],
+      "type": "object"
+    },
+    "Frame": {
+      "additionalProperties": false,
+      "description": "Placement frame: origin plus Z (normal) and X directions. Right-handed; Y = Z × X. Numbers are **millimetres** — the canonical internal length unit for all stored geometry, whatever `WrenDoc.units` says (units only affect display and unit-less expression input). User-editable offsets belong in feature Exprs.",
+      "properties": {
+        "origin": {
+          "$ref": "#/definitions/Vec3"
+        },
+        "x": {
+          "$ref": "#/definitions/Vec3"
+        },
+        "z": {
+          "$ref": "#/definitions/Vec3"
+        }
+      },
+      "required": [
+        "origin",
+        "z",
+        "x"
+      ],
+      "type": "object"
+    },
+    "GeometricCharacteristic": {
+      "enum": [
+        "straightness",
+        "flatness",
+        "circularity",
+        "cylindricity",
+        "lineProfile",
+        "surfaceProfile",
+        "parallelism",
+        "perpendicularity",
+        "angularity",
+        "position",
+        "concentricity",
+        "coaxiality",
+        "symmetry",
+        "circularRunout",
+        "totalRunout"
+      ],
+      "type": "string"
+    },
+    "GeometricConstraint": {
+      "anyOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "a": {
+              "$ref": "#/definitions/Id"
+            },
+            "b": {
+              "$ref": "#/definitions/Id"
+            },
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "const": "coincident",
+              "type": "string"
+            }
+          },
+          "required": [
+            "a",
+            "b",
+            "id",
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "const": "pointOn",
+              "type": "string"
+            },
+            "on": {
+              "$ref": "#/definitions/Id"
+            },
+            "point": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "on",
+            "point"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "const": "horizontal",
+              "type": "string"
+            },
+            "line": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "line"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "const": "vertical",
+              "type": "string"
+            },
+            "line": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "line"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "a": {
+              "$ref": "#/definitions/Id"
+            },
+            "b": {
+              "$ref": "#/definitions/Id"
+            },
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "const": "horizontalPoints",
+              "type": "string"
+            }
+          },
+          "required": [
+            "a",
+            "b",
+            "id",
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "a": {
+              "$ref": "#/definitions/Id"
+            },
+            "b": {
+              "$ref": "#/definitions/Id"
+            },
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "const": "verticalPoints",
+              "type": "string"
+            }
+          },
+          "required": [
+            "a",
+            "b",
+            "id",
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "a": {
+              "$ref": "#/definitions/Id"
+            },
+            "b": {
+              "$ref": "#/definitions/Id"
+            },
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "const": "parallel",
+              "type": "string"
+            }
+          },
+          "required": [
+            "a",
+            "b",
+            "id",
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "a": {
+              "$ref": "#/definitions/Id"
+            },
+            "b": {
+              "$ref": "#/definitions/Id"
+            },
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "const": "perpendicular",
+              "type": "string"
+            }
+          },
+          "required": [
+            "a",
+            "b",
+            "id",
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "a": {
+              "$ref": "#/definitions/Id"
+            },
+            "b": {
+              "$ref": "#/definitions/Id"
+            },
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "const": "tangent",
+              "type": "string"
+            }
+          },
+          "required": [
+            "a",
+            "b",
+            "id",
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "a": {
+              "$ref": "#/definitions/Id"
+            },
+            "b": {
+              "$ref": "#/definitions/Id"
+            },
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "const": "curvature",
+              "type": "string"
+            }
+          },
+          "required": [
+            "a",
+            "b",
+            "id",
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "a": {
+              "$ref": "#/definitions/Id"
+            },
+            "b": {
+              "$ref": "#/definitions/Id"
+            },
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "const": "equal",
+              "type": "string"
+            }
+          },
+          "required": [
+            "a",
+            "b",
+            "id",
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "const": "midpoint",
+              "type": "string"
+            },
+            "line": {
+              "$ref": "#/definitions/Id"
+            },
+            "point": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "line",
+            "point"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "a": {
+              "$ref": "#/definitions/Id"
+            },
+            "b": {
+              "$ref": "#/definitions/Id"
+            },
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "const": "concentric",
+              "type": "string"
+            }
+          },
+          "required": [
+            "a",
+            "b",
+            "id",
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "a": {
+              "$ref": "#/definitions/Id"
+            },
+            "about": {
+              "$ref": "#/definitions/Id"
+            },
+            "b": {
+              "$ref": "#/definitions/Id"
+            },
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "const": "symmetric",
+              "type": "string"
+            }
+          },
+          "required": [
+            "a",
+            "about",
+            "b",
+            "id",
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "entity": {
+              "$ref": "#/definitions/Id"
+            },
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "const": "fix",
+              "type": "string"
+            }
+          },
+          "required": [
+            "entity",
+            "id",
+            "kind"
+          ],
+          "type": "object"
+        }
+      ],
+      "description": "Geometric constraints (no value). Ids refer to entities; points are entities too."
+    },
+    "GeometricToleranceAnnotation": {
+      "additionalProperties": false,
+      "description": "Feature control frame (one row; composite and stacked frames: see the .md open questions).",
+      "properties": {
+        "allAround": {
+          "description": "All-around / all-over (profile).",
+          "type": "boolean"
+        },
+        "appliesTo": {
+          "$ref": "#/definitions/Id",
+          "description": "The size dimension whose feature of size this frame controls (a position frame under `Ø6`): its refs are used and `refs` may be empty. A missing dimension id is needs attention."
+        },
+        "at": {
+          "description": "Point qualifiers parallel to `refs`; absent or shorter = `'self'` for the rest.",
+          "items": {
+            "$ref": "#/definitions/RefPoint"
+          },
+          "type": "array"
+        },
+        "characteristic": {
+          "$ref": "#/definitions/GeometricCharacteristic"
+        },
+        "datums": {
+          "description": "Primary, secondary, tertiary. At most three.",
+          "items": {
+            "$ref": "#/definitions/DatumCompartment"
+          },
+          "type": "array"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "kind": {
+          "const": "geometricTolerance",
+          "type": "string"
+        },
+        "modelPlacement": {
+          "additionalProperties": false,
+          "description": "M5 reserve: the v3 `PmiAnnotation.placement` (3D annotation plane and text position), carried over verbatim by the migration so nothing is lost. M5 replaces it with annotation planes.",
+          "properties": {
+            "plane": {
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 6,
+              "minItems": 6,
+              "type": "array"
+            },
+            "textPos": {
+              "$ref": "#/definitions/Vec3"
+            }
+          },
+          "required": [
+            "plane",
+            "textPos"
+          ],
+          "type": "object"
+        },
+        "origin": {
+          "$ref": "#/definitions/AnnotationOrigin"
+        },
+        "refs": {
+          "description": "Model geometry the annotation is attached to, by persistent name (PLAN §7.3). Arity and role per kind are in the .md table (\"refs per kind\"). Resolved against the part's final state in the view's configuration. Unresolved = needs attention: never re-attached to a guessed entity, and the old value is never displayed (trap T1). Reattach replaces the list (every kind, trap T2). May be empty only where the kind says so (a hole callout bound by `source`, a frame or a datum bound by `appliesTo`).\n\nConstruction refs (M4.1, ADR-095), drawn on a view as thin chain lines once a placement there uses them, and offered as pick targets while a picking tool is active: `origin:O`, `origin:X|Y|Z`, `S<id>:p(@origin)`, `S<id>:e(@x|@y)`, `S<id>:p(<point>)`, `F<id>:plane|axis|point`, and `F<pattern>:pitch` (the pitch circle of a circular pattern of holes: about the pattern axis, through the instances' axes; unresolved if they are not holes or not all at one radius, never guessed).",
+          "items": {
+            "$ref": "#/definitions/EntityRef"
+          },
+          "type": "array"
+        },
+        "standard": {
+          "$ref": "#/definitions/GpsStandard"
+        },
+        "suppressed": {
+          "description": "Suppressed annotations are not shown or exported. Per configuration via `AnnotationOverride`.",
+          "type": "boolean"
+        },
+        "text": {
+          "additionalProperties": false,
+          "description": "Text above and below the frame (`2×`, `UNITS`).",
+          "properties": {
+            "above": {
+              "type": "string"
+            },
+            "below": {
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "zone": {
+          "$ref": "#/definitions/ToleranceZone"
+        }
+      },
+      "required": [
+        "characteristic",
+        "id",
+        "kind",
+        "origin",
+        "refs",
+        "zone"
+      ],
+      "type": "object"
+    },
+    "GpsStandard": {
+      "description": "Standard an annotation's GD&T semantics are validated against. Stamped by the authoring tool from the drawing (or, in M5, the project default); absent on an annotation = \"not stated\", and it is then checked against each displaying drawing's standard. Never converted silently: a symbol that is illegal under the standard is refused or flagged with an explanation (ASME Y14.5-2018 has no concentricity or symmetry).",
+      "enum": [
+        "ISO 1101:2017",
+        "ASME Y14.5-2018",
+        "ASME Y14.5-2009"
+      ],
+      "type": "string"
+    },
+    "HoleCalloutAnnotation": {
+      "additionalProperties": false,
+      "description": "Hole (or cosmetic thread) callout generated from `HoleFeature` / `ThreadFeature` data: size, fit, counterbore, countersink, depth, thread, and the instance count (pattern copies included, from the regen). One callout per feature and part (checked), placed in any number of views, so a format edit (precision, tolerance) propagates to every placement and to the hole table. refs: the hole faces the leaders may attach to (one per instance the user picked; may be empty, then a placement attaches to the first instance the regen reports).",
+      "properties": {
+        "at": {
+          "description": "Point qualifiers parallel to `refs`; absent or shorter = `'self'` for the rest.",
+          "items": {
+            "$ref": "#/definitions/RefPoint"
+          },
+          "type": "array"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "kind": {
+          "const": "holeCallout",
+          "type": "string"
+        },
+        "modelPlacement": {
+          "additionalProperties": false,
+          "description": "M5 reserve: the v3 `PmiAnnotation.placement` (3D annotation plane and text position), carried over verbatim by the migration so nothing is lost. M5 replaces it with annotation planes.",
+          "properties": {
+            "plane": {
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 6,
+              "minItems": 6,
+              "type": "array"
+            },
+            "textPos": {
+              "$ref": "#/definitions/Vec3"
+            }
+          },
+          "required": [
+            "plane",
+            "textPos"
+          ],
+          "type": "object"
+        },
+        "origin": {
+          "$ref": "#/definitions/AnnotationOrigin"
+        },
+        "refs": {
+          "description": "Model geometry the annotation is attached to, by persistent name (PLAN §7.3). Arity and role per kind are in the .md table (\"refs per kind\"). Resolved against the part's final state in the view's configuration. Unresolved = needs attention: never re-attached to a guessed entity, and the old value is never displayed (trap T1). Reattach replaces the list (every kind, trap T2). May be empty only where the kind says so (a hole callout bound by `source`, a frame or a datum bound by `appliesTo`).\n\nConstruction refs (M4.1, ADR-095), drawn on a view as thin chain lines once a placement there uses them, and offered as pick targets while a picking tool is active: `origin:O`, `origin:X|Y|Z`, `S<id>:p(@origin)`, `S<id>:e(@x|@y)`, `S<id>:p(<point>)`, `F<id>:plane|axis|point`, and `F<pattern>:pitch` (the pitch circle of a circular pattern of holes: about the pattern axis, through the instances' axes; unresolved if they are not holes or not all at one radius, never guessed).",
+          "items": {
+            "$ref": "#/definitions/EntityRef"
+          },
+          "type": "array"
+        },
+        "show": {
+          "additionalProperties": false,
+          "description": "Which lines to show; absent = all that apply.",
+          "properties": {
+            "count": {
+              "type": "boolean"
+            },
+            "counterbore": {
+              "type": "boolean"
+            },
+            "countersink": {
+              "type": "boolean"
+            },
+            "depth": {
+              "type": "boolean"
+            },
+            "thread": {
+              "type": "boolean"
+            }
+          },
+          "type": "object"
+        },
+        "source": {
+          "additionalProperties": false,
+          "properties": {
+            "featureId": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "const": "feature",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "featureId"
+          ],
+          "type": "object"
+        },
+        "suppressed": {
+          "description": "Suppressed annotations are not shown or exported. Per configuration via `AnnotationOverride`.",
+          "type": "boolean"
+        },
+        "text": {
+          "$ref": "#/definitions/DimensionText"
+        },
+        "tolerance": {
+          "$ref": "#/definitions/Tolerance",
+          "description": "Tolerance on the hole diameter (a fit here overrides the hole's own `fit` class display)."
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "origin",
+        "refs",
+        "source"
+      ],
+      "type": "object"
+    },
+    "HoleFeature": {
+      "additionalProperties": false,
+      "description": "Hole wizard. Holes are placed at sketch points on a planar face (one hole per point), drilled along the face's inward normal. Sizes come from the standards tables (contracts/standards.ts); explicit diameters override them.",
+      "properties": {
+        "counterbore": {
+          "additionalProperties": false,
+          "properties": {
+            "depth": {
+              "$ref": "#/definitions/Expr"
+            },
+            "diameter": {
+              "$ref": "#/definitions/Expr"
+            }
+          },
+          "type": "object"
+        },
+        "countersink": {
+          "additionalProperties": false,
+          "properties": {
+            "angle": {
+              "$ref": "#/definitions/Expr"
+            },
+            "diameter": {
+              "$ref": "#/definitions/Expr"
+            }
+          },
+          "type": "object"
+        },
+        "diameter": {
+          "$ref": "#/definitions/Expr",
+          "description": "Override of the table diameter (drill diameter for tapped holes)."
+        },
+        "end": {
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "depth": {
+                  "$ref": "#/definitions/Expr"
+                },
+                "kind": {
+                  "const": "blind",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "depth"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "throughAll",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "upTo",
+                  "type": "string"
+                },
+                "target": {
+                  "$ref": "#/definitions/EntityRef"
+                }
+              },
+              "required": [
+                "kind",
+                "target"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "face": {
+          "$ref": "#/definitions/EntityRef"
+        },
+        "fit": {
+          "enum": [
+            "close",
+            "normal",
+            "loose"
+          ],
+          "type": "string"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "kind": {
+          "enum": [
+            "simple",
+            "counterbore",
+            "countersink",
+            "tapped"
+          ],
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "points": {
+          "description": "Sketch points (`S…:p(id)`) or vertices; their sketch must lie on the hole's face.",
+          "items": {
+            "$ref": "#/definitions/EntityRef"
+          },
+          "type": "array"
+        },
+        "size": {
+          "description": "Table size key, e.g. \"M6\", \"#10\", \"1/4\".",
+          "type": "string"
+        },
+        "standard": {
+          "enum": [
+            "ISO",
+            "ANSI"
+          ],
+          "type": "string"
+        },
+        "suppressed": {
+          "type": "boolean"
+        },
+        "thread": {
+          "additionalProperties": false,
+          "description": "Tapped holes: a cosmetic thread (no helical geometry) over `depth` (default: full).",
+          "properties": {
+            "depth": {
+              "$ref": "#/definitions/Expr"
+            }
+          },
+          "type": "object"
+        },
+        "tipAngle": {
+          "$ref": "#/definitions/Expr",
+          "description": "Drill-point cone at a blind end (118° default); omitted = flat bottom."
+        },
+        "type": {
+          "const": "hole",
+          "type": "string"
+        }
+      },
+      "required": [
+        "end",
+        "face",
+        "fit",
+        "id",
+        "kind",
+        "name",
+        "points",
+        "size",
+        "standard",
+        "suppressed",
+        "type"
+      ],
+      "type": "object"
+    },
+    "Id": {
+      "description": "ULID (26-char Crockford base32).",
+      "type": "string"
+    },
+    "ImportFeature": {
+      "additionalProperties": false,
+      "description": "A body imported from a file (STEP/IGES/BREP solids, or STL/OBJ/3MF/GLB meshes as reference bodies). The file's bytes live in the project folder at `source.path` (an attachment, e.g. `imports/<featureId>.step`), never inline in the JSON, so documents stay diffable. `sha256` (hex) identifies the bytes for caching and integrity.\n\nImported faces have no construction history; the regen engine names them `F<id>:face#k` ordered by the deterministic geometric key in naming.ts, and downstream references to them rely on fingerprints when the file is replaced.",
+      "properties": {
+        "frame": {
+          "$ref": "#/definitions/Frame",
+          "description": "Placement of the imported geometry (mm); default identity."
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "name": {
+          "type": "string"
+        },
+        "op": {
+          "$ref": "#/definitions/BodyOp"
+        },
+        "scope": {
+          "$ref": "#/definitions/BodyScope"
+        },
+        "source": {
+          "additionalProperties": false,
+          "properties": {
+            "fileName": {
+              "description": "Original file name, for display.",
+              "type": "string"
+            },
+            "format": {
+              "enum": [
+                "step",
+                "iges",
+                "brep",
+                "stl",
+                "obj",
+                "3mf",
+                "glb"
+              ],
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            },
+            "sha256": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "path",
+            "format",
+            "sha256",
+            "fileName"
+          ],
+          "type": "object"
+        },
+        "suppressed": {
+          "type": "boolean"
+        },
+        "type": {
+          "const": "import",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "op",
+        "source",
+        "suppressed",
+        "type"
+      ],
+      "type": "object"
+    },
+    "JsonPointer": {
+      "type": "string"
+    },
+    "LinearDimension": {
+      "additionalProperties": false,
+      "description": "Distance between two entities projected on `direction` (unit vector, part coordinates; set by the drawing tool from the view's horizontal or vertical, by promotion from a sketch's u/v). Absent: the natural separation of parallel planes or lines (or a plane and a point); two points without a direction are an `aligned` dimension, and a linear one is flagged \"choose a direction\". refs: [a, b].",
+      "properties": {
+        "at": {
+          "description": "Point qualifiers parallel to `refs`; absent or shorter = `'self'` for the rest.",
+          "items": {
+            "$ref": "#/definitions/RefPoint"
+          },
+          "type": "array"
+        },
+        "direction": {
+          "$ref": "#/definitions/Vec3"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "kind": {
+          "const": "linear",
+          "type": "string"
+        },
+        "modelPlacement": {
+          "additionalProperties": false,
+          "description": "M5 reserve: the v3 `PmiAnnotation.placement` (3D annotation plane and text position), carried over verbatim by the migration so nothing is lost. M5 replaces it with annotation planes.",
+          "properties": {
+            "plane": {
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 6,
+              "minItems": 6,
+              "type": "array"
+            },
+            "textPos": {
+              "$ref": "#/definitions/Vec3"
+            }
+          },
+          "required": [
+            "plane",
+            "textPos"
+          ],
+          "type": "object"
+        },
+        "nominal": {
+          "$ref": "#/definitions/Expr"
+        },
+        "origin": {
+          "$ref": "#/definitions/AnnotationOrigin"
+        },
+        "refs": {
+          "description": "Model geometry the annotation is attached to, by persistent name (PLAN §7.3). Arity and role per kind are in the .md table (\"refs per kind\"). Resolved against the part's final state in the view's configuration. Unresolved = needs attention: never re-attached to a guessed entity, and the old value is never displayed (trap T1). Reattach replaces the list (every kind, trap T2). May be empty only where the kind says so (a hole callout bound by `source`, a frame or a datum bound by `appliesTo`).\n\nConstruction refs (M4.1, ADR-095), drawn on a view as thin chain lines once a placement there uses them, and offered as pick targets while a picking tool is active: `origin:O`, `origin:X|Y|Z`, `S<id>:p(@origin)`, `S<id>:e(@x|@y)`, `S<id>:p(<point>)`, `F<id>:plane|axis|point`, and `F<pattern>:pitch` (the pitch circle of a circular pattern of holes: about the pattern axis, through the instances' axes; unresolved if they are not holes or not all at one radius, never guessed).",
+          "items": {
+            "$ref": "#/definitions/EntityRef"
+          },
+          "type": "array"
+        },
+        "source": {
+          "$ref": "#/definitions/AnnotationSource"
+        },
+        "suppressed": {
+          "description": "Suppressed annotations are not shown or exported. Per configuration via `AnnotationOverride`.",
+          "type": "boolean"
+        },
+        "text": {
+          "$ref": "#/definitions/DimensionText"
+        },
+        "tolerance": {
+          "$ref": "#/definitions/Tolerance"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "origin",
+        "refs"
+      ],
+      "type": "object"
+    },
+    "LinearPatternFeature": {
+      "additionalProperties": false,
+      "properties": {
+        "count": {
+          "$ref": "#/definitions/Expr"
+        },
+        "direction": {
+          "$ref": "#/definitions/EntityRef",
+          "description": "Edge, axis or plane (its normal) giving the direction; `reverse` flips it."
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "name": {
+          "type": "string"
+        },
+        "reverse": {
+          "type": "boolean"
+        },
+        "second": {
+          "additionalProperties": false,
+          "properties": {
+            "count": {
+              "$ref": "#/definitions/Expr"
+            },
+            "direction": {
+              "$ref": "#/definitions/EntityRef"
+            },
+            "reverse": {
+              "type": "boolean"
+            },
+            "spacing": {
+              "$ref": "#/definitions/Expr"
+            }
+          },
+          "required": [
+            "direction",
+            "reverse",
+            "count",
+            "spacing"
+          ],
+          "type": "object"
+        },
+        "skip": {
+          "description": "Instance indices (0 = the original) to leave out, row-major with `second`.",
+          "items": {
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "source": {
+          "$ref": "#/definitions/CopySource"
+        },
+        "spacing": {
+          "$ref": "#/definitions/Expr"
+        },
+        "suppressed": {
+          "type": "boolean"
+        },
+        "type": {
+          "const": "linearPattern",
+          "type": "string"
+        }
+      },
+      "required": [
+        "count",
+        "direction",
+        "id",
+        "name",
+        "reverse",
+        "source",
+        "spacing",
+        "suppressed",
+        "type"
+      ],
+      "type": "object"
+    },
+    "LoftFeature": {
+      "additionalProperties": false,
+      "description": "Loft through ordered sections (each a closed region, or a point for the first/last).",
+      "properties": {
+        "closed": {
+          "description": "Join the last section back to the first.",
+          "type": "boolean"
+        },
+        "guides": {
+          "description": "Optional guide curves (M3: best-effort; OCCT ThruSections ignores them).",
+          "items": {
+            "$ref": "#/definitions/EntityRef"
+          },
+          "type": "array"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "name": {
+          "type": "string"
+        },
+        "op": {
+          "$ref": "#/definitions/BodyOp"
+        },
+        "ruled": {
+          "description": "Straight (ruled) faces between sections instead of smooth ones.",
+          "type": "boolean"
+        },
+        "scope": {
+          "$ref": "#/definitions/BodyScope"
+        },
+        "sections": {
+          "items": {
+            "$ref": "#/definitions/EntityRef"
+          },
+          "type": "array"
+        },
+        "suppressed": {
+          "type": "boolean"
+        },
+        "type": {
+          "const": "loft",
+          "type": "string"
+        }
+      },
+      "required": [
+        "closed",
+        "id",
+        "name",
+        "op",
+        "ruled",
+        "sections",
+        "suppressed",
+        "type"
+      ],
+      "type": "object"
+    },
+    "Material": {
+      "additionalProperties": false,
+      "description": "A part's physical material (PLAN §2.2). Stored inline (not by reference only) so documents stay self-contained and diff/merge cleanly; `libraryId` records where it came from so the UI can offer \"reset to library values\".",
+      "properties": {
+        "appearance": {
+          "description": "Optional appearance hint (CSS hex) used when the part has no explicit `color`.",
+          "type": "string"
+        },
+        "density": {
+          "$ref": "#/definitions/Expr",
+          "description": "Density expression with units, e.g. `\"2.70 g/cm^3\"`, `\"2700 kg/m^3\"`, `\"0.0975 lb/in^3\"`."
+        },
+        "libraryId": {
+          "description": "Built-in or user library id, e.g. `\"whittle:aluminium-6061-t6\"`. Absent for ad-hoc materials.",
+          "type": "string"
+        },
+        "name": {
+          "description": "Display name, e.g. `\"Aluminium 6061-T6\"`.",
+          "type": "string"
+        },
+        "properties": {
+          "additionalProperties": false,
+          "description": "Optional extra properties for later use (FEA etc.), as expressions with units.",
+          "properties": {
+            "poissonsRatio": {
+              "$ref": "#/definitions/Expr"
+            },
+            "yieldStrength": {
+              "$ref": "#/definitions/Expr"
+            },
+            "youngsModulus": {
+              "$ref": "#/definitions/Expr"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "name",
+        "density"
+      ],
+      "type": "object"
+    },
+    "MaterialCondition": {
+      "enum": [
+        "mmc",
+        "lmc"
+      ],
+      "type": "string"
+    },
+    "MirrorFeature": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "name": {
+          "type": "string"
+        },
+        "plane": {
+          "$ref": "#/definitions/EntityRef",
+          "description": "A plane feature, origin plane or planar face."
+        },
+        "source": {
+          "$ref": "#/definitions/CopySource"
+        },
+        "suppressed": {
+          "type": "boolean"
+        },
+        "type": {
+          "const": "mirror",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "plane",
+        "source",
+        "suppressed",
+        "type"
+      ],
+      "type": "object"
+    },
+    "NoteAnnotation": {
+      "additionalProperties": false,
+      "description": "A note attached to model geometry by a leader. Free sheet text is a `SheetNote` (§C). refs: ≥ 1.",
+      "properties": {
+        "at": {
+          "description": "Point qualifiers parallel to `refs`; absent or shorter = `'self'` for the rest.",
+          "items": {
+            "$ref": "#/definitions/RefPoint"
+          },
+          "type": "array"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "kind": {
+          "const": "note",
+          "type": "string"
+        },
+        "modelPlacement": {
+          "additionalProperties": false,
+          "description": "M5 reserve: the v3 `PmiAnnotation.placement` (3D annotation plane and text position), carried over verbatim by the migration so nothing is lost. M5 replaces it with annotation planes.",
+          "properties": {
+            "plane": {
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 6,
+              "minItems": 6,
+              "type": "array"
+            },
+            "textPos": {
+              "$ref": "#/definitions/Vec3"
+            }
+          },
+          "required": [
+            "plane",
+            "textPos"
+          ],
+          "type": "object"
+        },
+        "origin": {
+          "$ref": "#/definitions/AnnotationOrigin"
+        },
+        "refs": {
+          "description": "Model geometry the annotation is attached to, by persistent name (PLAN §7.3). Arity and role per kind are in the .md table (\"refs per kind\"). Resolved against the part's final state in the view's configuration. Unresolved = needs attention: never re-attached to a guessed entity, and the old value is never displayed (trap T1). Reattach replaces the list (every kind, trap T2). May be empty only where the kind says so (a hole callout bound by `source`, a frame or a datum bound by `appliesTo`).\n\nConstruction refs (M4.1, ADR-095), drawn on a view as thin chain lines once a placement there uses them, and offered as pick targets while a picking tool is active: `origin:O`, `origin:X|Y|Z`, `S<id>:p(@origin)`, `S<id>:e(@x|@y)`, `S<id>:p(<point>)`, `F<id>:plane|axis|point`, and `F<pattern>:pitch` (the pitch circle of a circular pattern of holes: about the pattern axis, through the instances' axes; unresolved if they are not holes or not all at one radius, never guessed).",
+          "items": {
+            "$ref": "#/definitions/EntityRef"
+          },
+          "type": "array"
+        },
+        "suppressed": {
+          "description": "Suppressed annotations are not shown or exported. Per configuration via `AnnotationOverride`.",
+          "type": "boolean"
+        },
+        "text": {
+          "description": "Plain text; `{slot}` tokens resolve like title-block slots (`{material}`).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "origin",
+        "refs",
+        "text"
+      ],
+      "type": "object"
+    },
+    "OrdinateDimension": {
+      "additionalProperties": false,
+      "description": "Ordinate: coordinate of `refs[1]` measured from the origin `refs[0]` along `direction`. Ordinates with the same origin name and direction form one group in a view (one `0` label, shared lane).",
+      "properties": {
+        "at": {
+          "description": "Point qualifiers parallel to `refs`; absent or shorter = `'self'` for the rest.",
+          "items": {
+            "$ref": "#/definitions/RefPoint"
+          },
+          "type": "array"
+        },
+        "direction": {
+          "$ref": "#/definitions/Vec3"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "kind": {
+          "const": "ordinate",
+          "type": "string"
+        },
+        "modelPlacement": {
+          "additionalProperties": false,
+          "description": "M5 reserve: the v3 `PmiAnnotation.placement` (3D annotation plane and text position), carried over verbatim by the migration so nothing is lost. M5 replaces it with annotation planes.",
+          "properties": {
+            "plane": {
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 6,
+              "minItems": 6,
+              "type": "array"
+            },
+            "textPos": {
+              "$ref": "#/definitions/Vec3"
+            }
+          },
+          "required": [
+            "plane",
+            "textPos"
+          ],
+          "type": "object"
+        },
+        "nominal": {
+          "$ref": "#/definitions/Expr"
+        },
+        "origin": {
+          "$ref": "#/definitions/AnnotationOrigin"
+        },
+        "refs": {
+          "description": "Model geometry the annotation is attached to, by persistent name (PLAN §7.3). Arity and role per kind are in the .md table (\"refs per kind\"). Resolved against the part's final state in the view's configuration. Unresolved = needs attention: never re-attached to a guessed entity, and the old value is never displayed (trap T1). Reattach replaces the list (every kind, trap T2). May be empty only where the kind says so (a hole callout bound by `source`, a frame or a datum bound by `appliesTo`).\n\nConstruction refs (M4.1, ADR-095), drawn on a view as thin chain lines once a placement there uses them, and offered as pick targets while a picking tool is active: `origin:O`, `origin:X|Y|Z`, `S<id>:p(@origin)`, `S<id>:e(@x|@y)`, `S<id>:p(<point>)`, `F<id>:plane|axis|point`, and `F<pattern>:pitch` (the pitch circle of a circular pattern of holes: about the pattern axis, through the instances' axes; unresolved if they are not holes or not all at one radius, never guessed).",
+          "items": {
+            "$ref": "#/definitions/EntityRef"
+          },
+          "type": "array"
+        },
+        "source": {
+          "$ref": "#/definitions/AnnotationSource"
+        },
+        "suppressed": {
+          "description": "Suppressed annotations are not shown or exported. Per configuration via `AnnotationOverride`.",
+          "type": "boolean"
+        },
+        "text": {
+          "$ref": "#/definitions/DimensionText"
+        },
+        "tolerance": {
+          "$ref": "#/definitions/Tolerance"
+        }
+      },
+      "required": [
+        "direction",
+        "id",
+        "kind",
+        "origin",
+        "refs"
+      ],
+      "type": "object"
+    },
+    "Part": {
+      "additionalProperties": false,
+      "properties": {
+        "activeConfigurationId": {
+          "$ref": "#/definitions/Id",
+          "description": "The active configuration: every regen of the live model is of this one. Absent = Default."
+        },
+        "annotations": {
+          "description": "M4 (ADR-081, ADR-090): the part's annotations (annotation.ts): dimensions, GD&T, datums, notes, surface finish, hole callouts. They measure the finished part, so no feature owns them. Absent = none. The array's order carries no meaning: kept sorted by id (store, merge and loader), so concurrent adds never conflict on order.",
+          "items": {
+            "$ref": "#/definitions/Annotation"
+          },
+          "type": "array"
+        },
+        "color": {
+          "description": "CSS hex colour, e.g. `\"#9aa4b2\"`. Overrides the material's appearance colour.",
+          "type": "string"
+        },
+        "configurations": {
+          "description": "M3.7 named configurations (ADR-074): sparse overrides over an implicit **Default**, which is the part as stored. Absent = only Default. Keyed by id everywhere, so renames never break merges or consumers. No derived (nested) configurations.",
+          "items": {
+            "$ref": "#/definitions/Configuration"
+          },
+          "type": "array"
+        },
+        "features": {
+          "items": {
+            "$ref": "#/definitions/Feature"
+          },
+          "type": "array"
+        },
+        "folders": {
+          "description": "Feature tree folders (M3.6, ADR-066). Absent = none. Each folder groups a **contiguous run** of `features` in history order; folders never overlap and do not nest. The array's order carries no meaning (a folder sits in the tree where its first member sits). The document layer keeps the invariant after every edit and merge (`normalizeFolders`): deleted members drop out, empty folders are removed, and members are kept in history order; an edit that would split a run is refused by the command layer (the UI asks first).",
+          "items": {
+            "$ref": "#/definitions/FeatureFolder"
+          },
+          "type": "array"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "material": {
+          "$ref": "#/definitions/Material",
+          "description": "Physical material. Absent = no mass properties beyond volume (UI shows \"Assign material\")."
+        },
+        "name": {
+          "type": "string"
+        },
+        "properties": {
+          "$ref": "#/definitions/PartProperties",
+          "description": "M3.7: the Default configuration's part number and description (and the part's when it has none)."
+        },
+        "rollbackIndex": {
+          "description": "Features with index >= rollbackIndex are not evaluated. `features.length` = fully rolled forward.",
+          "type": "number"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "features",
+        "rollbackIndex"
+      ],
+      "type": "object"
+    },
+    "PartProperties": {
+      "additionalProperties": false,
+      "description": "Part properties that drive exports, title blocks (M4) and the BOM (M6).",
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "partNumber": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "PlaneFeature": {
+      "additionalProperties": false,
+      "properties": {
+        "definition": {
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "distance": {
+                  "$ref": "#/definitions/Expr"
+                },
+                "from": {
+                  "$ref": "#/definitions/EntityRef"
+                },
+                "kind": {
+                  "const": "offset",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "from",
+                "distance"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "frame": {
+                  "$ref": "#/definitions/Frame"
+                },
+                "kind": {
+                  "const": "frame",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "frame"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "threePoints",
+                  "type": "string"
+                },
+                "points": {
+                  "items": {
+                    "$ref": "#/definitions/EntityRef"
+                  },
+                  "maxItems": 3,
+                  "minItems": 3,
+                  "type": "array"
+                }
+              },
+              "required": [
+                "kind",
+                "points"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "angle": {
+                  "$ref": "#/definitions/Expr"
+                },
+                "axis": {
+                  "$ref": "#/definitions/EntityRef"
+                },
+                "from": {
+                  "$ref": "#/definitions/EntityRef"
+                },
+                "kind": {
+                  "const": "angle",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "from",
+                "axis",
+                "angle"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "at": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/definitions/EntityRef"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "t": {
+                          "$ref": "#/definitions/Expr"
+                        }
+                      },
+                      "required": [
+                        "t"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                },
+                "curve": {
+                  "$ref": "#/definitions/EntityRef"
+                },
+                "kind": {
+                  "const": "normalToCurve",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "curve",
+                "at"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "a": {
+                  "$ref": "#/definitions/EntityRef"
+                },
+                "b": {
+                  "$ref": "#/definitions/EntityRef"
+                },
+                "kind": {
+                  "const": "midplane",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "a",
+                "b"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "from": {
+                  "$ref": "#/definitions/EntityRef"
+                },
+                "kind": {
+                  "const": "throughPoint",
+                  "type": "string"
+                },
+                "point": {
+                  "$ref": "#/definitions/EntityRef"
+                }
+              },
+              "required": [
+                "kind",
+                "from",
+                "point"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "flip": {
+          "description": "Flip the plane normal (and so the sketch's orientation on it).",
+          "type": "boolean"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "name": {
+          "type": "string"
+        },
+        "suppressed": {
+          "type": "boolean"
+        },
+        "type": {
+          "const": "plane",
+          "type": "string"
+        },
+        "visibility": {
+          "$ref": "#/definitions/SketchVisibility",
+          "description": "Viewport visibility of reference geometry (ADR-093). Absent or `'auto'` = shown (reference geometry is not consumed away like a sketch); `'hidden'` hides it on every shell, persisted."
+        }
+      },
+      "required": [
+        "definition",
+        "id",
+        "name",
+        "suppressed",
+        "type"
+      ],
+      "type": "object"
+    },
+    "PointFeature": {
+      "additionalProperties": false,
+      "description": "A construction point (sketch references, measure, axes and planes).",
+      "properties": {
+        "definition": {
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "coordinates",
+                  "type": "string"
+                },
+                "x": {
+                  "$ref": "#/definitions/Expr"
+                },
+                "y": {
+                  "$ref": "#/definitions/Expr"
+                },
+                "z": {
+                  "$ref": "#/definitions/Expr"
+                }
+              },
+              "required": [
+                "kind",
+                "x",
+                "y",
+                "z"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "vertex",
+                  "type": "string"
+                },
+                "vertex": {
+                  "$ref": "#/definitions/EntityRef"
+                }
+              },
+              "required": [
+                "kind",
+                "vertex"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "center",
+                  "type": "string"
+                },
+                "of": {
+                  "$ref": "#/definitions/EntityRef"
+                }
+              },
+              "required": [
+                "kind",
+                "of"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "edge": {
+                  "$ref": "#/definitions/EntityRef"
+                },
+                "kind": {
+                  "const": "alongEdge",
+                  "type": "string"
+                },
+                "t": {
+                  "$ref": "#/definitions/Expr"
+                }
+              },
+              "required": [
+                "kind",
+                "edge",
+                "t"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "a": {
+                  "$ref": "#/definitions/EntityRef"
+                },
+                "b": {
+                  "$ref": "#/definitions/EntityRef"
+                },
+                "kind": {
+                  "const": "intersection",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "a",
+                "b"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "name": {
+          "type": "string"
+        },
+        "suppressed": {
+          "type": "boolean"
+        },
+        "type": {
+          "const": "point",
+          "type": "string"
+        },
+        "visibility": {
+          "$ref": "#/definitions/SketchVisibility",
+          "description": "Viewport visibility of reference geometry (ADR-093). Absent or `'auto'` = shown (reference geometry is not consumed away like a sketch); `'hidden'` hides it on every shell, persisted."
+        }
+      },
+      "required": [
+        "definition",
+        "id",
+        "name",
+        "suppressed",
+        "type"
+      ],
+      "type": "object"
+    },
+    "PrimitiveFeature": {
+      "anyOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "dx": {
+              "$ref": "#/definitions/Expr"
+            },
+            "dy": {
+              "$ref": "#/definitions/Expr"
+            },
+            "dz": {
+              "$ref": "#/definitions/Expr"
+            },
+            "frame": {
+              "$ref": "#/definitions/Frame"
+            },
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "name": {
+              "type": "string"
+            },
+            "op": {
+              "$ref": "#/definitions/BodyOp"
+            },
+            "scope": {
+              "$ref": "#/definitions/BodyScope"
+            },
+            "shape": {
+              "const": "box",
+              "type": "string"
+            },
+            "suppressed": {
+              "type": "boolean"
+            },
+            "type": {
+              "const": "primitive",
+              "type": "string"
+            }
+          },
+          "required": [
+            "dx",
+            "dy",
+            "dz",
+            "id",
+            "name",
+            "op",
+            "shape",
+            "suppressed",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "frame": {
+              "$ref": "#/definitions/Frame"
+            },
+            "height": {
+              "$ref": "#/definitions/Expr"
+            },
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "name": {
+              "type": "string"
+            },
+            "op": {
+              "$ref": "#/definitions/BodyOp"
+            },
+            "radius": {
+              "$ref": "#/definitions/Expr"
+            },
+            "scope": {
+              "$ref": "#/definitions/BodyScope"
+            },
+            "shape": {
+              "const": "cylinder",
+              "type": "string"
+            },
+            "suppressed": {
+              "type": "boolean"
+            },
+            "type": {
+              "const": "primitive",
+              "type": "string"
+            }
+          },
+          "required": [
+            "height",
+            "id",
+            "name",
+            "op",
+            "radius",
+            "shape",
+            "suppressed",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "frame": {
+              "$ref": "#/definitions/Frame"
+            },
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "name": {
+              "type": "string"
+            },
+            "op": {
+              "$ref": "#/definitions/BodyOp"
+            },
+            "radius": {
+              "$ref": "#/definitions/Expr"
+            },
+            "scope": {
+              "$ref": "#/definitions/BodyScope"
+            },
+            "shape": {
+              "const": "sphere",
+              "type": "string"
+            },
+            "suppressed": {
+              "type": "boolean"
+            },
+            "type": {
+              "const": "primitive",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "op",
+            "radius",
+            "shape",
+            "suppressed",
+            "type"
+          ],
+          "type": "object"
+        }
+      ],
+      "description": "Solid primitive (box/cylinder/sphere). Used by M0 (\"façade makes a box\") and kept for quick blocking-out. The box spans [0,dx]×[0,dy]×[0,dz] in `frame` (default: world)."
+    },
+    "PushPullFeature": {
+      "additionalProperties": false,
+      "description": "Direct editing (PLAN §9.2, M2): moves faces of one body along their normal. Positive `distance` moves outward (adds material), negative inward (removes). M2 supports planar faces; others fail with an `UNSUPPORTED_FEATURE` error naming the face. Recorded as a feature, so it is parametric.",
+      "properties": {
+        "distance": {
+          "$ref": "#/definitions/Expr"
+        },
+        "faces": {
+          "items": {
+            "$ref": "#/definitions/EntityRef"
+          },
+          "type": "array"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "name": {
+          "type": "string"
+        },
+        "suppressed": {
+          "type": "boolean"
+        },
+        "type": {
+          "const": "pushPull",
+          "type": "string"
+        }
+      },
+      "required": [
+        "distance",
+        "faces",
+        "id",
+        "name",
+        "suppressed",
+        "type"
+      ],
+      "type": "object"
+    },
+    "RadiusDimension": {
+      "additionalProperties": false,
+      "description": "refs: [circular edge | cylindrical, conical or spherical face]. A sphere shows SR / SØ.",
+      "properties": {
+        "at": {
+          "description": "Point qualifiers parallel to `refs`; absent or shorter = `'self'` for the rest.",
+          "items": {
+            "$ref": "#/definitions/RefPoint"
+          },
+          "type": "array"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "kind": {
+          "const": "radius",
+          "type": "string"
+        },
+        "modelPlacement": {
+          "additionalProperties": false,
+          "description": "M5 reserve: the v3 `PmiAnnotation.placement` (3D annotation plane and text position), carried over verbatim by the migration so nothing is lost. M5 replaces it with annotation planes.",
+          "properties": {
+            "plane": {
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 6,
+              "minItems": 6,
+              "type": "array"
+            },
+            "textPos": {
+              "$ref": "#/definitions/Vec3"
+            }
+          },
+          "required": [
+            "plane",
+            "textPos"
+          ],
+          "type": "object"
+        },
+        "nominal": {
+          "$ref": "#/definitions/Expr"
+        },
+        "origin": {
+          "$ref": "#/definitions/AnnotationOrigin"
+        },
+        "refs": {
+          "description": "Model geometry the annotation is attached to, by persistent name (PLAN §7.3). Arity and role per kind are in the .md table (\"refs per kind\"). Resolved against the part's final state in the view's configuration. Unresolved = needs attention: never re-attached to a guessed entity, and the old value is never displayed (trap T1). Reattach replaces the list (every kind, trap T2). May be empty only where the kind says so (a hole callout bound by `source`, a frame or a datum bound by `appliesTo`).\n\nConstruction refs (M4.1, ADR-095), drawn on a view as thin chain lines once a placement there uses them, and offered as pick targets while a picking tool is active: `origin:O`, `origin:X|Y|Z`, `S<id>:p(@origin)`, `S<id>:e(@x|@y)`, `S<id>:p(<point>)`, `F<id>:plane|axis|point`, and `F<pattern>:pitch` (the pitch circle of a circular pattern of holes: about the pattern axis, through the instances' axes; unresolved if they are not holes or not all at one radius, never guessed).",
+          "items": {
+            "$ref": "#/definitions/EntityRef"
+          },
+          "type": "array"
+        },
+        "source": {
+          "$ref": "#/definitions/AnnotationSource"
+        },
+        "suppressed": {
+          "description": "Suppressed annotations are not shown or exported. Per configuration via `AnnotationOverride`.",
+          "type": "boolean"
+        },
+        "text": {
+          "$ref": "#/definitions/DimensionText"
+        },
+        "tolerance": {
+          "$ref": "#/definitions/Tolerance"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "origin",
+        "refs"
+      ],
+      "type": "object"
+    },
+    "RefPoint": {
+      "description": "Which point of a referenced entity an annotation measures from (parallel to `refs`). `self`: the entity itself (a face, an edge's line). `center`: circle, arc or sphere centre. `axis`: a cylindrical or conical face's axis; on a planar face in an angle dimension, the face's normal (the pull direction a draft angle is measured from; M4.1). `start` / `end` / `mid`: of an edge. `min` / `max` (M4.1, ADR-095): the entity's extreme point along the dimension's `direction`, only for linear and ordinate dimensions that have one: a circle's, cylinder's or sphere's tangent point, a line's lower or upper end. A diameter in linear form (\"across the flats\" of a circle) is refs [c, c] at ['min', 'max'].",
+      "enum": [
+        "self",
+        "center",
+        "axis",
+        "start",
+        "end",
+        "mid",
+        "min",
+        "max"
+      ],
+      "type": "string"
+    },
+    "RevolveFeature": {
+      "additionalProperties": false,
+      "properties": {
+        "angle": {
+          "$ref": "#/definitions/Expr"
+        },
+        "axis": {
+          "$ref": "#/definitions/EntityRef"
+        },
+        "direction": {
+          "enum": [
+            "normal",
+            "reverse",
+            "symmetric"
+          ],
+          "type": "string"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "name": {
+          "type": "string"
+        },
+        "op": {
+          "$ref": "#/definitions/BodyOp"
+        },
+        "profile": {
+          "items": {
+            "$ref": "#/definitions/EntityRef"
+          },
+          "type": "array"
+        },
+        "scope": {
+          "$ref": "#/definitions/BodyScope"
+        },
+        "suppressed": {
+          "type": "boolean"
+        },
+        "type": {
+          "const": "revolve",
+          "type": "string"
+        }
+      },
+      "required": [
+        "angle",
+        "axis",
+        "direction",
+        "id",
+        "name",
+        "op",
+        "profile",
+        "suppressed",
+        "type"
+      ],
+      "type": "object"
+    },
+    "ShellFeature": {
+      "additionalProperties": false,
+      "description": "Hollow a body: remove `openFaces`, offset the rest by `thickness` (inward by default).",
+      "properties": {
+        "body": {
+          "$ref": "#/definitions/EntityRef",
+          "description": "The body, when `openFaces` is empty."
+        },
+        "direction": {
+          "enum": [
+            "inward",
+            "outward"
+          ],
+          "type": "string"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "name": {
+          "type": "string"
+        },
+        "openFaces": {
+          "description": "Faces to remove (on one body). Empty = a closed hollow solid.",
+          "items": {
+            "$ref": "#/definitions/EntityRef"
+          },
+          "type": "array"
+        },
+        "suppressed": {
+          "type": "boolean"
+        },
+        "thickness": {
+          "$ref": "#/definitions/Expr"
+        },
+        "type": {
+          "const": "shell",
+          "type": "string"
+        }
+      },
+      "required": [
+        "direction",
+        "id",
+        "name",
+        "openFaces",
+        "suppressed",
+        "thickness",
+        "type"
+      ],
+      "type": "object"
+    },
+    "SketchArc": {
+      "additionalProperties": false,
+      "description": "Counter-clockwise from `start` to `end` around `center` (both on the circle).",
+      "properties": {
+        "center": {
+          "$ref": "#/definitions/Id"
+        },
+        "construction": {
+          "description": "Construction geometry is solved and constrainable but never forms profiles.",
+          "type": "boolean"
+        },
+        "end": {
+          "$ref": "#/definitions/Id"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "kind": {
+          "const": "arc",
+          "type": "string"
+        },
+        "source": {
+          "additionalProperties": false,
+          "description": "M3 Convert Entities: a **linked** entity whose geometry is the projection of model geometry onto the sketch plane, recomputed by the regen engine every time (points, lines, arcs and circles, and since M3.5 ellipses, elliptic arcs and B-splines through the kernel's exact projection; anything else projects as an approximating chain of lines marked `approximate`). Linked entities are fixed (no DOF) and can be dimensioned and constrained to. If `ref` no longer resolves, the sketch is \"needs attention\" (never re-picked silently). Removing `source` unlinks the entity into ordinary geometry.",
+          "properties": {
+            "approximate": {
+              "type": "boolean"
+            },
+            "ref": {
+              "$ref": "#/definitions/EntityRef"
+            }
+          },
+          "required": [
+            "ref"
+          ],
+          "type": "object"
+        },
+        "start": {
+          "$ref": "#/definitions/Id"
+        }
+      },
+      "required": [
+        "center",
+        "construction",
+        "end",
+        "id",
+        "kind",
+        "start"
+      ],
+      "type": "object"
+    },
+    "SketchBSpline": {
+      "additionalProperties": false,
+      "description": "M3.5. A B-spline curve by its control points (`poles`, point entities, so they can be dragged, dimensioned and constrained). Non-periodic splines are clamped: they start at the first pole and end at the last, so a line or arc can share an end point with them. `knots` are distinct values and come with `multiplicities` (both or neither). Omitted: clamped knots i/(n−p) with end multiplicity p + 1 (n poles, degree p), or periodic knots i/n all of multiplicity 1, on the domain [0, 1] (ADR-048 has the periodic flat-knot convention). Explicit knots: end multiplicities must be degree + 1 when not periodic and interior ones ≤ degree; an open spline may instead give a flat knot vector of n + p + 1 values (ADR-048, ADR-056). `weights` omitted = all 1 (non-rational). A spline drawn **through points** stores the poles that interpolate them, plus the through points as point entities held on the curve by `pointOn` constraints, so moving a through point reshapes the curve (ADR-046).",
+      "properties": {
+        "construction": {
+          "description": "Construction geometry is solved and constrainable but never forms profiles.",
+          "type": "boolean"
+        },
+        "degree": {
+          "type": "number"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "kind": {
+          "const": "bspline",
+          "type": "string"
+        },
+        "knots": {
+          "items": {
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "multiplicities": {
+          "items": {
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "periodic": {
+          "type": "boolean"
+        },
+        "poles": {
+          "items": {
+            "$ref": "#/definitions/Id"
+          },
+          "type": "array"
+        },
+        "source": {
+          "additionalProperties": false,
+          "description": "M3 Convert Entities: a **linked** entity whose geometry is the projection of model geometry onto the sketch plane, recomputed by the regen engine every time (points, lines, arcs and circles, and since M3.5 ellipses, elliptic arcs and B-splines through the kernel's exact projection; anything else projects as an approximating chain of lines marked `approximate`). Linked entities are fixed (no DOF) and can be dimensioned and constrained to. If `ref` no longer resolves, the sketch is \"needs attention\" (never re-picked silently). Removing `source` unlinks the entity into ordinary geometry.",
+          "properties": {
+            "approximate": {
+              "type": "boolean"
+            },
+            "ref": {
+              "$ref": "#/definitions/EntityRef"
+            }
+          },
+          "required": [
+            "ref"
+          ],
+          "type": "object"
+        },
+        "through": {
+          "description": "Through points of a spline drawn through points (ADR-050): point entities held at the inner knots, in order. The solver keeps each on its knot; editing one reshapes the curve.",
+          "items": {
+            "$ref": "#/definitions/Id"
+          },
+          "type": "array"
+        },
+        "weights": {
+          "items": {
+            "type": "number"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "construction",
+        "degree",
+        "id",
+        "kind",
+        "periodic",
+        "poles"
+      ],
+      "type": "object"
+    },
+    "SketchCircle": {
+      "additionalProperties": false,
+      "properties": {
+        "center": {
+          "$ref": "#/definitions/Id"
+        },
+        "construction": {
+          "description": "Construction geometry is solved and constrainable but never forms profiles.",
+          "type": "boolean"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "kind": {
+          "const": "circle",
+          "type": "string"
+        },
+        "radius": {
+          "type": "number"
+        },
+        "source": {
+          "additionalProperties": false,
+          "description": "M3 Convert Entities: a **linked** entity whose geometry is the projection of model geometry onto the sketch plane, recomputed by the regen engine every time (points, lines, arcs and circles, and since M3.5 ellipses, elliptic arcs and B-splines through the kernel's exact projection; anything else projects as an approximating chain of lines marked `approximate`). Linked entities are fixed (no DOF) and can be dimensioned and constrained to. If `ref` no longer resolves, the sketch is \"needs attention\" (never re-picked silently). Removing `source` unlinks the entity into ordinary geometry.",
+          "properties": {
+            "approximate": {
+              "type": "boolean"
+            },
+            "ref": {
+              "$ref": "#/definitions/EntityRef"
+            }
+          },
+          "required": [
+            "ref"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "center",
+        "construction",
+        "id",
+        "kind",
+        "radius"
+      ],
+      "type": "object"
+    },
+    "SketchConstraint": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/GeometricConstraint"
+        },
+        {
+          "$ref": "#/definitions/DimensionConstraint"
+        }
+      ]
+    },
+    "SketchEllipse": {
+      "additionalProperties": false,
+      "description": "P1. Axis-aligned before rotation; `rotation` in radians.",
+      "properties": {
+        "center": {
+          "$ref": "#/definitions/Id"
+        },
+        "construction": {
+          "description": "Construction geometry is solved and constrainable but never forms profiles.",
+          "type": "boolean"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "kind": {
+          "const": "ellipse",
+          "type": "string"
+        },
+        "majorRadius": {
+          "type": "number"
+        },
+        "minorRadius": {
+          "type": "number"
+        },
+        "rotation": {
+          "type": "number"
+        },
+        "source": {
+          "additionalProperties": false,
+          "description": "M3 Convert Entities: a **linked** entity whose geometry is the projection of model geometry onto the sketch plane, recomputed by the regen engine every time (points, lines, arcs and circles, and since M3.5 ellipses, elliptic arcs and B-splines through the kernel's exact projection; anything else projects as an approximating chain of lines marked `approximate`). Linked entities are fixed (no DOF) and can be dimensioned and constrained to. If `ref` no longer resolves, the sketch is \"needs attention\" (never re-picked silently). Removing `source` unlinks the entity into ordinary geometry.",
+          "properties": {
+            "approximate": {
+              "type": "boolean"
+            },
+            "ref": {
+              "$ref": "#/definitions/EntityRef"
+            }
+          },
+          "required": [
+            "ref"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "center",
+        "construction",
+        "id",
+        "kind",
+        "majorRadius",
+        "minorRadius",
+        "rotation"
+      ],
+      "type": "object"
+    },
+    "SketchEllipticArc": {
+      "additionalProperties": false,
+      "description": "M3.5. Counter-clockwise from `start` to `end` on the ellipse given by `center`, the radii and `rotation` (major axis direction, radians). `start` and `end` lie on the ellipse (the solver keeps them there).",
+      "properties": {
+        "center": {
+          "$ref": "#/definitions/Id"
+        },
+        "construction": {
+          "description": "Construction geometry is solved and constrainable but never forms profiles.",
+          "type": "boolean"
+        },
+        "end": {
+          "$ref": "#/definitions/Id"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "kind": {
+          "const": "ellipticArc",
+          "type": "string"
+        },
+        "majorRadius": {
+          "type": "number"
+        },
+        "minorRadius": {
+          "type": "number"
+        },
+        "rotation": {
+          "type": "number"
+        },
+        "source": {
+          "additionalProperties": false,
+          "description": "M3 Convert Entities: a **linked** entity whose geometry is the projection of model geometry onto the sketch plane, recomputed by the regen engine every time (points, lines, arcs and circles, and since M3.5 ellipses, elliptic arcs and B-splines through the kernel's exact projection; anything else projects as an approximating chain of lines marked `approximate`). Linked entities are fixed (no DOF) and can be dimensioned and constrained to. If `ref` no longer resolves, the sketch is \"needs attention\" (never re-picked silently). Removing `source` unlinks the entity into ordinary geometry.",
+          "properties": {
+            "approximate": {
+              "type": "boolean"
+            },
+            "ref": {
+              "$ref": "#/definitions/EntityRef"
+            }
+          },
+          "required": [
+            "ref"
+          ],
+          "type": "object"
+        },
+        "start": {
+          "$ref": "#/definitions/Id"
+        }
+      },
+      "required": [
+        "center",
+        "construction",
+        "end",
+        "id",
+        "kind",
+        "majorRadius",
+        "minorRadius",
+        "rotation",
+        "start"
+      ],
+      "type": "object"
+    },
+    "SketchEntity": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/SketchPoint"
+        },
+        {
+          "$ref": "#/definitions/SketchLine"
+        },
+        {
+          "$ref": "#/definitions/SketchCircle"
+        },
+        {
+          "$ref": "#/definitions/SketchArc"
+        },
+        {
+          "$ref": "#/definitions/SketchEllipse"
+        },
+        {
+          "$ref": "#/definitions/SketchEllipticArc"
+        },
+        {
+          "$ref": "#/definitions/SketchBSpline"
+        }
+      ]
+    },
+    "SketchFeature": {
+      "additionalProperties": false,
+      "description": "A 2D sketch on a plane or planar face. Geometry and constraints are defined in `sketch.ts`. The kernel turns the solved sketch into wires and regions (names: see `naming.ts`).",
+      "properties": {
+        "constraints": {
+          "items": {
+            "$ref": "#/definitions/SketchConstraint"
+          },
+          "type": "array"
+        },
+        "entities": {
+          "items": {
+            "$ref": "#/definitions/SketchEntity"
+          },
+          "type": "array"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "name": {
+          "type": "string"
+        },
+        "on": {
+          "$ref": "#/definitions/EntityRef",
+          "description": "Plane or planar face the sketch lies on (`origin:XY` etc. or a face/plane-feature ref)."
+        },
+        "suppressed": {
+          "type": "boolean"
+        },
+        "type": {
+          "const": "sketch",
+          "type": "string"
+        },
+        "visibility": {
+          "$ref": "#/definitions/SketchVisibility",
+          "description": "Viewport visibility (M3.6). Absent or `'auto'`: shown while no feature uses it, hidden once one consumes it (profile, path, axis; ADR-060). `'shown'` / `'hidden'` override that for this sketch, on every shell, and persist in the document."
+        }
+      },
+      "required": [
+        "constraints",
+        "entities",
+        "id",
+        "name",
+        "on",
+        "suppressed",
+        "type"
+      ],
+      "type": "object"
+    },
+    "SketchLine": {
+      "additionalProperties": false,
+      "properties": {
+        "construction": {
+          "description": "Construction geometry is solved and constrainable but never forms profiles.",
+          "type": "boolean"
+        },
+        "end": {
+          "$ref": "#/definitions/Id"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "kind": {
+          "const": "line",
+          "type": "string"
+        },
+        "source": {
+          "additionalProperties": false,
+          "description": "M3 Convert Entities: a **linked** entity whose geometry is the projection of model geometry onto the sketch plane, recomputed by the regen engine every time (points, lines, arcs and circles, and since M3.5 ellipses, elliptic arcs and B-splines through the kernel's exact projection; anything else projects as an approximating chain of lines marked `approximate`). Linked entities are fixed (no DOF) and can be dimensioned and constrained to. If `ref` no longer resolves, the sketch is \"needs attention\" (never re-picked silently). Removing `source` unlinks the entity into ordinary geometry.",
+          "properties": {
+            "approximate": {
+              "type": "boolean"
+            },
+            "ref": {
+              "$ref": "#/definitions/EntityRef"
+            }
+          },
+          "required": [
+            "ref"
+          ],
+          "type": "object"
+        },
+        "start": {
+          "$ref": "#/definitions/Id"
+        }
+      },
+      "required": [
+        "construction",
+        "end",
+        "id",
+        "kind",
+        "start"
+      ],
+      "type": "object"
+    },
+    "SketchPoint": {
+      "additionalProperties": false,
+      "properties": {
+        "construction": {
+          "description": "Construction geometry is solved and constrainable but never forms profiles.",
+          "type": "boolean"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "kind": {
+          "const": "point",
+          "type": "string"
+        },
+        "source": {
+          "additionalProperties": false,
+          "description": "M3 Convert Entities: a **linked** entity whose geometry is the projection of model geometry onto the sketch plane, recomputed by the regen engine every time (points, lines, arcs and circles, and since M3.5 ellipses, elliptic arcs and B-splines through the kernel's exact projection; anything else projects as an approximating chain of lines marked `approximate`). Linked entities are fixed (no DOF) and can be dimensioned and constrained to. If `ref` no longer resolves, the sketch is \"needs attention\" (never re-picked silently). Removing `source` unlinks the entity into ordinary geometry.",
+          "properties": {
+            "approximate": {
+              "type": "boolean"
+            },
+            "ref": {
+              "$ref": "#/definitions/EntityRef"
+            }
+          },
+          "required": [
+            "ref"
+          ],
+          "type": "object"
+        },
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "construction",
+        "id",
+        "kind",
+        "x",
+        "y"
+      ],
+      "type": "object"
+    },
+    "SketchVisibility": {
+      "description": "See `SketchFeature.visibility` (sketches) and `PlaneFeature.visibility` (reference geometry).",
+      "enum": [
+        "auto",
+        "shown",
+        "hidden"
+      ],
+      "type": "string"
+    },
+    "SurfaceFinishAnnotation": {
+      "additionalProperties": false,
+      "description": "Surface texture symbol (ISO 21920-1 by default). refs: [face].",
+      "properties": {
+        "allAround": {
+          "type": "boolean"
+        },
+        "allowance": {
+          "$ref": "#/definitions/Expr",
+          "description": "Machining allowance (length)."
+        },
+        "at": {
+          "description": "Point qualifiers parallel to `refs`; absent or shorter = `'self'` for the rest.",
+          "items": {
+            "$ref": "#/definitions/RefPoint"
+          },
+          "type": "array"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "kind": {
+          "const": "surfaceFinish",
+          "type": "string"
+        },
+        "lay": {
+          "$ref": "#/definitions/SurfaceLay"
+        },
+        "method": {
+          "description": "Manufacturing method text (`ground`).",
+          "type": "string"
+        },
+        "modelPlacement": {
+          "additionalProperties": false,
+          "description": "M5 reserve: the v3 `PmiAnnotation.placement` (3D annotation plane and text position), carried over verbatim by the migration so nothing is lost. M5 replaces it with annotation planes.",
+          "properties": {
+            "plane": {
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 6,
+              "minItems": 6,
+              "type": "array"
+            },
+            "textPos": {
+              "$ref": "#/definitions/Vec3"
+            }
+          },
+          "required": [
+            "plane",
+            "textPos"
+          ],
+          "type": "object"
+        },
+        "origin": {
+          "$ref": "#/definitions/AnnotationOrigin"
+        },
+        "process": {
+          "enum": [
+            "any",
+            "removalRequired",
+            "removalProhibited"
+          ],
+          "type": "string"
+        },
+        "refs": {
+          "description": "Model geometry the annotation is attached to, by persistent name (PLAN §7.3). Arity and role per kind are in the .md table (\"refs per kind\"). Resolved against the part's final state in the view's configuration. Unresolved = needs attention: never re-attached to a guessed entity, and the old value is never displayed (trap T1). Reattach replaces the list (every kind, trap T2). May be empty only where the kind says so (a hole callout bound by `source`, a frame or a datum bound by `appliesTo`).\n\nConstruction refs (M4.1, ADR-095), drawn on a view as thin chain lines once a placement there uses them, and offered as pick targets while a picking tool is active: `origin:O`, `origin:X|Y|Z`, `S<id>:p(@origin)`, `S<id>:e(@x|@y)`, `S<id>:p(<point>)`, `F<id>:plane|axis|point`, and `F<pattern>:pitch` (the pitch circle of a circular pattern of holes: about the pattern axis, through the instances' axes; unresolved if they are not holes or not all at one radius, never guessed).",
+          "items": {
+            "$ref": "#/definitions/EntityRef"
+          },
+          "type": "array"
+        },
+        "requirements": {
+          "description": "Empty = the bare symbol.",
+          "items": {
+            "$ref": "#/definitions/SurfaceRequirement"
+          },
+          "type": "array"
+        },
+        "standard": {
+          "$ref": "#/definitions/SurfaceFinishStandard"
+        },
+        "suppressed": {
+          "description": "Suppressed annotations are not shown or exported. Per configuration via `AnnotationOverride`.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "origin",
+        "process",
+        "refs",
+        "requirements"
+      ],
+      "type": "object"
+    },
+    "SurfaceFinishStandard": {
+      "description": "Surface texture standard (default ISO 21920-1; ISO 1302 is legacy, kept for old drawings).",
+      "enum": [
+        "ISO 21920-1:2021",
+        "ISO 1302:2002",
+        "ASME Y14.36-2018"
+      ],
+      "type": "string"
+    },
+    "SurfaceLay": {
+      "enum": [
+        "parallel",
+        "perpendicular",
+        "crossed",
+        "multiDirectional",
+        "circular",
+        "radial",
+        "particulate"
+      ],
+      "type": "string"
+    },
+    "SurfaceRequirement": {
+      "additionalProperties": false,
+      "description": "One surface texture requirement, e.g. `Ra 1.6 µm` (upper limit, `max` rule under ISO 21920).",
+      "properties": {
+        "acceptance": {
+          "description": "Acceptance rule; absent = the standard's default (ISO 21920-1: max; ISO 1302: 16 %).",
+          "enum": [
+            "max",
+            "16%"
+          ],
+          "type": "string"
+        },
+        "filter": {
+          "description": "Filter / evaluation length text as written (`0.8`, `λs 2.5 µm`).",
+          "type": "string"
+        },
+        "limit": {
+          "description": "Limit type; absent = upper.",
+          "enum": [
+            "upper",
+            "lower"
+          ],
+          "type": "string"
+        },
+        "parameter": {
+          "description": "Parameter symbol as written by the standard: `Ra`, `Rz`, `Rmr(c)`, `Wt` …",
+          "type": "string"
+        },
+        "value": {
+          "$ref": "#/definitions/Expr",
+          "description": "Length expression; the inline field writes µm (`1.6 µm`)."
+        }
+      },
+      "required": [
+        "parameter",
+        "value"
+      ],
+      "type": "object"
+    },
+    "SweepFeature": {
+      "additionalProperties": false,
+      "description": "Sweep closed profile regions along a path (a chain of sketch curves or model edges).",
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "name": {
+          "type": "string"
+        },
+        "op": {
+          "$ref": "#/definitions/BodyOp"
+        },
+        "orientation": {
+          "description": "`followPath`: the profile turns with the path (Frenet); `fixed`: it keeps its orientation.",
+          "enum": [
+            "followPath",
+            "fixed"
+          ],
+          "type": "string"
+        },
+        "path": {
+          "items": {
+            "$ref": "#/definitions/EntityRef"
+          },
+          "type": "array"
+        },
+        "profile": {
+          "items": {
+            "$ref": "#/definitions/EntityRef"
+          },
+          "type": "array"
+        },
+        "scope": {
+          "$ref": "#/definitions/BodyScope"
+        },
+        "suppressed": {
+          "type": "boolean"
+        },
+        "type": {
+          "const": "sweep",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "op",
+        "orientation",
+        "path",
+        "profile",
+        "suppressed",
+        "type"
+      ],
+      "type": "object"
+    },
+    "ThreadFeature": {
+      "additionalProperties": false,
+      "description": "A cosmetic thread on a cylindrical face: an annotation (drawings, PMI), no geometry change.",
+      "properties": {
+        "face": {
+          "$ref": "#/definitions/EntityRef"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "length": {
+          "$ref": "#/definitions/Expr"
+        },
+        "name": {
+          "type": "string"
+        },
+        "size": {
+          "type": "string"
+        },
+        "standard": {
+          "enum": [
+            "ISO",
+            "ANSI"
+          ],
+          "type": "string"
+        },
+        "suppressed": {
+          "type": "boolean"
+        },
+        "type": {
+          "const": "thread",
+          "type": "string"
+        }
+      },
+      "required": [
+        "face",
+        "id",
+        "name",
+        "size",
+        "standard",
+        "suppressed",
+        "type"
+      ],
+      "type": "object"
+    },
+    "Tolerance": {
+      "anyOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "symmetric",
+              "type": "string"
+            },
+            "value": {
+              "$ref": "#/definitions/Expr"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "bilateral",
+              "type": "string"
+            },
+            "lower": {
+              "$ref": "#/definitions/Expr"
+            },
+            "upper": {
+              "$ref": "#/definitions/Expr"
+            }
+          },
+          "required": [
+            "kind",
+            "upper",
+            "lower"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "limits",
+              "type": "string"
+            },
+            "lower": {
+              "$ref": "#/definitions/Expr"
+            },
+            "upper": {
+              "$ref": "#/definitions/Expr"
+            }
+          },
+          "required": [
+            "kind",
+            "upper",
+            "lower"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "basic",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "reference",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "hole": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "fit",
+              "type": "string"
+            },
+            "shaft": {
+              "type": "string"
+            },
+            "show": {
+              "enum": [
+                "symbol",
+                "symbolAndDeviations",
+                "limitsAndSymbol"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "show"
+          ],
+          "type": "object"
+        }
+      ],
+      "description": "Tolerance on a dimension's value. Deviations are signed `Expr`s relative to the nominal (so they follow a configuration's nominal). `limits` stores deviations too and is displayed as the two limits. `basic` and `reference` are display forms without a tolerance."
+    },
+    "ToleranceZone": {
+      "additionalProperties": false,
+      "properties": {
+        "material": {
+          "$ref": "#/definitions/MaterialCondition"
+        },
+        "modifiers": {
+          "items": {
+            "$ref": "#/definitions/ZoneModifier"
+          },
+          "type": "array"
+        },
+        "perUnit": {
+          "additionalProperties": false,
+          "description": "Refinement per unit: `0.05 / 100` (length) or `/ 100 × 100` (area: `width` set).",
+          "properties": {
+            "length": {
+              "$ref": "#/definitions/Expr"
+            },
+            "value": {
+              "$ref": "#/definitions/Expr"
+            },
+            "width": {
+              "$ref": "#/definitions/Expr"
+            }
+          },
+          "required": [
+            "value",
+            "length"
+          ],
+          "type": "object"
+        },
+        "projected": {
+          "$ref": "#/definitions/Expr",
+          "description": "Projected tolerance zone Ⓟ with its height."
+        },
+        "shape": {
+          "description": "`diameter` = Ø zone, `sphericalDiameter` = SØ; absent = width between two planes/lines.",
+          "enum": [
+            "diameter",
+            "sphericalDiameter"
+          ],
+          "type": "string"
+        },
+        "unequal": {
+          "$ref": "#/definitions/Expr",
+          "description": "Unequally disposed (ASME Ⓤ / ISO UZ) offset."
+        },
+        "value": {
+          "$ref": "#/definitions/Expr",
+          "description": "Zone size (length)."
+        }
+      },
+      "required": [
+        "value"
+      ],
+      "type": "object"
+    },
+    "Vec2": {
+      "items": {
+        "type": "number"
+      },
+      "maxItems": 2,
+      "minItems": 2,
+      "type": "array"
+    },
+    "Vec3": {
+      "items": {
+        "type": "number"
+      },
+      "maxItems": 3,
+      "minItems": 3,
+      "type": "array"
+    },
+    "ZoneModifier": {
+      "description": "Zone modifiers that take no value. Legality per standard is a validation rule, not a type.",
+      "enum": [
+        "freeState",
+        "tangentPlane",
+        "statistical",
+        "combinedZone",
+        "separateZones"
+      ],
+      "type": "string"
+    }
+  },
+  "description": "`parts/<slug>.part.json`",
+  "title": "PartFile"
+}

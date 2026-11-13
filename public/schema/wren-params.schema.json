@@ -1,0 +1,52 @@
+{
+  "$id": "https://jackhale98.github.io/wren-cad/schema/wren-params.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "definitions": {
+    "Expr": {
+      "description": "Expression with optional units, e.g. `\"width/2 + 3mm\"`, `\"25mm + 1/8in\"`, `\"30deg\"`.",
+      "type": "string"
+    },
+    "Id": {
+      "description": "ULID (26-char Crockford base32).",
+      "type": "string"
+    },
+    "Param": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "expr": {
+          "$ref": "#/definitions/Expr"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "expr"
+      ],
+      "type": "object"
+    }
+  },
+  "description": "`params.json`",
+  "properties": {
+    "params": {
+      "items": {
+        "$ref": "#/definitions/Param"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "params"
+  ],
+  "title": "ParamsFile",
+  "type": "object"
+}

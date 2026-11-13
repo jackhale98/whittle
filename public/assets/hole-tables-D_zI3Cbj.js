@@ -1,0 +1,1 @@
+export{s as HOLE_TABLES}from"./shared-small-xylRnt8Z.js";

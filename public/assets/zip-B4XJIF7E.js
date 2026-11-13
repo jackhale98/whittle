@@ -1,0 +1,1 @@
+import{r as e}from"./browser-DYWSvxQf.js";var t=new Date(Date.UTC(1980,0,1,0,0,0));function n(n){let r={},i=new Map;for(let e of n){let n=e.name,a=(i.get(n)??0)+1;if(i.set(n,a),a>1){let e=n.lastIndexOf(`.`);n=e>0?`${n.slice(0,e)}-${a}${n.slice(e)}`:`${n}-${a}`}r[n]=[e.bytes,{mtime:t}]}return e(r,{level:6,mtime:t})}export{n as zipFiles};

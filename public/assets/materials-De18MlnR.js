@@ -1,0 +1,1 @@
+var e=e=>({libraryId:e.libraryId,name:e.name,density:e.density,appearance:e.appearance}),t=[`#9aa4b2`,`#c9ced6`,`#b08d57`,`#d6b25e`,`#6f8fb0`,`#7b6ad4`,`#c4575a`,`#8c6b4a`,`#4a5a6a`,`#e8e4da`];export{e as n,t};

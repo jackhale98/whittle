@@ -1,0 +1,30 @@
+{
+  "$id": "https://jackhale98.github.io/wren-cad/schema/wren-assembly.schema.json",
+  "$ref": "#/definitions/Assembly",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "Assembly": {
+      "additionalProperties": false,
+      "description": "Placeholder until M6; kept so documents are forward compatible.",
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "type": "object"
+    },
+    "Id": {
+      "description": "ULID (26-char Crockford base32).",
+      "type": "string"
+    }
+  },
+  "description": "`assemblies/<slug>.assembly.json`",
+  "title": "AssemblyFile"
+}

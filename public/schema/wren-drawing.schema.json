@@ -1,0 +1,2021 @@
+{
+  "$id": "https://jackhale98.github.io/wren-cad/schema/wren-drawing.schema.json",
+  "$ref": "#/definitions/Drawing",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "AnchoredPoint": {
+      "anyOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "at": {
+              "$ref": "#/definitions/Vec2"
+            },
+            "kind": {
+              "const": "free",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "at"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "ref",
+              "type": "string"
+            },
+            "offset": {
+              "$ref": "#/definitions/Vec2"
+            },
+            "point": {
+              "$ref": "#/definitions/RefPoint"
+            },
+            "ref": {
+              "$ref": "#/definitions/EntityRef"
+            }
+          },
+          "required": [
+            "kind",
+            "ref"
+          ],
+          "type": "object"
+        }
+      ],
+      "description": "A point in a parent view's projection plane (part mm, origin at the projected part origin, x right, y up): free, or following a projected entity (a hole centre). An unresolved ref is needs attention, never a guess."
+    },
+    "AnnotationPlacement": {
+      "additionalProperties": false,
+      "description": "How one view shows one annotation. The drawing stores this, never a copy of the annotation. At most one placement per (view, annotation); the import never places an annotation twice in a drawing (a second placement is allowed by hand and listed as a duplicate).",
+      "properties": {
+        "annotationId": {
+          "$ref": "#/definitions/Id"
+        },
+        "arrows": {
+          "enum": [
+            "auto",
+            "inside",
+            "outside"
+          ],
+          "type": "string"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "layout": {
+          "$ref": "#/definitions/PlacementLayout"
+        },
+        "text": {
+          "additionalProperties": false,
+          "description": "The dimension's text, moved by the user (ADR-094): `shift` along the dimension line from its auto-centred position, sheet mm (ADR-055 rules; beyond the extension lines the text sits outside with a short leader); `side` puts it above or below the dimension line (absent = the standard's default: ISO above, ASME in a break of the line).",
+          "properties": {
+            "shift": {
+              "type": "number"
+            },
+            "side": {
+              "enum": [
+                "above",
+                "below",
+                "inline"
+              ],
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "viewId": {
+          "$ref": "#/definitions/Id"
+        },
+        "witness": {
+          "additionalProperties": false,
+          "description": "Witness (extension) lines: mirror to the other end; hide one or both.",
+          "properties": {
+            "flip": {
+              "type": "boolean"
+            },
+            "hide": {
+              "items": {
+                "type": "boolean"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "id",
+        "viewId",
+        "annotationId",
+        "layout"
+      ],
+      "type": "object"
+    },
+    "AnsiSheetSize": {
+      "enum": [
+        "ANSI-A",
+        "ANSI-B",
+        "ANSI-C",
+        "ANSI-D",
+        "ANSI-E"
+      ],
+      "type": "string"
+    },
+    "ArrowKind": {
+      "enum": [
+        "filledClosed",
+        "open",
+        "oblique",
+        "dot"
+      ],
+      "type": "string"
+    },
+    "BaseView": {
+      "additionalProperties": false,
+      "properties": {
+        "configurationId": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Id"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Configuration override (badged in the UI): absent = the drawing's; `null` = Default; an id = that configuration. A missing id is needs attention (never a fall-back, trap T13)."
+        },
+        "display": {
+          "additionalProperties": false,
+          "description": "Absent fields inherit (parent, or `style.view` for base views).",
+          "properties": {
+            "centerLines": {
+              "type": "boolean"
+            },
+            "centerMarks": {
+              "description": "Automatic centre marks on circles seen face-on, centre lines on cylinders seen side-on.",
+              "type": "boolean"
+            },
+            "lines": {
+              "enum": [
+                "visible",
+                "visibleAndHidden"
+              ],
+              "type": "string"
+            },
+            "tangentEdges": {
+              "enum": [
+                "visible",
+                "thin",
+                "off"
+              ],
+              "type": "string"
+            },
+            "threads": {
+              "description": "Cosmetic threads (thin lines per ISO 6410 / ASME Y14.6).",
+              "type": "boolean"
+            }
+          },
+          "type": "object"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "kind": {
+          "const": "base",
+          "type": "string"
+        },
+        "label": {
+          "description": "Label override; absent = derived (`SECTION A–A`, `DETAIL B (2:1)`, none for base).",
+          "type": "string"
+        },
+        "layout": {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "free",
+              "type": "string"
+            },
+            "position": {
+              "$ref": "#/definitions/Vec2"
+            }
+          },
+          "required": [
+            "kind",
+            "position"
+          ],
+          "type": "object"
+        },
+        "orientation": {
+          "$ref": "#/definitions/ViewOrientation"
+        },
+        "rotation": {
+          "$ref": "#/definitions/Expr",
+          "description": "In-plane rotation, an angle `Expr` (CCW). Children re-derive from it."
+        },
+        "scale": {
+          "$ref": "#/definitions/Expr",
+          "description": "Unitless ratio `1/2`, `2`. Absent: base and iso views use the sheet's scale; projected and section views their parent's. Detail views must set it."
+        },
+        "sheetId": {
+          "$ref": "#/definitions/Id"
+        },
+        "showLabel": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "layout",
+        "orientation",
+        "sheetId"
+      ],
+      "type": "object"
+    },
+    "CenterMark": {
+      "additionalProperties": false,
+      "description": "Manually added centre marks and lines (automatic ones come from `ViewDisplay`).",
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "kind": {
+          "enum": [
+            "centerMark",
+            "centerLine",
+            "boltCircle"
+          ],
+          "type": "string"
+        },
+        "refs": {
+          "description": "Circles / cylinders (mark, bolt circle) or two edges (centre line between them).",
+          "items": {
+            "$ref": "#/definitions/EntityRef"
+          },
+          "type": "array"
+        },
+        "viewId": {
+          "$ref": "#/definitions/Id"
+        }
+      },
+      "required": [
+        "id",
+        "viewId",
+        "kind",
+        "refs"
+      ],
+      "type": "object"
+    },
+    "DetailView": {
+      "additionalProperties": false,
+      "description": "Enlarged detail of a circle on the parent. `radius` in part mm (stable under scale changes).",
+      "properties": {
+        "center": {
+          "$ref": "#/definitions/AnchoredPoint"
+        },
+        "configurationId": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Id"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Configuration override (badged in the UI): absent = the drawing's; `null` = Default; an id = that configuration. A missing id is needs attention (never a fall-back, trap T13)."
+        },
+        "display": {
+          "additionalProperties": false,
+          "description": "Absent fields inherit (parent, or `style.view` for base views).",
+          "properties": {
+            "centerLines": {
+              "type": "boolean"
+            },
+            "centerMarks": {
+              "description": "Automatic centre marks on circles seen face-on, centre lines on cylinders seen side-on.",
+              "type": "boolean"
+            },
+            "lines": {
+              "enum": [
+                "visible",
+                "visibleAndHidden"
+              ],
+              "type": "string"
+            },
+            "tangentEdges": {
+              "enum": [
+                "visible",
+                "thin",
+                "off"
+              ],
+              "type": "string"
+            },
+            "threads": {
+              "description": "Cosmetic threads (thin lines per ISO 6410 / ASME Y14.6).",
+              "type": "boolean"
+            }
+          },
+          "type": "object"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "kind": {
+          "const": "detail",
+          "type": "string"
+        },
+        "label": {
+          "description": "Label override; absent = derived (`SECTION A–A`, `DETAIL B (2:1)`, none for base).",
+          "type": "string"
+        },
+        "layout": {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "free",
+              "type": "string"
+            },
+            "position": {
+              "$ref": "#/definitions/Vec2"
+            }
+          },
+          "required": [
+            "kind",
+            "position"
+          ],
+          "type": "object"
+        },
+        "letter": {
+          "type": "string"
+        },
+        "parentId": {
+          "$ref": "#/definitions/Id"
+        },
+        "radius": {
+          "type": "number"
+        },
+        "scale": {
+          "$ref": "#/definitions/Expr",
+          "description": "Unitless ratio `1/2`, `2`. Absent: base and iso views use the sheet's scale; projected and section views their parent's. Detail views must set it."
+        },
+        "sheetId": {
+          "$ref": "#/definitions/Id"
+        },
+        "showLabel": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "center",
+        "id",
+        "kind",
+        "layout",
+        "letter",
+        "parentId",
+        "radius",
+        "scale",
+        "sheetId"
+      ],
+      "type": "object"
+    },
+    "Drawing": {
+      "additionalProperties": false,
+      "description": "A drawing (one file, `drawings/<slug>.drawing.json`). Flat, id-keyed collections reference their sheet or view by id, so moving a view between sheets or a placement between views is one leaf edit for the merge. Order carries meaning only for `sheets` (sheet numbering); every other collection is kept sorted by id. No derived data: HLR output, resolved values, the frame and title block and table rows are computed and cached in `.wren/` (PLAN §8A.1).",
+      "properties": {
+        "centerMarks": {
+          "items": {
+            "$ref": "#/definitions/CenterMark"
+          },
+          "type": "array"
+        },
+        "configurationId": {
+          "$ref": "#/definitions/Id",
+          "description": "The drawing's configuration, inherited by views, tables and title block; absent = Default."
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "markup": {
+          "items": {
+            "$ref": "#/definitions/Markup"
+          },
+          "type": "array"
+        },
+        "name": {
+          "type": "string"
+        },
+        "notes": {
+          "items": {
+            "$ref": "#/definitions/SheetNote"
+          },
+          "type": "array"
+        },
+        "placements": {
+          "items": {
+            "$ref": "#/definitions/AnnotationPlacement"
+          },
+          "type": "array"
+        },
+        "projection": {
+          "$ref": "#/definitions/Projection",
+          "description": "Explicit (trap T4), never implied by the sheet size or the standard."
+        },
+        "sheets": {
+          "items": {
+            "$ref": "#/definitions/Sheet"
+          },
+          "type": "array"
+        },
+        "standard": {
+          "$ref": "#/definitions/DrawingStandard"
+        },
+        "style": {
+          "$ref": "#/definitions/DrawingStyle"
+        },
+        "subject": {
+          "$ref": "#/definitions/DrawingSubject"
+        },
+        "tables": {
+          "items": {
+            "$ref": "#/definitions/DrawingTable"
+          },
+          "type": "array"
+        },
+        "template": {
+          "$ref": "#/definitions/TemplateBinding"
+        },
+        "units": {
+          "const": "mm",
+          "description": "Fixed in M4.",
+          "type": "string"
+        },
+        "views": {
+          "items": {
+            "$ref": "#/definitions/DrawingView"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "subject",
+        "standard",
+        "projection",
+        "units",
+        "style",
+        "template",
+        "sheets",
+        "views",
+        "placements",
+        "centerMarks",
+        "tables",
+        "notes"
+      ],
+      "type": "object"
+    },
+    "DrawingHoleTable": {
+      "additionalProperties": false,
+      "description": "Hole table on demand: one row per hole instance of the listed hole features (or all) as seen in `viewId`, X/Y from `origin`, size from the feature's callout. Tags (A1, A2 …) are derived in a deterministic order and drawn at each hole in the view.",
+      "properties": {
+        "anchor": {
+          "$ref": "#/definitions/TableAnchor"
+        },
+        "holes": {
+          "anyOf": [
+            {
+              "const": "all",
+              "type": "string"
+            },
+            {
+              "items": {
+                "$ref": "#/definitions/Id"
+              },
+              "type": "array"
+            }
+          ]
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "kind": {
+          "const": "holeTable",
+          "type": "string"
+        },
+        "origin": {
+          "$ref": "#/definitions/AnchoredPoint"
+        },
+        "position": {
+          "$ref": "#/definitions/Vec2",
+          "description": "The `anchor` corner's sheet position, sheet mm."
+        },
+        "sheetId": {
+          "$ref": "#/definitions/Id"
+        },
+        "viewId": {
+          "$ref": "#/definitions/Id"
+        }
+      },
+      "required": [
+        "anchor",
+        "holes",
+        "id",
+        "kind",
+        "origin",
+        "position",
+        "sheetId",
+        "viewId"
+      ],
+      "type": "object"
+    },
+    "DrawingStandard": {
+      "additionalProperties": false,
+      "description": "The drawing's standard family and editions (shown in the title block, used for validation).",
+      "properties": {
+        "family": {
+          "enum": [
+            "iso",
+            "asme"
+          ],
+          "type": "string"
+        },
+        "generalTolerance": {
+          "description": "General tolerance note, e.g. `ISO 2768-mK`; absent = none stated.",
+          "type": "string"
+        },
+        "gps": {
+          "$ref": "#/definitions/GpsStandard",
+          "description": "Must belong to `family` (ISO 1101 with iso, ASME Y14.5 with asme)."
+        },
+        "surfaceFinish": {
+          "$ref": "#/definitions/SurfaceFinishStandard"
+        }
+      },
+      "required": [
+        "family",
+        "gps",
+        "surfaceFinish"
+      ],
+      "type": "object"
+    },
+    "DrawingStyle": {
+      "additionalProperties": false,
+      "description": "Every visual quantity of a drawing, in sheet mm, independent of view scale (trap T8): a 1:20 view has the same 1.5 mm extension overshoot as a 1:1 view. Created from the standard's preset (ISO defaults = ADR-055: 1 mm gap, 1.5 mm overshoot) and stored in full, so an app update never changes a drawing that is already made; \"reset to preset\" is an ordinary edit.",
+      "properties": {
+        "dimension": {
+          "additionalProperties": false,
+          "properties": {
+            "arrow": {
+              "additionalProperties": false,
+              "properties": {
+                "angle": {
+                  "type": "number"
+                },
+                "kind": {
+                  "$ref": "#/definitions/ArrowKind"
+                },
+                "length": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "kind",
+                "length",
+                "angle"
+              ],
+              "type": "object"
+            },
+            "extensionGap": {
+              "type": "number"
+            },
+            "extensionOvershoot": {
+              "type": "number"
+            },
+            "firstLane": {
+              "description": "Distance from the view's outline to snap lane 0, and between lanes.",
+              "type": "number"
+            },
+            "laneSpacing": {
+              "type": "number"
+            },
+            "textOrientation": {
+              "description": "ISO: text aligned with the dimension line; ASME: unidirectional (horizontal).",
+              "enum": [
+                "aligned",
+                "unidirectional"
+              ],
+              "type": "string"
+            },
+            "textPosition": {
+              "description": "ISO: above the line; ASME: in a break of the line.",
+              "enum": [
+                "above",
+                "inline"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "extensionGap",
+            "extensionOvershoot",
+            "arrow",
+            "firstLane",
+            "laneSpacing",
+            "textOrientation",
+            "textPosition"
+          ],
+          "type": "object"
+        },
+        "font": {
+          "description": "Font id from the bundled set (D5), e.g. `osifont`.",
+          "type": "string"
+        },
+        "hatch": {
+          "$ref": "#/definitions/HatchStyle"
+        },
+        "lineGroup": {
+          "$ref": "#/definitions/LineGroupId"
+        },
+        "lineWidths": {
+          "additionalProperties": false,
+          "description": "Custom widths (mm) replacing the group's.",
+          "properties": {
+            "thick": {
+              "type": "number"
+            },
+            "thin": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "thick",
+            "thin"
+          ],
+          "type": "object"
+        },
+        "numbers": {
+          "additionalProperties": false,
+          "properties": {
+            "angleFormat": {
+              "enum": [
+                "decimal",
+                "dms"
+              ],
+              "type": "string"
+            },
+            "anglePrecision": {
+              "type": "number"
+            },
+            "decimal": {
+              "enum": [
+                ".",
+                ","
+              ],
+              "type": "string"
+            },
+            "lengthPrecision": {
+              "description": "Decimals for lengths and angles.",
+              "type": "number"
+            },
+            "trailingZeros": {
+              "enum": [
+                "strip",
+                "keep"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "decimal",
+            "lengthPrecision",
+            "anglePrecision",
+            "trailingZeros",
+            "angleFormat"
+          ],
+          "type": "object"
+        },
+        "text": {
+          "additionalProperties": false,
+          "description": "Text heights, sheet mm (ISO 3098 series: 2.5, 3.5, 5, 7 …).",
+          "properties": {
+            "dimension": {
+              "type": "number"
+            },
+            "note": {
+              "type": "number"
+            },
+            "title": {
+              "type": "number"
+            },
+            "viewLabel": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "dimension",
+            "note",
+            "viewLabel",
+            "title"
+          ],
+          "type": "object"
+        },
+        "view": {
+          "$ref": "#/definitions/ViewDisplay",
+          "description": "Display defaults for new base views (dependent views inherit their parent's)."
+        }
+      },
+      "required": [
+        "lineGroup",
+        "text",
+        "font",
+        "dimension",
+        "numbers",
+        "hatch",
+        "view"
+      ],
+      "type": "object"
+    },
+    "DrawingSubject": {
+      "additionalProperties": false,
+      "description": "M4 drawings show one part; M6 adds `{ kind: 'assembly' }`.",
+      "properties": {
+        "kind": {
+          "const": "part",
+          "type": "string"
+        },
+        "partId": {
+          "$ref": "#/definitions/Id"
+        }
+      },
+      "required": [
+        "kind",
+        "partId"
+      ],
+      "type": "object"
+    },
+    "DrawingTable": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/PartPropertiesTable"
+        },
+        {
+          "$ref": "#/definitions/DrawingHoleTable"
+        }
+      ]
+    },
+    "DrawingView": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/BaseView"
+        },
+        {
+          "$ref": "#/definitions/ProjectedView"
+        },
+        {
+          "$ref": "#/definitions/IsoView"
+        },
+        {
+          "$ref": "#/definitions/SectionView"
+        },
+        {
+          "$ref": "#/definitions/DetailView"
+        }
+      ]
+    },
+    "EntityKind": {
+      "enum": [
+        "face",
+        "edge",
+        "vertex",
+        "region",
+        "body"
+      ],
+      "type": "string"
+    },
+    "EntityRef": {
+      "additionalProperties": false,
+      "description": "Persistent reference to topology.",
+      "properties": {
+        "fingerprint": {
+          "$ref": "#/definitions/Fingerprint"
+        },
+        "kind": {
+          "$ref": "#/definitions/EntityKind"
+        },
+        "name": {
+          "description": "Persistent name, e.g. `\"F3:side(S1:e7)\"`. See `naming.ts`.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "kind"
+      ],
+      "type": "object"
+    },
+    "Expr": {
+      "description": "Expression with optional units, e.g. `\"width/2 + 3mm\"`, `\"25mm + 1/8in\"`, `\"30deg\"`.",
+      "type": "string"
+    },
+    "Fingerprint": {
+      "additionalProperties": false,
+      "properties": {
+        "area": {
+          "type": "number"
+        },
+        "centroid": {
+          "$ref": "#/definitions/Vec3"
+        },
+        "length": {
+          "type": "number"
+        },
+        "normal": {
+          "$ref": "#/definitions/Vec3"
+        }
+      },
+      "required": [
+        "centroid"
+      ],
+      "type": "object"
+    },
+    "GpsStandard": {
+      "description": "Standard an annotation's GD&T semantics are validated against. Stamped by the authoring tool from the drawing (or, in M5, the project default); absent on an annotation = \"not stated\", and it is then checked against each displaying drawing's standard. Never converted silently: a symbol that is illegal under the standard is refused or flagged with an explanation (ASME Y14.5-2018 has no concentricity or symmetry).",
+      "enum": [
+        "ISO 1101:2017",
+        "ASME Y14.5-2018",
+        "ASME Y14.5-2009"
+      ],
+      "type": "string"
+    },
+    "HatchStyle": {
+      "additionalProperties": false,
+      "properties": {
+        "angle": {
+          "description": "Degrees, sheet.",
+          "type": "number"
+        },
+        "pattern": {
+          "description": "Built-in pattern; `iso-general` = thin lines at `angle`.",
+          "enum": [
+            "iso-general",
+            "iso-metal-cross",
+            "solid",
+            "none"
+          ],
+          "type": "string"
+        },
+        "spacing": {
+          "description": "Line spacing, sheet mm.",
+          "type": "number"
+        }
+      },
+      "required": [
+        "pattern",
+        "angle",
+        "spacing"
+      ],
+      "type": "object"
+    },
+    "Id": {
+      "description": "ULID (26-char Crockford base32).",
+      "type": "string"
+    },
+    "IsoCorner": {
+      "enum": [
+        "topLeft",
+        "topRight",
+        "bottomLeft",
+        "bottomRight"
+      ],
+      "type": "string"
+    },
+    "IsoSheetSize": {
+      "enum": [
+        "A0",
+        "A1",
+        "A2",
+        "A3",
+        "A4"
+      ],
+      "type": "string"
+    },
+    "IsoView": {
+      "additionalProperties": false,
+      "description": "Isometric view derived from a parent (rotating the parent re-derives it).",
+      "properties": {
+        "configurationId": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Id"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Configuration override (badged in the UI): absent = the drawing's; `null` = Default; an id = that configuration. A missing id is needs attention (never a fall-back, trap T13)."
+        },
+        "corner": {
+          "$ref": "#/definitions/IsoCorner"
+        },
+        "display": {
+          "additionalProperties": false,
+          "description": "Absent fields inherit (parent, or `style.view` for base views).",
+          "properties": {
+            "centerLines": {
+              "type": "boolean"
+            },
+            "centerMarks": {
+              "description": "Automatic centre marks on circles seen face-on, centre lines on cylinders seen side-on.",
+              "type": "boolean"
+            },
+            "lines": {
+              "enum": [
+                "visible",
+                "visibleAndHidden"
+              ],
+              "type": "string"
+            },
+            "tangentEdges": {
+              "enum": [
+                "visible",
+                "thin",
+                "off"
+              ],
+              "type": "string"
+            },
+            "threads": {
+              "description": "Cosmetic threads (thin lines per ISO 6410 / ASME Y14.6).",
+              "type": "boolean"
+            }
+          },
+          "type": "object"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "kind": {
+          "const": "iso",
+          "type": "string"
+        },
+        "label": {
+          "description": "Label override; absent = derived (`SECTION A–A`, `DETAIL B (2:1)`, none for base).",
+          "type": "string"
+        },
+        "layout": {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "free",
+              "type": "string"
+            },
+            "position": {
+              "$ref": "#/definitions/Vec2"
+            }
+          },
+          "required": [
+            "kind",
+            "position"
+          ],
+          "type": "object"
+        },
+        "parentId": {
+          "$ref": "#/definitions/Id"
+        },
+        "scale": {
+          "$ref": "#/definitions/Expr",
+          "description": "Unitless ratio `1/2`, `2`. Absent: base and iso views use the sheet's scale; projected and section views their parent's. Detail views must set it."
+        },
+        "sheetId": {
+          "$ref": "#/definitions/Id"
+        },
+        "showLabel": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "corner",
+        "id",
+        "kind",
+        "layout",
+        "parentId",
+        "sheetId"
+      ],
+      "type": "object"
+    },
+    "LeaderAttach": {
+      "anyOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "index": {
+              "type": "number"
+            },
+            "kind": {
+              "const": "ref",
+              "type": "string"
+            },
+            "t": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "kind",
+            "index"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "placement",
+              "type": "string"
+            },
+            "placementId": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "required": [
+            "kind",
+            "placementId"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "dimensionLine",
+              "type": "string"
+            },
+            "placementId": {
+              "$ref": "#/definitions/Id"
+            },
+            "t": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "kind",
+            "placementId",
+            "t"
+          ],
+          "type": "object"
+        }
+      ],
+      "description": "Where a leader starts."
+    },
+    "LineGroupId": {
+      "description": "Line group: thick/thin widths in mm. ISO 128 series groups (thick/thin 1:2) and the ASME Y14.2 preset (0.6/0.3). One renderer maps line roles to widths for SVG, PDF and DXF alike.",
+      "enum": [
+        "iso-0.25",
+        "iso-0.35",
+        "iso-0.5",
+        "iso-0.7",
+        "asme-0.6"
+      ],
+      "type": "string"
+    },
+    "Markup": {
+      "additionalProperties": false,
+      "description": "Review markup (D8, recommended): local-first, in the project, pinned to the version it was drawn on. Never exported or released; merges as an append-mostly set.",
+      "properties": {
+        "anchor": {
+          "additionalProperties": false,
+          "description": "What it is about, when it was drawn on something (survives revisions).",
+          "properties": {
+            "placementId": {
+              "$ref": "#/definitions/Id"
+            },
+            "viewId": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "type": "object"
+        },
+        "at": {
+          "description": "ISO-8601.",
+          "type": "string"
+        },
+        "author": {
+          "type": "string"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "resolved": {
+          "type": "boolean"
+        },
+        "sheetId": {
+          "$ref": "#/definitions/Id"
+        },
+        "strokes": {
+          "description": "Pencil/finger strokes, sheet mm.",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "points": {
+                "items": {
+                  "$ref": "#/definitions/Vec2"
+                },
+                "type": "array"
+              },
+              "width": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "points",
+              "width"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "text": {
+          "type": "string"
+        },
+        "versionId": {
+          "description": "`Version.id` the reviewer was looking at.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "sheetId",
+        "versionId",
+        "author",
+        "at",
+        "strokes"
+      ],
+      "type": "object"
+    },
+    "PartPropertiesTable": {
+      "additionalProperties": false,
+      "description": "Part properties table (owner D3): one row for the drawing's configuration, or one row per listed configuration (`null` = Default) for tabulated drawings. Values come from the resolved configuration (mass from its background build, ADR-079); never stored. BOM: M6.",
+      "properties": {
+        "anchor": {
+          "$ref": "#/definitions/TableAnchor"
+        },
+        "columns": {
+          "items": {
+            "$ref": "#/definitions/PartPropertyColumn"
+          },
+          "type": "array"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "kind": {
+          "const": "partProperties",
+          "type": "string"
+        },
+        "massUnit": {
+          "enum": [
+            "g",
+            "kg"
+          ],
+          "type": "string"
+        },
+        "position": {
+          "$ref": "#/definitions/Vec2",
+          "description": "The `anchor` corner's sheet position, sheet mm."
+        },
+        "rows": {
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "drawing",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "configurations": {
+                  "items": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/definitions/Id"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "type": "array"
+                },
+                "kind": {
+                  "const": "configurations",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "configurations"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "sheetId": {
+          "$ref": "#/definitions/Id"
+        }
+      },
+      "required": [
+        "anchor",
+        "columns",
+        "id",
+        "kind",
+        "position",
+        "rows",
+        "sheetId"
+      ],
+      "type": "object"
+    },
+    "PartPropertyColumn": {
+      "enum": [
+        "partNumber",
+        "description",
+        "material",
+        "mass",
+        "configuration"
+      ],
+      "type": "string"
+    },
+    "PlacementLayout": {
+      "anyOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "lane",
+              "type": "string"
+            },
+            "lane": {
+              "type": "number"
+            },
+            "side": {
+              "enum": [
+                "top",
+                "bottom",
+                "left",
+                "right"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "side",
+            "lane"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "distance": {
+              "type": "number"
+            },
+            "kind": {
+              "const": "offset",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "distance"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "angle": {
+              "type": "number"
+            },
+            "distance": {
+              "type": "number"
+            },
+            "kind": {
+              "const": "radial",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "angle",
+            "distance"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "arc",
+              "type": "string"
+            },
+            "opposite": {
+              "type": "boolean"
+            },
+            "radius": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "kind",
+            "radius"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "attach": {
+              "$ref": "#/definitions/LeaderAttach"
+            },
+            "bends": {
+              "items": {
+                "$ref": "#/definitions/Vec2"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "const": "leader",
+              "type": "string"
+            },
+            "landing": {
+              "enum": [
+                "auto",
+                "left",
+                "right"
+              ],
+              "type": "string"
+            },
+            "text": {
+              "$ref": "#/definitions/Vec2"
+            }
+          },
+          "required": [
+            "kind",
+            "attach",
+            "text"
+          ],
+          "type": "object"
+        }
+      ],
+      "description": "Placement intent, relative to the referenced geometry, in sheet mm (trap T8: never absolute). After a model change every placement keeps its lane or offset."
+    },
+    "ProjectedView": {
+      "additionalProperties": false,
+      "description": "Orthographic projection of the parent, seen from one of its sides.",
+      "properties": {
+        "configurationId": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Id"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Configuration override (badged in the UI): absent = the drawing's; `null` = Default; an id = that configuration. A missing id is needs attention (never a fall-back, trap T13)."
+        },
+        "display": {
+          "additionalProperties": false,
+          "description": "Absent fields inherit (parent, or `style.view` for base views).",
+          "properties": {
+            "centerLines": {
+              "type": "boolean"
+            },
+            "centerMarks": {
+              "description": "Automatic centre marks on circles seen face-on, centre lines on cylinders seen side-on.",
+              "type": "boolean"
+            },
+            "lines": {
+              "enum": [
+                "visible",
+                "visibleAndHidden"
+              ],
+              "type": "string"
+            },
+            "tangentEdges": {
+              "enum": [
+                "visible",
+                "thin",
+                "off"
+              ],
+              "type": "string"
+            },
+            "threads": {
+              "description": "Cosmetic threads (thin lines per ISO 6410 / ASME Y14.6).",
+              "type": "boolean"
+            }
+          },
+          "type": "object"
+        },
+        "from": {
+          "description": "The side of the parent the viewer looks from (`top` = top view of the parent).",
+          "enum": [
+            "top",
+            "bottom",
+            "left",
+            "right"
+          ],
+          "type": "string"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "kind": {
+          "const": "projected",
+          "type": "string"
+        },
+        "label": {
+          "description": "Label override; absent = derived (`SECTION A–A`, `DETAIL B (2:1)`, none for base).",
+          "type": "string"
+        },
+        "layout": {
+          "$ref": "#/definitions/ViewLayout"
+        },
+        "parentId": {
+          "$ref": "#/definitions/Id"
+        },
+        "scale": {
+          "$ref": "#/definitions/Expr",
+          "description": "Unitless ratio `1/2`, `2`. Absent: base and iso views use the sheet's scale; projected and section views their parent's. Detail views must set it."
+        },
+        "sheetId": {
+          "$ref": "#/definitions/Id"
+        },
+        "showLabel": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "from",
+        "id",
+        "kind",
+        "layout",
+        "parentId",
+        "sheetId"
+      ],
+      "type": "object"
+    },
+    "Projection": {
+      "enum": [
+        "first",
+        "third"
+      ],
+      "type": "string"
+    },
+    "RefPoint": {
+      "description": "Which point of a referenced entity an annotation measures from (parallel to `refs`). `self`: the entity itself (a face, an edge's line). `center`: circle, arc or sphere centre. `axis`: a cylindrical or conical face's axis; on a planar face in an angle dimension, the face's normal (the pull direction a draft angle is measured from; M4.1). `start` / `end` / `mid`: of an edge. `min` / `max` (M4.1, ADR-095): the entity's extreme point along the dimension's `direction`, only for linear and ordinate dimensions that have one: a circle's, cylinder's or sphere's tangent point, a line's lower or upper end. A diameter in linear form (\"across the flats\" of a circle) is refs [c, c] at ['min', 'max'].",
+      "enum": [
+        "self",
+        "center",
+        "axis",
+        "start",
+        "end",
+        "mid",
+        "min",
+        "max"
+      ],
+      "type": "string"
+    },
+    "SectionView": {
+      "additionalProperties": false,
+      "description": "Section through the parent along an editable cut line: ≥ 2 points in the parent's projection plane; each segment is a cutting plane perpendicular to the parent view (2 points = full, more = offset/stepped; a half section is an L-shaped line). `look`: the viewer looks towards the left or right side of the line's direction (first → last point); arrows show it.",
+      "properties": {
+        "configurationId": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Id"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Configuration override (badged in the UI): absent = the drawing's; `null` = Default; an id = that configuration. A missing id is needs attention (never a fall-back, trap T13)."
+        },
+        "cut": {
+          "items": {
+            "$ref": "#/definitions/AnchoredPoint"
+          },
+          "type": "array"
+        },
+        "depth": {
+          "description": "`full`: everything behind the cut; `slice`: the cut faces only.",
+          "enum": [
+            "full",
+            "slice"
+          ],
+          "type": "string"
+        },
+        "display": {
+          "additionalProperties": false,
+          "description": "Absent fields inherit (parent, or `style.view` for base views).",
+          "properties": {
+            "centerLines": {
+              "type": "boolean"
+            },
+            "centerMarks": {
+              "description": "Automatic centre marks on circles seen face-on, centre lines on cylinders seen side-on.",
+              "type": "boolean"
+            },
+            "lines": {
+              "enum": [
+                "visible",
+                "visibleAndHidden"
+              ],
+              "type": "string"
+            },
+            "tangentEdges": {
+              "enum": [
+                "visible",
+                "thin",
+                "off"
+              ],
+              "type": "string"
+            },
+            "threads": {
+              "description": "Cosmetic threads (thin lines per ISO 6410 / ASME Y14.6).",
+              "type": "boolean"
+            }
+          },
+          "type": "object"
+        },
+        "hatch": {
+          "additionalProperties": false,
+          "description": "Over the drawing's hatch style.",
+          "properties": {
+            "angle": {
+              "description": "Degrees, sheet.",
+              "type": "number"
+            },
+            "pattern": {
+              "description": "Built-in pattern; `iso-general` = thin lines at `angle`.",
+              "enum": [
+                "iso-general",
+                "iso-metal-cross",
+                "solid",
+                "none"
+              ],
+              "type": "string"
+            },
+            "spacing": {
+              "description": "Line spacing, sheet mm.",
+              "type": "number"
+            }
+          },
+          "type": "object"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "kind": {
+          "const": "section",
+          "type": "string"
+        },
+        "label": {
+          "description": "Label override; absent = derived (`SECTION A–A`, `DETAIL B (2:1)`, none for base).",
+          "type": "string"
+        },
+        "layout": {
+          "$ref": "#/definitions/ViewLayout"
+        },
+        "letter": {
+          "type": "string"
+        },
+        "look": {
+          "enum": [
+            "left",
+            "right"
+          ],
+          "type": "string"
+        },
+        "parentId": {
+          "$ref": "#/definitions/Id"
+        },
+        "scale": {
+          "$ref": "#/definitions/Expr",
+          "description": "Unitless ratio `1/2`, `2`. Absent: base and iso views use the sheet's scale; projected and section views their parent's. Detail views must set it."
+        },
+        "sheetId": {
+          "$ref": "#/definitions/Id"
+        },
+        "showLabel": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "cut",
+        "id",
+        "kind",
+        "layout",
+        "letter",
+        "look",
+        "parentId",
+        "sheetId"
+      ],
+      "type": "object"
+    },
+    "Sheet": {
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "$ref": "#/definitions/TitleBlockFields",
+          "description": "Per-sheet title-block text (over the drawing's `template.fields`)."
+        },
+        "format": {
+          "$ref": "#/definitions/SheetFormat"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "name": {
+          "type": "string"
+        },
+        "scale": {
+          "$ref": "#/definitions/Expr",
+          "description": "Default scale for views on the sheet and the title block's scale: a unitless ratio `1/2`, `2`."
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "format",
+        "scale"
+      ],
+      "type": "object"
+    },
+    "SheetFormat": {
+      "additionalProperties": false,
+      "properties": {
+        "orientation": {
+          "enum": [
+            "landscape",
+            "portrait"
+          ],
+          "type": "string"
+        },
+        "size": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/IsoSheetSize"
+            },
+            {
+              "$ref": "#/definitions/AnsiSheetSize"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "height": {
+                  "type": "number"
+                },
+                "width": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "width",
+                "height"
+              ],
+              "type": "object"
+            }
+          ],
+          "description": "A named size, or a custom size in mm (no frame zones are generated for custom sizes)."
+        }
+      },
+      "required": [
+        "size",
+        "orientation"
+      ],
+      "type": "object"
+    },
+    "SheetNote": {
+      "additionalProperties": false,
+      "description": "Free text on a sheet (general notes). `{slot}` tokens resolve like title-block slots.",
+      "properties": {
+        "height": {
+          "description": "Sheet mm; absent = `style.text.note`.",
+          "type": "number"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "position": {
+          "$ref": "#/definitions/Vec2",
+          "description": "Top-left of the text box, sheet mm."
+        },
+        "sheetId": {
+          "$ref": "#/definitions/Id"
+        },
+        "text": {
+          "type": "string"
+        },
+        "width": {
+          "description": "Wrap width, sheet mm; absent = no wrap.",
+          "type": "number"
+        }
+      },
+      "required": [
+        "id",
+        "sheetId",
+        "position",
+        "text"
+      ],
+      "type": "object"
+    },
+    "SurfaceFinishStandard": {
+      "description": "Surface texture standard (default ISO 21920-1; ISO 1302 is legacy, kept for old drawings).",
+      "enum": [
+        "ISO 21920-1:2021",
+        "ISO 1302:2002",
+        "ASME Y14.36-2018"
+      ],
+      "type": "string"
+    },
+    "TableAnchor": {
+      "enum": [
+        "topLeft",
+        "topRight",
+        "bottomLeft",
+        "bottomRight"
+      ],
+      "type": "string"
+    },
+    "TemplateBinding": {
+      "additionalProperties": false,
+      "description": "A generated template: `(sheet format, template) → frame, zones, centring and trim marks, title block`. ISO 5457 frame with an ISO 7200 title block, or an ASME Y14.1 sheet (ANSI A–E). Nothing of the frame is stored. `version` pins the generator's layout so an app update never moves a title block on an existing drawing; \"re-apply template\" moves it to the latest version. Custom (project) templates are P2 (open question in the .md).",
+      "properties": {
+        "fields": {
+          "$ref": "#/definitions/TitleBlockFields"
+        },
+        "id": {
+          "enum": [
+            "iso-5457",
+            "asme-y14.1"
+          ],
+          "type": "string"
+        },
+        "version": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "id",
+        "version"
+      ],
+      "type": "object"
+    },
+    "TitleBlockFields": {
+      "additionalProperties": false,
+      "properties": {
+        "approvedBy": {
+          "type": "string"
+        },
+        "checkedBy": {
+          "type": "string"
+        },
+        "configuration": {
+          "type": "string"
+        },
+        "date": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "documentStatus": {
+          "type": "string"
+        },
+        "documentType": {
+          "type": "string"
+        },
+        "drawnBy": {
+          "type": "string"
+        },
+        "generalTolerance": {
+          "type": "string"
+        },
+        "language": {
+          "type": "string"
+        },
+        "mass": {
+          "type": "string"
+        },
+        "material": {
+          "type": "string"
+        },
+        "owner": {
+          "type": "string"
+        },
+        "partNumber": {
+          "type": "string"
+        },
+        "projection": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "string"
+        },
+        "scale": {
+          "type": "string"
+        },
+        "sheet": {
+          "type": "string"
+        },
+        "standard": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "units": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "Vec2": {
+      "items": {
+        "type": "number"
+      },
+      "maxItems": 2,
+      "minItems": 2,
+      "type": "array"
+    },
+    "Vec3": {
+      "items": {
+        "type": "number"
+      },
+      "maxItems": 3,
+      "minItems": 3,
+      "type": "array"
+    },
+    "ViewDisplay": {
+      "additionalProperties": false,
+      "properties": {
+        "centerLines": {
+          "type": "boolean"
+        },
+        "centerMarks": {
+          "description": "Automatic centre marks on circles seen face-on, centre lines on cylinders seen side-on.",
+          "type": "boolean"
+        },
+        "lines": {
+          "enum": [
+            "visible",
+            "visibleAndHidden"
+          ],
+          "type": "string"
+        },
+        "tangentEdges": {
+          "enum": [
+            "visible",
+            "thin",
+            "off"
+          ],
+          "type": "string"
+        },
+        "threads": {
+          "description": "Cosmetic threads (thin lines per ISO 6410 / ASME Y14.6).",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "lines",
+        "tangentEdges",
+        "centerMarks",
+        "centerLines",
+        "threads"
+      ],
+      "type": "object"
+    },
+    "ViewLayout": {
+      "anyOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "free",
+              "type": "string"
+            },
+            "position": {
+              "$ref": "#/definitions/Vec2"
+            }
+          },
+          "required": [
+            "kind",
+            "position"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "distance": {
+              "type": "number"
+            },
+            "kind": {
+              "const": "aligned",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "distance"
+          ],
+          "type": "object"
+        }
+      ],
+      "description": "Where a view sits on its sheet."
+    },
+    "ViewOrientation": {
+      "anyOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "named",
+              "type": "string"
+            },
+            "name": {
+              "enum": [
+                "front",
+                "back",
+                "left",
+                "right",
+                "top",
+                "bottom"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "name"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "corner": {
+              "$ref": "#/definitions/IsoCorner"
+            },
+            "kind": {
+              "const": "isometric",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "corner"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "matrix",
+              "type": "string"
+            },
+            "x": {
+              "$ref": "#/definitions/Vec3"
+            },
+            "y": {
+              "$ref": "#/definitions/Vec3"
+            }
+          },
+          "required": [
+            "kind",
+            "x",
+            "y"
+          ],
+          "type": "object"
+        }
+      ],
+      "description": "Base and stand-alone orientations. Named ones use the viewport's standard view directions."
+    }
+  },
+  "description": "`drawings/<slug>.drawing.json`",
+  "title": "DrawingFile"
+}
