@@ -132,7 +132,6 @@ test('portrait: opening the tree and the inspector never covers the selected geo
     await expect(panel(page, side)).toHaveAttribute('inert', '');
     await cameraStill(page);
     const back = await partPoints(page);
-    console.log('DBG', side, JSON.stringify(rest.centre), JSON.stringify(back.centre), await page.getByTestId('shell-body').evaluate((e) => (e as HTMLElement).style.cssText));
     expect(Math.abs(back.centre.x - rest.centre.x)).toBeLessThan(1.5);
     expect(Math.abs(back.centre.y - rest.centre.y)).toBeLessThan(1.5);
   }
@@ -151,7 +150,10 @@ test('portrait: a tap outside closes the overlay and does not act on the view', 
   const canvas = await box(page, 'viewport-canvas');
   await expect(page.getByTestId('panel-scrim')).toHaveCount(1);
   // Tap on the part, outside the panel: the panel closes and nothing is selected by that tap.
-  const outside = { x: p.x + p.width + (canvas.x + canvas.width - p.x - p.width) / 2, y: p.y + 300 };
+  const outside = {
+    x: p.x + p.width + (canvas.x + canvas.width - p.x - p.width) / 2,
+    y: p.y + 300,
+  };
   await page.touchscreen.tap(outside.x, outside.y);
   await expect(panel(page, 'left')).toHaveAttribute('inert', '');
   await expect(page.getByTestId('left-toggle')).toHaveAttribute('aria-pressed', 'false');
@@ -224,7 +226,9 @@ test('narrow iPads (820 and 744 wide): the top bar fits and every button is reac
         ...[...el.querySelectorAll('button')].map((b) => b.getBoundingClientRect().right),
       ),
       small: [...el.querySelectorAll('button')]
-        .filter((b) => b.getBoundingClientRect().width < 44 || b.getBoundingClientRect().height < 44)
+        .filter(
+          (b) => b.getBoundingClientRect().width < 44 || b.getBoundingClientRect().height < 44,
+        )
         .map((b) => b.getAttribute('aria-label') ?? b.textContent),
     }));
     expect(bar.scroll, `${width}: top bar overflows`).toBeLessThanOrEqual(bar.client);
