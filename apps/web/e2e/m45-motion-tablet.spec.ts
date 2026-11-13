@@ -21,6 +21,7 @@ const attach = (page: Page) =>
 async function settings(page: Page) {
   await palette(page, 'Settings');
   await expect(page.getByTestId('settings-panel')).toBeVisible();
+  await page.getByTestId('settings-panel').getByRole('radio', { name: '3D mouse' }).tap();
 }
 
 test('3D mouse section on the tablet shell: 44 px targets', async ({ page }) => {

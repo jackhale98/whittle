@@ -120,18 +120,28 @@ export default function SettingsPanel({ wb, touch }: { wb: Workbench; touch: boo
               }
               size={touch ? 'touch' : 'md'}
             />
+            <p className="mt-3 text-xs text-fg-muted">
+              3D mouse pairing, sensitivity and direction are in the{' '}
+              <button type="button" className="underline" onClick={() => wb.openSettings('motion')}>
+                3D mouse
+              </button>{' '}
+              tab.
+            </p>
+          </>
+        ) : tab === 'motion' ? (
+          // Owner: the direction switches were not found at the bottom of Navigation. The 3D
+          // mouse tab holds everything about it: settings first, then live diagnostics.
+          <>
             <MotionSettingsSection
               value={prefs.settings}
               onChange={(s) => setMotionSettings(wb, s)}
               state={motionState}
               onPair={pair}
-              onOpenDiagnostics={() => wb.openSettings('motion')}
               size={touch ? 'touch' : 'md'}
               className="px-0"
             />
+            <MotionDiagnostics state={motionState} onPair={pair} size={touch ? 'touch' : 'md'} />
           </>
-        ) : tab === 'motion' ? (
-          <MotionDiagnostics state={motionState} onPair={pair} size={touch ? 'touch' : 'md'} />
         ) : tab === 'radial' ? (
           <RadialSettings size={touch ? 'touch' : 'md'} />
         ) : (

@@ -54,12 +54,12 @@ async function settings(
   return panel;
 }
 
-test('Settings -> Navigation -> 3D mouse: pair from a click, values persist across reload', async ({
+test('Settings -> 3D mouse tab: pair from a click, values persist across reload', async ({
   page,
 }) => {
   await boot(page);
   await attach(page);
-  let panel = await settings(page, 'Settings');
+  let panel = await settings(page, '3D mouse diagnostics');
   const section = panel.getByTestId('motion-settings');
   await expect(section).toBeVisible();
   await section.getByRole('button', { name: 'Pair a 3D mouse' }).click();
@@ -81,7 +81,7 @@ test('Settings -> Navigation -> 3D mouse: pair from a click, values persist acro
 
   await page.reload();
   await boot(page);
-  panel = await settings(page, 'Settings');
+  panel = await settings(page, '3D mouse diagnostics');
   const s2 = panel.getByTestId('motion-settings');
   await expect(s2.getByRole('switch', { name: 'Reverse twist (Rz)' })).toHaveAttribute(
     'aria-checked',
