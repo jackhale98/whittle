@@ -163,7 +163,7 @@ export function ConfigurationPill({
       >
         <Layers className="size-4 shrink-0" aria-hidden />
         <span
-          className={cn('min-w-0 truncate', chip ? 'max-w-[9ch]' : 'max-w-40')}
+          className={cn('min-w-0 truncate', chip ? 'max-w-[9ch]' : 'max-w-40 in-data-[narrow]:max-w-[9ch]')}
           title={activeName}
         >
           {activeName}

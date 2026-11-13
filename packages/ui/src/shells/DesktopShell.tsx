@@ -241,6 +241,8 @@ export function DesktopShell(props: DesktopShellProps) {
           <header
             className={cn('flex shrink-0 items-center gap-1 px-3 pb-px', touch ? 'h-14' : 'h-12')}
             data-testid="top-bar"
+            // Narrow (panels overlay): the bar's labels give way to icons (`in-data-[narrow]`).
+            data-narrow={overlay || undefined}
             onKeyDown={onEscape}
           >
             <IconButton
@@ -254,7 +256,7 @@ export function DesktopShell(props: DesktopShellProps) {
             <div className="mx-1.5 flex items-center gap-2.5">
               <Mark className={touch ? 'size-7' : undefined} />
               <h1
-                className="max-w-[28ch] truncate text-sm font-semibold tracking-tight"
+                className="max-w-[28ch] truncate text-sm font-semibold tracking-tight in-data-[narrow]:max-w-[12ch]"
                 data-testid="document-name"
               >
                 {documentName}

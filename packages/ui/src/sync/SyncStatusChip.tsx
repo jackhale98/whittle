@@ -210,7 +210,7 @@ export function SyncStatusChip({
       <StateIcon status={status} progress={d.progress} />
       {/* The full text stays available to assistive tech when the visible label is shortened. */}
       <span
-        className="shrink-0 whitespace-nowrap"
+        className="shrink-0 whitespace-nowrap in-data-[narrow]:sr-only"
         aria-hidden={compact && d.short !== d.label ? true : undefined}
       >
         {compact ? d.short : d.label}

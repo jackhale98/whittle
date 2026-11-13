@@ -23,6 +23,14 @@ async function gallery(page: Page, project: string, section: string) {
   await page.waitForTimeout(120);
 }
 
+/** Opens a tablet side panel from its top-bar button (docked at 1180, an overlay at 820). */
+async function openPanel(page: Page, side: 'left' | 'right') {
+  const toggle = page.getByTestId(`${side}-toggle`);
+  if ((await toggle.getAttribute('aria-pressed')) !== 'true') await toggle.tap();
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  await page.waitForTimeout(150);
+}
+
 async function noSeriousViolations(page: Page) {
   const r = await new AxeBuilder({ page }).analyze();
   const bad = r.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical');
@@ -91,15 +99,17 @@ const settle = (page: Page) => page.waitForTimeout(450);
 
 /* ------------------------------------------------------------------ bottom sheet */
 
+// The bottom sheet is the phone's alone (ADR-099); the tablet's panels are in tablet-panels.spec.ts.
 test.describe('bottom sheet', () => {
-  const sheetId = (p: string) => (isPhone(p) ? 'tools-sheet' : 'history-sheet');
+  const sheetId = () => 'tools-sheet';
 
   test('snap points: tap cycles peek/half, keys reach full, shots per state', async ({
     page,
   }, info) => {
     const p = info.project.name;
+    test.skip(!isPhone(p), 'the phone sheet only');
     await open(page, p);
-    const sheet = page.getByTestId(sheetId(p));
+    const sheet = page.getByTestId(sheetId());
     await expect(sheet).toHaveAttribute('data-snap', 'peek');
     await expect(page).toHaveScreenshot(`m2-${p}-sheet-peek.png`);
 
@@ -127,9 +137,10 @@ test.describe('bottom sheet', () => {
     page,
   }, info) => {
     const p = info.project.name;
+    test.skip(!isPhone(p), 'the phone sheet only');
     await open(page, p);
-    const sheet = page.getByTestId(sheetId(p));
-    const grip = page.getByTestId(`${sheetId(p)}-grip`);
+    const sheet = page.getByTestId(sheetId());
+    const grip = page.getByTestId(`${sheetId()}-grip`);
     const vh = page.viewportSize()?.height ?? 800;
 
     // slow drag up to roughly the half height
@@ -167,9 +178,9 @@ test.describe('bottom sheet', () => {
   });
 });
 
-/* ------------------------------------------------------------------ tool rail (tablet) */
+/* ------------------------------------------------------------------ command bar (tablet, touch density) */
 
-test.describe('tablet tool rail', () => {
+test.describe('tablet command bar', () => {
   test('groups, flyout, tool selection, touch targets, axe', async ({ page }, info) => {
     const p = info.project.name;
     test.skip(isPhone(p));
@@ -179,14 +190,14 @@ test.describe('tablet tool rail', () => {
       await expect(rail.getByRole('button', { name })).toBeVisible();
     }
     await expectTouchTargets(rail);
-    await expect(page).toHaveScreenshot(`m2-${p}-rail.png`);
+    await expect(page).toHaveScreenshot(`m2-${p}-commandbar.png`);
 
     await rail.getByRole('button', { name: 'Solid tools' }).tap();
     const flyout = page.getByTestId('tool-flyout');
     await expect(flyout).toBeVisible();
     await expectTouchTargets(flyout);
     await page.waitForTimeout(120);
-    await expect(page).toHaveScreenshot(`m2-${p}-rail-flyout.png`);
+    await expect(page).toHaveScreenshot(`m2-${p}-commandbar-flyout.png`);
     await noSeriousViolations(page);
 
     await flyout.getByRole('button', { name: /^Extrude(?!d)/ }).tap();
@@ -477,7 +488,8 @@ test('long-press on a history row opens its menu (touch), a quick tap does not',
 }, info) => {
   const p = info.project.name;
   test.skip(isPhone(p), 'the phone has no history tree');
-  await open(page, p, '&sheet=half');
+  await open(page, p);
+  await openPanel(page, 'left');
   const row = page.locator('[role="treeitem"][data-feature-id]').nth(1);
   const c = await centre(row);
   const cdp = await page.context().newCDPSession(page);
@@ -520,7 +532,7 @@ test.describe('tutorial coach marks', () => {
     await expect(page.getByRole('dialog')).toHaveCount(0);
 
     if (!isPhone(p)) {
-      // pointing at the Sketch tool on the rail, and not on top of it
+      // pointing at the Sketch tool on the command bar, and not on top of it
       const ring = page.getByTestId('tutorial-ring');
       await expect(ring).toBeVisible();
       const [cb, tb] = await Promise.all([
@@ -581,9 +593,10 @@ test.describe('tutorial coach marks', () => {
 /* ------------------------------------------------------------------ polish */
 
 test.describe('polish', () => {
-  test('dark theme sheet + rail', async ({ page }, info) => {
+  test('dark theme: sheet or panel, command bar and bubble', async ({ page }, info) => {
     const p = info.project.name;
     await open(page, p, '&sheet=half&bubble=300,300', 'dark');
+    if (!isPhone(p)) await openPanel(page, 'left');
     await settle(page);
     await expect(page).toHaveScreenshot(`m2-${p}-dark-sheet-bubble.png`);
     await noSeriousViolations(page);
@@ -602,19 +615,26 @@ test.describe('polish', () => {
     expect(m.sh).toBeLessThanOrEqual(m.ch);
   });
 
-  test('reduced motion: the sheet snaps without animating', async ({ page }, info) => {
+  test('reduced motion: the sheet and the panels snap without animating', async ({
+    page,
+  }, info) => {
     const p = info.project.name;
     await open(page, p);
-    const id = isPhone(p) ? 'tools-sheet' : 'history-sheet';
-    const sheet = page.getByTestId(id);
-    const y0 = (await sheet.boundingBox())?.y ?? 0;
-    await sheet.getByRole('button', { name: /expand/ }).tap();
+    // The phone's sheet, the tablet's overlay (a panel that opens over the view, 820 wide) or
+    // docked panel (it resizes the view): the next frame is the final position.
+    const sheet = page.getByTestId(isPhone(p) ? 'tools-sheet' : 'left-panel');
+    const key = isPhone(p) ? 'y' : 'x';
+    const pos = async () => (await sheet.boundingBox())?.[key] ?? 0;
+    const y0 = await pos();
+    if (isPhone(p)) await sheet.getByRole('button', { name: /expand/ }).tap();
+    else await openPanel(page, 'left');
     // reducedMotion: 'reduce' is set globally: the very next frame is already the final position
     await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => r(null))));
-    const y1 = (await sheet.boundingBox())?.y ?? 0;
+    const y1 = await pos();
     await page.waitForTimeout(500);
-    const y2 = (await sheet.boundingBox())?.y ?? 0;
-    expect(y1).toBeLessThan(y0);
+    const y2 = await pos();
+    if (isPhone(p)) expect(y1).toBeLessThan(y0);
     expect(Math.abs(y1 - y2)).toBeLessThan(2);
   });
+});
 });
