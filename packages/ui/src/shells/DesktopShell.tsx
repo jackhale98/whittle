@@ -184,6 +184,9 @@ export function DesktopShell(props: DesktopShellProps) {
   // biome-ignore lint/correctness/useExhaustiveDependencies: re-measure whenever the open state or the mode changes
   useLayoutEffect(() => {
     reportCovered();
+    // Under reduced motion the panel jumps without frame updates: measure once it has landed.
+    const raf = requestAnimationFrame(() => requestAnimationFrame(reportCovered));
+    return () => cancelAnimationFrame(raf);
   }, [reportCovered, leftOpen, rightOpen, overlay, leftWidth]);
 
   function onResizeDown(e: PointerEvent<HTMLDivElement>) {
@@ -320,6 +323,7 @@ export function DesktopShell(props: DesktopShellProps) {
               animate={leftAnimate}
               transition={leftT}
               onUpdate={reportCovered}
+              onAnimationComplete={reportCovered}
               inert={!leftOpen}
               style={leftStyle}
               className={cn('overflow-hidden', overlay ? overlayCls : 'shrink-0')}
@@ -461,6 +465,7 @@ export function DesktopShell(props: DesktopShellProps) {
               animate={rightAnimate}
               transition={spring}
               onUpdate={reportCovered}
+              onAnimationComplete={reportCovered}
               inert={!rightOpen}
               style={rightStyle}
               className={cn('overflow-hidden', overlay ? overlayCls : 'shrink-0')}

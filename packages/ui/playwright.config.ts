@@ -22,7 +22,7 @@ export default defineConfig({
   projects: [
     {
       name: 'desktop',
-      testIgnore: /m2\.spec/,
+      testIgnore: /m2\.spec|tablet-panels\.spec/,
       use: {
         ...devices['Desktop Chrome'],
         viewport: { width: 1440, height: 900 },
@@ -31,7 +31,7 @@ export default defineConfig({
     },
     {
       name: 'tablet',
-      testIgnore: /m2\.spec/,
+      testIgnore: /m2\.spec|tablet-panels\.spec/,
       use: {
         ...devices['Desktop Chrome'],
         viewport: { width: 1180, height: 820 },
@@ -42,7 +42,7 @@ export default defineConfig({
     },
     {
       name: 'phone',
-      testIgnore: /m2\.spec/,
+      testIgnore: /m2\.spec|tablet-panels\.spec/,
       use: {
         ...devices['Desktop Chrome'],
         viewport: { width: 390, height: 844 },
@@ -54,7 +54,7 @@ export default defineConfig({
     // M2 touch specs (m2.spec.ts) run on iPad landscape + portrait and iPhone, with touch.
     {
       name: 'ipad-landscape',
-      testMatch: /m2\.spec/,
+      testMatch: /m2\.spec|tablet-panels\.spec/,
       use: {
         ...devices['Desktop Chrome'],
         viewport: { width: 1180, height: 820 },
@@ -65,7 +65,7 @@ export default defineConfig({
     },
     {
       name: 'ipad-portrait',
-      testMatch: /m2\.spec/,
+      testMatch: /m2\.spec|tablet-panels\.spec/,
       use: {
         ...devices['Desktop Chrome'],
         viewport: { width: 820, height: 1180 },
@@ -76,7 +76,7 @@ export default defineConfig({
     },
     {
       name: 'iphone',
-      testMatch: /m2\.spec/,
+      testMatch: /m2\.spec|tablet-panels\.spec/,
       use: {
         ...devices['Desktop Chrome'],
         viewport: { width: 390, height: 844 },

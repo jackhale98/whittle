@@ -91,8 +91,8 @@ test('no horizontal overflow and viewport slot fills its area', async ({ page },
     expect(cb).not.toBeNull();
     expect(Math.abs((cb?.width ?? 0) - (sb?.width ?? -1))).toBeLessThan(1);
     expect(Math.abs((cb?.height ?? 0) - (sb?.height ?? -1))).toBeLessThan(1);
-    if (tier !== 'desktop') {
-      // Tablet / phone are full-bleed.
+    if (tier === 'phone') {
+      // The phone is full-bleed; the tablet has the desktop structure (ADR-099).
       const vp = page.viewportSize();
       expect(Math.round(sb?.width ?? 0)).toBe(vp?.width);
       expect(Math.round(sb?.height ?? 0)).toBe(vp?.height);
@@ -195,9 +195,9 @@ test('desktop: panels collapse and the panel resizes by keyboard', async ({ page
   await expect(page).toHaveScreenshot('desktop-light-panels-collapsed.png');
 });
 
-test('tablet / phone: bottom sheet expands', async ({ page }, info) => {
+test('phone: bottom sheet expands', async ({ page }, info) => {
   const tier = tierOf(info.project.name);
-  test.skip(tier === 'desktop');
+  test.skip(tier !== 'phone', 'the bottom sheet is the phone’s alone (ADR-099)');
   await open(page, tier, 'light');
   const sheet = page.getByTestId(tier === 'tablet' ? 'history-sheet' : 'tools-sheet');
   await expect(sheet).toHaveAttribute('data-open', 'false');

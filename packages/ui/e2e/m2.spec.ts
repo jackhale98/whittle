@@ -216,7 +216,16 @@ test.describe('tablet command bar', () => {
 test.describe('context bubble', () => {
   test('follows the anchor, never covers it, flips at the edges', async ({ page }, info) => {
     const p = info.project.name;
-    const vp = page.viewportSize() ?? { width: 0, height: 0 };
+    const win = page.viewportSize() ?? { width: 0, height: 0 };
+    // Anchors are in view (stage) px: the tablet's stage sits below the top bar (ADR-099).
+    await open(page, p);
+    const stage = (await page.getByTestId('viewport-slot').boundingBox()) ?? {
+      x: 0,
+      y: 0,
+      width: win.width,
+      height: win.height,
+    };
+    const vp = { width: stage.width, height: stage.height };
     const anchors = [
       { name: 'centre', x: vp.width / 2, y: vp.height / 2, side: 'above' },
       { name: 'top', x: vp.width / 2, y: 90, side: 'below' },
@@ -231,12 +240,14 @@ test.describe('context bubble', () => {
       const b = await bubble.boundingBox();
       if (!b) throw new Error('no bubble box');
       // fully on screen
-      expect(b.x).toBeGreaterThanOrEqual(0);
-      expect(b.y).toBeGreaterThanOrEqual(0);
-      expect(b.x + b.width).toBeLessThanOrEqual(vp.width);
-      expect(b.y + b.height).toBeLessThanOrEqual(vp.height);
+      expect(b.x).toBeGreaterThanOrEqual(stage.x);
+      expect(b.y).toBeGreaterThanOrEqual(stage.y);
+      expect(b.x + b.width).toBeLessThanOrEqual(stage.x + vp.width);
+      expect(b.y + b.height).toBeLessThanOrEqual(stage.y + vp.height);
       // the anchor point is never inside the bubble
-      const inside = a.x >= b.x && a.x <= b.x + b.width && a.y >= b.y && a.y <= b.y + b.height;
+      const ax = stage.x + a.x;
+      const ay = stage.y + a.y;
+      const inside = ax >= b.x && ax <= b.x + b.width && ay >= b.y && ay <= b.y + b.height;
       expect(inside, `anchor ${a.name} covered`).toBe(false);
       if (a.name === 'centre' || a.name === 'top') {
         await page.waitForTimeout(150);
@@ -636,5 +647,4 @@ test.describe('polish', () => {
     if (isPhone(p)) expect(y1).toBeLessThan(y0);
     expect(Math.abs(y1 - y2)).toBeLessThan(2);
   });
-});
 });
