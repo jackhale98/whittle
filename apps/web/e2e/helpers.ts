@@ -364,7 +364,7 @@ export async function topCenter(page: Page): Promise<{ x: number; y: number }> {
 
 /**
  * The category each flyout tool lives in (packages/ui `toolGroups`). Sketch and Hole are direct
- * buttons. The desktop command bar and the tablet rail share this layout.
+ * buttons. The command bar (desktop and tablet) renders this layout.
  */
 const TOOL_GROUP: Record<string, string> = {
   extrude: 'solid',
@@ -397,7 +397,7 @@ export const toolGroup = (page: Page, group: string) =>
   page.locator(`[data-tool-group="${group}"]`);
 
 /**
- * Picks a tool from the command bar (desktop) or rail (tablet): opens its category first when the
+ * Picks a tool from the command bar: opens its category first when the
  * tool lives in a flyout, then presses the tool. `how` is `tap` for touch projects.
  */
 export async function tool(page: Page, id: string, how: 'click' | 'tap' = 'click'): Promise<void> {
@@ -408,6 +408,24 @@ export async function tool(page: Page, id: string, how: 'click' | 'tap' = 'click
     await expect(page.getByTestId('tool-flyout')).toBeVisible();
   }
   await toolButton(page, id)[how]();
+}
+
+/**
+ * The tablet's side panels (ADR-099): `left` = feature tree and params, `right` = the context
+ * inspector. Docked beside the view when it is wide, overlaid on it when narrow (one at a time).
+ */
+export const panel = (page: Page, side: 'left' | 'right') => page.getByTestId(`${side}-panel`);
+
+/** Opens a side panel from its top-bar button (no-op when it is open); the view stays put. */
+export async function openPanel(
+  page: Page,
+  side: 'left' | 'right',
+  how: 'click' | 'tap' = 'tap',
+): Promise<void> {
+  const toggle = page.getByTestId(`${side}-toggle`);
+  if ((await toggle.getAttribute('aria-pressed')) !== 'true') await toggle[how]();
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  await expect(panel(page, side)).not.toHaveAttribute('inert', '');
 }
 
 /** Runs a ⌘K palette command by its label. */

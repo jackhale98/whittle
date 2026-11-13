@@ -55,11 +55,11 @@ function resolveTarget(step: TutorialStep | undefined): Resolved | null {
 }
 
 /**
- * What the card must not cover: title bar, tool rail and sheets (unless the target is inside), and
+ * What the card must not cover: title bar, command bar, sheets and overlaid panels (unless the target is inside), and
  * the floating controls the step is about (context bubble, value chip, keypad).
  */
 const CHROME =
-  '[data-testid="top-bar"], [aria-label="Modeling tools"], [data-testid$="-sheet"], [data-testid="context-bubble"], [data-testid="value-chip"], [data-testid="keypad"]';
+  '[data-testid="top-bar"], [aria-label="Modeling tools"], [data-testid$="-sheet"], [data-testid="left-panel"][data-overlay], [data-testid="right-panel"][data-overlay], [data-testid="context-bubble"], [data-testid="value-chip"], [data-testid="keypad"]';
 
 /**
  * Open menus the user is choosing from: always obstacles, even when the step's target is inside

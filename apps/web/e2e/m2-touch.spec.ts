@@ -48,8 +48,8 @@ const bubble = (page: Page) => page.getByTestId('context-bubble');
  * fill most of the view, and where exactly depends on the renderer, so "empty space" is searched
  * for rather than assumed.
  */
-async function emptySpot(page: Page): Promise<{ x: number; y: number }> {
-  const spot = await page.evaluate(() => {
+async function emptySpot(page: Page, maxFx = 0.8): Promise<{ x: number; y: number }> {
+  const spot = await page.evaluate((maxFx) => {
     const v = (
       window as unknown as {
         __wrenViewport: { pick(x: number, y: number, o: object): unknown[] };
@@ -58,7 +58,7 @@ async function emptySpot(page: Page): Promise<{ x: number; y: number }> {
     const canvas = document.querySelector('[data-testid="viewport-canvas"]') as HTMLElement;
     const r = canvas.getBoundingClientRect();
     for (let fy = 0.25; fy <= 0.85; fy += 0.05) {
-      for (let fx = 0.8; fx >= 0.15; fx -= 0.05) {
+      for (let fx = maxFx; fx >= 0.15; fx -= 0.05) {
         const x = r.left + r.width * fx;
         const y = r.top + r.height * fy;
         if (document.elementFromPoint(x, y) !== canvas) continue; // a panel or chip is there
@@ -71,7 +71,7 @@ async function emptySpot(page: Page): Promise<{ x: number; y: number }> {
       }
     }
     return null;
-  });
+  }, maxFx);
   if (!spot) throw new Error('no empty spot on the canvas');
   return spot;
 }
@@ -125,7 +125,7 @@ test('touch taps select once; bubble; double-tap zoom; long-press; 2/3-finger un
   // Long-press on empty space: the radial menu (M3.5; the bubble stays on tap-select). It offers
   // the view actions among others and stays open when lifted without a direction.
   const radial = page.getByTestId('radial-menu');
-  const holdAt = await emptySpot(page); // away from the edges: the menu is not shifted
+  const holdAt = await emptySpot(page, 0.62); // away from the edges (the canvas sits between the panels): the menu is not shifted
   await t.down([holdAt]);
   await expect(radial.locator('[data-item="fit"]')).toBeVisible();
   await t.up();
@@ -211,14 +211,14 @@ test('push/pull with a finger: bubble → arrow drag → feature; then a keypad 
   expect((await a.regen())?.bodies[0]?.volume).toBeCloseTo(40 * 30 * (24 + d), 0);
 });
 
-test('Inspect → Measure on the tablet: taps pick, the sheet shows the reading', async ({
+test('Inspect → Measure on the tablet: taps pick, the inspector shows the reading', async ({
   page,
 }) => {
   test.slow();
   await tabletBox(page);
   const a = app(page);
   await tool(page, 'measure', 'tap');
-  await expect(page.getByTestId('history-sheet')).toHaveAttribute('data-snap', 'half');
+  await expect(page.getByTestId('right-panel')).not.toHaveAttribute('inert', '');
   await expect(page.getByTestId('measure-inspector')).toBeVisible();
   const top = await topCenter(page);
   const t = await touch(page);
@@ -335,7 +335,7 @@ test('Pencil hover preselects; a Pencil tap selects in model mode', async ({ pag
   expect((await a.ui()).selection).toEqual(['face']);
 });
 
-test('portrait: the bubble and overlays stay clear of the rail, top bar and sheet', async ({
+test('portrait: the bubble and overlays stay clear of the command bar, top bar and panels', async ({
   page,
 }) => {
   test.slow();
@@ -361,7 +361,8 @@ test('portrait: the bubble and overlays stay clear of the rail, top bar and shee
   for (const chrome of [
     await page.getByTestId('top-bar').boundingBox(),
     await page.getByRole('toolbar', { name: 'Modeling tools' }).boundingBox(),
-    await page.getByTestId('history-sheet').boundingBox(),
+    await page.getByTestId('left-panel').boundingBox(),
+    await page.getByTestId('right-panel').boundingBox(),
   ]) {
     expect(overlap(b, chrome)).toBe(false);
     expect(overlap(library, chrome)).toBe(false);
