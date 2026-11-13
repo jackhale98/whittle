@@ -6,21 +6,16 @@ import { createBodyMaterial } from './bodies';
 import { emitCamera } from './camera';
 import { REST_WORK_DEBOUNCE_MS } from './constants';
 import { stepMotion } from './motion/nav';
-import {
-  disposeOverlay,
-  makeDot,
-  makeFill,
-  makeLines,
-  orthoOverlayDelta,
-  overlayBiasFor,
-  overlayDepthBias,
-  overlayDepthDelta,
-  sizeDots,
-} from './overlays';
+import { disposeOverlay, makeDot, makeFill, makeLines, sizeDots } from './overlays';
 import { idFresh, kickIdRefresh } from './picking';
-import { cameraWorldPerPixel, syncProjection } from './projection';
+import {
+  applyProjectionUniforms,
+  cameraWorldPerPixel,
+  pixelScaleP11,
+  projectionKey,
+  syncProjection,
+} from './projection';
 import type { ViewportImpl } from './viewport';
-import { viewUniforms } from './viewUniforms';
 import { stepWheel } from './wheel';
 
 export function resize(vp: ViewportImpl): void {
@@ -200,21 +195,8 @@ export function scheduleRestWork(vp: ViewportImpl): void {
 
 export function renderOnce(vp: ViewportImpl): void {
   syncProjection(vp);
-  if (vp.camera.orthographic) {
-    // Orthographic (ADR-098): the pull is a view-space depth shift, `clip.z += P22 * delta`.
-    overlayDepthBias.value = 0;
-    overlayDepthDelta.value = orthoOverlayDelta(
-      vp.camera.focusDistance,
-      vp.camera.far - vp.camera.near,
-    );
-  } else {
-    overlayDepthBias.value = overlayBiasFor();
-    overlayDepthDelta.value = 0;
-  }
-  viewUniforms.ortho.value = vp.camera.orthographic ? 1 : 0;
-  const mw = vp.camera.matrixWorld.elements;
-  viewUniforms.back.value.set(mw[8] as number, mw[9] as number, mw[10] as number);
-  const p11 = vp.camera.projectionMatrix.elements[5] as number;
+  applyProjectionUniforms(vp);
+  const p11 = pixelScaleP11(vp);
   const heightCss = vp.canvas.clientHeight;
   sizeDots(
     [
@@ -240,12 +222,7 @@ export function renderOnce(vp: ViewportImpl): void {
 
   // Camera changes invalidate the ID image; the view cube follows the camera orientation.
   const m = vp.camera.matrixWorld.elements;
-  const key = [
-    ...m,
-    vp.camera.projectionMatrix.elements[0] as number,
-    vp.camera.projectionMatrix.elements[5] as number,
-    vp.camera.projectionMatrix.elements[11] as number,
-  ];
+  const key = [...m, ...projectionKey(vp)];
   if (key.length !== vp.cameraKey.length || key.some((v, i) => v !== vp.cameraKey[i])) {
     vp.cameraKey = key;
     vp.cameraChangedSinceEmit = true;

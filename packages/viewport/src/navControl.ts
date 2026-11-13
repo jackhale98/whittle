@@ -22,7 +22,7 @@ import {
 } from './navigation';
 import { type Dot, disposeOverlay, makeDot } from './overlays';
 import { enablePicking, idFresh, pickFace, rayAt, syncCameraMatrices } from './picking';
-import { cameraWorldPerPixel, setProjection } from './projection';
+import { cameraWorldPerPixel, inFrontOfEye, setProjection } from './projection';
 import { requestRender } from './renderLoop';
 import type { NavigationState } from './types';
 import type { ViewportImpl } from './viewport';
@@ -142,14 +142,13 @@ export function resolveNavPivot(
 ): { point: Vec3; source: PivotSource } {
   syncCameraMatrices(vp);
   const { pose, dist } = readPose(vp);
-  const ortho = vp.camera.orthographic;
   const v = new Vector3();
   const project = (p: Vec3) => {
     v.set(p[0], p[1], p[2]).applyMatrix4(vp.camera.matrixWorldInverse);
     const depth = -v.z;
     // Orthographic: a point behind the camera plane is still drawn (the near plane is behind the
     // camera), so only depth outside the clip range is "not in front".
-    const front = ortho ? depth >= vp.camera.near && depth <= vp.camera.far : depth > 0;
+    const front = inFrontOfEye(vp, v.z);
     if (!front) return { nx: 0, ny: 0, depth, front };
     v.applyMatrix4(vp.camera.projectionMatrix);
     return { nx: v.x, ny: v.y, depth, front };

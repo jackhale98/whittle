@@ -39,7 +39,7 @@ import {
   raycastTriangles,
   sortByDistance,
 } from './pick';
-import { depthFromEye, eyeFor, syncProjection } from './projection';
+import { depthFromEye, eyeFor, screenRay, syncProjection } from './projection';
 import { requestRender, scheduleRestWork } from './renderLoop';
 import { isClipped, keptRayRange } from './section';
 import type { ViewportImpl } from './viewport';
@@ -235,34 +235,7 @@ export function syncCameraMatrices(vp: ViewportImpl): void {
 
 export function rayAt(vp: ViewportImpl, x: number, y: number): { origin: Vec3; dir: Vec3 } {
   syncCameraMatrices(vp);
-  const w = vp.canvas.clientWidth || 1;
-  const h = vp.canvas.clientHeight || 1;
-  const nx = (x / w) * 2 - 1;
-  const ny = -(y / h) * 2 + 1;
-  if (vp.camera.orthographic) {
-    // Parallel rays along the view direction, starting on the near plane (ADR-098): the origin is
-    // the cursor's point there, so everything in the depth range is in front of it.
-    const m = vp.camera.matrixWorld.elements;
-    const pm = vp.camera.projectionMatrix.elements;
-    const sx = nx / (pm[0] as number);
-    const sy = ny / (pm[5] as number);
-    const near = vp.camera.near;
-    return {
-      origin: [
-        (m[12] as number) + (m[0] as number) * sx + (m[4] as number) * sy - (m[8] as number) * near,
-        (m[13] as number) + (m[1] as number) * sx + (m[5] as number) * sy - (m[9] as number) * near,
-        (m[14] as number) +
-          (m[2] as number) * sx +
-          (m[6] as number) * sy -
-          (m[10] as number) * near,
-      ],
-      dir: [-(m[8] as number), -(m[9] as number), -(m[10] as number)],
-    };
-  }
-  const p = new Vector3(nx, ny, 0.5).unproject(vp.camera);
-  const o = vp.camera.position;
-  const d = p.sub(o).normalize();
-  return { origin: [o.x, o.y, o.z], dir: [d.x, d.y, d.z] };
+  return screenRay(vp, x, y);
 }
 
 /** World -> CSS px projector for the current camera (allocation-free per call). */
@@ -331,9 +304,9 @@ export function triFaceFor(_vp: ViewportImpl, e: BodyEntry): Uint32Array {
 }
 
 /** True when no visible body lies between the camera and `point`. */
-export function isVisiblePoint(vp: ViewportImpl, originIn: Vec3, point: Vec3): boolean {
-  // Orthographic sight lines run parallel to the view direction, whatever `origin` the caller has.
-  const origin = vp.camera.orthographic ? eyeFor(vp, point) : originIn;
+export function isVisiblePoint(vp: ViewportImpl, _origin: Vec3, point: Vec3): boolean {
+  // The sight line to a point starts where the projection says (the camera, or straight back).
+  const origin = eyeFor(vp, point);
   const dx = point[0] - origin[0];
   const dy = point[1] - origin[1];
   const dz = point[2] - origin[2];

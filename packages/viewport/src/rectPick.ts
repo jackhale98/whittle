@@ -50,7 +50,7 @@ export function pickRect(
   syncCameraMatrices(vp);
   const project = projector(vp);
   const o = vp.camera.position;
-  const origin: Vec3 = [o.x, o.y, o.z]; // perspective sight lines; orthographic ones are rebuilt per point
+  const origin: Vec3 = [o.x, o.y, o.z];
   const sectionEq = vp.section?.eq ?? null;
   const cx = (rect.x0 + rect.x1) / 2;
   const cy = (rect.y0 + rect.y1) / 2;
