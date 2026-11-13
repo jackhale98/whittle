@@ -1252,6 +1252,11 @@ export class Workbench {
     keys.setNavigationSettings(this, navigation);
   }
 
+  /** Orthographic or perspective 3D view (ADR-098); persists with the other navigation settings. */
+  setProjection(projection: InputSettings['navigation']['projection']): void {
+    keys.setNavigationSettings(this, { ...this.input.get().navigation, projection });
+  }
+
   setKeymapOverrides(overrides: KeymapOverrides): void {
     keys.setKeymapOverrides(this, overrides);
   }

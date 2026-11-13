@@ -30,6 +30,7 @@ import {
   Vector2,
 } from 'three/webgpu';
 import type { Palette } from './themes';
+import { viewUniforms } from './viewUniforms';
 
 export class Grid {
   readonly mesh: Mesh;
@@ -74,7 +75,12 @@ export class Grid {
     const radial = float(1).sub(
       smoothstep(this.radius.mul(0.3), this.radius, length(p.sub(this.center))),
     );
-    const viewDir = normalize(cameraPosition.sub(positionWorld));
+    // Orthographic: the eye direction is the camera's back axis everywhere (ADR-098).
+    const viewDir = mix(
+      normalize(cameraPosition.sub(positionWorld)),
+      viewUniforms.back,
+      viewUniforms.ortho,
+    );
     const grazing = smoothstep(0.015, 0.18, abs(viewDir.z));
 
     this.material = new MeshBasicNodeMaterial({

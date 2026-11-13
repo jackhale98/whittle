@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **Orthographic 3D view by default** (owner, ADR-098). The part is no longer drawn with perspective: parallel edges stay parallel, so a hole seen straight on shows no wall and size does not change with depth. Perspective is a setting.
+  - **Settings, Navigation, View, Projection** (Orthographic or Perspective), remembered on this device, and the palette commands **Orthographic view** and **Perspective view**. Switching keeps the target and the size of what you are looking at, with no jump.
+  - Everything works the same in both: wheel and pinch zoom toward the surface under the cursor, orbit about the cursor pivot (turntable and trackball), pan with the grabbed point under the cursor, fit with the sheet open, the standard views and the view cube, touch, Pencil and 3D mouse. Picking, box select, section planes, previews, handles, markers and the sketch and reference overlays follow.
+  - The 3D view's screenshots change once (the part is drawn parallel).
 - **3D mouse: clearer reverse switches.** Settings → Navigation → 3D mouse → "Reverse a direction" names each move in plain words (slide left/right, lift/press, push/pull, tilt forward/back, tilt left/right, twist) with its axis code (X, Y, Z, Rx, Ry, Rz, as in diagnostics). Owner feedback: the per-axis invert switches were not found.
 - **3D mouse fixes from the first real-device check:** tilting forward/back and twisting now turn the model the right way; after a reload the mouse reconnects more reliably (only its motion interface is used, a busy device is retried, and coming back to the window rescans), and when the browser has forgotten the permission the diagnostics and Settings offer **Pair again**.
 - **3D mouse navigation** (M4.5, ADR-096 amendment; the device and viewport half).

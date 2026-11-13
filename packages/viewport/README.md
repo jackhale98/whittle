@@ -28,6 +28,12 @@ or `'webgl2'`), `maxPixelRatio`, `theme`, `reducedMotion` and `viewCube`.
   the runtime diagnostics.
 - **On-demand rendering.** A frame is drawn only when something changed: a camera move, a pointer
   down, new geometry, or a sketch overlay update. `getRenderCount()` lets tests assert this.
+- **Projection (ADR-098).** `setNavigation({ projection })`: `orthographic` (default) or
+  `perspective`. One `ViewCamera` (a `PerspectiveCamera` whose matrix `syncProjection` switches); the
+  orthographic view height is `2 * distance-to-target * tan(fov / 2)`, so everything that moves the
+  camera (wheel, pinch, 3D mouse, fit) works the same and switching never jumps. Near/far come from the
+  scene bounds in orthographic. Code that needs rays, depth or world-per-pixel goes through
+  `rayAt`, `eyeFor`/`depthFromEye` and `cameraWorldPerPixel` instead of using the camera position.
 - **Camera.** `camera-controls` owns the wheel (dolly to the cursor), two-finger pinch/pan and every
   programmatic move (fit, `setView`, `lookAtPlane`, which ease unless reduced motion is on). Mouse
   buttons, one-finger touch and non-drawing pen are handled by `NavigationMachine` (`src/navigation.ts`,

@@ -10,6 +10,7 @@ import { WHEEL_SYNC_BVH_TRIANGLES, type WheelState } from './internal';
 import { isWheelEcho } from './motion/integrate';
 import { navSurfaceHit } from './navControl';
 import { rayAt } from './picking';
+import { zoomFrameAbout } from './projection';
 import { requestRender } from './renderLoop';
 import type { ViewportImpl } from './viewport';
 import { boundsCenter } from './views';
@@ -19,7 +20,6 @@ import {
   missAnchor,
   nextGoalDistance,
   wheelNotches,
-  zoomFrame,
   zoomPose,
 } from './zoom';
 
@@ -89,7 +89,7 @@ export function beginWheel(vp: ViewportImpl, x: number, y: number, now: number):
   const point: Vec3 = hit
     ? [hit.point[0], hit.point[1], hit.point[2]]
     : missAnchor(ray.origin, ray.dir, f, centre, dist);
-  const frame = zoomFrame(cam, f, point);
+  const frame = zoomFrameAbout(vp, cam, f, point, dist);
   if (!frame) return null;
   const d0 = Math.hypot(cam[0] - point[0], cam[1] - point[1], cam[2] - point[2]);
   const r = Math.max(vp.sceneRadius, 1e-3);

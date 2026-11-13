@@ -2,7 +2,7 @@ import type { HandleSpec, HighlightItem, Marker, PreviewSpec, Vec3 } from '@wren
 import { BufferGeometry, Group } from 'three/webgpu';
 import { HANDLE_PICK_PAD_PX } from './constants';
 import { meshBuffersToGeometry } from './geometry';
-import { ArrowHandle, worldPerPixel } from './handles';
+import { ArrowHandle } from './handles';
 import { faceDrawRange, REFERENCE_ENTITY } from './ids';
 import { type PreviewEntry, sameFaces } from './internal';
 import {
@@ -17,6 +17,7 @@ import { distPointSegment2D } from './pick';
 import { projector, syncCameraMatrices, vertexPositions } from './picking';
 import { MeshPreview, PrismPreview } from './preview';
 import { buildPrism } from './prism';
+import { cameraWorldPerPixel } from './projection';
 import { requestRender } from './renderLoop';
 import { mixHex } from './sketchStyle';
 import { MARKER_TONES } from './themes';
@@ -150,11 +151,7 @@ export function addHighlight(
 export function getHandleScreenLength(vp: ViewportImpl, id: string): number | null {
   const h = vp.handles.get(id);
   if (!h) return null;
-  const wpp = worldPerPixel(
-    depthOf(vp, h.origin),
-    vp.camera.projectionMatrix.elements[5] as number,
-    vp.canvas.clientHeight || 1,
-  );
+  const wpp = cameraWorldPerPixel(vp, depthOf(vp, h.origin));
   const world = h.place(wpp);
   const a = vp.worldToScreen(h.origin);
   const tip: Vec3 = [
@@ -283,12 +280,10 @@ export function handleAt(
   const project = projector(vp);
   const a = { x: 0, y: 0 };
   const b = { x: 0, y: 0 };
-  const p11 = vp.camera.projectionMatrix.elements[5] as number;
-  const h = vp.canvas.clientHeight || 1;
   let best: { id: string; distancePx: number } | null = null;
   for (const [id, handle] of vp.handles) {
     const [ox, oy, oz] = handle.origin;
-    const len = handle.lengthPx * worldPerPixel(depthOf(vp, handle.origin), p11, h);
+    const len = handle.lengthPx * cameraWorldPerPixel(vp, depthOf(vp, handle.origin));
     if (!project(ox, oy, oz, a)) continue;
     const ex = ox + handle.direction[0] * len;
     const ey = oy + handle.direction[1] * len;

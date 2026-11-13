@@ -60,132 +60,137 @@ const pickAt = (page: Page, p: [number, number, number], kinds?: string[]) =>
 const LIGHT_REF: RGB = [15, 118, 110]; // #0f766e
 const DARK_REF: RGB = [45, 212, 191]; // #2dd4bf
 
-for (const backend of ['webgl2', 'auto'] as const) {
-  test.describe(`reference geometry (${backend})`, () => {
-    test('drawn in the theme colour, picked with persistent names, hidden = gone', async ({
-      page,
-    }) => {
-      const actual = await open(page, `?backend=${backend}&reducedMotion=1`);
-      test.info().annotations.push({ type: 'backend', description: actual });
-      await frame(page);
-      const before = await countColor(page, LIGHT_REF, 40);
+// ADR-098: both projections (reference outlines, picks and sizes use the projection's scale).
+for (const projection of ['orthographic', 'perspective'] as const)
+  for (const backend of ['webgl2', 'auto'] as const) {
+    test.describe(`reference geometry (${backend}, ${projection})`, () => {
+      test('drawn in the theme colour, picked with persistent names, hidden = gone', async ({
+        page,
+      }) => {
+        const actual = await open(
+          page,
+          `?backend=${backend}&reducedMotion=1&projection=${projection}`,
+        );
+        test.info().annotations.push({ type: 'backend', description: actual });
+        await frame(page);
+        const before = await countColor(page, LIGHT_REF, 40);
 
-      await set(page, [PLANE, AXIS, POINT]);
-      await frame(page);
-      const stats = await page.evaluate(() => window.__viewport!.viewport.getReferenceStats());
-      expect(stats).toMatchObject({ planes: 1, axes: 1, points: 1, originShown: false });
-      const drawn = await countColor(page, LIGHT_REF, 40);
-      expect(drawn.count, 'reference outline and crosshair are drawn').toBeGreaterThan(
-        before.count + 100,
-      );
+        await set(page, [PLANE, AXIS, POINT]);
+        await frame(page);
+        const stats = await page.evaluate(() => window.__viewport!.viewport.getReferenceStats());
+        expect(stats).toMatchObject({ planes: 1, axes: 1, points: 1, originShown: false });
+        const drawn = await countColor(page, LIGHT_REF, 40);
+        expect(drawn.count, 'reference outline and crosshair are drawn').toBeGreaterThan(
+          before.count + 100,
+        );
 
-      // A plane is a face hit, an axis an edge hit, a point a vertex hit, all with the name.
-      const onPlane = await pickAt(page, [-4, 15, 40]);
-      expect(onPlane.find((h) => h.bodyId === 'Fplane1:plane')).toMatchObject({
-        bodyId: 'Fplane1:plane',
-        kind: 'face',
-        entity: 'reference',
-      });
-      const onAxis = await pickAt(page, [60, 15, 10]);
-      expect(onAxis.find((h) => h.bodyId === 'Faxis1:axis')).toMatchObject({
-        bodyId: 'Faxis1:axis',
-        kind: 'edge',
-        entity: 'reference',
-      });
-      const onPoint = await pickAt(page, [-20, 15, 30]);
-      expect(onPoint.find((h) => h.bodyId === 'Fpoint1:point')).toMatchObject({
-        bodyId: 'Fpoint1:point',
-        kind: 'vertex',
-        entity: 'reference',
-      });
-      // The kinds filter keeps the pick honest: a plane is not an edge.
-      expect(await pickAt(page, [-4, 15, 40], ['edge'])).toEqual([]);
-      // A plane never blocks the body behind it: over the box the face is what is picked.
-      await set(page, [{ ...PLANE, frame: frameOf([20, 15, 30]), extent: 60 }]);
-      expect((await pickAt(page, [20, 15, 20], ['face'])).map((h) => h.bodyId)).toEqual(['box']);
-      await set(page, [PLANE, AXIS, POINT]);
-      // The body is still pickable where no reference lies in front of it.
-      const body = await pickAt(page, [20, 15, 20], ['face']);
-      expect(body.some((h) => h.bodyId === 'box')).toBe(true);
+        // A plane is a face hit, an axis an edge hit, a point a vertex hit, all with the name.
+        const onPlane = await pickAt(page, [-4, 15, 40]);
+        expect(onPlane.find((h) => h.bodyId === 'Fplane1:plane')).toMatchObject({
+          bodyId: 'Fplane1:plane',
+          kind: 'face',
+          entity: 'reference',
+        });
+        const onAxis = await pickAt(page, [60, 15, 10]);
+        expect(onAxis.find((h) => h.bodyId === 'Faxis1:axis')).toMatchObject({
+          bodyId: 'Faxis1:axis',
+          kind: 'edge',
+          entity: 'reference',
+        });
+        const onPoint = await pickAt(page, [-20, 15, 30]);
+        expect(onPoint.find((h) => h.bodyId === 'Fpoint1:point')).toMatchObject({
+          bodyId: 'Fpoint1:point',
+          kind: 'vertex',
+          entity: 'reference',
+        });
+        // The kinds filter keeps the pick honest: a plane is not an edge.
+        expect(await pickAt(page, [-4, 15, 40], ['edge'])).toEqual([]);
+        // A plane never blocks the body behind it: over the box the face is what is picked.
+        await set(page, [{ ...PLANE, frame: frameOf([20, 15, 30]), extent: 60 }]);
+        expect((await pickAt(page, [20, 15, 20], ['face'])).map((h) => h.bodyId)).toEqual(['box']);
+        await set(page, [PLANE, AXIS, POINT]);
+        // The body is still pickable where no reference lies in front of it.
+        const body = await pickAt(page, [20, 15, 20], ['face']);
+        expect(body.some((h) => h.bodyId === 'box')).toBe(true);
 
-      // Hidden references are not handed over: nothing drawn, nothing to pick.
-      await set(page, [AXIS, POINT]);
-      await frame(page);
-      expect((await pickAt(page, [-4, 15, 40], ['face'])).map((h) => h.bodyId)).not.toContain(
-        'Fplane1:plane',
-      );
-      await set(page, []);
-      await frame(page);
-      expect((await countColor(page, LIGHT_REF, 40)).count).toBeLessThanOrEqual(before.count + 5);
-      expect(await pickAt(page, [60, 15, 10], ['edge'])).toEqual([]);
-    });
-
-    test('dark theme uses the dark reference token; the highlight uses the accent', async ({
-      page,
-    }) => {
-      await open(page, `?backend=${backend}&reducedMotion=1&theme=dark`);
-      await set(page, [AXIS, PLANE]);
-      await frame(page);
-      expect((await countColor(page, DARK_REF, 40)).count).toBeGreaterThan(100);
-      expect((await countColor(page, LIGHT_REF, 12)).count).toBe(0);
-      // Selection highlight: the axis in the accent colour (#5b9bff in dark).
-      await page.evaluate(() =>
-        window.__viewport!.viewport.setHighlights({
-          selected: [{ bodyId: 'Faxis1:axis', kind: 'edge', index: 0, entity: 'reference' }],
-          preselected: [],
-        }),
-      );
-      await frame(page);
-      expect((await countColor(page, [91, 155, 255], 40)).count).toBeGreaterThan(30);
-    });
-
-    test('the origin planes and axes follow their own toggle and are pickable', async ({
-      page,
-    }) => {
-      await open(page, `?backend=${backend}&reducedMotion=1`);
-      await set(page, [PLANE]);
-      await page.evaluate(() => window.__viewport!.viewport.setOriginReferences(true));
-      await frame(page);
-      const names = await page.evaluate(
-        () => window.__viewport!.viewport.getReferenceStats().names,
-      );
-      expect(names).toEqual(
-        expect.arrayContaining([
+        // Hidden references are not handed over: nothing drawn, nothing to pick.
+        await set(page, [AXIS, POINT]);
+        await frame(page);
+        expect((await pickAt(page, [-4, 15, 40], ['face'])).map((h) => h.bodyId)).not.toContain(
           'Fplane1:plane',
-          'origin:XY',
-          'origin:XZ',
-          'origin:YZ',
-          'origin:X',
-          'origin:Y',
-          'origin:Z',
-          'origin:O',
-        ]),
-      );
-      // The X axis runs through the box's front-bottom edge region: pick it just past the box.
-      const hit = await pickAt(page, [47, 0, 0], ['edge']);
-      expect(hit.find((h) => h.bodyId === 'origin:X')).toMatchObject({
-        bodyId: 'origin:X',
-        kind: 'edge',
+        );
+        await set(page, []);
+        await frame(page);
+        expect((await countColor(page, LIGHT_REF, 40)).count).toBeLessThanOrEqual(before.count + 5);
+        expect(await pickAt(page, [60, 15, 10], ['edge'])).toEqual([]);
       });
-      await page.evaluate(() => window.__viewport!.viewport.setOriginReferences(false));
-      await frame(page);
-      expect(await pickAt(page, [47, 0, 0], ['edge'])).toEqual([]);
-      expect(
-        await page.evaluate(() => window.__viewport!.viewport.getReferenceStats().originShown),
-      ).toBe(false);
-    });
 
-    test('references render on demand: an idle viewport draws no frames', async ({ page }) => {
-      await open(page, `?backend=${backend}&reducedMotion=1`);
-      await set(page, [PLANE, AXIS, POINT]);
-      await frame(page);
-      await page.waitForTimeout(3500); // the studio environment is built on idle, once
-      const n = await page.evaluate(() => window.__viewport!.viewport.getRenderCount());
-      await page.waitForTimeout(400);
-      expect(await page.evaluate(() => window.__viewport!.viewport.getRenderCount())).toBe(n);
+      test('dark theme uses the dark reference token; the highlight uses the accent', async ({
+        page,
+      }) => {
+        await open(page, `?backend=${backend}&reducedMotion=1&theme=dark&projection=${projection}`);
+        await set(page, [AXIS, PLANE]);
+        await frame(page);
+        expect((await countColor(page, DARK_REF, 40)).count).toBeGreaterThan(100);
+        expect((await countColor(page, LIGHT_REF, 12)).count).toBe(0);
+        // Selection highlight: the axis in the accent colour (#5b9bff in dark).
+        await page.evaluate(() =>
+          window.__viewport!.viewport.setHighlights({
+            selected: [{ bodyId: 'Faxis1:axis', kind: 'edge', index: 0, entity: 'reference' }],
+            preselected: [],
+          }),
+        );
+        await frame(page);
+        expect((await countColor(page, [91, 155, 255], 40)).count).toBeGreaterThan(30);
+      });
+
+      test('the origin planes and axes follow their own toggle and are pickable', async ({
+        page,
+      }) => {
+        await open(page, `?backend=${backend}&reducedMotion=1&projection=${projection}`);
+        await set(page, [PLANE]);
+        await page.evaluate(() => window.__viewport!.viewport.setOriginReferences(true));
+        await frame(page);
+        const names = await page.evaluate(
+          () => window.__viewport!.viewport.getReferenceStats().names,
+        );
+        expect(names).toEqual(
+          expect.arrayContaining([
+            'Fplane1:plane',
+            'origin:XY',
+            'origin:XZ',
+            'origin:YZ',
+            'origin:X',
+            'origin:Y',
+            'origin:Z',
+            'origin:O',
+          ]),
+        );
+        // The X axis runs through the box's front-bottom edge region: pick it just past the box.
+        const hit = await pickAt(page, [47, 0, 0], ['edge']);
+        expect(hit.find((h) => h.bodyId === 'origin:X')).toMatchObject({
+          bodyId: 'origin:X',
+          kind: 'edge',
+        });
+        await page.evaluate(() => window.__viewport!.viewport.setOriginReferences(false));
+        await frame(page);
+        expect(await pickAt(page, [47, 0, 0], ['edge'])).toEqual([]);
+        expect(
+          await page.evaluate(() => window.__viewport!.viewport.getReferenceStats().originShown),
+        ).toBe(false);
+      });
+
+      test('references render on demand: an idle viewport draws no frames', async ({ page }) => {
+        await open(page, `?backend=${backend}&reducedMotion=1&projection=${projection}`);
+        await set(page, [PLANE, AXIS, POINT]);
+        await frame(page);
+        await page.waitForTimeout(3500); // the studio environment is built on idle, once
+        const n = await page.evaluate(() => window.__viewport!.viewport.getRenderCount());
+        await page.waitForTimeout(400);
+        expect(await page.evaluate(() => window.__viewport!.viewport.getRenderCount())).toBe(n);
+      });
     });
-  });
-}
+  }
 
 test('a reference never hides geometry: bodies keep their depth, references write none', async ({
   page,

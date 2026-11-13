@@ -12,6 +12,8 @@ import {
   float,
   length,
   mix,
+  modelViewMatrix,
+  select,
   smoothstep,
   color as tslColor,
   uniform,
@@ -31,6 +33,21 @@ import {
   Sprite,
   SpriteNodeMaterial,
 } from 'three/webgpu';
+import { viewUniforms } from './viewUniforms';
+
+/**
+ * Scale node for constant-pixel sprites (`sizeAttenuation: false`). three multiplies such a sprite
+ * by its view depth when the *camera object* is not an `OrthographicCamera`, and the viewport's
+ * camera is always a `PerspectiveCamera` (ADR-098). In perspective that is the intended
+ * "world per pixel at this depth"; in orthographic this node divides the depth out again, so the
+ * CPU-side scale (`px * 2 / (height * P11)`, see `sizeDots`) is the on-screen size in both. A sprite
+ * at depth 0 (on the camera plane) would divide by zero: the depth is held away from 0.
+ */
+export function constantPixelScale() {
+  const depth = modelViewMatrix.mul(vec4(0, 0, 0, 1)).z.negate();
+  const safe = select(depth.abs().lessThan(1e-6), float(1e-6), depth);
+  return select(viewUniforms.ortho.greaterThan(0.5), float(1).div(safe), float(1));
+}
 
 /**
  * Relative depth bias: a coplanar overlay is moved toward the camera along its own view ray by a
@@ -42,6 +59,11 @@ import {
  * vanished. A clip-space z shift in the vertex stage behaves the same on both backends.
  */
 export const overlayDepthBias = uniform(0);
+/**
+ * Orthographic form of the pull (ADR-098): a view-space distance toward the camera. Zero in
+ * perspective (where `overlayDepthBias` is used) and `overlayDepthBias` is zero in orthographic.
+ */
+export const overlayDepthDelta = uniform(0);
 
 /**
  * Fraction of its own distance an overlay is pulled toward the camera: 0.5 %. A sketch on a face is
@@ -61,11 +83,34 @@ export function overlayBiasFor(eps: number = OVERLAY_BIAS_FRACTION): number {
  * position) unchanged. For a perspective matrix clip.w = -p.z and clip.z = P22 p.z + P23, so
  * z' / w = (P22 p.z (1 - eps) + P23) / (-p.z (1 - eps)); with w held at -p.z that is
  * clip.z + P23 * eps / (1 - eps). `p23` is `projectionMatrix.elements[14]`, `k` = `overlayBiasFor`.
- * The shift scales with the point's own distance and does not involve the near plane. (The
- * viewport is perspective only; an orthographic camera would add `P22 * delta` instead.)
+ * The shift scales with the point's own distance and does not involve the near plane.
  */
 export function biasedClipZ(clipZ: number, p23: number, k: number): number {
   return clipZ + p23 * k;
+}
+
+/**
+ * Orthographic pull (ADR-098). Clip z is linear in view z (`clip.z = P22 z + P23`, w = 1), so
+ * moving a point `delta` toward the camera (view z + delta) is `clip.z + P22 * delta`; P22 is
+ * negative, so clip z falls (nearer) on both the WebGL and WebGPU depth conventions.
+ */
+export function biasedClipZOrtho(clipZ: number, p22: number, delta: number): number {
+  return clipZ + p22 * delta;
+}
+
+/**
+ * The orthographic pull distance: the same 0.5 % of the *zoom* distance (camera to target, which
+ * sets the view height) that perspective pulls by at the target, so zoomed in hidden edges do not
+ * show through thin walls any more than they do in perspective. It never drops below a few
+ * hundred depth-buffer steps of the near-far `range` (a coplanar sketch must still win at any
+ * zoom): 4e-6 of the range is about 60 steps of a 24-bit buffer.
+ */
+export function orthoOverlayDelta(
+  distance: number,
+  range: number,
+  eps: number = OVERLAY_BIAS_FRACTION,
+): number {
+  return Math.max(distance * eps, range * 4e-6);
 }
 
 /**
@@ -82,7 +127,14 @@ export function applyDepthBias<M extends Material>(material: M): M {
     const clip = base.call(this, builder);
     // P * (0, 0, 0, 1) is the projection's last column; .z is elements[14].
     const p23 = cameraProjectionMatrix.mul(vec4(0, 0, 0, 1)).z;
-    return vec4(clip.x, clip.y, clip.z.add(p23.mul(overlayDepthBias)), clip.w);
+    // Orthographic: P22 is the z column's own z (elements[10]); `overlayDepthDelta` is 0 in perspective.
+    const p22 = cameraProjectionMatrix.mul(vec4(0, 0, 1, 0)).z;
+    return vec4(
+      clip.x,
+      clip.y,
+      clip.z.add(p23.mul(overlayDepthBias)).add(p22.mul(overlayDepthDelta)),
+      clip.w,
+    );
   };
   material.needsUpdate = true;
   return material;
@@ -210,6 +262,7 @@ export function makeDot(
 ): Dot {
   const material = sharedMaterial(`dot|${fill}|${outline}`, () => {
     const m = new SpriteNodeMaterial({ sizeAttenuation: false, transparent: true });
+    m.scaleNode = constantPixelScale();
     const d = length(uv().sub(0.5)).mul(2);
     m.colorNode = mix(
       tslColor(new Color(outline)),

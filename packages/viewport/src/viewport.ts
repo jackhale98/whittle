@@ -40,7 +40,6 @@ import {
   HemisphereLight,
   Line2NodeMaterial,
   Matrix4,
-  PerspectiveCamera,
   Plane,
   Quaternion,
   Raycaster,
@@ -146,6 +145,7 @@ import type {
   ViewportEventMap,
   ViewportReference,
 } from './types';
+import { ViewCamera } from './viewCamera';
 import type { ViewCube } from './viewcube';
 import {
   type Bounds,
@@ -194,7 +194,7 @@ export class ViewportImpl implements ViewportEngine {
   readonly sectionPlane = new Plane();
   section: { eq: SectionEq; caps: boolean } | null = null;
   capCounter = 0;
-  readonly camera = new PerspectiveCamera(FOV_DEG, 1, 0.1, 10000);
+  readonly camera = new ViewCamera(FOV_DEG, 1, 0.1, 10000);
   readonly controls: CameraControls;
   readonly bodies = new Map<string, BodyEntry>();
   readonly edgeMaterial: Line2NodeMaterial;
@@ -410,6 +410,7 @@ export class ViewportImpl implements ViewportEngine {
 
     // Z-up CAD convention. Must be set before camera-controls captures the up vector.
     this.camera.up.set(0, 0, 1);
+    this.camera.orthographic = this.navigation.projection !== 'perspective';
     this.camera.position.set(80, -110, 70);
     this.controls = new CameraControls(this.camera, canvas);
     configureControls(this);

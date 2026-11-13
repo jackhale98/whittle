@@ -61,7 +61,8 @@ const fromSlider = (v: number) => Math.round(2 ** v * 20) / 20;
 
 /**
  * Navigation settings (PLAN M3.5, ADR-046): the mouse preset by behaviour, turntable or trackball,
- * pivot under the cursor or at the centre, the pivot marker, invert zoom and orbit speed.
+ * pivot under the cursor or at the centre, the pivot marker, invert zoom and orbit speed, and the
+ * projection (ADR-098: orthographic by default, perspective as a setting).
  * Controlled; the app persists it (`readNavigation` / `writeNavigation`) and passes it to the
  * viewport's `setNavigation`. Left drag is never navigation under any preset.
  */
@@ -181,6 +182,24 @@ export function NavigationSettings({
               {value.rotateSpeed.toFixed(2)}×
             </output>
           </div>
+        </Field>
+      </Section>
+
+      <Section title="View">
+        <Field
+          label="Projection"
+          hint="Orthographic keeps parallel edges parallel: a hole seen straight on shows no wall, and size does not change with depth. Perspective is the camera view, for presentation."
+        >
+          <Segmented
+            label="Projection"
+            size={sz}
+            value={value.projection}
+            onChange={(v) => set('projection', v)}
+            options={[
+              { value: 'orthographic', label: 'Orthographic' },
+              { value: 'perspective', label: 'Perspective' },
+            ]}
+          />
         </Field>
       </Section>
 
