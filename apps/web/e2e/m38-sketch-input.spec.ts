@@ -191,8 +191,10 @@ test.describe('touch', () => {
     // A two-point through spline, finished with Finish.
     await page.keyboard.press('Shift+B');
     await expect.poll(async () => (await a.ui()).sketch?.tool).toBe('splineThrough');
-    await tapAt(-30, -10);
-    await tapAt(0, -30);
+    // Clear of the lines above and of the bottom tool strip (the orthographic view frames the
+    // sketch larger, and y < 0 can fall under the strip on this screen).
+    await tapAt(15, 40);
+    await tapAt(30, 50);
     await finish.tap();
     await expect(finish).toBeHidden();
     await regenerated(page, 1);
