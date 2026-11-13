@@ -324,7 +324,10 @@ test('a selected vertex stays selected through a regen that does not move it (D6
     const u = await a.ui();
     if (u.chooser?.includes('vertex')) {
       const options = page.getByRole('listbox').getByRole('option');
-      await options.nth(u.chooser.indexOf('vertex')).click();
+      // The list is shown in the chooser's stable order (kind priority: a vertex is first); the
+      // probe lists the candidates in pick order, which at an exact corner is a coin toss (the
+      // vertex and its edges sit at the same depth and distance, in either projection).
+      await options.first().click();
       await a.idle();
     }
     if ((await a.ui()).selection.includes('vertex')) {

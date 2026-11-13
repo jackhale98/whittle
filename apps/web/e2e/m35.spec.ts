@@ -112,12 +112,20 @@ function classify(a: Awaited<ReturnType<typeof pose>>, b: Awaited<ReturnType<typ
 }
 
 /** A box on screen, centred, with the bounding box of its projected corners. */
-async function boxSetup(page: Page) {
+async function boxSetup(page: Page, opts: { zoomOut?: number } = {}) {
   await boot(page);
   await page.getByRole('button', { name: 'Close welcome' }).click();
   await addBox(page);
   await page.keyboard.press('0'); // isometric
   await cameraStill(page);
+  if (opts.zoomOut) {
+    // The orthographic fit (ADR-098) fills more of the canvas than the perspective one did: a
+    // notch out keeps tests that start a drag just outside the part clear of the canvas chips.
+    const c = await page.getByTestId('viewport-canvas').boundingBox();
+    if (c) await page.mouse.move(c.x + c.width / 2, c.y + c.height / 2);
+    for (let i = 0; i < opts.zoomOut; i++) await page.mouse.wheel(0, 100);
+    await cameraStill(page);
+  }
   const b = (await app(page).regen())?.bodies[0]?.bbox;
   if (!b) throw new Error('no body');
   const corners: V3[] = [];
@@ -298,7 +306,11 @@ test.describe('presets', () => {
     await boxSetup(page);
     expect((await probe(page).navigation()).projection).toBe('orthographic');
     // Seen from the top, a vertical edge of the 40 x 30 x 20 box is a point: no perspective.
-    await page.keyboard.press('5');
+    await page.evaluate(() =>
+      (
+        window as unknown as { __wrenViewport: { setView(v: string, animate: boolean): void } }
+      ).__wrenViewport.setView('top', false),
+    );
     await cameraStill(page);
     const lean = async () => {
       const a = await probe(page).toScreen([0, 0, 0]);
@@ -362,7 +374,7 @@ test.describe('presets', () => {
   test('left drag box-selects: left to right = window, right to left = crossing', async ({
     page,
   }) => {
-    const s = await boxSetup(page);
+    const s = await boxSetup(page, { zoomOut: 2 });
     const a = app(page);
     const p0 = await pose(page);
     const cx = (s.min.x + s.max.x) / 2;
