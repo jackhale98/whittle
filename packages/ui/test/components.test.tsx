@@ -87,11 +87,15 @@ describe('AppShell', () => {
     },
   );
 
-  it('desktop has the left panel and inspector; phone/tablet do not', () => {
+  it('desktop and tablet have the left panel and inspector; the phone does not', () => {
     const { unmount } = render(<AppShell tier="desktop" {...base} />);
     expect(screen.getByTestId('left-panel')).toBeInTheDocument();
     expect(screen.getByTestId('right-panel')).toBeInTheDocument();
     unmount();
+    const t = render(<AppShell tier="tablet" {...base} />);
+    expect(screen.getByTestId('left-panel')).toBeInTheDocument();
+    expect(screen.getByTestId('right-panel')).toBeInTheDocument();
+    t.unmount();
     render(<AppShell tier="phone" {...base} />);
     expect(screen.queryByTestId('left-panel')).toBeNull();
   });

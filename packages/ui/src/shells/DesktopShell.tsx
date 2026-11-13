@@ -13,8 +13,8 @@ import { m } from 'motion/react';
 import {
   type CSSProperties,
   type KeyboardEvent,
-  type RefObject,
   type PointerEvent,
+  type RefObject,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -226,13 +226,22 @@ export function DesktopShell(props: DesktopShellProps) {
     : undefined;
   const overlayCls = 'absolute top-0 bottom-2 z-[var(--z-panel)] rounded-panel shadow-float';
 
+  const onEscape = (e: KeyboardEvent<HTMLElement>) => {
+    if (e.key === 'Escape' && panelOpen) {
+      e.stopPropagation();
+      closeOverlay(true);
+    }
+  };
+
   return (
     <ShellRoot tier={tier} props={props} className="flex flex-col">
       {(core) => (
         <>
+          {/* biome-ignore lint/a11y/noStaticElementInteractions: Escape closes an overlaid panel from the buttons that opened it */}
           <header
             className={cn('flex shrink-0 items-center gap-1 px-3 pb-px', touch ? 'h-14' : 'h-12')}
             data-testid="top-bar"
+            onKeyDown={onEscape}
           >
             <IconButton
               label="Feature panel"
@@ -297,12 +306,7 @@ export function DesktopShell(props: DesktopShellProps) {
             data-testid="shell-body"
             data-panels={overlay ? 'overlay' : 'docked'}
             className="relative flex min-h-0 flex-1 px-2 pb-2"
-            onKeyDown={(e) => {
-              if (e.key === 'Escape' && panelOpen) {
-                e.stopPropagation();
-                closeOverlay(true);
-              }
-            }}
+            onKeyDown={onEscape}
           >
             {/* Left panel: feature tree + params */}
             <m.aside
@@ -434,7 +438,6 @@ export function DesktopShell(props: DesktopShellProps) {
 
             {/* Tap outside an overlaid panel: it closes (the tap does not also act on the view). */}
             {panelOpen ? (
-              // biome-ignore lint/a11y/noStaticElementInteractions: a dismiss layer; Escape and the toggle buttons are the keyboard paths
               <div
                 data-testid="panel-scrim"
                 aria-hidden="true"

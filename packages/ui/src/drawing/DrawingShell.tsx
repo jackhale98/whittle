@@ -1,8 +1,8 @@
 import * as RTabs from '@radix-ui/react-tabs';
 import { ArrowLeft, ChevronDown, ChevronUp, PanelRight, Redo2, Undo2 } from 'lucide-react';
 import { type ReactNode, useEffect, useState } from 'react';
-import { DRAWING_DOCK_MIN_WIDTH } from '../logic/dock';
 import { cn, IconButton } from '../components/primitives';
+import { DRAWING_DOCK_MIN_WIDTH } from '../logic/dock';
 import { SheetTabs, type SheetTabsProps } from './SheetTabs';
 
 export interface DrawingPanelDef {
@@ -202,7 +202,6 @@ export function DrawingShell(p: DrawingShellProps) {
             {tabs}
           </div>
           {sideOverlay && sideOpen ? (
-            // biome-ignore lint/a11y/noStaticElementInteractions: a dismiss layer; the top-bar toggle is the keyboard path
             <div
               data-testid="drawing-side-scrim"
               aria-hidden="true"
