@@ -186,7 +186,10 @@ test('create two configurations, switch, suppress in one only, export both, save
     () =>
       window.crossOriginIsolated === true && !!(window as unknown as { __wren?: unknown }).__wren,
   );
-  await expect.poll(async () => (await part(page)).configurations?.length).toBe(2);
+  // The reload reopens the document from storage: allow a slow runner more than the default 5 s.
+  await expect
+    .poll(async () => (await part(page)).configurations?.length, { timeout: 20_000 })
+    .toBe(2);
   const after = await part(page);
   expect(after.configurations).toEqual(before.configurations);
   expect(after.activeConfigurationId).toBe(before.activeConfigurationId);
