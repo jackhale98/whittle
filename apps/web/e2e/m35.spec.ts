@@ -953,8 +953,12 @@ test.describe('lineage', () => {
     // Edit on the feature opens it in the inspector.
     await lineage.locator('[data-lineage="feature"]').getByRole('button', { name: /Edit/ }).click();
     await expect.poll(async () => (await a.ui()).featureId).toBe(E1);
-    // Edit on the sketch enters it.
-    await page.mouse.click(top.x, top.y);
+    // Edit on the sketch enters it. The inspector opened: the view reframes for the covered area
+    // (ADR-086), so find the top face on screen again.
+    await cameraStill(page);
+    await probe(page).pickReady();
+    const top2 = await toPage(page, [10, 10, 10]);
+    await page.mouse.click(top2.x, top2.y);
     await a.idle();
     await page
       .getByTestId('selection-lineage')

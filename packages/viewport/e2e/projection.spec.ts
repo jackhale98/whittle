@@ -605,6 +605,41 @@ for (const projection of PROJECTIONS) {
       await page.mouse.up({ button: 'right' });
     });
 
+    test('a shown (not edited) sketch region hidden under a body face never wins the click', async ({
+      page,
+    }) => {
+      // Regression (ADR-098): with the sketch shown beside a feature being edited, a click on the
+      // top face picked the sketch region under it once the orthographic ray went straight down.
+      await boot(page, projection);
+      await page.evaluate(() => window.__viewport!.viewport.setView('top', false));
+      const pickAll = () =>
+        page.evaluate(() => {
+          const v = window.__viewport!.viewport;
+          const kinds: string[] = [];
+          for (let y = 0; y < window.innerHeight; y += 8) {
+            for (let x = 0; x < window.innerWidth; x += 8) {
+              const h = v.pick(x, y, { kinds: ['face', 'region'] })[0];
+              if (h) kinds.push(h.kind);
+            }
+          }
+          return kinds;
+        });
+      // Under the top face (z = 20): the face wins everywhere.
+      await page.evaluate(() => window.__viewport!.showSketchAt(5));
+      await frame(page);
+      await page.evaluate(() => window.__viewport!.viewport.whenPickReady());
+      const under = await pickAll();
+      expect(under.filter((k) => k === 'face').length).toBeGreaterThan(20);
+      expect(under.filter((k) => k === 'region')).toEqual([]);
+      // Above the top face: the region is in front and still wins.
+      await page.evaluate(() => window.__viewport!.showSketchAt(25));
+      await frame(page);
+      await page.evaluate(() => window.__viewport!.viewport.whenPickReady());
+      const over = await pickAll();
+      expect(over.filter((k) => k === 'region').length).toBeGreaterThan(20);
+      await page.evaluate(() => window.__viewport!.hideSketch());
+    });
+
     test('sketch overlays and reference geometry pick, section planes cut', async ({ page }) => {
       const { box } = await boot(page, projection);
       await page.evaluate(() => window.__viewport!.showSketch(true));

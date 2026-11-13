@@ -168,6 +168,22 @@ export function pick(vp: ViewportImpl, x: number, y: number, options: PickOption
     faceHit = pickFace(vp, x, y, ray);
     if (faceHit) out.push(faceHit);
   }
+  // A sketch shown but not being edited (beside a feature being edited, say) is behind the body:
+  // its regions only win where no body face is nearer along the pick ray. Regions outrank faces,
+  // so without this a region hidden under a face won the click (seen once the orthographic view
+  // sent the ray straight through to the sketch plane, ADR-098).
+  if (faceHit && !anySketchActive) {
+    const along = (p: Vec3) =>
+      (p[0] - ray.origin[0]) * ray.dir[0] +
+      (p[1] - ray.origin[1]) * ray.dir[1] +
+      (p[2] - ray.origin[2]) * ray.dir[2];
+    const faceT = along(faceHit.point);
+    const eps = 1e-6 * Math.max(1, vp.sceneRadius);
+    for (let i = out.length - 1; i >= 0; i--) {
+      const h = out[i] as PickHit;
+      if (h.kind === 'region' && along(h.point) > faceT + eps) out.splice(i, 1);
+    }
+  }
 
   // Reference geometry (ADR-093). A body face under the pointer always wins over a plane, so a
   // plane never blocks the faces behind it (a plane through a part is picked where it is in the
