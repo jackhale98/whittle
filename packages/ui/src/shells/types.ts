@@ -19,9 +19,8 @@ import type { ParamsTableProps } from '../params/ParamsTable';
 import type { ThemeSetting } from '../theme';
 import type { TutorialProps } from '../tutorial/TutorialLazy';
 
-export type TabletSheetTab = 'history' | 'params' | 'inspector';
 export type PhoneSheetTab = 'parts' | 'history' | 'params' | 'measure' | 'section' | 'export';
-export type SheetTabId = TabletSheetTab | PhoneSheetTab;
+export type SheetTabId = PhoneSheetTab;
 
 /** Live kernel memory (diagnostics only). `-1` = the kernel could not report it. */
 export interface KernelMemory {
@@ -60,9 +59,9 @@ export interface ShellProps {
   onExport?(): void;
 
   /* ---- M1 data-driven panels (all optional; shells fall back to their empty states) ---- */
-  /** Feature history for the left panel's Features tab / tablet and phone history sheets. */
+  /** Feature history for the left panel's Features tab / phone history sheet. */
   featureTree?: FeatureTreeProps;
-  /** Parameters for the left panel's Params tab / tablet + phone sheets. */
+  /** Parameters for the left panel's Params tab / phone sheet. */
   paramsTable?: ParamsTableProps;
   /** Right-panel content (typically a `FeatureInspector`, `PartInspector` or `SelectionInspector`). */
   inspector?: ReactNode;
@@ -88,17 +87,30 @@ export interface ShellProps {
   contextBubble?: ContextBubbleProps;
   /** Push/pull value label that follows a screen point; tap to type an exact value. */
   valueChip?: ValueChipProps;
-  /** Tablet and phone bottom sheet: controlled snap point (`peek` | `half` | `full`). */
+  /** Phone bottom sheet: controlled snap point (`peek` | `half` | `full`). */
   sheetSnap?: SheetSnap;
   onSheetSnapChange?(snap: SheetSnap): void;
   /**
-   * Controlled sheet section: tablet `history` | `params` | `inspector`, phone `parts` | `history` | `params` |
-   * `measure` | `section` | `export`. Omit to let the shell keep it.
+   * Controlled phone sheet section: `parts` | `history` | `params` | `measure` | `section` |
+   * `export`. Omit to let the shell keep it.
    */
   sheetTab?: SheetTabId;
   onSheetTabChange?(tab: SheetTabId): void;
-  /** Phone and tablet: the sheet's visible height (px) whenever its snap changes, for framing the model above it. */
+  /** Phone: the sheet's visible height (px) whenever its snap changes, for framing the model above it. */
   onSheetHeight?(px: number): void;
+  /**
+   * Desktop shell (desktop and tablet): the right inspector panel's open state, controlled. The app
+   * opens it while editing (a new feature, a measurement) and closes it again when that is done.
+   * Omit to let the shell keep it (open on desktop, closed on tablet until asked).
+   */
+  inspectorOpen?: boolean;
+  onInspectorOpenChange?(open: boolean): void;
+  /**
+   * Tablet: px of the view an overlaid side panel covers on each side (0 when docked or closed),
+   * reported on every animation frame, so the camera can frame the model in the free area
+   * (ADR-086, ADR-099).
+   */
+  onOverlayInsets?(insets: { left: number; right: number }): void;
   /** Phone Parts tab. */
   parts?: PartsPanelProps;
   /** Phone Measure tab. */

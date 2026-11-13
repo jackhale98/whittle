@@ -16,7 +16,9 @@ export function selectFeature(wb: Workbench, id: Id | null): void {
     return;
   }
   wb.patchUi({ featureId: id, picking: null, selection: [], prompt: null });
+  // Editing a feature shows its values in the inspector panel; Done closes it again if the app opened it.
   if (id === null) wb.restoreSheet();
+  else wb.revealInspector(true);
   wb.refreshSketchVisibility();
   wb.pushHighlights();
 }

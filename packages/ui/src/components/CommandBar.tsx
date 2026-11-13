@@ -28,6 +28,8 @@ export interface CommandBarProps {
   onTool?(tool: ToolId): void;
   /** "More" opens the command palette. */
   onMore?: () => void;
+  /** `touch`: 44 px targets in the flyout (the tablet, ADR-099). The bar's own buttons are 52 px at both. */
+  density?: 'compact' | 'touch';
   className?: string;
 }
 
@@ -75,6 +77,7 @@ export function CommandBar({
   enabledTools,
   onTool,
   onMore,
+  density = 'compact',
   className,
 }: CommandBarProps) {
   const [open, setOpen] = useState<ToolGroupId | null>(null);
@@ -366,7 +369,7 @@ export function CommandBar({
                 aria-pressed={on ? activeTool === id : undefined}
                 onClick={() => pick(id)}
                 className={cn(
-                  'flex h-10 items-center gap-3 rounded-control px-3 text-left text-sm font-medium text-fg transition-colors duration-fast select-none active:bg-surface-3 aria-disabled:text-fg-muted aria-disabled:opacity-70',
+                  `flex ${density === 'touch' ? 'h-12' : 'h-10'} items-center gap-3 rounded-control px-3 text-left text-sm font-medium text-fg transition-colors duration-fast select-none active:bg-surface-3 aria-disabled:text-fg-muted aria-disabled:opacity-70`,
                   activeTool === id ? 'bg-accent-soft text-accent-text' : 'hover:bg-surface-2',
                 )}
               >
